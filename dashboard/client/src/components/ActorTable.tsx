@@ -28,6 +28,7 @@ import {
   MemoryProfilingButton,
 } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
+import { sliceToPage } from "../common/util";
 import { getSumGpuUtilization, WorkerGpuRow } from "../pages/node/GPUColumn";
 import { getSumGRAMUsage, WorkerGRAM } from "../pages/node/GRAMColumn";
 import { ActorDetail, ActorEnum } from "../type/actor";
@@ -89,7 +90,7 @@ const ActorTable = ({
     onFilterChange,
   });
   const [actorIdFilterValue, setActorIdFilterValue] = useState(filterToActorId);
-  const pageSize = 10;
+  const [pageSize, setPageSize] = useState<number | undefined>(10);
 
   const uptimeSorterKey = "fake_uptime_attr";
   const gpuUtilizationSorterKey = "fake_gpu_attr";
@@ -150,9 +151,11 @@ const ActorTable = ({
     });
   }, [actors, sorterKey, sorterFunc, filterFunc, descVal]);
 
-  const list = sortedActors.slice((pageNo - 1) * pageSize, pageNo * pageSize);
-
-  const classes = rowStyles();
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(sortedActors, pageNo, pageSize ?? 10);
 
   const columns = [
     { label: "" },
@@ -393,6 +396,8 @@ const ActorTable = ({
             ),
           }}
         />
+      </Box>
+      <Box sx={{ display: "flex", flex: 1, alignItems: "center" }}>
         <TextField
           style={{ margin: 8, width: 120 }}
           label="Name"
@@ -455,7 +460,21 @@ const ActorTable = ({
             ),
           }}
         />
-        <div data-testid="sortByFilter">
+        <TextField
+          style={{ margin: 8, width: 120 }}
+          label="Page Size"
+          size="small"
+          value={pageSize}
+          InputProps={{
+            onChange: ({ target: { value } }) => {
+              setPageSize(Math.min(Number(value), 500) || undefined);
+            },
+            endAdornment: (
+              <InputAdornment position="end">Per Page</InputAdornment>
+            ),
+          }}
+        />
+        <div data-testid="sortByFilter" style={{ margin: 8 }}>
           <SearchSelect
             label="Sort By"
             options={[
@@ -473,24 +492,24 @@ const ActorTable = ({
             defaultValue={defaultSorterKey}
           />
         </div>
-        <span>
+        <Box sx={{ marginLeft: 1 }}>
           Reverse:
           <Switch onChange={(_, checked) => setOrderDesc(checked)} />
-        </span>
+        </Box>
       </Box>
       <div style={{ display: "flex", alignItems: "center" }}>
         <div>
           <Pagination
-            page={pageNo}
+            page={constrainedPage}
             onChange={(e, num) => setPageNo(num)}
-            count={Math.ceil(sortedActors.length / pageSize)}
+            count={maxPage}
           />
         </div>
         <div>
           <StateCounter type="actor" list={sortedActors} />
         </div>
       </div>
-      <div className={classes.tableContainer}>
+      <Box sx={{ overflowX: "scroll" }}>
         <Table>
           <TableHead>
             <TableRow>
@@ -503,9 +522,7 @@ const ActorTable = ({
                   >
                     {label}
                     {helpInfo && (
-                      <HelpInfo className={classes.helpInfo}>
-                        {helpInfo}
-                      </HelpInfo>
+                      <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                     )}
                   </Box>
                 </TableCell>
@@ -555,8 +572,8 @@ const ActorTable = ({
                   key={actorId}
                 >
                   <TableCell align="center">
-                    <Tooltip className={classes.idCol} title={actorId} arrow>
-                      <div>
+                    <Tooltip title={actorId} arrow>
+                      <Box sx={rowStyles.idCol}>
                         <ActorLink
                           actorId={actorId}
                           to={
@@ -565,7 +582,7 @@ const ActorTable = ({
                               : actorId
                           }
                         />
-                      </div>
+                      </Box>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">{actorClass}</TableCell>
@@ -621,19 +638,15 @@ const ActorTable = ({
                   </TableCell>
                   <TableCell align="center">
                     {address?.rayletId ? (
-                      <Tooltip
-                        className={classes.idCol}
-                        title={address?.rayletId}
-                        arrow
-                      >
-                        <div>
+                      <Tooltip title={address?.rayletId} arrow>
+                        <Box sx={rowStyles.idCol}>
                           <Link
                             component={RouterLink}
                             to={generateNodeLink(address.rayletId)}
                           >
                             {address?.rayletId}
                           </Link>
-                        </div>
+                        </Box>
                       </Tooltip>
                     ) : (
                       "-"
@@ -679,16 +692,16 @@ const ActorTable = ({
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip
-                      className={classes.idCol}
                       title={placementGroupId ? placementGroupId : "-"}
                       arrow
                     >
-                      <div>{placementGroupId ? placementGroupId : "-"}</div>
+                      <Box sx={rowStyles.idCol}>
+                        {placementGroupId ? placementGroupId : "-"}
+                      </Box>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
                     <Tooltip
-                      className={classes.OverflowCol}
                       title={Object.entries(requiredResources || {}).map(
                         ([key, val]) => (
                           <div style={{ margin: 4 }}>
@@ -698,20 +711,16 @@ const ActorTable = ({
                       )}
                       arrow
                     >
-                      <div>
+                      <Box sx={rowStyles.OverflowCol}>
                         {Object.entries(requiredResources || {})
                           .map(([key, val]) => `${key}: ${val}`)
                           .join(", ")}
-                      </div>
+                      </Box>
                     </Tooltip>
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      className={classes.OverflowCol}
-                      title={exitDetail}
-                      arrow
-                    >
-                      <div>{exitDetail}</div>
+                    <Tooltip title={exitDetail} arrow>
+                      <Box sx={rowStyles.OverflowCol}>{exitDetail}</Box>
                     </Tooltip>
                   </TableCell>
                 </ExpandableTableRow>
@@ -719,7 +728,7 @@ const ActorTable = ({
             )}
           </TableBody>
         </Table>
-      </div>
+      </Box>
     </React.Fragment>
   );
 };

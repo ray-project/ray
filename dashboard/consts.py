@@ -69,7 +69,7 @@ DEFAULT_JOB_START_TIMEOUT_SECONDS = 60 * 15
 RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR = "RAY_JOB_START_TIMEOUT_SECONDS"
 # Port that dashboard prometheus metrics will be exported to
 DASHBOARD_METRIC_PORT = env_integer("DASHBOARD_METRIC_PORT", 44227)
-COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Component", "SessionName"]
+COMPONENT_METRICS_TAG_KEYS = ["ip", "pid", "Version", "Component", "SessionName"]
 # Dashboard metrics are tracked separately at the dashboard. TODO(sang): Support GCS.
 AVAILABLE_COMPONENT_NAMES_FOR_METRICS = {
     "workers",

@@ -16,9 +16,11 @@
 
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
+#include "absl/container/node_hash_map.h"
 #include "gtest/gtest_prod.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_object.h"
@@ -32,11 +34,35 @@
 namespace ray {
 namespace experimental {
 
-class MutableObjectManager {
+class MutableObjectManager : public std::enable_shared_from_this<MutableObjectManager> {
  public:
+  /// Buffer for a mutable object. This buffer wraps a shared memory buffer of
+  /// a mutable object, and read-releases the mutable object when it is destructed.
+  /// This auto-releasing behavior enables a cleaner API for accelerated DAG so that
+  /// manual calls to ReadRelease() are not needed.
+  class MutableObjectBuffer : public SharedMemoryBuffer {
+   public:
+    MutableObjectBuffer(std::shared_ptr<MutableObjectManager> mutable_object_manager,
+                        std::shared_ptr<Buffer> buffer,
+                        const ObjectID &object_id)
+        : SharedMemoryBuffer(buffer, 0, buffer->Size()),
+          mutable_object_manager_(mutable_object_manager),
+          object_id_(object_id) {}
+
+    ~MutableObjectBuffer() {
+      RAY_UNUSED(mutable_object_manager_->ReadRelease(object_id_));
+    }
+
+    const ObjectID &object_id() const { return object_id_; }
+
+   private:
+    std::shared_ptr<MutableObjectManager> mutable_object_manager_;
+    ObjectID object_id_;
+  };
+
   struct Channel {
     Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
-        : lock(std::make_unique<absl::Mutex>()),
+        : lock(std::make_unique<std::mutex>()),
           mutable_object(std::move(mutable_object_ptr)) {}
 
     // WriteAcquire() sets this to true. WriteRelease() sets this to false.
@@ -47,7 +73,7 @@ class MutableObjectManager {
     bool reading = false;
 
     // This mutex protects `next_version_to_read`.
-    std::unique_ptr<absl::Mutex> lock;
+    std::unique_ptr<std::mutex> lock;
     // The last version that we read. To read again, we must pass a newer
     // version than this.
     int64_t next_version_to_read = 1;
@@ -77,14 +103,15 @@ class MutableObjectManager {
   /// Checks if a channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered for object_id, false otherwise.
+  /// \return The return status. True if the channel is registered for object_id, false
+  ///         otherwise.
   bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
 
   /// Checks if a reader channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a reader for object_id,
-  /// false otherwise.
+  /// \return The return status. True if the channel is registered as a reader for
+  ///         object_id, false otherwise.
   bool ReaderChannelRegistered(const ObjectID &object_id) {
     Channel *c = GetChannel(object_id);
     if (!c) {
@@ -96,8 +123,8 @@ class MutableObjectManager {
   /// Checks if a writer channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a writer for object_id,
-  /// false otherwise.
+  /// \return The return status. True if the channel is registered as a writer for
+  ///         object_id, false otherwise.
   bool WriterChannelRegistered(const ObjectID &object_id) {
     Channel *c = GetChannel(object_id);
     if (!c) {
@@ -120,13 +147,18 @@ class MutableObjectManager {
   /// value we will write before the next WriteAcquire can proceed. The readers
   /// may not start reading until WriteRelease is called.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the write lock.
+  /// If this is 0, the method will try to acquire the write lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  /// will block indefinitely until the write lock is acquired.
   /// \return The return status.
   Status WriteAcquire(const ObjectID &object_id,
                       int64_t data_size,
                       const uint8_t *metadata,
                       int64_t metadata_size,
                       int64_t num_readers,
-                      std::shared_ptr<Buffer> &data);
+                      std::shared_ptr<Buffer> &data,
+                      int64_t timeout_ms = -1);
 
   /// Releases an acquired write lock on the object, allowing readers to read.
   /// This is the equivalent of "Seal" for normal objects.
@@ -141,9 +173,15 @@ class MutableObjectManager {
   /// \param[in] object_id The ID of the object.
   /// \param[out] result The read object. This buffer is guaranteed to be valid
   /// until the caller calls ReadRelease next.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the read lock.
+  /// If this is 0, the method will try to acquire the read lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  /// will block indefinitely until the read lock is acquired.
   /// \return The return status. The ReadAcquire can fail if there have already
   /// been `num_readers` for the current value.
-  Status ReadAcquire(const ObjectID &object_id, std::shared_ptr<RayObject> &result);
+  Status ReadAcquire(const ObjectID &object_id,
+                     std::shared_ptr<RayObject> &result,
+                     int64_t timeout_ms = -1);
 
   /// Releases the object, allowing it to be written again. If the caller did
   /// not previously ReadAcquire the object, then this first blocks until the
@@ -157,14 +195,31 @@ class MutableObjectManager {
   ///
   /// \param[in] object_id The ID of the object.
   Status SetError(const ObjectID &object_id);
-  Status SetErrorInternal(const ObjectID &object_id);
 
   /// Sets the error bit on all channels, causing all future readers and writers to raise
   /// an error on acquire.
   Status SetErrorAll();
 
- private:
+  /// Checks if the channel is closed.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return Status indicating whether the object (if a channel for it exists) has its
+  ///         error bit set (i.e., the channel is closed).
+  Status IsChannelClosed(const ObjectID &object_id);
+
+  /// Returns the channel for object_id. If no channel exists for object_id, returns
+  /// nullptr.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return The channel or nullptr.
   Channel *GetChannel(const ObjectID &object_id);
+
+ private:
+  /// Converts a timeout in milliseconds to a timeout point.
+  /// \param[in] timeout_ms The timeout in milliseconds.
+  /// \return The timeout point, or nullptr if the timeout_ms is -1.
+  std::unique_ptr<std::chrono::steady_clock::time_point> ToTimeoutPoint(
+      int64_t timeout_ms);
 
   // Returns the plasma object header for the object.
   PlasmaObjectHeader *GetHeader(const ObjectID &object_id);
@@ -185,6 +240,11 @@ class MutableObjectManager {
   // destructor calls this method for all remaining objects.
   void DestroySemaphores(const ObjectID &object_id);
 
+  // Internal method used to set the error bit on `object_id`. The destructor lock must be
+  // held before calling this method.
+  Status SetErrorInternal(const ObjectID &object_id)
+      ABSL_SHARED_LOCKS_REQUIRED(destructor_lock_);
+
   FRIEND_TEST(MutableObjectTest, TestBasic);
   FRIEND_TEST(MutableObjectTest, TestMultipleReaders);
   FRIEND_TEST(MutableObjectTest, TestWriterFails);
@@ -198,7 +258,10 @@ class MutableObjectManager {
   // consider using RCU to avoid synchronization overhead in the common case.
   // This map holds the channels for readers and writers of mutable objects.
   absl::Mutex channel_lock_;
-  absl::flat_hash_map<ObjectID, Channel> channels_;
+  // `channels_` requires pointer stability as one thread may hold a Channel pointer while
+  // another thread mutates `channels_`. Thus, we use absl::node_hash_map instead of
+  // absl::flat_hash_map.
+  absl::node_hash_map<ObjectID, Channel> channels_;
 
   // This maps holds the semaphores for each mutable object. The semaphores are used to
   // (1) synchronize accesses to the object header and (2) synchronize readers and writers

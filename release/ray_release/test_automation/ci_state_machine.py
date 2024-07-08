@@ -1,11 +1,10 @@
-import os
+from typing import List
 
 from ray_release.test_automation.state_machine import (
     TestStateMachine,
     WEEKLY_RELEASE_BLOCKER_TAG,
 )
-
-from ray_release.test import Test, TestState
+from ray_release.test import Test, TestState, TestResult
 
 
 CONTINUOUS_FAILURE_TO_FLAKY = 3  # Number of continuous failures before flaky
@@ -33,12 +32,10 @@ class CITestStateMachine(TestStateMachine):
         change = (from_state, to_state)
         if change == (TestState.PASSING, TestState.CONSITENTLY_FAILING):
             self._create_github_issue()
-            if os.environ.get("RAYCI_DISABLE_CI_TEST_BISECT") != "true":
-                self._trigger_bisect()
+            self._trigger_bisect()
         elif change == (TestState.FAILING, TestState.CONSITENTLY_FAILING):
             self._create_github_issue()
-            if os.environ.get("RAYCI_DISABLE_CI_TEST_BISECT") != "true":
-                self._trigger_bisect()
+            self._trigger_bisect()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.PASSING):
             self._close_github_issue()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.FLAKY):
@@ -111,15 +108,16 @@ class CITestStateMachine(TestStateMachine):
         # recently stable, then it is not flaky.
         if self._is_recently_stable():
             return False
-        transition = 0
-        for i in range(0, len(self.test_results) - 1):
-            if (
-                self.test_results[i].is_failing()
-                and self.test_results[i + 1].is_passing()
-            ):
-                transition += 1
 
-        if transition >= FLAKY_PERCENTAGE_THRESHOLD * len(self.test_results) / 100:
+        return self.is_flaky_result_history(self.test_results)
+
+    @staticmethod
+    def is_flaky_result_history(results: List[TestResult]):
+        transition = 0
+        for i in range(0, len(results) - 1):
+            if results[i].is_failing() and results[i + 1].is_passing():
+                transition += 1
+        if transition >= FLAKY_PERCENTAGE_THRESHOLD * len(results) / 100:
             return True
         return False
 

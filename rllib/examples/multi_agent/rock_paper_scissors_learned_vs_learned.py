@@ -15,11 +15,7 @@ import re
 
 from pettingzoo.classic import rps_v2
 
-from ray.rllib.connectors.env_to_module import (
-    AddObservationsFromEpisodesToBatch,
-    FlattenObservations,
-    WriteObservationsToEpisodes,
-)
+from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
@@ -62,11 +58,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("RockPaperScissors")
         .env_runners(
-            env_to_module_connector=lambda env: (
-                AddObservationsFromEpisodesToBatch(),
-                FlattenObservations(multi_agent=True),
-                WriteObservationsToEpisodes(),
-            ),
+            env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
         )
         .multi_agent(
             policies={"p0", "p1"},

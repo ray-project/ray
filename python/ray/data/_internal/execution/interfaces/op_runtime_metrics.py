@@ -283,6 +283,8 @@ class OpRuntimeMetrics:
         self._op = op
         self._is_map = isinstance(op, MapOperator)
         self._running_tasks: Dict[int, RunningTaskInfo] = {}
+        self._running_tasks_start_time: Dict[int, float] = {}
+        self._running_tasks_end_time: Dict[int, float] = {}
         self._extra_metrics: Dict[str, Any] = {}
         # Start time of current pause due to task submission backpressure
         self._task_submission_backpressure_start_time = -1
@@ -407,6 +409,18 @@ class OpRuntimeMetrics:
 
         return self.average_bytes_outputs_per_task - self.average_bytes_inputs_per_task
 
+    @property
+    def average_task_duration(self) -> Optional[float]:
+
+        if len(self._running_tasks_end_time) == 0:
+            return None
+
+        total_taks_duration = 0
+        for task_idx, end_time in self._running_tasks_end_time.items():
+            total_taks_duration += end_time - self._running_tasks_start_time[task_idx]
+
+        return total_taks_duration / len(self._running_tasks_end_time)
+
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
         self.num_inputs_received += 1
@@ -467,6 +481,7 @@ class OpRuntimeMetrics:
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self.obj_store_mem_pending_task_inputs += inputs.size_bytes()
         self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
+        self._running_tasks_start_time[task_index] = time.time()
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
         """Callback when a new task generates an output."""
@@ -512,12 +527,10 @@ class OpRuntimeMetrics:
             input_size,
         )
 
-        blocks = [input[0] for input in inputs.blocks]
-        metadata = [input[1] for input in inputs.blocks]
         ctx = ray.data.context.DataContext.get_current()
         if ctx.enable_get_object_locations_for_metrics:
-            locations = ray.experimental.get_object_locations(blocks)
-            for block, meta in zip(blocks, metadata):
+            locations = ray.experimental.get_object_locations(inputs.block_refs)
+            for block, meta in inputs.blocks:
                 if locations[block].get("did_spill", False):
                     assert meta.size_bytes is not None
                     self.obj_store_mem_spilled += meta.size_bytes
@@ -525,4 +538,5 @@ class OpRuntimeMetrics:
         self.obj_store_mem_freed += total_input_size
 
         inputs.destroy_if_owned()
+        self._running_tasks_end_time[task_index] = time.time()
         del self._running_tasks[task_index]

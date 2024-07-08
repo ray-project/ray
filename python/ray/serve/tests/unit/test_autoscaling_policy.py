@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
 from ray.serve.autoscaling_policy import (
     _calculate_desired_num_replicas,
     replica_queue_length_autoscaling_policy,
@@ -116,9 +116,9 @@ class TestCalculateDesiredNumReplicas:
         config = {"min_replicas": 0, "max_replicas": 100}
 
         if use_target_ongoing_requests:
-            config["target_ongoing_requests"] = 1
+            config["target_ongoing_requests"] = 2
         if use_target_num_ongoing_requests_per_replica:
-            config["target_num_ongoing_requests_per_replica"] = 1
+            config["target_num_ongoing_requests_per_replica"] = 2
 
         if use_deprecated_smoothing_factor:
             config["smoothing_factor"] = 0.5
@@ -129,7 +129,7 @@ class TestCalculateDesiredNumReplicas:
         config = AutoscalingConfig(**config)
         num_replicas = 10
 
-        num_ongoing_requests = 4.0 * num_replicas
+        num_ongoing_requests = 8.0 * num_replicas
         desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config,
             total_num_requests=num_ongoing_requests,
@@ -158,9 +158,9 @@ class TestCalculateDesiredNumReplicas:
     ):
         config = {"min_replicas": 0, "max_replicas": 100}
         if use_target_ongoing_requests:
-            config["target_ongoing_requests"] = 1
+            config["target_ongoing_requests"] = 2
         if use_target_num_ongoing_requests_per_replica:
-            config["target_num_ongoing_requests_per_replica"] = 1
+            config["target_num_ongoing_requests_per_replica"] = 2
 
         if use_deprecated_smoothing_factor:
             config["upscale_smoothing_factor"] = 0.5
@@ -171,7 +171,7 @@ class TestCalculateDesiredNumReplicas:
         num_replicas = 10
 
         # Should use upscale smoothing factor of 0.5
-        num_ongoing_requests = 4.0 * num_replicas
+        num_ongoing_requests = 8.0 * num_replicas
         desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config,
             total_num_requests=num_ongoing_requests,
@@ -201,9 +201,9 @@ class TestCalculateDesiredNumReplicas:
     ):
         config = {"min_replicas": 0, "max_replicas": 100}
         if use_target_ongoing_requests:
-            config["target_ongoing_requests"] = 1
+            config["target_ongoing_requests"] = 2
         if use_target_num_ongoing_requests_per_replica:
-            config["target_num_ongoing_requests_per_replica"] = 1
+            config["target_num_ongoing_requests_per_replica"] = 2
 
         if use_deprecated_smoothing_factor:
             config["downscale_smoothing_factor"] = 0.5
@@ -214,7 +214,7 @@ class TestCalculateDesiredNumReplicas:
         num_replicas = 10
 
         # Should use upscale smoothing factor of 1 (default)
-        num_ongoing_requests = 4.0 * num_replicas
+        num_ongoing_requests = 8.0 * num_replicas
         desired_num_replicas = _calculate_desired_num_replicas(
             autoscaling_config=config,
             total_num_requests=num_ongoing_requests,
@@ -407,8 +407,8 @@ class TestReplicaQueueLengthPolicy:
             downscale_delay_s=600.0,
         )
 
-        upscale_wait_periods = int(upscale_delay_s / CONTROL_LOOP_PERIOD_S)
-        downscale_wait_periods = int(downscale_delay_s / CONTROL_LOOP_PERIOD_S)
+        upscale_wait_periods = int(upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
+        downscale_wait_periods = int(downscale_delay_s / CONTROL_LOOP_INTERVAL_S)
 
         overload_requests = 100
 
@@ -677,7 +677,7 @@ class TestReplicaQueueLengthPolicy:
         config = AutoscalingConfig(**config)
 
         if delay_s > 0:
-            wait_periods = int(delay_s / CONTROL_LOOP_PERIOD_S)
+            wait_periods = int(delay_s / CONTROL_LOOP_INTERVAL_S)
             assert wait_periods > 1
 
         underload_requests, overload_requests = 2 * 20, 100

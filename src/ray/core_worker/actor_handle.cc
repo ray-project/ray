@@ -142,8 +142,7 @@ void ActorHandle::SetActorTaskSpec(
                            task_counter_++);
 }
 
-void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec,
-                                              const ObjectID new_cursor) {
+void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec) {
   absl::MutexLock guard(&mutex_);
   auto mutable_spec = spec.GetMutableMessage().mutable_actor_task_spec();
   mutable_spec->set_actor_counter(task_counter_++);

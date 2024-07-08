@@ -12,14 +12,13 @@ import {
   TextFieldProps,
   Typography,
 } from "@mui/material";
-import createStyles from "@mui/styles/createStyles";
-import makeStyles from "@mui/styles/makeStyles";
 import React, { ReactElement } from "react";
 import { Outlet, useParams } from "react-router-dom";
 import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
@@ -28,23 +27,6 @@ import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useServeDeploymentDetails } from "./hook/useServeApplications";
 import { ServeReplicaRow } from "./ServeDeploymentRow";
 import { ServeEntityLogViewer } from "./ServeEntityLogViewer";
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    root: {
-      padding: theme.spacing(3),
-    },
-    table: {
-      tableLayout: "fixed",
-    },
-    helpInfo: {
-      marginLeft: theme.spacing(1),
-    },
-    logSection: {
-      marginTop: theme.spacing(4),
-    },
-  }),
-);
 
 const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
   { label: "Replica ID" },
@@ -55,7 +37,6 @@ const columns: { label: string; helpInfo?: ReactElement; width?: string }[] = [
 ];
 
 export const ServeDeploymentDetailPage = () => {
-  const classes = useStyles();
   const { applicationName, deploymentName } = useParams();
 
   const {
@@ -83,8 +64,14 @@ export const ServeDeploymentDetailPage = () => {
     );
   }
 
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(filteredReplicas, page.pageNo, page.pageSize);
+
   return (
-    <div className={classes.root}>
+    <Box sx={{ padding: 3 }}>
       <MetadataSection
         metadataList={[
           {
@@ -191,8 +178,8 @@ export const ServeDeploymentDetailPage = () => {
           </div>
           <div style={{ display: "flex", alignItems: "center" }}>
             <Pagination
-              count={Math.ceil(filteredReplicas.length / page.pageSize)}
-              page={page.pageNo}
+              count={maxPage}
+              page={constrainedPage}
               onChange={(e, pageNo) => setPage("pageNo", pageNo)}
             />
           </div>
@@ -212,9 +199,7 @@ export const ServeDeploymentDetailPage = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo className={classes.helpInfo}>
-                          {helpInfo}
-                        </HelpInfo>
+                        <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                       )}
                     </Box>
                   </TableCell>
@@ -222,30 +207,21 @@ export const ServeDeploymentDetailPage = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {filteredReplicas
-                .slice(
-                  (page.pageNo - 1) * page.pageSize,
-                  page.pageNo * page.pageSize,
-                )
-                .map((replica) => (
-                  <ServeReplicaRow
-                    key={replica.replica_id}
-                    deployment={deployment}
-                    replica={replica}
-                  />
-                ))}
+              {list.map((replica) => (
+                <ServeReplicaRow
+                  key={replica.replica_id}
+                  deployment={deployment}
+                  replica={replica}
+                />
+              ))}
             </TableBody>
           </Table>
         </TableContainer>
       </CollapsibleSection>
-      <CollapsibleSection
-        title="Logs"
-        startExpanded
-        className={classes.logSection}
-      >
+      <CollapsibleSection title="Logs" startExpanded sx={{ marginTop: 4 }}>
         <ServeEntityLogViewer deployments={[deployment]} />
       </CollapsibleSection>
-    </div>
+    </Box>
   );
 };
 

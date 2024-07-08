@@ -157,7 +157,7 @@ class TestJobSubmit:
         """Should tail logs and wait for process to exit."""
         cmd = "sleep 1 && echo hello && sleep 1 && echo hello"
         stdout, _ = _run_cmd(f"ray job submit -- bash -c '{cmd}'")
-        assert "hello\nhello" in stdout
+        assert stdout.count("hello") == 2
         assert "succeeded" in stdout
 
     def test_submit_no_wait(self, ray_start_stop):

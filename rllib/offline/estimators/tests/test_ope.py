@@ -28,6 +28,7 @@ from ray.rllib.offline.estimators import (
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import EVALUATION_RESULTS
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
 
@@ -232,7 +233,7 @@ class TestOPE(unittest.TestCase):
         # Test OPE in DQN, during training as well as by calling evaluate()
         algo = self.config_dqn_on_cartpole.build()
         results = algo.train()
-        ope_results = results["evaluation_results"]["off_policy_estimator"]
+        ope_results = results[EVALUATION_RESULTS]["off_policy_estimator"]
         # Check that key exists AND is not {}
         self.assertEqual(set(ope_results.keys()), {"is", "wis", "dm_fqe", "dr_fqe"})
 

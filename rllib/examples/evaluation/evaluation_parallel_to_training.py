@@ -53,7 +53,7 @@ running with a fixed number of 100k training timesteps
 |          71.7485 | 100000 |   476.51 |             476.51 |
 +------------------+--------+----------+--------------------+
 
-When running without parallel evaluation (`--evaluation-not-parallel-to-training` flag),
+When running without parallel evaluation (no `--evaluation-parallel-to-training` flag),
 the experiment takes considerably longer (~70sec vs ~80sec):
 +-----------------------------+------------+-----------------+--------+
 | Trial name                  | status     | loc             |   iter |
@@ -66,15 +66,21 @@ the experiment takes considerably longer (~70sec vs ~80sec):
 |          81.7371 | 100000 |   494.68 |             494.68 |
 +------------------+--------+----------+--------------------+
 """
+from typing import Optional
+
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
     NUM_EPISODES,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -83,37 +89,10 @@ from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_reward=500.0)
-parser.add_argument(
-    "--evaluation-duration",
-    type=lambda v: v if v == "auto" else int(v),
-    default="auto",
-    help="Number of evaluation episodes/timesteps to run each iteration. "
-    "If 'auto', will run as many as possible during train pass.",
-)
-parser.add_argument(
-    "--evaluation-duration-unit",
-    type=str,
-    default="timesteps",
-    choices=["episodes", "timesteps"],
-    help="The unit in which to measure the duration (`episodes` or `timesteps`).",
-)
-parser.add_argument(
-    "--evaluation-not-parallel-to-training",
-    action="store_true",
-    help="Whether to  NOT run evaluation parallel to training, but in sequence.",
-)
-parser.add_argument(
-    "--evaluation-num-env-runners",
-    type=int,
-    default=2,
-    help="The number of evaluation EnvRunners to setup. "
-    "0 for a single local evaluation EnvRunner.",
-)
-parser.add_argument(
-    "--evaluation-interval",
-    type=int,
-    default=1,
-    help="Every how many train iterations should we run an evaluation loop?",
+parser.set_defaults(
+    evaluation_num_env_runners=2,
+    evaluation_interval=1,
+    evaluation_duration_unit="timesteps",
 )
 parser.add_argument(
     "--evaluation-parallel-to-training-wo-thread",
@@ -124,15 +103,19 @@ parser.add_argument(
 
 
 class AssertEvalCallback(DefaultCallbacks):
-    def on_train_result(self, *, algorithm: Algorithm, result: ResultDict, **kwargs):
+    def on_train_result(
+        self,
+        *,
+        algorithm: Algorithm,
+        metrics_logger: Optional[MetricsLogger] = None,
+        result: ResultDict,
+        **kwargs,
+    ):
         # The eval results can be found inside the main `result` dict
         # (old API stack: "evaluation").
-        eval_results = result.get(EVALUATION_RESULTS, result.get("evaluation", {}))
-        # In there, there is a sub-key: ENV_RUNNER_RESULTS
-        # (old API stack: "sampler_results")
-        eval_env_runner_results = eval_results.get(
-            ENV_RUNNER_RESULTS, eval_results.get("sampler_results")
-        )
+        eval_results = result.get(EVALUATION_RESULTS, {})
+        # In there, there is a sub-key: ENV_RUNNER_RESULTS.
+        eval_env_runner_results = eval_results.get(ENV_RUNNER_RESULTS)
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
         # `evaluation_num_env_runners` or `evaluation_parallel_to_training`).
@@ -181,13 +164,6 @@ class AssertEvalCallback(DefaultCallbacks):
                     "Number of run evaluation timesteps: "
                     f"{num_timesteps_reported} (ok)!"
                 )
-        # Expect at least evaluation_results/env_runner_results to be always available.
-        elif algorithm.config.always_attach_evaluation_results and (
-            not eval_env_runner_results
-        ):
-            raise KeyError(
-                "`evaluation_results->env_runner_results` not found in result dict!"
-            )
 
 
 if __name__ == "__main__":
@@ -211,9 +187,7 @@ if __name__ == "__main__":
         .evaluation(
             # Parallel evaluation+training config.
             # Switch on evaluation in parallel with training.
-            evaluation_parallel_to_training=(
-                not args.evaluation_not_parallel_to_training
-            ),
+            evaluation_parallel_to_training=args.evaluation_parallel_to_training,
             # Use two evaluation workers. Must be >0, otherwise,
             # evaluation will run on a local worker and block (no parallelism).
             evaluation_num_env_runners=args.evaluation_num_env_runners,
@@ -253,9 +227,11 @@ if __name__ == "__main__":
         )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "evaluation_results/env_runner_results/episode_return_mean": args.stop_reward,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
+            args.stop_reward
+        ),
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(
@@ -263,7 +239,7 @@ if __name__ == "__main__":
         args,
         stop=stop,
         success_metric={
-            "evaluation_results/env_runner_results/episode_return_mean": (
+            f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
                 args.stop_reward
             ),
         },

@@ -366,13 +366,12 @@ class TestActorManager(unittest.TestCase):
 
         manager.foreach_actor_async(lambda w: w.ping(), tag="pingpong")
         manager.foreach_actor_async(lambda w: w.call(), tag="call")
-        time.sleep(2)
         results_ping_pong = manager.fetch_ready_async_reqs(
-            tags="pingpong", timeout_seconds=5
+            tags="pingpong", timeout_seconds=10.0
         )
-        results_call = manager.fetch_ready_async_reqs(tags="call", timeout_seconds=5)
-        self.assertEquals(len(list(results_ping_pong)), 4)
-        self.assertEquals(len(list(results_call)), 4)
+        results_call = manager.fetch_ready_async_reqs(tags="call", timeout_seconds=2.0)
+        self.assertEquals(len(results_ping_pong), 4)
+        self.assertEquals(len(results_call), 4)
         for result in results_ping_pong:
             data = result.get()
             self.assertEqual(data, "pong")
@@ -387,7 +386,7 @@ class TestActorManager(unittest.TestCase):
         manager.foreach_actor_async(lambda w: w.call())
         time.sleep(1)
         results = manager.fetch_ready_async_reqs(timeout_seconds=5)
-        self.assertEquals(len(list(results)), 8)
+        self.assertEquals(len(results), 8)
         for result in results:
             data = result.get()
             self.assertEqual(result.tag, None)
@@ -405,7 +404,7 @@ class TestActorManager(unittest.TestCase):
         results = manager.fetch_ready_async_reqs(
             timeout_seconds=5, tags=["pingpong", "call"]
         )
-        self.assertEquals(len(list(results)), 8)
+        self.assertEquals(len(results), 8)
         for result in results:
             data = result.get()
             if isinstance(data, str):
@@ -422,11 +421,11 @@ class TestActorManager(unittest.TestCase):
         manager.foreach_actor_async(lambda w: w.call(), tag="call")
         time.sleep(1)
         results = manager.fetch_ready_async_reqs(timeout_seconds=5, tags=["incorrect"])
-        self.assertEquals(len(list(results)), 0)
+        self.assertEquals(len(results), 0)
 
         # now test that passing no tags still gives back all of the results
         results = manager.fetch_ready_async_reqs(timeout_seconds=5)
-        self.assertEquals(len(list(results)), 8)
+        self.assertEquals(len(results), 8)
         for result in results:
             data = result.get()
             if isinstance(data, str):

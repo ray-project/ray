@@ -10,8 +10,8 @@ from ray.rllib.algorithms.ppo.tf.ppo_tf_learner import PPOTfLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec, RLModule
 from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleSpec,
     MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
 )
 from ray.rllib.utils.test_utils import check
 

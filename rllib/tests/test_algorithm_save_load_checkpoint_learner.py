@@ -3,10 +3,10 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
+from ray.rllib.utils.test_utils import check, framework_iterator
 
 
 algorithms_and_configs = {
@@ -46,7 +46,7 @@ def save_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
     algo.save_checkpoint(tmpdir)
     for _ in range(2):
         results = algo.train()
-    return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID]
+    return results["info"][LEARNER_INFO][DEFAULT_MODULE_ID]
 
 
 @ray.remote
@@ -81,7 +81,7 @@ def load_and_train(algo_cfg: AlgorithmConfig, env: str, tmpdir):
     algo.load_checkpoint(tmpdir)
     for _ in range(2):
         results = algo.train()
-    return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID]
+    return results["info"][LEARNER_INFO][DEFAULT_MODULE_ID]
 
 
 class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):

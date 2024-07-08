@@ -65,8 +65,8 @@ h6 {
   background-color: transparent;
 }
 .bd-content:after {
-/*   Commenting the code below to make more modifications after 2.10 release */
-/*   background: linear-gradient(
+  /*   Commenting the code below to make more modifications after 2.10 release */
+  /*   background: linear-gradient(
     60deg,
     rgba(0, 85, 204, 0.18) 14%,
     rgba(110, 93, 198, 0.18) 49.2%,
@@ -230,24 +230,6 @@ li.active-link {
   fill: var(--ray-blue);
 }
 
-/* Search button styling */
-.search-button-field {
-  border-radius: 4px;
-  min-width: 12em;
-  background-color: unset;
-}
-/* Disable `ctrl+k` label inside search button */
-.search-button-field > .search-button__kbd-shortcut {
-  display: none;
-}
-/* Disable "search" text inside search button */
-.search-button-field > .search-button__default-text {
-  visibility: hidden;
-}
-.search-button-field svg.fa-magnifying-glass {
-  color: var(--pst-color-border);
-}
-
 /* Anyscale branding */
 #try-anyscale-text {
   color: var(--pst-color-text-base);
@@ -393,4 +375,17 @@ table.autosummary tr > td:first-child > p > a > code > span {
 }
 .table.example-table th:first-child {
   width: 30%;
+}
+
+.bd-header-announcement {
+  color: var(--pst-color-light);
+}
+
+.bd-header-announcement::after {
+  background-color: var(--ray-blue);
+}
+
+.bd-header-announcement a {
+  color: var(--pst-color-light);
+  text-decoration: underline;
 }

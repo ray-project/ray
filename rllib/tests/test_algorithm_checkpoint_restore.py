@@ -67,7 +67,7 @@ class TestCheckpointRestorePPO(unittest.TestCase):
         test_ckpt_restore(
             algorithms_and_configs["PPO"],
             "CartPole-v1",
-            eval_workerset=True,
+            eval_env_runner_group=True,
         )
 
 

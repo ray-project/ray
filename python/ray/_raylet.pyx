@@ -180,6 +180,8 @@ from ray.exceptions import (
     PendingCallsLimitExceeded,
     RpcError,
     ObjectRefStreamEndOfStreamError,
+    RayChannelError,
+    RayChannelTimeoutError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -194,12 +196,13 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray.core.generated.gcs_pb2 import JobTableData
+from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
     get_new_event_loop,
-    is_async_func
+    is_async_func,
+    has_async_methods,
 )
 from ray._private.client_mode_hook import disable_client_hook
 import ray.core.generated.common_pb2 as common_pb2
@@ -588,6 +591,10 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         with gil:
             raise_sys_exit_with_custom_error_message(
                 message, exit_code=1)
+    elif status.IsChannelError():
+        raise RayChannelError(message)
+    elif status.IsChannelTimeoutError():
+        raise RayChannelTimeoutError(message)
     else:
         raise RaySystemError(message)
 
@@ -673,7 +680,9 @@ cdef increase_recursion_limit():
         int new_limit = current_limit * 2
         cdef extern from *:
             """
-#if PY_VERSION_HEX >= 0x30B00A4
+#if PY_VERSION_HEX >= 0x30C0000
+    #define CURRENT_DEPTH(x) ((x)->py_recursion_limit - (x)->py_recursion_remaining)
+#elif PY_VERSION_HEX >= 0x30B00A4
     #define CURRENT_DEPTH(x)  ((x)->recursion_limit - (x)->recursion_remaining)
 #else
     #define CURRENT_DEPTH(x)  ((x)->recursion_depth)
@@ -697,11 +706,13 @@ cdef CObjectLocationPtrToDict(CObjectLocation* c_object_location):
         - node_ids:
             The hex IDs of the nodes that have a copy of this object.
         - object_size:
-            The size of data + metadata in bytes.
+            The size of data + metadata in bytes. Can be None if it's -1 in the source.
         - did_spill:
             Whether or not this object was spilled.
     """
     object_size = c_object_location.GetObjectSize()
+    if object_size <= 0:
+        object_size = None
     did_spill = c_object_location.GetDidSpill()
 
     node_ids = set()
@@ -888,6 +899,9 @@ cdef prepare_args_internal(
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
     for arg in args:
+        from ray.experimental.compiled_dag_ref import CompiledDAGRef
+        if isinstance(arg, CompiledDAGRef):
+            raise TypeError("CompiledDAGRef cannot be used as Ray task/actor argument.")
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
             op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
@@ -1794,9 +1808,7 @@ cdef void execute_task(
             function = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
-                if len(inspect.getmembers(
-                        actor.__class__,
-                        predicate=is_async_func)) == 0:
+                if not has_async_methods(actor.__class__):
                     error_message = (
                         "Failed to create actor. You set the async flag, "
                         "but the actor does not "
@@ -2581,6 +2593,20 @@ def maybe_initialize_job_config():
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
 
+        # Configure worker process's Python logging.
+        log_config_dict = {}
+        serialized_py_logging_config = \
+            core_worker.get_job_config().serialized_py_logging_config
+        if serialized_py_logging_config:
+            logging_config = pickle.loads(serialized_py_logging_config)
+            log_config_dict = logging_config._get_dict_config()
+        if log_config_dict:
+            try:
+                logging.config.dictConfig(log_config_dict)
+            except Exception as e:
+                backtrace = \
+                    "".join(traceback.format_exception(type(e), e, e.__traceback__))
+                core_worker.drain_and_exit_worker("user", backtrace)
         job_config_initialized = True
 
 
@@ -2859,27 +2885,26 @@ cdef class GcsClient:
                 c_uri, expiration_s, timeout_ms))
 
     @_auto_reconnect
-    def get_all_node_info(self, timeout=None):
+    def get_all_node_info(self, timeout=None) -> Dict[NodeID, GcsNodeInfo]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            CGcsNodeInfo node_info
-            c_vector[CGcsNodeInfo] node_infos
+            CGcsNodeInfo c_node_info
+            c_vector[CGcsNodeInfo] c_node_infos
+            c_vector[c_string] serialized_node_infos
         with nogil:
-            check_status(self.inner.get().GetAllNodeInfo(timeout_ms, node_infos))
+            check_status(self.inner.get().GetAllNodeInfo(timeout_ms, c_node_infos))
+            for c_node_info in c_node_infos:
+                serialized_node_infos.push_back(c_node_info.SerializeAsString())
 
         result = {}
-        for node_info in node_infos:
-            c_resources = PythonGetResourcesTotal(node_info)
-            result[node_info.node_id()] = {
-                "node_name": node_info.node_name(),
-                "state": node_info.state(),
-                "labels": PythonGetNodeLabels(node_info),
-                "resources": {key.decode(): value for key, value in c_resources}
-            }
+        for serialized in serialized_node_infos:
+            node_info = GcsNodeInfo()
+            node_info.ParseFromString(serialized)
+            result[NodeID.from_binary(node_info.node_id)] = node_info
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None):
+    def get_all_job_info(self, timeout=None) -> Dict[JobID, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
@@ -2897,7 +2922,7 @@ cdef class GcsClient:
         for serialized in serialized_job_infos:
             job_info = JobTableData()
             job_info.ParseFromString(serialized)
-            result[job_info.job_id] = job_info
+            result[JobID.from_binary(job_info.job_id)] = job_info
         return result
 
     @_auto_reconnect
@@ -3387,7 +3412,7 @@ cdef class CoreWorker:
 
         if exit_type == "user":
             c_exit_type = WORKER_EXIT_TYPE_USER_ERROR
-        if exit_type == "system":
+        elif exit_type == "system":
             c_exit_type = WORKER_EXIT_TYPE_SYSTEM_ERROR
         elif exit_type == "intentional_system_exit":
             c_exit_type = WORKER_EXIT_TYPE_INTENTIONAL_SYSTEM_ERROR
@@ -3618,13 +3643,15 @@ cdef class CoreWorker:
 
     def experimental_channel_put_serialized(self, serialized_object,
                                             ObjectRef object_ref,
-                                            num_readers):
+                                            num_readers,
+                                            timeout_ms):
         cdef:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data
             unique_ptr[CAddress] null_owner_address
             uint64_t data_size = serialized_object.total_bytes
             int64_t c_num_readers = num_readers
+            int64_t c_timeout_ms = timeout_ms
 
         metadata = string_to_buffer(serialized_object.metadata)
         with nogil:
@@ -3634,6 +3661,7 @@ cdef class CoreWorker:
                              metadata,
                              data_size,
                              c_num_readers,
+                             c_timeout_ms,
                              &data,
                              ))
         if data_size > 0:
@@ -3829,6 +3857,27 @@ cdef class CoreWorker:
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
+
+    def get_local_object_locations(self, object_refs):
+        cdef:
+            c_vector[optional[CObjectLocation]] results
+            c_vector[CObjectID] lookup_ids = ObjectRefsToVector(object_refs)
+
+        with nogil:
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker().GetLocalObjectLocations(
+                    lookup_ids, &results))
+
+        object_locations = {}
+        for i in range(results.size()):
+            # core_worker will return a nullptr for objects that couldn't be
+            # located
+            if not results[i].has_value():
+                continue
+            else:
+                object_locations[object_refs[i]] = \
+                    CObjectLocationPtrToDict(&results[i].value())
+        return object_locations
 
     def get_object_locations(self, object_refs, int64_t timeout_ms):
         cdef:
@@ -4324,7 +4373,8 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
-    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle):
+    cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
+                           c_bool weak_ref):
         worker = ray._private.worker.global_worker
         worker.check_connected()
         manager = worker.function_actor_manager
@@ -4362,7 +4412,8 @@ cdef class CoreWorker:
                                          method_meta.enable_task_events,
                                          actor_method_cpu,
                                          actor_creation_function_descriptor,
-                                         worker.current_cluster_and_job)
+                                         worker.current_cluster_and_job,
+                                         weak_ref=weak_ref)
         else:
             return ray.actor.ActorHandle(language, actor_id,
                                          0,   # max_task_retries,
@@ -4377,11 +4428,14 @@ cdef class CoreWorker:
                                          {},  # enable_task_events
                                          0,  # actor method cpu
                                          actor_creation_function_descriptor,
-                                         worker.current_cluster_and_job)
+                                         worker.current_cluster_and_job,
+                                         weak_ref=weak_ref,
+                                         )
 
     def deserialize_and_register_actor_handle(self, const c_string &bytes,
                                               ObjectRef
-                                              outer_object_ref):
+                                              outer_object_ref,
+                                              c_bool weak_ref):
         cdef:
             CObjectID c_outer_object_id = (outer_object_ref.native() if
                                            outer_object_ref else
@@ -4389,9 +4443,11 @@ cdef class CoreWorker:
         c_actor_id = (CCoreWorkerProcess
                       .GetCoreWorker()
                       .DeserializeAndRegisterActorHandle(
-                          bytes, c_outer_object_id))
+                          bytes, c_outer_object_id,
+                          add_local_ref=not weak_ref))
         return self.make_actor_handle(
-            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
+            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id),
+            weak_ref)
 
     def get_named_actor_handle(self, const c_string &name,
                                const c_string &ray_namespace):
@@ -4406,13 +4462,15 @@ cdef class CoreWorker:
                     name, ray_namespace))
         check_status(named_actor_handle_pair.second)
 
-        return self.make_actor_handle(named_actor_handle_pair.first)
+        return self.make_actor_handle(named_actor_handle_pair.first,
+                                      weak_ref=True)
 
     def get_actor_handle(self, ActorID actor_id):
         cdef:
             CActorID c_actor_id = actor_id.native()
         return self.make_actor_handle(
-            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id))
+            CCoreWorkerProcess.GetCoreWorker().GetActorHandle(c_actor_id),
+            weak_ref=True)
 
     def list_named_actors(self, c_bool all_namespaces):
         """Returns (namespace, name) for named actors in the system.
@@ -4423,8 +4481,9 @@ cdef class CoreWorker:
         cdef:
             pair[c_vector[pair[c_string, c_string]], CRayStatus] result_pair
 
-        result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
-            all_namespaces)
+        with nogil:
+            result_pair = CCoreWorkerProcess.GetCoreWorker().ListNamedActors(
+                all_namespaces)
         check_status(result_pair.second)
         return [
             (namespace.decode("utf-8"),
@@ -4831,6 +4890,11 @@ cdef class CoreWorker:
     def current_actor_max_concurrency(self):
         return (CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
                 .CurrentActorMaxConcurrency())
+
+    def get_current_root_detached_actor_id(self) -> ActorID:
+        # This is only used in test
+        return ActorID(CCoreWorkerProcess.GetCoreWorker().GetWorkerContext()
+                       .GetRootDetachedActorID().Binary())
 
     def get_queued_future(self, task_id: Optional[TaskID]) -> ConcurrentFuture:
         """Get a asyncio.Future that's queued in the event loop."""

@@ -13,6 +13,7 @@ from ray.core.generated.common_pb2 import (
     ActorDiedErrorContext,
     Address,
     Language,
+    NodeDeathInfo,
     RayException,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -116,10 +117,6 @@ class RayTaskError(RayError):
         """Initialize a RayTaskError."""
         import ray
 
-        # BaseException implements a __reduce__ method that returns
-        # a tuple with the type and the value of self.args.
-        # https://stackoverflow.com/a/49715949/2213289
-        self.args = (function_name, traceback_str, cause, proctitle, pid, ip)
         if proctitle:
             self.proctitle = proctitle
         else:
@@ -130,8 +127,24 @@ class RayTaskError(RayError):
         self.traceback_str = traceback_str
         self.actor_repr = actor_repr
         self._actor_id = actor_id
-        # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
+
+        try:
+            pickle.dumps(cause)
+        except (pickle.PicklingError, TypeError) as e:
+            err_msg = (
+                "The original cause of the RayTaskError"
+                f" ({self.cause.__class__}) isn't serializable: {e}."
+                " Overwriting the cause to a RayError."
+            )
+            logger.warning(err_msg)
+            self.cause = RayError(err_msg)
+
+        # BaseException implements a __reduce__ method that returns
+        # a tuple with the type and the value of self.args.
+        # https://stackoverflow.com/a/49715949/2213289
+        self.args = (function_name, traceback_str, self.cause, proctitle, pid, ip)
+
         assert traceback_str is not None
 
     def make_dual_exception_type(self) -> Type:
@@ -175,6 +188,7 @@ class RayTaskError(RayError):
 
         try:
             dual_cls = self.make_dual_exception_type()
+            return dual_cls(self.cause)
         except TypeError as e:
             logger.warning(
                 f"User exception type {type(self.cause)} in RayTaskError can't"
@@ -183,8 +197,6 @@ class RayTaskError(RayError):
                 f" access the user exception. Failure in subclassing: {e}"
             )
             return self
-
-        return dual_cls(self.cause)
 
     def __str__(self):
         """Format a RayTaskError as a string."""
@@ -328,7 +340,9 @@ class ActorDiedError(RayActorError):
 
     BASE_ERROR_MSG = "The actor died unexpectedly before finishing this task."
 
-    def __init__(self, cause: Union[RayTaskError, ActorDiedErrorContext] = None):
+    def __init__(
+        self, cause: Optional[Union[RayTaskError, ActorDiedErrorContext]] = None
+    ):
         """
         Construct a RayActorError by building the arguments.
         """
@@ -369,11 +383,12 @@ class ActorDiedError(RayActorError):
                 error_msg_lines.append(
                     "The actor never ran - it was cancelled before it started running."
                 )
-            if cause.preempted:
+            if (
+                cause.node_death_info
+                and cause.node_death_info.reason
+                == NodeDeathInfo.AUTOSCALER_DRAIN_PREEMPTED
+            ):
                 preempted = True
-                error_msg_lines.append(
-                    "\tThe actor's node was killed by a spot preemption."
-                )
             error_msg = "\n".join(error_msg_lines)
             actor_id = ActorID(cause.actor_id).hex()
         super().__init__(actor_id, error_msg, actor_init_failed, preempted)
@@ -814,6 +829,22 @@ class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
+@PublicAPI(stability="alpha")
+class RayChannelError(RaySystemError):
+    """Indicates that Ray encountered a system error related
+    to ray.experimental.channel.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayChannelTimeoutError(RayChannelError, TimeoutError):
+    """Raised when the accelerated DAG channel operation times out."""
+
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -839,4 +870,6 @@ RAY_EXCEPTION_TYPES = [
     ActorDiedError,
     ActorUnschedulableError,
     ActorUnavailableError,
+    RayChannelError,
+    RayChannelTimeoutError,
 ]

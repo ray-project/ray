@@ -38,7 +38,7 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -62,20 +62,6 @@ OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
 # The max number of attempts for opening file.
 OPEN_FILE_MAX_ATTEMPTS = 10
-
-
-@Deprecated
-@PublicAPI(stability="beta")
-class FileExtensionFilter(PathPartitionFilter):
-    def __init__(
-        self,
-        file_extensions: Union[str, List[str]],
-        allow_if_no_extension: bool = False,
-    ):
-        raise DeprecationWarning(
-            "`FileExtensionFilter` is deprecated. Instead, set the `file_extensions` "
-            "parameter of `read_xxx()` APIs."
-        )
 
 
 @DeveloperAPI
@@ -192,9 +178,8 @@ class FileBasedDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         import numpy as np
-        from ray.data._internal.delegating_block_builder import (
-            DelegatingBlockBuilder,
-        )
+
+        from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 
         ctx = DataContext.get_current()
         open_stream_args = self._open_stream_args
@@ -252,6 +237,11 @@ class FileBasedDatasource(Datasource):
         def create_read_task_fn(read_paths, num_threads):
             def read_task_fn():
                 nonlocal num_threads, read_paths
+
+                # TODO: We should refactor the code so that we can get the results in
+                # order even when using multiple threads.
+                if ctx.execution_options.preserve_order:
+                    num_threads = 0
 
                 if num_threads > 0:
                     if len(read_paths) < num_threads:
@@ -378,6 +368,9 @@ class FileBasedDatasource(Datasource):
     @property
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
+
+    def input_files(self) -> Optional[List[str]]:
+        return self._paths()
 
 
 def _add_partitions(

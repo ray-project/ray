@@ -9,7 +9,7 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation.worker_set import WorkerSet
+    from ray.rllib.env.env_runner_group import EnvRunnerGroup
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
 
 @OldAPIStack
 def collect_metrics(
-    workers: "WorkerSet",
+    workers: "EnvRunnerGroup",
     remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
     keep_custom_metrics: bool = False,
@@ -71,7 +71,7 @@ def collect_metrics(
     """Gathers episode metrics from rollout worker set.
 
     Args:
-        workers: WorkerSet.
+        workers: EnvRunnerGroup.
         remote_worker_ids: Optional list of IDs of remote workers to collect
             metrics from.
         timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
@@ -92,14 +92,14 @@ def collect_metrics(
 
 @OldAPIStack
 def collect_episodes(
-    workers: "WorkerSet",
+    workers: "EnvRunnerGroup",
     remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
 ) -> List[RolloutMetrics]:
     """Gathers new episodes metrics tuples from the given RolloutWorkers.
 
     Args:
-        workers: WorkerSet.
+        workers: EnvRunnerGroup.
         remote_worker_ids: Optional list of IDs of remote workers to collect
             metrics from.
         timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
@@ -173,8 +173,12 @@ def summarize_episodes(
         episode_rewards.append(episode.episode_reward)
         for k, v in episode.custom_metrics.items():
             custom_metrics[k].append(v)
-        for (_, policy_id), reward in episode.agent_rewards.items():
-            if policy_id != DEFAULT_POLICY_ID:
+        is_multi_agent = (
+            len(episode.agent_rewards) > 1
+            or DEFAULT_POLICY_ID not in episode.agent_rewards
+        )
+        if is_multi_agent:
+            for (_, policy_id), reward in episode.agent_rewards.items():
                 policy_rewards[policy_id].append(reward)
         for k, v in episode.hist_data.items():
             hist_stats[k] += v
@@ -242,7 +246,6 @@ def summarize_episodes(
         episode_reward_mean=avg_reward,
         episode_len_mean=avg_length,
         episode_media=dict(episode_media),
-        episodes_this_iter=len(new_episodes),
         episodes_timesteps_total=sum(episode_lengths),
         policy_reward_min=policy_reward_min,
         policy_reward_max=policy_reward_max,
@@ -259,4 +262,5 @@ def summarize_episodes(
         episode_return_max=max_reward,
         episode_return_min=min_reward,
         episode_return_mean=avg_reward,
+        episodes_this_iter=len(new_episodes),  # deprecate in favor of `num_epsodes_...`
     )

@@ -85,6 +85,7 @@ cdef extern from "ray/core_worker/context.h" nogil:
         c_bool CurrentActorIsAsync()
         const c_string &GetCurrentSerializedRuntimeEnv()
         int CurrentActorMaxConcurrency()
+        const CActorID &GetRootDetachedActorID()
 
 cdef extern from "ray/core_worker/generator_waiter.h" nogil:
     cdef cppclass CGeneratorBackpressureWaiter "ray::core::GeneratorBackpressureWaiter": # noqa
@@ -199,7 +200,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes, const
-                                                   CObjectID &outer_object_id)
+                                                   CObjectID &outer_object_id,
+                                                   c_bool add_local_ref)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes,
                                         CObjectID *c_actor_handle_id)
@@ -253,6 +255,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const shared_ptr[CBuffer] &metadata,
                                   uint64_t data_size,
                                   int64_t num_readers,
+                                  int64_t timeout_ms,
                                   shared_ptr[CBuffer] *data)
         CRayStatus ExperimentalChannelWriteRelease(
                                   const CObjectID &object_id)
@@ -283,6 +286,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                         c_bool fetch_local)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only)
+        CRayStatus GetLocalObjectLocations(
+                const c_vector[CObjectID] &object_ids,
+                c_vector[optional[CObjectLocation]] *results)
         CRayStatus GetLocationFromOwner(
                 const c_vector[CObjectID] &object_ids,
                 int64_t timeout_ms,

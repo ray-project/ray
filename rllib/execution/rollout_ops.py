@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional, Union
 import tree
 
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.policy.sample_batch import (
     SampleBatch,
     DEFAULT_POLICY_ID,
@@ -19,11 +19,12 @@ logger = logging.getLogger(__name__)
 @ExperimentalAPI
 def synchronous_parallel_sample(
     *,
-    worker_set: WorkerSet,
+    worker_set: EnvRunnerGroup,
     max_agent_steps: Optional[int] = None,
     max_env_steps: Optional[int] = None,
     concat: bool = True,
     sample_timeout_s: Optional[float] = 60.0,
+    random_actions: bool = False,
     _uses_new_env_runners: bool = False,
     _return_metrics: bool = False,
 ) -> Union[List[SampleBatchType], SampleBatchType, List[EpisodeType], EpisodeType]:
@@ -38,7 +39,7 @@ def synchronous_parallel_sample(
     `remote_fn()`, which will be applied to the worker(s) instead.
 
     Args:
-        worker_set: The WorkerSet to use for sampling.
+        worker_set: The EnvRunnerGroup to use for sampling.
         remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead
             of `worker.sample.remote()` to generate the requests.
         max_agent_steps: Optional number of agent steps to be included in the
@@ -81,6 +82,8 @@ def synchronous_parallel_sample(
     sample_batches_or_episodes = []
     all_stats_dicts = []
 
+    random_action_kwargs = {} if not random_actions else {"random_actions": True}
+
     # Stop collecting batches as soon as one criterium is met.
     while (max_agent_or_env_steps is None and agent_or_env_steps == 0) or (
         max_agent_or_env_steps is not None
@@ -89,16 +92,16 @@ def synchronous_parallel_sample(
         # No remote workers in the set -> Use local worker for collecting
         # samples.
         if worker_set.num_remote_workers() <= 0:
-            sampled_data = [worker_set.local_worker().sample()]
+            sampled_data = [worker_set.local_worker().sample(**random_action_kwargs)]
             if _return_metrics:
                 stats_dicts = [worker_set.local_worker().get_metrics()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
             sampled_data = worker_set.foreach_worker(
                 (
-                    (lambda w: w.sample())
+                    (lambda w: w.sample(**random_action_kwargs))
                     if not _return_metrics
-                    else (lambda w: (w.sample(), w.get_metrics()))
+                    else (lambda w: (w.sample(**random_action_kwargs), w.get_metrics()))
                 ),
                 local_worker=False,
                 timeout_seconds=sample_timeout_s,

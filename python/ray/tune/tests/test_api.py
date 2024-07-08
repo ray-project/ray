@@ -423,33 +423,9 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         self.assertRaises(TuneError, f)
 
-    def testBadParams5(self):
-        def f():
-            run_experiments({"foo": {"run": "__fake", "stop": {"asdf": 1}}})
-
-        self.assertRaises(TuneError, f)
-
     def testBadParams6(self):
         def f():
             run_experiments({"foo": {"run": "PPO", "resources_per_trial": {"asdf": 1}}})
-
-        self.assertRaises(TuneError, f)
-
-    def testBadStoppingReturn(self):
-        def train_fn(config):
-            train.report(dict(a=1))
-
-        register_trainable("f1", train_fn)
-
-        def f():
-            run_experiments(
-                {
-                    "foo": {
-                        "run": "f1",
-                        "stop": {"time": 10},
-                    }
-                }
-            )
 
         self.assertRaises(TuneError, f)
 
@@ -458,8 +434,12 @@ class TrainableFunctionApiTest(unittest.TestCase):
             for i in range(10):
                 train.report(dict(test={"test1": {"test2": i}}))
 
-        with self.assertRaises(TuneError):
-            [trial] = tune.run(train_fn, stop={"test": {"test1": {"test2": 6}}}).trials
+        [trial] = tune.run(train_fn, stop={"test": {"test1": {"test2": 6}}}).trials
+        self.assertTrue(
+            "test" in trial.last_result
+            and "test1" in trial.last_result["test"]
+            and "test2" in trial.last_result["test"]["test1"]
+        )
         [trial] = tune.run(train_fn, stop={"test/test1/test2": 6}).trials
         self.assertEqual(trial.last_result["training_iteration"], 7)
 
@@ -1636,10 +1616,17 @@ class ApiTestFast(unittest.TestCase):
         self.assertTrue(
             all(set(result) >= set(flattened_keys) for result in algo.results)
         )
-        with self.assertRaises(TuneError):
-            [trial] = tune.run(train_fn, stop={"1/2/3": 20})
-        with self.assertRaises(TuneError):
-            [trial] = tune.run(train_fn, stop={"test": 1}).trials
+        # Test, whether non-existent stop criteria do NOT cause an error anymore (just
+        # a warning).
+        [trial] = tune.run(train_fn, stop={"1/2/3": 20}).trials
+        self.assertFalse("1" in trial.last_result)
+        [trial] = tune.run(train_fn, stop={"test": 1}).trials
+        self.assertTrue(
+            "test" in trial.last_result
+            and "1" in trial.last_result["test"]
+            and "2" in trial.last_result["test"]["1"]
+            and "3" in trial.last_result["test"]["1"]["2"]
+        )
 
     def testIterationCounter(self):
         def train_fn(config):
@@ -1851,26 +1838,19 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 # TODO(justinvyu): [Deprecated] Remove this test once the configs are removed.
 def test_local_dir_deprecation(ray_start_2_cpus, tmp_path, monkeypatch):
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
-    with pytest.warns(None) as record:
-        result = ray.tune.Tuner(lambda _: None).fit()[0]
-        assert any("RAY_AIR_LOCAL_CACHE_DIR" in str(r.message) for r in record)
-        assert not result.path.startswith(str(tmp_path))
+    with pytest.raises(DeprecationWarning):
+        ray.tune.Tuner(lambda _: None).fit()
     monkeypatch.delenv("RAY_AIR_LOCAL_CACHE_DIR")
 
     monkeypatch.setenv("TUNE_RESULT_DIR", str(tmp_path))
-    with pytest.warns(None) as record:
-        result = ray.tune.Tuner(lambda _: None).fit()[0]
-        assert any("TUNE_RESULT_DIR" in str(r.message) for r in record)
-        assert not result.path.startswith(str(tmp_path))
+    with pytest.raises(DeprecationWarning):
+        ray.tune.Tuner(lambda _: None).fit()
     monkeypatch.delenv("TUNE_RESULT_DIR")
 
-    with pytest.warns(None) as record:
-        result = ray.tune.Tuner(
+    with pytest.raises(DeprecationWarning):
+        ray.tune.Tuner(
             lambda _: None, run_config=ray.train.RunConfig(local_dir=str(tmp_path))
-        ).fit()[0]
-        assert any("local_dir" in str(r.message) for r in record)
-        # storage_path should fall back to local_dir during the migration period
-        assert result.path.startswith(str(tmp_path))
+        )
 
 
 if __name__ == "__main__":

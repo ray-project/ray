@@ -748,7 +748,7 @@ def test_actor_failure_per_type(ray_start_cluster):
     cluster.remove_node(node_to_kill)
     with pytest.raises(
         ray.exceptions.RayActorError,
-        match="The actor is dead because its node has died.",
+        match="The actor died because its node has died.",
     ) as exc_info:
         ray.get(a.check_alive.remote())
     assert exc_info.value.actor_id == a._actor_id.hex()
