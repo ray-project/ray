@@ -192,12 +192,9 @@ class OpState:
         # Used for StreamingExecutor to signal exception or end of execution
         self._finished: bool = False
         self._exception: Optional[Exception] = None
-<<<<<<< HEAD
         self.last_update_time = -1
         self.start_time = time.time()
         self.output_budget = -1
-=======
->>>>>>> upstream/master
         self._scheduling_status = OpSchedulingStatus()
 
     def __repr__(self):
@@ -327,7 +324,7 @@ class OpState:
         # Assume no more than one output.
         assert len(self.op.output_dependencies) <= 1
         for op in self.op.output_dependencies:
-            logger.get_logger().info(
+            logger.info(
                 "@mzm: average_bytes_inputs_per_task "
                 f"{op._metrics.average_bytes_inputs_per_task}, "
                 f"average_task_duration: {op._metrics.average_task_duration}, "
@@ -366,7 +363,7 @@ class OpState:
         self.output_budget += time_elapsed * grow_rate
         # Cap output_budget to object_store_memory
         self.output_budget = min(INITIAL_BUDGET, self.output_budget)
-        logger.get_logger().info(
+        logger.info(
             f"@mzm INITIAL_BUDGET: {INITIAL_BUDGET}, "
             f"self.output_budget: {self.output_budget}, "
             f"time elapsed: {time_elapsed} "
@@ -385,7 +382,7 @@ class OpState:
         self._replenish_output_budget(resource_manager)
         output_size = self._get_average_ouput_size() or INITIAL_BUDGET
 
-        logger.get_logger().info(
+        logger.info(
             f"@mzm output_budget: {self.output_budget}, output_size: {output_size}"
         )
 
@@ -664,7 +661,7 @@ def select_operator_to_run(
     op = ops[0]  # @lsf prefer the producer
     # if op is not None:
     # wall_time = time.time() - topology[op].start_time
-    # logger.get_logger().info(f"@lsf Selected: {op.name} @ {wall_time:.3f}")
+    # logger.info(f"@lsf Selected: {op.name} @ {wall_time:.3f}")
     return op
     selected_op = None
     if ops:
