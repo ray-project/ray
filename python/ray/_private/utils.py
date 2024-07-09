@@ -1515,6 +1515,7 @@ def compute_version_info():
     byted_scm_version = ""
     try:
         import ray.byted_version as byted_version
+
         byted_scm_version = byted_version.byted_scm_version
     except Exception:
         logger.info("No byted_scm_version found.")

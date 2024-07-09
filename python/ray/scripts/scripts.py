@@ -1009,7 +1009,7 @@ def start(
             process_cmd = " ".join(process.cmdline())
             if process_cmd.find("tini --") == -1:
                 is_tini_cluster_mode = False
-        except Exception as e:
+        except Exception:
             is_tini_cluster_mode = False
 
         while True:

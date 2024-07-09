@@ -484,9 +484,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         cpu_useds = cpu_totals - cpu_avas
         cpu_totals = cpu_totals / 10000
         cpu_useds = cpu_useds / 10000
-        logger.info(f"total resources GPU: {gpu_useds}/{gpu_totals}, CPU: {cpu_useds}/{cpu_totals}")
+        logger.info(
+            f"total resources GPU: {gpu_useds}/{gpu_totals}, CPU: {cpu_useds}/{cpu_totals}"
+        )
 
-        resource_data = {"GPU": {"used": gpu_useds, "total": gpu_totals}, "CPU": {"used": cpu_useds, "total": cpu_totals}}
+        resource_data = {
+            "GPU": {"used": gpu_useds, "total": gpu_totals},
+            "CPU": {"used": cpu_useds, "total": cpu_totals},
+        }
 
         json_data = json.dumps(resource_data)
 
