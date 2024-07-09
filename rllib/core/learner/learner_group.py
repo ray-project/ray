@@ -752,16 +752,10 @@ class LearnerGroup(Checkpointable):
             else:
                 worker = self._worker_manager.healthy_actor_ids()[0]
                 assert len(self._workers) == self._worker_manager.num_healthy_actors()
+                _comps = self._get_subcomponents(COMPONENT_LEARNER, components)
+                _not_comps = self._get_subcomponents(COMPONENT_LEARNER, not_components)
                 results = self._worker_manager.foreach_actor(
-                    lambda w: w.get_state(
-                        components=self._get_subcomponents(
-                            COMPONENT_LEARNER, components
-                        ),
-                        not_components=self._get_subcomponents(
-                            COMPONENT_LEARNER, not_components
-                        ),
-                        **kwargs,
-                    ),
+                    lambda w: w.get_state(_comps, not_components=_not_comps, **kwargs),
                     remote_actor_ids=[worker],
                 )
                 state[COMPONENT_LEARNER] = self._get_results(results)[0]
