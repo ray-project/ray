@@ -107,6 +107,7 @@ steps:
     tags: 
       - rllib
       - gpu
+      - skip-on-premerge
     parallelism: 3
     instance_type: gpu
     commands:
