@@ -33,9 +33,13 @@ cdef class NewGcsClient:
     # TODO(ryw): we can also reuse the CoreWorker's GcsClient to save resources.
     @staticmethod
     def standalone(gcs_address: str, cluster_id: str = None) -> "NewGcsClient":
-        cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(
-            gcs_address, cluster_id
-        )
+        if cluster_id:
+            gcs_options = GcsClientOptions.create(
+                address, cluster_id, allow_cluster_id_nil=False,
+                fetch_cluster_id_if_nil=False)
+        else:
+            gcs_options = GcsClientOptions.create(
+                address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=True)
         cdef shared_ptr[CGcsClient] inner = make_shared[CGcsClient](
             dereference(gcs_options.native()))
 
