@@ -83,7 +83,7 @@ Status JobInfoAccessor::AsyncSubscribeAll(
         done(status);
       }
     };
-    RAY_CHECK_OK(AsyncGetAll(GetGcsTimeoutMs(), callback));
+    RAY_CHECK_OK(AsyncGetAll(callback, GetGcsTimeoutMs()));
   };
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     return client_impl_->GetGcsSubscriber().SubscribeAllJobs(subscribe, done);
@@ -106,8 +106,8 @@ void JobInfoAccessor::AsyncResubscribe() {
   }
 }
 
-Status JobInfoAccessor::AsyncGetAll(
-    int64_t timeout_ms, const MultiItemCallback<rpc::JobTableData> &callback) {
+Status JobInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback,
+                                    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting all job info.";
   RAY_CHECK(callback);
   rpc::GetAllJobInfoRequest request;
@@ -121,17 +121,14 @@ Status JobInfoAccessor::AsyncGetAll(
   return Status::OK();
 }
 
-Status JobInfoAccessor::GetAll(int64_t timeout_ms,
-                               std::vector<rpc::JobTableData> &job_data_list) {
-  std::promise<Status> ret_promise;
+Status JobInfoAccessor::GetAll(std::vector<rpc::JobTableData> &job_data_list,
+                               int64_t timeout_ms) {
+  rpc::GetAllJobInfoRequest request;
+  rpc::GetAllJobInfoReply reply;
   RAY_RETURN_NOT_OK(
-      AsyncGetAll(timeout_ms,
-                  [&ret_promise, &job_data_list](
-                      const Status &status, const std::vector<rpc::JobTableData> &data) {
-                    job_data_list = data;
-                    ret_promise.set_value(status);
-                  }));
-  return ret_promise.get_future().get();
+      client_impl_->GetGcsRpcClient().SyncGetAllJobInfo(request, &reply, timeout_ms));
+  job_data_list = VectorFromProtobuf(reply.job_info_list());
+  return Status::OK();
 }
 
 Status JobInfoAccessor::AsyncGetNextJobID(const ItemCallback<JobID> &callback) {
@@ -586,8 +583,8 @@ Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
   return Status::OK();
 }
 
-Status NodeInfoAccessor::AsyncGetAll(int64_t timeout_ms,
-                                     const MultiItemCallback<GcsNodeInfo> &callback) {
+Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback,
+                                     int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
@@ -622,7 +619,7 @@ Status NodeInfoAccessor::AsyncSubscribeToNodeChange(
         done(status);
       }
     };
-    RAY_CHECK_OK(AsyncGetAll(GetGcsTimeoutMs(), callback));
+    RAY_CHECK_OK(AsyncGetAll(callback, GetGcsTimeoutMs()));
   };
 
   subscribe_node_operation_ = [this](const StatusCallback &done) {
@@ -654,15 +651,14 @@ const absl::flat_hash_map<NodeID, GcsNodeInfo> &NodeInfoAccessor::GetAll() const
 
 Status NodeInfoAccessor::GetAllNoCache(int64_t timeout_ms,
                                        std::vector<rpc::GcsNodeInfo> &nodes) {
-  std::promise<Status> ret_promise;
+  RAY_LOG(DEBUG) << "Getting information of all nodes.";
+  rpc::GetAllNodeInfoRequest request;
+  rpc::GetAllNodeInfoReply reply;
   RAY_RETURN_NOT_OK(
-      AsyncGetAll(timeout_ms,
-                  [&ret_promise, &nodes](const Status &status,
-                                         const std::vector<rpc::GcsNodeInfo> &data) {
-                    nodes = data;
-                    ret_promise.set_value(status);
-                  }));
-  return ret_promise.get_future().get();
+      client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));
+
+  nodes = VectorFromProtobuf(reply.node_info_list());
+  return Status::OK();
 }
 
 Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addresses,

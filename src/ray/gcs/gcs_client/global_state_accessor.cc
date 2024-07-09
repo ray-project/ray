@@ -65,8 +65,8 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetAll(
-        GetGcsTimeoutMs(),
-        TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise)));
+        TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise),
+        GetGcsTimeoutMs()));
   }
   promise.get_future().get();
   return job_table_data;
@@ -88,8 +88,8 @@ std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-        GetGcsTimeoutMs(),
-        TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise)));
+        TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise),
+        GetGcsTimeoutMs()));
   }
   promise.get_future().get();
   return node_table_data;
@@ -393,11 +393,11 @@ ray::Status GlobalStateAccessor::GetAliveNodes(std::vector<rpc::GcsNodeInfo> &no
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-        GetGcsTimeoutMs(),
         [&promise](Status status, std::vector<rpc::GcsNodeInfo> &&nodes) {
           promise.set_value(
               std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, std::move(nodes)));
-        }));
+        },
+        GetGcsTimeoutMs()));
   }
   auto result = promise.get_future().get();
   auto status = result.first;
