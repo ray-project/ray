@@ -424,21 +424,40 @@ void raylet::RayletClient::PushMutableObject(
     uint64_t metadata_size,
     void *data,
     const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback) {
-  rpc::PushMutableObjectRequest request;
-  request.set_writer_object_id(writer_object_id.Binary());
-  request.set_data_size(data_size);
-  request.set_metadata_size(metadata_size);
-  // This assumes that the format of the object is a contiguous buffer of (data |
-  // metadata).
-  request.set_data(data, data_size + metadata_size);
-  grpc_client_->PushMutableObject(
-      request,
-      [callback](const Status &status, const rpc::PushMutableObjectReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Error pushing mutable object: " << status;
-        }
-        callback(status, reply);
-      });
+  static constexpr uint64_t kMaxGrpcPayloadSize = 1024 * 1024 * 450;  // 450 MiB.
+  uint64_t total_num_chunks = data_size / kMaxGrpcPayloadSize;
+  // If `data_size` is not a multiple of `kMaxGrpcPayloadSize`, then we need to send an
+  // extra chunk with the remaining data.
+  if (data_size % kMaxGrpcPayloadSize) {
+    total_num_chunks++;
+  }
+
+  for (uint64_t i = 0; i < total_num_chunks; i++) {
+    rpc::PushMutableObjectRequest request;
+    request.set_writer_object_id(writer_object_id.Binary());
+    request.set_data_size(data_size);
+    request.set_metadata_size(metadata_size);
+    // This assumes that the format of the object is a contiguous buffer of (data |
+    // metadata).
+    request.set_data(data, data_size + metadata_size);
+
+    request.set_chunk_idx(i);
+    request.set_total_num_chunks(total_num_chunks);
+
+    // Only execute the callback once the entire object has been sent.
+    bool execute_callback = (i == total_num_chunks - 1);
+    grpc_client_->PushMutableObject(
+        request,
+        [callback, execute_callback](const Status &status,
+                                     const rpc::PushMutableObjectReply &reply) {
+          if (!status.ok()) {
+            RAY_LOG(INFO) << "Error pushing mutable object: " << status;
+          }
+          if (execute_callback) {
+            callback(status, reply);
+          }
+        });
+  }
 }
 
 void raylet::RayletClient::ReleaseUnusedActorWorkers(

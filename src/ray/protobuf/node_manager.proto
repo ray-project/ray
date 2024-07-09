@@ -360,6 +360,13 @@ message PushMutableObjectRequest {
   uint64 data_size = 2;
   uint64 metadata_size = 3;
   bytes data = 4;
+
+  // A large object cannot fit within a single gRPC, so we break it down into multiple
+  // chunks.
+  // `chunk_idx` is the index of this chunk with the stream of chunks.
+  uint64 chunk_idx = 5;
+  // The total number of chunks for this object.
+  uint64 total_num_chunks = 6;
 }
 
 message PushMutableObjectReply {

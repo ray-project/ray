@@ -89,6 +89,9 @@ void MutableObjectProvider::HandleRegisterMutableObject(
     const ObjectID &reader_object_id) {
   absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
 
+  uint64_t chunk_idx = request.chunk_idx();
+  uint64_t total_num_chunks = request.total_num_chunks();
+
   LocalReaderInfo info;
   info.num_readers = num_readers;
   info.local_object_id = reader_object_id;
@@ -111,6 +114,9 @@ void MutableObjectProvider::HandlePushMutableObject(
   }
   size_t data_size = request.data_size();
   size_t metadata_size = request.metadata_size();
+
+  uint64_t chunk_idx = request.chunk_idx();
+  uint64_t total_num_chunks = request.total_num_chunks();
 
   // Copy both the data and metadata to a local channel.
   std::shared_ptr<Buffer> data;
