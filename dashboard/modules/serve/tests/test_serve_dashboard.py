@@ -1,9 +1,9 @@
 import copy
+import importlib
 import os
 import re
 import sys
 from typing import Dict
-import importlib
 
 import grpc
 import pytest
