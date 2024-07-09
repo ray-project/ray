@@ -105,7 +105,7 @@ class ArrowTensorType(pa.ExtensionType):
             dtype: pyarrow dtype of tensor elements.
         """
         self._shape = shape
-        super().__init__(pa.large_list(dtype), "ray.data.arrow_tensor")
+        super().__init__(pa.list_(dtype), "ray.data.arrow_tensor")
 
     @property
     def shape(self):
@@ -316,7 +316,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
     https://arrow.apache.org/docs/python/extending_types.html#custom-extension-array-class
     """
 
-    OFFSET_DTYPE = np.int64
+    OFFSET_DTYPE = np.int32
 
     @classmethod
     def from_numpy(
@@ -414,7 +414,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         )
 
         storage = pa.Array.from_buffers(
-            pa.large_list(pa_dtype),
+            pa.list_(pa_dtype),
             outer_len,
             [None, offset_buffer],
             children=[data_array],
@@ -612,9 +612,7 @@ class ArrowVariableShapedTensorType(pa.ExtensionType):
         """
         self._ndim = ndim
         super().__init__(
-            pa.struct(
-                [("data", pa.large_list(dtype)), ("shape", pa.list_(pa.int64()))]
-            ),
+            pa.struct([("data", pa.list_(dtype)), ("shape", pa.list_(pa.int64()))]),
             "ray.data.arrow_variable_shaped_tensor",
         )
 
@@ -721,7 +719,7 @@ class ArrowVariableShapedTensorArray(
     https://arrow.apache.org/docs/python/extending_types.html#custom-extension-array-class
     """
 
-    OFFSET_DTYPE = np.int64
+    OFFSET_DTYPE = np.int32
 
     @classmethod
     def from_numpy(
@@ -811,7 +809,7 @@ class ArrowVariableShapedTensorArray(
         # corresponds to a tensor element.
         size_offsets = np.insert(size_offsets, 0, 0)
         offset_array = pa.array(size_offsets)
-        data_array = pa.LargeListArray.from_arrays(offset_array, value_array)
+        data_array = pa.ListArray.from_arrays(offset_array, value_array)
         # We store the tensor element shapes so we can reconstruct each tensor when
         # converting back to NumPy ndarrays.
         shape_array = pa.array(shapes)
