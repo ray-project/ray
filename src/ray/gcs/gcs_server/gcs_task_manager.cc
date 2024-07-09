@@ -113,7 +113,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
   auto state_updates = task_events.mutable_state_updates();
-  (*state_updates->mutable_state_ts())[ray::rpc::TaskStatus::FAILED] = state_ns;
+  (*state_updates->mutable_state_ts())[ray::rpc::TaskStatus::FAILED] = failed_ts_ns;
   state_updates->mutable_error_info()->CopyFrom(error_info);
 }
 
