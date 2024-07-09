@@ -32,7 +32,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
 
     # TODO(aguo): Update this to a "v2" path since I made a backwards-incompatible
     # change. Will do so after the API is more stable.
-    @routes.get("/api/train/runs")
+    @routes.get("/api/train/v2/runs")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @DeveloperAPI
     async def get_train_runs(self, req: Request) -> Response:
