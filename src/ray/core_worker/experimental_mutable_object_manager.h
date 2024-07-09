@@ -107,6 +107,14 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   ///         otherwise.
   bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
 
+  /// Gets the backing store for an object. WriteAcquire() must have already been called
+  /// before this method is called, and WriteRelease() must not yet have been called.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] data_size The size of the data in the object.
+  /// \param[in] metadata_size The size of the metadata in the object.
+  /// \param[out] data The mutable object buffer in plasma that can be written to.
+  /// \return The return status.
   Status WriteGetObjectBackingStore(const ObjectID &object_id,
                                     int64_t data_size,
                                     int64_t metadata_size,
