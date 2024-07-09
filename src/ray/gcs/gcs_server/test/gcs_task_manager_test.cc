@@ -688,7 +688,7 @@ TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
     auto reply = SyncGetTaskEvents({tasks_finished});
     auto task_event = *(reply.events_by_task().begin());
     EXPECT_FALSE(
-      task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
+        task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
     EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FINISHED), 2);
   }
 }
