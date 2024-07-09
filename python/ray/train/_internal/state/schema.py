@@ -67,11 +67,16 @@ class TrainRunInfo(BaseModel):
         description="The current status of the train run. It can be one of the "
         "following: STARTED, FINISHED, or ERRORED."
     )
+    status_detail: str = Field(
+        description="Detailed information about the current run status, "
+        "such as error messages."
+    )
     start_time_ms: int = Field(
         description="The UNIX timestamp of the start time of this Train run."
     )
     end_time_ms: Optional[int] = Field(
-        description="The UNIX timestamp of the end time of this Train run. If null, the Train run has not ended yet."
+        description="The UNIX timestamp of the end time of this Train run. "
+        "If null, the Train run has not ended yet."
     )
     controller_actor_status: Optional[ActorStatusEnum] = Field(
         description="The status of the controller actor. It can be ALIVE or DEAD."

@@ -35,6 +35,7 @@ class TrainRunStateManager:
         datasets: Dict[str, Dataset],
         worker_group: WorkerGroup,
         start_time_ms: float,
+        status_detail: str = "",
     ) -> None:
         """Collect Train Run Info and report to StateActor."""
 
@@ -93,6 +94,7 @@ class TrainRunStateManager:
             datasets=dataset_info_list,
             start_time_ms=start_time_ms,
             run_status=run_status,
+            status_detail=status_detail,
         )
         train_run_info = TrainRunInfo(**self.train_run_info_dict)
         ray.get(self.state_actor.register_train_run.remote(train_run_info))

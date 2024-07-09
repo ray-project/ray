@@ -10,10 +10,16 @@ from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchTrainer
 
 
-def test_get_train_runs(monkeypatch, shutdown_only):
-    monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
+@pytest.fixture
+def ray_start_8_cpus():
+    address_info = ray.init(num_cpus=8)
+    yield address_info
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
 
-    ray.init(num_cpus=8)
+
+def test_get_train_runs(monkeypatch, ray_start_8_cpus):
+    monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
 
     def train_func():
         print("Training Starts")
@@ -38,15 +44,11 @@ def test_get_train_runs(monkeypatch, shutdown_only):
     assert body["train_runs"][0]["name"] == "my_train_run"
     assert len(body["train_runs"][0]["workers"]) == 4
 
-    ray.shutdown()
 
-
-def test_update_actor_status(monkeypatch, shutdown_only):
+def test_add_actor_status(monkeypatch, ray_start_8_cpus):
     monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
 
     from ray.train._internal.state.schema import ActorStatusEnum
-
-    ray.init(num_cpus=8)
 
     def check_actor_status(expected_actor_status):
         url = ray._private.worker.get_dashboard_url()
@@ -73,8 +75,6 @@ def test_update_actor_status(monkeypatch, shutdown_only):
     trainer.fit()
 
     check_actor_status(expected_actor_status=ActorStatusEnum.DEAD)
-
-    ray.shutdown()
 
 
 if __name__ == "__main__":

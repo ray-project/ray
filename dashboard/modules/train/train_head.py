@@ -62,7 +62,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         else:
             try:
                 train_runs = await stats_actor.get_all_train_runs.remote()
-                self._update_actor_status(train_runs)
+                self._add_actor_status(train_runs)
 
                 # Sort train runs in reverse chronological order
                 train_runs = sorted(

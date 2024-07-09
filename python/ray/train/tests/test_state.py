@@ -48,6 +48,7 @@ RUN_INFO_JSON_SAMPLE = """{
     "controller_actor_id": "3abd1972a19148d78acc78dd9414736e",
     "start_time_ms": 1717448423000,
     "run_status": "STARTED",
+    "status_detail": "",
     "controller_actor_status": null,
     "end_time_ms": null,
     "workers": [
@@ -120,6 +121,7 @@ def _get_run_info_sample(run_id=None, run_name=None) -> TrainRunInfo:
         datasets=[dataset_info],
         start_time_ms=1717448423000,
         run_status=RunStatusEnum.STARTED,
+        status_detail="",
     )
     return run_info
 
