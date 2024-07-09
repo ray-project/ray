@@ -909,7 +909,13 @@ class SampleBatch(dict):
 
     @PublicAPI
     def as_multi_agent(self, module_id: Optional[ModuleID] = None) -> "MultiAgentBatch":
-        """Returns the respective MultiAgentBatch using DEFAULT_POLICY_ID.
+        """Returns the respective MultiAgentBatch
+
+        Note, if `module_id` is not provided uses `DEFAULT_POLICY`_ID`.
+
+        Args;
+            module_id: An optional module ID. If `None` the `DEFAULT_POLICY_ID`
+                is used.
 
         Returns:
             The MultiAgentBatch (using DEFAULT_POLICY_ID) corresponding
@@ -1316,8 +1322,8 @@ class MultiAgentBatch:
     """A batch of experiences from multiple agents in the environment.
 
     Attributes:
-        policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
-            ids to SampleBatches of experiences.
+        policy_batches (Dict[PolicyID, SampleBatch]): Dict mapping policy IDs to
+            SampleBatches of experiences.
         count: The number of env steps in this batch.
     """
 
@@ -1326,8 +1332,7 @@ class MultiAgentBatch:
         """Initialize a MultiAgentBatch instance.
 
         Args:
-            policy_batches: Mapping from policy
-                ids to SampleBatches of experiences.
+            policy_batches: Dict mapping policy IDs to SampleBatches of experiences.
             env_steps: The number of environment steps in the environment
                 this batch contains. This will be less than the number of
                 transitions this batch contains across all policies in total.

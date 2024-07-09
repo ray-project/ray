@@ -394,6 +394,7 @@ class AlgorithmConfig(_Config):
 
         self._learner_connector = None
         self.add_default_connectors_to_learner_pipeline = True
+        self.learner_config_dict = {}
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -2034,6 +2035,7 @@ class AlgorithmConfig(_Config):
             Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
+        learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2120,6 +2122,11 @@ class AlgorithmConfig(_Config):
                 should set this setting to False.
                 Note that this setting is only relevant if the new API stack is used
                 (including the new EnvRunner classes).
+            learner_config_dict: A dict to insert any settings accessible from within
+                the Learner instance. This should only be used in connection with custom
+                Learner subclasses and in case the user doesn't want to write an extra
+                `AlgorithmConfig` subclass just to add a few settings to the base Algo's
+                own config class.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2171,6 +2178,8 @@ class AlgorithmConfig(_Config):
             self.add_default_connectors_to_learner_pipeline = (
                 add_default_connectors_to_learner_pipeline
             )
+        if learner_config_dict is not NotProvided:
+            self.learner_config_dict.update(learner_config_dict)
 
         return self
 
