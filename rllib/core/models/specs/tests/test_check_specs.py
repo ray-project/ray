@@ -283,14 +283,14 @@ class TestCheckSpecs(unittest.TestCase):
 
         # Case: input is a list of strs
         self.assertDictEqual(
-            convert_to_canonical_format(["foo", "bar"]).asdict(),
-            SpecDict({"foo": None, "bar": None}).asdict(),
+            convert_to_canonical_format(["foo", "bar"]),
+            SpecDict({"foo": None, "bar": None}),
         )
 
         # Case: input is a list of strs and nested strs
         self.assertDictEqual(
-            convert_to_canonical_format(["foo", ("bar", "jar")]).asdict(),
-            SpecDict({"foo": None, "bar": {"jar": None}}).asdict(),
+            convert_to_canonical_format(["foo", ("bar", "jar")]),
+            SpecDict({"foo": None, "bar": {"jar": None}}),
         )
 
         # Case: input is a Nested Mapping
@@ -302,13 +302,13 @@ class TestCheckSpecs(unittest.TestCase):
         )
         self.assertIsInstance(returned, SpecDict)
         self.assertDictEqual(
-            returned.asdict(),
+            returned,
             SpecDict(
                 {
                     "foo": {"bar": TensorSpec("b", framework="torch")},
                     "jar": {"tar": TypeSpec(int), "car": None},
                 }
-            ).asdict(),
+            ),
         )
 
         # Case: input is a SpecDict already
@@ -322,13 +322,13 @@ class TestCheckSpecs(unittest.TestCase):
         )
         self.assertIsInstance(returned, SpecDict)
         self.assertDictEqual(
-            returned.asdict(),
+            returned,
             SpecDict(
                 {
                     "foo": {"bar": TensorSpec("b", framework="torch")},
                     "jar": {"tar": TypeSpec(int)},
                 }
-            ).asdict(),
+            ),
         )
 
 

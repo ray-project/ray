@@ -79,8 +79,24 @@ def convert_to_canonical_format(spec: SpecType):
     """
     # convert spec of form list of nested_keys to model_spec with None leaves
     if isinstance(spec, list):
-        spec = [k if isinstance(k, str) else k for k in spec]
-        return SpecDict({k: None for k in spec})
+
+        def _to_nested(tup):
+            nested_dict = current = {}
+            last_dict = key = None
+            for key in tup:
+                current[key] = {}
+                last_dict = current
+                current = current[key]
+            last_dict[key] = None  # Set the innermost value to None
+            return nested_dict
+        
+        #spec = [
+        #    _to_nested(k) if isinstance(k, tuple) else k for k in spec
+        #]
+        return SpecDict({
+            k: None if not isinstance(k, tuple) else _to_nested(k)
+            for k in spec
+        })
 
     # convert spec of form tree of constraints to model_spec
     if isinstance(spec, abc.Mapping):
@@ -90,7 +106,7 @@ def convert_to_canonical_format(spec: SpecType):
             if isinstance(spec[key], (type, tuple)):
                 spec[key] = TypeSpec(spec[key])
             elif isinstance(spec[key], list):
-                # this enables nested conversion of none-canonical formats
+                # This enables nested conversion of none-canonical formats.
                 spec[key] = convert_to_canonical_format(spec[key])
         return spec
 
