@@ -401,7 +401,7 @@ ray::Status GlobalStateAccessor::GetAliveNodes(std::vector<rpc::GcsNodeInfo> &no
           promise.set_value(
               std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, std::move(nodes)));
         },
-        GetGcsTimeoutMs()));
+        /*timeout_ms=*/-1));
   }
   auto result = promise.get_future().get();
   auto status = result.first;
