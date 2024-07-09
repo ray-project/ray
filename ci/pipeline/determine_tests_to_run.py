@@ -64,6 +64,7 @@ if __name__ == "__main__":
     # Set to 1 for any changes to Ray Tune or python source files that are
     # NOT related to Serve, Dashboard or Train.
     RAY_CI_RLLIB_AFFECTED = 0
+    RAY_CI_RLLIB_GPU_AFFECTED = 0
     # Whether all RLlib tests should be run.
     # Set to 1 only when a source file in `ray/rllib` has been changed.
     RAY_CI_RLLIB_DIRECTLY_AFFECTED = 0
@@ -162,6 +163,7 @@ if __name__ == "__main__":
                 or changed_file == ".buildkite/rllib.rayci.yml"
             ):
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_RLLIB_GPU_AFFECTED = 1
                 RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
@@ -404,6 +406,7 @@ if __name__ == "__main__":
             "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
             "RAY_CI_TRAIN_AFFECTED={}".format(RAY_CI_TRAIN_AFFECTED),
             "RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED),
+            "RAY_CI_RLLIB_GPU_AFFECTED={}".format(RAY_CI_RLLIB_GPU_AFFECTED),
             "RAY_CI_RLLIB_DIRECTLY_AFFECTED={}".format(RAY_CI_RLLIB_DIRECTLY_AFFECTED),
             "RAY_CI_RLLIB_CONTRIB_AFFECTED={}".format(RAY_CI_RLLIB_CONTRIB_AFFECTED),
             "RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED),

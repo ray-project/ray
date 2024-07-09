@@ -2249,7 +2249,12 @@ def connect(
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
     ray._private.state.state._initialize_global_state(
-        ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+        ray._raylet.GcsClientOptions.create(
+            node.gcs_address,
+            node.cluster_id.hex(),
+            allow_cluster_id_nil=False,
+            fetch_cluster_id_if_nil=False,
+        )
     )
     worker.gcs_publisher = ray._raylet.GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
@@ -2309,7 +2314,12 @@ def connect(
     elif not LOCAL_MODE:
         raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+    gcs_options = ray._raylet.GcsClientOptions.create(
+        node.gcs_address,
+        node.cluster_id.hex(),
+        allow_cluster_id_nil=False,
+        fetch_cluster_id_if_nil=False,
+    )
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
