@@ -1098,8 +1098,8 @@ class TestCompositeChannel:
         compiled_dag.teardown()
 
 
-def test_channel_access_after_close(ray_start_regular_shared):
-    # Tests that an access to a channel after accelerated DAG teardown raises a
+def test_channel_read_after_close(ray_start_regular_shared):
+    # Tests that read to a channel after accelerated DAG teardown raises a
     # RayChannelError exception as the channel is closed (see issue #46284).
     @ray.remote
     class Actor:
@@ -1116,6 +1116,25 @@ def test_channel_access_after_close(ray_start_regular_shared):
 
     with pytest.raises(RayChannelError, match="Channel closed."):
         ray.get(ref)
+
+
+def test_channel_write_after_close(ray_start_regular_shared):
+    # Tests that write to a channel after accelerated DAG teardown raises a
+    # RayChannelError exception as the channel is closed.
+    @ray.remote
+    class Actor:
+        def foo(self, arg):
+            return arg
+
+    a = Actor.remote()
+    with InputNode() as inp:
+        dag = a.foo.bind(inp)
+
+    dag = dag.experimental_compile()
+    dag.teardown()
+
+    with pytest.raises(RayChannelError, match="Channel closed."):
+        dag.execute(1)
 
 
 def test_driver_and_actor_as_readers(ray_start_cluster):

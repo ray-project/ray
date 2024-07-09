@@ -463,6 +463,19 @@ Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
   return channel->mutable_object->header->CheckHasError();
 }
 
+Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
+  Channel *channel = GetChannel(object_id);
+  if (!channel) {
+    return Status::NotFound(
+        absl::StrFormat("Could not find channel for object ID %s.", object_id.Hex()));
+  }
+  if ((is_reader && channel->reader_registered) ||
+      (!is_reader && channel->writer_registered)) {
+    return Status::OK();
+  }
+  return channel->mutable_object->header->CheckHasError();
+}
+
 #else  // defined(__APPLE__) || defined(__linux__)
 
 MutableObjectManager::~MutableObjectManager() {}
