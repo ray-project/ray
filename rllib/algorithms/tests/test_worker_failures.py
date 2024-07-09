@@ -239,7 +239,6 @@ class AddModuleCallback(DefaultCallbacks):
         algorithm.add_module(
             module_id="test_module",
             module_spec=spec,
-            module_state=None,
             evaluation_workers=True,
         )
 

@@ -518,8 +518,6 @@ class Checkpointable(abc.ABC):
         for comp in components:
             if comp.startswith(name + "/"):
                 subcomponents.append(comp[len(name) + 1 :])
-            elif name != comp:
-                subcomponents.append(comp)
 
         return None if not subcomponents else subcomponents
 

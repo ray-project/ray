@@ -2640,6 +2640,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # TODO (sven): Make `MetricsLogger` a Checkpointable.
         state[COMPONENT_METRICS_LOGGER] = self.metrics.get_state()
 
+        # Save current `training_iteration`.
+        state[TRAINING_ITERATION] = self.training_iteration
+
         return state
 
     @override(Checkpointable)
@@ -2660,6 +2663,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # TODO (sven): Make `MetricsLogger` a Checkpointable.
         if COMPONENT_METRICS_LOGGER in state:
             self.metrics.set_state(state[COMPONENT_METRICS_LOGGER])
+
+        if TRAINING_ITERATION in state:
+            self._iteration = state[TRAINING_ITERATION]
 
     @override(Checkpointable)
     def get_checkpointable_components(self) -> List[Tuple[str, "Checkpointable"]]:
