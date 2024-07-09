@@ -1,18 +1,16 @@
-import time
 import json
 import sys
+import time
 
 import pytest
 
-from ray.job_submission import JobSubmissionClient, JobStatus
 from ray.cluster_utils import Cluster
-from ray.dashboard.modules.job.tests.conftest import (
-    _driver_script_path,
-)
 from ray.dashboard.consts import RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR
+from ray.dashboard.modules.job.tests.conftest import _driver_script_path
 from ray.dashboard.modules.job.tests.subprocess_driver_scripts.driver_runtime_env_inheritance import (  # noqa: E501
     RUNTIME_ENV_LOG_LINE_PREFIX,
 )
+from ray.job_submission import JobStatus, JobSubmissionClient
 
 
 def wait_until_status(client, job_id, status_to_wait_for, timeout_seconds=20):

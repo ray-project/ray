@@ -1,7 +1,8 @@
-import ray.dashboard.utils as dashboard_utils
+from aiohttp.web import HTTPServiceUnavailable, Request, Response
+
 import ray.dashboard.optional_utils as optional_utils
+import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.healthz.utils import HealthChecker
-from aiohttp.web import Request, Response, HTTPServiceUnavailable
 
 routes = optional_utils.DashboardHeadRouteTable
 
