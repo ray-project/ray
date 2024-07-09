@@ -2728,8 +2728,8 @@ cdef class GcsClient:
         cdef GcsClientOptions gcs_options
         if cluster_id:
             gcs_options = GcsClientOptions.create(
-                address, cluster_id, allow_cluster_id_nil=True,
-                fetch_cluster_id_if_nil=True)
+                address, cluster_id, allow_cluster_id_nil=False,
+                fetch_cluster_id_if_nil=False)
         else:
             gcs_options = GcsClientOptions.create(
                 address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=True)

@@ -243,7 +243,7 @@ class Cluster:
                     node.gcs_address,
                     None,
                     allow_cluster_id_nil=True,
-                    fetch_cluster_id_if_nil=True,
+                    fetch_cluster_id_if_nil=False,
                 )
                 self.global_state._initialize_global_state(gcs_options)
                 # Write the Ray cluster address for convenience in unit
