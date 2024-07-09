@@ -641,9 +641,9 @@ def test_default_dashboard_agent_listen_port():
     assert ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT == 52365
 
 
-# @pytest.mark.skipif(
-#     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
-# )
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
 @pytest.mark.parametrize(
     "ray_start_regular_with_external_redis",
     [
