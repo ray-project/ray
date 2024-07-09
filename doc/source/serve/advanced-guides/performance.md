@@ -58,7 +58,7 @@ By default, Serve lets client HTTP requests run to completion no matter how long
 You can set an end-to-end timeout for HTTP requests by setting the `request_timeout_s` parameter
 in the `http_options` field of the Serve config. HTTP Proxies wait for that many
 seconds before terminating an HTTP request. This config is global to your Ray cluster,
-and it can't be updated during runtime. Use [client-side retries](serve-best-practices-http-requests)
+and you can't update it during runtime. Use [client-side retries](serve-best-practices-http-requests)
 to retry requests that time out due to transient failures.
 
 :::{note}
