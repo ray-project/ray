@@ -89,6 +89,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     while (!gcs_server_->IsStarted()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
+
+    // Create GCS client.
     ReconnectClient();
   }
 
@@ -111,14 +113,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   // Each GcsClient has its own const cluster_id, so to reconnect we re-create the client.
   void ReconnectClient() {
-    if (gcs_client_ != nullptr) {
-      gcs_client_->Disconnect();
-      gcs_client_.reset();
-    }
-    ClusterID cluster_id = gcs_server_->GetClusterId();
-    gcs::GcsClientOptions options("127.0.0.1", gcs_server_->GetPort(), cluster_id);
+    // Reconnecting a client happens when the server restarts with a different cluster
+    // id. So we nede to re-create the client with the new cluster id.
+    gcs::GcsClientOptions options("127.0.0.1",
+                                  5397,
+                                  gcs_server_->GetClusterId(),
+                                  /*allow_cluster_id_nil=*/false,
+                                  /*fetch_cluster_id_if_nil=*/false);
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
 

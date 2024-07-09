@@ -131,6 +131,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsIntentionalSystemExit()
         c_bool IsUnexpectedSystemExit()
         c_bool IsChannelError()
+        c_bool IsChannelTimeoutError()
 
         c_string ToString()
         c_string CodeAsString()
@@ -493,7 +494,9 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         UNIMPLEMENTED "grpc::StatusCode::UNIMPLEMENTED",
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
-        CGcsClientOptions(const c_string &gcs_address, int port, CClusterID cluster_id)
+        CGcsClientOptions(
+            const c_string &gcs_address, int port, CClusterID cluster_id,
+            c_bool allow_cluster_id_nil, c_bool fetch_cluster_id_if_nil)
 
     cdef cppclass CGcsClient "ray::gcs::GcsClient":
         CGcsClient(const CGcsClientOptions &options)
@@ -515,7 +518,6 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CPythonGcsClient(const CGcsClientOptions &options)
 
         CRayStatus Connect(
-            const CClusterID &cluster_id,
             int64_t timeout_ms,
             size_t num_retries)
         CRayStatus CheckAlive(

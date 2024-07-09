@@ -2,6 +2,7 @@ import asyncio
 import concurrent
 import copy
 import threading
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
@@ -186,7 +187,7 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
-    def write(self, value: Any) -> None:
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """
         Write a value to the channel.
 
@@ -196,16 +197,26 @@ class ChannelInterface:
 
         Args:
             value: The value to write.
+            timeout: The maximum time in seconds to wait to write the value.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
         """
         raise NotImplementedError
 
-    def read(self) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         """
         Read the latest value from the channel. This call will block until a
         value is available to read.
 
         Subsequent calls to read() may *block* if the deserialized object is
         zero-copy (e.g., bytes or a numpy array) *and* the object is still in scope.
+
+        Args:
+            timeout: The maximum time in seconds to wait to read the value.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
 
         Returns:
             Any: The deserialized value. If the deserialized value is an
@@ -239,11 +250,33 @@ class ReaderInterface:
     def start(self):
         raise NotImplementedError
 
-    def _read_list(self) -> Any:
+    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        """
+        Read a list of values from this reader.
+
+        Args:
+            timeout: The maximum time in seconds to wait for reading.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
+
+        """
         raise NotImplementedError
 
-    def read(self) -> List[Any]:
-        outputs = self._read_list()
+    def read(self, timeout: Optional[float] = None) -> List[Any]:
+        """
+        Read from this reader.
+
+        Args:
+            timeout: The maximum time in seconds to wait for reading.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
+        """
+        assert (
+            timeout is None or timeout >= 0 or timeout == -1
+        ), "Timeout must be non-negative or -1."
+        outputs = self._read_list(timeout)
         self._num_reads += 1
         return outputs
 
@@ -261,8 +294,15 @@ class SynchronousReader(ReaderInterface):
     def start(self):
         pass
 
-    def _read_list(self) -> Any:
-        return [c.read() for c in self._input_channels]
+    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        results = []
+        for c in self._input_channels:
+            start_time = time.monotonic()
+            results.append(c.read(timeout))
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+        return results
 
 
 @DeveloperAPI
@@ -326,7 +366,16 @@ class WriterInterface:
     def start(self):
         raise NotImplementedError()
 
-    def write(self, val: Any) -> None:
+    def write(self, val: Any, timeout: Optional[float] = None) -> None:
+        """
+        Write the value.
+
+        Args:
+            timeout: The maximum time in seconds to wait for writing.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
+        """
         raise NotImplementedError()
 
     def close(self) -> None:
@@ -340,8 +389,8 @@ class SynchronousWriter(WriterInterface):
         self._output_channel.ensure_registered_as_writer()
         pass
 
-    def write(self, val: Any) -> None:
-        self._output_channel.write(val)
+    def write(self, val: Any, timeout: Optional[float] = None) -> None:
+        self._output_channel.write(val, timeout)
         self._num_writes += 1
 
 

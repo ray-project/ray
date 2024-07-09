@@ -24,8 +24,8 @@ namespace gcs {
 class UsageStatsClient {
  public:
   explicit UsageStatsClient(const std::string &gcs_address,
-                            instrumented_io_context &io_service,
-                            ClusterID cluster_id);
+                            ClusterID cluster_id,
+                            instrumented_io_context &io_service);
 
   /// C++ version of record_extra_usage_tag in usage_lib.py
   ///

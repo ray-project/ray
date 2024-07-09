@@ -3,11 +3,14 @@ from collections import defaultdict, deque
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
+import time
 import uuid
 import traceback
+from typing import NamedTuple
 
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
+from ray.util.annotations import PublicAPI
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
     CompiledDAGFuture,
@@ -35,6 +38,14 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+
+# Holds the input arguments for an accelerated DAG node.
+@PublicAPI(stability="alpha")
+class RayDAGArgs(NamedTuple):
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
+
 
 logger = logging.getLogger(__name__)
 
@@ -246,10 +257,17 @@ class DAGInputAdapter:
         self._dag_input_channel = dag_input_channel
 
         def extractor(key: Union[int, str]):
-            def extract_arg(args_tuple):
-                positional_args, kwargs = args_tuple
+            def extract_arg(raw_args):
+                if not isinstance(raw_args, RayDAGArgs):
+                    # Fast path for a single input.
+                    return raw_args
+                else:
+                    assert isinstance(raw_args, RayDAGArgs)
+                    args = raw_args.args
+                    kwargs = raw_args.kwargs
+
                 if isinstance(key, int):
-                    return positional_args[key]
+                    return args[key]
                 else:
                     return kwargs[key]
 
@@ -398,13 +416,18 @@ class CompiledDAG:
 
     def __init__(
         self,
-        buffer_size_bytes: Optional[int],
+        execution_timeout: Optional[float] = None,
+        buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         asyncio_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
     ):
         """
         Args:
+            execution_timeout: The maximum time in seconds to wait for execute() calls.
+                None means using default timeout (DAGContext.execution_timeout),
+                0 means immediate timeout (immediate success or timeout without
+                blocking), -1 means infinite timeout (block indefinitely).
             buffer_size_bytes: The number of bytes to allocate for object data and
                 metadata. Each argument passed to a task in the DAG must be
                 less than or equal to this value when serialized.
@@ -435,6 +458,9 @@ class CompiledDAG:
         ctx = DAGContext.get_current()
 
         self._dag_id = uuid.uuid4().hex
+        self._execution_timeout: Optional[float] = execution_timeout
+        if self._execution_timeout is None:
+            self._execution_timeout = ctx.execution_timeout
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = ctx.buffer_size_bytes
@@ -783,8 +809,18 @@ class CompiledDAG:
                 # in the DAG.
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
 
-                if isinstance(readers[0].dag_node, MultiOutputNode):
-                    assert len(readers) == 1
+                dag_nodes = [reader.dag_node for reader in readers]
+                read_by_driver = False
+                for dag_node in dag_nodes:
+                    if isinstance(dag_node, MultiOutputNode):
+                        read_by_driver = True
+                        break
+                if read_by_driver:
+                    if len(readers) != 1:
+                        raise ValueError(
+                            "DAG outputs currently can only be read by the driver--not "
+                            "the driver and actors."
+                        )
                     # This node is a multi-output node, which means that it will only be
                     # read by the driver, not an actor. Thus, we handle this case by
                     # setting `reader_handles` to `[self._driver_actor]`.
@@ -1206,6 +1242,7 @@ class CompiledDAG:
     def _execute_until(
         self,
         execution_index: int,
+        timeout: Optional[float] = None,
     ) -> Any:
         """Repeatedly execute this DAG until the given execution index,
         and buffer all results up to that index. If the DAG has already
@@ -1214,17 +1251,27 @@ class CompiledDAG:
 
         Args:
             execution_index: The execution index to execute until.
+            timeout: The maximum time in seconds to wait for the result.
+                None means using default timeout (DAGContext.retrieval_timeout),
+                0 means immediate timeout (immediate success or timeout without
+                blocking), -1 means infinite timeout (block indefinitely).
 
         Returns:
             The execution result corresponding to the given execution index.
 
         TODO(rui): catch the case that user holds onto the CompiledDAGRefs
         """
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        if timeout is None:
+            timeout = ctx.retrieval_timeout
+
         while self._max_execution_index < execution_index:
             if self._max_execution_index + 1 == execution_index:
                 # Directly fetch and return without buffering
                 self._max_execution_index += 1
-                return self._dag_output_fetcher.read()
+                return self._dag_output_fetcher.read(timeout)
             # Otherwise, buffer the result
             if len(self._result_buffer) >= self._max_buffered_results:
                 raise ValueError(
@@ -1233,9 +1280,13 @@ class CompiledDAG:
                     "on previous CompiledDAGRefs to free them up from buffer."
                 )
             self._max_execution_index += 1
+            start_time = time.monotonic()
             self._result_buffer[
                 self._max_execution_index
-            ] = self._dag_output_fetcher.read()
+            ] = self._dag_output_fetcher.read(timeout)
+            if timeout != -1:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
 
         # CompiledDAGRef guarantees that the same execution index will not
         # be requested multiple times
@@ -1255,6 +1306,10 @@ class CompiledDAG:
         Returns:
             A list of Channels that can be used to read the DAG result.
 
+        Raises:
+            RayChannelTimeoutError: If the execution does not complete within
+                self._execution_timeout seconds.
+
         NOTE: Not threadsafe due to _execution_index etc.
         """
         if self._enable_asyncio:
@@ -1263,8 +1318,17 @@ class CompiledDAG:
         self._get_or_compile()
 
         self._check_inputs(args, kwargs)
-        inp = (args, kwargs)
-        self._dag_submitter.write(inp)
+        if len(args) == 1 and len(kwargs) == 0:
+            # When serializing a tuple, the Ray serializer invokes pickle5, which adds
+            # several microseconds of overhead. One common case for accelerated DAGs is
+            # passing a single argument (oftentimes of of type `bytes`, which requires
+            # no serialization). To avoid imposing this overhead on this common case, we
+            # create a fast path for this case that avoids pickle5.
+            inp = args[0]
+        else:
+            inp = RayDAGArgs(args=args, kwargs=kwargs)
+
+        self._dag_submitter.write(inp, self._execution_timeout)
 
         ref = CompiledDAGRef(self, self._execution_index)
         self._execution_index += 1
@@ -1311,7 +1375,17 @@ class CompiledDAG:
         self._get_or_compile()
         self._check_inputs(args, kwargs)
         async with self._dag_submission_lock:
-            inp = (args, kwargs)
+            if len(args) == 1 and len(kwargs) == 0:
+                # When serializing a tuple, the Ray serializer invokes pickle5, which
+                # adds several microseconds of overhead. One common case for accelerated
+                # DAGs is passing a single argument (oftentimes of of type `bytes`,
+                # which requires no serialization). To avoid imposing this overhead on
+                # this common case, we create a fast path for this case that avoids
+                # pickle5.
+                inp = args[0]
+            else:
+                inp = RayDAGArgs(args=args, kwargs=kwargs)
+
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
@@ -1340,12 +1414,14 @@ class CompiledDAG:
 @DeveloperAPI
 def build_compiled_dag_from_ray_dag(
     dag: "ray.dag.DAGNode",
-    buffer_size_bytes: Optional[int],
+    execution_timeout: Optional[float] = None,
+    buffer_size_bytes: Optional[int] = None,
     enable_asyncio: bool = False,
     asyncio_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
+        execution_timeout,
         buffer_size_bytes,
         enable_asyncio,
         asyncio_max_queue_size,

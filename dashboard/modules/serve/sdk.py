@@ -1,5 +1,7 @@
 from typing import Any, Dict, Optional
+
 from ray._private.utils import split_address
+from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
 try:
     import aiohttp
@@ -7,8 +9,6 @@ try:
 except ImportError:
     aiohttp = None
     requests = None
-
-from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 
 
 DEPLOY_PATH = "/api/serve/applications/"

@@ -181,6 +181,7 @@ from ray.exceptions import (
     RpcError,
     ObjectRefStreamEndOfStreamError,
     RayChannelError,
+    RayChannelTimeoutError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -200,7 +201,8 @@ from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
     get_new_event_loop,
-    is_async_func
+    is_async_func,
+    has_async_methods,
 )
 from ray._private.client_mode_hook import disable_client_hook
 import ray.core.generated.common_pb2 as common_pb2
@@ -1763,9 +1765,7 @@ cdef void execute_task(
             function = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
-                if len(inspect.getmembers(
-                        actor.__class__,
-                        predicate=is_async_func)) == 0:
+                if not has_async_methods(actor.__class__):
                     error_message = (
                         "Failed to create actor. You set the async flag, "
                         "but the actor does not "
@@ -2645,10 +2645,9 @@ def _auto_reconnect(f):
             try:
                 return f(self, *args, **kwargs)
             except RpcError as e:
-                import grpc
                 if e.rpc_code in [
-                    grpc.StatusCode.UNAVAILABLE.value[0],
-                    grpc.StatusCode.UNKNOWN.value[0],
+                    GRPC_STATUS_CODE_UNAVAILABLE,
+                    GRPC_STATUS_CODE_UNKNOWN,
                 ]:
                     if remaining_retry <= 0:
                         logger.error(
@@ -2722,8 +2721,14 @@ cdef class OldGcsClient:
                   nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
                   ),
                   cluster_id: str = None):
-        cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(
-            address, cluster_id)
+        cdef GcsClientOptions gcs_options
+        if cluster_id:
+            gcs_options = GcsClientOptions.create(
+                address, cluster_id, allow_cluster_id_nil=False,
+                fetch_cluster_id_if_nil=False)
+        else:
+            gcs_options = GcsClientOptions.create(
+                address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=True)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
@@ -2737,9 +2742,8 @@ cdef class OldGcsClient:
         cdef:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             size_t num_retries = self._nums_reconnect_retry
-            CClusterID c_cluster_id = self.cluster_id.native()
         with nogil:
-            status = self.inner.get().Connect(c_cluster_id, timeout_ms, num_retries)
+            status = self.inner.get().Connect(timeout_ms, num_retries)
 
         check_status(status)
 
@@ -3640,13 +3644,15 @@ cdef class CoreWorker:
 
     def experimental_channel_put_serialized(self, serialized_object,
                                             ObjectRef object_ref,
-                                            num_readers):
+                                            num_readers,
+                                            timeout_ms):
         cdef:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data
             unique_ptr[CAddress] null_owner_address
             uint64_t data_size = serialized_object.total_bytes
             int64_t c_num_readers = num_readers
+            int64_t c_timeout_ms = timeout_ms
 
         metadata = string_to_buffer(serialized_object.metadata)
         with nogil:
@@ -3656,6 +3662,7 @@ cdef class CoreWorker:
                              metadata,
                              data_size,
                              c_num_readers,
+                             c_timeout_ms,
                              &data,
                              ))
         if data_size > 0:

@@ -40,19 +40,30 @@ namespace gcs {
 /// \class GcsClientOptions
 /// GCS client's options (configuration items), such as service address, and service
 /// password.
+// TODO(ryw): eventually we will always have fetch_cluster_id_if_nil = true.
 class GcsClientOptions {
  public:
-  GcsClientOptions(const std::string gcs_address,
+  GcsClientOptions(const std::string &gcs_address,
                    int port,
-                   const ClusterID &cluster_id = ClusterID::Nil())
-      : gcs_address_(gcs_address), gcs_port_(port), cluster_id_(cluster_id) {}
+                   const ClusterID &cluster_id,
+                   bool allow_cluster_id_nil,
+                   bool fetch_cluster_id_if_nil)
+      : gcs_address_(gcs_address),
+        gcs_port_(port),
+        cluster_id_(cluster_id),
+        should_fetch_cluster_id_(ShouldFetchClusterId(
+            cluster_id, allow_cluster_id_nil, fetch_cluster_id_if_nil)) {}
 
   /// Constructor of GcsClientOptions from gcs address
   ///
   /// \param gcs_address gcs address, including port
   GcsClientOptions(const std::string &gcs_address,
-                   const ClusterID &cluster_id = ClusterID::Nil())
-      : cluster_id_(cluster_id) {
+                   const ClusterID &cluster_id,
+                   bool allow_cluster_id_nil,
+                   bool fetch_cluster_id_if_nil)
+      : cluster_id_(cluster_id),
+        should_fetch_cluster_id_(ShouldFetchClusterId(
+            cluster_id, allow_cluster_id_nil, fetch_cluster_id_if_nil)) {
     std::vector<std::string> address = absl::StrSplit(gcs_address, ':');
     RAY_LOG(DEBUG) << "Connect to gcs server via address: " << gcs_address;
     RAY_CHECK(address.size() == 2);
@@ -62,10 +73,19 @@ class GcsClientOptions {
 
   GcsClientOptions() {}
 
+  // - CHECK-fails if invalid (cluster_id_ is nil but !allow_cluster_id_nil_)
+  // - Returns false if no need to fetch (cluster_id_ is not nil, or
+  //    !fetch_cluster_id_if_nil_).
+  // - Returns true if needs to fetch.
+  static bool ShouldFetchClusterId(ClusterID cluster_id,
+                                   bool allow_cluster_id_nil,
+                                   bool fetch_cluster_id_if_nil);
+
   // Gcs address
   std::string gcs_address_;
   int gcs_port_ = 0;
   ClusterID cluster_id_;
+  bool should_fetch_cluster_id_;
 };
 
 /// \class GcsClient
@@ -209,6 +229,10 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<AutoscalerStateAccessor> autoscaler_state_accessor_;
 
  private:
+  /// If client_call_manager_ does not have a cluster ID, fetches it from GCS. The
+  /// fetched cluster ID is set to client_call_manager_.
+  Status FetchClusterId(int64_t timeout_ms);
+
   const UniqueID gcs_client_id_ = UniqueID::FromRandom();
 
   std::unique_ptr<GcsSubscriber> gcs_subscriber_;
@@ -230,7 +254,7 @@ class RAY_EXPORT PythonGcsClient {
  public:
   explicit PythonGcsClient(const GcsClientOptions &options);
 
-  Status Connect(const ClusterID &cluster_id, int64_t timeout_ms, size_t num_retries);
+  Status Connect(int64_t timeout_ms, size_t num_retries);
 
   Status CheckAlive(const std::vector<std::string> &raylet_addresses,
                     int64_t timeout_ms,
@@ -300,8 +324,8 @@ class RAY_EXPORT PythonGcsClient {
     }
   }
 
+  const GcsClientOptions options_;
   ClusterID cluster_id_;
-  GcsClientOptions options_;
   std::unique_ptr<rpc::InternalKVGcsService::Stub> kv_stub_;
   std::unique_ptr<rpc::RuntimeEnvGcsService::Stub> runtime_env_stub_;
   std::unique_ptr<rpc::NodeInfoGcsService::Stub> node_info_stub_;
