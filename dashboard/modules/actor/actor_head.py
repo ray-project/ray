@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import time
-
 from collections import deque
 
 import aiohttp.web
@@ -10,11 +9,8 @@ import aiohttp.web
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
-from ray.core.generated import (
-    gcs_service_pb2,
-    gcs_service_pb2_grpc,
-)
-from ray.dashboard.datacenter import DataSource, DataOrganizer
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.actor import actor_consts
 
 logger = logging.getLogger(__name__)

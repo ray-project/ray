@@ -2799,6 +2799,15 @@ py_test(
 
 # subdirectory: learners/
 # ....................................
+py_test(
+    name = "examples/learners/custom_loss_fn_simple",
+    main = "examples/learners/custom_loss_fn_simple.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/custom_loss_fn_simple.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
 #@OldAPIStack @HybridAPIStack
 py_test(
     name = "examples/learners/ppo_tuner_local_cpu_torch",

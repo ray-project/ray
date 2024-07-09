@@ -1,5 +1,5 @@
 import tensorflow as tf
-from typing import Any, Mapping
+from typing import Any, Dict
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.typing import SpecType
@@ -54,30 +54,30 @@ class DiscreteBCTFModule(TfRLModule):
     def output_specs_train(self) -> SpecType:
         return [Columns.ACTION_DIST_INPUTS]
 
-    def _forward_shared(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_shared(self, batch: NestedDict) -> Dict[str, Any]:
         # We can use a shared forward method because BC does not need to distinguish
         # between train, inference, and exploration.
         action_logits = self.policy(batch["obs"])
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
         return self._forward_shared(batch)
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
         return self._forward_shared(batch)
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
         return self._forward_shared(batch)
 
     @override(RLModule)
-    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
         return {"policy": self.policy.get_weights()}
 
     @override(RLModule)
-    def set_state(self, state: Mapping[str, Any]) -> None:
+    def set_state(self, state: Dict[str, Any]) -> None:
         self.policy.set_weights(state["policy"])
 
 

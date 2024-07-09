@@ -1,9 +1,11 @@
+import os
+import sys
+
+import pytest
+import requests
+
 import ray
 from ray.job_submission import JobSubmissionClient
-import os
-import requests
-import sys
-import pytest
 
 # For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"

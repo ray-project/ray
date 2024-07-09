@@ -1,6 +1,7 @@
-import pytest
 import ssl
 import sys
+
+import pytest
 import trustme
 
 import ray
