@@ -723,6 +723,11 @@ class RLModule(Checkpointable, abc.ABC):
             )
         return {}
 
+    @OverrideToImplementCustomLogic
+    @override(Checkpointable)
+    def set_state(self, state: StateDict) -> None:
+        pass
+
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):
         return (

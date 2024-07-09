@@ -1,7 +1,7 @@
 import functools
 import logging
 from collections import abc
-from typing import Union, Mapping, Any, Callable
+from typing import Any, Callable, Dict, Union
 
 from ray.rllib.core.models.specs.specs_base import Spec, TypeSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
@@ -127,7 +127,7 @@ def _validate(
     *,
     cls_instance: object,
     method: Callable,
-    data: Mapping[str, Any],
+    data: Dict[str, Any],
     spec: Spec,
     filter: bool = False,
     tag: str = "input",

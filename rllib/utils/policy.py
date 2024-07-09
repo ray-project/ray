@@ -6,7 +6,6 @@ from typing import (
     Callable,
     Dict,
     List,
-    Mapping,
     Optional,
     Tuple,
     Type,
@@ -183,7 +182,7 @@ def local_policy_inference(
     reward: Optional[float] = None,
     terminated: Optional[bool] = None,
     truncated: Optional[bool] = None,
-    info: Optional[Mapping] = None,
+    info: Optional[Dict] = None,
     explore: bool = None,
     timestep: Optional[int] = None,
 ) -> TensorStructType:
