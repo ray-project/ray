@@ -1,13 +1,14 @@
-import sys
-import pytest
 import os
+import sys
 import tempfile
 import time
 from unittest.mock import patch
 
+import pytest
+
 import ray
-from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.modules.reporter.profile_manager import MemoryProfilingManager
+from ray.dashboard.tests.conftest import *  # noqa
 
 
 @pytest.fixture

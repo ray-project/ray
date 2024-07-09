@@ -1,6 +1,7 @@
-import psutil
 import uuid
-from ctypes import cdll, c_int, c_uint, c_char, Structure, c_ulong, c_ulonglong, byref
+from ctypes import Structure, byref, c_char, c_int, c_uint, c_ulong, c_ulonglong, cdll
+
+import psutil
 
 try:
     handle = cdll.LoadLibrary("/usr/local/Ascend/driver/lib64/driver/libdcmi.so")

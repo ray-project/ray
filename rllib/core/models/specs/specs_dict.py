@@ -1,4 +1,4 @@
-from typing import Union, Mapping, Any
+from typing import Any, Dict, Union
 
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.nested_dict import NestedDict
@@ -18,7 +18,7 @@ _TYPE_MISMATCH = (
     "{} has type {} (expected type {})."
 )
 
-DATA_TYPE = Union[NestedDict[Any], Mapping[str, Any]]
+DATA_TYPE = Union[NestedDict[Any], Dict[str, Any]]
 
 IS_NOT_PROPERTY = "Spec {} must be a property of the class {}."
 

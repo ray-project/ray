@@ -1,7 +1,7 @@
 import asyncio
 import logging
-import ray.dashboard.consts as dashboard_consts
 
+import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import (
     Dict,
     MutableNotificationDict,
