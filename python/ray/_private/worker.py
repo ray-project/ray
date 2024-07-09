@@ -1306,6 +1306,8 @@ def init(
             instance.
             4. If the provided address is "local", start a new local Ray
             instance, even if there is already an existing local Ray instance.
+            Running multiple local Ray instances is not supported and may have
+            undefined behavior.
         num_cpus: Number of CPUs the user wishes to assign to each
             raylet. By default, this is set based on virtual cores.
         num_gpus: Number of GPUs the user wishes to assign to each
