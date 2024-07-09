@@ -310,7 +310,6 @@ html_theme_options = {
         "csat",
     ],
     "navigation_depth": 4,
-    "analytics": {"google_analytics_id": "UA-110413294-1"},
     "pygment_light_style": "stata-dark",
     "pygment_dark_style": "stata-dark",
 }

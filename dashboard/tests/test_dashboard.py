@@ -5,30 +5,31 @@ import ipaddress
 import json
 import logging
 import os
+import socket
 import subprocess
 import sys
 import time
 import warnings
+from unittest.mock import MagicMock
 
 import pytest
 import requests
-import socket
+from click.testing import CliRunner
+from requests.exceptions import ConnectionError, HTTPError
 
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
-from click.testing import CliRunner
-from requests.exceptions import ConnectionError, HTTPError
+import ray.scripts.scripts as scripts
 from ray._private import ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
 )
-from ray._private.utils import get_or_create_event_loop
 from ray._private.test_utils import (
-    format_web_url,
     fetch_prometheus_metrics,
+    format_web_url,
     get_error_message,
     init_error_pubsub,
     run_string_as_driver,
@@ -36,21 +37,21 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
+from ray._private.utils import get_or_create_event_loop
 from ray.core.generated import common_pb2
-import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
+from ray.dashboard.utils import DashboardHeadModule
+from ray.experimental.internal_kv import _initialize_internal_kv
 from ray.util.state import StateApiClient
 from ray.util.state.common import ListApiOptions, StateResource
 from ray.util.state.exception import ServerUnavailable
-from ray.experimental.internal_kv import _initialize_internal_kv
-from unittest.mock import MagicMock
-from ray.dashboard.utils import DashboardHeadModule
 
 import psutil
 
 try:
     import aiohttp.web
+
     import ray.dashboard.optional_utils as dashboard_optional_utils
 
     head_routes = dashboard_optional_utils.DashboardHeadRouteTable
@@ -1295,9 +1296,10 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     As the number of blocking call goes up, the event loop lag converges to ~5s on my
     laptop. We assert it to be >1s to be safe.
     """
+    from typing import Dict, List
+
     import aiohttp
     from prometheus_client.samples import Sample
-    from typing import List, Dict
 
     ray_context = ray_start_with_dashboard
     assert wait_until_server_available(ray_context["webui_url"]) is True

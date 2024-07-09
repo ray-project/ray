@@ -6,7 +6,18 @@ import re
 import time
 import traceback
 from dataclasses import dataclass
-from typing import Iterator, List, Optional, Any, Dict, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+
+from ray._private import ray_constants
+from ray._private.gcs_utils import GcsAioClient
+from ray.dashboard.modules.job.common import (
+    JOB_ID_METADATA_KEY,
+    JobInfoStorageClient,
+    JobStatus,
+    validate_request_type,
+)
+from ray.dashboard.modules.job.pydantic_models import DriverInfo, JobDetails, JobType
+from ray.runtime_env import RuntimeEnv
 
 try:
     # package `aiohttp` is not in ray's minimal dependencies
@@ -17,22 +28,6 @@ except Exception:
     Request = None
     Response = None
 
-from ray._private import ray_constants
-from ray._private.gcs_utils import GcsAioClient
-from ray.dashboard.modules.job.common import (
-    validate_request_type,
-    JobInfoStorageClient,
-)
-from ray.dashboard.modules.job.pydantic_models import (
-    DriverInfo,
-    JobDetails,
-    JobType,
-)
-from ray.dashboard.modules.job.common import (
-    JobStatus,
-    JOB_ID_METADATA_KEY,
-)
-from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
 

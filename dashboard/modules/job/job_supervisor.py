@@ -2,16 +2,16 @@ import asyncio
 import json
 import logging
 import os
-import psutil
 import signal
 import subprocess
 import sys
 import traceback
 from asyncio.tasks import FIRST_COMPLETED
 from typing import Any, Dict, List, Optional
+
 import ray
-from ray._private.gcs_utils import GcsAioClient
 import ray._private.ray_constants as ray_constants
+from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
@@ -21,6 +21,8 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.job_submission import JobStatus
+
+import psutil
 
 # asyncio python version compatibility
 try:

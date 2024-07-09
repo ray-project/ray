@@ -9,10 +9,10 @@ This means the API will be accessible on both the dashboard head and the
 dashboard agent. Any changes here will affect both the head and the agent.
 """
 
-import json
 import asyncio
-import logging
 import dataclasses
+import json
+import logging
 from functools import wraps
 from typing import Union
 
@@ -20,16 +20,12 @@ import aiohttp
 from aiohttp.web import Request, Response
 
 import ray
-from ray.exceptions import RayTaskError
-from ray.dashboard.modules.version import (
-    CURRENT_VERSION,
-    VersionResponse,
-)
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
+import ray.dashboard.utils as dashboard_utils
 from ray._private.pydantic_compat import ValidationError
-
+from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
+from ray.exceptions import RayTaskError
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -154,10 +150,10 @@ def create_serve_rest_api(
         @optional_utils.init_ray_and_catch_exceptions()
         @validate_endpoint(log_deprecation_warning=log_deprecation_warning)
         async def put_all_applications(self, req: Request) -> Response:
-            from ray.serve.config import ProxyLocation
-            from ray.serve._private.api import serve_start_async
-            from ray.serve.schema import ServeDeploySchema
             from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+            from ray.serve._private.api import serve_start_async
+            from ray.serve.config import ProxyLocation
+            from ray.serve.schema import ServeDeploySchema
 
             try:
                 config: ServeDeploySchema = ServeDeploySchema.parse_obj(

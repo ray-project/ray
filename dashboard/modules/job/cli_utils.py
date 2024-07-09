@@ -1,7 +1,7 @@
+import functools
 from typing import Union
 
 import click
-import functools
 
 
 def bool_cast(string: str) -> Union[bool, str]:
