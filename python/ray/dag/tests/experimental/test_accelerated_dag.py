@@ -1204,6 +1204,7 @@ def test_simulate_pipeline_parallelism(ray_start_regular_shared):
         "BWD rank-1, batch-1",
         "BWD rank-1, batch-2",
     ]
+    output_dag.teardown()
 
 
 def test_channel_access_after_close(ray_start_regular_shared):
