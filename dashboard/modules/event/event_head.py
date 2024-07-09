@@ -1,22 +1,18 @@
-import os
 import asyncio
 import logging
+import os
 import time
-from typing import Union
 from collections import OrderedDict, defaultdict
 from concurrent.futures import ThreadPoolExecutor
+from typing import Union
 
 import aiohttp.web
 
-import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.dashboard.modules.event.event_utils import (
-    parse_event_strings,
-    monitor_events,
-)
-from ray.core.generated import event_pb2
-from ray.core.generated import event_pb2_grpc
+import ray.dashboard.utils as dashboard_utils
+from ray.core.generated import event_pb2, event_pb2_grpc
 from ray.dashboard.datacenter import DataSource
+from ray.dashboard.modules.event.event_utils import monitor_events, parse_event_strings
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
