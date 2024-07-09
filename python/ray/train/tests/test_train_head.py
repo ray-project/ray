@@ -12,6 +12,7 @@ from ray.train.torch import TorchTrainer
 
 @pytest.fixture
 def ray_start_8_cpus():
+    ray.shutdown()
     address_info = ray.init(num_cpus=8)
     yield address_info
     # The code after the yield will run as teardown code.
