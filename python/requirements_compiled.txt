@@ -2554,7 +2554,7 @@ yq==3.2.2
     #   -r /ray/ci/../python/requirements/test-requirements.txt
 zict==3.0.0
     # via distributed
-zipp==3.17.0
+zipp==3.19.1
     # via
     #   etils
     #   importlib-metadata
