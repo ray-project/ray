@@ -1406,8 +1406,14 @@ def init(
         logging.getLogger("ray").handlers.clear()
 
     # Configure the logging settings for the driver process.
-    if logging_config:
-        dict_config = logging_config._get_dict_config()
+    if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
+        dict_config = (
+            logging_config._get_dict_config()
+            if logging_config
+            else LoggingConfig(
+                encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING
+            )._get_dict_config()
+        )
         logging.config.dictConfig(dict_config)
 
     # Parse the hidden options:
@@ -1584,8 +1590,11 @@ def init(
 
     # Pass the logging_config to job_config to configure loggers of all worker
     # processes belonging to the job.
-    if logging_config:
-        job_config.set_py_logging_config(logging_config)
+    if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
+        job_config.set_py_logging_config(
+            logging_config
+            or LoggingConfig(encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING)
+        )
 
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
@@ -2240,7 +2249,12 @@ def connect(
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
     ray._private.state.state._initialize_global_state(
-        ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+        ray._raylet.GcsClientOptions.create(
+            node.gcs_address,
+            node.cluster_id.hex(),
+            allow_cluster_id_nil=False,
+            fetch_cluster_id_if_nil=False,
+        )
     )
     worker.gcs_publisher = ray._raylet.GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
@@ -2300,7 +2314,12 @@ def connect(
     elif not LOCAL_MODE:
         raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+    gcs_options = ray._raylet.GcsClientOptions.create(
+        node.gcs_address,
+        node.cluster_id.hex(),
+        allow_cluster_id_nil=False,
+        fetch_cluster_id_if_nil=False,
+    )
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
@@ -2631,7 +2650,7 @@ def get(
             return object_refs
 
         if isinstance(object_refs, CompiledDAGRef):
-            return object_refs.get()
+            return object_refs.get(timeout=timeout)
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
