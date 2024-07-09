@@ -60,13 +60,15 @@ void GlobalStateAccessor::Disconnect() {
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
+  // This method assumes GCS is HA and does not return any error. On GCS down, it
+  // retries indefinitely.
   std::vector<std::string> job_table_data;
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetAll(
         TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise),
-        GetGcsTimeoutMs()));
+        /*timeout_ms=*/-1));
   }
   promise.get_future().get();
   return job_table_data;
@@ -83,13 +85,15 @@ JobID GlobalStateAccessor::GetNextJobID() {
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
+  // This method assumes GCS is HA and does not return any error. On GCS down, it
+  // retries indefinitely.
   std::vector<std::string> node_table_data;
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
         TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise),
-        GetGcsTimeoutMs()));
+        /*timeout_ms=*/-1));
   }
   promise.get_future().get();
   return node_table_data;
