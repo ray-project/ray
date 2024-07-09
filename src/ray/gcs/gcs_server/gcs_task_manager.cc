@@ -102,7 +102,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
     const std::shared_ptr<TaskEventLocator> &locator,
-    int64_t state_ns,
+    int64_t failed_ts_ns,
     const rpc::RayErrorInfo &error_info) {
   auto &task_events = locator->GetTaskEventsMutable();
   // We don't mark tasks as failed if they are already terminated.
