@@ -759,11 +759,12 @@ class Node:
                     f" Last {len(errors)} lines of error files:"
                     f"{error_msg}."
                     f"Please check {os.path.join(self._logs_dir, 'gcs_server.out')}"
-                    " for details"
+                    f" for details. Last connection error: {last_ex}"
                 )
             else:
                 raise RuntimeError(
-                    f"Failed to {'start' if self.head else 'connect to'} GCS."
+                    f"Failed to {'start' if self.head else 'connect to'} GCS. Last "
+                    f"connection error: {last_ex}"
                 )
 
         ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
