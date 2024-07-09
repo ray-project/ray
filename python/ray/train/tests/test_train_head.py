@@ -11,17 +11,15 @@ from ray.train.torch import TorchTrainer
 
 
 @pytest.fixture
-def ray_start_8_cpus():
-    ray.shutdown()
+def ray_start_8_cpus(monkeypatch):
+    monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
     address_info = ray.init(num_cpus=8)
     yield address_info
     # The code after the yield will run as teardown code.
     ray.shutdown()
 
 
-def test_get_train_runs(monkeypatch, ray_start_8_cpus):
-    monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
-
+def test_get_train_runs(ray_start_8_cpus):
     def train_func():
         print("Training Starts")
         time.sleep(0.5)
@@ -46,9 +44,7 @@ def test_get_train_runs(monkeypatch, ray_start_8_cpus):
     assert len(body["train_runs"][0]["workers"]) == 4
 
 
-def test_add_actor_status(monkeypatch, ray_start_8_cpus):
-    monkeypatch.setenv("RAY_TRAIN_ENABLE_STATE_TRACKING", "1")
-
+def test_add_actor_status(ray_start_8_cpus):
     from ray.train._internal.state.schema import ActorStatusEnum
 
     def check_actor_status(expected_actor_status):
@@ -61,7 +57,7 @@ def test_add_actor_status(monkeypatch, ray_start_8_cpus):
         train_run["controller_actor_status"] == expected_actor_status
 
         for worker_info in body["train_runs"][0]["workers"]:
-            assert worker_info["status"] == expected_actor_status
+            assert worker_info["actor_status"] == expected_actor_status
 
     def train_func():
         print("Training Starts")

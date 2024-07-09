@@ -66,8 +66,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         else:
             try:
                 train_runs = await stats_actor.get_all_train_runs.remote()
-                # await self._add_actor_status(train_runs)
-
+                await self._add_actor_status(train_runs)
                 # Sort train runs in reverse chronological order
                 train_runs = sorted(
                     train_runs.values(),
@@ -118,7 +117,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         except Exception:
             logger.exception("Error Getting all actor info from GCS.")
 
-        for train_run in train_runs:
+        for train_run in train_runs.values():
             train_run.controller_actor_status = actor_status_table.get(
                 train_run.controller_actor_id, None
             )
