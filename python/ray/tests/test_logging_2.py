@@ -8,6 +8,7 @@ import json
 
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
+from ray._private.ray_logging import setup_log_record_factory
 from ray.job_config import LoggingConfig
 from ray._private.test_utils import run_string_as_driver
 
@@ -90,12 +91,8 @@ class TestJSONFormatter:
     def test_empty_record(self, shutdown_only):
         formatter = JSONFormatter()
         record = logging.makeLogRecord({})
-        import time
+        formatted = formatter.format(record)
 
-        ct = time.time_ns()
-        with patch("time.time_ns") as patched_ns:
-            patched_ns.return_value = ct
-            formatted = formatter.format(record)
         record_dict = json.loads(formatted)
         should_exist = [
             "asctime",
@@ -106,7 +103,6 @@ class TestJSONFormatter:
         ]
         for key in should_exist:
             assert key in record_dict
-
         assert len(record_dict) == len(should_exist)
         assert "exc_text" not in record_dict
 
@@ -390,6 +386,25 @@ ray.get(actor_instance.print_message.remote())
         ]
         for s in should_not_exist:
             assert s not in stderr
+
+
+@pytest.fixture
+def log_record_factory():
+    orig_factory = logging.getLogRecordFactory()
+    yield
+    logging.setLogRecordFactory(orig_factory)
+
+
+def test_setup_log_record_factory(log_record_factory):
+    setup_log_record_factory()
+
+    import time
+
+    ct = time.time_ns()
+    with patch("time.time_ns") as patched_ns:
+        patched_ns.return_value = ct
+        record = logging.makeLogRecord({})
+        assert record.__dict__["timestamp_ns"] == ct
 
 
 if __name__ == "__main__":

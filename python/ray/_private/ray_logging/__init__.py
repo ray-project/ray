@@ -101,6 +101,7 @@ def setup_component_logger(
 
 def setup_log_record_factory():
     old_factory = logging.getLogRecordFactory()
+
     def record_factory(*args, **kwargs):
         record = old_factory(*args, **kwargs)
         # Python logging module starts to use `time.time_ns()` to generate `created`
@@ -110,9 +111,11 @@ def setup_log_record_factory():
         record.created = ct / 1e9
 
         from ray._private.ray_logging.constants import LogKey
+
         record.__dict__[LogKey.TIMESTAMP_NS.value] = ct
 
         return record
+
     logging.setLogRecordFactory(record_factory)
 
 
