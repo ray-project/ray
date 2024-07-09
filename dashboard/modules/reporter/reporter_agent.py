@@ -6,34 +6,31 @@ import os
 import socket
 import sys
 import traceback
-
-import psutil
-
-from typing import List, Optional, Tuple, TypedDict, Union
 from collections import defaultdict
+from typing import List, Optional, Tuple, TypedDict, Union
+
+from opencensus.stats import stats as stats_module
+from prometheus_client.core import REGISTRY
 
 import ray
+import ray._private.prometheus_exporter as prometheus_exporter
 import ray._private.services
 import ray._private.utils
+import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
+import ray.dashboard.utils as dashboard_utils
 from ray._private import utils
-from ray.dashboard.consts import (
-    GCS_RPC_TIMEOUT_SECONDS,
-    COMPONENT_METRICS_TAG_KEYS,
-)
+from ray._private.metrics_agent import Gauge, MetricsAgent, Record
+from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
+from ray._raylet import WorkerID
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray.dashboard import k8s_utils
+from ray.dashboard.consts import COMPONENT_METRICS_TAG_KEYS, GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
     MemoryProfilingManager,
 )
-import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
-import ray.dashboard.utils as dashboard_utils
-from opencensus.stats import stats as stats_module
-import ray._private.prometheus_exporter as prometheus_exporter
-from prometheus_client.core import REGISTRY
-from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
-from ray.core.generated import reporter_pb2, reporter_pb2_grpc
-from ray.dashboard import k8s_utils
-from ray._raylet import WorkerID
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
