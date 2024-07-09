@@ -873,11 +873,11 @@ class LearnerGroup(Checkpointable):
         # easily.
         return self._update(*args, **kwargs, async_update=True)
 
-    @Deprecated(new="LearnerGroup.save(...)", error=True)
+    @Deprecated(new="LearnerGroup.save_to_path(...)", error=True)
     def save_state(self, *args, **kwargs):
         pass
 
-    @Deprecated(new="LearnerGroup.restore(...)", error=True)
+    @Deprecated(new="LearnerGroup.restore_from_path(...)", error=True)
     def load_state(self, *args, **kwargs):
         pass
 

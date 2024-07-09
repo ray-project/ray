@@ -2551,6 +2551,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             policy = self.get_policy(pid)
             policy.export_checkpoint(policy_dir, policy_state=policy_state)
 
+        # If we are using the learner API (hybrid API stack) -> Save the learner group's
+        # state inside a "learner" subdir. Note that this is not in line with the
+        # new Checkpointable API, but makes this case backward compatible.
+        # The new Checkpointable API is only strictly applied anyways to the
+        # new API stack.
+        if self.config.enable_rl_module_and_learner:
+            learner_state_dir = os.path.join(checkpoint_dir, "learner")
+            self.learner_group.save_to_path(learner_state_dir)
+
     @override(Trainable)
     def load_checkpoint(self, checkpoint_dir: str) -> None:
         # New API stack: Delegate to the `Checkpointable` implementation of
@@ -2568,8 +2577,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
         if self.config.enable_rl_module_and_learner:
-            learner_state_dir = os.path.join(checkpoint_dir, "learner")
-            self.learner_group.restore_from_path(learner_state_dir)
+            # We restore the LearnerGroup from a "learner" subdir. Note that this is not
+            # in line with the new Checkpointable API, but makes this case backward
+            # compatible. The new Checkpointable API is only strictly applied anyways
+            # to the new API stack.
+            learner_group_state_dir = os.path.join(checkpoint_dir, "learner")
+            self.learner_group.restore_from_path(learner_group_state_dir)
             # Make also sure, all (training) EnvRunners get the just loaded weights, but
             # only the inference-only ones.
             self.workers.sync_weights(
@@ -2712,16 +2725,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Sync EnvRunners, but only if LearnerGroup's checkpoint can be found in path.
         path = pathlib.Path(path)
         if (path / "learner_group").is_dir():
-            # Sync new weights to all EnvRunners.
+            # Make also sure, all (training) EnvRunners get the just loaded weights, but
+            # only the inference-only ones.
             self.workers.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
                 inference_only=True,
             )
-            if self.evaluation_workers:
-                self.evaluation_workers.sync_weights(
-                    from_worker_or_learner_group=self.learner_group,
-                    inference_only=True,
-                )
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:

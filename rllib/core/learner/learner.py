@@ -149,6 +149,7 @@ class Learner(Checkpointable):
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule
             )
+            from ray.rllib.core import COMPONENT_RL_MODULE
             from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
             env = gym.make("CartPole-v1")
@@ -195,11 +196,11 @@ class Learner(Checkpointable):
             # Set the state of the learner.
             learner.set_state(state)
 
-            # Get the weights of the underly multi-agent RLModule.
-            weights = learner.get_module_state()
+            # Get the weights of the underlying multi-agent RLModule.
+            weights = learner.get_state(components=COMPONENT_RL_MODULE)
 
-            # Set the weights of the underly multi-agent RLModule.
-            learner.set_module_state(weights)
+            # Set the weights of the underlying multi-agent RLModule.
+            learner.set_state({COMPONENT_RL_MODULE: weights})
 
 
     Extension pattern:
