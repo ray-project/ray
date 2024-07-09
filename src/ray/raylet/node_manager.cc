@@ -683,14 +683,18 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
                            -1);
   }
 
-  // Cancel lease requests related to unused bundles
-  cluster_task_manager_->CancelTasks(
+  // Cancel lease requests that are waiting for workers
+  // to free the acquired pg bundle resources
+  // so that pg bundle can be returned.
+  local_task_manager_->CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
-        return !bundle_id.first.IsNil() && 0 == in_use_bundles.count(bundle_id);
+        return !bundle_id.first.IsNil() && (0 == in_use_bundles.count(bundle_id)) &&
+               (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      "The task is cancelled because it uses placement group bundles that are not "
+      "The lease request is cancelled because it uses placement group bundles that are "
+      "not "
       "registered to GCS. It can happen upon GCS restart.");
 
   // Kill all workers that are currently associated with the unused bundles.
@@ -1899,14 +1903,19 @@ void NodeManager::HandleCancelResourceReserve(
   RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
                  << bundle_spec.DebugString();
 
-  // Cancel lease requests related to the placement group to be removed.
-  cluster_task_manager_->CancelTasks(
+  // Cancel lease requests that are waiting for workers
+  // to free the acquired pg bundle resources
+  // so that pg bundle can be returned.
+  local_task_manager_->CancelTasks(
       [&](const std::shared_ptr<internal::Work> &work) {
         const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
-        return bundle_id.first == bundle_spec.PlacementGroupId();
+        return (bundle_id.first == bundle_spec.PlacementGroupId()) &&
+               (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
       },
       rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
-      "");
+      absl::StrCat("Required placement group ",
+                   bundle_spec.PlacementGroupId().Hex(),
+                   " is removed."));
 
   // Kill all workers that are currently associated with the placement group.
   // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will

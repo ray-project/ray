@@ -1,14 +1,11 @@
+import asyncio
 import json
 import logging
-import asyncio
+from typing import List, Optional, Tuple
+
 import aiohttp.web
-from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, Tuple, List
 
-
-from ray._private.utils import get_or_create_event_loop, init_grpc_channel
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
@@ -19,18 +16,15 @@ from ray._private.ray_constants import (
     GLOBAL_GRPC_OPTIONS,
     KV_NAMESPACE_CLUSTER,
 )
-from ray.core.generated import reporter_pb2, reporter_pb2_grpc
-from ray.dashboard.datacenter import DataSource
 from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
+from ray._private.utils import get_or_create_event_loop, init_grpc_channel
 from ray.autoscaler._private.commands import debug_status
-
-from ray.util.state.common import (
-    ListApiOptions,
-)
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.datacenter import DataSource
 from ray.dashboard.state_aggregator import StateAPIManager
-from ray.util.state.state_manager import (
-    StateDataSourceClient,
-)
+from ray.util.state.common import ListApiOptions
+from ray.util.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
@@ -68,9 +62,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._state_api = None
-        self.thread_pool_executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="reporter_head_worker"
-        )
 
     async def _update_stubs(self, change):
         if change.old:
@@ -632,6 +623,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
 
+        loop = get_or_create_event_loop()
+
         while True:
             try:
                 # The key is b'RAY_REPORTER:{node id hex}',
@@ -639,12 +632,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 key, data = await subscriber.poll()
                 if key is None:
                     continue
-                # The JSON Parsing can be CPU heavy. Offload to another thread to avoid
-                # blocking the event loop.
-                loop = get_or_create_event_loop()
-                parsed_data = await loop.run_in_executor(
-                    self.thread_pool_executor, json.loads, data
-                )
+
+                # NOTE: Every iteration is executed inside the thread-pool executor
+                #       (TPE) to avoid blocking the Dashboard's event-loop
+                parsed_data = await loop.run_in_executor(None, json.loads, data)
+
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = parsed_data
             except Exception:

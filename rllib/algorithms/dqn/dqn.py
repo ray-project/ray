@@ -43,7 +43,6 @@ from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
     LAST_TARGET_UPDATE_TS,
-    LEARNER_ADDITIONAL_UPDATE_TIMER,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -740,23 +739,11 @@ class DQN(Algorithm):
                         td_errors=td_errors,
                     )
 
-                # Update the target networks, if necessary.
-                with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
-                    modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-                    # TODO (sven): Move to Learner._after_gradient_based_update().
-                    additional_results = self.learner_group.additional_update(
-                        module_ids_to_update=modules_to_update,
-                        timestep=current_ts,
-                    )
-                    # log the additional results as well.
-                    self.metrics.merge_and_log_n_dicts(
-                        additional_results, key=LEARNER_RESULTS
-                    )
-
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
             with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
                 if self.workers.num_remote_workers() > 0:
+                    modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
                     # NOTE: the new API stack does not use global vars.
                     self.workers.sync_weights(
                         from_worker_or_learner_group=self.learner_group,

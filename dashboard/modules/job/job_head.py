@@ -3,18 +3,17 @@ import dataclasses
 import json
 import logging
 import traceback
+from concurrent.futures import ThreadPoolExecutor
 from random import sample
 from typing import AsyncIterator, Optional
-from concurrent.futures import ThreadPoolExecutor
 
 import aiohttp.web
-from aiohttp.web import Request, Response
 from aiohttp.client import ClientResponse
+from aiohttp.web import Request, Response
 
 import ray
-import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.consts as dashboard_consts
-from ray.dashboard.datacenter import DataOrganizer
+import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.runtime_env.packaging import (
     package_exists,
@@ -22,28 +21,23 @@ from ray._private.runtime_env.packaging import (
     upload_package_to_gcs,
 )
 from ray._private.utils import get_or_create_event_loop
+from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
-    http_uri_components_to_uri,
+    JobInfoStorageClient,
+    JobLogsResponse,
+    JobStopResponse,
     JobSubmitRequest,
     JobSubmitResponse,
-    JobStopResponse,
-    JobLogsResponse,
-    JobInfoStorageClient,
+    http_uri_components_to_uri,
 )
-from ray.dashboard.modules.job.pydantic_models import (
-    JobDetails,
-    JobType,
-)
+from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
 from ray.dashboard.modules.job.utils import (
-    parse_and_validate_request,
-    get_driver_jobs,
     find_job_by_ids,
+    get_driver_jobs,
+    parse_and_validate_request,
 )
-from ray.dashboard.modules.version import (
-    CURRENT_VERSION,
-    VersionResponse,
-)
+from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -227,6 +221,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             version=CURRENT_VERSION,
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
+            session_name=self.session_name,
         )
         return Response(
             text=json.dumps(dataclasses.asdict(resp)),

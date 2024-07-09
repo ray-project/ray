@@ -2,10 +2,7 @@ import os
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
-from ray.dashboard.modules.job.job_manager import (
-    JobManager,
-)
-
+from ray.dashboard.modules.job.job_manager import JobManager
 
 TEST_NAMESPACE = "jobs_test_namespace"
 

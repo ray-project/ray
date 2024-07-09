@@ -1241,6 +1241,13 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
       }
     }
 
+    if (it->second.spec.IsActorTask()) {
+      // We need to decrement the actor lineage ref count here
+      // since it's incremented during TaskManager::AddPendingTask.
+      const auto actor_creation_return_id = it->second.spec.ActorCreationDummyObjectId();
+      released_objects->push_back(actor_creation_return_id);
+    }
+
     total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
@@ -1388,9 +1395,10 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  if (it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
-    SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-  }
+
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL)
+      << ", task ID = " << it->first << ", status = " << it->second.GetStatus();
+  SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
 }
 
 void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
@@ -1451,12 +1459,12 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
   task_entry.MarkRetryOnFailed();
 
   // Mark the new status and also include task spec info for the new attempt.
-  task_entry.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+  task_entry.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
   RAY_UNUSED(RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
                                            task_entry.spec.JobId(),
                                            task_entry.spec.AttemptNumber() + 1,
                                            task_entry.spec,
-                                           rpc::TaskStatus::PENDING_NODE_ASSIGNMENT,
+                                           rpc::TaskStatus::PENDING_ARGS_AVAIL,
                                            /* include_task_info */ true));
 }
 

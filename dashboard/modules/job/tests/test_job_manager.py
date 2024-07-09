@@ -7,21 +7,24 @@ import time
 import urllib.request
 from uuid import uuid4
 
-import psutil
 import pytest
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_constants import (
-    RAY_ADDRESS_ENVIRONMENT_VARIABLE,
-    KV_NAMESPACE_JOB,
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+    KV_NAMESPACE_JOB,
+    RAY_ADDRESS_ENVIRONMENT_VARIABLE,
 )
 from ray._private.test_utils import (
     SignalActor,
     async_wait_for_condition,
     async_wait_for_condition_async_predicate,
     wait_for_condition,
+)
+from ray.dashboard.consts import (
+    RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
+    RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
 from ray.dashboard.modules.job.job_manager import (
@@ -30,18 +33,16 @@ from ray.dashboard.modules.job.job_manager import (
     JobSupervisor,
     generate_job_id,
 )
-from ray.dashboard.consts import (
-    RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
-    RAY_JOB_START_TIMEOUT_SECONDS_ENV_VAR,
-)
 from ray.dashboard.modules.job.tests.conftest import (
-    create_ray_cluster,
-    create_job_manager,
     _driver_script_path,
+    create_job_manager,
+    create_ray_cluster,
 )
 from ray.job_submission import JobStatus
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.tests.conftest import call_ray_start  # noqa: F401
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
+
+import psutil
 
 
 @pytest.mark.asyncio
@@ -432,6 +433,24 @@ def test_generate_job_id():
 @pytest.mark.asyncio
 async def test_list_jobs_empty(job_manager: JobManager):
     assert await job_manager.list_jobs() == dict()
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_same_submission_id(job_manager: JobManager):
+    # Multiple drivers started from the same job submission
+    cmd = (
+        "python -c 'import ray; ray.init(); ray.shutdown(); "
+        "ray.init(); ray.shutdown();'"
+    )
+    submission_id = await job_manager.submit_job(entrypoint=cmd)
+
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id=submission_id
+    )
+    jobs_info = await job_manager.list_jobs()
+    # We expect only the last driver to be returned in the case of
+    # multiple jobs per job submission
+    assert len(jobs_info) == 1
 
 
 @pytest.mark.asyncio

@@ -1,14 +1,14 @@
-from tempfile import NamedTemporaryFile
 import sys
+from tempfile import NamedTemporaryFile
 
 import pytest
 
 from ray.dashboard.modules.job.common import JobSubmitRequest
 from ray.dashboard.modules.job.utils import (
     file_tail_iterator,
-    strip_keys_with_value_none,
     parse_and_validate_request,
     redact_url_password,
+    strip_keys_with_value_none,
 )
 
 
