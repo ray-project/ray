@@ -5,7 +5,7 @@ already be familiar with.
 """
 import gymnasium as gym
 import numpy as np
-from typing import Optional, List, Mapping, Iterable, Dict
+from typing import Dict, Iterable, List, Optional
 import tree
 import abc
 
@@ -613,7 +613,7 @@ class TorchMultiDistribution(Distribution):
     def from_logits(
         cls,
         logits: torch.Tensor,
-        child_distribution_cls_struct: Union[Mapping, Iterable],
+        child_distribution_cls_struct: Union[Dict, Iterable],
         input_lens: Union[Dict, List[int]],
         space: gym.Space,
         **kwargs,
