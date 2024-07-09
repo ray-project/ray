@@ -329,11 +329,10 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert "test2.parquet" in str(input_files)
     assert not ds._plan.has_started_execution
 
-    # Dataset.schema() calls execute_to_iterator(), which caches the metadata.
-    # This means the schema and num_rows are available once `ds.schema()` is called.
+    # Schema isn't available, so we do a partial read.
     assert ds.schema() is not None
-    assert str(ds) == "Dataset(num_rows=3, schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=3, schema={one: int64, two: string})", ds
+    assert str(ds) == "Dataset(num_rows=?, schema={one: int64, two: string})", ds
+    assert repr(ds) == "Dataset(num_rows=?, schema={one: int64, two: string})", ds
     assert ds._plan.has_started_execution
     assert not ds._plan.has_computed_output()
 
