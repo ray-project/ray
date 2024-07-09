@@ -4634,10 +4634,13 @@ class Dataset:
         Returns:
             A list of references to this dataset's blocks.
         """
-        raise DeprecationWarning(
+        logger.warning(
             "`Dataset.get_internal_block_refs()` is deprecated. Use "
             "`Dataset.iter_internal_ref_bundles()` instead.",
         )
+        block_refs = self._plan.execute().block_refs
+        self._synchronize_progress_bar()
+        return block_refs
 
     @DeveloperAPI
     def has_serializable_lineage(self) -> bool:
