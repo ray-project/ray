@@ -373,6 +373,9 @@ class OpState:
 
     def lsf_admission_control(self, resource_manager: ResourceManager) -> bool:
 
+        if not ray.data.DataContext.get_current().is_budget_policy:
+            return True
+        
         # TODO(MaoZiming)
         if (self.op.name != "ReadRange->MapBatches(produce)" and self.op.name != "MapBatches(produce)"):
             return True

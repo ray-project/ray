@@ -276,6 +276,7 @@ class DataContext:
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
+    is_budget_policy: bool = True
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
