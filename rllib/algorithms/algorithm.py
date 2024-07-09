@@ -2647,9 +2647,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @override(Checkpointable)
     def set_state(self, state: StateDict) -> None:
+        # Set the (training) EnvRunners' states.
         if COMPONENT_ENV_RUNNER in state:
             self.workers.local_worker().set_state(state[COMPONENT_ENV_RUNNER])
             self.workers.sync_env_runner_states(config=self.config)
+
+        # Set the (eval) EnvRunners' states.
         if self.evaluation_workers and COMPONENT_EVAL_ENV_RUNNER in state:
             self.evaluation_workers.local_worker().set_state(
                 state[COMPONENT_ENV_RUNNER]
@@ -2657,8 +2660,20 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             self.evaluation_workers.sync_env_runner_states(
                 config=self.evaluation_config
             )
+
+        # Set the LearnerGroup's state.
         if COMPONENT_LEARNER_GROUP in state:
             self.learner_group.set_state(state[COMPONENT_LEARNER_GROUP])
+            # Sync new weights to all EnvRunners.
+            self.workers.sync_weights(
+                from_worker_or_learner_group=self.learner_group,
+                inference_only=True,
+            )
+            if self.evaluation_workers:
+                self.evaluation_workers.sync_weights(
+                    from_worker_or_learner_group=self.learner_group,
+                    inference_only=True,
+                )
 
         # TODO (sven): Make `MetricsLogger` a Checkpointable.
         if COMPONENT_METRICS_LOGGER in state:
@@ -2688,6 +2703,25 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             (self.config,),  # *args,
             {},  # **kwargs
         )
+
+    @override(Checkpointable)
+    def restore_from_path(self, path, *args, **kwargs):
+        # Override from parent method, b/c we might have to sync the EnvRunner weights
+        # after having restored/loaded the LearnerGroup state.
+        super().restore_from_path(path, *args, **kwargs)
+        # Sync EnvRunners, but only if LearnerGroup's checkpoint can be found in path.
+        path = pathlib.Path(path)
+        if (path / "learner_group").is_dir():
+            # Sync new weights to all EnvRunners.
+            self.workers.sync_weights(
+                from_worker_or_learner_group=self.learner_group,
+                inference_only=True,
+            )
+            if self.evaluation_workers:
+                self.evaluation_workers.sync_weights(
+                    from_worker_or_learner_group=self.learner_group,
+                    inference_only=True,
+                )
 
     @override(Trainable)
     def log_result(self, result: ResultDict) -> None:
