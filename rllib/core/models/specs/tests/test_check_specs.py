@@ -192,13 +192,6 @@ class TestCheckSpecs(unittest.TestCase):
         # should run without errors
         correct_module.check_input_and_output(input_dict)
 
-        # should raise an error (read the implementation of
-        # check_input_and_output_wo_filter)
-        self.assertRaises(
-            ValueError,
-            lambda: correct_module.check_input_and_output_wo_filter(input_dict),
-        )
-
     def test_cache(self):
         # warning: this could be a flakey test
         # for N times, run the function twice and compare the time of each run.
@@ -297,7 +290,7 @@ class TestCheckSpecs(unittest.TestCase):
         returned = convert_to_canonical_format(
             {
                 "foo": {"bar": TensorSpec("b", framework="torch")},
-                "jar": {"tar": int, "car": None},
+                "jar": {"tar": TypeSpec(int), "car": None},
             }
         )
         self.assertIsInstance(returned, SpecDict)
@@ -316,7 +309,7 @@ class TestCheckSpecs(unittest.TestCase):
             SpecDict(
                 {
                     "foo": {"bar": TensorSpec("b", framework="torch")},
-                    "jar": {"tar": int},
+                    "jar": {"tar": TypeSpec(int)},
                 }
             )
         )

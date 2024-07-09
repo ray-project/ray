@@ -89,20 +89,20 @@ def convert_to_canonical_format(spec: SpecType):
                 current = current[key]
             last_dict[key] = None  # Set the innermost value to None
             return nested_dict
-        
-        #spec = [
-        #    _to_nested(k) if isinstance(k, tuple) else k for k in spec
-        #]
-        return SpecDict({
-            k: None if not isinstance(k, tuple) else _to_nested(k)
-            for k in spec
-        })
+
+        spec_dict = {}
+        for k in spec:
+            if not isinstance(k, tuple):
+                spec_dict[k] = None
+            else:
+                spec_dict[k[0]] = _to_nested(k[1:])
+        return SpecDict(spec_dict)
 
     # convert spec of form tree of constraints to model_spec
     if isinstance(spec, abc.Mapping):
         spec = SpecDict(spec)
         for key in spec:
-            # if values are types or tuple of types, convert to TypeSpec
+            # If values are types or tuple of types, convert to TypeSpec.
             if isinstance(spec[key], (type, tuple)):
                 spec[key] = TypeSpec(spec[key])
             elif isinstance(spec[key], list):

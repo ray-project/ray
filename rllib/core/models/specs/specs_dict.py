@@ -122,7 +122,7 @@ class SpecDict(dict, Spec):
 
             tree.map_structure_with_path(_map, data)
 
-            ValueError(_MISSING_KEYS_FROM_DATA.format(check[1], data_keys_set))
+            raise ValueError(_MISSING_KEYS_FROM_DATA.format(check[1], data_keys_set))
 
         if exact_match:
             tree.assert_same_structure(data, self, check_types=False)
