@@ -2602,6 +2602,8 @@ def maybe_initialize_job_config():
             log_config_dict = logging_config._get_dict_config()
         if log_config_dict:
             try:
+                from ray._private.ray_logging import setup_log_record_factory
+                setup_log_record_factory()
                 logging.config.dictConfig(log_config_dict)
             except Exception as e:
                 backtrace = \

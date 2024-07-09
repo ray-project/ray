@@ -103,13 +103,10 @@ class TestJSONFormatter:
             "message",
             "filename",
             "lineno",
-            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
 
-        assert isinstance(record_dict["timestamp_ns"], int)
-        assert record_dict["timestamp_ns"] == ct
         assert len(record_dict) == len(should_exist)
         assert "exc_text" not in record_dict
 
@@ -129,11 +126,9 @@ class TestJSONFormatter:
             "filename",
             "lineno",
             "exc_text",
-            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
-        assert isinstance(record_dict["timestamp_ns"], int)
         assert "Traceback (most recent call last):" in record_dict["exc_text"]
         assert len(record_dict) == len(should_exist)
 
@@ -149,7 +144,6 @@ class TestJSONFormatter:
             "filename",
             "lineno",
             "user",
-            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -178,7 +172,6 @@ class TestJSONFormatter:
             "lineno",
             "key1",
             "key2",
-            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -195,7 +188,6 @@ class TestTextFormatter:
         record = logging.makeLogRecord({"user": "ray"})
         formatted = formatter.format(record)
         assert "user=ray" in formatted
-        assert "timestamp_ns" in formatted
 
     def test_record_with_exception(self):
         formatter = TextFormatter()
@@ -209,7 +201,7 @@ class TestTextFormatter:
             exc_info=None,
         )
         formatted = formatter.format(record)
-        for s in ["INFO", "Test message", "test.py:1000", "--", "timestamp_ns"]:
+        for s in ["INFO", "Test message", "test.py:1000", "--"]:
             assert s in formatted
 
 
@@ -293,6 +285,34 @@ ray.get(actor_instance.print_message.remote())
         for s in should_exist:
             assert s in stderr
 
+    def test_text_mode_driver(self, shutdown_only):
+        script = """
+import ray
+import logging
+
+ray.init(
+    logging_config=ray.LoggingConfig(encoding="TEXT")
+)
+
+logger = logging.getLogger()
+logger.info("This is a Ray driver")
+"""
+        stderr = run_string_as_driver(script)
+        should_exist = [
+            "timestamp_ns",
+            "job_id",
+            "worker_id",
+            "node_id",
+            "INFO",
+            "This is a Ray driver",
+        ]
+        for s in should_exist:
+            assert s in stderr
+
+        should_not_exist = ["actor_id", "task_id"]
+        for s in should_not_exist:
+            assert s not in stderr
+
     @pytest.mark.parametrize(
         "ray_start_cluster_head_with_env_vars",
         [
@@ -334,6 +354,7 @@ ray.get(actor_instance.print_message.remote())
             "task_id",
             "INFO",
             "This is a Ray actor",
+            "timestamp_ns",
         ]
         for s in should_exist:
             assert s in stderr
@@ -365,6 +386,7 @@ ray.get(actor_instance.print_message.remote())
             "actor_id",
             "task_id",
             "This is a Ray actor",
+            "timestamp_ns",
         ]
         for s in should_not_exist:
             assert s not in stderr

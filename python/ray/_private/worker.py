@@ -71,6 +71,7 @@ from ray._private.ray_logging import (
     stdout_deduplicator,
     stderr_deduplicator,
     setup_logger,
+    setup_log_record_factory,
 )
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
@@ -1409,6 +1410,7 @@ def init(
 
     # Configure the logging settings for the driver process.
     if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
+        setup_log_record_factory()
         dict_config = (
             logging_config._get_dict_config()
             if logging_config
