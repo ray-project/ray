@@ -12,14 +12,10 @@ _UNSUPPORTED = "UNSUPPORTED"
 HEALTH_CHECK_INTERVAL_S_ENV_VAR = "RAY_TRAIN_HEALTH_CHECK_INTERVAL_S"
 DEFAULT_HEALTH_CHECK_INTERVAL_S: float = 2.0
 
-# The number of consecutive health check that a worker must miss
+# The time in seconds a worker health check must be hanging for
 # before the controller marks the worker as dead and handles the failure.
-# A health check "miss" is when the worker's status polling task doesn't finish
-# within the polling interval.
-MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR = (
-    "RAY_TRAIN_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES"
-)
-DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES: int = 5
+WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_WORKER_HEALTH_CHECK_TIMEOUT_S"
+DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S: float = 10 * 60
 
 # Timeout in seconds for the worker group to start.
 WORKER_GROUP_START_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"

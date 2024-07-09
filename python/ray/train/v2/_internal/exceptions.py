@@ -3,7 +3,9 @@ from typing import Dict
 
 from ray.train.v2._internal.constants import (
     DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
+    DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
+    WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
 )
 
 
@@ -12,8 +14,19 @@ class RayTrainError(Exception):
     """Base class for all Ray Train exceptions."""
 
 
-class WorkerHealthCheckMissedError(RayTrainError):
-    """Exception raised when enough worker health checks are missed."""
+class WorkerHealthCheckTimeoutError(RayTrainError):
+    """Exception raised when a worker health check hangs for long enough."""
+
+    def __init__(self, message):
+        timeout = os.getenv(
+            WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR, DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S
+        )
+        message += (
+            f"\nSet the {WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR} "
+            "environment variable to increase the timeout "
+            f"(current value = {timeout} seconds)."
+        )
+        super().__init__(message)
 
 
 class WorkerHealthCheckFailedError(RayTrainError):

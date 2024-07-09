@@ -6,21 +6,20 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional, Type, TypeVar
 
 import ray
-from ray._private.ray_constants import env_integer
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
-    DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES,
     DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
-    MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
+    DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
+    WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
     get_env_vars_to_propagate,
 )
 from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
     WorkerHealthCheckFailedError,
-    WorkerHealthCheckMissedError,
+    WorkerHealthCheckTimeoutError,
 )
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import DistributedContext, StorageContext
@@ -64,6 +63,19 @@ class WorkerGroupStatus:
         )
 
 
+@dataclass(frozen=True)
+class PollTask:
+    """Represents a poll task for a worker.
+
+    Attributes:
+        start_time: The time when the poll task was started.
+        task: The ObjectRef representing the poll task.
+    """
+
+    start_time: float
+    task: ObjectRef
+
+
 class WorkerGroup:
     _worker_cls = RayTrainWorker
 
@@ -85,20 +97,20 @@ class WorkerGroup:
         self._latest_start_time = float("-inf")
         self._pg = None
 
-        # Maps world rank to the number of consecutive health check misses.
-        self._num_consecutive_poll_misses: Dict[int, int] = collections.defaultdict(int)
-        self._max_consecutive_poll_misses = env_integer(
-            MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
-            DEFAULT_MAX_CONSECUTIVE_HEALTH_CHECK_MISSES,
-        )
-
         # Maps world rank to the ongoing poll task.
-        self._world_rank_to_ongoing_poll: Dict[int, ObjectRef] = {}
+        self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
 
+        # Environment variables
         self._worker_group_start_timeout_s = float(
             os.environ.get(
                 WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
                 DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
+            )
+        )
+        self._worker_health_check_timeout_s = float(
+            os.getenv(
+                WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
+                DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
             )
         )
 
@@ -338,7 +350,6 @@ class WorkerGroup:
     def _clear_state(self):
         self._workers = []
         self._pg = None
-        self._num_consecutive_poll_misses = collections.defaultdict(int)
         self._world_rank_to_ongoing_poll = {}
         self._sync_actor = None
 
@@ -369,7 +380,8 @@ class WorkerGroup:
         poll_tasks = []
         for i, worker in enumerate(self._workers):
             if i in self._world_rank_to_ongoing_poll:
-                poll_tasks.append(self._world_rank_to_ongoing_poll[i])
+                ongoing_poll = self._world_rank_to_ongoing_poll[i]
+                poll_tasks.append(ongoing_poll.task)
             else:
                 poll_tasks.append(worker.actor.poll_status.remote())
         return poll_tasks
@@ -381,21 +393,27 @@ class WorkerGroup:
 
         The poll task should involve very little computation and should
         return almost immediately.
+
         If a worker does not return the result of the poll task within
         the timeout, it is considered as a missed health check.
-
         The timeout is set to ~seconds, so a missed health check usually
         means that something is wrong with the worker.
-        If a worker misses too many consecutive health checks, it is marked as dead
-        and a WorkerHealthCheckMissedError is propagated as the error in the
-        worker status, for the controller to handle.
+        Subsequent calls to poll the worker will continue waiting on the
+        hanging poll task.
+
+        If a worker's health check hangs for too long, it is marked as dead
+        and a WorkerHealthCheckTimeoutError is propagated as the error in the
+        worker status for the controller to handle.
+
         If a worker's poll task fails, a WorkerHealthCheckFailedError is similarly
         propagated in the worker status.
 
         Returns:
-            poll_results: A list of poll results from each worker.
-            poll_errors: Poll task errors or None if the poll task succeeded.
+            poll_results: A list of WorkerStatus objects.
+                If polling a certain worker hangs or fails, the corresponding
+                WorkerStatus object will include a system error mentioned above.
         """
+        start_time = time_monotonic()
         poll_tasks = self._get_poll_tasks()
         poll_task_to_world_rank = {
             poll_task: i for i, poll_task in enumerate(poll_tasks)
@@ -412,20 +430,21 @@ class WorkerGroup:
             hanging_rank = poll_task_to_world_rank[hanging_poll]
 
             # The hanging poll task should be saved and awaited in the next round.
-            self._world_rank_to_ongoing_poll[hanging_rank] = hanging_poll
-
-            self._num_consecutive_poll_misses[hanging_rank] += 1
-            total_misses = self._num_consecutive_poll_misses[hanging_rank]
+            # Save the start time of the poll task to check for timeouts.
+            # Don't overwrite the ongoing poll task if it already exists.
+            ongoing_poll = self._world_rank_to_ongoing_poll.setdefault(
+                hanging_rank, PollTask(start_time, hanging_poll)
+            )
 
             error = None
-            if total_misses >= self._max_consecutive_poll_misses:
+            elapsed_time_s = time_monotonic() - ongoing_poll.start_time
+            if elapsed_time_s > self._worker_health_check_timeout_s:
                 error_msg = (
-                    f"A worker has missed {total_misses} "
-                    "consecutive health checks. Marking the worker as dead.\n"
+                    f"A worker health check has been hanging for {elapsed_time_s} "
+                    "seconds. Marking the worker as dead.\n"
                     f"Worker info: {self._workers[hanging_rank]}"
                 )
-                logger.error(error_msg)
-                error = WorkerHealthCheckMissedError(error_msg)
+                error = WorkerHealthCheckTimeoutError(error_msg)
 
             poll_task_to_result[hanging_poll] = WorkerStatus(
                 running=True, error=error, training_result=None
@@ -440,9 +459,6 @@ class WorkerGroup:
             try:
                 poll_result: WorkerStatus = ray.get(done_poll)
                 poll_task_to_result[done_poll] = poll_result
-
-                # Reset the consecutive poll misses for the worker.
-                self._num_consecutive_poll_misses[done_rank] = 0
             except Exception as e:
                 error_msg = (
                     "A worker health check failed.\n"

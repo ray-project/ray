@@ -7,14 +7,14 @@ import pytest
 import ray
 from ray.train.v2._internal.constants import (
     ENV_VARS_TO_PROPAGATE,
-    MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
+    WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
 )
 from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
     WorkerHealthCheckFailedError,
-    WorkerHealthCheckMissedError,
+    WorkerHealthCheckTimeoutError,
 )
 from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.worker_group import (
@@ -26,7 +26,7 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2.api.config import RunConfig
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(autouse=True, scope="module")
 def ray_start_4_cpus():
     ray.init(num_cpus=4)
     yield
@@ -45,7 +45,7 @@ def test_start_failure():
         wg.start(num_workers=4, resources_per_worker={"CPU": 1})
 
 
-def test_start_timeout(ray_start_4_cpus, monkeypatch):
+def test_start_timeout(monkeypatch):
     monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0")
 
     class HangingWorker(RayTrainWorker):
@@ -60,7 +60,7 @@ def test_start_timeout(ray_start_4_cpus, monkeypatch):
         wg.start(num_workers=4, resources_per_worker={"CPU": 1})
 
 
-def test_poll_status_running(ray_start_4_cpus):
+def test_poll_status_running():
     wg = WorkerGroup()
     wg.start(num_workers=4, resources_per_worker={"CPU": 1})
     wg.run_train_fn(lambda: time.sleep(60))
@@ -72,7 +72,7 @@ def test_poll_status_running(ray_start_4_cpus):
     assert not status.errors
 
 
-def test_poll_status_finished(ray_start_4_cpus):
+def test_poll_status_finished():
     wg = WorkerGroup()
     wg.start(num_workers=4, resources_per_worker={"CPU": 1})
     wg.run_train_fn(lambda: "done")
@@ -92,9 +92,7 @@ def test_poll_status_finished(ray_start_4_cpus):
 
 @pytest.mark.parametrize("training_failure", [True, False])
 @pytest.mark.parametrize("poll_failure", [True, False])
-def test_poll_status_failures(
-    ray_start_4_cpus, monkeypatch, training_failure, poll_failure
-):
+def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
     def train_fn():
         if training_failure:
             raise RuntimeError("train error")
@@ -135,13 +133,8 @@ def test_poll_status_failures(
         assert not status.errors
 
 
-@pytest.mark.parametrize("max_consecutive_misses", [1, 3])
-def test_poll_status_healthcheck_miss_handling(
-    ray_start_4_cpus, monkeypatch, max_consecutive_misses
-):
-    monkeypatch.setenv(
-        MAX_CONSECUTIVE_HEALTH_CHECK_MISSES_ENV_VAR, str(max_consecutive_misses)
-    )
+def test_poll_status_healthcheck_timeout(monkeypatch):
+    monkeypatch.setenv(WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR, "0")
 
     def hanging_poll_status(worker_self):
         time.sleep(60)
@@ -155,16 +148,12 @@ def test_poll_status_healthcheck_miss_handling(
         wg.start(num_workers=4, resources_per_worker={"CPU": 1})
         wg.run_train_fn(lambda: None)
 
-        for _ in range(max_consecutive_misses - 1):
-            status = wg.poll_status(timeout=0.01)
-            assert not status.errors
-
         status = wg.poll_status(timeout=0.01)
 
         assert len(status.errors) == 4
         assert all(
             [
-                isinstance(error, WorkerHealthCheckMissedError)
+                isinstance(error, WorkerHealthCheckTimeoutError)
                 for error in status.errors.values()
             ]
         )
@@ -172,7 +161,7 @@ def test_poll_status_healthcheck_miss_handling(
         wg.shutdown()
 
 
-def test_group_workers_by_ip(ray_start_4_cpus):
+def test_group_workers_by_ip():
     def create_workers(node_ids):
         return [
             Worker(
@@ -206,7 +195,7 @@ def test_group_workers_by_ip(ray_start_4_cpus):
     ), "Workers should be grouped by ID, with the first ID being 1."
 
 
-def test_local_rank_assignment(ray_start_4_cpus):
+def test_local_rank_assignment():
     def create_workers(pids, node_ids, gpu_ids):
         return [
             Worker(
@@ -281,7 +270,7 @@ def test_local_rank_assignment(ray_start_4_cpus):
     setup_and_check_worker_group(**gpu_workers_multiple_gpus_config)
 
 
-def test_setup_worker_group(ray_start_4_cpus, tmp_path):
+def test_setup_worker_group(tmp_path):
     num_workers = 4
     worker_group = WorkerGroup(
         run_config=RunConfig(name="test", storage_path=str(tmp_path))
@@ -305,7 +294,7 @@ def test_setup_worker_group(ray_start_4_cpus, tmp_path):
 
 
 @pytest.mark.parametrize("queue_backlog_length", [0, 1, 3])
-def test_flush_worker_result_queue(ray_start_4_cpus, queue_backlog_length):
+def test_flush_worker_result_queue(queue_backlog_length):
     """Make sure that the result queue is fully consumed before the worker exits."""
     wg = WorkerGroup()
     wg.start(num_workers=4, resources_per_worker={"CPU": 1})
@@ -331,7 +320,7 @@ def test_flush_worker_result_queue(ray_start_4_cpus, queue_backlog_length):
     wg.shutdown()
 
 
-def test_env_var_propagation(ray_start_4_cpus, monkeypatch):
+def test_env_var_propagation(monkeypatch):
     """Ray Train should automatically propagate some environment variables
     from the driver to the workers."""
     test_env_var = ENV_VARS_TO_PROPAGATE[0]
