@@ -134,10 +134,9 @@ marl_module = module.as_multi_agent()
 
 
 # __write-custom-sa-rlmodule-torch-begin__
-from typing import Mapping, Any
+from typing import Any, Dict
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
-from ray.rllib.utils.nested_dict import NestedDict
 
 import torch
 import torch.nn as nn
@@ -160,15 +159,15 @@ class DiscreteBCTorchModule(TorchRLModule):
 
         self.input_dim = input_dim
 
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
 
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
 
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         action_logits = self.policy(batch["obs"])
         return {"action_dist": torch.distributions.Categorical(logits=action_logits)}
 
@@ -203,13 +202,13 @@ class DiscreteBCTfModule(TfRLModule):
 
         self.input_dim = input_dim
 
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         return self._forward_train(batch)
 
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         return self._forward_train(batch)
 
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         action_logits = self.policy(batch["obs"])
         return {"action_dist": tf.distributions.Categorical(logits=action_logits)}
 
@@ -308,15 +307,15 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
             nn.Linear(hidden_dim, action_dim),
         )
 
-    def _forward_inference(self, batch):
+    def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
             return self._common_forward(batch)
 
-    def _forward_exploration(self, batch):
+    def _forward_exploration(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
             return self._common_forward(batch)
 
-    def _forward_train(self, batch):
+    def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         return self._common_forward(batch)
 
     def _common_forward(self, batch):
@@ -429,8 +428,14 @@ module.save_to_path(module_ckpt_path)
 # Create a new RLModule from the checkpoint.
 loaded_module = RLModule.from_checkpoint(module_ckpt_path)
 
-# Create a new Algorithm and load the saved RLModule state into it.
+# Create a new Algorithm (with the changed module config: 32 units instead of the
+# default 256; otherwise loading the state of `module` will fail due to a shape
+# mismatch).
+config.rl_module(model_config_dict=config.model_config | {"fcnet_hiddens": [32]})
 algo = config.build()
+# Now load the saved RLModule state (from the above `module.save_to_path()`) into the
+# Algorithm's RLModule(s). Note that all RLModules within the algo get updated, the ones
+# in the Learner workers and the ones in the EnvRunners.
 algo.restore_from_path(
     module_ckpt_path,  # <- NOT an Algorithm checkpoint, but single-agent RLModule one.
     # We have to provide the exact component-path to the (single) RLModule
