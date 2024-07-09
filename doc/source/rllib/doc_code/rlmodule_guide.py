@@ -401,7 +401,7 @@ import tempfile
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 
 config = (
     PPOConfig()
@@ -422,24 +422,22 @@ module_spec = SingleAgentRLModuleSpec(
 )
 module = module_spec.build()
 
-# Create the checkpoint
+# Create the checkpoint.
 module_ckpt_path = tempfile.mkdtemp()
-module.save_to_checkpoint(module_ckpt_path)
+module.save_to_path(module_ckpt_path)
 
-# Create a new RL Module from the checkpoint
-module_to_load_spec = SingleAgentRLModuleSpec(
-    module_class=PPOTorchRLModule,
-    observation_space=env.observation_space,
-    action_space=env.action_space,
-    model_config_dict={"fcnet_hiddens": [32]},
-    catalog_class=PPOCatalog,
-    load_state_path=module_ckpt_path,
+# Create a new RLModule from the checkpoint.
+loaded_module = RLModule.from_checkpoint(module_ckpt_path)
+
+# Create a new Algorithm and load the saved RLModule state into it.
+algo = config.build()
+algo.restore_from_path(
+    module_ckpt_path,  # <- NOT an Algorithm checkpoint, but single-agent RLModule one.
+    # We have to provide the exact component-path to the (single) RLModule
+    # within the algorithm, which is:
+    component="learner_group/learner/rl_module/default_policy",
 )
 
-# Train with the checkpointed RL Module
-config.rl_module(rl_module_spec=module_to_load_spec)
-algo = config.build()
-algo.train()
 # __checkpointing-end__
 algo.stop()
 shutil.rmtree(module_ckpt_path)

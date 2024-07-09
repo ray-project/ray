@@ -138,10 +138,11 @@ Saving, Loading, Checkpointing, and Restoring States
     :nosignatures:
     :toctree: doc/
 
-    Learner.save_state
-    Learner.load_state
     Learner.get_state
     Learner.set_state
+    Learner.save_to_path
+    Learner.restore_from_path
+    Learner.from_checkpoint
     Learner._get_optimizer_state
     Learner._set_optimizer_state
 
