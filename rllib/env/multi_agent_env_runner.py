@@ -1,7 +1,7 @@
 from collections import defaultdict
 from functools import partial
 import logging
-from typing import Any, Collection, DefaultDict, Dict, List, Optional, Union
+from typing import Collection, DefaultDict, Dict, List, Optional, Union
 
 import gymnasium as gym
 
@@ -41,7 +41,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.pre_checks.env import check_multiagent_environments
-from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict
+from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, StateDict
 from ray.util.annotations import PublicAPI
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
@@ -662,7 +662,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         *,
         not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> StateDict:
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -691,7 +691,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         return state
 
     @override(Checkpointable)
-    def set_state(self, state: Dict[str, Any]) -> None:
+    def set_state(self, state: StateDict) -> None:
         if COMPONENT_ENV_TO_MODULE_CONNECTOR in state:
             self._env_to_module.set_state(state[COMPONENT_ENV_TO_MODULE_CONNECTOR])
         if COMPONENT_MODULE_TO_ENV_CONNECTOR in state:

@@ -9,7 +9,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from collections import defaultdict
 from functools import partial
-from typing import List, Tuple
+from typing import Collection, List, Optional, Tuple, Union
 
 import gymnasium as gym
 import numpy as np
@@ -47,7 +47,7 @@ from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.numpy import convert_to_numpy, one_hot
 from ray.rllib.utils.spaces.space_utils import batch, unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 _, tf, _ = try_import_tf()
@@ -519,7 +519,13 @@ class DreamerV3EnvRunner(EnvRunner):
         # Return reduced metrics.
         return self.metrics.reduce()
 
-    def get_state(self, components, *, inference_only, **kwargs):
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
         """Returns the weights of our (single-agent) RLModule."""
         if self.module is None:
             assert self.config.share_module_between_env_runner_and_learner
@@ -527,13 +533,11 @@ class DreamerV3EnvRunner(EnvRunner):
         else:
             return {
                 COMPONENT_RL_MODULE: {
-                    DEFAULT_MODULE_ID: (
-                        self.module.get_state(inference_only=inference_only)
-                    ),
+                    DEFAULT_MODULE_ID: self.module.get_state(**kwargs),
                 },
             }
 
-    def set_state(self, state):
+    def set_state(self, state: StateDict) -> None:
         """Writes the weights of our (single-agent) RLModule."""
         if self.module is None:
             assert self.config.share_module_between_env_runner_and_learner
