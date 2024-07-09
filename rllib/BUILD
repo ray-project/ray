@@ -235,7 +235,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi_agent_cartpole_appo_old_api_stack.py"],
     args = ["--dir=tuned_examples/appo"]
@@ -257,7 +257,7 @@ py_test(
     name = "learning_tests_cartpole_appo_fake_gpus_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo-fake-gpus.yaml"],
     args = ["--dir=tuned_examples/appo"]
