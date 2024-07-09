@@ -435,14 +435,17 @@ void raylet::RayletClient::PushMutableObject(
   for (uint64_t i = 0; i < total_num_chunks; i++) {
     rpc::PushMutableObjectRequest request;
     request.set_writer_object_id(writer_object_id.Binary());
-    request.set_data_size(data_size);
-    request.set_metadata_size(metadata_size);
+    request.set_total_data_size(data_size);
+    request.set_total_metadata_size(metadata_size);
+
+    uint64_t total_size = data_size + metadata_size;
+    uint64_t chunk_size = (i < total_num_chunks - 1) ? kMaxGrpcPayloadSize
+                                                     : (total_size % kMaxGrpcPayloadSize);
+    request.set_written_so_far(i * kMaxGrpcPayloadSize);
+    request.set_chunk_size(chunk_size);
     // This assumes that the format of the object is a contiguous buffer of (data |
     // metadata).
-    request.set_data(data, data_size + metadata_size);
-
-    request.set_chunk_idx(i);
-    request.set_total_num_chunks(total_num_chunks);
+    request.set_payload(data, chunk_size);
 
     // Only execute the callback once the entire object has been sent.
     bool execute_callback = (i == total_num_chunks - 1);

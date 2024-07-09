@@ -112,29 +112,42 @@ void MutableObjectProvider::HandlePushMutableObject(
     RAY_CHECK(it != remote_writer_object_to_local_reader_.end());
     info = it->second;
   }
-  size_t data_size = request.data_size();
-  size_t metadata_size = request.metadata_size();
+  size_t total_data_size = request.data_size();
+  size_t total_metadata_size = request.metadata_size();
 
-  uint64_t chunk_idx = request.chunk_idx();
-  uint64_t total_num_chunks = request.total_num_chunks();
+  uint64_t written_so_far = request.written_so_far();
+  uint64_t chunk_size = request.chunk_size();
 
-  // Copy both the data and metadata to a local channel.
-  std::shared_ptr<Buffer> data;
-  const uint8_t *metadata_ptr =
-      reinterpret_cast<const uint8_t *>(request.data().data()) + request.data_size();
-  RAY_CHECK_OK(object_manager_->WriteAcquire(info.local_object_id,
-                                             data_size,
-                                             metadata_ptr,
-                                             metadata_size,
-                                             info.num_readers,
-                                             data));
-  RAY_CHECK(data);
+  std::shared_ptr<Buffer> backing_store;
+  if (!written_so_far) {
+    // We set `metadata` to nullptr since the metadata is at the end of the object, which
+    // we will not have until the last chunk is received (or until the two last chunks are
+    // received, if the metadata happens to span both). The metadata will end up being
+    // written along with the data as the chunks are written.
+    RAY_CHECK_OK(object_manager_->WriteAcquire(info.local_object_id,
+                                               data_size,
+                                               /*metadata=*/nullptr,
+                                               metadata_size,
+                                               info.num_readers,
+                                               backing_store));
+    RAY_CHECK(backing_store);
+  }
+  RAY_CHECK_OK(WriteGetObjectBackingStore(
+      info.local_object_id, data_size, metadata_size, backing_store));
+  RAY_CHECK(backing_store);
+
+  // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
+  // above checks that the buffer size is large enough to hold both the data and the
+  // metadata.
+  memcpy(data->Data() + written_so_far, request.payload().data(), chunk_size);
 
   size_t total_size = data_size + metadata_size;
-  // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
-  // above checks that the buffer size is at least `total_size`.
-  memcpy(data->Data(), request.data().data(), total_size);
-  RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
+  size_t total_written = written_so_far + chunk_size;
+  RAY_CHECK_LE(total_written, total_size);
+  if (total_written == total_size) {
+    // The entire object has been written, so call `WriteRelease()`.
+    RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
+  }
 }
 
 Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,

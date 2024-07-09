@@ -107,6 +107,11 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   ///         otherwise.
   bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
 
+  Status WriteGetObjectBackingStore(const ObjectID &object_id,
+                                    int64_t data_size,
+                                    int64_t metadata_size,
+                                    std::shared_ptr<Buffer> &data);
+
   /// Acquires a write lock on the object that prevents readers from reading
   /// until we are done writing. This is safe for concurrent writers.
   ///
