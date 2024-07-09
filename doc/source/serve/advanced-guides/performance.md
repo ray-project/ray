@@ -62,8 +62,7 @@ and it can't be updated during runtime. Use [client-side retries](serve-best-pra
 to retry requests that time out due to transient failures.
 
 :::{note}
-Serve returns response with status code `408` when the request timed out. Clients can
-handle this status code and retry the request.
+Serve returns a response with status code `408` when a request times out. Clients can retry when they receive this `408` response.
 :::
 
 ### Give the Serve Controller more time to process requests
