@@ -115,12 +115,8 @@ void MutableObjectProvider::HandlePushMutableObject(
   uint64_t written_so_far = request.written_so_far();
   uint64_t chunk_size = request.chunk_size();
 
-  RAY_LOG(WARNING) << "Here! written_so_far = " << written_so_far
-                   << ", chunk_size = " << chunk_size;
-
   std::shared_ptr<Buffer> backing_store;
   if (!written_so_far) {
-    RAY_LOG(WARNING) << "written_so_far is 0, so WriteAcquire()";
     // We set `metadata` to nullptr since the metadata is at the end of the object, which
     // we will not have until the last chunk is received (or until the two last chunks are
     // received, if the metadata happens to span both). The metadata will end up being
@@ -146,8 +142,6 @@ void MutableObjectProvider::HandlePushMutableObject(
   size_t total_written = written_so_far + chunk_size;
   RAY_CHECK_LE(total_written, total_size);
   if (total_written == total_size) {
-    RAY_LOG(WARNING) << "written_so_far is equal to total_written (" << total_written
-                     << "), so WriteRelease()";
     // The entire object has been written, so call `WriteRelease()`.
     RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
   }

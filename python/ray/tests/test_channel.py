@@ -1,7 +1,6 @@
 # coding: utf-8
 import logging
 import os
-import re
 import sys
 import time
 import traceback
@@ -961,7 +960,6 @@ def test_payload_too_large(ray_start_cluster):
             return ray.get_runtime_context().get_node_id()
 
         def read(self, channel, val):
-            print(channel.read())
             assert channel.read() == val
 
     def create_actor(node):
@@ -977,6 +975,7 @@ def test_payload_too_large(ray_start_cluster):
 
     size = 1024 * 1024 * 512
     ch = ray_channel.Channel(None, [a], size)
+
     val = b"x" * size
     ch.write(val)
     ray.get(a.read.remote(ch, val))
@@ -1021,17 +1020,12 @@ def test_payload_resize_too_large(ray_start_cluster):
     a = create_actor(actor_node)
     assert driver_node != ray.get(a.get_node_id.remote())
 
-    chan = ray_channel.Channel(None, [a], 1000)
+    ch = ray_channel.Channel(None, [a], 1000)
 
-    with pytest.raises(
-        ValueError,
-        match=re.escape(
-            "The reader and writer are on different nodes, so the object written to "
-            "the channel must have a size less than or equal to the max gRPC payload "
-            "size (471859200 bytes)."
-        ),
-    ):
-        chan.write(b"x" * (1024 * 1024 * 512))
+    size = 1024 * 1024 * 512
+    val = b"x" * size
+    ch.write(val)
+    ray.get(a.read.remote(ch, val))
 
 
 @pytest.mark.skipif(

@@ -432,9 +432,6 @@ void raylet::RayletClient::PushMutableObject(
   if (total_size % kMaxGrpcPayloadSize) {
     total_num_chunks++;
   }
-  RAY_LOG(WARNING) << "total_size: " << total_size
-                   << ", total_num_chunks: " << total_num_chunks
-                   << ", kMaxGrpcPayloadSize: " << kMaxGrpcPayloadSize;
 
   for (uint64_t i = 0; i < total_num_chunks; i++) {
     rpc::PushMutableObjectRequest request;
