@@ -302,9 +302,6 @@ def test_multiple_channels_different_nodes(ray_start_cluster):
 
     @ray.remote(num_cpus=1)
     class Actor:
-        def __init__(self):
-            pass
-
         def read(self, channel, val):
             read_val = channel.read()
             if isinstance(val, np.ndarray):
@@ -963,6 +960,10 @@ def test_payload_too_large(ray_start_cluster):
         def get_node_id(self):
             return ray.get_runtime_context().get_node_id()
 
+        def read(self, channel, val):
+            print(channel.read())
+            assert channel.read() == val
+
     def create_actor(node):
         return Actor.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
@@ -974,15 +975,11 @@ def test_payload_too_large(ray_start_cluster):
     a = create_actor(actor_node)
     assert driver_node != ray.get(a.get_node_id.remote())
 
-    with pytest.raises(
-        ValueError,
-        match=re.escape(
-            "The reader and writer are on different nodes, so the object written to "
-            "the channel must have a size less than or equal to the max gRPC payload "
-            "size (471859200 bytes)."
-        ),
-    ):
-        ray_channel.Channel(None, [a], 1024 * 1024 * 512)
+    size = 1024 * 1024 * 512
+    ch = ray_channel.Channel(None, [a], size)
+    val = b"x" * size
+    ch.write(val)
+    ray.get(a.read.remote(ch, val))
 
 
 @pytest.mark.skipif(
@@ -1009,6 +1006,9 @@ def test_payload_resize_too_large(ray_start_cluster):
     class Actor:
         def get_node_id(self):
             return ray.get_runtime_context().get_node_id()
+
+        def read(self, channel, val):
+            assert channel.read() == val
 
     def create_actor(node):
         return Actor.options(

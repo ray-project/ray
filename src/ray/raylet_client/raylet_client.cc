@@ -425,12 +425,16 @@ void raylet::RayletClient::PushMutableObject(
     void *data,
     const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback) {
   static constexpr uint64_t kMaxGrpcPayloadSize = 1024 * 1024 * 450;  // 450 MiB.
-  uint64_t total_num_chunks = data_size / kMaxGrpcPayloadSize;
-  // If `data_size` is not a multiple of `kMaxGrpcPayloadSize`, then we need to send an
+  uint64_t total_size = data_size + metadata_size;
+  uint64_t total_num_chunks = total_size / kMaxGrpcPayloadSize;
+  // If `total_size` is not a multiple of `kMaxGrpcPayloadSize`, then we need to send an
   // extra chunk with the remaining data.
-  if (data_size % kMaxGrpcPayloadSize) {
+  if (total_size % kMaxGrpcPayloadSize) {
     total_num_chunks++;
   }
+  RAY_LOG(WARNING) << "total_size: " << total_size
+                   << ", total_num_chunks: " << total_num_chunks
+                   << ", kMaxGrpcPayloadSize: " << kMaxGrpcPayloadSize;
 
   for (uint64_t i = 0; i < total_num_chunks; i++) {
     rpc::PushMutableObjectRequest request;
@@ -438,14 +442,14 @@ void raylet::RayletClient::PushMutableObject(
     request.set_total_data_size(data_size);
     request.set_total_metadata_size(metadata_size);
 
-    uint64_t total_size = data_size + metadata_size;
     uint64_t chunk_size = (i < total_num_chunks - 1) ? kMaxGrpcPayloadSize
                                                      : (total_size % kMaxGrpcPayloadSize);
-    request.set_written_so_far(i * kMaxGrpcPayloadSize);
+    uint64_t written_so_far = i * kMaxGrpcPayloadSize;
+    request.set_written_so_far(written_so_far);
     request.set_chunk_size(chunk_size);
     // This assumes that the format of the object is a contiguous buffer of (data |
     // metadata).
-    request.set_payload(data, chunk_size);
+    request.set_payload(static_cast<char *>(data) + written_so_far, chunk_size);
 
     // Only execute the callback once the entire object has been sent.
     bool execute_callback = (i == total_num_chunks - 1);
