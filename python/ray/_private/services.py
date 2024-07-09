@@ -177,12 +177,7 @@ def _build_python_executable_command_memory_profileable(
 
 
 def _get_gcs_client_options(gcs_server_address):
-    return GcsClientOptions.create(
-        gcs_server_address,
-        None,
-        allow_cluster_id_nil=True,
-        fetch_cluster_id_if_nil=False,
-    )
+    return GcsClientOptions.from_gcs_address(gcs_server_address)
 
 
 def serialize_config(config):
@@ -453,9 +448,7 @@ def wait_for_node(
         TimeoutError: An exception is raised if the timeout expires before
             the node appears in the client table.
     """
-    gcs_options = GcsClientOptions.create(
-        gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
-    )
+    gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
     global_state = ray._private.state.GlobalState()
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()

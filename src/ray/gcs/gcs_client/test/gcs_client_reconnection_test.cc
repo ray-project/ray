@@ -91,11 +91,8 @@ class GcsClientReconnectionTest : public ::testing::Test {
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
     });
-    gcs::GcsClientOptions options("127.0.0.1",
-                                  config_.grpc_server_port,
-                                  ClusterID::Nil(),
-                                  /*allow_cluster_id_nil=*/true,
-                                  /*fetch_cluster_id_if_nil=*/false);
+    gcs::GcsClientOptions options("127.0.0.1:" +
+                                  std::to_string(config_.grpc_server_port));
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
     return gcs_client_.get();

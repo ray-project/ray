@@ -75,11 +75,8 @@ class RayTestTimeoutException(Exception):
 
 
 def make_global_state_accessor(ray_context):
-    gcs_options = GcsClientOptions.create(
-        ray_context.address_info["gcs_address"],
-        None,
-        allow_cluster_id_nil=True,
-        fetch_cluster_id_if_nil=False,
+    gcs_options = GcsClientOptions.from_gcs_address(
+        ray_context.address_info["gcs_address"]
     )
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()

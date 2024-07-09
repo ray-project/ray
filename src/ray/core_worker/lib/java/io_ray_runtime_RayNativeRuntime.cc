@@ -41,11 +41,7 @@ inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env, jobject gcs_client_
       env,
       (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
 
-  return gcs::GcsClientOptions(ip,
-                               port,
-                               ray::ClusterID::Nil(),
-                               /*allow_cluster_id_nil=*/true,
-                               /*fetch_cluster_id_if_nil=*/false);
+  return gcs::GcsClientOptions(ip + ":" + std::to_string(port));
 }
 
 jobject ToJavaArgs(JNIEnv *env,

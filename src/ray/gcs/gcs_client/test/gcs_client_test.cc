@@ -90,6 +90,9 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
+    // Create GCS client.
+    gcs::GcsClientOptions options("127.0.0.1:5397");
+    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     ReconnectClient();
   }
 
@@ -111,15 +114,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   void ReconnectClient() {
-    // Reconnecting a client happens when the server restarts with a different cluster
-    // id. So we nede to re-create the client with the new cluster id.
-    gcs::GcsClientOptions options("127.0.0.1",
-                                  5397,
-                                  gcs_server_->GetClusterId(),
-                                  /*allow_cluster_id_nil=*/false,
-                                  /*fetch_cluster_id_if_nil=*/false);
-    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
+    ClusterID cluster_id = gcs_server_->GetClusterId();
+    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_, cluster_id));
   }
 
   void StampContext(grpc::ClientContext &context) {
