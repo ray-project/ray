@@ -146,7 +146,7 @@ def test_schema_equivalance():
     assert _get_run_info_sample() == run_info_from_json
 
 
-def test_state_actor_api():
+def test_state_actor_api(ray_start_4_cpus):
     state_actor = get_or_create_state_actor()
     named_actors = ray.util.list_named_actors(all_namespaces=True)
     assert {
