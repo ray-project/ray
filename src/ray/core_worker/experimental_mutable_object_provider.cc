@@ -89,9 +89,6 @@ void MutableObjectProvider::HandleRegisterMutableObject(
     const ObjectID &reader_object_id) {
   absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
 
-  uint64_t chunk_idx = request.chunk_idx();
-  uint64_t total_num_chunks = request.total_num_chunks();
-
   LocalReaderInfo info;
   info.num_readers = num_readers;
   info.local_object_id = reader_object_id;
@@ -112,8 +109,8 @@ void MutableObjectProvider::HandlePushMutableObject(
     RAY_CHECK(it != remote_writer_object_to_local_reader_.end());
     info = it->second;
   }
-  size_t total_data_size = request.data_size();
-  size_t total_metadata_size = request.metadata_size();
+  size_t total_data_size = request.total_data_size();
+  size_t total_metadata_size = request.total_metadata_size();
 
   uint64_t written_so_far = request.written_so_far();
   uint64_t chunk_size = request.chunk_size();
@@ -125,23 +122,23 @@ void MutableObjectProvider::HandlePushMutableObject(
     // received, if the metadata happens to span both). The metadata will end up being
     // written along with the data as the chunks are written.
     RAY_CHECK_OK(object_manager_->WriteAcquire(info.local_object_id,
-                                               data_size,
+                                               total_data_size,
                                                /*metadata=*/nullptr,
-                                               metadata_size,
+                                               total_metadata_size,
                                                info.num_readers,
                                                backing_store));
     RAY_CHECK(backing_store);
   }
-  RAY_CHECK_OK(WriteGetObjectBackingStore(
-      info.local_object_id, data_size, metadata_size, backing_store));
+  RAY_CHECK_OK(object_manager_->WriteGetObjectBackingStore(
+      info.local_object_id, total_data_size, total_metadata_size, backing_store));
   RAY_CHECK(backing_store);
 
   // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
   // above checks that the buffer size is large enough to hold both the data and the
   // metadata.
-  memcpy(data->Data() + written_so_far, request.payload().data(), chunk_size);
+  memcpy(backing_store->Data() + written_so_far, request.payload().data(), chunk_size);
 
-  size_t total_size = data_size + metadata_size;
+  size_t total_size = total_data_size + total_metadata_size;
   size_t total_written = written_so_far + chunk_size;
   RAY_CHECK_LE(total_written, total_size);
   if (total_written == total_size) {

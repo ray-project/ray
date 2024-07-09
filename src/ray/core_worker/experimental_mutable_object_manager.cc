@@ -257,6 +257,7 @@ Status MutableObjectManager::WriteGetObjectBackingStore(const ObjectID &object_i
   if (!channel) {
     return Status::ChannelError("Channel has not been registered");
   }
+  RAY_CHECK(channel->written);
 
   std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
   int64_t total_size = data_size + metadata_size;
