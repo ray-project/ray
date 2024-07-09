@@ -2,7 +2,7 @@
 
 # Train a PyTorch Model on Fashion MNIST with CPUs on Kubernetes
 
-This example runs distributed training of a PyTorch model on Fashion MNIST with Ray Train. See [Train a PyTorch Model on Fashion MNIST](../../../train/examples/pytorch/torch_fashion_mnist_example.rst) for more details.
+This example runs distributed training of a PyTorch model on Fashion MNIST with Ray Train. See [Train a PyTorch Model on Fashion MNIST](train-pytorch-fashion-mnist) for more details.
 
 ## Step 1: Create a Kubernetes cluster
 
@@ -27,7 +27,7 @@ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operat
 
 You might need to adjust some fields in the RayJob description YAML file so that it can run in your environment:
 * `replicas` under `workerGroupSpecs` in `rayClusterSpec`: This field specifies the number of worker Pods that will be scheduled to the Kubernetes cluster. Each worker Pod and the head Pod, as described in the `template` field, require 2 CPUs. A RayJob submitter Pod requires 1 CPU. For example, if your machine has 8 CPUs, the maximum `replicas` value will be 2 to allow all Pods to reach the `Running` status.
-* `NUM_WORKERS` under `runtimeEnvYAML` in `spec`: This field indicates the number of Ray actors to launch (see [Document](../../../train/api/doc/ray.train.ScalingConfig.rst) for more information). Each Ray actor must be served by a worker Pod in the Kubernetes cluster. Therefore, `NUM_WORKERS` must be less than or equal to `replicas`.
+* `NUM_WORKERS` under `runtimeEnvYAML` in `spec`: This field indicates the number of Ray actors to launch (see `ScalingConfig` in this [Document](ray-train-configs-api) for more information). Each Ray actor must be served by a worker Pod in the Kubernetes cluster. Therefore, `NUM_WORKERS` must be less than or equal to `replicas`.
 
 ```sh
 # `replicas` and `NUM_WORKERS` set to 2

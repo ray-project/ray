@@ -1,5 +1,7 @@
 :orphan:
 
+.. _train-pytorch-fashion-mnist:
+
 Train a PyTorch Model on Fashion MNIST
 ======================================
 
