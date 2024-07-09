@@ -1,4 +1,5 @@
 from typing import Optional
+
 from ray.dashboard.consts import COMPONENT_METRICS_TAG_KEYS
 
 
@@ -17,7 +18,7 @@ class NullMetric:
 
 try:
 
-    from prometheus_client import CollectorRegistry, Counter, Histogram, Gauge
+    from prometheus_client import CollectorRegistry, Counter, Gauge, Histogram
 
     # The metrics in this class should be kept in sync with
     # python/ray/tests/test_metrics_agent.py

@@ -1,17 +1,19 @@
 import json
+import logging
 import os
 from enum import Enum
+from urllib.parse import quote
+
 import aiohttp
 from aiohttp.web import Request, Response
+
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.metrics.metrics_head import (
-    PROMETHEUS_HOST_ENV_VAR,
     DEFAULT_PROMETHEUS_HOST,
+    PROMETHEUS_HOST_ENV_VAR,
     PrometheusQueryError,
 )
-from urllib.parse import quote
-import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
