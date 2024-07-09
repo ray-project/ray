@@ -1,21 +1,15 @@
 import logging
 
 from aiohttp.web import Request, Response
+
 import ray
-from ray.util.annotations import DeveloperAPI
-from ray.core.generated import (
-    gcs_service_pb2,
-    gcs_service_pb2_grpc,
-)
-from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.dashboard.modules.job.common import (
-    JobInfoStorageClient,
-)
-from ray.dashboard.modules.job.utils import (
-    find_jobs_by_job_ids,
-)
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
+from ray.dashboard.modules.job.common import JobInfoStorageClient
+from ray.dashboard.modules.job.utils import find_jobs_by_job_ids
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -38,8 +32,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
     async def get_train_runs(self, req: Request) -> Response:
         try:
             from ray.train._internal.state.schema import (
-                TrainRunsResponse,
                 TrainRunInfoWithDetails,
+                TrainRunsResponse,
             )
         except ImportError:
             logger.exception(
@@ -118,14 +112,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             logger.exception("Error Getting all actor info from GCS.")
 
         for train_run in train_runs.values():
-            train_run.controller_actor_status = actor_status_table.get(
-                train_run.controller_actor_id, None
-            )
-
             for worker_info in train_run.workers:
-                worker_info.actor_status = actor_status_table.get(
-                    worker_info.actor_id, None
-                )
+                worker_info.status = actor_status_table.get(worker_info.actor_id, None)
 
     @staticmethod
     def is_minimal_module():

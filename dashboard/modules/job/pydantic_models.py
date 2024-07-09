@@ -1,10 +1,9 @@
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from ray._private.pydantic_compat import BaseModel, Field, PYDANTIC_INSTALLED
+from ray._private.pydantic_compat import PYDANTIC_INSTALLED, BaseModel, Field
 from ray.dashboard.modules.job.common import JobStatus
 from ray.util.annotations import PublicAPI
-
 
 # Pydantic is not part of the minimal Ray installation.
 if PYDANTIC_INSTALLED:

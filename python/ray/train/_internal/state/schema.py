@@ -35,7 +35,7 @@ class TrainWorkerInfo(BaseModel):
     gpu_ids: List[int] = Field(
         description="A list of GPU ids allocated to that worker."
     )
-    actor_status: Optional[ActorStatusEnum] = Field(
+    status: Optional[ActorStatusEnum] = Field(
         description="The status of the train worker actor. It can be ALIVE or DEAD."
     )
 
@@ -77,9 +77,6 @@ class TrainRunInfo(BaseModel):
     end_time_ms: Optional[int] = Field(
         description="The UNIX timestamp of the end time of this Train run. "
         "If null, the Train run has not ended yet."
-    )
-    controller_actor_status: Optional[ActorStatusEnum] = Field(
-        description="The status of the controller actor. It can be ALIVE or DEAD."
     )
 
 

@@ -52,12 +52,9 @@ def test_add_actor_status(ray_start_8_cpus):
         resp = requests.get("http://" + url + "/api/train/v2/runs")
         assert resp.status_code == 200
         body = resp.json()
-        train_run = body["train_runs"][0]
-
-        train_run["controller_actor_status"] == expected_actor_status
 
         for worker_info in body["train_runs"][0]["workers"]:
-            assert worker_info["actor_status"] == expected_actor_status
+            assert worker_info["status"] == expected_actor_status
 
     def train_func():
         print("Training Starts")

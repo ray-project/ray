@@ -49,7 +49,6 @@ RUN_INFO_JSON_SAMPLE = """{
     "start_time_ms": 1717448423000,
     "run_status": "STARTED",
     "status_detail": "",
-    "controller_actor_status": null,
     "end_time_ms": null,
     "workers": [
         {
@@ -61,7 +60,7 @@ RUN_INFO_JSON_SAMPLE = """{
         "node_ip": "10.0.208.100",
         "pid": 76071,
         "gpu_ids": [0],
-        "actor_status": null
+        "status": null
         },
         {
         "actor_id": "8f162dd8365346d1b5c98ebd7338c4f9",
@@ -72,7 +71,7 @@ RUN_INFO_JSON_SAMPLE = """{
         "node_ip": "10.0.208.100",
         "pid": 76072,
         "gpu_ids": [1],
-        "actor_status": null
+        "status": null
         }
     ],
     "datasets": [

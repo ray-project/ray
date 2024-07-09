@@ -6,7 +6,6 @@ from ray.dashboard.modules.metrics.dashboards.common import (
     Target,
 )
 
-
 """
 Queries for autoscaler resources.
 """

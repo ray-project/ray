@@ -1,6 +1,5 @@
 import collections
 import logging
-import math
 import os
 import warnings
 from typing import (
@@ -48,7 +47,6 @@ from ray.data._internal.logical.operators.from_operators import (
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
-from ray.data._internal.pandas_block import _estimate_dataframe_size
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -1289,7 +1287,7 @@ def read_csv(
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
         By default, :meth:`~ray.data.read_csv` reads all files from file paths. If you want to filter
-        files by file extensions, set the ``partition_filter`` parameter.
+        files by file extensions, set the ``file_extensions`` parameter.
 
         Read only ``*.csv`` files from a directory.
 
@@ -2388,7 +2386,7 @@ def from_pandas(
        Create a Ray Dataset from a list of Pandas DataFrames.
 
         >>> ray.data.from_pandas([df, df])
-        MaterializedDataset(num_blocks=1, num_rows=6, schema={a: int64, b: int64})
+        MaterializedDataset(num_blocks=2, num_rows=6, schema={a: int64, b: int64})
 
     Args:
         dfs: A pandas dataframe or a list of pandas dataframes.
@@ -2405,24 +2403,20 @@ def from_pandas(
     if isinstance(dfs, pd.DataFrame):
         dfs = [dfs]
 
-    context = DataContext.get_current()
-    num_blocks = override_num_blocks
-    if num_blocks is None:
-        total_size = sum(_estimate_dataframe_size(df) for df in dfs)
-        num_blocks = max(math.ceil(total_size / context.target_max_block_size), 1)
-
-    if len(dfs) > 1:
-        # I assume most users pass a single DataFrame as input. For simplicity, I'm
-        # concatenating DataFrames, even though it's not efficient.
-        ary = pd.concat(dfs, axis=0)
-    else:
-        ary = dfs[0]
-    dfs = np.array_split(ary, num_blocks)
+    if override_num_blocks is not None:
+        if len(dfs) > 1:
+            # I assume most users pass a single DataFrame as input. For simplicity, I'm
+            # concatenating DataFrames, even though it's not efficient.
+            ary = pd.concat(dfs, axis=0)
+        else:
+            ary = dfs[0]
+        dfs = np.array_split(ary, override_num_blocks)
 
     from ray.air.util.data_batch_conversion import (
         _cast_ndarray_columns_to_tensor_extension,
     )
 
+    context = DataContext.get_current()
     if context.enable_tensor_extension_casting:
         dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
 
