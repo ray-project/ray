@@ -54,17 +54,17 @@ class DiscreteBCTorchModule(TorchRLModule):
         return [Columns.ACTION_DIST_INPUTS]
 
     @override(RLModule)
-    def _forward_inference(self, batch: Dict) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
 
     @override(RLModule)
-    def _forward_exploration(self, batch: Dict) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
 
     @override(RLModule)
-    def _forward_train(self, batch: Dict) -> Dict[str, Any]:
+    def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         action_logits = self.policy(batch["obs"])
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 

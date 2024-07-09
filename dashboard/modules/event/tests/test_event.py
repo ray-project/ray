@@ -1,38 +1,35 @@
-import os
-import sys
-import time
-import json
-import copy
-import logging
-import requests
 import asyncio
+import copy
+import json
+import logging
+import os
 import random
-import tempfile
 import socket
-
-from pprint import pprint
+import sys
+import tempfile
+import time
 from datetime import datetime
+from pprint import pprint
 
-import pytest
 import numpy as np
+import pytest
+import requests
 
 import ray
-from ray.util.state import list_cluster_events
-from ray._private.utils import binary_to_hex
-from ray.cluster_utils import AutoscalingCluster
 from ray._private.event.event_logger import filter_event_by_level, get_event_logger
-from ray.dashboard.tests.conftest import *  # noqa
-from ray.dashboard.modules.event import event_consts
-from ray.core.generated import event_pb2
 from ray._private.test_utils import (
     format_web_url,
-    wait_until_server_available,
     wait_for_condition,
+    wait_until_server_available,
 )
-from ray.dashboard.modules.event.event_utils import (
-    monitor_events,
-)
+from ray._private.utils import binary_to_hex
+from ray.cluster_utils import AutoscalingCluster
+from ray.core.generated import event_pb2
+from ray.dashboard.modules.event import event_consts
+from ray.dashboard.modules.event.event_utils import monitor_events
+from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobSubmissionClient
+from ray.util.state import list_cluster_events
 
 logger = logging.getLogger(__name__)
 

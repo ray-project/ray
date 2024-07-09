@@ -1,7 +1,7 @@
 import functools
 import logging
 from collections import abc
-from typing import Any, Callable, Dict
+from typing import Any, Callable, Dict, Union
 
 from ray.rllib.core.models.specs.specs_base import Spec, TypeSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict

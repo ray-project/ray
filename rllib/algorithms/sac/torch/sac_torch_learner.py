@@ -1,4 +1,4 @@
-from typing import Dict, Mapping
+from typing import Any, Dict
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
@@ -106,8 +106,8 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         *,
         module_id: ModuleID,
         config: SACConfig,
-        batch: Dict,
-        fwd_out: Mapping[str, TensorType]
+        batch: Dict[str, Any],
+        fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # Only for debugging.
         deterministic = config._deterministic_loss

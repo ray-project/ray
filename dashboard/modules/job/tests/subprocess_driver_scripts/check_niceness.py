@@ -3,8 +3,9 @@ A dummy ray driver script that executes in subprocess.
 Checks that job manager's environment variable is different.
 """
 
-import ray
 import os
+
+import ray
 
 
 def run():

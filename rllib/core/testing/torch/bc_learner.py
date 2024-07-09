@@ -1,5 +1,5 @@
 import torch
-from typing import Dict, Mapping, TYPE_CHECKING
+from typing import Any, Dict, TYPE_CHECKING
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
@@ -16,8 +16,8 @@ class BCTorchLearner(TorchLearner, BaseTestingLearner):
         *,
         module_id: ModuleID,
         config: "AlgorithmConfig",
-        batch: Dict,
-        fwd_out: Mapping[str, TensorType],
+        batch: Dict[str, Any],
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         BaseTestingLearner.compute_loss_for_module(
             self,

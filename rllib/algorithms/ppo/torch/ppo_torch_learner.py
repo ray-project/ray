@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+from typing import Any, Dict
 
 import numpy as np
 
@@ -38,7 +38,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         *,
         module_id: ModuleID,
         config: PPOConfig,
-        batch: Dict,
+        batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         # Possibly apply masking to some sub loss terms and to the total loss term
