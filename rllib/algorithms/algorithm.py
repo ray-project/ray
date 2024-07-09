@@ -947,8 +947,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if self.config.env_task_fn is not None:
             if not callable(self.config.env_task_fn):
                 raise ValueError(
-                    "`env_task_fn` must be None or a callable taking "
-                    "[train_results, env, env_ctx] as args!"
+                    "`env_task_fn` must be None or a callable taking"
+                    " [train_results, env, env_ctx] as args!"
                 )
 
             def fn(env, env_context, task_fn):
