@@ -1,10 +1,10 @@
 import ray
 from ray.dashboard.memory_utils import (
-    ReferenceType,
-    decode_object_ref_if_needed,
-    MemoryTableEntry,
     MemoryTable,
+    MemoryTableEntry,
+    ReferenceType,
     SortingType,
+    decode_object_ref_if_needed,
 )
 
 """Memory Table Unit Test"""
@@ -267,6 +267,7 @@ def test_group_by():
 
 if __name__ == "__main__":
     import sys
+
     import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

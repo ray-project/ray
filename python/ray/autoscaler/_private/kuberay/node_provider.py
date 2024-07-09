@@ -45,6 +45,9 @@ KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
 
 RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 
+# Key for GKE label that identifies which multi-host replica a pod belongs to
+REPLICA_INDEX_KEY = "replicaIndex"
+
 # Design:
 
 # Each modification the autoscaler wants to make is posted to the API server goal state
@@ -79,7 +82,10 @@ def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
     kind, type = kind_and_type(pod)
     status = status_tag(pod)
     ip = pod_ip(pod)
-    return NodeData(kind=kind, type=type, status=status, ip=ip)
+    replica_index = _replica_index_label(pod)
+    return NodeData(
+        kind=kind, type=type, replica_index=replica_index, status=status, ip=ip
+    )
 
 
 def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
@@ -94,6 +100,16 @@ def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
         kind = NODE_KIND_WORKER
         type = labels[KUBERAY_LABEL_KEY_TYPE]
     return kind, type
+
+
+def _replica_index_label(pod: Dict[str, Any]) -> Optional[str]:
+    """Returns the replicaIndex label for a Pod in a multi-host TPU worker group.
+    The replicaIndex label is set by the GKE TPU Ray webhook and is of
+    the form {$WORKER_GROUP_NAME-$REPLICA_INDEX} where $REPLICA_INDEX
+    is an integer from 0 to Replicas-1.
+    """
+    labels = pod["metadata"]["labels"]
+    return labels.get(REPLICA_INDEX_KEY, None)
 
 
 def pod_ip(pod: Dict[str, Any]) -> NodeIP:

@@ -1,6 +1,7 @@
 import subprocess
-import pytest
 import sys
+
+import pytest
 
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 

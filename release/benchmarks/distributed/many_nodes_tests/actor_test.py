@@ -6,6 +6,8 @@ import json
 import ray
 import psutil
 
+from dashboard_test import DashboardTestAtScale
+
 
 def test_max_actors_launch(cpus_per_actor, total_actors):
     @ray.remote(num_cpus=cpus_per_actor)
@@ -92,8 +94,6 @@ def run_one(total_actors, cpus_per_actor, no_wait):
 def main():
     args, unknown = parse_script_args()
     args.total_actors.sort()
-
-    from distributed.dashboard_test import DashboardTestAtScale
 
     addr = ray.init(address="auto")
     dashboard_test = DashboardTestAtScale(addr)

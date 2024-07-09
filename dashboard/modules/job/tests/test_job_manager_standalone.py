@@ -1,13 +1,12 @@
-import pytest
 import sys
 
-from ray._private.test_utils import (
-    async_wait_for_condition_async_predicate,
-)
+import pytest
+
+from ray._private.test_utils import async_wait_for_condition_async_predicate
 from ray.dashboard.modules.job.tests.conftest import (
-    create_ray_cluster,
-    create_job_manager,
     _driver_script_path,
+    create_job_manager,
+    create_ray_cluster,
 )
 from ray.dashboard.modules.job.tests.test_job_manager import check_job_succeeded
 

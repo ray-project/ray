@@ -1,3 +1,4 @@
+# @OldAPIStack
 """Example of using a custom ModelV2 Keras-style model."""
 
 import argparse

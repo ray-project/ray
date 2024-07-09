@@ -99,12 +99,12 @@ class LoggingConfig(BaseModel):
             from ray import serve
             from ray.serve.schema import LoggingConfig
             # Set log level for the deployment.
-            @serve.deployment(LoggingConfig(log_level="DEBUG")
+            @serve.deployment(LoggingConfig(log_level="DEBUG"))
             class MyDeployment:
                 def __call__(self) -> str:
                     return "Hello world!"
             # Set log directory for the deployment.
-            @serve.deployment(LoggingConfig(logs_dir="/my_dir")
+            @serve.deployment(LoggingConfig(logs_dir="/my_dir"))
             class MyDeployment:
                 def __call__(self) -> str:
                     return "Hello world!"
@@ -219,14 +219,6 @@ class RayActorOptionsSchema(BaseModel):
         default=None,
         description=(
             "Restrict the heap memory usage of each replica. Uses a default if null."
-        ),
-        ge=0,
-    )
-    object_store_memory: int = Field(
-        default=None,
-        description=(
-            "Restrict the object store memory used per replica (in bytes) when "
-            "creating objects. Must be an int. Uses a default if null."
         ),
         ge=0,
     )
@@ -955,10 +947,12 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     def deployment_route_prefix_not_set(cls, v: DeploymentSchema):
         # Route prefix should not be set at the deployment level. Deployment-level route
         # prefix is outdated, there should be one route prefix per application
-        if "route_prefix" in v.dict(exclude_unset=True):
+        if (
+            "route_prefix" in v.__fields_set__
+        ):  # in Pydantic v2, this becomes `in v.model_fields_set`
             raise ValueError(
                 "Unexpectedly found a deployment-level route_prefix in the "
-                f'deployment_config for deployment "{cls.name}". The route_prefix in '
+                f'deployment_config for deployment "{v.name}". The route_prefix in '
                 "deployment_config within DeploymentDetails should not be set; please "
                 "set it at the application level."
             )

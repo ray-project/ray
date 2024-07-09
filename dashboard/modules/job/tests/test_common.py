@@ -1,17 +1,17 @@
-import pytest
 import json
 
+import pytest
+from google.protobuf.json_format import Parse
+
+from ray.core.generated.gcs_pb2 import JobsAPIInfo
 from ray.dashboard.modules.job.common import (
     JobInfo,
     JobStatus,
+    JobSubmitRequest,
     http_uri_components_to_uri,
     uri_to_http_components,
     validate_request_type,
-    JobSubmitRequest,
 )
-
-from ray.core.generated.gcs_pb2 import JobsAPIInfo
-from google.protobuf.json_format import Parse
 
 
 class TestJobSubmitRequestValidation:

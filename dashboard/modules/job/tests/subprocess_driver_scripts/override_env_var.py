@@ -5,8 +5,9 @@ we ended up using job submission API call's runtime_env instead of scripts
 
 
 def run():
-    import ray
     import os
+
+    import ray
 
     ray.init(
         runtime_env={

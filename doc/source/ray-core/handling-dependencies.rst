@@ -444,7 +444,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.
   The `run_options` list spec is `here <https://docs.docker.com/engine/reference/run/>`__.
 
-  - Example: ``{"image": "anyscale/ray-ml:nightly-py38-cpu", "worker_path": "/root/python/ray/workers/default_worker.py", "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}``
+  - Example: ``{"image": "anyscale/ray:2.31.0-py39-cpu", "worker_path": "/root/python/ray/workers/default_worker.py", "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}``
 
   Note: ``container`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
 

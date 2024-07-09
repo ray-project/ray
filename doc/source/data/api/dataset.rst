@@ -105,7 +105,6 @@ I/O and Conversion
    Dataset.write_tfrecords
    Dataset.write_webdataset
    Dataset.write_mongo
-   Dataset.write_datasource
    Dataset.to_torch
    Dataset.to_tf
    Dataset.to_dask
@@ -141,6 +140,15 @@ Execution
     :toctree: doc/
 
     Dataset.materialize
+
+Schema
+------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Schema
 
 .. _block-api:
 

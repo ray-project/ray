@@ -409,6 +409,293 @@ items:
   kind: Pod
   metadata:
     annotations:
+      ray.io/ft-enabled: "false"
+    creationTimestamp: "2024-06-28T10:11:15Z"
+    generateName: raycluster-autoscaler-worker-tpu-group-
+    labels:
+      app.kubernetes.io/created-by: kuberay-operator
+      app.kubernetes.io/name: kuberay
+      ray.io/cluster: raycluster-autoscaler
+      ray.io/group: tpu-group
+      ray.io/identifier: raycluster-autoscaler-worker
+      ray.io/is-ray-node: "yes"
+      ray.io/node-type: worker
+      replicaIndex: tpu-group-0
+    name: raycluster-autoscaler-worker-fake-tpu-group-xtpcl
+    namespace: default
+    ownerReferences:
+    - apiVersion: ray.io/v1
+      blockOwnerDeletion: true
+      controller: true
+      kind: RayCluster
+      name: raycluster-autoscaler
+      uid: eaac19a2-93e5-420e-98ce-9e47cf9f401f
+    resourceVersion: "13131412"
+    uid: a943c7f8-7e93-40c6-b676-9b4d7a0ac8c3
+  spec:
+    affinity:
+      podAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+        - labelSelector:
+            matchExpressions:
+            - key: replicaIndex
+              operator: In
+              values:
+              - tpu-group-0
+          topologyKey: cloud.google.com/gke-nodepool
+    containers:
+    - args:
+      - 'ulimit -n 65536; ray start  --resources="{\"TPU\": 4}"  --address=raycluster-autoscaler-head-svc.default.svc.cluster.local:6379  --metrics-export-port=8080  --block  --dashboard-agent-listen-port=52365  --num-cpus=1  --memory=40000000000 '
+      command:
+      - /bin/bash
+      - -lc
+      - --
+      env:
+      - name: FQ_RAY_IP
+        value: raycluster-autoscaler-head-svc.default.svc.cluster.local
+      - name: RAY_IP
+        value: raycluster-autoscaler-head-svc
+      - name: RAY_CLUSTER_NAME
+        valueFrom:
+          fieldRef:
+            apiVersion: v1
+            fieldPath: metadata.labels['ray.io/cluster']
+      - name: RAY_CLOUD_INSTANCE_ID
+        valueFrom:
+          fieldRef:
+            apiVersion: v1
+            fieldPath: metadata.name
+      - name: RAY_NODE_TYPE_NAME
+        valueFrom:
+          fieldRef:
+            apiVersion: v1
+            fieldPath: metadata.labels['ray.io/group']
+      - name: KUBERAY_GEN_RAY_START_CMD
+        value: 'ray start  --resources="{\"TPU\": 4}"  --address=raycluster-autoscaler-head-svc.default.svc.cluster.local:6379  --metrics-export-port=8080  --block  --dashboard-agent-listen-port=52365  --num-cpus=1  --memory=40000000000 '
+      - name: RAY_PORT
+        value: "6379"
+      - name: RAY_ADDRESS
+        value: raycluster-autoscaler-head-svc.default.svc.cluster.local:6379
+      - name: RAY_USAGE_STATS_KUBERAY_IN_USE
+        value: "1"
+      - name: REDIS_PASSWORD
+      - name: RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE
+        value: "1"
+      - name: TPU_WORKER_HOSTNAMES
+        value: tpu-group-0-0.raycluster-autoscaler-headless-worker-svc,tpu-group-0-1.raycluster-autoscaler-headless-worker-svc
+      - name: TPU_WORKER_ID
+        value: "0"
+      - name: TPU_NAME
+        value: tpu-group-0
+      image: rayproject/ray:2.9.0
+      imagePullPolicy: Always
+      lifecycle:
+        preStop:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - ray stop
+      livenessProbe:
+        exec:
+          command:
+          - bash
+          - -c
+          - wget -T 2 -q -O- http://localhost:52365/api/local_raylet_healthz | grep
+            success
+        failureThreshold: 120
+        initialDelaySeconds: 30
+        periodSeconds: 5
+        successThreshold: 1
+        timeoutSeconds: 1
+      name: ray-worker
+      ports:
+      - containerPort: 8080
+        name: metrics
+        protocol: TCP
+      readinessProbe:
+        exec:
+          command:
+          - bash
+          - -c
+          - wget -T 2 -q -O- http://localhost:52365/api/local_raylet_healthz | grep
+            success
+        failureThreshold: 10
+        initialDelaySeconds: 10
+        periodSeconds: 5
+        successThreshold: 1
+        timeoutSeconds: 1
+      resources:
+        limits:
+          cpu: "1"
+          ephemeral-storage: 10Gi
+          google.com/tpu: "4"
+          memory: 40G
+        requests:
+          cpu: "1"
+          ephemeral-storage: 10Gi
+          google.com/tpu: "4"
+          memory: 40G
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /dev/shm
+        name: shared-mem
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-65x9l
+        readOnly: true
+    dnsPolicy: ClusterFirst
+    enableServiceLinks: true
+    hostname: tpu-group-0-0
+    initContainers:
+    - args:
+      - "\n\t\t\t\t\tSECONDS=0\n\t\t\t\t\twhile true; do\n\t\t\t\t\t\tif (( SECONDS
+        <= 120 )); then\n\t\t\t\t\t\t\tif ray health-check --address raycluster-autoscaler-head-svc.default.svc.cluster.local:6379
+        > /dev/null 2>&1; then\n\t\t\t\t\t\t\t\techo \"GCS is ready.\"\n\t\t\t\t\t\t\t\tbreak\n\t\t\t\t\t\t\tfi\n\t\t\t\t\t\t\techo
+        \"$SECONDS seconds elapsed: Waiting for GCS to be ready.\"\n\t\t\t\t\t\telse\n\t\t\t\t\t\t\tif
+        ray health-check --address raycluster-autoscaler-head-svc.default.svc.cluster.local:6379;
+        then\n\t\t\t\t\t\t\t\techo \"GCS is ready. Any error messages above can be safely
+        ignored.\"\n\t\t\t\t\t\t\t\tbreak\n\t\t\t\t\t\t\tfi\n\t\t\t\t\t\t\techo \"$SECONDS
+        seconds elapsed: Still waiting for GCS to be ready. For troubleshooting, refer
+        to the FAQ at https://github.com/ray-project/kuberay/blob/master/docs/guidance/FAQ.md.\"\n\t\t\t\t\t\tfi\n\t\t\t\t\t\tsleep
+        5\t\t\n\t\t\t\t\tdone\n\t\t\t\t"
+      command:
+      - /bin/bash
+      - -lc
+      - --
+      env:
+      - name: FQ_RAY_IP
+        value: raycluster-autoscaler-head-svc.default.svc.cluster.local
+      - name: RAY_IP
+        value: raycluster-autoscaler-head-svc
+      image: rayproject/ray:2.9.0
+      imagePullPolicy: Always
+      name: wait-gcs-ready
+      resources:
+        limits:
+          cpu: 200m
+          memory: 256Mi
+        requests:
+          cpu: 200m
+          memory: 256Mi
+      terminationMessagePath: /dev/termination-log
+      terminationMessagePolicy: File
+      volumeMounts:
+      - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+        name: kube-api-access-65x9l
+        readOnly: true
+    nodeName: gke-tpu-0bf19815-10mj
+    nodeSelector:
+      cloud.google.com/gke-accelerator-count: "4"
+      cloud.google.com/gke-tpu-accelerator: tpu-v4-podslice
+      cloud.google.com/gke-tpu-topology: 2x2x2
+    preemptionPolicy: PreemptLowerPriority
+    priority: 0
+    restartPolicy: Always
+    schedulerName: default-scheduler
+    securityContext: {}
+    serviceAccount: default
+    serviceAccountName: default
+    subdomain: raycluster-autoscaler-headless-worker-svc
+    terminationGracePeriodSeconds: 30
+    tolerations:
+    - effect: NoExecute
+      key: node.kubernetes.io/not-ready
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoExecute
+      key: node.kubernetes.io/unreachable
+      operator: Exists
+      tolerationSeconds: 300
+    - effect: NoSchedule
+      key: google.com/tpu
+      operator: Exists
+    volumes:
+    - emptyDir:
+        medium: Memory
+        sizeLimit: 40G
+      name: shared-mem
+    - name: kube-api-access-65x9l
+      projected:
+        defaultMode: 420
+        sources:
+        - serviceAccountToken:
+            expirationSeconds: 3607
+            path: token
+        - configMap:
+            items:
+            - key: ca.crt
+              path: ca.crt
+            name: kube-root-ca.crt
+        - downwardAPI:
+            items:
+            - fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+              path: namespace
+  status:
+    conditions:
+    - lastProbeTime: null
+      lastTransitionTime: "2024-06-28T10:11:48Z"
+      status: "True"
+      type: PodReadyToStartContainers
+    - lastProbeTime: null
+      lastTransitionTime: "2024-06-28T10:11:57Z"
+      status: "True"
+      type: Initialized
+    - lastProbeTime: null
+      lastTransitionTime: "2024-06-28T10:12:07Z"
+      status: "True"
+      type: Ready
+    - lastProbeTime: null
+      lastTransitionTime: "2024-06-28T10:12:07Z"
+      status: "True"
+      type: ContainersReady
+    - lastProbeTime: null
+      lastTransitionTime: "2024-06-28T10:11:46Z"
+      status: "True"
+      type: PodScheduled
+    containerStatuses:
+    - containerID: containerd://1e5d9cef5cb10636d44ef2ab6e557e71861f0960d05135df45d9af0c33a06d97
+      image: docker.io/rayproject/ray:2.9.0
+      imageID: docker.io/rayproject/ray@sha256:e64546fb5c3233bb0f33608e186e285c52cdd7440cae1af18f7fcde1c04e49f2
+      lastState: {}
+      name: ray-worker
+      ready: true
+      restartCount: 0
+      started: true
+      state:
+        running:
+          startedAt: "2024-06-28T10:11:57Z"
+    hostIP: 10.0.0.57
+    hostIPs:
+    - ip: 10.0.0.57
+    initContainerStatuses:
+    - containerID: containerd://40257ec805418def64c50b7ce7b59e5eca79bc91754893beb9bde4d4042f819b
+      image: docker.io/rayproject/ray:2.9.0
+      imageID: docker.io/rayproject/ray@sha256:e64546fb5c3233bb0f33608e186e285c52cdd7440cae1af18f7fcde1c04e49f2
+      lastState: {}
+      name: wait-gcs-ready
+      ready: true
+      restartCount: 0
+      started: false
+      state:
+        terminated:
+          containerID: containerd://40257ec805418def64c50b7ce7b59e5eca79bc91754893beb9bde4d4042f819b
+          exitCode: 0
+          finishedAt: "2024-06-28T10:11:56Z"
+          reason: Completed
+          startedAt: "2024-06-28T10:11:47Z"
+    phase: Running
+    podIP: 10.136.1.29
+    podIPs:
+    - ip: 10.136.1.29
+    qosClass: Guaranteed
+    startTime: "2024-06-28T10:11:46Z"
+- apiVersion: v1
+  kind: Pod
+  metadata:
+    annotations:
       key: value
       ray.io/ft-enabled: "false"
       ray.io/health-state: ""
