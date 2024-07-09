@@ -95,11 +95,14 @@ If using the command line, connect to the Ray cluster as follow:
 Logging and Debugging
 ---------------------
 
-Each Ray session will have a unique name. By default, the name is
+Each Ray session will have a unique name. By default, the name is given automatically like 
 ``session_{timestamp}_{pid}``. The format of ``timestamp`` is
 ``%Y-%m-%d_%H-%M-%S_%f`` (See `Python time format <strftime.org>`__ for details);
 the pid belongs to the startup process (the process calling ``ray.init()`` or
 the Ray process executed by a shell in ``ray start``).
+
+Change the *session name* by passing ``--session-name={unique session name}`` to ``ray start``.
+If the given session name is not unique, the old data with the same session name may be overwritten.
 
 For each session, Ray will place all its temporary files under the
 *session directory*. A *session directory* is a subdirectory of the
@@ -109,7 +112,7 @@ You can sort by their names to find the latest session.
 
 Change the *root temporary directory* by passing ``--temp-dir={your temp path}`` to ``ray start``.
 
-(There is not currently a stable way to change the root temporary directory when calling ``ray.init()``, but if you need to, you can provide the ``_temp_dir`` argument to ``ray.init()``.)
+(There is not currently a stable way to change the root temporary directory when calling ``ray.init()``, but if you need to, you can provide the ``_temp_dir`` argument to ``ray.init()``. The session name is also changable when calling ``ray.init()`` by providing ``_session_name`` argument.)
 
 Look :ref:`Logging Directory Structure <logging-directory-structure>` for more details.
 

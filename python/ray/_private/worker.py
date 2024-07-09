@@ -1373,6 +1373,8 @@ def init(
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Must be an absolute path. Defaults to an
             OS-specific conventional location, e.g., "/tmp/ray".
+        _session_name: The session name of the Ray process, only works when --head is 
+            specified. If it is not unique, the old data will be overwritten.
         _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
@@ -1431,6 +1433,7 @@ def init(
         "_redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
     )
     _temp_dir: Optional[str] = kwargs.pop("_temp_dir", None)
+    _session_name: Optional[str] = kwargs.pop("_session_name", None)
     _metrics_export_port: Optional[int] = kwargs.pop("_metrics_export_port", None)
     _system_config: Optional[Dict[str, str]] = kwargs.pop("_system_config", None)
     _tracing_startup_hook: Optional[Callable] = kwargs.pop(
@@ -1667,6 +1670,7 @@ def init(
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
             temp_dir=_temp_dir,
+            session_name=_session_name,
             storage=storage,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
@@ -1736,6 +1740,7 @@ def init(
             redis_password=_redis_password,
             object_ref_seed=None,
             temp_dir=_temp_dir,
+            session_name=_session_name,
             _system_config=_system_config,
             enable_object_reconstruction=_enable_object_reconstruction,
             metrics_export_port=_metrics_export_port,

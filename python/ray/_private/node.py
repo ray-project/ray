@@ -459,6 +459,9 @@ class Node:
 
         try_to_create_directory(self._temp_dir)
 
+        if self._ray_params.session_name is not None:
+            self._session_name = self._ray_params.session_name
+
         if self.head:
             self._session_dir = os.path.join(self._temp_dir, self._session_name)
         else:
