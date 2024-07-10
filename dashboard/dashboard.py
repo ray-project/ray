@@ -1,11 +1,12 @@
 import argparse
 import logging
 import logging.handlers
-import platform
-import traceback
-import signal
 import os
+import platform
+import signal
 import sys
+import traceback
+from typing import Optional, Set
 
 import ray._private.ray_constants as ray_constants
 import ray._private.services
@@ -14,7 +15,6 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.head as dashboard_head
 import ray.dashboard.utils as dashboard_utils
 from ray._private.ray_logging import setup_component_logger
-from typing import Optional, Set
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at

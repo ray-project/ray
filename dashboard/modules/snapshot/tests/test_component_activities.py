@@ -1,9 +1,9 @@
-import os
-import sys
 import json
-import jsonschema
-
+import os
 import pprint
+import sys
+
+import jsonschema
 import pytest
 import requests
 
