@@ -44,6 +44,9 @@ from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.operators.all_to_all_operator import (
@@ -91,7 +94,7 @@ from ray.data.datasource import Connection, Datasink, FilenameProvider
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
@@ -4166,14 +4169,14 @@ class Dataset:
         dask.config.set(scheduler=ray_dask_get)
 
         @dask.delayed
-        def block_to_df(block: Block):
-            if isinstance(block, (ray.ObjectRef, ClientObjectRef)):
+        def block_to_df(block_ref: ObjectRef[Block]) -> pd.DataFrame:
+            if isinstance(block_ref, (ray.ObjectRef, ClientObjectRef)):
                 raise ValueError(
                     "Dataset.to_dask() must be used with Dask-on-Ray, please "
                     "set the Dask scheduler to ray_dask_get (located in "
                     "ray.util.dask)."
                 )
-            return _block_to_df(block)
+            return _block_to_df(block_ref)
 
         if meta is None:
             from ray.data.extensions import TensorDtype
@@ -4212,8 +4215,13 @@ class Dataset:
                 else:
                     meta = schema.empty_table().to_pandas()
 
+        dfs = []
+        for ref_bundle in self.iter_internal_ref_bundles():
+            for block_ref in ref_bundle.block_refs:
+                dfs.append(block_to_df(block_ref))
+
         ddf = dd.from_delayed(
-            [block_to_df(block) for block in self.get_internal_block_refs()],
+            dfs,
             meta=meta,
             verify_meta=verify_meta,
         )
@@ -4266,7 +4274,7 @@ class Dataset:
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
         underlying data, consider using :meth:`.to_arrow_refs` or
-        :meth:`.get_internal_block_refs`.
+        :meth:`.iter_internal_ref_bundles`.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -4299,9 +4307,10 @@ class Dataset:
         schema = self.schema()
         if isinstance(schema, Schema):
             schema = schema.base_schema
-        return raydp.spark.ray_dataset_to_spark_dataframe(
-            spark, schema, self.get_internal_block_refs()
-        )
+
+        ref_bundles = self.iter_internal_ref_bundles()
+        block_refs = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        return raydp.spark.ray_dataset_to_spark_dataframe(spark, schema, block_refs)
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
@@ -4343,10 +4352,12 @@ class Dataset:
                     f"{count} rows will fit in local memory, set "
                     "ds.to_pandas(limit=None) to disable limits."
                 )
-        blocks = self.get_internal_block_refs()
+        bundles = self.iter_internal_ref_bundles()
         output = DelegatingBlockBuilder()
-        for block in blocks:
-            output.add_block(ray.get(block))
+
+        for bundle in bundles:
+            for block_ref in bundle.block_refs:
+                output.add_block(ray.get(block_ref))
         block = output.build()
         return _block_to_df(block)
 
@@ -4360,7 +4371,7 @@ class Dataset:
 
         This function induces a copy of the data. For zero-copy access to the
         underlying data, consider using :meth:`Dataset.to_arrow_refs` or
-        :meth:`Dataset.get_internal_block_refs`.
+        :meth:`Dataset.iter_internal_ref_bundles`.
 
         Examples:
             >>> import ray
@@ -4376,7 +4387,11 @@ class Dataset:
         """
 
         block_to_df = cached_remote_fn(_block_to_df)
-        return [block_to_df.remote(block) for block in self.get_internal_block_refs()]
+        pandas_refs = []
+        for bundle in self.iter_internal_ref_bundles():
+            for block_ref in bundle.block_refs:
+                pandas_refs.append(block_to_df.remote(block_ref))
+        return pandas_refs
 
     @DeveloperAPI
     def to_numpy_refs(
@@ -4388,7 +4403,7 @@ class Dataset:
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
         underlying data, consider using :meth:`Dataset.to_arrow_refs` or
-        :meth:`Dataset.get_internal_block_refs`.
+        :meth:`Dataset.iter_internal_ref_bundles`.
 
         Examples:
             >>> import ray
@@ -4408,10 +4423,11 @@ class Dataset:
             A list of remote NumPy ndarrays created from this dataset.
         """
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
-        return [
-            block_to_ndarray.remote(block, column=column)
-            for block in self.get_internal_block_refs()
-        ]
+        numpy_refs = []
+        for bundle in self.iter_internal_ref_bundles():
+            for block_ref in bundle.block_refs:
+                numpy_refs.append(block_to_ndarray.remote(block_ref, column=column))
+        return numpy_refs
 
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
@@ -4439,18 +4455,21 @@ class Dataset:
         """
         import pyarrow as pa
 
-        blocks: List[ObjectRef["pyarrow.Table"]] = self.get_internal_block_refs()
+        ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
+        block_refs: List[
+            ObjectRef["pyarrow.Table"]
+        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
         # Schema is safe to call since we have already triggered execution with
-        # get_internal_block_refs.
+        # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)
         if isinstance(schema, Schema):
             schema = schema.base_schema
         if isinstance(schema, pa.Schema):
             # Zero-copy path.
-            return blocks
+            return block_refs
 
         block_to_arrow = cached_remote_fn(_block_to_arrow)
-        return [block_to_arrow.remote(block) for block in blocks]
+        return [block_to_arrow.remote(block) for block in block_refs]
 
     @ConsumptionAPI(pattern="Args:")
     def to_random_access_dataset(
@@ -4599,8 +4618,8 @@ class Dataset:
         self._synchronize_progress_bar()
         return iter_ref_bundles
 
+    @Deprecated
     @ConsumptionAPI(pattern="Examples:")
-    @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
 
@@ -4616,8 +4635,10 @@ class Dataset:
         Returns:
             A list of references to this dataset's blocks.
         """
-        # TODO(scottjlee): replace get_internal_block_refs() usages with
-        # iter_internal_ref_bundles()
+        logger.warning(
+            "`Dataset.get_internal_block_refs()` is deprecated. Use "
+            "`Dataset.iter_internal_ref_bundles()` instead.",
+        )
         block_refs = self._plan.execute().block_refs
         self._synchronize_progress_bar()
         return block_refs
@@ -4937,13 +4958,19 @@ class Dataset:
 
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
-        return ray.get([get_num_rows.remote(b) for b in self.get_internal_block_refs()])
+        num_rows = []
+        for ref_bundle in self.iter_internal_ref_bundles():
+            for block_ref in ref_bundle.block_refs:
+                num_rows.append(get_num_rows.remote(block_ref))
+        return ray.get(num_rows)
 
     def _block_size_bytes(self) -> List[int]:
         get_size_bytes = cached_remote_fn(_get_size_bytes)
-        return ray.get(
-            [get_size_bytes.remote(b) for b in self.get_internal_block_refs()]
-        )
+        size_bytes = []
+        for ref_bundle in self.iter_internal_ref_bundles():
+            for block_ref in ref_bundle.block_refs:
+                size_bytes.append(get_size_bytes.remote(block_ref))
+        return ray.get(size_bytes)
 
     def _meta_count(self) -> Optional[int]:
         return self._plan.meta_count()
@@ -5102,7 +5129,7 @@ def _get_size_bytes(block: Block) -> int:
     return block.size_bytes()
 
 
-def _block_to_df(block: Block):
+def _block_to_df(block: Block) -> "pandas.DataFrame":
     block = BlockAccessor.for_block(block)
     return block.to_pandas()
 
