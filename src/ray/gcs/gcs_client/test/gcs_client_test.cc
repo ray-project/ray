@@ -343,7 +343,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::promise<bool> promise;
     std::vector<rpc::GcsNodeInfo> nodes;
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-        gcs::GetGcsTimeoutMs(),
         [&nodes, &promise](Status status, std::vector<rpc::GcsNodeInfo> &&result) {
           assert(!result.empty());
           nodes = std::move(result);
