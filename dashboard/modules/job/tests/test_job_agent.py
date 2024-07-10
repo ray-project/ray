@@ -1,46 +1,42 @@
 import logging
 import os
-import ray
-
-import requests
 import shutil
 import sys
 import tempfile
 import time
-from pathlib import Path
 from functools import partial
+from pathlib import Path
+
 import pytest
+import requests
 import yaml
 
-from ray._private.utils import get_or_create_event_loop
-from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+import ray
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
+from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
+from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.test_utils import (
+    async_wait_for_condition_async_predicate,
     chdir,
     format_web_url,
-    wait_until_server_available,
-    wait_for_condition,
-    run_string_as_driver_nonblocking,
     get_current_unused_port,
-    async_wait_for_condition_async_predicate,
+    run_string_as_driver_nonblocking,
+    wait_for_condition,
+    wait_until_server_available,
 )
+from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.modules.job.common import (
-    JobSubmitRequest,
-    validate_request_type,
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
+    JobSubmitRequest,
+    validate_request_type,
 )
-from ray.dashboard.tests.conftest import *  # noqa
-from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
-from ray.util.state import (
-    get_node,
-    list_nodes,
-    list_actors,
-)
-from ray.job_submission import JobStatus, JobSubmissionClient
-from ray.tests.conftest import _ray_start
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
+from ray.dashboard.tests.conftest import *  # noqa
+from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
+from ray.tests.conftest import _ray_start
+from ray.util.state import get_node, list_actors, list_nodes
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -308,7 +304,7 @@ async def test_timeout(job_sdk_client):
     data = head_client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
     assert "Timeout" in data.message
-    assert "consider increasing `setup_timeout_seconds`" in data.message
+    assert "setup_timeout_seconds" in data.message
 
 
 @pytest.mark.asyncio
@@ -395,6 +391,8 @@ async def test_tail_job_logs_with_echo(job_sdk_client):
     async for lines in agent_client.tail_job_logs(job_id):
         print(lines, end="")
         for line in lines.strip().split("\n"):
+            if "Runtime env is setting up." in line:
+                continue
             assert line.split(" ") == ["Hello", str(i)]
             i += 1
 

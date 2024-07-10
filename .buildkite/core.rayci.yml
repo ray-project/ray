@@ -6,6 +6,18 @@ steps:
   # builds
   - name: corebuild
     wanda: ci/docker/core.build.py39.wanda.yaml
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_build
+      IMAGE_TO: corebuild
+      RAYCI_IS_GPU_BUILD: "false"
+
+  - name: coregpubuild
+    wanda: ci/docker/core.build.py39.wanda.yaml
+    depends_on: oss-ci-base_gpu
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
+      IMAGE_TO: coregpubuild
+      RAYCI_IS_GPU_BUILD: "true"
 
   - name: corebuild-multipy
     label: "wanda: corebuild-py{{matrix}}"
@@ -23,6 +35,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
       EXTRA_DEPENDENCY: core
@@ -33,7 +46,7 @@ steps:
 
   # tests
   - label: ":ray: core: python tests"
-    tags: 
+    tags:
       - python
       - dashboard
     instance_type: large
@@ -41,7 +54,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --only-tags use_all_core --skip-ray-installation
@@ -54,7 +67,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --only-tags use_all_core --skip-ray-installation
@@ -93,7 +106,7 @@ steps:
         --only-tags=tmpfs --tmp-filesystem=tmpfs
 
   - label: ":ray: core: workflow tests"
-    tags: 
+    tags:
       - python
       - workflow
     instance_type: medium
@@ -109,7 +122,7 @@ steps:
         --only-tags use_all_core
 
   - label: ":ray: core: doc tests"
-    tags: 
+    tags:
       - python
       - doc
     instance_type: large
@@ -128,32 +141,32 @@ steps:
     tags: python
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- 
+      - bazel run //ci/ray_ci:test_in_docker --
         python/ray/util/dask/... python/ray/tests/modin/... core
-        --build-name data15build
+        --build-name data16build
         --parallelism-per-worker 2
     depends_on:
-      - data15build
+      - data16build
       - forge
 
   - label: ":ray: core: dashboard tests"
-    tags: 
+    tags:
       - python
       - dashboard
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... core
         --parallelism-per-worker 3
       # ui tests
       - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
-        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail 
+        "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
         "./dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: debug test"
     tags: python
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --build-type debug
         --parallelism-per-worker 3
         --only-tags debug_tests
@@ -163,7 +176,7 @@ steps:
     tags: python
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core
         --build-type asan
         --parallelism-per-worker 2
         --only-tags asan_tests
@@ -173,7 +186,7 @@ steps:
     tags: linux_wheels
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core
         --build-type wheel
         --parallelism-per-worker 3
         --only-tags post_wheel_build
@@ -183,39 +196,24 @@ steps:
       - corebuild
       - forge
 
-  - label: ":ray: core: wheel-aarch64 tests"
-    tags: linux_wheels
-    instance_type: medium-arm64
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core 
-        --build-type wheel-aarch64
-        --build-name oss-ci-base_build-aarch64
-        --parallelism-per-worker 3
-        --only-tags post_wheel_build
-        --test-env=RAY_CI_POST_WHEEL_TESTS=True
-    depends_on: 
-      - manylinux-aarch64
-      - oss-ci-base_build-aarch64
-      - forge-aarch64
-    job_env: forge-aarch64
-
   - label: ":ray: core: minimal tests {{matrix}}"
     tags:
       - python
+      - dashboard
       - oss
     instance_type: medium
     commands:
       # validate minimal installation
       - python ./ci/env/check_minimal_install.py
       # core tests
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
         --test-env=EXPECTED_PYTHON_VERSION={{matrix}}
         --only-tags minimal
         --except-tags basic_test,manual
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
@@ -224,7 +222,7 @@ steps:
         --except-tags no_basic_test,manual
         --skip-ray-installation
       # core redis tests
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... core
         --parallelism-per-worker 3
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
@@ -234,7 +232,7 @@ steps:
         --except-tags no_basic_test,manual
         --skip-ray-installation
       # serve tests
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dashboard/... serve
         --parallelism-per-worker 3
         --build-name minbuild-core-py{{matrix}}
         --test-env=RAY_MINIMAL=1
@@ -246,6 +244,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
 
   # cpp tests
   - label: ":ray: core: cpp tests"
@@ -279,21 +278,32 @@ steps:
         --parallelism-per-worker 2
 
   - label: ":ray: core: flaky tests"
+    key: core_flaky_tests
     tags:
       - python
       - skip-on-premerge
     instance_type: large
     soft_fail: true
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //... core
         --run-flaky-tests  --build-type clang
-      - bazel run //ci/ray_ci:test_in_docker -- 
-        //python/ray/tests:test_placement_group
-        //python/ray/tests:test_runtime_env_working_dir_3 
-        //python/ray/tests:test_state_api_log
-        //python/ray/tests:test_object_assign_owner_client_mode core 
-        --test-env CI_SKIP_FLAKY_TEST=0
-        --skip-ray-installation
+        --except-tags multi_gpu
+
+  - label: ":ray: core: flaky gpu tests"
+    key: core_flaky_gpu_tests
+    tags:
+      - gpu
+      - python
+      - skip-on-premerge
+    instance_type: gpu-large
+    soft_fail: true
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //... core
+        --run-flaky-tests  --build-type clang
+        --parallelism-per-worker 2 --gpus 2
+        --build-name coregpubuild
+        --only-tags multi_gpu
+    depends_on: coregpubuild
 
   - label: ":ray: core: cpp worker tests"
     tags: core_cpp
@@ -325,15 +335,30 @@ steps:
     tags:
       - python
       - docker
+      - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu
         --canonical-tag test_container
       - docker build --progress=plain --build-arg BASE_IMAGE="rayproject/ray:test_container"
-        -t rayproject/ray:runtime_env_container -f docker/runtime_env_container/Dockerfile .
+        -t rayproject/ray:runtime_env_container -f ci/docker/runtime_env_container/Dockerfile .
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags container
     depends_on:
       - manylinux
       - forge
       - raycpubase
       - corebuild
+
+  - label: ":ray: core: multi gpu tests"
+    tags:
+      - accelerated_dag
+      - gpu
+    instance_type: gpu-large
+    commands:
+      # This machine has 4 GPUs, and we need 2 GPUs, so allow 2 tests to run in
+      # parallel.
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... core
+        --parallelism-per-worker 2 --gpus 2
+        --build-name coregpubuild
+        --only-tags multi_gpu
+    depends_on: coregpubuild

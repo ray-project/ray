@@ -2,38 +2,34 @@ import asyncio
 import json
 import logging
 import time
-import grpc
 from itertools import chain
 
 import aiohttp.web
+import grpc
 
 import ray._private.utils
-from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
-
+import ray.dashboard.consts as dashboard_consts
+import ray.dashboard.optional_utils as dashboard_optional_utils
+import ray.dashboard.utils as dashboard_utils
+from ray._private import ray_constants
+from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     get_per_node_breakdown_as_dict,
     parse_usage,
 )
-import ray.dashboard.consts as dashboard_consts
-import ray.dashboard.optional_utils as dashboard_optional_utils
-import ray.dashboard.utils as dashboard_utils
-from ray._private import ray_constants
 from ray.core.generated import (
     gcs_service_pb2,
     gcs_service_pb2_grpc,
     node_manager_pb2,
     node_manager_pb2_grpc,
 )
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
-    FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS,
     FREQUENT_UPDATE_TIMEOUT_SECONDS,
-)
-from ray._private.ray_constants import (
-    DEBUG_AUTOSCALING_ERROR,
-    DEBUG_AUTOSCALING_STATUS,
+    FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS,
 )
 from ray.dashboard.utils import async_loop_forever
 
@@ -142,7 +138,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             A dict of information about the nodes in the cluster.
         """
         request = gcs_service_pb2.GetAllNodeInfoRequest()
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=2)
+        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
+            request, timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS
+        )
         if reply.status.code == 0:
             result = {}
             for node_info in reply.node_info_list:
@@ -182,7 +180,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                             node_id.encode(),
                             overwrite=True,
                             namespace=ray_constants.KV_NAMESPACE_JOB,
-                            timeout=2,
+                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
                         )
                     node_id_to_ip[node_id] = ip
                     node_id_to_hostname[node_id] = hostname
@@ -201,7 +199,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                             f"{node_id}"
                         )
                         agent_port = await self._gcs_aio_client.internal_kv_get(
-                            key.encode(), namespace=ray_constants.KV_NAMESPACE_DASHBOARD
+                            key.encode(),
+                            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
                         )
                         if agent_port:
                             agents[node_id] = json.loads(agent_port)

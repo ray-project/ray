@@ -1,8 +1,10 @@
 import copy
+import logging
 import sys
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
+from enum import Enum
 from functools import total_ordering
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -10,13 +12,18 @@ import ray
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import ReplicaConfig
-from ray.serve._private.constants import RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
+from ray.serve._private.constants import (
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    SERVE_LOGGER_NAME,
+)
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
     NodeAffinitySchedulingStrategy,
     NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class SpreadDeploymentSchedulingPolicy:
@@ -103,6 +110,14 @@ class Resources(dict):
         return False
 
 
+class ReplicaSchedulingRequestStatus(str, Enum):
+    """The status of a replica scheduling request."""
+
+    IN_PROGRESS = "IN_PROGRESS"
+    SUCCEEDED = "SUCCEEDED"
+    PLACEMENT_GROUP_CREATION_FAILED = "PLACEMENT_GROUP_CREATION_FAILED"
+
+
 @dataclass
 class ReplicaSchedulingRequest:
     """Request to schedule a single replica.
@@ -117,6 +132,7 @@ class ReplicaSchedulingRequest:
     actor_options: Dict
     actor_init_args: Tuple
     on_scheduled: Callable
+    status: ReplicaSchedulingRequestStatus = ReplicaSchedulingRequestStatus.IN_PROGRESS
     # Placement group bundles and strategy *for this replica*.
     # These are optional: by default replicas do not have a placement group.
     placement_group_bundles: Optional[List[Dict[str, float]]] = None
@@ -531,13 +547,26 @@ class DeploymentScheduler(ABC):
                 if scheduling_request.placement_group_strategy
                 else "PACK"
             )
-            pg = self._create_placement_group_fn(
-                scheduling_request.placement_group_bundles,
-                placement_group_strategy,
-                _soft_target_node_id=target_node_id,
-                lifetime="detached",
-                name=scheduling_request.actor_options["name"],
-            )
+            try:
+                pg = self._create_placement_group_fn(
+                    scheduling_request.placement_group_bundles,
+                    placement_group_strategy,
+                    _soft_target_node_id=target_node_id,
+                    lifetime="detached",
+                    name=scheduling_request.actor_options["name"],
+                )
+            except Exception:
+                # We add a defensive exception here, so the controller can
+                # make progress even if the placement group isn't created.
+                # See https://github.com/ray-project/ray/issues/43888.
+                logger.exception(
+                    "Replica scheduling failed. Failed to create a "
+                    f"placement group for {replica_id}."
+                )
+                scheduling_request.status = (
+                    ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
+                )
+                return
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=pg,
                 placement_group_capture_child_tasks=True,
@@ -579,6 +608,7 @@ class DeploymentScheduler(ABC):
         if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
             placement_group = scheduling_strategy.placement_group
 
+        scheduling_request.status = ReplicaSchedulingRequestStatus.SUCCEEDED
         scheduling_request.on_scheduled(actor_handle, placement_group=placement_group)
 
     @abstractmethod

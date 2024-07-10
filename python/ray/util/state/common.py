@@ -507,6 +507,9 @@ class NodeState(StateSchema):
     #: ALIVE: The node is alive.
     #: DEAD: The node is dead.
     state: TypeNodeStatus = state_column(filterable=True)
+    #: The state message of the node.
+    #: This provides more detailed information about the node's state.
+    state_message: Optional[str] = state_column(filterable=False)
     #: The name of the node if it is given by the name argument.
     node_name: str = state_column(filterable=True)
     #: The total resources of the node.
@@ -1580,24 +1583,27 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     task_state["end_time_ms"] = None
     events = []
 
-    for state in TaskStatus.keys():
-        key = f"{state.lower()}_ts"
-        if key in state_updates:
-            # timestamp is recorded as nanosecond from the backend.
-            # We need to convert it to the second.
-            ts_ms = int(state_updates[key]) // 1e6
-            events.append(
-                {
-                    "state": state,
-                    "created_ms": ts_ms,
-                }
-            )
-            if state == "PENDING_ARGS_AVAIL":
-                task_state["creation_time_ms"] = ts_ms
-            if state == "RUNNING":
-                task_state["start_time_ms"] = ts_ms
-            if state == "FINISHED" or state == "FAILED":
-                task_state["end_time_ms"] = ts_ms
+    if "state_ts" in state_updates:
+        state_ts = state_updates["state_ts"]
+        for state_name, state in TaskStatus.items():
+            # state_ts is Map[str, str] after protobuf MessageToDict
+            key = str(state)
+            if key in state_ts:
+                # timestamp is recorded as nanosecond from the backend.
+                # We need to convert it to the second.
+                ts_ms = int(state_ts[key]) // 1e6
+                events.append(
+                    {
+                        "state": state_name,
+                        "created_ms": ts_ms,
+                    }
+                )
+                if state == TaskStatus.PENDING_ARGS_AVAIL:
+                    task_state["creation_time_ms"] = ts_ms
+                if state == TaskStatus.RUNNING:
+                    task_state["start_time_ms"] = ts_ms
+                if state == TaskStatus.FINISHED or state == TaskStatus.FAILED:
+                    task_state["end_time_ms"] = ts_ms
 
     task_state["events"] = events
     if len(events) > 0:

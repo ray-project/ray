@@ -25,6 +25,7 @@ from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
+from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
@@ -66,6 +67,9 @@ T = TypeVar("T")
 Default = Union[DEFAULT, T]
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+# Format for component files
+FILE_FMT = "{component_name}_{component_id}{suffix}"
 
 
 class _ServeCustomEncoders:
@@ -551,6 +555,29 @@ def generate_request_id() -> str:
 
 def inside_ray_client_context() -> bool:
     return ray.util.client.ray.is_connected()
+
+
+def get_component_file_name(
+    component_name: str,
+    component_id: str,
+    component_type: Optional[ServeComponentType],
+    suffix: str = "",
+) -> str:
+    """Get the component's file name."""
+
+    # For DEPLOYMENT component type, we want to log the deployment name
+    # instead of adding the component type to the component name.
+    component_log_file_name = component_name
+    if component_type is not None:
+        component_log_file_name = f"{component_type.value}_{component_name}"
+        if component_type != ServeComponentType.REPLICA:
+            component_name = f"{component_type}_{component_name}"
+    file_name = FILE_FMT.format(
+        component_name=component_log_file_name,
+        component_id=component_id,
+        suffix=suffix,
+    )
+    return file_name
 
 
 class FakeObjectRefOrGen:

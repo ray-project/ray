@@ -1,28 +1,18 @@
 import {
   Box,
-  createStyles,
-  makeStyles,
+  Pagination,
   Table,
   TableBody,
   TableCell,
   TableContainer,
   TableHead,
   TableRow,
-} from "@material-ui/core";
-import { Pagination } from "@material-ui/lab";
+} from "@mui/material";
 import React, { ReactElement } from "react";
 import { ClassNameProps } from "../../../common/props";
 import { HelpInfo } from "../../../components/Tooltip";
 import { useJobProgressByTaskName } from "../hook/useJobProgress";
 import { MiniTaskProgressBar } from "../TaskProgressBar";
-
-const useStyles = makeStyles((theme) =>
-  createStyles({
-    helpInfo: {
-      marginLeft: theme.spacing(1),
-    },
-  }),
-);
 
 const columns: { label: string; helpInfo?: ReactElement }[] = [
   { label: "Task name" },
@@ -40,8 +30,6 @@ export const JobTaskNameProgressTable = ({
   jobId,
   className,
 }: JobTaskNameProgressTableProps) => {
-  const classes = useStyles();
-
   const { progress, page, setPage, total } = useJobProgressByTaskName(jobId);
 
   return (
@@ -61,7 +49,7 @@ export const JobTaskNameProgressTable = ({
                 <Box display="flex" justifyContent="center" alignItems="center">
                   {label}
                   {helpInfo && (
-                    <HelpInfo className={classes.helpInfo}>{helpInfo}</HelpInfo>
+                    <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                   )}
                 </Box>
               </TableCell>

@@ -24,6 +24,8 @@ import os
 import re
 import sys
 import tempfile
+import threading
+import json
 import time
 import uuid
 from contextlib import contextmanager
@@ -44,9 +46,11 @@ import ray.autoscaler._private.aws.config as aws_config
 import ray.autoscaler._private.constants as autoscaler_constants
 import ray._private.ray_constants as ray_constants
 import ray.scripts.scripts as scripts
+from ray.util.check_open_ports import check_open_ports
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
 from ray.util.state import list_nodes
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import psutil
 
@@ -977,6 +981,78 @@ def test_ray_status_multinode(ray_start_cluster, enable_v2):
         _check_output_via_pattern("test_ray_status_multinode.txt", result)
     else:
         _check_output_via_pattern("test_ray_status_multinode_v1.txt", result)
+
+
+@pytest.fixture
+def start_open_port_check_server():
+    class OpenPortCheckServer(BaseHTTPRequestHandler):
+        request_ports = None
+        response_open_ports = []
+
+        def do_POST(self):
+            content_length = int(self.headers["Content-Length"])
+            post_data = self.rfile.read(content_length)
+            payload = json.loads(post_data)
+            OpenPortCheckServer.request_ports = payload["ports"]
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(
+                json.dumps(
+                    {
+                        "open_ports": OpenPortCheckServer.response_open_ports,
+                        "checked_ports": payload["ports"],
+                    }
+                ).encode("utf-8")
+            )
+
+    server = HTTPServer(("127.0.0.1", 0), OpenPortCheckServer)
+    server_thread = threading.Thread(target=server.serve_forever)
+    server_thread.start()
+
+    yield (
+        OpenPortCheckServer,
+        f"http://{server.server_address[0]}:{server.server_address[1]}",
+    )
+
+    server.shutdown()
+    server_thread.join()
+
+
+def test_ray_check_open_ports(shutdown_only, start_open_port_check_server):
+    context = ray.init()
+
+    open_port_check_server, url = start_open_port_check_server
+
+    runner = CliRunner()
+    result = runner.invoke(
+        check_open_ports,
+        [
+            "-y",
+            "--service-url",
+            url,
+        ],
+    )
+    assert result.exit_code == 0
+    assert (
+        int(context.address_info["gcs_address"].split(":")[1])
+        in open_port_check_server.request_ports
+    )
+    assert "[🟢] No open ports detected" in result.output
+
+    open_port_check_server.response_open_ports = [
+        context.address_info["metrics_export_port"]
+    ]
+    result = runner.invoke(
+        check_open_ports,
+        [
+            "-y",
+            "--service-url",
+            url,
+        ],
+    )
+    assert result.exit_code == 0
+    assert "[🛑] open ports detected" in result.output
 
 
 def test_ray_drain_node():

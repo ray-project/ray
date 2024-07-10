@@ -1,35 +1,27 @@
 import inspect
 import logging
 import os
+import queue
 from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type
 
-from ray.air._internal.util import StartTraceback, RunnerThread
-import queue
-
-from ray.air.constants import (
-    _ERROR_FETCH_TIMEOUT,
-)
 import ray.train
+from ray.air._internal.util import RunnerThread, StartTraceback
+from ray.air.constants import _ERROR_FETCH_TIMEOUT
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.session import (
-    init_session,
-    get_session,
-    shutdown_session,
-    _TrainSession,
     TrialInfo,
+    _TrainSession,
+    get_session,
+    init_session,
+    shutdown_session,
 )
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.result import (
-    DEFAULT_METRIC,
-    RESULT_DUPLICATE,
-    SHOULD_CHECKPOINT,
-)
-from ray.tune.trainable import Trainable
+from ray.tune.result import DEFAULT_METRIC, RESULT_DUPLICATE, SHOULD_CHECKPOINT
+from ray.tune.trainable.trainable import Trainable
 from ray.tune.utils import _detect_config_single
 from ray.util.annotations import DeveloperAPI
-
 
 logger = logging.getLogger(__name__)
 
@@ -150,11 +142,6 @@ class FunctionTrainable(Trainable):
         # TRAIN -> SAVE remote calls get processed sequentially,
         # so `_last_training_result.checkpoint` holds onto the latest ckpt.
         return self._last_training_result
-
-    def _create_checkpoint_dir(
-        self, checkpoint_dir: Optional[str] = None
-    ) -> Optional[str]:
-        return None
 
     def load_checkpoint(self, checkpoint_result: _TrainingResult):
         # TODO(justinvyu): This currently breaks the `load_checkpoint` interface.

@@ -1,12 +1,11 @@
 ---
-apiVersion: ray.io/v1alpha1
+apiVersion: ray.io/v1
 kind: RayCluster
 metadata:
   name: raycluster-test
 spec:
   headGroupSpec:
     serviceType: ClusterIP
-    replicas: 1
     rayStartParams: {}
     template:
       spec:

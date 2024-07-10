@@ -75,7 +75,7 @@ class NormalizeAndClipActions(ConnectorV2):
         environment's action space and thus don't lead to an error.
         """
 
-        def _unsquash_or_clip(action_for_env, env_vector_idx, agent_id, module_id):
+        def _unsquash_or_clip(action_for_env, env_id, agent_id, module_id):
             if agent_id is not None:
                 struct = self._action_space_struct[agent_id]
             else:

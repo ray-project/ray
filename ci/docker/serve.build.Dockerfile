@@ -20,19 +20,13 @@ RUN <<EOF
 
 set -euo pipefail
 
-pip install -U torch==2.0.1 torchvision==0.15.2
-pip install -U tensorflow==2.13.1 tensorflow-probability==0.21.0
 pip install -U --ignore-installed \
   -c python/requirements_compiled.txt \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt
-
-# doc requirements
-#
-# TODO (shrekris-anyscale): Remove transformers after core transformer requirement 
-# is upgraded
-pip install transformers==4.30.2
-pip install -c python/requirements_compiled.txt aioboto3
+pip install -U -c python/requirements_compiled.txt \
+  tensorflow tensorflow-probability torch torchvision \
+  transformers aioboto3
 
 git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd
 

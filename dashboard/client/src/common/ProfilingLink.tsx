@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   Checkbox,
   Dialog,
@@ -11,32 +12,10 @@ import {
   Select,
   TextField,
   Typography,
-} from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
+} from "@mui/material";
 import React, { PropsWithChildren, useState } from "react";
 import { HelpInfo } from "../components/Tooltip";
 import { ClassNameProps } from "./props";
-
-const buttonLinkStyles = makeStyles((theme) => ({
-  buttonLink: {
-    textDecoration: "none",
-    textTransform: "capitalize",
-    padding: "0px",
-    "&:hover": {
-      backgroundColor: "transparent",
-      textDecoration: "underline",
-    },
-  },
-  dialogContent: {
-    padding: "12px",
-    display: "flex",
-    justifyContent: "flex-end",
-  },
-  secondaryButton: {
-    textTransform: "capitalize",
-    color: "#5F6469",
-  },
-}));
 
 type CpuProfilingLinkProps = PropsWithChildren<
   {
@@ -171,19 +150,15 @@ export const ProfilerButton = ({
     setOpen(false);
   };
 
-  const buttonLinkClasses = buttonLinkStyles();
-
   return (
     <div>
-      <Button
-        className={buttonLinkClasses.buttonLink}
+      <Link
         onClick={handleOpen}
         aria-label="Memory Profiling"
+        sx={{ cursor: "pointer" }}
       >
-        <Typography component={Link} variant="body2">
-          Memory&nbsp;Profiling{type ? ` (${type})` : ""}
-        </Typography>
-      </Button>
+        Memory&nbsp;Profiling{type ? ` (${type})` : ""}
+      </Link>
 
       <Dialog open={open} onClose={handleClose}>
         <DialogTitle>Memory Profiling Config</DialogTitle>
@@ -271,11 +246,13 @@ export const ProfilerButton = ({
             }
           />
         </DialogContent>
-        <div className={buttonLinkClasses.dialogContent}>
+        <Box
+          sx={{ padding: "12px", display: "flex", justifyContent: "flex-end" }}
+        >
           <Button
             onClick={handleClose}
             variant="text"
-            className={buttonLinkClasses.secondaryButton}
+            sx={{ textTransform: "capitalize", color: "#5F6469" }}
           >
             Cancel
           </Button>
@@ -298,7 +275,7 @@ export const ProfilerButton = ({
               Generate&nbsp;report
             </Link>
           </Button>
-        </div>
+        </Box>
       </Dialog>
     </div>
   );

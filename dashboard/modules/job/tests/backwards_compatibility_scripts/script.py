@@ -1,5 +1,6 @@
-import ray
 import requests
+
+import ray
 
 ray.init()
 

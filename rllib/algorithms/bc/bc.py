@@ -9,7 +9,9 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_TRAINED,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
@@ -73,7 +75,7 @@ class BCConfig(MARWILConfig):
         # not important for behavioral cloning.
         self.postprocess_inputs = False
         # Set RLModule as default.
-        self.experimental(_enable_new_api_stack=True)
+        self.api_stack(enable_rl_module_and_learner=True)
         # __sphinx_doc_end__
         # fmt: on
 
@@ -137,7 +139,7 @@ class BC(MARWIL):
 
     @override(MARWIL)
     def training_step(self) -> ResultDict:
-        if not self.config._enable_new_api_stack:
+        if not self.config.enable_rl_module_and_learner:
             # Using ModelV2.
             return super().training_step()
         else:
@@ -166,12 +168,35 @@ class BC(MARWIL):
                         max_env_steps=self.config.train_batch_size,
                     )
 
-                train_batch = train_batch.as_multi_agent()
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-                self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+                # TODO (sven): Use metrics API as soon as we moved to new API stack
+                #  (from currently hybrid stack).
+                # self.metrics.log_dict(
+                #    {
+                #        NUM_AGENT_STEPS_SAMPLED_LIFETIME: len(train_batch),
+                #        NUM_ENV_STEPS_SAMPLED_LIFETIME: len(train_batch),
+                #    },
+                #    reduce="sum",
+                # )
+                self._counters[NUM_AGENT_STEPS_SAMPLED] += len(train_batch)
+                self._counters[NUM_ENV_STEPS_SAMPLED] += len(train_batch)
 
             # Updating the policy.
-            train_results = self.learner_group.update_from_batch(batch=train_batch)
+            train_results = self.learner_group.update_from_batch(
+                batch=train_batch.as_multi_agent(
+                    module_id=list(self.config.policies)[0]
+                )
+            )
+            # TODO (sven): Use metrics API as soon as we moved to new API stack
+            #  (from currently hybrid stack).
+            # self.metrics.log_dict(
+            #    {
+            #        NUM_AGENT_STEPS_TRAINED_LIFETIME: len(train_batch),
+            #        NUM_ENV_STEPS_TRAINED_LIFETIME: len(train_batch),
+            #    },
+            #    reduce="sum",
+            # )
+            self._counters[NUM_AGENT_STEPS_TRAINED] += len(train_batch)
+            self._counters[NUM_ENV_STEPS_TRAINED] += len(train_batch)
 
             # Synchronize weights.
             # As the results contain for each policy the loss and in addition the
@@ -179,16 +204,12 @@ class BC(MARWIL):
             # removed.
             policies_to_update = set(train_results.keys()) - {ALL_MODULES}
 
-            global_vars = {
-                "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
-            }
-
+            # with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
                 if self.workers.num_remote_workers() > 0:
                     self.workers.sync_weights(
                         from_worker_or_learner_group=self.learner_group,
                         policies=policies_to_update,
-                        global_vars=global_vars,
                     )
                 # Get weights from Learner to local worker.
                 else:
@@ -196,4 +217,6 @@ class BC(MARWIL):
                         self.learner_group.get_weights()
                     )
 
+            # TODO (sven): Use metrics API as soon as we moved to new API stack
+            #  (from currently hybrid stack).
             return train_results

@@ -129,6 +129,8 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
         c_bool IsObjectRefEndOfStream()
         c_bool IsIntentionalSystemExit()
         c_bool IsUnexpectedSystemExit()
+        c_bool IsChannelError()
+        c_bool IsChannelTimeoutError()
 
         c_string ToString()
         c_string CodeAsString()
@@ -366,7 +368,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
         const CNodeID &GetPrimaryNodeID() const
-        const uint64_t GetObjectSize() const
+        const int64_t GetObjectSize() const
         const c_vector[CNodeID] &GetNodeIDs() const
         c_bool IsSpilled() const
         const c_string &GetSpilledURL() const
@@ -382,13 +384,14 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         UNIMPLEMENTED "grpc::StatusCode::UNIMPLEMENTED",
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
-        CGcsClientOptions(const c_string &gcs_address, int port)
+        CGcsClientOptions(
+            const c_string &gcs_address, int port, CClusterID cluster_id,
+            c_bool allow_cluster_id_nil, c_bool fetch_cluster_id_if_nil)
 
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)
 
         CRayStatus Connect(
-            const CClusterID &cluster_id,
             int64_t timeout_ms,
             size_t num_retries)
         CRayStatus CheckAlive(
@@ -506,7 +509,11 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
-        const c_string &SerializeAsString()
+        const c_string &SerializeAsString() const
+
+    cdef cppclass CNodeDeathInfo "ray::rpc::NodeDeathInfo":
+        int reason() const
+        c_string reason_message() const
 
     cdef cppclass CGcsNodeInfo "ray::rpc::GcsNodeInfo":
         c_string node_id() const
@@ -520,7 +527,9 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string raylet_socket_name() const
         int metrics_export_port() const
         int runtime_env_agent_port() const
+        CNodeDeathInfo death_info() const
         void ParseFromString(const c_string &serialized)
+        const c_string& SerializeAsString() const
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":
         ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
@@ -529,7 +538,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string job_id() const
         c_bool is_dead() const
         CJobConfig config() const
-        const c_string &SerializeAsString()
+        const c_string &SerializeAsString() const
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
         void set_key(const c_string &key)
@@ -565,7 +574,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CActorTableData "ray::rpc::ActorTableData":
         CAddress address() const
         void ParseFromString(const c_string &serialized)
-        const c_string &SerializeAsString()
+        const c_string &SerializeAsString() const
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":

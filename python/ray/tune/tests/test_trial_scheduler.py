@@ -1,43 +1,40 @@
-from collections import Counter
-import os
-import pytest
 import json
+import os
 import random
-import unittest
-import time
-
-import numpy as np
+import shutil
 import sys
 import tempfile
-import shutil
+import time
+import unittest
+from collections import Counter
 from unittest.mock import MagicMock
+
+import numpy as np
+import pytest
 
 import ray
 from ray import train, tune
-from ray.train import CheckpointConfig
 from ray.air.constants import TRAINING_ITERATION
-from ray.train import Checkpoint
-from ray.train._internal.session import _TrainingResult, _FutureTrainingResult
-from ray.train._internal.storage import StorageContext
-from ray.tune import Trainable, PlacementGroupFactory
+from ray.rllib import _register_all
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager
+from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
+from ray.train._internal.storage import StorageContext
+from ray.tune import PlacementGroupFactory, Trainable
+from ray.tune.experiment import Trial
 from ray.tune.experiment.trial import _TemporaryTrialState
 from ray.tune.schedulers import (
-    FIFOScheduler,
-    HyperBandScheduler,
     AsyncHyperBandScheduler,
-    PopulationBasedTraining,
-    MedianStoppingRule,
-    TrialScheduler,
+    FIFOScheduler,
     HyperBandForBOHB,
+    HyperBandScheduler,
+    MedianStoppingRule,
+    PopulationBasedTraining,
+    TrialScheduler,
 )
-
-from ray.tune.schedulers.pbt import _explore, PopulationBasedTrainingReplay
-from ray.tune.search._mock import _MockSearcher
+from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _explore
 from ray.tune.search import ConcurrencyLimiter
-from ray.tune.experiment import Trial
-
-from ray.rllib import _register_all
+from ray.tune.search._mock import _MockSearcher
 from ray.tune.trainable.metadata import _TrainingRunMetadata
 
 _register_all()

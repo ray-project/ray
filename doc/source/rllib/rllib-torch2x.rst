@@ -80,7 +80,7 @@ Some meta-level comments
 
 Exploration
 ------------
-In RLlib, you can now set the configuration so that it uses the compiled module during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it is recommended to use the ``ipex`` or ``onnxrt`` backend. However, you can still run the sampling part on GPUs as well by setting ``num_gpus_per_worker`` in which case other backends can be used as well. For enabling torch-compile during training you can also set `torch_compile_learner` equivalents.
+In RLlib, you can now set the configuration so that it uses the compiled module during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it's recommended to use the ``ipex`` or ``onnxrt`` backend. However, you can still run the sampling part on GPUs as well by setting ``num_gpus_per_env_runner`` in which case other backends can be used as well. For enabling torch-compile during training you can also set `torch_compile_learner` equivalents.
 
 
 
@@ -97,7 +97,7 @@ In RLlib, you can now set the configuration so that it uses the compiled module 
 
 `This <../../../../rllib/benchmarks/torch_compile/run_ppo_with_inference_bm.py>`_ benchmark script runs the PPO algorithm with the default model architecture for the Atari-Breakout game. It runs the training for ``n`` iterations for both compiled and non-compiled RLModules and reports the speedup. Note that negative speedup values mean a slowdown when you compile the module.
 
-To run the benchmark script, you need a Ray cluster comprised of at least 129 CPUs (2x64 + 1) and 2 GPUs. If this configuration is not accessible to you, you can change the number of sampling workers and batch size to make the requirements smaller.
+To run the benchmark script, you need a Ray cluster comprised of at least 129 CPUs (2x64 + 1) and 2 GPUs. If this configuration isn't accessible to you, you can change the number of sampling workers and batch size to make the requirements smaller.
 
 .. code-block:: bash
 

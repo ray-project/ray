@@ -1,23 +1,24 @@
-import aiohttp
-from aiohttp.web import Request, Response
 import dataclasses
 import json
 import logging
 import traceback
+
+import aiohttp
+from aiohttp.web import Request, Response
+
 import ray
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.job.common import (
     JobDeleteResponse,
+    JobLogsResponse,
+    JobStopResponse,
     JobSubmitRequest,
     JobSubmitResponse,
-    JobStopResponse,
-    JobLogsResponse,
 )
 from ray.dashboard.modules.job.job_manager import JobManager
 from ray.dashboard.modules.job.pydantic_models import JobType
-from ray.dashboard.modules.job.utils import parse_and_validate_request, find_job_by_ids
-
+from ray.dashboard.modules.job.utils import find_job_by_ids, parse_and_validate_request
 
 routes = optional_utils.DashboardAgentRouteTable
 logger = logging.getLogger(__name__)
@@ -27,7 +28,6 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
         self._job_manager = None
-        self._gcs_job_info_stub = None
 
     @routes.post("/api/job_agent/jobs/")
     @optional_utils.init_ray_and_catch_exceptions()

@@ -1,4 +1,4 @@
-import { Box, makeStyles } from "@material-ui/core";
+import { Box } from "@mui/material";
 import React, { useRef, useState } from "react";
 import useSWR from "swr";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
@@ -24,27 +24,7 @@ import { JobDriverLogs } from "./JobDriverLogs";
 import { JobProgressBar } from "./JobProgressBar";
 import { TaskTimeline } from "./TaskTimeline";
 
-const useStyle = makeStyles((theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    backgroundColor: "white",
-  },
-  section: {
-    marginBottom: theme.spacing(4),
-  },
-  autoscalerSection: {
-    flexWrap: "wrap",
-    [theme.breakpoints.up("md")]: {
-      flexWrap: "nowrap",
-    },
-  },
-  nodeCountCard: {
-    flex: "1 0 500px",
-  },
-}));
-
 export const JobDetailChartsPage = () => {
-  const classes = useStyle();
   const { job, msg, isLoading, params } = useJobDetail();
 
   const [taskListFilter, setTaskListFilter] = useState<string>();
@@ -54,12 +34,13 @@ export const JobDetailChartsPage = () => {
   const [actorListFilter, setActorListFilter] = useState<string>();
   const [actorTableExpanded, setActorTableExpanded] = useState(false);
   const actorTableRef = useRef<HTMLDivElement>(null);
-  const { cluster_status } = useRayStatus();
+  const { clusterStatus } = useRayStatus();
 
   const { data } = useSWR(
-    "useDataDatasets",
-    async () => {
-      const rsp = await getDataDatasets();
+    job?.job_id ? ["useDataDatasets", job.job_id] : null,
+    async ([_, jobId]) => {
+      // Only display details for Ray Datasets that belong to this job.
+      const rsp = await getDataDatasets(jobId);
 
       if (rsp) {
         return rsp.data;
@@ -70,14 +51,14 @@ export const JobDetailChartsPage = () => {
 
   if (!job) {
     return (
-      <div className={classes.root}>
+      <Box sx={{ padding: 2, backgroundColor: "white" }}>
         <Loading loading={isLoading} />
         <TitleCard title={`JOB - ${params.id}`}>
           <StatusChip type="job" status="LOADING" />
           <br />
           Request Status: {msg} <br />
         </TitleCard>
-      </div>
+      </Box>
     );
   }
 
@@ -116,14 +97,11 @@ export const JobDetailChartsPage = () => {
   };
 
   return (
-    <div className={classes.root}>
+    <Box sx={{ padding: 2, backgroundColor: "white" }}>
       <JobMetadataSection job={job} />
 
       {data?.datasets && data.datasets.length > 0 && (
-        <CollapsibleSection
-          title="Ray Data Overview"
-          className={classes.section}
-        >
+        <CollapsibleSection title="Ray Data Overview" sx={{ marginBottom: 4 }}>
           <Section>
             <DataOverview datasets={data.datasets} />
           </Section>
@@ -133,7 +111,7 @@ export const JobDetailChartsPage = () => {
       <CollapsibleSection
         title="Ray Core Overview"
         startExpanded
-        className={classes.section}
+        sx={{ marginBottom: 4 }}
       >
         <Section>
           <JobProgressBar
@@ -144,11 +122,7 @@ export const JobDetailChartsPage = () => {
         </Section>
       </CollapsibleSection>
 
-      <CollapsibleSection
-        title="Logs"
-        startExpanded
-        className={classes.section}
-      >
+      <CollapsibleSection title="Logs" startExpanded sx={{ marginBottom: 4 }}>
         <Section noTopPadding>
           <JobDriverLogs job={job} />
         </Section>
@@ -158,7 +132,7 @@ export const JobDetailChartsPage = () => {
         <CollapsibleSection
           title="Task Timeline (beta)"
           startExpanded
-          className={classes.section}
+          sx={{ marginBottom: 4 }}
         >
           <Section>
             <TaskTimeline jobId={job.job_id} />
@@ -169,21 +143,26 @@ export const JobDetailChartsPage = () => {
       <CollapsibleSection
         title="Cluster status and autoscaler"
         startExpanded
-        className={classes.section}
+        sx={{ marginBottom: 4 }}
       >
         <Box
           display="flex"
           flexDirection="row"
-          gridGap={24}
+          gap={3}
           alignItems="stretch"
-          className={classes.autoscalerSection}
+          sx={(theme) => ({
+            flexWrap: "wrap",
+            [theme.breakpoints.up("md")]: {
+              flexWrap: "nowrap",
+            },
+          })}
         >
-          <NodeCountCard className={classes.nodeCountCard} />
+          <NodeCountCard sx={{ flex: "1 0 500px" }} />
           <Section flex="1 1 500px">
-            <NodeStatusCard cluster_status={cluster_status} />
+            <NodeStatusCard clusterStatus={clusterStatus} />
           </Section>
           <Section flex="1 1 500px">
-            <ResourceStatusCard cluster_status={cluster_status} />
+            <ResourceStatusCard clusterStatus={clusterStatus} />
           </Section>
         </Box>
       </CollapsibleSection>
@@ -197,7 +176,7 @@ export const JobDetailChartsPage = () => {
             onExpandButtonClick={() => {
               setTaskTableExpanded(!taskTableExpanded);
             }}
-            className={classes.section}
+            sx={{ marginBottom: 4 }}
           >
             <Section>
               <TaskList
@@ -215,7 +194,7 @@ export const JobDetailChartsPage = () => {
             onExpandButtonClick={() => {
               setActorTableExpanded(!actorTableExpanded);
             }}
-            className={classes.section}
+            sx={{ marginBottom: 4 }}
           >
             <Section>
               <ActorList
@@ -229,7 +208,7 @@ export const JobDetailChartsPage = () => {
 
           <CollapsibleSection
             title="Placement Group Table"
-            className={classes.section}
+            sx={{ marginBottom: 4 }}
           >
             <Section>
               <PlacementGroupList jobId={job.job_id} />
@@ -237,6 +216,6 @@ export const JobDetailChartsPage = () => {
           </CollapsibleSection>
         </React.Fragment>
       )}
-    </div>
+    </Box>
   );
 };

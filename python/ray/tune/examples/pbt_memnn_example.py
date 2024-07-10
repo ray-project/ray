@@ -5,21 +5,29 @@ References Keras and is based off of https://keras.io/examples/babi_memnn/.
 
 from __future__ import print_function
 
-from tensorflow.keras.models import Sequential, Model, load_model
-from tensorflow.keras.layers import Embedding
-from tensorflow.keras.layers import Input, Activation, Dense, Permute, Dropout
-from tensorflow.keras.layers import add, dot, concatenate
-from tensorflow.keras.layers import LSTM
-from tensorflow.keras.optimizers import RMSprop
-from tensorflow.keras.utils import get_file
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-
-from filelock import FileLock
-import os
 import argparse
-import tarfile
-import numpy as np
+import os
 import re
+import tarfile
+
+import numpy as np
+from filelock import FileLock
+from tensorflow.keras.layers import (
+    LSTM,
+    Activation,
+    Dense,
+    Dropout,
+    Embedding,
+    Input,
+    Permute,
+    add,
+    concatenate,
+    dot,
+)
+from tensorflow.keras.models import Model, Sequential, load_model
+from tensorflow.keras.optimizers import RMSprop
+from tensorflow.keras.preprocessing.sequence import pad_sequences
+from tensorflow.keras.utils import get_file
 
 from ray import train, tune
 

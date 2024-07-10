@@ -49,7 +49,7 @@ class CQLConfig(SACConfig):
         from ray.rllib.algorithms.cql import CQLConfig
         config = CQLConfig().training(gamma=0.9, lr=0.01)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=4)
+        config = config.env_runners(num_env_runners=4)
         print(config.to_dict())
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build(env="CartPole-v1")

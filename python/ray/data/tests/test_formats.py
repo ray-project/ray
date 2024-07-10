@@ -106,7 +106,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert ds._plan.execute()._num_computed() == 0
+    assert not ds._plan.has_started_execution
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")
@@ -180,11 +180,12 @@ def test_from_tf(ray_start_regular_shared):
         tf.debugging.assert_equal(expected_label, actual_label)
 
 
-def test_from_torch(shutdown_only, tmp_path):
+@pytest.mark.parametrize("local_read", [True, False])
+def test_from_torch(shutdown_only, local_read, tmp_path):
     torch_dataset = torchvision.datasets.MNIST(tmp_path, download=True)
     expected_data = list(torch_dataset)
 
-    ray_dataset = ray.data.from_torch(torch_dataset)
+    ray_dataset = ray.data.from_torch(torch_dataset, local_read=local_read)
 
     actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data

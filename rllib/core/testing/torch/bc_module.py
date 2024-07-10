@@ -1,11 +1,11 @@
-from typing import Any, Mapping
+from typing import Any, Dict
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleConfig,
     MultiAgentRLModule,
+    MultiAgentRLModuleConfig,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.models.specs.typing import SpecType
@@ -55,17 +55,17 @@ class DiscreteBCTorchModule(TorchRLModule):
         return [Columns.ACTION_DIST_INPUTS]
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
         action_logits = self.policy(batch["obs"])
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 

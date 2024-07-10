@@ -8,6 +8,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
     ApplicationStatus,
+    DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -30,7 +31,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
-from ray.serve.handle import DeploymentHandle
+from ray.serve.handle import DeploymentHandle, _HandleOptions
 from ray.serve.schema import LoggingConfig, ServeApplicationSchema, ServeDeploySchema
 
 logger = logging.getLogger(__file__)
@@ -303,7 +304,7 @@ class ServeControllerClient:
                 because a single-app config was deployed after deploying a multi-app
                 config, or vice versa.
         """
-        ray.get(self._controller.deploy_config.remote(config))
+        ray.get(self._controller.apply_config.remote(config))
 
         if _blocking:
             timeout_s = 60
@@ -379,11 +380,6 @@ class ServeControllerClient:
         )
 
     @_ensure_connected
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
-        """Returns the most recently requested Serve config."""
-        return ray.get(self._controller.get_app_config.remote(name))
-
-    @_ensure_connected
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> StatusOverview:
         proto = StatusOverviewProto.FromString(
             ray.get(self._controller.get_serve_status.remote(name))
@@ -408,39 +404,43 @@ class ServeControllerClient:
     def get_handle(
         self,
         deployment_name: str,
-        app_name: Optional[str] = "default",
-        missing_ok: Optional[bool] = False,
+        app_name: Optional[str] = SERVE_DEFAULT_APP_NAME,
+        check_exists: bool = True,
     ) -> DeploymentHandle:
         """Construct a handle for the specified deployment.
 
         Args:
             deployment_name: Deployment name.
             app_name: Application name.
-            missing_ok: If true, then Serve won't check the deployment
-                is registered. False by default.
+            check_exists: If False, then Serve won't check the deployment
+                is registered. True by default.
 
         Returns:
             DeploymentHandle
         """
-        cache_key = (deployment_name, app_name, missing_ok)
+        from ray.serve.context import _get_internal_replica_context
+
+        deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
+        cache_key = (deployment_name, app_name, check_exists)
         if cache_key in self.handle_cache:
             return self.handle_cache[cache_key]
 
-        all_deployments = ray.get(self._controller.list_deployment_ids.remote())
-        if (
-            not missing_ok
-            and DeploymentID(name=deployment_name, app_name=app_name)
-            not in all_deployments
-        ):
-            raise KeyError(
-                f"Deployment '{deployment_name}' in application '{app_name}' does not "
-                "exist."
-            )
+        if check_exists:
+            all_deployments = ray.get(self._controller.list_deployment_ids.remote())
+            if deployment_id not in all_deployments:
+                raise KeyError(f"{deployment_id} does not exist.")
 
-        handle = DeploymentHandle(
-            deployment_name,
-            app_name,
-        )
+        if _get_internal_replica_context() is not None:
+            handle = DeploymentHandle(
+                deployment_name,
+                app_name,
+                handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
+            )
+        else:
+            handle = DeploymentHandle(
+                deployment_name,
+                app_name,
+            )
 
         self.handle_cache[cache_key] = handle
         if cache_key in self._evicted_handle_keys:

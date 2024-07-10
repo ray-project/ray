@@ -27,6 +27,7 @@
 #include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/core_worker_process.h"
 #include "ray/core_worker/experimental_mutable_object_manager.h"
+#include "ray/core_worker/experimental_mutable_object_provider.h"
 #include "ray/core_worker/future_resolver.h"
 #include "ray/core_worker/generator_waiter.h"
 #include "ray/core_worker/lease_policy.h"
@@ -139,15 +140,18 @@ class TaskCounter {
       float running = 0.0;
       float in_get = 0.0;
       float in_wait = 0.0;
+      float idle = 0.0;
       if (running_in_wait_counter_.Total() > 0) {
         in_wait = 1.0;
       } else if (running_in_get_counter_.Total() > 0) {
         in_get = 1.0;
       } else if (num_tasks_running_ > 0) {
         running = 1.0;
+      } else {
+        idle = 1.0;
       }
-      ray::stats::STATS_actors.Record(-(running + in_get + in_wait),
-                                      {{"State", "ALIVE"},
+      ray::stats::STATS_actors.Record(idle,
+                                      {{"State", "IDLE"},
                                        {"Name", actor_name_},
                                        {"Source", "executor"},
                                        {"JobId", job_id_}});
@@ -697,11 +701,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// current data size.
   /// \param[in] num_readers The number of readers that must read and release
   /// the object before the caller can write again.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the write lock.
+  /// If this is 0, the method will try to acquire the write lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  /// will block indefinitely until the write lock is acquired.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   Status ExperimentalChannelWriteAcquire(const ObjectID &object_id,
                                          const std::shared_ptr<Buffer> &metadata,
                                          uint64_t data_size,
                                          int64_t num_readers,
+                                         int64_t timeout_ms,
                                          std::shared_ptr<Buffer> *data);
 
   /// Experimental method for mutable objects. Releases a write lock on the
@@ -725,9 +734,31 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] object_ids The IDs of the objects.
   Status ExperimentalChannelReadRelease(const std::vector<ObjectID> &object_ids);
 
-  Status ExperimentalChannelRegisterReader(const ObjectID &object_id);
+  /// Experimental method for mutable objects. Registers a writer channel.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] node_id If non-NULL, sends each write to the readers on node `node_id`.
+  Status ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
+                                                 const NodeID *node_id);
 
-  Status ExperimentalChannelRegisterWriter(const ObjectID &object_id);
+  /// Experimental method for mutable objects. Registers a reader channel.
+  ///
+  /// \param[in] object_id The ID of the object.
+  Status ExperimentalRegisterMutableObjectReader(const ObjectID &object_id);
+
+  /// Experimental method for mutable objects. Registers a mapping from a mutable object
+  /// that is written to on this node to the corresponding mutable object that is read on
+  /// the node that `reader_actor` is on.
+  ///
+  /// \param[in] writer_object_id The ID of the object that is written on this node.
+  /// \param[in] reader_actor The actor that reads the object.
+  /// \param[in] num_readers The total number of readers.
+  /// \param[in] reader_object_id The ID of the corresponding object that is read on the
+  /// remote node.
+  Status ExperimentalRegisterMutableObjectReaderRemote(const ObjectID &writer_object_id,
+                                                       const ActorID &reader_actor,
+                                                       int64_t num_readers,
+                                                       const ObjectID &reader_object_id);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -738,7 +769,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status Get(const std::vector<ObjectID> &ids,
              const int64_t timeout_ms,
-             std::vector<std::shared_ptr<RayObject>> *results);
+             std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Get objects directly from the local plasma store, without waiting for the
   /// objects to be fetched from another node. This should only be used
@@ -800,8 +831,22 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status DeleteImpl(const std::vector<ObjectID> &object_ids, bool local_only);
 
+  /// Get the locations of a list objects from the local core worker. Locations that
+  /// failed to be retrieved will be returned as nullopt. No RPCs are made in this
+  /// method.
+  ///
+  /// \param[in] object_ids IDs of the objects to get.
+  /// \param[out] results Result list of object locations.
+  /// \return Status.
+  Status GetLocalObjectLocations(const std::vector<ObjectID> &object_ids,
+                                 std::vector<std::optional<ObjectLocation>> *results);
+
   /// Get the locations of a list objects. Locations that failed to be retrieved
   /// will be returned as nullptrs.
+  ///
+  /// Note: this returns shared_ptr while `GetLocalObjectLocations` returns optional.
+  /// This is just an optimization in the implementation because this method needs to
+  /// track RPCs out-of-order. They don't have any semantic differences.
   ///
   /// \param[in] object_ids IDs of the objects to get.
   /// \param[in] timeout_ms Timeout in milliseconds, wait infinitely if it's negative.
@@ -1025,9 +1070,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] serialized The serialized actor handle.
   /// \param[in] outer_object_id The object ID that contained the serialized
   /// actor handle, if any.
+  /// \param[in] add_local_ref Whether to add a local reference for this actor
+  /// handle. Handles that were created out-of-band (i.e. via getting actor by
+  /// name or getting a handle to self) should not add a local reference
+  /// because the distributed reference counting protocol does not ensure that
+  /// the owner will learn of this reference.
   /// \return The ActorID of the deserialized handle.
   ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
-                                            const ObjectID &outer_object_id);
+                                            const ObjectID &outer_object_id,
+                                            bool add_local_ref);
 
   /// Serialize an actor handle.
   ///
@@ -1257,6 +1308,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
                                rpc::PlasmaObjectReadyReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Creates a new mutable object.
+  void HandleRegisterMutableObjectReader(
+      rpc::RegisterMutableObjectReaderRequest request,
+      rpc::RegisterMutableObjectReaderReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Get statistics from core worker.
   void HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
@@ -1634,9 +1691,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
-  Status ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
-                                                   bool is_writer);
-
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -1686,15 +1740,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status GetObjects(const std::vector<ObjectID> &ids,
                     const int64_t timeout_ms,
-                    std::vector<std::shared_ptr<RayObject>> *results);
+                    std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Helper for Get, used only to read experimental mutable objects.
   ///
   /// \param[in] ids IDs of the objects to get.
+  /// \param[in] timeout_ms Time out in milliseconds to get the objects.
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status GetExperimentalMutableObjects(const std::vector<ObjectID> &ids,
-                                       std::vector<std::shared_ptr<RayObject>> *results);
+                                       int64_t timeout_ms,
+                                       std::vector<std::shared_ptr<RayObject>> &results);
+
+  /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
+  void ConnectToRayletInternal();
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
@@ -1762,8 +1821,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Plasma store interface.
   std::shared_ptr<CoreWorkerPlasmaStoreProvider> plasma_store_provider_;
 
-  /// Used to read and write experimental channels.
-  std::shared_ptr<ExperimentalMutableObjectManager> experimental_mutable_object_manager_;
+  /// Manages mutable objects that must be transferred across nodes.
+  std::shared_ptr<experimental::MutableObjectProvider>
+      experimental_mutable_object_provider_;
 
   std::unique_ptr<FutureResolver> future_resolver_;
 

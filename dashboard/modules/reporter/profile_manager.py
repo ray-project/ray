@@ -1,13 +1,12 @@
 import asyncio
+import logging
+import os
 import shutil
 import subprocess
-import os
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Union
-from datetime import datetime
-
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -61,15 +60,19 @@ def _format_failed_profiler_command(cmd, profiler, stdout, stderr) -> str:
 # If we can sudo, always try that. Otherwise, py-spy will only work if the user has
 # root privileges or has configured setuid on the py-spy script.
 async def _can_passwordless_sudo() -> bool:
-    process = await asyncio.create_subprocess_exec(
-        "sudo",
-        "-n",
-        "true",
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    _, _ = await process.communicate()
-    return process.returncode == 0
+    try:
+        process = await asyncio.create_subprocess_exec(
+            "sudo",
+            "-n",
+            "true",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+    except FileNotFoundError:
+        return False
+    else:
+        _, _ = await process.communicate()
+        return process.returncode == 0
 
 
 class CpuProfilingManager:
@@ -352,6 +355,9 @@ class MemoryProfilingManager:
         if verbose:
             cmd.append("--verbose")
         cmd.append(str(pid))
+
+        if await _can_passwordless_sudo():
+            cmd = ["sudo", "-n"] + cmd
 
         process = await asyncio.create_subprocess_exec(
             *cmd,

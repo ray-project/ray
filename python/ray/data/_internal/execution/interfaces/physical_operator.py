@@ -4,6 +4,9 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
+from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
+    AutoscalingActorPool,
+)
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -348,11 +351,24 @@ class PhysicalOperator(Operator):
         raise NotImplementedError
 
     def get_active_tasks(self) -> List[OpTask]:
-        """Get a list of the active tasks of this operator."""
+        """Get a list of the active tasks of this operator.
+
+        Subclasses should return *all* running normal/actor tasks. The
+        StreamingExecutor will wait on these tasks and trigger callbacks.
+        """
         return []
 
     def num_active_tasks(self) -> int:
         """Return the number of active tasks.
+
+        This method is used for 2 purposes:
+        * Determine if this operator is completed.
+        * Displaying active task info in the progress bar.
+        Thus, the return value can be less than `len(get_active_tasks())`,
+        if some tasks are not needed for the above purposes. E.g., for the
+        actor pool map operator, readiness checking tasks can be excluded
+        from `num_active_tasks`, but they should be included in
+        `get_active_tasks`.
 
         Subclasses can override this as a performance optimization.
         """
@@ -400,29 +416,13 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def incremental_resource_usage(
-        self, consider_autoscaling=True
-    ) -> ExecutionResources:
+    def incremental_resource_usage(self) -> ExecutionResources:
         """Returns the incremental resources required for processing another input.
 
         For example, an operator that launches a task per input could return
         ExecutionResources(cpu=1) as its incremental usage.
-
-        Args:
-            consider_autoscaling: Whether to consider the possibility of autoscaling.
         """
         return ExecutionResources()
-
-    def notify_resource_usage(
-        self, input_queue_size: int, under_resource_limits: bool
-    ) -> None:
-        """Called periodically by the executor.
-
-        Args:
-            input_queue_size: The number of inputs queued outside this operator.
-            under_resource_limits: Whether this operator is under resource limits.
-        """
-        pass
 
     def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
         """Called periodically from the executor to update internal in backpressure
@@ -435,3 +435,26 @@ class PhysicalOperator(Operator):
         if self._in_task_submission_backpressure != in_backpressure:
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
+
+    def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
+        """Return a list of `AutoscalingActorPool`s managed by this operator."""
+        return []
+
+    def implements_accurate_memory_accounting(self) -> bool:
+        """Return whether this operator implements accurate memory accounting.
+
+        An operator that implements accurate memory accounting should should properly
+        report its memory usage via the following APIs:
+          - `self._metrics.on_input_queued`.
+          - `self._metrics.on_input_dequeued`.
+          - `self._metrics.on_output_queued`.
+          - `self._metrics.on_output_dequeued`.
+        """
+        # TODO(hchen): Currently we only enable `ReservationOpResourceAllocator` when
+        # all operators in the dataset have implemented accurate memory accounting.
+        # Eventually all operators should implement accurate memory accounting.
+        return False
+
+    def supports_fusion(self) -> bool:
+        """Returns ```True``` if this operator can be fused with other operators."""
+        return False

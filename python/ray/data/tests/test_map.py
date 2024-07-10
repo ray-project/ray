@@ -1,3 +1,4 @@
+import asyncio
 import itertools
 import math
 import os
@@ -830,7 +831,7 @@ def test_map_batches_block_bundling_skewed_manual(
     ray_start_regular_shared, block_sizes, batch_size, expected_num_blocks
 ):
     num_blocks = len(block_sizes)
-    ds = ray.data.from_pandas(
+    ds = ray.data.from_blocks(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
@@ -856,7 +857,7 @@ def test_map_batches_block_bundling_skewed_auto(
     ray_start_regular_shared, block_sizes, batch_size
 ):
     num_blocks = len(block_sizes)
-    ds = ray.data.from_pandas(
+    ds = ray.data.from_blocks(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
@@ -948,17 +949,30 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
     assert type(ray.get(block_refs[0])) == pd.DataFrame
 
 
+def test_map_with_objects_and_tensors(ray_start_regular_shared):
+    # Tests https://github.com/ray-project/ray/issues/45235
+
+    class UnsupportedType:
+        pass
+
+    def f(batch):
+        batch_size = len(batch["id"])
+        return {
+            "array": np.zeros((batch_size, 32, 32, 3)),
+            "unsupported": [UnsupportedType()] * batch_size,
+        }
+
+    ray.data.range(1).map_batches(f).materialize()
+
+
 def test_random_sample(ray_start_regular_shared):
     import math
 
     def ensure_sample_size_close(dataset, sample_percent=0.5):
-        r1 = ds.random_sample(sample_percent)
+        r1 = dataset.random_sample(sample_percent)
         assert math.isclose(
-            r1.count(), int(ds.count() * sample_percent), rel_tol=2, abs_tol=2
+            r1.count(), int(dataset.count() * sample_percent), rel_tol=2, abs_tol=2
         )
-
-    ds = ray.data.range(10, override_num_blocks=2)
-    ensure_sample_size_close(ds)
 
     ds = ray.data.range(10, override_num_blocks=2)
     ensure_sample_size_close(ds)
@@ -1042,6 +1056,39 @@ def test_nonserializable_map_batches(shutdown_only):
     # Check that the `inspect_serializability` trace was printed
     with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
         x.map_batches(lambda _: lock).take(1)
+
+
+def test_map_batches_async_generator(shutdown_only):
+    ray.shutdown()
+    ray.init(num_cpus=10)
+
+    async def sleep_and_yield(i):
+        print("sleep", i)
+        await asyncio.sleep(i % 5)
+        print("yield", i)
+        return {"input": [i], "output": [2**i]}
+
+    class AsyncActor:
+        def __init__(self):
+            pass
+
+        async def __call__(self, batch):
+            tasks = [asyncio.create_task(sleep_and_yield(i)) for i in batch["id"]]
+            for task in tasks:
+                yield await task
+
+    n = 10
+    ds = ray.data.range(n, override_num_blocks=2)
+    ds = ds.map(lambda x: x)
+    ds = ds.map_batches(AsyncActor, batch_size=1, concurrency=1, max_concurrency=2)
+
+    start_t = time.time()
+    output = ds.take_all()
+    runtime = time.time() - start_t
+    assert runtime < sum(range(n)), runtime
+
+    expected_output = [{"input": i, "output": 2**i} for i in range(n)]
+    assert output == expected_output, (output, expected_output)
 
 
 if __name__ == "__main__":

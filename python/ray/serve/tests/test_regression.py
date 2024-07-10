@@ -17,6 +17,9 @@ from ray.serve.handle import DeploymentHandle
 
 @pytest.fixture
 def shutdown_ray():
+    if ray.is_initialized():
+        serve.shutdown()
+        ray.shutdown()
     yield
     serve.shutdown()
     ray.shutdown()
@@ -163,7 +166,7 @@ def test_handle_cache_out_of_scope(serve_instance):
     assert len(handle_cache) == initial_num_cached + 1
 
     def sender_where_handle_goes_out_of_scope():
-        f = _get_global_client().get_handle("f", "app", missing_ok=True)
+        f = _get_global_client().get_handle("f", "app", check_exists=False)
         assert f is handle
         assert f.remote().result() == "hi"
 

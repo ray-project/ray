@@ -270,7 +270,7 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
         input_dict = sample_batch.get_single_step_input_dict(
             policy.view_requirements, index="last"
         )
-        if policy.config.get("_enable_new_api_stack"):
+        if policy.config.get("enable_rl_module_and_learner"):
             # Note: During sampling you are using the parameters at the beginning of
             # the sampling process. If I'll be using this advantages during training
             # should it not be the latest parameters during training for this to be

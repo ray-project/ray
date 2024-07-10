@@ -29,11 +29,11 @@ For example, if you provide a custom `gym.Env <https://github.com/openai/gym>`_ 
 
 Here is a simple example:
 
-.. literalinclude:: ../../../../rllib/examples/documentation/custom_gym_env.py
+.. literalinclude:: ../doc_code/custom_gym_env.py
    :language: python
 
-..   start-after: __sphinx_doc_model_construct_1_begin__
-..   end-before: __sphinx_doc_model_construct_1_end__
+..   start-after: __rllib-custom-gym-env-begin__
+..   end-before: __rllib-custom-gym-env-end__
 
 However, you may also conveniently sub-class any of the other supported RLlib-specific
 environment types. The automated paths from those env types (or callables returning instances of those types) to

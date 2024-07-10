@@ -82,6 +82,9 @@ Forward methods
     ~RLModule.forward_train
     ~RLModule.forward_exploration
     ~RLModule.forward_inference
+    ~RLModule._forward_train
+    ~RLModule._forward_exploration
+    ~RLModule._forward_inference
 
 IO specifications
 +++++++++++++++++

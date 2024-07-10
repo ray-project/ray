@@ -1,10 +1,23 @@
+import asyncio
 import dataclasses
 import logging
 import os
 import re
+import time
 import traceback
 from dataclasses import dataclass
-from typing import Iterator, List, Optional, Any, Dict, Tuple, Union
+from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+
+from ray._private import ray_constants
+from ray._private.gcs_utils import GcsAioClient
+from ray.dashboard.modules.job.common import (
+    JOB_ID_METADATA_KEY,
+    JobInfoStorageClient,
+    JobStatus,
+    validate_request_type,
+)
+from ray.dashboard.modules.job.pydantic_models import DriverInfo, JobDetails, JobType
+from ray.runtime_env import RuntimeEnv
 
 try:
     # package `aiohttp` is not in ray's minimal dependencies
@@ -15,22 +28,6 @@ except Exception:
     Request = None
     Response = None
 
-from ray._private import ray_constants
-from ray._private.gcs_utils import GcsAioClient
-from ray.dashboard.modules.job.common import (
-    validate_request_type,
-    JobInfoStorageClient,
-)
-from ray.dashboard.modules.job.pydantic_models import (
-    DriverInfo,
-    JobDetails,
-    JobType,
-)
-from ray.dashboard.modules.job.common import (
-    JobStatus,
-    JOB_ID_METADATA_KEY,
-)
-from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
 
@@ -69,45 +66,44 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
         logger.debug(f"Path {path} doesn't exist yet.")
         yield None
 
+    EOF = ""
+
     with open(path, "r") as f:
         lines = []
+
         chunk_char_count = 0
         curr_line = None
+
         while True:
-            if curr_line is None:
-                # Only read the next line in the file
-                # if there's no remaining "curr_line" to process
-                curr_line = f.readline()
-            new_chunk_char_count = chunk_char_count + len(curr_line)
-            if new_chunk_char_count > MAX_CHUNK_CHAR_LENGTH:
-                # Too many characters, return 20000 in this chunk, and then
-                # continue loop with remaining characters in curr_line
-                truncated_line = curr_line[0 : MAX_CHUNK_CHAR_LENGTH - chunk_char_count]
-                lines.append(truncated_line)
-                # Set remainder of current line to process next
-                curr_line = curr_line[MAX_CHUNK_CHAR_LENGTH - chunk_char_count :]
-                yield lines or None
-                lines = []
-                chunk_char_count = 0
-            elif len(lines) >= 9:
+            # We want to flush current chunk in following cases:
+            #   - We accumulated 10 lines
+            #   - We accumulated at least MAX_CHUNK_CHAR_LENGTH total chars
+            #   - We reached EOF
+            if (
+                len(lines) >= 10
+                or chunk_char_count > MAX_CHUNK_CHAR_LENGTH
+                or curr_line == EOF
+            ):
                 # Too many lines, return 10 lines in this chunk, and then
                 # continue reading the file.
-                lines.append(curr_line)
                 yield lines or None
+
                 lines = []
                 chunk_char_count = 0
-                curr_line = None
-            elif curr_line:
+
+            # Read next line
+            curr_line = f.readline()
+
+            # `readline` will return
+            #   - '' for EOF
+            #   - '\n' for an empty line in the file
+            if curr_line != EOF:
                 # Add line to current chunk
                 lines.append(curr_line)
-                chunk_char_count = new_chunk_char_count
-                curr_line = None
+                chunk_char_count += len(curr_line)
             else:
-                # readline() returns empty string when there's no new line.
-                yield lines or None
-                lines = []
-                chunk_char_count = 0
-                curr_line = None
+                # If EOF is reached sleep for 1s before continuing
+                time.sleep(1)
 
 
 async def parse_and_validate_request(
@@ -151,10 +147,15 @@ async def get_driver_jobs(
     Only the last driver of a submission job is returned.
     """
     job_infos = await gcs_aio_client.get_all_job_info(timeout=timeout)
+    # Sort jobs from GCS to follow convention of returning only last driver
+    # of submission job.
+    sorted_job_infos = sorted(
+        job_infos.values(), key=lambda job_table_entry: job_table_entry.job_id.hex()
+    )
 
     jobs = {}
     submission_job_drivers = {}
-    for job_table_entry in job_infos.values():
+    for job_table_entry in sorted_job_infos:
         if job_table_entry.config.ray_namespace.startswith(
             ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
         ):
@@ -237,3 +238,45 @@ async def find_job_by_ids(
         return job
 
     return None
+
+
+async def find_jobs_by_job_ids(
+    gcs_aio_client: GcsAioClient,
+    job_info_client: JobInfoStorageClient,
+    job_ids: List[str],
+) -> Dict[str, JobDetails]:
+    """
+    Returns a dictionary of submission jobs with the given job ids, keyed by the job id.
+
+    This only accepts job ids and not submission ids.
+    """
+    driver_jobs, submission_job_drivers = await get_driver_jobs(gcs_aio_client)
+
+    # Filter down to the request job_ids
+    driver_jobs = {key: job for key, job in driver_jobs.items() if key in job_ids}
+    submission_job_drivers = {
+        key: job for key, job in submission_job_drivers.items() if job.id in job_ids
+    }
+
+    # Fetch job details for each job
+    job_submission_ids = submission_job_drivers.keys()
+    job_infos = await asyncio.gather(
+        *[
+            job_info_client.get_info(submission_id)
+            for submission_id in job_submission_ids
+        ]
+    )
+
+    return {
+        **driver_jobs,
+        **{
+            submission_job_drivers.get(submission_id).id: JobDetails(
+                **dataclasses.asdict(job_info),
+                submission_id=submission_id,
+                job_id=submission_job_drivers.get(submission_id).id,
+                driver_info=submission_job_drivers.get(submission_id),
+                type=JobType.SUBMISSION,
+            )
+            for job_info, submission_id in zip(job_infos, job_submission_ids)
+        },
+    }

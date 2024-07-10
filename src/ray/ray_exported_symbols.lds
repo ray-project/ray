@@ -33,3 +33,5 @@
 *PyInit__raylet*
 *Java_io_ray*
 _JNI_On*
+*aligned_free*
+*aligned_malloc*

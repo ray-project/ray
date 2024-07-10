@@ -1,5 +1,6 @@
 import {
   Box,
+  InputAdornment,
   Switch,
   Table,
   TableBody,
@@ -7,12 +8,14 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  TextField,
   Typography,
-} from "@material-ui/core";
-import { makeStyles } from "@material-ui/core/styles";
-import Pagination from "@material-ui/lab/Pagination";
+} from "@mui/material";
+import Autocomplete from "@mui/material/Autocomplete";
+import Pagination from "@mui/material/Pagination";
 import React from "react";
 import { Outlet } from "react-router-dom";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
@@ -20,19 +23,6 @@ import { HelpInfo } from "../../components/Tooltip";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useJobList } from "./hook/useJobList";
 import { JobRow } from "./JobRow";
-
-const useStyles = makeStyles((theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    width: "100%",
-  },
-  progressError: {
-    marginTop: theme.spacing(1),
-  },
-  helpInfo: {
-    marginLeft: theme.spacing(1),
-  },
-}));
 
 const columns = [
   { label: "Job ID" },
@@ -59,7 +49,6 @@ const columns = [
 ];
 
 const JobList = () => {
-  const classes = useStyles();
   const {
     msg,
     isLoading,
@@ -71,8 +60,14 @@ const JobList = () => {
     setPage,
   } = useJobList();
 
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(jobList, page.pageNo, page.pageSize);
+
   return (
-    <div className={classes.root}>
+    <Box sx={{ padding: 2, width: "100%" }}>
       <Loading loading={isLoading} />
       <TitleCard title="JOBS">
         Auto Refresh:
@@ -89,20 +84,45 @@ const JobList = () => {
       </TitleCard>
       <TitleCard title="Job List">
         <TableContainer>
-          <SearchInput
-            label="Job ID"
-            onChange={(value) => changeFilter("job_id", value)}
-          />
-          <SearchInput
-            label="Page Size"
-            onChange={(value) =>
-              setPage("pageSize", Math.min(Number(value), 500) || 10)
-            }
-          />
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 2,
+              paddingTop: 1,
+            }}
+          >
+            <SearchInput
+              label="Job ID"
+              onChange={(value) => changeFilter("job_id", value)}
+            />
+            <TextField
+              sx={{ width: 120 }}
+              label="Page Size"
+              size="small"
+              defaultValue={10}
+              InputProps={{
+                onChange: ({ target: { value } }) => {
+                  setPage("pageSize", Math.min(Number(value), 500) || 10);
+                },
+                endAdornment: (
+                  <InputAdornment position="end">Per Page</InputAdornment>
+                ),
+              }}
+            />
+            <Autocomplete
+              sx={{ height: 35, width: 150 }}
+              options={["PENDING", "RUNNING", "SUCCEEDED", "FAILED"]}
+              onInputChange={(event, value) =>
+                changeFilter("status", value.trim())
+              }
+              renderInput={(params) => <TextField {...params} label="Status" />}
+            />
+          </Box>
           <div>
             <Pagination
-              count={Math.ceil(jobList.length / page.pageSize)}
-              page={page.pageNo}
+              count={maxPage}
+              page={constrainedPage}
               onChange={(e, pageNo) => setPage("pageNo", pageNo)}
             />
           </div>
@@ -118,9 +138,7 @@ const JobList = () => {
                     >
                       {label}
                       {helpInfo && (
-                        <HelpInfo className={classes.helpInfo}>
-                          {helpInfo}
-                        </HelpInfo>
+                        <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
                       )}
                     </Box>
                   </TableCell>
@@ -128,22 +146,17 @@ const JobList = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {jobList
-                .slice(
-                  (page.pageNo - 1) * page.pageSize,
-                  page.pageNo * page.pageSize,
-                )
-                .map((job, index) => {
-                  const { job_id, submission_id } = job;
-                  return (
-                    <JobRow key={job_id ?? submission_id ?? index} job={job} />
-                  );
-                })}
+              {list.map((job, index) => {
+                const { job_id, submission_id } = job;
+                return (
+                  <JobRow key={job_id ?? submission_id ?? index} job={job} />
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>
       </TitleCard>
-    </div>
+    </Box>
   );
 };
 

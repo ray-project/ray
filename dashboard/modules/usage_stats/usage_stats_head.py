@@ -2,13 +2,14 @@ import asyncio
 import logging
 import os
 import random
-import requests
 from concurrent.futures import ThreadPoolExecutor
+
+import requests
 
 import ray
 import ray._private.usage.usage_lib as ray_usage_lib
-from ray._private.utils import get_or_create_event_loop
 import ray.dashboard.utils as dashboard_utils
+from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
@@ -39,6 +40,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
 
     if ray._private.utils.check_dashboard_dependencies_installed():
         import aiohttp
+
         import ray.dashboard.optional_utils
 
         routes = ray.dashboard.optional_utils.DashboardHeadRouteTable
@@ -50,6 +52,14 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 message="Fetched usage stats enabled",
                 usage_stats_enabled=self.usage_stats_enabled,
                 usage_stats_prompt_enabled=self.usage_stats_prompt_enabled,
+            )
+
+        @routes.get("/cluster_id")
+        async def get_cluster_id(self, req) -> aiohttp.web.Response:
+            return ray.dashboard.optional_utils.rest_response(
+                success=True,
+                message="Fetched cluster id",
+                cluster_id=self._dashboard_head.gcs_client.cluster_id.hex(),
             )
 
     def _check_grafana_running(self):
@@ -126,6 +136,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
                 self.total_failed,
                 self.seq_no,
                 self._dashboard_head.gcs_client.address,
+                self._dashboard_head.gcs_client.cluster_id.hex(),
             )
 
             error = None

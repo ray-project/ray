@@ -1,20 +1,20 @@
+import copy
 import logging
 import os
 import sys
-
-import requests
-import numpy as np
 import time
-import copy
-import pytest
 from collections import defaultdict
 from multiprocessing import Process
 from unittest.mock import MagicMock
+
+import numpy as np
+import pytest
+import requests
 from google.protobuf import text_format
 
-import psutil
-import ray
 from mock import patch
+
+import ray
 from ray._private import ray_constants
 from ray._private.metrics_agent import fix_grpc_metric
 from ray._private.test_utils import (
@@ -23,10 +23,12 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_until_server_available,
 )
+from ray.core.generated.metrics_pb2 import Metric
 from ray.dashboard.modules.reporter.reporter_agent import ReporterAgent
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.dashboard.utils import Bunch
-from ray.core.generated.metrics_pb2 import Metric
+
+import psutil
 
 try:
     import prometheus_client
@@ -326,7 +328,7 @@ def test_report_stats():
         }
     }
 
-    records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
+    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
     for record in records:
         name = record.gauge.name
         val = record.value
@@ -337,17 +339,17 @@ def test_report_stats():
     assert len(records) == 36
     # Test stats without raylets
     STATS_TEMPLATE["raylet"] = {}
-    records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
+    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
     assert len(records) == 32
     # Test stats with gpus
     STATS_TEMPLATE["gpus"] = [
         {"utilization_gpu": 1, "memory_used": 100, "memory_total": 1000, "index": 0}
     ]
-    records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
+    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
     assert len(records) == 36
     # Test stats without autoscaler report
     cluster_stats = {}
-    records = agent._record_stats(STATS_TEMPLATE, cluster_stats)
+    records = agent._to_records(STATS_TEMPLATE, cluster_stats)
     assert len(records) == 34
 
 
@@ -420,7 +422,7 @@ def test_report_stats_gpu():
         "node_gram_used": 0,
         "node_gram_available": 0,
     }
-    records = agent._record_stats(STATS_TEMPLATE, {})
+    records = agent._to_records(STATS_TEMPLATE, {})
     # If index is not available, we don't emit metrics.
     num_gpu_records = 0
     for record in records:
@@ -572,7 +574,7 @@ def test_report_per_component_stats():
     """
     Test basic case.
     """
-    records = agent._record_stats(test_stats, cluster_stats)
+    records = agent._to_records(test_stats, cluster_stats)
     uss_records, cpu_records, num_fds_records = get_uss_and_cpu_and_num_fds_records(
         records
     )
@@ -615,7 +617,7 @@ def test_report_per_component_stats():
     """
     # Verify the metrics are reset after ray::func is killed.
     test_stats["workers"] = [idle_stats]
-    records = agent._record_stats(test_stats, cluster_stats)
+    records = agent._to_records(test_stats, cluster_stats)
     uss_records, cpu_records, num_fds_records = get_uss_and_cpu_and_num_fds_records(
         records
     )
@@ -663,7 +665,7 @@ def test_report_per_component_stats():
     }
     test_stats["workers"] = [idle_stats, unknown_stats]
 
-    records = agent._record_stats(test_stats, cluster_stats)
+    records = agent._to_records(test_stats, cluster_stats)
     uss_records, cpu_records, num_fds_records = get_uss_and_cpu_and_num_fds_records(
         records
     )

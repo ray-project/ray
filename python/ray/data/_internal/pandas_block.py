@@ -16,6 +16,10 @@ from typing import (
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data._internal.numpy_support import (
+    convert_udf_returns_to_numpy,
+    validate_numpy_batch,
+)
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import find_partitions
@@ -24,6 +28,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
+    BlockType,
     KeyType,
     U,
 )
@@ -142,6 +147,9 @@ class PandasBlockBuilder(TableBlockBuilder):
     def _empty_table() -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         return pandas.DataFrame()
+
+    def block_type(self) -> BlockType:
+        return BlockType.PANDAS
 
 
 # This is to be compatible with pyarrow.lib.schema
@@ -263,7 +271,22 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
 
-        return pyarrow.table(self._table)
+        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
+        # column to the resulting table.
+        return pyarrow.Table.from_pandas(self._table, preserve_index=False)
+
+    @staticmethod
+    def numpy_to_block(
+        batch: Union[Dict[str, np.ndarray], Dict[str, list]],
+    ) -> "pandas.DataFrame":
+        validate_numpy_batch(batch)
+
+        batch = {
+            column_name: convert_udf_returns_to_numpy(column)
+            for column_name, column in batch.items()
+        }
+        block = PandasBlockBuilder._table_from_pydict(batch)
+        return block
 
     def num_rows(self) -> int:
         return self._table.shape[0]
@@ -491,9 +514,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
-        )
+        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
@@ -605,6 +626,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
-        )
+        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+
+    def block_type(self) -> BlockType:
+        return BlockType.PANDAS

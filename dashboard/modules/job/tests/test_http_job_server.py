@@ -3,16 +3,15 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
-from pathlib import Path
-import subprocess
 import time
+from pathlib import Path
 from typing import Optional
 from unittest.mock import patch
 
 import pytest
-from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 import yaml
 
 import ray
@@ -23,13 +22,14 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
-from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.dashboard.modules.job.job_head import JobHead
+from ray.dashboard.modules.job.pydantic_models import JobDetails
+from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
 from ray.dashboard.modules.version import CURRENT_VERSION
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.job_submission import JobStatus, JobSubmissionClient
+from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.tests.conftest import _ray_start
-from ray.dashboard.modules.job.tests.test_cli_integration import set_env_var
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -377,7 +377,7 @@ def test_timeout(job_sdk_client):
     data = client.get_job_info(job_id)
     assert "Failed to set up runtime environment" in data.message
     assert "Timeout" in data.message
-    assert "consider increasing `setup_timeout_seconds`" in data.message
+    assert "setup_timeout_seconds" in data.message
 
 
 def test_per_task_runtime_env(job_sdk_client: JobSubmissionClient):
@@ -619,10 +619,12 @@ def test_version_endpoint(job_sdk_client):
 
     r = client._do_request("GET", "/api/version")
     assert r.status_code == 200
-    assert r.json() == {
+    body = r.json()
+    assert body == {
         "version": CURRENT_VERSION,
         "ray_version": ray.__version__,
         "ray_commit": ray.__commit__,
+        "session_name": body["session_name"],
     }
 
 

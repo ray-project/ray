@@ -7,10 +7,10 @@ from typing import Callable, Optional, Type, Union
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import (
+    _internal_kv_del,
     _internal_kv_get,
     _internal_kv_initialized,
     _internal_kv_put,
-    _internal_kv_del,
 )
 from ray.tune.error import TuneError
 from ray.util.annotations import DeveloperAPI
@@ -95,8 +95,7 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
             automatically converted into a class during registration.
     """
 
-    from ray.tune.trainable import wrap_function
-    from ray.tune.trainable import Trainable
+    from ray.tune.trainable import Trainable, wrap_function
 
     if isinstance(trainable, type):
         logger.debug("Detected class for trainable.")

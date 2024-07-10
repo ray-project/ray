@@ -7,8 +7,8 @@ Requires the HpBandSter and ConfigSpace libraries to be installed
 """
 
 import json
-import time
 import os
+import time
 
 import numpy as np
 

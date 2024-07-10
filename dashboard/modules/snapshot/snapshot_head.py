@@ -1,21 +1,21 @@
 import concurrent.futures
-from datetime import datetime
 import enum
-import logging
 import json
+import logging
 import os
+from datetime import datetime
 from typing import Optional
 
 import aiohttp.web
 
-from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._private.gcs_aio_client import GcsAioClient
+from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._private.storage import _load_class
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 from ray.dashboard.modules.job.common import JobInfoStorageClient
-from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
-
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -76,10 +76,9 @@ class RayActivityResponse(BaseModel, extra=Extra.allow):
 class APIHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        self._gcs_job_info_stub = None
         self._gcs_actor_info_stub = None
         self._dashboard_head = dashboard_head
-        self._gcs_aio_client = dashboard_head.gcs_aio_client
+        self._gcs_aio_client: GcsAioClient = dashboard_head.gcs_aio_client
         self._job_info_client = None
         # For offloading CPU intensive work.
         self._thread_pool = concurrent.futures.ThreadPoolExecutor(
@@ -180,14 +179,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # This includes the _ray_internal_dashboard job that gets automatically
         # created with every cluster
         try:
-            request = gcs_service_pb2.GetAllJobInfoRequest()
-            reply = await self._gcs_job_info_stub.GetAllJobInfo(
-                request, timeout=timeout
-            )
+            reply = await self._gcs_aio_client.get_all_job_info(timeout=timeout)
 
             num_active_drivers = 0
             latest_job_end_time = 0
-            for job_table_entry in reply.job_info_list:
+            for job_table_entry in reply.values():
                 is_dead = bool(job_table_entry.is_dead)
                 in_internal_namespace = job_table_entry.config.ray_namespace.startswith(
                     "_ray_internal_"
@@ -235,9 +231,6 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             )
 
     async def run(self, server):
-        self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
-            self._dashboard_head.aiogrpc_gcs_channel
-        )
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             self._dashboard_head.aiogrpc_gcs_channel
         )

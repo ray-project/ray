@@ -1,37 +1,11 @@
-import {
-  Button,
-  Grid,
-  makeStyles,
-  MenuItem,
-  Paper,
-  Select,
-} from "@material-ui/core";
+import { Box, Button, Grid, MenuItem, Select } from "@mui/material";
 import React, { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import LogVirtualView from "../../components/LogView/LogVirtualView";
 import TitleCard from "../../components/TitleCard";
 import { getJmap, getJstack, getJstat } from "../../service/util";
 
-const useStyles = makeStyles((theme) => ({
-  root: {
-    padding: theme.spacing(4),
-    width: "100%",
-  },
-  table: {
-    marginTop: theme.spacing(4),
-    padding: theme.spacing(2),
-  },
-  pageMeta: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
-  },
-  search: {
-    margin: theme.spacing(1),
-  },
-}));
-
 const CMDResult = () => {
-  const classes = useStyles();
   const { cmd, ip, pid } = useParams() as {
     cmd: string;
     ip: string;
@@ -87,10 +61,10 @@ const CMDResult = () => {
   }, [cmd, executeJstat, ip, pid]);
 
   return (
-    <div className={classes.root}>
+    <Box sx={{ padding: 4, width: "100%" }}>
       <TitleCard title={cmd}>
         {cmd === "jstat" && (
-          <Paper className={classes.pageMeta}>
+          <Box sx={{ padding: 2, marginTop: 2 }}>
             <Grid container spacing={1}>
               <Grid item>
                 <Select
@@ -119,7 +93,7 @@ const CMDResult = () => {
                 <Button onClick={executeJstat}>Execute</Button>
               </Grid>
             </Grid>
-          </Paper>
+          </Box>
         )}
       </TitleCard>
       <TitleCard title={`IP: ${ip} / Pid: ${pid}`}>
@@ -129,7 +103,7 @@ const CMDResult = () => {
           height={800}
         />
       </TitleCard>
-    </div>
+    </Box>
   );
 };
 

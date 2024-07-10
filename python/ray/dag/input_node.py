@@ -215,7 +215,7 @@ class InputAttributeNode(DAGNode):
     def __init__(
         self,
         dag_input_node: InputNode,
-        key: str,
+        key: Union[int, str],
         accessor_method: str,
         input_type: str = None,
     ):
@@ -290,6 +290,10 @@ class InputAttributeNode(DAGNode):
         """
         if "result_type_string" in self._bound_other_args_to_resolve:
             return self._bound_other_args_to_resolve["result_type_string"]
+
+    @property
+    def key(self) -> Union[int, str]:
+        return self._key
 
 
 @DeveloperAPI

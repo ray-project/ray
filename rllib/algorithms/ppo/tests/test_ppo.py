@@ -128,9 +128,6 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
-            # TODO (Kourosh): Enable when the scheduler is supported in the new
-            #  Learner API stack.
-            .experimental(_enable_new_api_stack=False)
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing.
@@ -146,8 +143,8 @@ class TestPPO(unittest.TestCase):
                     max_seq_len=20,
                 ),
             )
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 # Test with compression.
                 compress_observations=True,
                 enable_connectors=True,
@@ -156,7 +153,7 @@ class TestPPO(unittest.TestCase):
             .evaluation(
                 evaluation_duration=2,
                 evaluation_duration_unit="episodes",
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
             )
         )  # For checking lr-schedule correctness.
 
@@ -202,9 +199,6 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
-            # TODO (Kourosh): Enable when the scheduler is supported in the new
-            #  Learner API stack.
-            .experimental(_enable_new_api_stack=False)
             .training(
                 # Setup lr schedule for testing.
                 lr_schedule=[[0, 5e-5], [256, 0.0]],
@@ -221,8 +215,8 @@ class TestPPO(unittest.TestCase):
                     max_seq_len=20,
                 ),
             )
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 # Test with compression.
                 compress_observations=True,
             )
@@ -275,13 +269,13 @@ class TestPPO(unittest.TestCase):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
-            # .experimental(_enable_new_api_stack=True)
             .environment(
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
-            ).rollouts(
+            )
+            .env_runners(
                 # Run locally.
-                num_rollout_workers=0,
+                num_env_runners=0,
             )
         )
         obs = np.array(0)
@@ -325,12 +319,9 @@ class TestPPO(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
-            # TODO (Kourosh): Enable when free log std is supported in the new
-            #  Learner API stack.
-            .experimental(_enable_new_api_stack=False)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
             )
             .training(
                 gamma=0.99,
@@ -392,10 +383,9 @@ class TestPPO(unittest.TestCase):
         """
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=False)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
             )
             .training(
                 gamma=0.99,

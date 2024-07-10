@@ -1,6 +1,8 @@
 import uuid
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+import ray.cloudpickle as pickle
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -50,7 +52,6 @@ class JobConfig:
         ray_namespace: Optional[str] = None,
         default_actor_lifetime: str = "non_detached",
         _py_driver_sys_path: Optional[List[str]] = None,
-        _driver_node_id_bytes: Optional[bytes] = None,
     ):
         #: The jvm options for java workers of the job.
         self.jvm_options = jvm_options or []
@@ -71,8 +72,8 @@ class JobConfig:
         self.set_default_actor_lifetime(default_actor_lifetime)
         # A list of directories that specify the search path for python workers.
         self._py_driver_sys_path = _py_driver_sys_path or []
-        # Only storing bytes not ray.NodeID to avoid circular import.
-        self._driver_node_id_bytes = _driver_node_id_bytes
+        # Python logging configurations that will be passed to Ray tasks/actors.
+        self.py_logging_config = None
 
     def set_metadata(self, key: str, value: str) -> None:
         """Add key-value pair to the metadata dictionary.
@@ -117,6 +118,20 @@ class JobConfig:
         if validate:
             self.runtime_env = self._validate_runtime_env()
         self._cached_pb = None
+
+    def set_py_logging_config(
+        self,
+        logging_config: Optional[LoggingConfig] = None,
+    ):
+        """Set the logging configuration for the job.
+
+        The logging configuration will be applied to the root loggers of
+        all Ray task and actor processes that belong to this job.
+
+        Args:
+            logging_config: The logging configuration to set.
+        """
+        self.py_logging_config = logging_config
 
     def set_ray_namespace(self, ray_namespace: str) -> None:
         """Set Ray :ref:`namespace <namespaces-guide>`.
@@ -177,8 +192,6 @@ class JobConfig:
             pb.jvm_options.extend(self.jvm_options)
             pb.code_search_path.extend(self.code_search_path)
             pb.py_driver_sys_path.extend(self._py_driver_sys_path)
-            if self._driver_node_id_bytes is not None:
-                pb.driver_node_id = self._driver_node_id_bytes
             for k, v in self.metadata.items():
                 pb.metadata[k] = v
 
@@ -193,6 +206,8 @@ class JobConfig:
 
             if self._default_actor_lifetime is not None:
                 pb.default_actor_lifetime = self._default_actor_lifetime
+            if self.py_logging_config:
+                pb.serialized_py_logging_config = pickle.dumps(self.py_logging_config)
             self._cached_pb = pb
 
         return self._cached_pb
@@ -231,5 +246,4 @@ class JobConfig:
             ray_namespace=job_config_json.get("ray_namespace", None),
             _client_job=job_config_json.get("client_job", False),
             _py_driver_sys_path=job_config_json.get("py_driver_sys_path", None),
-            _driver_node_id_bytes=job_config_json.get("driver_node_id", None),
         )

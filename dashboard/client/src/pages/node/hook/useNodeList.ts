@@ -10,11 +10,14 @@ export const useNodeList = () => {
   const [isRefreshing, setRefresh] = useState(true);
   const [mode, setMode] = useState("table");
   const [filter, setFilter] = useState<
-    { key: "hostname" | "ip" | "state"; val: string }[]
+    { key: "hostname" | "ip" | "state" | "nodeId"; val: string }[]
   >([]);
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
   const { sorterFunc, setOrderDesc, setSortKey, sorterKey } = useSorter("");
-  const changeFilter = (key: "hostname" | "ip" | "state", val: string) => {
+  const changeFilter = (
+    key: "hostname" | "ip" | "state" | "nodeId",
+    val: string,
+  ) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;
@@ -44,13 +47,11 @@ export const useNodeList = () => {
   const nodeList = data?.summary ?? [];
   const nodeLogicalResources = data?.nodeLogicalResources ?? {};
 
-  const nodeListWithAdditionalInfo = nodeList
-    .map((e) => ({
-      ...e,
-      state: e.raylet.state,
-      logicalResources: nodeLogicalResources[e.raylet.nodeId],
-    }))
-    .sort(sorterFunc);
+  const nodeListWithAdditionalInfo = nodeList.map((e) => ({
+    ...e,
+    state: e.raylet.state,
+    logicalResources: nodeLogicalResources[e.raylet.nodeId],
+  }));
 
   const sortedList = _.sortBy(nodeListWithAdditionalInfo, (node) => {
     // After sorting by user specified field, stable sort by
@@ -62,12 +63,20 @@ export const useNodeList = () => {
     const isHeadNodeOrder = node.raylet.isHeadNode ? "0" : "1";
     const nodeIdOrder = node.raylet.nodeId;
     return [nodeStateOrder, isHeadNodeOrder, nodeIdOrder];
-  });
+  }).sort(sorterFunc);
 
+  const filteredList = sortedList.filter((node) => {
+    const nodeId = node.raylet.nodeId;
+    return filter.every((f) => {
+      if (f.key === "nodeId") {
+        return nodeId && nodeId.includes(f.val);
+      } else {
+        return node[f.key] && node[f.key].includes(f.val);
+      }
+    });
+  });
   return {
-    nodeList: sortedList.filter((node) =>
-      filter.every((f) => node[f.key] && node[f.key].includes(f.val)),
-    ),
+    nodeList: filteredList,
     msg,
     isLoading,
     isRefreshing,

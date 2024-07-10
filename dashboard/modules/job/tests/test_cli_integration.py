@@ -1,12 +1,14 @@
-from contextlib import contextmanager
-import ray
 import json
-import os
 import logging
-import sys
+import os
 import subprocess
+import sys
+from contextlib import contextmanager
 from typing import Optional, Tuple
+
 import pytest
+
+import ray
 
 logger = logging.getLogger(__name__)
 
@@ -157,7 +159,7 @@ class TestJobSubmit:
         """Should tail logs and wait for process to exit."""
         cmd = "sleep 1 && echo hello && sleep 1 && echo hello"
         stdout, _ = _run_cmd(f"ray job submit -- bash -c '{cmd}'")
-        assert "hello\nhello" in stdout
+        assert stdout.count("hello") == 2
         assert "succeeded" in stdout
 
     def test_submit_no_wait(self, ray_start_stop):

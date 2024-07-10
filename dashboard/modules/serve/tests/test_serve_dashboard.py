@@ -1,32 +1,30 @@
 import copy
-import grpc
-import re
 import os
+import re
 import sys
 from typing import Dict
 
+import grpc
 import pytest
 import requests
 
 import ray
-from ray import serve
-from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
-from ray.util.state import list_actors
-from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve.tests.conftest import *  # noqa: F401 F403
-from ray.tests.conftest import *  # noqa: F401 F403
-from ray._private.test_utils import generate_system_config_map
-from ray.serve.schema import ServeInstanceDetails, HTTPOptionsSchema
+from ray import serve
+from ray._private.test_utils import generate_system_config_map, wait_for_condition
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentStatus,
     DeploymentStatusTrigger,
-    ReplicaState,
     ProxyStatus,
+    ReplicaState,
 )
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-
+from ray.serve.schema import HTTPOptionsSchema, ServeInstanceDetails
+from ray.serve.tests.conftest import *  # noqa: F401 F403
+from ray.tests.conftest import *  # noqa: F401 F403
+from ray.util.state import list_actors
 
 # For local testing on a Macbook, set `export TEST_ON_DARWIN=1`.
 TEST_ON_DARWIN = os.environ.get("TEST_ON_DARWIN", "0") == "1"
@@ -648,7 +646,6 @@ def test_default_dashboard_agent_listen_port():
     [
         {
             **generate_system_config_map(
-                gcs_failover_worker_reconnect_timeout=20,
                 gcs_rpc_server_reconnect_timeout_s=3600,
                 gcs_server_request_timeout_seconds=3,
             ),

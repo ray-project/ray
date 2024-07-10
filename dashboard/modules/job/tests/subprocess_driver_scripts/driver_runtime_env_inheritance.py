@@ -4,6 +4,9 @@ import time
 
 import ray
 
+# This prefix is used to identify the output log line that contains the runtime env.
+RUNTIME_ENV_LOG_LINE_PREFIX = "ray_job_test_runtime_env_output:"
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dashboard agent.")
     parser.add_argument(
@@ -36,14 +39,20 @@ if __name__ == "__main__":
 
     if args.conflict == "pip":
         ray.init(runtime_env={"pip": ["numpy"]})
-        print(ray._private.worker.global_worker.runtime_env)
+        print(
+            RUNTIME_ENV_LOG_LINE_PREFIX + ray._private.worker.global_worker.runtime_env
+        )
     elif args.conflict == "env_vars":
         ray.init(runtime_env={"env_vars": {"A": "1"}})
-        print(ray._private.worker.global_worker.runtime_env)
+        print(
+            RUNTIME_ENV_LOG_LINE_PREFIX + ray._private.worker.global_worker.runtime_env
+        )
     else:
         ray.init(
             runtime_env={
                 "env_vars": {"C": "1"},
             }
         )
-        print(ray._private.worker.global_worker.runtime_env)
+        print(
+            RUNTIME_ENV_LOG_LINE_PREFIX + ray._private.worker.global_worker.runtime_env
+        )

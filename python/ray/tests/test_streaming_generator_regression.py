@@ -113,10 +113,16 @@ def test_segfault_report_streaming_generator_output(
     worker_state_before = [(a.worker_id, a.exit_type) for a in list_workers()]
     print(">>> Workers state before: ", worker_state_before)
 
-    with pytest.raises(RayTaskError) as exc_info:
+    try:
         ray.get(caller.run.remote())
-
-    assert isinstance(exc_info.value.cause, TaskCancelledError)
+    except Exception as exc:
+        # There is a small chance that the task cancellation signal will arrive
+        # late at the executor, after the task has already finished. In that
+        # case, the task will complete normally, with no exception thrown.
+        # Thus, we wrap ray.get in a try-catch instead of asserting an
+        # exception.
+        assert isinstance(exc, RayTaskError)
+        assert isinstance(exc.cause, TaskCancelledError)
 
     worker_state_after = [(a.worker_id, a.exit_type) for a in list_workers()]
     print(">>> Workers state after: ", worker_state_after)

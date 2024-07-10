@@ -181,13 +181,16 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
   if (end_of_stream_index_ != -1) {
     return;
   }
-  // ObjectRefStream should guarantee the max_index_seen_
-  // will always have an object reference to avoid hang.
-  // That said, if there was already an index that's bigger than a given
-  // end of stream index, we should mark that as the end of stream.
-  // It can happen when a task is retried and return less values
-  // (e.g., the second retry is failed by an exception or worker failure).
-  end_of_stream_index_ = std::max(max_index_seen_ + 1, item_index);
+  // ObjectRefStream should guarantee that next_index_ will always have an
+  // object value, to avoid hanging the caller the next time it tries to read
+  // the stream.
+  //
+  // NOTE: If the task returns a nondeterministic number of values, the second
+  // try may return fewer values than the first try. If the first try fails
+  // mid-execution, then on a successful second try, when we mark the end of
+  // the stream here, any extra unconsumed returns from the first try will be
+  // dropped.
+  end_of_stream_index_ = std::max(next_index_, item_index);
 
   auto end_of_stream_id = GetObjectRefAtIndex(end_of_stream_index_);
   *object_id_in_last_index = end_of_stream_id;
@@ -631,10 +634,11 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
   }
 
   stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
-  RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index
-                 << ". Last object id: " << last_object_id;
-
   if (!last_object_id.IsNil()) {
+    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
+                   << stream_it->second.EofIndex()
+                   << ". Last object id: " << last_object_id;
+
     reference_counter_->OwnDynamicStreamingTaskReturnRef(last_object_id, generator_id);
     RayObject error(rpc::ErrorType::END_OF_STREAMING_GENERATOR);
     // Put a dummy object at the end of the stream. We don't need to check if
@@ -955,7 +959,11 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
   bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
-  bool actor_died = error_info.error_type() == rpc::ErrorType::ACTOR_DIED;
+  // If the actor isn't dead and it's a user exception, we should update the seq no. If an
+  // actor is dead and restarted, the seqno is reset, and we don't need to update it when
+  // resubmitting a task.
+  bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
+                      error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -1008,11 +1016,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    // If actor is not dead, we should update the seq no. If an actor is dead and
-    // restarted, the seqno is reset, and we don't need to update it when resubmitting a
-    // task.
-    retry_task_callback_(
-        spec, /*object_recovery*/ false, /*update_seqno=*/!actor_died, delay_ms);
+    retry_task_callback_(spec, /*object_recovery*/ false, update_seqno, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
@@ -1237,6 +1241,13 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
       }
     }
 
+    if (it->second.spec.IsActorTask()) {
+      // We need to decrement the actor lineage ref count here
+      // since it's incremented during TaskManager::AddPendingTask.
+      const auto actor_creation_return_id = it->second.spec.ActorCreationDummyObjectId();
+      released_objects->push_back(actor_creation_return_id);
+    }
+
     total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
@@ -1247,6 +1258,16 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
 }
 
 bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+  ObjectID generator_id = TaskGeneratorId(task_id);
+  if (!generator_id.IsNil()) {
+    // Pass -1 because the task has been cancelled, so we should just end the
+    // stream at the caller's current index. This is needed because we may
+    // receive generator reports out of order. If the task reports a later
+    // index then exits because it was cancelled, we will hang waiting for the
+    // intermediate indices.
+    MarkEndOfStream(generator_id, /*eof_index=*/-1);
+  }
+
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it != submissible_tasks_.end()) {
@@ -1374,9 +1395,10 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  if (it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
-    SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-  }
+
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL)
+      << ", task ID = " << it->first << ", status = " << it->second.GetStatus();
+  SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
 }
 
 void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
@@ -1437,12 +1459,12 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
   task_entry.MarkRetryOnFailed();
 
   // Mark the new status and also include task spec info for the new attempt.
-  task_entry.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+  task_entry.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
   RAY_UNUSED(RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
                                            task_entry.spec.JobId(),
                                            task_entry.spec.AttemptNumber() + 1,
                                            task_entry.spec,
-                                           rpc::TaskStatus::PENDING_NODE_ASSIGNMENT,
+                                           rpc::TaskStatus::PENDING_ARGS_AVAIL,
                                            /* include_task_info */ true));
 }
 

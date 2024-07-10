@@ -1,15 +1,11 @@
+import asyncio
 import json
 import logging
-import asyncio
+from typing import List, Optional, Tuple
+
 import aiohttp.web
-from typing import Optional, Tuple, List
 
-
-import ray
-import ray._private.services
-import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.utils as dashboard_utils
 from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
@@ -20,18 +16,15 @@ from ray._private.ray_constants import (
     GLOBAL_GRPC_OPTIONS,
     KV_NAMESPACE_CLUSTER,
 )
-from ray.core.generated import reporter_pb2, reporter_pb2_grpc
-from ray.dashboard.datacenter import DataSource
 from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
+from ray._private.utils import get_or_create_event_loop, init_grpc_channel
 from ray.autoscaler._private.commands import debug_status
-
-from ray.util.state.common import (
-    ListApiOptions,
-)
+from ray.core.generated import reporter_pb2, reporter_pb2_grpc
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.datacenter import DataSource
 from ray.dashboard.state_aggregator import StateAPIManager
-from ray.util.state.state_manager import (
-    StateDataSourceClient,
-)
+from ray.util.state.common import ListApiOptions
+from ray.util.state.state_manager import StateDataSourceClient
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
@@ -79,7 +72,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             node_id, ports = change.new
             ip = DataSource.node_id_to_ip[node_id]
             options = GLOBAL_GRPC_OPTIONS
-            channel = ray._private.utils.init_grpc_channel(
+            channel = init_grpc_channel(
                 f"{ip}:{ports[1]}", options=options, asynchronous=True
             )
             stub = reporter_pb2_grpc.ReporterServiceStub(channel)
@@ -630,6 +623,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
 
+        loop = get_or_create_event_loop()
+
         while True:
             try:
                 # The key is b'RAY_REPORTER:{node id hex}',
@@ -637,9 +632,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 key, data = await subscriber.poll()
                 if key is None:
                     continue
-                data = json.loads(data)
+
+                # NOTE: Every iteration is executed inside the thread-pool executor
+                #       (TPE) to avoid blocking the Dashboard's event-loop
+                parsed_data = await loop.run_in_executor(None, json.loads, data)
+
                 node_id = key.split(":")[-1]
-                DataSource.node_physical_stats[node_id] = data
+                DataSource.node_physical_stats[node_id] = parsed_data
             except Exception:
                 logger.exception(
                     "Error receiving node physical stats from reporter agent."

@@ -2,8 +2,6 @@ from gymnasium.spaces import Box, Discrete, MultiDiscrete
 import numpy as np
 import tree  # pip install dm_tree
 
-# TODO (sven): add IMPALA-style option.
-# from ray.rllib.examples.models.impala_vision_nets import TorchImpalaVisionNet
 from ray.rllib.models.torch.misc import (
     normc_initializer as torch_normc_initializer,
     SlimFC,

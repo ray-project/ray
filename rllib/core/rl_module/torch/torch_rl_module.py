@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, List, Mapping, Tuple, Union, Type
+from typing import Any, Dict, Union, Type
 
 from packaging import version
 
@@ -16,50 +16,9 @@ from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
 )
-from ray.rllib.utils.typing import NetworkType
+from ray.rllib.utils.typing import StateDict
 
 torch, nn = try_import_torch()
-
-
-def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
-    """A wrapper that compiles the forward methods of a TorchRLModule."""
-
-    # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
-    # Check if torch framework supports torch.compile.
-    if (
-        torch is not None
-        and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
-    ):
-        raise ValueError("torch.compile is only supported from torch 2.0.0")
-
-    compiled_forward_train = torch.compile(
-        rl_module._forward_train,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_train = compiled_forward_train
-
-    compiled_forward_inference = torch.compile(
-        rl_module._forward_inference,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_inference = compiled_forward_inference
-
-    compiled_forward_exploration = torch.compile(
-        rl_module._forward_exploration,
-        backend=compile_config.torch_dynamo_backend,
-        mode=compile_config.torch_dynamo_mode,
-        **compile_config.kwargs
-    )
-
-    rl_module._forward_exploration = compiled_forward_exploration
-
-    return rl_module
 
 
 class TorchRLModule(nn.Module, RLModule):
@@ -85,7 +44,8 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
-    def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+    @override(nn.Module)
+    def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """forward pass of the module.
 
         This is aliased to forward_train because Torch DDP requires a forward method to
@@ -105,12 +65,13 @@ class TorchRLModule(nn.Module, RLModule):
         return compile_wrapper(self, compile_config)
 
     @override(RLModule)
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self, inference_only: bool = False) -> StateDict:
         return self.state_dict()
 
     @override(RLModule)
-    def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        self.load_state_dict(convert_to_torch_tensor(state_dict))
+    def set_state(self, state_dict: StateDict) -> None:
+        state_dict = convert_to_torch_tensor(state_dict)
+        self.load_state_dict(state_dict)
 
     def _module_state_file_name(self) -> pathlib.Path:
         return pathlib.Path("module_state.pt")
@@ -124,6 +85,34 @@ class TorchRLModule(nn.Module, RLModule):
     def load_state(self, dir: Union[str, pathlib.Path]) -> None:
         path = str(pathlib.Path(dir) / self._module_state_file_name())
         self.set_state(torch.load(path))
+
+    def _set_inference_only_state_dict_keys(self) -> None:
+        """Sets expected and unexpected keys for the inference-only module.
+
+        This method is called during setup to set the expected and unexpected keys
+        for the inference-only module. The expected keys are used to rename the keys
+        in the state dict when syncing from the learner to the inference module.
+        The unexpected keys are used to remove keys from the state dict when syncing
+        from the learner to the inference module.
+        """
+        pass
+
+    def _inference_only_get_state_hook(self, state_dict: StateDict) -> StateDict:
+        """Removes or renames the parameters in the state dict for the inference module.
+
+        This hook is called when the state dict is created on a learner module for an
+        inference-only module. The method removes or renames the parameters in the state
+        dict that are not used by the inference module.
+        The hook uses the expected and unexpected keys set during setup to remove or
+        rename the parameters.
+
+        Args:
+            state_dict: The state dict to be modified.
+
+        Returns:
+            The modified state dict.
+        """
+        pass
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
@@ -149,11 +138,11 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         return self(*args, **kwargs)
 
     @override(RLModule)
-    def _forward_inference(self, *args, **kwargs) -> Mapping[str, Any]:
+    def _forward_inference(self, *args, **kwargs) -> Dict[str, Any]:
         return self.unwrapped()._forward_inference(*args, **kwargs)
 
     @override(RLModule)
-    def _forward_exploration(self, *args, **kwargs) -> Mapping[str, Any]:
+    def _forward_exploration(self, *args, **kwargs) -> Dict[str, Any]:
         return self.unwrapped()._forward_exploration(*args, **kwargs)
 
     @override(RLModule)
@@ -201,5 +190,50 @@ class TorchDDPRLModuleWithTargetNetworksInterface(
     RLModuleWithTargetNetworksInterface,
 ):
     @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
-        return self.module.get_target_network_pairs()
+    def get_target_network_pairs(self, *args, **kwargs):
+        return self.module.get_target_network_pairs(*args, **kwargs)
+
+    @override(RLModuleWithTargetNetworksInterface)
+    def sync_target_networks(self, *args, **kwargs):
+        return self.module.sync_target_networks(*args, **kwargs)
+
+
+def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
+    """A wrapper that compiles the forward methods of a TorchRLModule."""
+
+    # TODO(Artur): Remove this once our requirements enforce torch >= 2.0.0
+    # Check if torch framework supports torch.compile.
+    if (
+        torch is not None
+        and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
+    ):
+        raise ValueError("torch.compile is only supported from torch 2.0.0")
+
+    compiled_forward_train = torch.compile(
+        rl_module._forward_train,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_train = compiled_forward_train
+
+    compiled_forward_inference = torch.compile(
+        rl_module._forward_inference,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_inference = compiled_forward_inference
+
+    compiled_forward_exploration = torch.compile(
+        rl_module._forward_exploration,
+        backend=compile_config.torch_dynamo_backend,
+        mode=compile_config.torch_dynamo_mode,
+        **compile_config.kwargs,
+    )
+
+    rl_module._forward_exploration = compiled_forward_exploration
+
+    return rl_module

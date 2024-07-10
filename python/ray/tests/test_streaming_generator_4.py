@@ -9,6 +9,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 import ray
+from ray._private.test_utils import SignalActor
 
 RECONSTRUCTION_CONFIG = {
     "health_check_failure_threshold": 10,
@@ -189,6 +190,74 @@ def test_sync_async_mix_regression_test(shutdown_only):
     a = A.remote()
     b = B.remote(a)
     ray.get(b.start.remote())
+
+
+@pytest.mark.parametrize("use_asyncio", [False, True])
+def test_cancel(shutdown_only, use_asyncio):
+    """Test concurrent task cancellation with generator task.
+
+    Once the caller receives an ack that the executor has cancelled the task
+    execution, the caller should receive a TaskCancelledError for the next
+    ObjectRef that it tries to read from the generator. This should happen even
+    if the caller has already received values for the next object indices in
+    the stream. Also, we should not apply the usual logic that reorders
+    out-of-order reports if the task was cancelled; waiting for the
+    intermediate indices to appear would hang the caller."""
+
+    @ray.remote
+    class Actor:
+        def ready(self):
+            return
+
+        def stream(self, signal):
+            cancelled_ref = signal.wait.remote()
+
+            i = 0
+            done_at = time.time() + 1
+            while time.time() < done_at:
+                yield i
+                i += 1
+
+                ready, _ = ray.wait([cancelled_ref], timeout=0)
+                if not ready:
+                    # Continue executing for one second after the driver
+                    # cancels. This is to make sure that we receive the cancel
+                    # signal while the task is still running.
+                    done_at = time.time() + 1
+
+        async def async_stream(self, signal):
+            cancelled_ref = signal.wait.remote()
+
+            i = 0
+            done_at = time.time() + 1
+            while time.time() < done_at:
+                yield i
+                i += 1
+
+                ready, _ = ray.wait([cancelled_ref], timeout=0)
+                if not ready:
+                    # Continue executing for one second after the driver
+                    # cancels. This is to make sure that we receive the cancel
+                    # signal while the task is still running.
+                    done_at = time.time() + 1
+
+    signal = SignalActor.remote()
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+    if use_asyncio:
+        gen = a.async_stream.remote(signal)
+    else:
+        gen = a.stream.remote(signal)
+
+    try:
+        for i, ref in enumerate(gen):
+            assert i == ray.get(ref)
+            print(i)
+            if i == 0:
+                ray.cancel(gen)
+                signal.send.remote()
+    except ray.exceptions.TaskCancelledError:
+        pass
 
 
 if __name__ == "__main__":

@@ -21,7 +21,6 @@ from ray_release.exception import (
 from ray_release.logger import logger
 from ray_release.signal_handling import register_handler, unregister_handler
 from ray_release.util import (
-    ANYSCALE_HOST,
     ERROR_LOG_PATTERNS,
     exponential_backoff_retry,
     anyscale_job_url,
@@ -55,15 +54,19 @@ class AnyscaleJobManager:
         upload_path: Optional[str] = None,
         pip: Optional[List[str]] = None,
     ) -> None:
-        env = os.environ.copy()
-        env.setdefault("ANYSCALE_HOST", str(ANYSCALE_HOST))
+        env_vars_for_job = env_vars.copy()
+        env_vars_for_job[
+            "ANYSCALE_JOB_CLUSTER_ENV_NAME"
+        ] = self.cluster_manager.cluster_env_name
 
-        logger.info(f"Executing {cmd_to_run} with {env_vars} via Anyscale job submit")
+        logger.info(
+            f"Executing {cmd_to_run} with {env_vars_for_job} via Anyscale job submit"
+        )
 
         anyscale_client = self.sdk
 
         runtime_env = {
-            "env_vars": env_vars,
+            "env_vars": env_vars_for_job,
             "pip": pip or [],
         }
         if working_dir:

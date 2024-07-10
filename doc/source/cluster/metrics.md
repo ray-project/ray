@@ -2,8 +2,9 @@
 # Collecting and monitoring metrics
 Metrics are useful for monitoring and troubleshooting Ray applications and Clusters. For example, you may want to access a node's metrics if it terminates unexpectedly.
 
-Ray records and emits time-series metrics using the [Prometheus format](https://prometheus.io/docs/instrumenting/exposition_formats/). Ray does not provide a native storage solution for metrics. Users need to manage the lifecycle of the metrics by themselves. This page provides instructions on how to collect and monitor metrics from Ray Clusters.
+Ray records and emits time-series metrics using the [Prometheus format](https://prometheus.io/docs/instrumenting/exposition_formats/). Ray doesn't provide a native storage solution for metrics. Users need to manage the lifecycle of the metrics by themselves. This page provides instructions on how to collect and monitor metrics from Ray Clusters.
 
+For Kubernetes users, see {ref}`Using Prometheus and Grafana <kuberay-prometheus-grafana>` with KubeRay.
 
 ## System and application metrics
 Ray exports metrics if you use `ray[default]` or {ref}`other installation commands <installation>` that include Dashboard component. Dashboard agent process is responsible for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
@@ -66,7 +67,7 @@ To stop Prometheus, run `kill <PID>` where `<PID>` is the PID of the Prometheus 
 
 If the preceding automatic script doesn't work or you would prefer to install and start Prometheus manually, follow these instructions.
 
-First, [download Prometheus](https://prometheus.io/download/). Make sure to download the correct binary for your operating system. (For example, Darwin for macOS X.)
+First, [download Prometheus](https://prometheus.io/download/). Make sure to download the correct binary for your operating system. For example, Darwin for macOS X.
 
 Then, unzip the archive into a local directory using the following command:
 

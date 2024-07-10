@@ -1,16 +1,14 @@
 import {
   Box,
   Button,
-  createStyles,
   IconButton,
   Link,
   List,
   ListItem,
-  makeStyles,
   Paper,
   Typography,
-} from "@material-ui/core";
-import { grey } from "@material-ui/core/colors";
+} from "@mui/material";
+import { grey } from "@mui/material/colors";
 import React, { useMemo, useState } from "react";
 import { RiDownload2Line } from "react-icons/ri";
 import { Outlet, Link as RouterLink, useSearchParams } from "react-router-dom";
@@ -22,26 +20,7 @@ import { getStateApiDownloadLogUrl, listStateApiLogs } from "../../service/log";
 import { getNodeList } from "../../service/node";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 
-const useStyles = makeStyles((theme) => ({
-  root: {
-    padding: theme.spacing(2),
-    width: "100%",
-  },
-  table: {
-    marginTop: theme.spacing(4),
-    padding: theme.spacing(2),
-  },
-  pageMeta: {
-    padding: theme.spacing(2),
-    marginTop: theme.spacing(2),
-  },
-  search: {
-    margin: theme.spacing(1),
-  },
-}));
-
 export const StateApiLogsListPage = () => {
-  const classes = useStyles();
   const [searchParams] = useSearchParams();
   const nodeId = searchParams.get("nodeId");
   const folder = searchParams.get("folder");
@@ -61,9 +40,9 @@ export const StateApiLogsListPage = () => {
       : `/logs/`;
 
   return (
-    <div className={classes.root}>
+    <Box sx={{ padding: 2, width: "100%" }}>
       <TitleCard title="Logs Viewer">
-        <Paper>
+        <Paper elevation={0}>
           {!nodeId && <p>Select a node to view logs</p>}
           {nodeId && (
             <React.Fragment>
@@ -72,13 +51,17 @@ export const StateApiLogsListPage = () => {
             </React.Fragment>
           )}
           {nodeId && (
-            <div>
-              <Button
-                component={RouterLink}
-                variant="contained"
-                to={backHref}
-                className={classes.search}
-              >
+            <Box
+              sx={{
+                display: "flex",
+                flexDirection: "row",
+                flexWrap: "nowrap",
+                alignItems: "center",
+                margin: 1,
+                gap: 2,
+              }}
+            >
+              <Button component={RouterLink} variant="contained" to={backHref}>
                 Back To ../
               </Button>
               <SearchInput
@@ -88,10 +71,10 @@ export const StateApiLogsListPage = () => {
                   setFileName(val);
                 }}
               />
-            </div>
+            </Box>
           )}
         </Paper>
-        <Paper>
+        <Paper elevation={0}>
           {nodeId ? (
             <StateApiLogsFilesList
               nodeId={nodeId}
@@ -103,7 +86,7 @@ export const StateApiLogsListPage = () => {
           )}
         </Paper>
       </TitleCard>
-    </div>
+    </Box>
   );
 };
 
@@ -137,15 +120,6 @@ export const StateApiLogsNodesList = () => {
   );
 };
 
-const useStateApiLogsFilesListStyles = makeStyles((theme) =>
-  createStyles({
-    iconButton: {
-      verticalAlign: "baseline",
-      color: grey[700],
-    },
-  }),
-);
-
 type StateApiLogsFilesListProps = {
   nodeId: string;
   folder: string | null;
@@ -157,8 +131,6 @@ export const StateApiLogsFilesList = ({
   folder,
   fileName,
 }: StateApiLogsFilesListProps) => {
-  const classes = useStateApiLogsFilesListStyles();
-
   // We want to do a partial search for file name.
   const fileNameGlob = fileName ? `*${fileName}*` : undefined;
   const glob = fileNameGlob
@@ -246,7 +218,7 @@ export const StateApiLogsFilesList = ({
                       href={downloadUrl}
                       download={fileName}
                       size="small"
-                      className={classes.iconButton}
+                      sx={{ verticalAlign: "baseline", color: grey[700] }}
                     >
                       <RiDownload2Line size={16} />
                     </IconButton>
@@ -262,7 +234,6 @@ export const StateApiLogsFilesList = ({
 };
 
 export const StateApiLogViewerPage = () => {
-  const classes = useStyles();
   const [searchParams] = useSearchParams();
   const nodeId = searchParams.get("nodeId");
   const fileName = searchParams.get("fileName");
@@ -278,9 +249,9 @@ export const StateApiLogViewerPage = () => {
       : `/logs/?nodeId=${nodeId}`;
 
   return (
-    <div className={classes.root}>
+    <Box sx={{ padding: 2, width: "100%" }}>
       <TitleCard title="Logs Viewer">
-        <Paper>
+        <Paper elevation={0}>
           {!nodeId && <p>Select a node to view logs</p>}
           {nodeId && (
             <React.Fragment>
@@ -289,19 +260,18 @@ export const StateApiLogViewerPage = () => {
             </React.Fragment>
           )}
           {nodeId && (
-            <div>
-              <Button
-                component={RouterLink}
-                variant="contained"
-                to={backHref}
-                className={classes.search}
-              >
+            <Box
+              sx={{
+                margin: 1,
+              }}
+            >
+              <Button component={RouterLink} variant="contained" to={backHref}>
                 Back To ../
               </Button>
-            </div>
+            </Box>
           )}
         </Paper>
-        <Paper>
+        <Paper elevation={0}>
           {nodeId && fileName ? (
             <StateApiLogViewer
               data={{
@@ -315,7 +285,7 @@ export const StateApiLogViewerPage = () => {
           )}
         </Paper>
       </TitleCard>
-    </div>
+    </Box>
   );
 };
 

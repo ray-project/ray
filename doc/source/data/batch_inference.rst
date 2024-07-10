@@ -289,8 +289,6 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             from typing import Dict
             import numpy as np
-            import tensorflow as tf
-            from tensorflow import keras
 
             import ray
 
@@ -298,6 +296,9 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             class TFPredictor:
                 def __init__(self):
+                    import tensorflow as tf
+                    from tensorflow import keras
+
                     # Move the neural network to GPU by specifying the GPU device.
                     with tf.device("GPU:0"):
                         input_layer = keras.Input(shape=(100,))
@@ -305,6 +306,8 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
                         self.model = keras.Sequential([input_layer, output_layer])
 
                 def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+                    import tensorflow as tf
+
                     # Move the input batch to GPU by specifying GPU device.
                     with tf.device("GPU:0"):
                         return {"output": self.model(batch["data"]).numpy()}
