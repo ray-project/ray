@@ -567,10 +567,7 @@ class CompositeChannel(ChannelInterface):
         # Create a local channel for the writer and the local readers.
         num_local_readers = len(self._readers) - len(remote_readers)
         if num_local_readers > 0:
-            assert (
-                num_local_readers == 1
-            ), "Only support one reader on the same actor for now."
-            local_channel = IntraProcessChannel(self._writer)
+            local_channel = IntraProcessChannel(num_local_readers)
             self._channels.add(local_channel)
             actor_id = self._get_actor_id(self._writer)
             self._channel_dict[actor_id] = local_channel
