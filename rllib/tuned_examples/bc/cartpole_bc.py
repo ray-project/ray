@@ -51,7 +51,7 @@ config = (
     # as remote learners.
     .offline_data(
         input_=[data_path],
-        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1) * 2},
+        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1)},
         prelearner_module_synch_period=20,
     )
     .training(

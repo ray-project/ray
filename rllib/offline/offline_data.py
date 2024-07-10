@@ -59,9 +59,6 @@ class OfflineData:
             self.data = getattr(ray.data, self.data_read_method)(
                 self.path, **self.data_read_method_kwargs
             )
-            # Include locality hints.
-            ctx = ray.data.DataContext.get_current()
-            ctx.execution_options.locality_with_output = True
             logger.info("Reading data from {}".format(self.path))
             logger.info(self.data.schema())
         except Exception as e:
@@ -127,7 +124,7 @@ class OfflineData:
                         "module_spec": self.module_spec,
                         "module_state": module_state,
                     },
-                    concurrency=(num_shards, num_shards * 2),
+                    concurrency=num_shards,
                     batch_size=num_samples,
                     zero_copy_batch=True,
                 ).streaming_split(

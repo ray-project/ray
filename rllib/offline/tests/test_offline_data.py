@@ -11,6 +11,9 @@ from ray.rllib.offline.offline_data import OfflineData, OfflinePreLearner
 
 class TestOfflineData(unittest.TestCase):
     def setUp(self) -> None:
+        data_path = "tests/data/cartpole/cartpole-v1_large"
+        base_path = Path(__file__).parents[2]
+        self.data_path = "local://" + base_path.joinpath(data_path).as_posix()
         ray.init()
 
     def tearDown(self) -> None:
@@ -18,11 +21,7 @@ class TestOfflineData(unittest.TestCase):
 
     def test_offline_data_load(self):
 
-        data_path = "tests/data/cartpole/cartpole-v1_large"
-        base_path = Path(__file__).parents[2]
-        data_path = "local://" + base_path.joinpath(data_path).as_posix()
-
-        config = AlgorithmConfig().offline_data(input_=[data_path])
+        config = AlgorithmConfig().offline_data(input_=[self.data_path])
 
         offline_data = OfflineData(config)
 
@@ -31,12 +30,8 @@ class TestOfflineData(unittest.TestCase):
 
     def test_offline_convert_to_episodes(self):
 
-        data_path = "tests/data/cartpole/cartpole-v1_large"
-        base_path = Path(__file__).parents[2]
-        data_path = "local://" + base_path.joinpath(data_path).as_posix()
-
         config = AlgorithmConfig().offline_data(
-            input_=[data_path], input_read_method="read_parquet"
+            input_=[self.data_path],
         )
 
         offline_data = OfflineData(config)
@@ -49,11 +44,7 @@ class TestOfflineData(unittest.TestCase):
 
     def test_sample(self):
 
-        data_path = "tests/data/cartpole/cartpole-v1.jsonl"
-        base_path = Path(__file__).parents[2]
-        data_path = "local://" + base_path.joinpath(data_path).as_posix()
-
-        config = AlgorithmConfig().offline_data(input_=[data_path])
+        config = AlgorithmConfig().offline_data(input_=[self.data_path])
 
         offline_data = OfflineData(config)
 
