@@ -2688,10 +2688,9 @@ def _auto_reconnect(f):
             try:
                 return f(self, *args, **kwargs)
             except RpcError as e:
-                import grpc
                 if e.rpc_code in [
-                    grpc.StatusCode.UNAVAILABLE.value[0],
-                    grpc.StatusCode.UNKNOWN.value[0],
+                    GRPC_STATUS_CODE_UNAVAILABLE,
+                    GRPC_STATUS_CODE_UNKNOWN,
                 ]:
                     if remaining_retry <= 0:
                         logger.error(
@@ -2726,7 +2725,14 @@ cdef class GcsClient:
                   nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
                   ),
                   cluster_id: str = None):
-        cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
+        cdef GcsClientOptions gcs_options
+        if cluster_id:
+            gcs_options = GcsClientOptions.create(
+                address, cluster_id, allow_cluster_id_nil=False,
+                fetch_cluster_id_if_nil=False)
+        else:
+            gcs_options = GcsClientOptions.create(
+                address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=True)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
@@ -2740,9 +2746,8 @@ cdef class GcsClient:
         cdef:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             size_t num_retries = self._nums_reconnect_retry
-            CClusterID c_cluster_id = self.cluster_id.native()
         with nogil:
-            status = self.inner.get().Connect(c_cluster_id, timeout_ms, num_retries)
+            status = self.inner.get().Connect(timeout_ms, num_retries)
 
         check_status(status)
 
@@ -5164,6 +5169,10 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 
         user_callback = <object>user_callback_ptr
         user_callback(result)
+    except Exception:
+        # Only log the error here because this calllback is called from Cpp
+        # and Cython will ignore the exception anyway
+        logger.exception(f"failed to run async callback (user func)")
     finally:
         # NOTE: we manually increment the Python reference count of the callback when
         # registering it in the core worker, so we must decrement here to avoid a leak.

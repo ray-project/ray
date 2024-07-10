@@ -250,7 +250,7 @@ def generate_task_event(
     )
     state_updates = TaskStateUpdate(
         node_id=node_id,
-        state_ts={state: 1},
+        state_ts_ns={state: 1},
     )
     return TaskEvents(
         task_id=id,
@@ -1007,7 +1007,7 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     second = int(1e9)
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        state_ts={
+        state_ts_ns={
             TaskStatus.PENDING_ARGS_AVAIL: current,
             TaskStatus.SUBMITTED_TO_WORKER: current + second,
             TaskStatus.RUNNING: current + (2 * second),
@@ -1058,7 +1058,7 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     """
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        state_ts={
+        state_ts_ns={
             TaskStatus.PENDING_ARGS_AVAIL: current,
             TaskStatus.SUBMITTED_TO_WORKER: current + second,
             TaskStatus.RUNNING: current + (2 * second),
@@ -1081,7 +1081,7 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     Test None of start & end time is updated.
     """
     state_updates = TaskStateUpdate(
-        state_ts={
+        state_ts_ns={
             TaskStatus.PENDING_ARGS_AVAIL: current,
             TaskStatus.SUBMITTED_TO_WORKER: current + second,
         },

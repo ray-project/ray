@@ -21,13 +21,22 @@ cdef class GcsClientOptions:
         unique_ptr[CGcsClientOptions] inner
 
     @classmethod
-    def from_gcs_address(cls, gcs_address):
+    def create(
+        cls, gcs_address, cluster_id_hex, allow_cluster_id_nil, fetch_cluster_id_if_nil
+    ):
+        """
+        Creates a GcsClientOption with a maybe-Nil cluster_id, and may fetch from GCS.
+        """
+        cdef CClusterID c_cluster_id = CClusterID.Nil()
+        if cluster_id_hex:
+            c_cluster_id = CClusterID.FromHex(cluster_id_hex)
         self = GcsClientOptions()
         try:
             ip, port = gcs_address.split(":", 2)
             port = int(port)
             self.inner.reset(
-                new CGcsClientOptions(ip, port))
+                new CGcsClientOptions(
+                    ip, port, c_cluster_id, allow_cluster_id_nil, allow_cluster_id_nil))
         except Exception:
             raise ValueError(f"Invalid gcs_address: {gcs_address}")
         return self
