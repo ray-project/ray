@@ -96,7 +96,7 @@ steps:
     commands:
       - export RAY_VERSION="$RAY_VERSION"
       - export RAY_COMMIT="$RAY_COMMIT"
-      - bash -i /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
+      - bash /c/workdir/.buildkite/release-automation/verify-windows-wheels-in-docker.sh
   
   - block: "Upload wheels to PyPI"
     key: block-upload-wheels-pypi
