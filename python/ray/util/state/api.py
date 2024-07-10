@@ -1279,19 +1279,27 @@ def get_log(
     ) as r:
         if r.status_code != 200:
             raise RayStateApiException(r.text)
-        for bytes in r.iter_content(chunk_size=None):
-            bytes = bytearray(bytes)
-            # First byte 1 means success.
-            if bytes.startswith(b"1"):
-                bytes.pop(0)
-                logs = bytes
+        # For stream we need to handle the prepending char.
+        if media_type == "stream":
+            for bytes in r.iter_content(chunk_size=None):
+                bytes = bytearray(bytes)
+                # First byte 1 means success.
+                if bytes.startswith(b"1"):
+                    bytes.pop(0)
+                    logs = bytes
+                    if encoding is not None:
+                        logs = bytes.decode(encoding=encoding, errors=errors)
+                else:
+                    assert bytes.startswith(b"0")
+                    error_msg = bytes.decode("utf-8")
+                    raise RayStateApiException(error_msg)
+                yield logs
+        else:
+            for bytes in r.iter_content(chunk_size=None):
                 if encoding is not None:
-                    logs = bytes.decode(encoding=encoding, errors=errors)
-            else:
-                assert bytes.startswith(b"0")
-                error_msg = bytes.decode("utf-8")
-                raise RayStateApiException(error_msg)
-            yield logs
+                    yield bytes.decode(encoding=encoding, errors=errors)
+                else:
+                    yield bytes
 
 
 @DeveloperAPI

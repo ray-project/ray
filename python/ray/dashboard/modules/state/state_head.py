@@ -400,12 +400,24 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @routes.get("/api/v0/logs/{media_type}")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def get_logs(self, req: aiohttp.web.Request):
+        """
+        Fetches logs from the given criteria.
+
+        If `media_type` is `stream`, streams the logs and if we reach to the end, waits
+        infinitely for new logs. Each chunk is prepended with a "1" meaning successful
+        fetch; a "0" meaning exception and the stream would end after error message.
+
+        If `media_type` is not `stream`, there is no prepending char. If an exception
+        happened in the middle of fetching, the exception messge is appended to the
+        already-fetched messages.
+        """
         record_extra_usage_tag(TagKey.CORE_STATE_API_GET_LOG, "1")
+        media_type = req.match_info.get("media_type", "file")
         options = GetLogOptions(
             timeout=int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT)),
             node_id=req.query.get("node_id", None),
             node_ip=req.query.get("node_ip", None),
-            media_type=req.match_info.get("media_type", "file"),
+            media_type=media_type,
             filename=req.query.get("filename", None),
             actor_id=req.query.get("actor_id", None),
             task_id=req.query.get("task_id", None),
@@ -428,9 +440,12 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         # If it is b"0", it means it is failed.
         try:
             async for logs_in_bytes in self._log_api.stream_logs(options):
-                logs_to_stream = bytearray(b"1")
-                logs_to_stream.extend(logs_in_bytes)
-                await response.write(bytes(logs_to_stream))
+                if media_type == "stream":
+                    logs_to_stream = bytearray(b"1")
+                    logs_to_stream.extend(logs_in_bytes)
+                    await response.write(bytes(logs_to_stream))
+                else:
+                    await response.write(logs_in_bytes)
             await response.write_eof()
             return response
         except asyncio.CancelledError:
@@ -440,12 +455,14 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             raise
         except Exception as e:
             logger.exception(e)
-            error_msg = bytearray(b"0")
-            error_msg.extend(
-                f"Closing HTTP stream due to internal server error.\n{e}".encode()
-            )
-
-            await response.write(bytes(error_msg))
+            if media_type == "stream":
+                error_msg = bytearray(b"0")
+                error_msg.extend(
+                    f"Closing HTTP stream due to internal server error.\n{e}".encode()
+                )
+                await response.write(bytes(error_msg))
+            else:
+                await response.write(f"[get_logs] Fetch log error: {e}".encode())
             await response.write_eof()
             return response
 
