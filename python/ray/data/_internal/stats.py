@@ -263,6 +263,72 @@ class _StatsActor:
             tag_keys=iter_tag_keys,
         )
 
+        self.iter_total_s = Gauge(
+            "data_iter_total_seconds",
+            description="Total time spent in iteration",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_wait_s = Gauge(
+            "data_iter_wait_seconds",
+            description="Seconds spent in ray.wait()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_get_s = Gauge(
+            "data_iter_get_seconds",
+            description="Seconds spent in ray.get()",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_next_batch_s = Gauge(
+            "data_iter_next_batch_seconds",
+            description="Seconds spent getting next batch", # Need a better description for this?
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_format_batch_s = Gauge(
+            "data_iter_format_batch_seconds",
+            description="Seconds spent formatting batch",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_collate_batch_s = Gauge(
+            "data_iter_collate_batch_seconds",
+            description="Seconds spent applying collate function to batch",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_finalize_batch_s = Gauge(
+            "data_iter_finalize_batch_seconds",
+            description="Seconds spent applying finalize function to batch",
+            tag_keys=iter_tag_keys,
+        )
+
+        self.iter_blocks_local = Gauge(
+            "data_iter_blocks_local",
+            description="Number of blocks in local node",
+            tag_keys=iter_tag_keys,
+        )
+        self.iter_blocks_remote = Gauge(
+            "data_iter_blocks_remote",
+            description="Number of blocks in remote nodes",
+            tag_keys=iter_tag_keys,
+        )
+
+        self.iter_blocks_unknown = Gauge(
+            "data_iter_blocks_unknown",
+            description="Number of blocks with unknown location",
+            tag_keys=iter_tag_keys,
+        )        
+
+        self.streaming_split_coordinator_s = Gauge(
+            "data_iter_streaming_split_coordinator_seconds",
+            description="Seconds spent in the coordinator actor to distribute blocks",
+            tag_keys=iter_tag_keys,
+        )
+
+
+        self.streaming_exec_schedule_s = Gauge(
+            "data_streaming_exec_schedule_seconds",
+            description="Seconds spent streaming executor scheduling",
+            tag_keys=iter_tag_keys,
+        )
+
     def _create_prometheus_metrics_for_execution_metrics(
         self, metrics_group: str, tag_keys: Tuple[str, ...]
     ) -> Dict[str, Gauge]:
@@ -374,6 +440,14 @@ class _StatsActor:
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
+        self.iter_total_s.set(stats.iter_total_s.get(), tags)
+        self.iter_wait_s.set(stats.iter_wait_s.get(), tags)
+        self.iter_get_s.set(stats.iter_get_s.get(), tags)
+        self.iter_next_batch_s.set(stats.iter_next_batch_s.get(), tags)
+        self.iter_format_batch_s.set(stats.iter_format_batch_s.get(), tags)
+        self.iter_collate_batch_s.set(stats.iter_collate_batch_s.get(), tags)
+        self.iter_finalize_batch_s.set(stats.iter_finalize_batch_s.get(), tags)
+        self.streaming_split_coordinator_s.set(stats.streaming_split_coordinator_s.get(), tags)
 
     def clear_execution_metrics(self, dataset_tag: str, operator_tags: List[str]):
         for operator_tag in operator_tags:
@@ -407,6 +481,14 @@ class _StatsActor:
         self.iter_total_blocked_s.set(0, tags)
         self.iter_user_s.set(0, tags)
         self.iter_initialize_s.set(0, tags)
+        self.iter_total_s.set(0, tags)
+        self.iter_wait_s.set(0, tags)
+        self.iter_get_s.set(0, tags)
+        self.iter_next_batch_s.set(0, tags)
+        self.iter_format_batch_s.set(0, tags)
+        self.iter_collate_batch_s.set(0, tags)
+        self.iter_finalize_batch_s.set(0, tags)
+        self.streaming_split_coordinator_s.set(0, tags)
 
     def register_dataset(self, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
