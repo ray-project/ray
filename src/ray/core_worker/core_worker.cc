@@ -278,13 +278,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options, GetWorkerID());
 
-  RAY_CHECK_OK(gcs_client_->Connect(io_service_, options_.cluster_id));
+  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   // Initialize the task state event buffer.
-  auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
-  task_event_buffer_ =
-      std::make_unique<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
+  task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
+      std::make_shared<gcs::GcsClient>(options_.gcs_options));
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
     if (!task_event_buffer_->Start().ok()) {
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
@@ -1417,6 +1416,11 @@ Status CoreWorker::ExperimentalChannelWriteAcquire(
     int64_t num_readers,
     int64_t timeout_ms,
     std::shared_ptr<Buffer> *data) {
+  Status status = experimental_mutable_object_provider_->GetChannelStatus(
+      object_id, /*is_reader*/ false);
+  if (!status.ok()) {
+    return status;
+  }
   return experimental_mutable_object_provider_->WriteAcquire(object_id,
                                                              data_size,
                                                              metadata->Data(),
@@ -1560,7 +1564,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   // Check whether these are experimental.Channel objects.
   bool is_experimental_channel = false;
   for (const ObjectID &id : ids) {
-    Status status = experimental_mutable_object_provider_->GetChannelStatus(id);
+    Status status =
+        experimental_mutable_object_provider_->GetChannelStatus(id, /*is_reader*/ true);
     if (status.ok()) {
       is_experimental_channel = true;
       // We continue rather than break because we want to check that *all* of the
