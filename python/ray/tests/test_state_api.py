@@ -24,7 +24,6 @@ import ray._private.ray_constants as ray_constants
 from ray._raylet import ActorID
 from ray._private.test_utils import (
     run_string_as_driver,
-    run_string_as_driver_nonblocking,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
     find_free_port,
@@ -3602,63 +3601,31 @@ def test_job_info_is_running_task(shutdown_only):
     assert all_job_info[job_id].is_running_tasks is True
 
 
-def test_hang_driver_has_no_is_running_task(ray_start_cluster):
+def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
     """
-    When there's a call to JobInfoGcsService.GetAllJobInfo, GCS sends RPC to all drivers
-    for "is_running_task". If the driver is hanging, GCS will give up that RPC and unset
-    the field.
+    When there's a call to JobInfoGcsService.GetAllJobInfo, GCS sends RPC
+    CoreWorkerService.NumPendingTasks to all drivers for "is_running_task". Our driver
+    however has trouble serving such RPC, and GCS should timeout that RPC and unsest the
+    field.
     """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=10)
     address = cluster.address
-    ray.init(namespace="test_hang_driver_has_no_is_running_task", address=address)
 
-    # To reliably know a job has a long running task, we need to wait a SignalActor
-    # to know the task has started.
-    signal_actor = SignalActor.options(lifetime="detached", name="signal").remote()
+    monkeypatch.setenv(
+        "RAY_testing_asio_delay_us",
+        "CoreWorkerService.grpc_server.NumPendingTasks=2000000:2000000",
+    )
+    ray.init(address=address)
 
-    driver_script = f"""
-import ray
-import time
-
-ray.init(namespace="test_hang_driver_has_no_is_running_task", address="{address}")
-# Now, it's long running...
-@ray.remote
-def long_running():
-    signal_actor = ray.get_actor("signal")
-    ray.get(signal_actor.send.remote())
-    print("begin infinite sleeping...")
-    while True:
-        time.sleep(10000)
-
-ray.get(long_running.remote())
-"""
-    proc = run_string_as_driver_nonblocking(driver_script)
-    print("waiting for signal...")
-    ray.get(signal_actor.wait.remote())
-
-    pid = proc.pid
-    os.kill(pid, signal.SIGSTOP)
-
-    def asserts(i_am_running: bool):
-        client = ray.worker.global_worker.gcs_client
-        my_job_id = ray.worker.global_worker.current_job_id
-        all_job_info = client.get_all_job_info()
-        assert len(all_job_info) == 2  # 1 for `proc`, 1 for ourselves
-        assert my_job_id in all_job_info
-        for job_id, job_info in all_job_info.items():
-            if job_id == my_job_id:  # Ourselves
-                assert job_info.is_running_tasks is i_am_running
-            else:  # `proc`
-                assert not job_info.HasField("is_running_tasks")
-
-    asserts(i_am_running=False)
-    ray.get(ray.remote(asserts).remote(i_am_running=True))
+    client = ray.worker.global_worker.gcs_client
+    my_job_id = ray.worker.global_worker.current_job_id
+    all_job_info = client.get_all_job_info()
+    assert list(all_job_info.keys()) == [my_job_id]
+    assert not all_job_info[my_job_id].HasField("is_running_tasks")
 
 
 if __name__ == "__main__":
-    import sys
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
