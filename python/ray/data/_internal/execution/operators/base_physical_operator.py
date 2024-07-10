@@ -118,7 +118,7 @@ class AllToAllOperator(PhysicalOperator):
                 bar = ProgressBar(
                     name,
                     self.num_outputs_total() or 1,
-                    unit="block",
+                    unit="bundle",
                     position=position,
                 )
                 # NOTE: call `set_description` to trigger the initial print of progress
