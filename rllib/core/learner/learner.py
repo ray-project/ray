@@ -1558,11 +1558,11 @@ class Learner(Checkpointable):
     def additional_update_for_module(self, *args, **kwargs):
         pass
 
-    @Deprecated(new="Learner.save(...)", error=True)
+    @Deprecated(new="Learner.save_to_path(...)", error=True)
     def save_state(self, *args, **kwargs):
         pass
 
-    @Deprecated(new="Learner.restore(...)", error=True)
+    @Deprecated(new="Learner.restore_from_path(...)", error=True)
     def load_state(self, *args, **kwargs):
         pass
 

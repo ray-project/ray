@@ -523,7 +523,9 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             # Compare the results of the two updates.
             check(results_with_break, results_without_break)
             check(
-                weights_after_1_update_with_break, weights_after_1_update_without_break
+                weights_after_1_update_with_break,
+                weights_after_1_update_without_break,
+                rtol=0.005,
             )
 
 

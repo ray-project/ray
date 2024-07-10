@@ -156,11 +156,11 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
 
     @override(RLModule)
     def save_to_path(self, *args, **kwargs):
-        self.unwrapped().save(*args, **kwargs)
+        self.unwrapped().save_to_path(*args, **kwargs)
 
     @override(RLModule)
     def restore_from_path(self, *args, **kwargs):
-        self.unwrapped().restore(*args, **kwargs)
+        self.unwrapped().restore_from_path(*args, **kwargs)
 
     @override(RLModule)
     def get_metadata(self, *args, **kwargs):
