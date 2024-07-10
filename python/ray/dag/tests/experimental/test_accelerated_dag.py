@@ -1278,7 +1278,7 @@ def test_payload_too_large(ray_start_regular):
         ref = compiled_dag.execute(val)
         assert str(ref) == f"CompiledDAGRef({dag_id}, execution_index={i})"
         result = ray.get(ref)
-        assert (result == val).all()
+        assert result == val
 
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
