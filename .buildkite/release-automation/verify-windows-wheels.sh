@@ -22,7 +22,7 @@ run_sanity_check() {
         python --version
         python sanity_check.py \
             --ray_version="${RAY_VERSION}" \
-            --ray_commit="${RAY_HASH}"
+            --ray_commit="${RAY_COMMIT}"
     )
     conda deactivate
     conda env remove -n "rayio_${PYTHON_VERSION}" -y
