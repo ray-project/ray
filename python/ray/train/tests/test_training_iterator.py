@@ -382,8 +382,4 @@ def test_torch_linear_failure(ray_start_4_cpus):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(sys.argv[1:] + ["-v", "-x", __file__]))

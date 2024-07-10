@@ -51,6 +51,7 @@ def test_torch_fashion_mnist_gpu(ray_start_4_cpus_2_gpus):
 
     assert result[TRAINING_ITERATION] == epochs
 
+
 @pytest.mark.skip(reason="horovod is not installed in CI")
 def test_horovod_torch_mnist_gpu(ray_start_4_cpus_2_gpus):
     from ray.train.examples.horovod.horovod_example import (
