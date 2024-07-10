@@ -4,7 +4,6 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
-    EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
@@ -42,9 +41,11 @@ config = (
         },
         num_steps_sampled_before_learning_starts=256,
     )
+    .resources(
+        num_cpus_for_main_process=2,
+    )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
-        min_sample_timesteps_per_iteration=1000,
     )
 )
 
@@ -57,8 +58,7 @@ if args.num_agents > 0:
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 500000,
     # `episode_return_mean` is the sum of all agents/policies' returns.
-    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -400.0
-    * args.num_agents,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -400.0 * args.num_agents,
 }
 
 if __name__ == "__main__":
