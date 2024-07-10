@@ -2693,8 +2693,8 @@ def read_delta_sharing_tables(
         version: A non-negative integer. Load the snapshot of the table at
             the specified version.
         timestamp: A timestamp to specify the version of the table to read.
-        json_predicate_hints: Predicate hints to be applied to the table. For more details
-            , see:
+        json_predicate_hints: Predicate hints to be applied to the table. For more
+            details, see:
             https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md#json-predicates-for-filtering.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
