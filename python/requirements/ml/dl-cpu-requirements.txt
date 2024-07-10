@@ -7,7 +7,10 @@ tensorflow-probability[tf]==0.24.0
 tensorflow-io-gcs-filesystem==0.37.0; python_version <= '3.11'
 tensorflow-datasets==4.9.6
 array-record==0.5.1; sys_platform != 'darwin' and platform_system != "Windows"
-etils==1.5.2
+
+# Needed for Python 3.12+ support.
+# `tensorflow-datasets 4.9.6 depends on etils>=1.9.1; python_version >= "3.11"`
+etils==1.9.1
 
 # If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
 # and to `install-dependencies.sh`!
