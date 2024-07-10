@@ -2,6 +2,8 @@ import logging
 
 from aiohttp.web import Request, Response
 
+from python.ray.train._internal.state.schema import ActorStatusEnum, RunStatusEnum
+
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -24,8 +26,6 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         self._job_info_client = None
         self._gcs_actor_info_stub = None
 
-    # TODO(aguo): Update this to a "v2" path since I made a backwards-incompatible
-    # change. Will do so after the API is more stable.
     @routes.get("/api/train/v2/runs")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @DeveloperAPI
@@ -114,6 +114,14 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         for train_run in train_runs.values():
             for worker_info in train_run.workers:
                 worker_info.status = actor_status_table.get(worker_info.actor_id, None)
+
+            # If any worker died but the run status is not updated, mark it as aborted
+            if train_run.run_status == RunStatusEnum.STARTED:
+                if any(
+                    worker.status == ActorStatusEnum.DEAD
+                    for worker in train_run.workers
+                ):
+                    train_run.run_status = RunStatusEnum.ABORTED
 
     @staticmethod
     def is_minimal_module():

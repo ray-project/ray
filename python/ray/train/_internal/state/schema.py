@@ -11,6 +11,7 @@ class RunStatusEnum(str, Enum):
     STARTED = "STARTED"
     FINISHED = "FINISHED"
     ERRORED = "ERRORED"
+    ABORTED = "ABORTED"
 
 
 @DeveloperAPI
