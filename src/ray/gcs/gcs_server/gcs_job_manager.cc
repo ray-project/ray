@@ -226,7 +226,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
             [job_id, worker_id, reply, i, num_processed_jobs, try_send_reply](
                 const Status &status,
                 const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
-              RAY_LOG(DEBUG).WithField(kLogKeyWorkerID, worker_id)
+              RAY_LOG(DEBUG).WithField(worker_id)
                   << "Received NumPendingTasksReply from worker.";
               if (!status.ok()) {
                 RAY_LOG(WARNING)
