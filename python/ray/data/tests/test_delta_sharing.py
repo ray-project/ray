@@ -20,7 +20,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
         self.url = "path/to/profile#share.schema.table"
         self.limit = 1000
         self.version = 1
-        self.jsonPredicateHints = '{"column":"value"}'
+        self.json_predicate_hints = '{"column":"value"}'
         self.table = Table(name="table", share="share", schema="schema")
 
         self.mock_rest_client = mock.create_autospec(DataSharingRestClient)
@@ -56,7 +56,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
         )
         datasource = DeltaSharingDatasource(
             url=self.url,
-            jsonPredicateHints=self.jsonPredicateHints,
+            json_predicate_hints=self.json_predicate_hints,
             limit=self.limit,
             version=self.version,
             timestamp=None,
@@ -64,7 +64,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
 
         self.assertEqual(datasource._table, self.table)
         self.assertEqual(datasource._rest_client, self.mock_rest_client)
-        self.assertEqual(datasource._jsonPredicateHints, self.jsonPredicateHints)
+        self.assertEqual(datasource._json_predicate_hints, self.json_predicate_hints)
         self.assertEqual(datasource._limit, self.limit)
         self.assertEqual(datasource._version, self.version)
         self.assertEqual(datasource._timestamp, None)
@@ -80,7 +80,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
         )
         datasource = DeltaSharingDatasource(
             url=self.url,
-            jsonPredicateHints=self.jsonPredicateHints,
+            json_predicate_hints=self.json_predicate_hints,
             limit=self.limit,
             version=self.version,
             timestamp=None,
@@ -105,7 +105,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
         ) as cm:
             DeltaSharingDatasource(
                 url=self.url,
-                jsonPredicateHints=self.jsonPredicateHints,
+                json_predicate_hints=self.json_predicate_hints,
                 limit=self.limit,
                 version=self.version,
                 timestamp=None,
@@ -244,7 +244,7 @@ def test_read_delta_sharing_tables(
     # Validate the results
     mock_delta_sharing_datasource.assert_called_once_with(
         url=f"{setup_profile_file}#share.schema.table",
-        jsonPredicateHints="{}",
+        json_predicate_hints="{}",
         limit=10,
         version=1,
         timestamp="2021-11-12T00:12:29.0Z",
@@ -254,4 +254,6 @@ def test_read_delta_sharing_tables(
 
 
 if __name__ == "__main__":
-    unittest.main()
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))

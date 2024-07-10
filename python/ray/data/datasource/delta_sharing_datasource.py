@@ -17,7 +17,7 @@ class DeltaSharingDatasource(Datasource):
     def __init__(
         self,
         url: str,
-        jsonPredicateHints: Optional[str] = None,
+        json_predicate_hints: Optional[str] = None,
         limit: Optional[int] = None,
         version: Optional[int] = None,
         timestamp: Optional[str] = None,
@@ -27,7 +27,7 @@ class DeltaSharingDatasource(Datasource):
         from delta_sharing.converter import to_converters
 
         self._table, self._rest_client = self.setup_delta_sharing_connections(url)
-        self._jsonPredicateHints = jsonPredicateHints
+        self._json_predicate_hints = json_predicate_hints
 
         if limit is not None:
             assert (
@@ -40,7 +40,7 @@ class DeltaSharingDatasource(Datasource):
 
         self._response = self._rest_client.list_files_in_table(
             self._table,
-            jsonPredicateHints=self._jsonPredicateHints,
+            json_predicate_hints=self._json_predicate_hints,
             limitHint=self._limit,
             version=self._version,
             timestamp=self._timestamp,

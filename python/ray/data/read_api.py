@@ -2658,7 +2658,7 @@ def read_delta_sharing_tables(
     limit: Optional[int] = None,
     version: Optional[int] = None,
     timestamp: Optional[str] = None,
-    jsonPredicateHints: Optional[str] = None,
+    json_predicate_hints: Optional[str] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -2699,7 +2699,7 @@ def read_delta_sharing_tables(
         version: A non-negative integer. Load the snapshot of the table at
             the specified version.
         timestamp: A timestamp to specify the version of the table to read.
-        jsonPredicateHints: Predicate hints to be applied to the table. For more details
+        json_predicate_hints: Predicate hints to be applied to the table. For more details
             , see:
             https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md#json-predicates-for-filtering.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
@@ -2722,7 +2722,7 @@ def read_delta_sharing_tables(
 
     datasource = DeltaSharingDatasource(
         url=url,
-        jsonPredicateHints=jsonPredicateHints,
+        json_predicate_hints=json_predicate_hints,
         limit=limit,
         version=version,
         timestamp=timestamp,
