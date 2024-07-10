@@ -6,7 +6,6 @@ from ray._private.ray_logging.constants import (
     LOGGER_FLATTEN_KEYS,
 )
 from ray._private.ray_constants import LOGGER_FORMAT
-import time
 from typing import Any, Dict
 
 
