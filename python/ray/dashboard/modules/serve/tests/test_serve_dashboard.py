@@ -1,4 +1,5 @@
 import copy
+import importlib
 import os
 import re
 import sys
@@ -638,6 +639,13 @@ def test_default_dashboard_agent_listen_port():
     assert ray_constants.DEFAULT_DASHBOARD_AGENT_LISTEN_PORT == 52365
 
 
+@pytest.fixture
+def short_serve_kv_timeout(monkeypatch):
+    monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "3")
+    importlib.reload(ray.serve._private.constants)  # to reload the constants set above
+    yield
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
@@ -655,10 +663,9 @@ def test_default_dashboard_agent_listen_port():
 )
 @pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
 def test_get_applications_while_gcs_down(
-    monkeypatch, ray_start_regular_with_external_redis, url
+    short_serve_kv_timeout, ray_start_regular_with_external_redis, url
 ):
     # Test serve REST API availability when the GCS is down.
-    monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "3")
     serve.start(detached=True)
 
     get_response = requests.get(url, timeout=15)
