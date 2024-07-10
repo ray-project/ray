@@ -95,7 +95,7 @@ steps:
     instance_type: windows
     commands:
       - export RAY_VERSION="$RAY_VERSION"
-      - export RAY_HASH="$RAY_HASH"
+      - export RAY_COMMIT="$RAY_COMMIT"
       - bash -i /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh
   
   - block: "Upload wheels to PyPI"

@@ -6,7 +6,7 @@ set -x
 
 PYTHON_VERSIONS=("3.9" "3.10" "3.11" "3.12")
 export RAY_VERSION="${RAY_VERSION:-2.32.0}"
-export RAY_HASH="${RAY_HASH:-607f2f30f5f21543b6a5568ee77ea779eeba30a8}"
+export RAY_COMMIT="${RAY_COMMIT:-607f2f30f5f21543b6a5568ee77ea779eeba30a8}"
 
 run_sanity_check() {
     local PYTHON_VERSION="$1"
