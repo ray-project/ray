@@ -80,13 +80,36 @@ void GcsSubscriberClient::PubsubCommandBatch(
 
 }  // namespace
 
+bool GcsClientOptions::ShouldFetchClusterId(ClusterID cluster_id,
+                                            bool allow_cluster_id_nil,
+                                            bool fetch_cluster_id_if_nil) {
+  RAY_CHECK(!((!allow_cluster_id_nil) && fetch_cluster_id_if_nil))
+      << " invalid config combination: if allow_cluster_id_nil == false, "
+         "fetch_cluster_id_if_nil "
+         "must false";
+  if (!cluster_id.IsNil()) {
+    // ClusterID non nil is always good.
+    return false;
+  }
+  RAY_CHECK(allow_cluster_id_nil) << "Unexpected nil Cluster ID.";
+  if (fetch_cluster_id_if_nil) {
+    return true;
+  } else {
+    RAY_LOG(INFO) << "GcsClient has no Cluster ID set, and won't fetch from GCS.";
+    return false;
+  }
+}
+
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
-Status GcsClient::Connect(instrumented_io_context &io_service,
-                          const ClusterID &cluster_id) {
+Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_ms) {
+  if (timeout_ms < 0) {
+    timeout_ms = RayConfig::instance().gcs_rpc_server_connect_timeout_s() * 1000;
+  }
   // Connect to gcs service.
-  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service, cluster_id);
+  client_call_manager_ =
+      std::make_unique<rpc::ClientCallManager>(io_service, options_.cluster_id_);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
@@ -135,6 +158,32 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
 
   RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
                  << options_.gcs_port_;
+
+  if (options_.should_fetch_cluster_id_) {
+    RAY_RETURN_NOT_OK(FetchClusterId(timeout_ms));
+  }
+  return Status::OK();
+}
+
+Status GcsClient::FetchClusterId(int64_t timeout_ms) {
+  if (!GetClusterId().IsNil()) {
+    return Status::OK();
+  }
+  rpc::GetClusterIdRequest request;
+  rpc::GetClusterIdReply reply;
+  RAY_LOG(DEBUG) << "Cluster ID is nil, getting cluster ID from GCS server.";
+
+  Status s = gcs_rpc_client_->SyncGetClusterId(request, &reply, timeout_ms);
+  if (!s.ok()) {
+    RAY_LOG(WARNING) << "Failed to get cluster ID from GCS server: " << s;
+    gcs_rpc_client_->Shutdown();
+    gcs_rpc_client_.reset();
+    client_call_manager_.reset();
+    return s;
+  }
+  const auto reply_cluster_id = ClusterID::FromBinary(reply.cluster_id());
+  RAY_LOG(DEBUG) << "Retrieved cluster ID from GCS server: " << reply_cluster_id;
+  client_call_manager_->SetClusterId(reply_cluster_id);
   return Status::OK();
 }
 
@@ -148,7 +197,13 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
   return gcs_rpc_client_->GetAddress();
 }
 
-PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
+ClusterID GcsClient::GetClusterId() const {
+  ClusterID cluster_id = client_call_manager_->GetClusterId();
+  return cluster_id;
+}
+
+PythonGcsClient::PythonGcsClient(const GcsClientOptions &options)
+    : options_(options), cluster_id_(options.cluster_id_) {}
 
 namespace {
 Status HandleGcsError(rpc::GcsStatus status) {
@@ -158,14 +213,13 @@ Status HandleGcsError(rpc::GcsStatus status) {
 }
 }  // namespace
 
-Status PythonGcsClient::Connect(const ClusterID &cluster_id,
-                                int64_t timeout_ms,
-                                size_t num_retries) {
+Status PythonGcsClient::Connect(int64_t timeout_ms, size_t num_retries) {
   absl::WriterMutexLock lock(&mutex_);
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
-  if (cluster_id.IsNil()) {
+  // cluster_id_ may already be fetched from a last Connect() call.
+  if (cluster_id_.IsNil() && options_.should_fetch_cluster_id_) {
     size_t tries = num_retries + 1;
     RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
 
@@ -180,13 +234,20 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
       connect_status =
           GrpcStatusToRayStatus(node_info_stub_->GetClusterId(&context, request, &reply));
 
+      // On RpcError: retry
+      // On GCS side error: return error
+      // On success: set cluster_id_ and break
       if (connect_status.ok()) {
-        cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
-        RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
-        RAY_CHECK(!cluster_id_.IsNil());
-        break;
+        if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
+          cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
+          RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
+          RAY_CHECK(!cluster_id_.IsNil());
+          break;
+        } else {
+          return HandleGcsError(reply.status());
+        }
       } else if (!connect_status.IsRpcError()) {
-        return HandleGcsError(reply.status());
+        return connect_status;
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
       channel_ =
@@ -194,9 +255,6 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
       node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
     }
     RAY_RETURN_NOT_OK(connect_status);
-  } else {
-    cluster_id_ = cluster_id;
-    RAY_LOG(DEBUG) << "Client initialized with provided cluster ID: " << cluster_id_;
   }
 
   RAY_CHECK(!cluster_id_.IsNil()) << "Unexpected nil cluster ID.";

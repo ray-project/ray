@@ -2,7 +2,7 @@ import time
 from collections import defaultdict
 from functools import partial
 import logging
-from typing import Any, Container, DefaultDict, Dict, List, Optional
+from typing import Any, Collection, DefaultDict, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -197,19 +197,17 @@ class SingleAgentEnvRunner(EnvRunner):
                     explore=explore,
                     random_actions=random_actions,
                 )
-            # For complete episodes mode, sample as long as the number of timesteps
-            # done is smaller than the `train_batch_size`.
+            # For complete episodes mode, sample a single episode and
+            # leave coordination of sampling to `synchronous_parallel_sample`.
+            # TODO (simon, sven): The coordination will eventually move
+            # to `EnvRunnerGroup` in the future. So from the algorithm one
+            # would do `EnvRunnerGroup.sample()`.
             else:
-                total = 0
-                samples = []
-                while total < self.config.train_batch_size:
-                    episodes = self._sample_episodes(
-                        num_episodes=self.num_envs,
-                        explore=explore,
-                        random_actions=random_actions,
-                    )
-                    total += sum(len(e) for e in episodes)
-                    samples.extend(episodes)
+                samples = self._sample_episodes(
+                    num_episodes=1,
+                    explore=explore,
+                    random_actions=random_actions,
+                )
 
             # Make the `on_sample_end` callback.
             self._callbacks.on_sample_end(
@@ -642,9 +640,9 @@ class SingleAgentEnvRunner(EnvRunner):
     @override(EnvRunner)
     def get_state(
         self,
-        components: Optional[Container[str]] = None,
+        components: Optional[Collection[str]] = None,
         *,
-        module_ids: Optional[Container[ModuleID]] = None,
+        module_ids: Optional[Collection[ModuleID]] = None,
         inference_only: bool = True,
     ) -> Dict[str, Any]:
         components = force_list(
