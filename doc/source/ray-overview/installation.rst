@@ -354,11 +354,6 @@ If you want to tweak some aspects of these images and build them locally, refer 
   cd ray
   ./build-docker.sh
 
-Beyond creating the above Docker images, this script can also produce the following two images.
-
-- The ``rayproject/development`` image has the ray source code included and is setup for development.
-- The ``rayproject/examples`` image adds additional libraries for running examples.
-
 Review images by listing them:
 
 .. code-block:: bash
@@ -370,8 +365,7 @@ Output should look something like the following:
 .. code-block:: bash
 
   REPOSITORY                          TAG                 IMAGE ID            CREATED             SIZE
-  rayproject/ray                      latest              7243a11ac068        2 days ago          1.11 GB
-  rayproject/ray-deps                 latest              b6b39d979d73        8 days ago          996  MB
+  rayproject/ray                      dev                 7243a11ac068        2 days ago          1.11 GB
   rayproject/base-deps                latest              5606591eeab9        8 days ago          512  MB
   ubuntu                              22.04               1e4467b07108        3 weeks ago         73.9 MB
 

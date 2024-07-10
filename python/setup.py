@@ -422,7 +422,6 @@ def replace_symlinks_with_junctions():
 
     # Update this list if new symlinks are introduced to the source tree
     _LINKS = {
-        r"ray\dashboard": "../../dashboard",
         r"ray\rllib": "../../rllib",
     }
     root_dir = os.path.dirname(__file__)

@@ -1583,15 +1583,15 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     task_state["end_time_ms"] = None
     events = []
 
-    if "state_ts" in state_updates:
-        state_ts = state_updates["state_ts"]
+    if "state_ts_ns" in state_updates:
+        state_ts_ns = state_updates["state_ts_ns"]
         for state_name, state in TaskStatus.items():
-            # state_ts is Map[str, str] after protobuf MessageToDict
+            # state_ts_ns is Map[str, str] after protobuf MessageToDict
             key = str(state)
-            if key in state_ts:
+            if key in state_ts_ns:
                 # timestamp is recorded as nanosecond from the backend.
                 # We need to convert it to the second.
-                ts_ms = int(state_ts[key]) // 1e6
+                ts_ms = int(state_ts_ns[key]) // 1e6
                 events.append(
                     {
                         "state": state_name,
