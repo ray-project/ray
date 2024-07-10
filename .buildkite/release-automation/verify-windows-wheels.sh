@@ -4,9 +4,9 @@ set -euo pipefail
 
 set -x
 
-PYTHON_VERSIONS=("3.8" "3.9" "3.10" "3.11")
-export RAY_VERSION="${RAY_VERSION:-2.10.0}"
-export RAY_HASH="${RAY_HASH:-09abba26b5bf2707639bb637c208d062a47b46f6}"
+PYTHON_VERSIONS=("3.9" "3.10" "3.11" "3.12")
+export RAY_VERSION="${RAY_VERSION:-2.32.0}"
+export RAY_HASH="${RAY_HASH:-607f2f30f5f21543b6a5568ee77ea779eeba30a8}"
 
 run_sanity_check() {
     local PYTHON_VERSION="$1"
