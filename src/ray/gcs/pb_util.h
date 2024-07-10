@@ -277,8 +277,8 @@ inline bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
   }
 
   const auto &state_updates = task_event.state_updates();
-  return state_updates.state_ts().contains(rpc::TaskStatus::FINISHED) ||
-         state_updates.state_ts().contains(rpc::TaskStatus::FAILED);
+  return state_updates.state_ts_ns().contains(rpc::TaskStatus::FINISHED) ||
+         state_updates.state_ts_ns().contains(rpc::TaskStatus::FAILED);
 }
 
 inline size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
@@ -309,7 +309,7 @@ inline bool IsTaskFinished(const rpc::TaskEvents &task_event) {
   }
 
   const auto &state_updates = task_event.state_updates();
-  return state_updates.state_ts().contains(rpc::TaskStatus::FINISHED);
+  return state_updates.state_ts_ns().contains(rpc::TaskStatus::FINISHED);
 }
 
 /// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
@@ -324,7 +324,7 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
     // Not status change.
     return;
   }
-  (*state_updates->mutable_state_ts())[task_status] = timestamp;
+  (*state_updates->mutable_state_ts_ns())[task_status] = timestamp;
 }
 
 inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {

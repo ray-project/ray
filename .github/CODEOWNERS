@@ -104,24 +104,24 @@
 
 # Ray usage stats
 /python/ray/_private/usage/ @ericl @richardliaw @rkooo567 @jjyao
-/dashboard/modules/usage_stats/ @ericl @richardliaw @rkooo567 @jjyao
+/python/ray/dashboard/modules/usage_stats/ @ericl @richardliaw @rkooo567 @jjyao
 
 
 # ==== Build and CI ====
 
 # Bazel.
-#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci-reviewers
-#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci-reviewers
-#/bazel/ @ray-project/ray-core @ray-project/ray-ci-reviewers
+#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci
+#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci
+#/bazel/ @ray-project/ray-core @ray-project/ray-ci
 
 # CI scripts.
-#/ci/ @ray-project/ray-core @ray-project/ray-ci-reviewers
+#/ci/ @ray-project/ray-core @ray-project/ray-ci
 
 # Buildkite pipeline management
-.buildkite/hooks @ray-project/ray-ci-reviewers
+.buildkite/hooks @ray-project/ray-ci
 
-/release/ray_release @ray-project/ray-ci-reviewers
+/release/ray_release @ray-project/ray-ci
 
 /.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz
 
-/.github/workflows/ @ray-project/ray-ci-reviewers
+/.github/workflows/ @ray-project/ray-ci
