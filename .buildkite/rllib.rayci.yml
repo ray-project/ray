@@ -105,7 +105,7 @@ steps:
 
   - label: ":brain: rllib: gpu tests"
     tags: 
-      - rllib
+      - rllib_gpu
       - gpu
     parallelism: 3
     instance_type: gpu
@@ -197,12 +197,13 @@ steps:
 
   - label: ":brain: rllib: multi-gpu tests"
     tags: 
-      - rllib
+      - rllib_gpu
       - gpu
     parallelism: 2
     instance_type: gpu-large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
+      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --parallelism-per-worker 2
         --gpus 4
         --build-name rllibgpubuild
@@ -212,9 +213,9 @@ steps:
   - label: ":brain: rllib: flaky multi-gpu tests"
     key: rllib_flaky_gpu_tests
     tags: 
-      - rllib
-      - skip-on-premerge
+      - rllib_gpu
       - gpu
+      - skip-on-premerge
     instance_type: gpu-large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --run-flaky-tests

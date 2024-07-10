@@ -181,7 +181,11 @@ class BC(MARWIL):
                 self._counters[NUM_ENV_STEPS_SAMPLED] += len(train_batch)
 
             # Updating the policy.
-            train_results = self.learner_group.update_from_batch(batch=train_batch)
+            train_results = self.learner_group.update_from_batch(
+                batch=train_batch.as_multi_agent(
+                    module_id=list(self.config.policies)[0]
+                )
+            )
             # TODO (sven): Use metrics API as soon as we moved to new API stack
             #  (from currently hybrid stack).
             # self.metrics.log_dict(
