@@ -246,7 +246,16 @@ class JobInfoAccessor {
   ///
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback);
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback,
+                             int64_t timeout_ms);
+
+  /// Get all job info from GCS synchronously.
+  ///
+  /// \param timeout_ms -1 means infinite.
+  /// \param[out] job_data_list The list of job data retrieved from GCS.
+  /// \return Status
+  virtual Status GetAll(std::vector<rpc::JobTableData> &job_data_list,
+                        int64_t timeout_ms);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -347,7 +356,8 @@ class NodeInfoAccessor {
   ///
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback);
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
+                             int64_t timeout_ms);
 
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
@@ -380,6 +390,11 @@ class NodeInfoAccessor {
   /// \return All nodes in cache.
   virtual const absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> &GetAll() const;
 
+  /// Get information of all nodes from an RPC to GCS synchronously.
+  ///
+  /// \return All nodes in cache.
+  virtual Status GetAllNoCache(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &nodes);
+
   /// Send a check alive request to GCS for the liveness of some nodes.
   ///
   /// \param raylet_addresses The addresses of the nodes to check, each like "ip:port".
@@ -389,6 +404,19 @@ class NodeInfoAccessor {
   virtual Status CheckAlive(const std::vector<std::string> &raylet_addresses,
                             int64_t timeout_ms,
                             std::vector<bool> &nodes_alive);
+
+  /// Drain (remove the information of the nodes from the cluster) the specified nodes
+  /// from GCS synchronously.
+  ///
+  /// Check gcs_service.proto NodeInfoGcsService.DrainNode for the API spec.
+  ///
+  /// \param node_ids The IDs of nodes to be unregistered.
+  /// \param timeout_ms The timeout for this request.
+  /// \param drained_node_ids The IDs of nodes that are drained.
+  /// \return Status
+  virtual Status DrainNodes(const std::vector<NodeID> &node_ids,
+                            int64_t timeout_ms,
+                            std::vector<std::string> &drained_node_ids);
 
   /// Search the local cache to find out if the given node is removed.
   /// Non-thread safe.
@@ -486,6 +514,14 @@ class NodeResourceInfoAccessor {
   /// \return Status
   virtual Status AsyncGetAllResourceUsage(
       const ItemCallback<rpc::ResourceUsageBatchData> &callback);
+
+  /// Get newest resource usage of all nodes from GCS synchronously.
+  ///
+  /// \param timeout_ms -1 means infinite.
+  /// \param resource_usage_batch_data The resource usage of all nodes.
+  /// \return Status
+  virtual Status GetAllResourceUsage(int64_t timeout_ms,
+                                     rpc::GetAllResourceUsageReply &reply);
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
@@ -743,8 +779,7 @@ class InternalKVAccessor {
       const std::string &ns,
       const std::vector<std::string> &keys,
       const int64_t timeout_ms,
-      const OptionalItemCallback<absl::flat_hash_map<std::string, std::string>>
-          &callback);
+      const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback);
 
   /// Asynchronously set the value for a given key.
   ///
@@ -848,7 +883,7 @@ class InternalKVAccessor {
   virtual Status MultiGet(const std::string &ns,
                           const std::vector<std::string> &keys,
                           const int64_t timeout_ms,
-                          absl::flat_hash_map<std::string, std::string> &values);
+                          std::unordered_map<std::string, std::string> &values);
 
   /// Delete the key
   ///

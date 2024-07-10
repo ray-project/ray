@@ -345,7 +345,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           assert(!result.empty());
           nodes = std::move(result);
           promise.set_value(status.ok());
-        }));
+        },
+        gcs::GetGcsTimeoutMs()));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return nodes;
   }
