@@ -16,4 +16,4 @@ cp /c/workdir/release/util/sanity_check.py /c/tmp/verify/release/util/sanity_che
 
 docker build -t rayproject/win-verifier /c/tmp/verify
 
-docker run -ti --rm --env RAY_VERSION --env RAY_COMMIT rayproject/win-verifier
+docker run -i --rm --env RAY_VERSION --env RAY_COMMIT rayproject/win-verifier
