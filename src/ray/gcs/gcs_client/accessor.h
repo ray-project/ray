@@ -246,16 +246,16 @@ class JobInfoAccessor {
   ///
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(int64_t timeout_ms,
-                             const MultiItemCallback<rpc::JobTableData> &callback);
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback,
+                             int64_t timeout_ms);
 
   /// Get all job info from GCS synchronously.
   ///
   /// \param timeout_ms -1 means infinite.
   /// \param[out] job_data_list The list of job data retrieved from GCS.
   /// \return Status
-  virtual Status GetAll(int64_t timeout_ms,
-                        std::vector<rpc::JobTableData> &job_data_list);
+  virtual Status GetAll(std::vector<rpc::JobTableData> &job_data_list,
+                        int64_t timeout_ms);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.
@@ -356,8 +356,8 @@ class NodeInfoAccessor {
   ///
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAll(int64_t timeout_ms,
-                             const MultiItemCallback<rpc::GcsNodeInfo> &callback);
+  virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
+                             int64_t timeout_ms);
 
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///

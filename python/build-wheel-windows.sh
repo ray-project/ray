@@ -64,15 +64,15 @@ install_ray() {
   (
     pip install wheel
 
-    (
-      cd python/ray/dashboard/client
-      choco install nodejs  -y
+
+    pushd python/ray/dashboard/client
+      choco install nodejs -y
       refreshenv
       # https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
       export NODE_OPTIONS=--openssl-legacy-provider
       npm install
       npm run build
-    )
+    popd
 
     cd "${WORKSPACE_DIR}"/python
     "${WORKSPACE_DIR}"/ci/keep_alive pip install -v -e .

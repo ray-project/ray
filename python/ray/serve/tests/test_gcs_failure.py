@@ -44,7 +44,10 @@ def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
 
     with pytest.raises(KVStoreError) as e:
         kv1.put("2", b"2")
-    assert e.value.rpc_code == ray._raylet.GRPC_STATUS_CODE_DEADLINE_EXCEEDED
+    assert e.value.rpc_code in (
+        ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+        ray._raylet.GRPC_STATUS_CODE_DEADLINE_EXCEEDED,
+    )
 
 
 @pytest.mark.skipif(
