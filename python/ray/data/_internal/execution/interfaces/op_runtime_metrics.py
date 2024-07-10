@@ -208,6 +208,30 @@ class OpRuntimeMetrics:
             "metrics_group": "tasks",
         },
     )
+    task_cpu_time: float = field(
+        default=0,
+        metadata={
+            "description": "Time spent with active CPU in tasks.",
+            "metrics_group": "tasks",
+            "map_only": True,
+        },
+    )
+    task_udf_time: float = field(
+        default=0,
+        metadata={
+            "description": "Time spent on user defined functions (map, map_batches) in tasks.",
+            "metrics_group": "tasks",
+            "map_only": True,
+        },
+    )
+    task_idle_time: float = field(
+        default=0,
+        metadata={
+            "description": "Time spent idle in tasks",
+            "metrics_group": "tasks",
+            "map_only": True,
+        },
+    )
 
     # === Object store memory metrics ===
     obj_store_mem_internal_inqueue_blocks: int = field(
@@ -485,6 +509,12 @@ class OpRuntimeMetrics:
         for block_ref, meta in output.blocks:
             assert meta.exec_stats and meta.exec_stats.wall_time_s
             self.block_generation_time += meta.exec_stats.wall_time_s
+
+            # Should these go into a different callback (perhaps task_finished?)
+            self.task_cpu_time += meta.exec_stats.cpu_time_s
+            self.task_udf_time += meta.exec_stats.udf_time_s
+            self.task_idle_time += meta.exec_stats.wall_time_s - meta.exec_stats.cpu_time_s # how does UDF time fit into this?
+
             assert meta.num_rows is not None
             self.rows_task_outputs_generated += meta.num_rows
             trace_allocation(block_ref, "operator_output")
