@@ -80,7 +80,7 @@ steps:
     instance_type: medium
     commands:
       - cleanup() { ./ci/build/upload_build_info.sh; }; trap cleanup EXIT
-      - (cd dashboard/client && npm ci && npm run build)
+      - (cd python/ray/dashboard/client && npm ci && npm run build)
       - pip install -e python[client]
       - bazel test --config=ci --jobs=1 $(./ci/run/bazel_export_options)
         --test_tag_filters=mem_pressure -- //python/ray/tests/...
@@ -160,7 +160,7 @@ steps:
       # ui tests
       - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail
-        "./dashboard/tests/run_ui_tests.sh"
+        "./python/ray/dashboard/tests/run_ui_tests.sh"
 
   - label: ":ray: core: debug test"
     tags: python

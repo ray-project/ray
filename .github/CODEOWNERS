@@ -104,7 +104,7 @@
 
 # Ray usage stats
 /python/ray/_private/usage/ @ericl @richardliaw @rkooo567 @jjyao
-/dashboard/modules/usage_stats/ @ericl @richardliaw @rkooo567 @jjyao
+/python/ray/dashboard/modules/usage_stats/ @ericl @richardliaw @rkooo567 @jjyao
 
 
 # ==== Build and CI ====
