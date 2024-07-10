@@ -96,13 +96,13 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
 
   for (const auto &task_locator : task_attempts_itr->second) {
     MarkTaskAttemptFailedIfNeeded(
-        task_locator, worker_failure_data.end_time_ms() * 1000, error_info);
+        task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
   }
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
     const std::shared_ptr<TaskEventLocator> &locator,
-    int64_t failed_ts,
+    int64_t failed_ts_ns,
     const rpc::RayErrorInfo &error_info) {
   auto &task_events = locator->GetTaskEventsMutable();
   // We don't mark tasks as failed if they are already terminated.
@@ -113,7 +113,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
   auto state_updates = task_events.mutable_state_updates();
-  (*state_updates->mutable_state_ts())[ray::rpc::TaskStatus::FAILED] = failed_ts;
+  (*state_updates->mutable_state_ts_ns())[ray::rpc::TaskStatus::FAILED] = failed_ts_ns;
   state_updates->mutable_error_info()->CopyFrom(error_info);
 }
 
@@ -433,7 +433,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       ray::rpc::TaskStatus state = ray::rpc::TaskStatus::NIL;
       if (task_event.has_state_updates()) {
         for (int i = task_status_descriptor->value_count() - 1; i >= 0; --i) {
-          if (task_event.state_updates().state_ts().contains(
+          if (task_event.state_updates().state_ts_ns().contains(
                   task_status_descriptor->value(i)->number())) {
             state = static_cast<ray::rpc::TaskStatus>(
                 task_status_descriptor->value(i)->number());
