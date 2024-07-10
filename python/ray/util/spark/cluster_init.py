@@ -1086,7 +1086,7 @@ def _setup_ray_cluster_internal(
                 "`num_gpus_worker_node` values. Without setting the 2 arguments, "
                 "per-Ray worker node will be assigned with number of "
                 f"'spark.task.cpus' (equals to {num_spark_task_cpus}) cpu cores "
-                "and down-rounded number of 'spark.task.resource.gpu.amount' "
+                "and rounded down number of 'spark.task.resource.gpu.amount' "
                 f"(equals to {rounded_num_spark_task_gpus}) GPUs. To enable spark "
                 f"stage scheduling, you need to upgrade spark to 3.4 version or use "
                 "Databricks Runtime 12.x, and you cannot use spark local mode."
@@ -1379,7 +1379,7 @@ def setup_ray_cluster(
         num_gpus_worker_node: Number of gpus available to per-ray worker node, if not
             provided, if spark stage scheduling is supported, 'num_gpus_worker_node'
             value equals to number of GPUs per spark worker node, otherwise
-            it uses down-rounded value of spark application configuration
+            it uses rounded down value of spark application configuration
             'spark.task.resource.gpu.amount' instead.
             This argument is only available on spark cluster that is configured with
             'gpu' resources.
