@@ -27,7 +27,7 @@ How to run this script
 --lr=0.01`
 
 Use the `--regularizer-coeff` option to set the value of the coefficient with which
-the mean NN weight is being multilied (inside the total loss) and the `--lr` option
+the mean NN weight is being multiplied (inside the total loss) and the `--lr` option
 to set the learning rate. Experiments using a large learning rate and no regularization
 (`--regularizer-coeff=0.0`) should NOT learn a decently working policy.
 
@@ -82,6 +82,7 @@ torch, _ = try_import_torch()
 
 
 parser = add_rllib_example_script_args(default_reward=250.0)
+parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--regularizer-coeff",
     type=float,

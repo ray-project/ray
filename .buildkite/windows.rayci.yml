@@ -134,8 +134,8 @@ steps:
     job_env: WINDOWS
     instance_type: windows
     commands:
+      - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless
-        --skip-ray-installation
         --except-tags no_windows
         --run-flaky-tests
         --build-name windowsbuild
@@ -152,8 +152,8 @@ steps:
     job_env: WINDOWS
     instance_type: windows
     commands:
+      - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
-        --skip-ray-installation
         --except-tags no_windows
         --run-flaky-tests
         --build-name windowsbuild
