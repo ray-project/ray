@@ -37,9 +37,6 @@ Please note that suffixes are only used to specify `aarch64` images. No suffix m
 | no tag       | Defaults to `amd64`     |
 
 
-## Other Images
-* [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) - Ray and all of its dependencies.
-* [`rayproject/ray-ml`](https://hub.docker.com/repository/docker/rayproject/ray-ml) - This image with common ML libraries to make development & deployment more smooth!
-<br></br><br></br>
+----
 
-* [`rayproject/ray-deps`](https://hub.docker.com/repository/docker/rayproject/ray-deps) - Internal image with python-level dependencies.
+See [`rayproject/ray`](https://hub.docker.com/repository/docker/rayproject/ray) for Ray and all of its dependencies.

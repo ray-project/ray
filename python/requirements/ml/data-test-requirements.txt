@@ -16,3 +16,5 @@ raydp==1.7.0b20231020.dev0
 pylance
 delta-sharing
 pytest-mock
+decord
+snowflake-connector-python
