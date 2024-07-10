@@ -209,7 +209,9 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/train/doc_code/*.py"],
-    exclude = [],
+    exclude = [
+        "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
@@ -321,8 +323,9 @@ doctest(
         exclude=[
             # GPU
             "source/train/user-guides/data-loading-preprocessing.rst",
-            "source/train/user-guides/using-gpus.rst"
-        ]
+            "source/train/user-guides/using-gpus.rst",
+            "source/train/horovod.rst",  # CI do not have Horovod
+        ],
     ),
     tags = ["team:ml"]
 )
