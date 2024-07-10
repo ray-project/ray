@@ -2,7 +2,10 @@
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
 python-snappy
-tensorflow-datasets==4.9.3
+# 4.9.6 fixes the following error with Python 3.12:
+# `RecursionError: maximum recursion depth exceeded`
+# See: https://github.com/tensorflow/datasets/issues/4666#issuecomment-2149200103
+tensorflow-datasets==4.9.6
 datasets
 pytest-repeat
 soundfile

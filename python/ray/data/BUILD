@@ -390,7 +390,8 @@ py_test(
     name = "test_mars",
     size = "medium",
     srcs = ["tests/test_mars.py"],
-    tags = ["team:data", "exclusive"],
+    # mars does not support Python 3.11+, so mark as manual test.
+    tags = ["team:data", "exclusive", "manual"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
