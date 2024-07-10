@@ -287,7 +287,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """<b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=regDocs6_5g">Register</a></b> for Ray Summit 2024 now. Get your early bird pass by June 27th to save $100.""",
+    "announcement": """Hear keynotes from OpenAI CTO, Mira Murati, a16z co-founder Marc Andreessen, and Runway CTO Anastasis Germanidis in Ray Summit 2024 - <b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=regDocs6_5g">Register Now</a></b>!""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
