@@ -454,11 +454,15 @@ MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
   return timeout_point;
 }
 
-Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
+Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
   Channel *channel = GetChannel(object_id);
   if (!channel) {
     return Status::NotFound(
         absl::StrFormat("Could not find channel for object ID %s.", object_id.Hex()));
+  }
+  if ((is_reader && channel->reader_registered) ||
+      (!is_reader && channel->writer_registered)) {
+    return Status::OK();
   }
   return channel->mutable_object->header->CheckHasError();
 }
@@ -540,7 +544,7 @@ MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
   return nullptr;
 }
 
-Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
+Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

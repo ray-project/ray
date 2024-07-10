@@ -77,6 +77,10 @@ class ExecutionPlan:
         # and count. This is calculated and cached when the plan is executed as an
         # iterator (`execute_to_iterator()`), and avoids caching
         # all of the output blocks in memory like in `self.snapshot_bundle`.
+        # TODO(scottjlee): To keep the caching logic consistent, update `execute()`
+        # to also store the metadata in `_snapshot_metadata` instead of
+        # `_snapshot_bundle`. For example, we could store the blocks in
+        # `self._snapshot_blocks` and the metadata in `self._snapshot_metadata`.
         self._snapshot_metadata: Optional[BlockMetadata] = None
 
         # Cached schema.

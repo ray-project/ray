@@ -159,7 +159,11 @@ class MockReferenceCounter : public ReferenceCounterInterface {
 class ActorManagerTest : public ::testing::Test {
  public:
   ActorManagerTest()
-      : options_("localhost:6793"),
+      : options_("localhost",
+                 6793,
+                 ClusterID::Nil(),
+                 /*allow_cluster_id_nil=*/true,
+                 /*fetch_cluster_id_if_nil=*/false),
         gcs_client_mock_(new MockGcsClient(options_)),
         actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
         direct_actor_submitter_(new MockDirectActorSubmitter()),
