@@ -2154,9 +2154,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # if the arg is explicitly provided here.
             if policies_to_train is not None:
                 self.learner_group.foreach_learner(
-                    lambda learner: learner.config.multi_agent(
+                    func=lambda learner: learner.config.multi_agent(
                         policies_to_train=policies_to_train
-                    )
+                    ),
+                    timeout_seconds=0.0,  # fire-and-forget
                 )
 
             weights = policy.get_weights()
@@ -2401,9 +2402,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # if the arg is explicitly provided here.
         if self.config.enable_rl_module_and_learner and policies_to_train is not None:
             self.learner_group.foreach_learner(
-                lambda learner: learner.config.multi_agent(
+                func=lambda learner: learner.config.multi_agent(
                     policies_to_train=policies_to_train
-                )
+                ),
+                timeout_seconds=0.0,  # fire-and-forget
             )
 
         # Update the evaluation worker set's workers, if required.

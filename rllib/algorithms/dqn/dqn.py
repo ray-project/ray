@@ -668,7 +668,10 @@ class DQN(Algorithm):
             # (https://arxiv.org/abs/1706.10295) in Algorithm 1. The noise
             # gets sampled once for each training loop.
             if with_noise_reset:
-                self.learner_group.foreach_learner(lambda lrnr: lrnr._reset_noise())
+                self.learner_group.foreach_learner(
+                    func=lambda lrnr: lrnr._reset_noise(),
+                    timeout_seconds=0.0,  # fire-and-forget
+                )
             # Run multiple sample-from-buffer and update iterations.
             for _ in range(sample_and_train_weight):
                 # Sample a list of episodes used for learning from the replay buffer.

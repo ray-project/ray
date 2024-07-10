@@ -26,7 +26,11 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+from ray.rllib.utils.actor_manager import (
+    FaultTolerantActorManager,
+    RemoteCallResults,
+    ResultOrError,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import (
@@ -661,14 +665,15 @@ class LearnerGroup(Checkpointable):
         module_spec = copy.deepcopy(module_spec)
         module_spec.inference_only = False
 
-        marl_spec = self.foreach_learner(
-            lambda _learner: _learner.add_module(
+        results = self.foreach_learner(
+            func=lambda _learner: _learner.add_module(
                 module_id=module_id,
                 module_spec=module_spec,
                 config_overrides=config_overrides,
                 new_should_module_be_updated=new_should_module_be_updated,
-            )
-        )[0]
+            ),
+        )
+        marl_spec = self._get_results(results)[0]
 
         # Change our config (AlgorithmConfig) to contain the new Module.
         # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
@@ -712,12 +717,13 @@ class LearnerGroup(Checkpointable):
         ):
             del self._metrics_logger_old_and_hybrid_stack.stats[module_id]
 
-        marl_spec = self.foreach_learner(
-            lambda _learner: _learner.remove_module(
+        results = self.foreach_learner(
+            func=lambda _learner: _learner.remove_module(
                 module_id=module_id,
                 new_should_module_be_updated=new_should_module_be_updated,
-            )
-        )[0]
+            ),
+        )
+        marl_spec = self._get_results(results)[0]
 
         # Change self.config to reflect the new architecture.
         # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
@@ -816,7 +822,7 @@ class LearnerGroup(Checkpointable):
 
     def foreach_learner(
         self, func: Callable[[Learner, Optional[Any]], T], **kwargs
-    ) -> List[T]:
+    ) -> RemoteCallResults:
         """Calls the given function on each Learner L with the args: (L, \*\*kwargs).
 
         Args:
@@ -826,7 +832,13 @@ class LearnerGroup(Checkpointable):
             A list of size len(Learners) with the return values of all calls to `func`.
         """
         if self.is_local:
-            return [func(self._learner, **kwargs)]
+            results = RemoteCallResults()
+            results.add_result(
+                None,
+                ResultOrError(result=func(self._learner, **kwargs)),
+                None,
+            )
+            return results
         return self._worker_manager.foreach_actor(partial(func, **kwargs))
 
     def shutdown(self):
