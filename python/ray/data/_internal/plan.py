@@ -72,6 +72,16 @@ class ExecutionPlan:
         self._snapshot_operator: Optional[LogicalOperator] = None
         self._snapshot_stats = None
         self._snapshot_bundle = None
+        # Snapshot of only metadata corresponding to the final operator's
+        # output bundles, used as the source of truth for the Dataset's schema
+        # and count. This is calculated and cached when the plan is executed as an
+        # iterator (`execute_to_iterator()`), and avoids caching
+        # all of the output blocks in memory like in `self.snapshot_bundle`.
+        # TODO(scottjlee): To keep the caching logic consistent, update `execute()`
+        # to also store the metadata in `_snapshot_metadata` instead of
+        # `_snapshot_bundle`. For example, we could store the blocks in
+        # `self._snapshot_blocks` and the metadata in `self._snapshot_metadata`.
+        self._snapshot_metadata: Optional[BlockMetadata] = None
 
         # Cached schema.
         self._schema = None
@@ -148,6 +158,9 @@ class ExecutionPlan:
                 # This plan has executed some but not all operators.
                 schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
                 count = self._snapshot_bundle.num_rows()
+            elif self._snapshot_metadata is not None:
+                schema = self._snapshot_metadata.schema
+                count = self._snapshot_metadata.num_rows
             else:
                 # This plan hasn't executed any operators.
                 sources = self._logical_plan.sources()
@@ -414,6 +427,8 @@ class ExecutionPlan:
 
         metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
         executor = StreamingExecutor(copy.deepcopy(ctx.execution_options), metrics_tag)
+        # TODO(scottjlee): replace with `execute_to_legacy_bundle_iterator` and
+        # update execute_to_iterator usages to handle RefBundles instead of Blocks
         block_iter = execute_to_legacy_block_iterator(
             executor,
             self,

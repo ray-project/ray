@@ -325,6 +325,7 @@ cmdstanpy==1.2.0
     # via prophet
 colorama==0.4.6
     # via
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   bayesian-optimization
     #   semgrep
 coloredlogs==15.0.1
@@ -399,6 +400,8 @@ decorator==5.1.1
     #   moviepy
     #   paramz
     #   tensorflow-probability
+decord==0.6.0
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 deepspeed==0.12.3
     # via -r /ray/ci/../python/requirements/ml/train-requirements.txt
 defusedxml==0.7.1
@@ -1235,6 +1238,7 @@ numpy==1.24.4
     #   cupy-cuda11x
     #   dask
     #   datasets
+    #   decord
     #   deepspeed
     #   dm-control
     #   dm-env

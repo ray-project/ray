@@ -99,7 +99,7 @@ py_test(
 
 py_test(
     name = "test_serve_dashboard",
-    size = "large",
+    size = "enormous",
     srcs = ["modules/serve/tests/test_serve_dashboard.py"],
     tags = ["team:serve"],
     deps = [":conftest"],
