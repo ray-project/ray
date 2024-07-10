@@ -4,7 +4,6 @@ py_library(
   name = "conftest",
   srcs = glob(["**/conftest.py"]),
   visibility = [
-    "//dashboard:__pkg__",
     "//python/ray/tests:__subpackages__",
     "//python/ray/autoscaler/v2:__pkg__",
     "//python/ray/dashboard:__pkg__",
@@ -25,6 +24,7 @@ py_test_module_list(
   files = [
     "test_actor_pool.py",
     "test_async.py",
+    "test_async_compat.py",
     "test_asyncio.py",
     "test_core_worker_io_thread_stack_size.py",
     "test_actor_lifetime.py",

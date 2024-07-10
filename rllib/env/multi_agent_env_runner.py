@@ -1,7 +1,7 @@
 from collections import defaultdict
 from functools import partial
 import logging
-from typing import Any, Container, DefaultDict, Dict, List, Optional
+from typing import Any, Collection, DefaultDict, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -68,6 +68,7 @@ class MultiAgentEnvRunner(EnvRunner):
 
         # Get the worker index on which this instance is running.
         self.worker_index: int = kwargs.get("worker_index")
+        self.tune_trial_id: str = kwargs.get("tune_trial_id")
 
         # Set up all metrics-related structures and counters.
         self.metrics: Optional[MetricsLogger] = None
@@ -650,7 +651,7 @@ class MultiAgentEnvRunner(EnvRunner):
     @override(EnvRunner)
     def get_state(
         self,
-        components: Optional[Container[str]] = None,
+        components: Optional[Collection[str]] = None,
         *,
         inference_only: bool = True,
         module_ids=None,

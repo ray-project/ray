@@ -1,6 +1,5 @@
 import tempfile
 import unittest
-from typing import Mapping
 import gc
 
 import gymnasium as gym
@@ -48,7 +47,7 @@ class TestRLModule(unittest.TestCase):
         )
         output = module.forward_train({"obs": obs})
 
-        self.assertIsInstance(output, Mapping)
+        self.assertIsInstance(output, dict)
         self.assertIn(Columns.ACTION_DIST_INPUTS, output)
 
         action_dist_inputs = output[Columns.ACTION_DIST_INPUTS]
