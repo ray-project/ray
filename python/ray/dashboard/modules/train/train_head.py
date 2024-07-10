@@ -2,8 +2,6 @@ import logging
 
 from aiohttp.web import Request, Response
 
-from python.ray.train._internal.state.schema import ActorStatusEnum, RunStatusEnum
-
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -114,6 +112,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         for train_run in train_runs.values():
             for worker_info in train_run.workers:
                 worker_info.status = actor_status_table.get(worker_info.actor_id, None)
+
+            from ray.train._internal.state.schema import ActorStatusEnum, RunStatusEnum
 
             # If any worker died but the run status is not updated, mark it as aborted
             if train_run.run_status == RunStatusEnum.STARTED:
