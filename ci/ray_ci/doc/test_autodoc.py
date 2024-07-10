@@ -62,5 +62,21 @@ def test_walk():
         )
 
 
+def test_get_autodoc_rsts_in_file():
+    with tempfile.TemporaryDirectory() as tmp:
+        with open(os.path.join(tmp, "head.rst"), "w") as f:
+            f.write(".. include:: api_00.rst\n")
+            f.write(".. toctree::\n\n")
+            f.write("\tapi_01.rst\n")
+            f.write("\tapi_02.rst\n")
+
+        autodoc = Autodoc("head.rst")
+        sorted(autodoc._get_autodoc_rsts_in_file(os.path.join(tmp, "head.rst"))) == {
+            os.path.join(tmp, "api_00.rst"),
+            os.path.join(tmp, "api_01.rst"),
+            os.path.join(tmp, "api_02.rst"),
+        }
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-vv", __file__]))
