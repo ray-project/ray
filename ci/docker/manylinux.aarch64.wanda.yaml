@@ -1,6 +1,6 @@
 name: "manylinux-aarch64"
 froms:
-  - quay.io/pypa/manylinux2014_aarch64:2023-11-13-f6b0c51
+  - quay.io/pypa/manylinux2014_aarch64:2024-07-01-8dac23b
 srcs:
   - ci/build/build-manylinux-forge.sh
 build_args:
