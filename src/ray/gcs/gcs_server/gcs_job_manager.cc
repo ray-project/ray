@@ -229,9 +229,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               RAY_LOG(DEBUG).WithField(worker_id)
                   << "Received NumPendingTasksReply from worker.";
               if (!status.ok()) {
-                RAY_LOG(WARNING)
-                        .WithField(kLogKeyJobID, job_id)
-                        .WithField(kLogKeyWorkerID, worker_id)
+                RAY_LOG(WARNING).WithField(job_id).WithField(worker_id)
                     << "Failed to get num_pending_tasks from core worker: " << status
                     << ", is_running_tasks is unset.";
                 reply->mutable_job_info_list(i)->clear_is_running_tasks();
