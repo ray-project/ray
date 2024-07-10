@@ -95,6 +95,14 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def _add_actor_status(self, train_runs):
+        try:
+            from ray.train._internal.state.schema import ActorStatusEnum, RunStatusEnum
+        except ImportError:
+            logger.exception(
+                "Train is not installed. Please run `pip install ray[train]` "
+                "when setting up Ray on your cluster."
+            )
+
         actor_status_table = {}
         try:
             logger.info("Getting all actor info from GCS.")
@@ -113,15 +121,16 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             for worker_info in train_run.workers:
                 worker_info.status = actor_status_table.get(worker_info.actor_id, None)
 
-            from ray.train._internal.state.schema import ActorStatusEnum, RunStatusEnum
-
-            # If any worker died but the run status is not updated, mark it as aborted
-            if train_run.run_status == RunStatusEnum.STARTED:
-                if any(
-                    worker.status == ActorStatusEnum.DEAD
-                    for worker in train_run.workers
-                ):
-                    train_run.run_status = RunStatusEnum.ABORTED
+            # If the controller died but the run status is not updated,
+            # mark the train run as aborted
+            controller_actor_status = actor_status_table.get(
+                train_run.controller_actor_id, None
+            )
+            if (
+                controller_actor_status == ActorStatusEnum.DEAD
+                and train_run.run_status == RunStatusEnum.STARTED
+            ):
+                train_run.run_status = RunStatusEnum.ABORTED
 
     @staticmethod
     def is_minimal_module():
