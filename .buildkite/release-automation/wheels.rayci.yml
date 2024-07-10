@@ -90,6 +90,7 @@ steps:
 
   - label: "Windows"
     key: validate-windows-wheels
+    depends_on: []
     job_env: WINDOWS
     instance_type: windows
     commands:
