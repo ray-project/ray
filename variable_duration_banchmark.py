@@ -35,7 +35,7 @@ logger = Logger()
 TIME_UNIT = 0.5
 
 
-def test_large_e2e_backpressure():
+def test_large_e2e_backpressure(is_flink: bool):
     """Test backpressure on a synthetic large-scale workload."""
     # The cluster has 10 CPUs and 200MB object store memory.
     # The dataset will have 200MB * 25% = 50MB memory budget.
@@ -69,7 +69,10 @@ def test_large_e2e_backpressure():
 
     def produce(batch):
         logger.log({"name": "producer_start", "id": [int(x) for x in batch["id"]]})
-        time.sleep(TIME_UNIT * 10)
+        if int(batch["id"][0]) < NUM_ROWS_TOTAL / 2:
+            time.sleep(TIME_UNIT * 10)
+        else:
+            time.sleep(TIME_UNIT)
         for id in batch["id"]:
             # logger.log({"name": "produce", "id": int(id)})
             yield {
@@ -81,19 +84,31 @@ def test_large_e2e_backpressure():
 
     def consume(batch):
         logger.log({"name": "consume", "id": int(batch["id"])})
-        time.sleep(TIME_UNIT)
+        if int(batch["id"]) < NUM_ROWS_TOTAL / 2:
+            time.sleep(TIME_UNIT)
+        else:
+            time.sleep(TIME_UNIT * 2)
         return {"id": batch["id"], "result": [0 for _ in batch["id"]]}
 
     data_context = ray.data.DataContext.get_current()
     data_context.execution_options.verbose_progress = True
     data_context.target_max_block_size = BLOCK_SIZE
-    data_context.is_budget_policy = False # Disable our policy. 
 
+    if is_flink:
+        data_context.is_budget_policy = False # Disable our policy. 
+    else:
+        data_context.is_budget_policy = True
+        
     ray.init(num_cpus=NUM_CPUS, object_store_memory=25 * BLOCK_SIZE)
 
     ds = ray.data.range(NUM_ROWS_TOTAL, override_num_blocks=NUM_TASKS)
-    ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK, concurrency=2)
-    ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99, concurrency=4)
+    
+    if is_flink:
+        ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK, concurrency=4)
+        ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99, concurrency=4) 
+    else:
+        ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)
+        ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99)
 
     logger.record_start()
 
@@ -106,8 +121,9 @@ def test_large_e2e_backpressure():
     print(ds.stats())
     print(ray._private.internal_api.memory_summary(stats_only=True))
     print(f"Total time: {end_time - start_time:.4f}s")
-    ray.timeline("timeline.json")
-
+    ray.timeline(f"timeline_{'ray' if not is_flink else 'flink'}_variable.json")
+    ray.shutdown()
 
 if __name__ == "__main__":
-    test_large_e2e_backpressure()
+    test_large_e2e_backpressure(is_flink=True)
+    test_large_e2e_backpressure(is_flink=False)

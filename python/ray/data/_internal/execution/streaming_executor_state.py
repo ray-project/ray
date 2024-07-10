@@ -375,9 +375,8 @@ class OpState:
 
         if not ray.data.DataContext.get_current().is_budget_policy:
             return True
-        
-        # TODO(MaoZiming)
-        if (self.op.name != "ReadRange->MapBatches(produce)" and self.op.name != "MapBatches(produce)"):
+                
+        if not (len(self.op.input_dependencies) == 1 and isinstance(self.op.input_dependencies[0], InputDataBuffer)): 
             return True
 
         INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
