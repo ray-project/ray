@@ -164,7 +164,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_bar = ProgressBar(
             SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
             len(sample_results),
-            unit="blocks",
+            unit="block",
         )
         samples = sample_bar.fetch_until_complete(sample_results)
         sample_bar.close()

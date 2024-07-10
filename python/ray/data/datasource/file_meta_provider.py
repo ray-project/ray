@@ -399,7 +399,7 @@ def _fetch_metadata_parallel(
     # Always launch at least 2 parallel fetch tasks.
     parallelism = max(len(uris) // desired_uris_per_task, 2)
     metadata_fetch_bar = ProgressBar(
-        "Metadata Fetch Progress", total=parallelism, unit="files"
+        "Metadata Fetch Progress", total=parallelism, unit="file"
     )
     fetch_tasks = []
     for uri_chunk in np.array_split(uris, parallelism):

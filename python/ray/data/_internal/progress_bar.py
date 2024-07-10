@@ -44,7 +44,7 @@ class ProgressBar:
         self,
         name: str,
         total: int,
-        unit: str = "it",
+        unit: str,
         position: int = 0,
         enabled: Optional[bool] = None,
     ):
