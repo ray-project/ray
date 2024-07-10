@@ -5,6 +5,7 @@ import os
 import logging
 import sys
 import json
+import time
 
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
@@ -388,23 +389,38 @@ ray.get(actor_instance.print_message.remote())
             assert s not in stderr
 
 
-@pytest.fixture
-def log_record_factory():
-    orig_factory = logging.getLogRecordFactory()
-    yield
-    logging.setLogRecordFactory(orig_factory)
+class TestSetupLogRecordFactory:
+    @pytest.fixture
+    def log_record_factory(self):
+        orig_factory = logging.getLogRecordFactory()
+        yield
+        logging.setLogRecordFactory(orig_factory)
 
+    def test_setup_log_record_factory(self, log_record_factory):
+        setup_log_record_factory()
 
-def test_setup_log_record_factory(log_record_factory):
-    setup_log_record_factory()
+        ct = time.time_ns()
+        with patch("time.time_ns") as patched_ns:
+            patched_ns.return_value = ct
+            record = logging.makeLogRecord({})
+            assert record.__dict__["timestamp_ns"] == ct
 
-    import time
+    def test_setup_log_record_factory_already_set(self, log_record_factory):
+        def existing_factory(*args, **kwargs):
+            record = logging.LogRecord(*args, **kwargs)
+            record.__dict__["existing_factory"] = True
+            return record
 
-    ct = time.time_ns()
-    with patch("time.time_ns") as patched_ns:
-        patched_ns.return_value = ct
-        record = logging.makeLogRecord({})
-        assert record.__dict__["timestamp_ns"] == ct
+        logging.setLogRecordFactory(existing_factory)
+
+        setup_log_record_factory()
+
+        ct = time.time_ns()
+        with patch("time.time_ns") as patched_ns:
+            patched_ns.return_value = ct
+            record = logging.makeLogRecord({})
+            assert record.__dict__["timestamp_ns"] == ct
+            assert record.__dict__["existing_factory"]
 
 
 if __name__ == "__main__":
