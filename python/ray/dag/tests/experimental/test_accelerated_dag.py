@@ -1261,6 +1261,30 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
         dag.experimental_compile()
 
 
+def test_payload_too_large(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.echo.bind(i)
+
+    compiled_dag = dag.experimental_compile()
+    dag_id = compiled_dag.get_id()
+
+    # Ray sets the gRPC payload max size to 512 MiB. We choose a size in this test that
+    # is a bit larger.
+    size = 1024 * 1024 * 600
+    val = b"x" * size
+
+    for i in range(3):
+        ref = compiled_dag.execute(val)
+        assert str(ref) == f"CompiledDAGRef({dag_id}, execution_index={i})"
+        result = ray.get(ref)
+        assert (result == val).all()
+
+    # Note: must teardown before starting a new Ray session, otherwise you'll get
+    # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

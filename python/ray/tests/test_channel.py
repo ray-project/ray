@@ -973,7 +973,9 @@ def test_payload_too_large(ray_start_cluster):
     a = create_actor(actor_node)
     assert driver_node != ray.get(a.get_node_id.remote())
 
-    size = 1024 * 1024 * 512
+    # Ray sets the gRPC payload max size to 512 MiB. We choose a size in this test that
+    # is a bit larger.
+    size = 1024 * 1024 * 600
     ch = ray_channel.Channel(None, [a], size)
 
     val = b"x" * size
@@ -1022,7 +1024,9 @@ def test_payload_resize_too_large(ray_start_cluster):
 
     ch = ray_channel.Channel(None, [a], 1000)
 
-    size = 1024 * 1024 * 512
+    # Ray sets the gRPC payload max size to 512 MiB. We choose a size in this test that
+    # is a bit larger.
+    size = 1024 * 1024 * 600
     val = b"x" * size
     ch.write(val)
     ray.get(a.read.remote(ch, val))

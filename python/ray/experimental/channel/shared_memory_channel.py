@@ -300,6 +300,11 @@ class Channel(ChannelInterface):
 
         self._num_readers = len(self._readers)
         if self.is_remote():
+            # Even though there may be multiple readers on a remote node, we set
+            # `self._num_readers` to 1 here. On this local node, only the IO thread in
+            # the mutable object provider will read the mutable object. The IO thread
+            # will then send a gRPC with the mutable object contents to the remote node
+            # where the readers are.
             self._num_readers = 1
 
     def _create_reader_ref(
