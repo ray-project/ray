@@ -15,10 +15,9 @@ from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.exceptions import omit_traceback_stdout
-from ray.types import ObjectRef
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
@@ -353,20 +352,30 @@ class ExecutionPlan:
         elif self._logical_plan.dag.schema() is not None:
             schema = self._logical_plan.dag.schema()
         elif fetch_if_missing:
-            blocks_with_metadata, _, _ = self.execute_to_iterator()
-            for _, metadata in blocks_with_metadata:
-                if metadata.schema is not None and (
-                    metadata.num_rows is None or metadata.num_rows > 0
-                ):
-                    schema = metadata.schema
-                    break
+            # blocks_with_metadata, _, _ = self.execute_to_iterator()
+            iter_ref_bundles, _, _ = self.execute_to_iterator()
+            for ref_bundle in iter_ref_bundles:
+                # for _, metadata in blocks_with_metadata:
+                for metadata in ref_bundle.metadata:
+                    if metadata.schema is not None and (
+                        metadata.num_rows is None or metadata.num_rows > 0
+                    ):
+                        schema = metadata.schema
+                        break
         elif self.is_read_only():
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
-            blocks_with_metadata, _, _ = self.execute_to_iterator()
+            # blocks_with_metadata, _, _ = self.execute_to_iterator()
+            iter_ref_bundles, _, _ = self.execute_to_iterator()
             try:
-                _, metadata = next(iter(blocks_with_metadata))
-                schema = metadata.schema
+                # _, metadata = next(iter(blocks_with_metadata))
+                ref_bundle = next(iter(iter_ref_bundles))
+                for metadata in ref_bundle.metadata:
+                    if metadata.schema is not None:
+                        schema = metadata.schema
+                        break
+                # metadata = ref_bundle.metadata[0]
+                # schema = metadata.schema
             except StopIteration:  # Empty dataset.
                 schema = None
 
@@ -399,17 +408,13 @@ class ExecutionPlan:
     @omit_traceback_stdout
     def execute_to_iterator(
         self,
-    ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-        DatasetStats,
-        Optional["Executor"],
-    ]:
+    ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["Executor"]]:
         """Execute this plan, returning an iterator.
 
         This will use streaming execution to generate outputs.
 
         Returns:
-            Tuple of iterator over output blocks and the executor.
+            Tuple of iterator over output RefBundles, DatasetStats, and the executor.
         """
         self._has_started_execution = True
 
@@ -421,7 +426,7 @@ class ExecutionPlan:
             return iter(bundle.blocks), self._snapshot_stats, None
 
         from ray.data._internal.execution.legacy_compat import (
-            execute_to_legacy_block_iterator,
+            execute_to_legacy_bundle_iterator,
         )
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
@@ -429,19 +434,20 @@ class ExecutionPlan:
         executor = StreamingExecutor(copy.deepcopy(ctx.execution_options), metrics_tag)
         # TODO(scottjlee): replace with `execute_to_legacy_bundle_iterator` and
         # update execute_to_iterator usages to handle RefBundles instead of Blocks
-        block_iter = execute_to_legacy_block_iterator(
-            executor,
-            self,
-        )
+        # block_iter = execute_to_legacy_block_iterator(
+        #     executor,
+        #     self,
+        # )
+        bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
-        gen = iter(block_iter)
+        gen = iter(bundle_iter)
         try:
-            block_iter = itertools.chain([next(gen)], gen)
+            bundle_iter = itertools.chain([next(gen)], gen)
         except StopIteration:
             pass
         self._snapshot_stats = executor.get_stats()
-        return block_iter, self._snapshot_stats, executor
+        return bundle_iter, self._snapshot_stats, executor
 
     @omit_traceback_stdout
     def execute(

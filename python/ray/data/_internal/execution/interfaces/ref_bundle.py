@@ -134,3 +134,13 @@ def _ref_bundles_iterator_to_block_refs_list(
     return [
         block_ref for ref_bundle in ref_bundles for block_ref in ref_bundle.block_refs
     ]
+
+
+def _bundle_to_block_md_iterator(
+    ref_bundles: Iterator[RefBundle],
+) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+    """Convert an iterator of RefBundles to an iterator of
+    `(Block object reference, corresponding BlockMetadata)`."""
+    for ref_bundle in ref_bundles:
+        for block_ref, metadata in ref_bundle.blocks:
+            yield block_ref, metadata

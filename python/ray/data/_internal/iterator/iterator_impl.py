@@ -1,5 +1,8 @@
 from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
 
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _bundle_to_block_md_iterator,
+)
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import create_dataset_tag
 from ray.data.block import Block, BlockMetadata
@@ -30,7 +33,9 @@ class DataIteratorImpl(DataIterator):
         bool,
     ]:
         ds = self._base_dataset
-        block_iterator, stats, executor = ds._plan.execute_to_iterator()
+        ref_bundles_iterator, stats, executor = ds._plan.execute_to_iterator()
+        # TODO: update this to bundle iterator
+        block_iterator = _bundle_to_block_md_iterator(ref_bundles_iterator)
         ds._current_executor = executor
         return block_iterator, stats, False
 
