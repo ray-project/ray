@@ -22,6 +22,19 @@ from ray.train.torch.train_loop_utils import (
     prepare_model,
     prepare_optimizer,
 )
+from ray.train.v2._internal.constants import is_v2_enabled
+
+if is_v2_enabled():
+    from ray.train.v2.torch.torch_trainer import TorchTrainer  # noqa: F811
+    from ray.train.v2.torch.train_loop_utils import (  # noqa: F811
+        accelerate,
+        backward,
+        enable_reproducibility,
+        prepare_data_loader,
+        prepare_model,
+        prepare_optimizer,
+    )
+
 
 __all__ = [
     "TorchTrainer",
