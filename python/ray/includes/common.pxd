@@ -382,8 +382,8 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
 
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus GetAll(
-            int64_t timeout_ms,
-            c_vector[CJobTableData] &result)
+            c_vector[CJobTableData] &result,
+            int64_t timeout_ms)
 
     cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
         CRayStatus CheckAlive(

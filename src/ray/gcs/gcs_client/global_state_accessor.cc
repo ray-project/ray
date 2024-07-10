@@ -397,7 +397,6 @@ ray::Status GlobalStateAccessor::GetAliveNodes(std::vector<rpc::GcsNodeInfo> &no
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-        GetGcsTimeoutMs(),
         [&promise](Status status, std::vector<rpc::GcsNodeInfo> &&nodes) {
           promise.set_value(
               std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, std::move(nodes)));

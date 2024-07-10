@@ -249,7 +249,7 @@ cdef class NewGcsClient:
         cdef c_vector[c_string] serialized_reply
         with nogil:
             check_status_timeout_as_rpc_error(
-                self.inner.get().Jobs().GetAll(timeout_ms, reply)
+                self.inner.get().Jobs().GetAll(reply, timeout_ms)
             )
             for i in range(reply.size()):
                 serialized_reply.push_back(reply[i].SerializeAsString())

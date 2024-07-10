@@ -131,19 +131,6 @@ Status JobInfoAccessor::GetAll(std::vector<rpc::JobTableData> &job_data_list,
   return Status::OK();
 }
 
-Status JobInfoAccessor::GetAll(int64_t timeout_ms,
-                               std::vector<rpc::JobTableData> &job_data_list) {
-  std::promise<Status> ret_promise;
-  RAY_RETURN_NOT_OK(
-      AsyncGetAll(timeout_ms,
-                  [&ret_promise, &job_data_list](
-                      const Status &status, const std::vector<rpc::JobTableData> &data) {
-                    job_data_list = data;
-                    ret_promise.set_value(status);
-                  }));
-  return ret_promise.get_future().get();
-}
-
 Status JobInfoAccessor::AsyncGetNextJobID(const ItemCallback<JobID> &callback) {
   RAY_LOG(DEBUG) << "Getting next job id";
   rpc::GetNextJobIDRequest request;
