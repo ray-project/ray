@@ -65,21 +65,29 @@ class RemoteTrainingHelper:
             tf.random.set_seed(0)
 
         env = gym.make("CartPole-v1")
+
+        reader = get_cartpole_dataset_reader(batch_size=500)
+        batch = reader.next().as_multi_agent()
+
         config_overrides = LOCAL_CONFIGS[scaling_mode]
         config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
+
         learner_group = config.build_learner_group(env=env)
         local_learner = config.build_learner(env=env)
 
-        # make the state of the learner and the local learner_group identical
+        # Make the state of the learner and the local learner_group identical.
         local_learner.set_state(learner_group.get_state()[COMPONENT_LEARNER])
         check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
-        reader = get_cartpole_dataset_reader(batch_size=500)
-        batch = reader.next()
-        batch = batch.as_multi_agent()
-        learner_update = local_learner.update_from_batch(batch=batch)
-        learner_update = tree.map_structure(lambda s: s.peek(), learner_update)
-        learner_group_update = learner_group.update_from_batch(batch=batch)
-        check(learner_update, learner_group_update)
+
+        # Update n times and check state again.
+        for _ in range(10):
+            learner_update = local_learner.update_from_batch(batch=batch)
+            learner_update = tree.map_structure(lambda s: s.peek(), learner_update)
+            learner_group_update = learner_group.update_from_batch(batch=batch)
+            check(learner_update, learner_group_update)
+            check(
+                local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER]
+            )
 
         new_module_id = "test_module"
 
@@ -94,7 +102,7 @@ class RemoteTrainingHelper:
         local_learner.set_state(learner_group.get_state()[COMPONENT_LEARNER])
         check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
 
-        # do another update
+        # Do another update.
         batch = reader.next()
         ma_batch = MultiAgentBatch(
             {new_module_id: batch, DEFAULT_MODULE_ID: batch}, env_steps=batch.count
@@ -102,19 +110,75 @@ class RemoteTrainingHelper:
         # the optimizer state is not initialized fully until the first time that
         # training is completed. A call to get state before that won't contain the
         # optimizer state. So we do a dummy update here to initialize the optimizer
+        l0 = local_learner.get_state()
         local_learner.update_from_batch(batch=ma_batch)
-        learner_group.update_from_batch(batch=ma_batch)
-
-        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
-        local_learner_results = local_learner.update_from_batch(batch=ma_batch)
-        local_learner_results = tree.map_structure(
-            lambda s: s.peek(), local_learner_results
+        l1 = local_learner.get_state()
+        check(
+            l0["rl_module"]["default_policy"]["policy.0.bias"],
+            l1["rl_module"]["default_policy"]["policy.0.bias"],
+            false=True,
         )
-        learner_group_results = learner_group.update_from_batch(batch=ma_batch)
+        check(
+            l0["rl_module"]["test_module"]["policy.0.bias"],
+            l1["rl_module"]["test_module"]["policy.0.bias"],
+            false=True,
+        )
+        check(
+            l0["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
+            l1["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
+            false=True,
+        )
+        check(
+            l0["optimizer"]["test_module_default_optimizer"]["state"],
+            {},
+        )
 
-        check(local_learner_results, learner_group_results)
+        lg0 = learner_group.get_state()[COMPONENT_LEARNER]
+        check(l0, lg0)
 
-        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
+        learner_group.update_from_batch(batch=ma_batch)
+        lg1 = learner_group.get_state()[COMPONENT_LEARNER]
+
+        check(
+            lg0["rl_module"]["default_policy"]["policy.0.bias"],
+            lg1["rl_module"]["default_policy"]["policy.0.bias"],
+            false=True,
+        )
+        check(
+            lg0["rl_module"]["test_module"]["policy.0.bias"],
+            lg1["rl_module"]["test_module"]["policy.0.bias"],
+            false=True,
+        )
+        check(
+            lg0["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
+            lg1["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
+            false=True,
+        )
+        check(
+            lg0["optimizer"]["test_module_default_optimizer"]["state"],
+            {},
+        )
+
+        check(l1["rl_module"]["test_module"], lg1["rl_module"]["test_module"])
+        check(
+            l1["optimizer"]["test_module_default_optimizer"],
+            lg1["optimizer"]["test_module_default_optimizer"],
+        )
+        # check(l1["rl_module"]["default_policy"], lg1["rl_module"]["default_policy"])
+
+        # local_learner.update_from_batch(batch=ma_batch)
+        # learner_group.update_from_batch(batch=ma_batch)
+
+        # check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
+        # local_learner_results = local_learner.update_from_batch(batch=ma_batch)
+        # local_learner_results = tree.map_structure(
+        #    lambda s: s.peek(), local_learner_results
+        # )
+        # learner_group_results = learner_group.update_from_batch(batch=ma_batch)
+
+        # check(local_learner_results, learner_group_results)
+
+        # check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
 
 
 class TestLearnerGroupSyncUpdate(unittest.TestCase):

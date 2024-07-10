@@ -40,10 +40,8 @@ from ray.rllib.utils.metrics import (
     NUM_NON_TRAINABLE_PARAMETERS,
 )
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.torch_utils import (
-    convert_to_torch_tensor,
-    copy_torch_tensors,
-)
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
     ModuleID,
     Optimizer,
@@ -121,8 +119,8 @@ class TorchLearner(Learner):
         # For this default implementation, the learning rate is handled by the
         # attached lr Scheduler (controlled by self.config.lr, which can be a
         # fixed value of a schedule setting).
-        optimizer = torch.optim.Adam(self.get_parameters(module))
         params = self.get_parameters(module)
+        optimizer = torch.optim.Adam(params)
 
         # Register the created optimizer (under the default optimizer name).
         self.register_optimizer(
@@ -182,12 +180,10 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
-        optimizer_name_state = {}
-        for name, optim in self._named_optimizers.items():
-            optim_state_dict = optim.state_dict()
-            optim_state_dict_cpu = copy_torch_tensors(optim_state_dict, device="cpu")
-            optimizer_name_state[name] = optim_state_dict_cpu
-        return optimizer_name_state
+        return {
+            name: convert_to_numpy(optim.state_dict())
+            for name, optim in self._named_optimizers.items()
+        }
 
     @override(Learner)
     def _set_optimizer_state(self, state: StateDict) -> None:
@@ -197,11 +193,9 @@ class TorchLearner(Learner):
                     f"Optimizer {name} in `state` is not known."
                     f"Known optimizers are {self._named_optimizers.keys()}"
                 )
-            optim = self._named_optimizers[name]
-            state_dict_correct_device = copy_torch_tensors(
-                state_dict, device=self._device
+            self._named_optimizers[name].load_state_dict(
+                convert_to_torch_tensor(state_dict, device=self._device)
             )
-            optim.load_state_dict(state_dict_correct_device)
 
     @override(Learner)
     def get_param_ref(self, param: Param) -> Hashable:
