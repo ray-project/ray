@@ -15,7 +15,7 @@ parser.set_defaults(num_agents=2)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
-parser.set_defaults(num_agents=2)
+
 register_env(
     "multi_agent_cartpole",
     lambda _: MultiAgentCartPole({"num_agents": args.num_agents}),
@@ -74,7 +74,7 @@ if args.num_agents:
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 500000,
     # `episode_return_mean` is the sum of all agents/policies' returns.
-    f"{EVALUATION_RESULTS}{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 250.0
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 400.0
     * args.num_agents,
 }
 
