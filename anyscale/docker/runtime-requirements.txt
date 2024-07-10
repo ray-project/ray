@@ -7,4 +7,5 @@
 # test dependencies file upstream, and then rebuild the
 # requirements_compiled.txt file.
 
+decord
 soundfile
