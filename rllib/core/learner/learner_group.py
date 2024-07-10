@@ -821,12 +821,40 @@ class LearnerGroup(Checkpointable):
         ]
 
     def foreach_learner(
-        self, func: Callable[[Learner, Optional[Any]], T], **kwargs
+        self,
+        func: Callable[[Learner, Optional[Any]], T],
+        *,
+        healthy_only: bool = True,
+        remote_actor_ids: List[int] = None,
+        timeout_seconds: Optional[float] = None,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = True,
+        **kwargs,
     ) -> RemoteCallResults:
         """Calls the given function on each Learner L with the args: (L, \*\*kwargs).
 
         Args:
-            func: The function to call on each Learner L with (L, \*\*kwargs).
+            func: The function to call on each Learner L with args: (L, \*\*kwargs).
+            healthy_only: If True, applies `func` only to Learner actors currently
+                tagged "healthy", otherwise to all actors. If `healthy_only=False` and
+                `mark_healthy=True`, will send `func` to all actors and mark those
+                actors "healthy" that respond to the request within `timeout_seconds`
+                and are currently tagged as "unhealthy".
+            remote_actor_ids: Apply func on a selected set of remote actors. Use None
+                (default) for all actors.
+            timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
+                fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
+                synchronous execution).
+            return_obj_refs: whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of the context of this manager.
+            mark_healthy: Whether to mark all those actors healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that actors are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also not that this setting is ignored if `healthy_only=True` (b/c this
+                setting only affects actors that are currently tagged as unhealthy).
 
         Returns:
             A list of size len(Learners) with the return values of all calls to `func`.
@@ -839,7 +867,15 @@ class LearnerGroup(Checkpointable):
                 None,
             )
             return results
-        return self._worker_manager.foreach_actor(partial(func, **kwargs))
+
+        return self._worker_manager.foreach_actor(
+            func=partial(func, **kwargs),
+            healthy_only=healthy_only,
+            remote_actor_ids=remote_actor_ids,
+            timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
+        )
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""
