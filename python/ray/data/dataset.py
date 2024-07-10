@@ -4169,7 +4169,7 @@ class Dataset:
         dask.config.set(scheduler=ray_dask_get)
 
         @dask.delayed
-        def block_to_df(block_ref: Block) -> pd.DataFrame:
+        def block_to_df(block_ref: ObjectRef[Block]) -> pd.DataFrame:
             if isinstance(block_ref, (ray.ObjectRef, ClientObjectRef)):
                 raise ValueError(
                     "Dataset.to_dask() must be used with Dask-on-Ray, please "
@@ -4619,6 +4619,7 @@ class Dataset:
         return iter_ref_bundles
 
     @Deprecated
+    @ConsumptionAPI(pattern="Examples:")
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
 
