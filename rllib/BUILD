@@ -1545,7 +1545,7 @@ py_test(
     size = "small",
     srcs = ["offline/tests/test_offline_data.py"],
     data = [
-        "tests/data/pendulum/small.json",
+        "tests/data/cartpole/cartpole-v1_large",
     ],
 )
 
