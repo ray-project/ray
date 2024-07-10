@@ -1,0 +1,210 @@
+group: runtime images
+steps:
+  - name: min-cpubase
+    label: "wanda: min.py{{matrix}}.cpu.base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: anyscale/ci/docker/anyscale.cpu.base.wanda.yaml
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+    env:
+      PYTHON_VERSION: "{{matrix}}"
+
+  - name: min-cudabase
+    label: "wanda: min.py{{matrix.python}}.cuda{{matrix.cuda}}.base"
+    tags:
+      - python_dependencies
+      - docker
+    wanda: anyscale/ci/docker/anyscale.cuda.base.wanda.yaml
+    matrix:
+      setup:
+        python:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        cuda:
+          - "11.7.1"
+          - "11.8.0"
+          - "12.1.1"
+          - "12.3.2"
+    env:
+      PYTHON_VERSION: "{{matrix.python}}"
+      CUDA_VERSION: "{{matrix.cuda}}"
+
+  - label: ":tapioca: go download helper"
+    key: runtime-helper
+    instance_type: small
+    commands:
+      - bash anyscale/go/build-on-buildkite.sh
+    depends_on:
+      - forge
+    job_env: forge
+
+  - label: ":tapioca: runtime py{{matrix}} wheel"
+    key: runtime-wheels
+    commands:
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}}
+      - bash anyscale/ci/upload-wheels.sh
+    instance_type: medium
+    depends_on:
+      - manylinux
+      - forge
+    job_env: forge
+    tags: docker
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+
+  - label: ":tapioca: runtime py{{matrix.py}} {{matrix.base}} image"
+    tags: docker
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}}
+    instance_type: medium
+    depends_on:
+      - runtime-wheels
+      - runtime-helper
+      - raycpubase
+      - raycudabase
+    job_env: forge
+    mount_buildkite_agent: true
+    matrix:
+      setup:
+        py:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        base:
+          - "cpu"
+          - "cu11.8.0-cudnn8"
+          - "cu12.1.1-cudnn8"
+          - "cu12.3.2-cudnn9"
+
+  - label: ":tapioca: runtime py{{matrix.py}} {{matrix.base}} image"
+    if: build.env("RUNTIME_BUILD_ALL") == "true"
+    tags: docker
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}}
+    instance_type: medium
+    depends_on:
+      - runtime-wheels
+      - runtime-helper
+      - raycpubase
+      - raycudabase
+    job_env: forge
+    mount_buildkite_agent: true
+    matrix:
+      setup:
+        py:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        base:
+          - "cu11.7.1-cudnn8"
+
+  - label: ":tapioca: minimized runtime py{{matrix.py}} {{matrix.base}} image"
+    tags: docker
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}} ray 1
+    instance_type: medium
+    depends_on:
+      - runtime-wheels
+      - runtime-helper
+      - min-cpubase
+      - min-cudabase
+    job_env: forge
+    mount_buildkite_agent: true
+    matrix:
+      setup:
+        py:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        base:
+          - "cpu"
+          - "cu11.8.0"
+          - "cu12.1.1"
+          - "cu12.3.2"
+
+  - label: ":tapioca: minimized runtime py{{matrix.py}} {{matrix.base}} image"
+    if: build.env("RUNTIME_BUILD_ALL") == "true"
+    tags: docker
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}} ray 1
+    instance_type: medium
+    depends_on:
+      - runtime-wheels
+      - runtime-helper
+      - min-cpubase
+      - min-cudabase
+    job_env: forge
+    mount_buildkite_agent: true
+    matrix:
+      setup:
+        py:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        base:
+          - "cu11.7.1"
+
+  - label: ":tapioca: runtime ml py{{matrix.py}} {{matrix.base}} image"
+    tags: docker
+    commands:
+      - bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.base}} ray-ml
+    instance_type: medium
+    depends_on:
+      - runtime-wheels
+      - runtime-helper
+      - ray-mlcpubase
+      - ray-mlcudabase
+    job_env: forge
+    mount_buildkite_agent: true
+    matrix:
+      setup:
+        py:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+        base:
+          - "cpu"
+          - "cu11.8.0-cudnn8"
+
+  - wait: ~
+    tags: docker
+
+  - label: ":tapioca: check runtime site package tarball"
+    tags: docker
+    commands:
+      - bash anyscale/ci/check-ray-site-pkg.sh
+    instance_type: small
+    job_env: forge
+
+  - wait: ~
+    tags: docker
+
+  # We skip production and predeploy; will copy them on final image
+  # building. We need to copy to staging for release tests to run.
+  - label: ":tapioca: upload runtime site package tarball {{matrix}}"
+    tags: docker
+    commands:
+      - bash anyscale/ci/upload-ray-site-pkg.sh {{matrix}}
+    instance_type: small
+    job_env: forge
+    matrix:
+      - development
+      - staging
+
+  - label: ":tapioca: upload runtime site package tarball {{matrix}}"
+    if: build.env("RUNTIME_BUILD_ALL") == "true"
+    tags: docker
+    commands:
+      - bash anyscale/ci/upload-ray-site-pkg.sh {{matrix}}
+    instance_type: small
+    job_env: forge
+    matrix:
+      - predeploy
+      - production
