@@ -350,6 +350,9 @@ int main(int argc, char *argv[]) {
         }
         object_manager_config.object_chunk_size =
             RayConfig::instance().object_manager_default_chunk_size();
+        object_manager_config.push_payload_compression_algorithm =
+            ray::ObjectManagerConfig::GetCompressionAlgorithm(
+                RayConfig::instance().object_manager_push_compression_algorithm());
 
         RAY_LOG(DEBUG) << "Starting object manager with configuration: \n"
                        << "rpc_service_threads_number = "
