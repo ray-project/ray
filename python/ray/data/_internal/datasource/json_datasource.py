@@ -131,17 +131,17 @@ class JSONDatasource(FileBasedDatasource):
             chunk = f.read(buffer_size)
             if not chunk:
                 if partial_line:
-                    buffer.extend(partial_line.encode('utf-8'))
+                    buffer.extend(partial_line.encode("utf-8"))
                     yield from self._read_with_pyarrow_read_json(pa.py_buffer(buffer))
                 break
 
             if is_jsonl:
-                lines = chunk.decode('utf-8').split('\n')
+                lines = chunk.decode("utf-8").split("\n")
                 lines[0] = partial_line + lines[0]
                 partial_line = lines.pop()
 
                 for line in lines:
-                    buffer.extend((line + '\n').encode('utf-8'))
+                    buffer.extend((line + "\n").encode("utf-8"))
 
                 if buffer:
                     yield from self._read_with_pyarrow_read_json(pa.py_buffer(buffer))
@@ -153,4 +153,3 @@ class JSONDatasource(FileBasedDatasource):
                     yield from self._read_with_pyarrow_read_json(pa.py_buffer(buffer))
                     buffer.clear()
                     break
-
