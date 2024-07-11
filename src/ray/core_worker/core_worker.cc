@@ -1533,7 +1533,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
       conn->RegisterMutableObjectReader(
           req,
           [&promise](const Status &status,
-                    const rpc::RegisterMutableObjectReaderReply &reply) {
+                     const rpc::RegisterMutableObjectReaderReply &reply) {
             RAY_CHECK(status.ok());
             promise.set_value();
           });
