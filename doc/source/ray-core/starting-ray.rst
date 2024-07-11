@@ -260,4 +260,4 @@ Note that the machine calling ``ray up`` will not be considered as part of the R
 What's next?
 ------------
 
-Check out our `Deployment section <cluster/getting-started.html>`_ for more information on deploying Ray in different settings, including Kubernetes <cluster/kubernetes/index.html>, YARN <cluster/vms/user-guides/community/yarn.html>, and SLURM <cluster/vms/user-guides/community/slurm.html>.
+Check out our `Deployment section <../cluster/getting-started.html>`_ for more information on deploying Ray in different settings, including `Kubernetes <../cluster/kubernetes/index.html>`_, `YARN <../cluster/vms/user-guides/community/yarn.html>`_, and `SLURM <../cluster/vms/user-guides/community/slurm.html>`_.
