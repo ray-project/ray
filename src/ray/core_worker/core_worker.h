@@ -753,8 +753,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] writer_object_id The ID of the object that is written on this node.
   /// \param[in] reader_actors A list of actor IDs, each corresponding to a reader actor
-  /// for a remote reader node. \param[in] num_readers The number of readers for each
-  /// remote reader node. \param[in] reader_object_ids The IDs of the corresponding object
+  /// for a remote reader node.
+  /// \param[in] num_readers The number of readers for each
+  /// remote reader node.
+  /// \param[in] reader_object_ids The IDs of the corresponding object
   /// that are read on the remote nodes.
   Status ExperimentalRegisterMutableObjectReaderRemote(
       const ObjectID &writer_object_id,
