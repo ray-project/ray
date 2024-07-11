@@ -101,7 +101,7 @@ function docker_push_as {
     local DEST_IMG="$2"
     docker tag "${SRC_IMG}" "${DEST_IMG}"
     docker push "${DEST_IMG}"
-    if [[ "${BUILDKITE:-}" == "true" ]]; then
+    if [[ "${BUILDKITE:-}" == "true" && "${IMG_ANNOTATE:-}" == "true" ]]; then
         buildkite-agent annotate --style=info \
             --context="${PY_VERSION_CODE}-images" --append "${DEST_IMG}<br/>"
     fi
@@ -110,7 +110,7 @@ function docker_push_as {
 function docker_push {
     local IMG="$1"
     docker push "${IMG}"
-    if [[ "${BUILDKITE:-}" == "true" ]]; then
+    if [[ "${BUILDKITE:-}" == "true" && "${IMG_ANNOTATE:-}" == "true" ]]; then
         buildkite-agent annotate --style=info \
             --context="${PY_VERSION_CODE}-images" --append "${IMG}<br/>"
     fi
@@ -329,7 +329,7 @@ echo "--- Pushing images"
 ####
 
 docker_push "${RAY_IMG}"
-docker_push "${ANYSCALE_IMG}"
+IMG_ANNOTATE=true docker_push "${ANYSCALE_IMG}"
 
 if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
     SHORT_COMMIT="${FULL_COMMIT:0:6}"  # Use 6 chars to be consistent with Ray upstream
@@ -345,11 +345,11 @@ if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
     fi
 
     docker_push_as "${RAY_IMG}" "${RUNTIME_REPO}:${COMMIT_TAG}"
-    docker_push_as "${ANYSCALE_IMG}" "${RUNTIME_REPO}:${COMMIT_TAG}-as"
+    IMG_ANNOTATE=true docker_push_as "${ANYSCALE_IMG}" "${RUNTIME_REPO}:${COMMIT_TAG}-as"
 
     if [[ "${IMG_TYPE_CODE}" == "${ML_CUDA_VERSION}" ]]; then
         COMMIT_GPU_TAG="${SHORT_COMMIT}-${PY_VERSION_CODE}-gpu${IMG_SUFFIX}"
         docker_push_as "${RAY_IMG}" "${RUNTIME_REPO}:${COMMIT_GPU_TAG}"
-        docker_push_as "${ANYSCALE_IMG}" "${RUNTIME_REPO}:${COMMIT_GPU_TAG}-as"
+        IMG_ANNOTATE=true docker_push_as "${ANYSCALE_IMG}" "${RUNTIME_REPO}:${COMMIT_GPU_TAG}-as"
     fi
 fi
