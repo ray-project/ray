@@ -55,6 +55,7 @@ def test_runtime_env_with_conflict_pip_version(start_cluster):
 
     assert f"No matching distribution found for pip{pip_version}" in str(error.value)
 
+
 @pytest.mark.skipif(
     sys.version_info.major == 3 and sys.version_info.minor >= 12,
     reason="Only pip 23+ support python 3.12 and conflict check always exists",
