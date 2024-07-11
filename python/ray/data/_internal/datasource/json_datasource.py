@@ -124,21 +124,33 @@ class JSONDatasource(FileBasedDatasource):
         buffer = bytearray()
         partial_line = ""
 
+        # Detect if the file is JSONL or JSON based on file extension
+        is_jsonl = path.endswith(".jsonl")
+
         while True:
             chunk = f.read(buffer_size)
             if not chunk:
                 if partial_line:
-                    buffer.extend(partial_line.encode("utf-8"))
+                    buffer.extend(partial_line.encode('utf-8'))
                     yield from self._read_with_pyarrow_read_json(pa.py_buffer(buffer))
                 break
 
-            lines = chunk.decode("utf-8").split("\n")
-            lines[0] = partial_line + lines[0]
-            partial_line = lines.pop()
+            if is_jsonl:
+                lines = chunk.decode('utf-8').split('\n')
+                lines[0] = partial_line + lines[0]
+                partial_line = lines.pop()
 
-            for line in lines:
-                buffer.extend((line + "\n").encode("utf-8"))
+                for line in lines:
+                    buffer.extend((line + '\n').encode('utf-8'))
 
-            if buffer:
-                yield from self._read_with_pyarrow_read_json(pa.py_buffer(buffer))
-                buffer.clear()
+                if buffer:
+                    yield from self._read_with_pyarrow_read_json(pa.py_buffer(buffer))
+                    buffer.clear()
+            else:
+                buffer.extend(chunk)
+                # Since this is a JSON file, we should read it as a whole
+                if buffer:
+                    yield from self._read_with_pyarrow_read_json(pa.py_buffer(buffer))
+                    buffer.clear()
+                    break
+
