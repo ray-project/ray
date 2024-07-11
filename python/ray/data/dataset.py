@@ -12,6 +12,7 @@ from typing import (
     Dict,
     Generic,
     Iterable,
+    Iterator,
     List,
     Literal,
     Mapping,
@@ -77,6 +78,7 @@ from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
+    BlockMetadata,
     DataBatch,
     T,
     U,
@@ -1406,7 +1408,7 @@ class Dataset:
                 )
             return split_datasets
 
-        metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
+        metadata_mapping = dict(zip(block_refs, metadata))
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
@@ -2459,12 +2461,14 @@ class Dataset:
     @ConsumptionAPI(
         if_more_than_read=True,
         datasource_metadata="row count",
-        pattern="Time complexity:",
+        pattern="Examples:",
     )
     def count(self) -> int:
-        """Count the number of records in the dataset.
+        """Count the number of rows in the dataset.
 
-        Time complexity: O(dataset size / parallelism), O(1) for parquet
+        For Datasets which only read Parquet files (created with
+        :meth:`~ray.data.read_parquet`), this method reads the file metadata to
+        efficiently count the number of rows without reading in the entire data.
 
         Examples:
             >>> import ray
@@ -2484,13 +2488,15 @@ class Dataset:
         if meta_count is not None:
             return meta_count
 
-        get_num_rows = cached_remote_fn(_get_num_rows)
-
-        return sum(
-            ray.get(
-                [get_num_rows.remote(block) for block in self.get_internal_block_refs()]
-            )
-        )
+        # Directly loop over the iterator of `RefBundle`s instead of
+        # retrieving a full list of `BlockRef`s.
+        total_rows = 0
+        for ref_bundle in self.iter_internal_ref_bundles():
+            num_rows = ref_bundle.num_rows()
+            # Executing the dataset always returns blocks with valid `num_rows`.
+            assert num_rows is not None
+            total_rows += num_rows
+        return total_rows
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -4328,14 +4334,15 @@ class Dataset:
             ValueError: if the number of rows in the :class:`~ray.data.Dataset` exceeds
                 ``limit``.
         """
-        count = self.count()
-        if limit is not None and count > limit:
-            raise ValueError(
-                f"the dataset has more than the given limit of {limit} "
-                f"rows: {count}. If you are sure that a DataFrame with "
-                f"{count} rows will fit in local memory, set ds.to_pandas(limit=None) "
-                "to disable limits."
-            )
+        if limit is not None:
+            count = self.count()
+            if count > limit:
+                raise ValueError(
+                    f"the dataset has more than the given limit of {limit} "
+                    f"rows: {count}. If you are sure that a DataFrame with "
+                    f"{count} rows will fit in local memory, set "
+                    "ds.to_pandas(limit=None) to disable limits."
+                )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()
         for block in blocks:
@@ -4563,7 +4570,36 @@ class Dataset:
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats_summary()
 
-    @ConsumptionAPI(pattern="Time complexity:")
+    @ConsumptionAPI(pattern="Examples:")
+    @DeveloperAPI
+    def iter_internal_ref_bundles(self) -> Iterator[RefBundle]:
+        """Get an iterator over ``RefBundles``
+        belonging to this Dataset. Calling this function doesn't keep
+        the data materialized in-memory.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(1)
+            >>> for ref_bundle in ds.iter_internal_ref_bundles():
+            ...     for block_ref, block_md in ref_bundle.blocks:
+            ...         block = ray.get(block_ref)
+
+        Returns:
+            An iterator over this Dataset's ``RefBundles``.
+        """
+
+        def _build_ref_bundles(
+            iter_blocks: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        ) -> Iterator[RefBundle]:
+            for block in iter_blocks:
+                yield RefBundle((block,), owns_blocks=True)
+
+        iter_block_refs_md, _, _ = self._plan.execute_to_iterator()
+        iter_ref_bundles = _build_ref_bundles(iter_block_refs_md)
+        self._synchronize_progress_bar()
+        return iter_ref_bundles
+
+    @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
@@ -4577,11 +4613,11 @@ class Dataset:
             >>> ds.get_internal_block_refs()
             [ObjectRef(...)]
 
-        Time complexity: O(1)
-
         Returns:
             A list of references to this dataset's blocks.
         """
+        # TODO(scottjlee): replace get_internal_block_refs() usages with
+        # iter_internal_ref_bundles()
         block_refs = self._plan.execute().block_refs
         self._synchronize_progress_bar()
         return block_refs

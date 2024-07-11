@@ -1,4 +1,4 @@
-from typing import Dict, Mapping
+from typing import Dict
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
@@ -42,7 +42,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     # TODO (simon): Set different learning rates for optimizers.
     @override(DQNRainbowTorchLearner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
+        self, module_id: ModuleID, config: AlgorithmConfig = None
     ) -> None:
         # Receive the module.
         module = self._module[module_id]
@@ -108,7 +108,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         module_id: ModuleID,
         config: SACConfig,
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType]
+        fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # Only for debugging.
         deterministic = config._deterministic_loss

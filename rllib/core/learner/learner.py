@@ -444,7 +444,7 @@ class Learner:
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
+        self, module_id: ModuleID, config: "AlgorithmConfig" = None
     ) -> None:
         """Configures an optimizer for the given module_id.
 
