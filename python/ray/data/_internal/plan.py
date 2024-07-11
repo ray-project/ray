@@ -423,7 +423,7 @@ class ExecutionPlan:
 
         if self.has_computed_output():
             bundle = self.execute()
-            return iter(bundle.blocks), self._snapshot_stats, None
+            return iter([bundle]), self._snapshot_stats, None
 
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_bundle_iterator,
