@@ -3691,14 +3691,14 @@ cdef class CoreWorker:
 
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,
-                                             ObjectRef reader_ref,
+                                             reader_refs,
                                              writer_node,
                                              reader_node,
                                              ActorID reader,
                                              int64_t num_readers):
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
-            CObjectID c_reader_ref = reader_ref.native()
+            c_vector[CObjectID] c_reader_refs = ObjectRefsToVector(reader_refs)
             CNodeID c_reader_node = CNodeID.FromHex(reader_node)
             CNodeID *c_reader_node_id = NULL
             CActorID c_reader_actor = reader.native()
@@ -3720,7 +3720,7 @@ cdef class CoreWorker:
                         .ExperimentalRegisterMutableObjectReaderRemote(c_writer_ref,
                                                                        c_reader_actor,
                                                                        num_readers,
-                                                                       c_reader_ref
+                                                                       c_reader_refs
                                                                        ))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
@@ -3731,22 +3731,6 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker()
                 .ExperimentalRegisterMutableObjectReader(c_object_id))
-
-    def experimental_channel_read_release(self, object_refs):
-        """
-        For experimental.channel.Channel.
-
-        Signal to the writer that the channel is ready to write again. The read
-        began when the caller calls ray.get and a written value is available. If
-        ray.get is not called first, then this call will block until a value is
-        written, then drop the value.
-        """
-        cdef:
-            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
-        with nogil:
-            op_status = (CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelReadRelease(c_object_ids))
-        check_status(op_status)
 
     def put_serialized_object_and_increment_local_ref(
             self, serialized_object,

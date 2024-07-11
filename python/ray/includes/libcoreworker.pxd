@@ -266,7 +266,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus ExperimentalRegisterMutableObjectReader(const CObjectID &object_id)
         CRayStatus ExperimentalRegisterMutableObjectReaderRemote(
                 const CObjectID &object_id, const CActorID &reader_actor,
-                int64_t num_readers, const CObjectID &reader_ref)
+                int64_t num_readers, const c_vector[CObjectID] &reader_refs)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,

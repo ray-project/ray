@@ -351,7 +351,7 @@ class Channel(ChannelInterface):
         "it should have been initialized in the constructor."
         self._worker.core_worker.experimental_channel_register_writer(
             self._writer_ref,
-            self._reader_ref,
+            [self._reader_ref],
             self._writer_node_id,
             self._reader_node_id,
             self._readers[0]._actor_id,

@@ -1497,7 +1497,9 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     const ObjectID &writer_object_id,
     const ActorID &reader_actor,
     int64_t num_readers,
-    const ObjectID &reader_object_id) {
+    const std::vector<ObjectID> &reader_object_ids) {
+  ObjectID reader_object_id = reader_object_ids[0];
+  
   rpc::Address addr;
   {
     std::promise<void> promise;
