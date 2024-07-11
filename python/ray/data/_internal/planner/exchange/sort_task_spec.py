@@ -75,8 +75,9 @@ class SortKey:
             return
 
         if self._columns and len(schema.names) > 0:
+            schema_names_set = set(schema.names)
             for column in self._columns:
-                if column not in schema.names:
+                if column not in schema_names_set:
                     raise ValueError(
                         "The column '{}' does not exist in the "
                         "schema '{}'.".format(column, schema)

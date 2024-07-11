@@ -131,14 +131,6 @@ void MutableObjectProvider::HandlePushMutableObject(
   RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
 }
 
-bool MutableObjectProvider::ReaderChannelRegistered(const ObjectID &object_id) {
-  return object_manager_->ReaderChannelRegistered(object_id);
-}
-
-bool MutableObjectProvider::WriterChannelRegistered(const ObjectID &object_id) {
-  return object_manager_->WriterChannelRegistered(object_id);
-}
-
 Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,
                                            int64_t data_size,
                                            const uint8_t *metadata,
@@ -168,11 +160,9 @@ Status MutableObjectProvider::SetError(const ObjectID &object_id) {
   return object_manager_->SetError(object_id);
 }
 
-Status MutableObjectProvider::GetChannelStatus(const ObjectID &object_id) {
-  if (ReaderChannelRegistered(object_id)) {
-    return Status::OK();
-  }
-  return object_manager_->IsChannelClosed(object_id);
+Status MutableObjectProvider::GetChannelStatus(const ObjectID &object_id,
+                                               bool is_reader) {
+  return object_manager_->GetChannelStatus(object_id, is_reader);
 }
 
 void MutableObjectProvider::PollWriterClosure(

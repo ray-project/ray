@@ -1097,9 +1097,117 @@ class TestCompositeChannel:
 
         compiled_dag.teardown()
 
+    def test_intra_process_channel_with_multi_readers(self, ray_start_regular_shared):
+        """
+        In this test, there are three 'echo' tasks on the same Ray actor.
+        The DAG will look like this:
 
-def test_channel_access_after_close(ray_start_regular_shared):
-    # Tests that an access to a channel after accelerated DAG teardown raises a
+        Driver -> a.echo -> a.echo -> Driver
+                         |         |
+                         -> a.echo -
+
+        All communication between the driver and the actor will be done through remote
+        channels, i.e., shared memory channels. All communication between the actor
+        tasks will be conducted through local channels, i.e., IntraProcessChannel in
+        this case.
+        """
+        a = Actor.remote(0)
+        with InputNode() as inp:
+            dag = a.echo.bind(inp)
+            x = a.echo.bind(dag)
+            y = a.echo.bind(dag)
+            dag = MultiOutputNode([x, y])
+
+        compiled_dag = dag.experimental_compile()
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == [1, 1]
+
+        ref = compiled_dag.execute(2)
+        assert ray.get(ref) == [2, 2]
+
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == [3, 3]
+
+        compiled_dag.teardown()
+
+
+def test_simulate_pipeline_parallelism(ray_start_regular_shared):
+    """
+    This pattern simulates the case of pipeline parallelism training, where `w0_input`
+    reads data from the driver, and the fan-out tasks, `d00`, `d01`, and `d02`, use
+    `IntraProcessChannel` to read the data as the input for the forward pass.
+
+    Compared to reading data from shared memory channels for each forward pass, using
+    `IntraProcessChannel` may be more efficient because it avoids the overhead of
+    deserialization for each forward pass.
+    """
+
+    @ray.remote
+    class Worker:
+        def __init__(self, rank):
+            self.rank = rank
+            self.logs = []
+
+        def forward(self, data, idx):
+            batch_id = data[idx]
+            self.logs.append(f"FWD rank-{self.rank}, batch-{batch_id}")
+            return batch_id
+
+        def backward(self, batch_id):
+            self.logs.append(f"BWD rank-{self.rank}, batch-{batch_id}")
+            return batch_id
+
+        def get_logs(self):
+            return self.logs
+
+        def read_input(self, input):
+            return input
+
+    worker_0 = Worker.remote(0)
+    worker_1 = Worker.remote(1)
+
+    # Worker 0: FFFBBB
+    # Worker 1: BBB
+    with InputNode() as inp:
+        w0_input = worker_0.read_input.bind(inp)
+        d00 = worker_0.forward.bind(w0_input, 0)  # worker_0 FWD
+        d01 = worker_0.forward.bind(w0_input, 1)  # worker_0 FWD
+        d02 = worker_0.forward.bind(w0_input, 2)  # worker_0 FWD
+
+        d10 = worker_1.backward.bind(d00)  # worker_1 BWD
+        d11 = worker_1.backward.bind(d01)  # worker_1 BWD
+        d12 = worker_1.backward.bind(d02)  # worker_1 BWD
+
+        d03 = worker_0.backward.bind(d10)  # worker_0 BWD
+        d04 = worker_0.backward.bind(d11)  # worker_0 BWD
+        d05 = worker_0.backward.bind(d12)  # worker_0 BWD
+
+        output_dag = MultiOutputNode([d03, d04, d05])
+
+    output_dag = output_dag.experimental_compile()
+    res = output_dag.execute([0, 1, 2])
+
+    assert ray.get(res) == [0, 1, 2]
+    # Worker 0: FFFBBB
+    assert ray.get(worker_0.get_logs.remote()) == [
+        "FWD rank-0, batch-0",
+        "FWD rank-0, batch-1",
+        "FWD rank-0, batch-2",
+        "BWD rank-0, batch-0",
+        "BWD rank-0, batch-1",
+        "BWD rank-0, batch-2",
+    ]
+    # Worker 1: BBB
+    assert ray.get(worker_1.get_logs.remote()) == [
+        "BWD rank-1, batch-0",
+        "BWD rank-1, batch-1",
+        "BWD rank-1, batch-2",
+    ]
+    output_dag.teardown()
+
+
+def test_channel_read_after_close(ray_start_regular_shared):
+    # Tests that read to a channel after accelerated DAG teardown raises a
     # RayChannelError exception as the channel is closed (see issue #46284).
     @ray.remote
     class Actor:
@@ -1116,6 +1224,25 @@ def test_channel_access_after_close(ray_start_regular_shared):
 
     with pytest.raises(RayChannelError, match="Channel closed."):
         ray.get(ref)
+
+
+def test_channel_write_after_close(ray_start_regular_shared):
+    # Tests that write to a channel after accelerated DAG teardown raises a
+    # RayChannelError exception as the channel is closed.
+    @ray.remote
+    class Actor:
+        def foo(self, arg):
+            return arg
+
+    a = Actor.remote()
+    with InputNode() as inp:
+        dag = a.foo.bind(inp)
+
+    dag = dag.experimental_compile()
+    dag.teardown()
+
+    with pytest.raises(RayChannelError, match="Channel closed."):
+        dag.execute(1)
 
 
 def test_driver_and_actor_as_readers(ray_start_cluster):
