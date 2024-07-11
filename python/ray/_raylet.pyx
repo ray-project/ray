@@ -656,6 +656,15 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
     return result
 
 
+cdef c_vector[CNodeID] NodeIDsToVector(node_ids):
+    # TODO (kevin85421): Add comments
+    cdef:
+        c_vector[CNodeID] result
+    for node_id in node_ids:
+        result.push_back(CNodeID.FromHex(node_id))
+    return result
+
+
 def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes):
     cdef:
         CActorTableData data
@@ -3693,27 +3702,26 @@ cdef class CoreWorker:
                                              ObjectRef writer_ref,
                                              reader_refs,
                                              writer_node,
-                                             reader_node,
+                                             remote_reader_nodes,
                                              ActorID reader,
                                              int64_t num_readers):
+        # TODO (kevin85421): Update reader, num_readers
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
             c_vector[CObjectID] c_reader_refs = ObjectRefsToVector(reader_refs)
-            CNodeID c_reader_node = CNodeID.FromHex(reader_node)
-            CNodeID *c_reader_node_id = NULL
+            c_vector[CNodeID] c_remote_reader_nodes = NodeIDsToVector(remote_reader_nodes)
             CActorID c_reader_actor = reader.native()
 
         if num_readers == 0:
             return
-        if writer_node != reader_node:
-            c_reader_node_id = &c_reader_node
 
+        # TODO (kevin85421): how to support readers on both local and remote?
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .ExperimentalRegisterMutableObjectWriter(c_writer_ref,
-                                                                  c_reader_node_id,
+                                                                  c_remote_reader_nodes,
                                                                   ))
-        if writer_node != reader_node:
+        if len(remote_reader_nodes) != 0:
             with nogil:
                 check_status(
                         CCoreWorkerProcess.GetCoreWorker()

@@ -349,11 +349,15 @@ class Channel(ChannelInterface):
             self._reader_ref
         ), "`self._reader_ref` must be not be None when registering a writer, because "
         "it should have been initialized in the constructor."
+
+        remote_reader_nodes = [] if self._reader_node_id == self._writer_node_id else [
+            self._reader_node_id
+        ]
         self._worker.core_worker.experimental_channel_register_writer(
             self._writer_ref,
             [self._reader_ref],
             self._writer_node_id,
-            self._reader_node_id,
+            remote_reader_nodes,
             self._readers[0]._actor_id,
             len(self._readers),
         )

@@ -40,7 +40,7 @@ MutableObjectProvider::~MutableObjectProvider() {
 }
 
 void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
-                                                  const NodeID *node_id) {
+                                                  const std::vector<NodeID> &node_ids) {
   {
     std::unique_ptr<plasma::MutableObject> object;
     RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(object_id, &object));
@@ -49,7 +49,7 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
     // `object` is now a nullptr.
   }
 
-  if (node_id) {
+  if (!node_ids.empty()) {
     // Start a thread that repeatedly listens for values on this object and then sends
     // them via RPC to the remote reader.
     io_contexts_.push_back(std::make_unique<instrumented_io_context>());
@@ -59,8 +59,9 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
             boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
             io_context.get_executor()));
     client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(io_context));
+    // TODO (kevin85421): Create a new reader for each node.
     std::shared_ptr<MutableObjectReaderInterface> reader =
-        raylet_client_factory_(*node_id, *client_call_managers_.back());
+        raylet_client_factory_(node_ids[0], *client_call_managers_.back());
     RAY_CHECK(reader);
     // TODO(jhumphri): Extend this to support multiple channels. Currently, we must have
     // one thread per channel because the thread blocks on the channel semaphore.

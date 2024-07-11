@@ -737,9 +737,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Experimental method for mutable objects. Registers a writer channel.
   ///
   /// \param[in] object_id The ID of the object.
-  /// \param[in] node_id If non-NULL, sends each write to the readers on node `node_id`.
+  /// \param[in] node_ids If non-NULL, sends each write to the readers on the node
+  /// in `node_ids`.
   Status ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
-                                                 const NodeID *node_id);
+                                                 const std::vector<NodeID> &node_ids);
 
   /// Experimental method for mutable objects. Registers a reader channel.
   ///

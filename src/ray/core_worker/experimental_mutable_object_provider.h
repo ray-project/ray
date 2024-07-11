@@ -45,8 +45,8 @@ class MutableObjectProvider {
   /// Registers a writer channel for `object_id` on this node. On each write to this
   /// channel, the write will be sent via RPC to node `node_id`.
   /// \param[in] object_id The ID of the object.
-  /// \param[in] node_id The ID of the node to write to.
-  void RegisterWriterChannel(const ObjectID &object_id, const NodeID *node_id);
+  /// \param[in] node_ids The IDs of the nodes to write to.
+  void RegisterWriterChannel(const ObjectID &object_id, const std::vector<NodeID> &node_ids);
 
   /// Handles an RPC request from another note to register a mutable object on this node.
   /// The remote node writes the object and this node reads the object. This node is

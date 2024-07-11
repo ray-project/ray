@@ -1488,8 +1488,8 @@ Status CoreWorker::ExperimentalChannelReadRelease(
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
-                                                           const NodeID *node_id) {
-  experimental_mutable_object_provider_->RegisterWriterChannel(object_id, node_id);
+                                                           const std::vector<NodeID> &node_ids) {
+  experimental_mutable_object_provider_->RegisterWriterChannel(object_id, node_ids);
   return Status::OK();
 }
 
