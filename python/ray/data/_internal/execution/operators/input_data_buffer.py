@@ -40,7 +40,6 @@ class InputDataBuffer(PhysicalOperator):
             assert input_data_factory is not None
             self._input_data_factory = input_data_factory
             self._is_input_initialized = False
-        self._num_output_blocks = num_output_blocks
         self._input_data_index = 0
         super().__init__("Input", [], target_max_block_size=None)
 
@@ -67,11 +66,8 @@ class InputDataBuffer(PhysicalOperator):
         self._input_data_index += 1
         return bundle
 
-    def _set_num_output_blocks(self, num_output_blocks):
-        self._num_output_blocks = num_output_blocks
-
     def num_outputs_total(self) -> int:
-        return self._num_output_blocks or self._num_output_bundles
+        return self._num_output_bundles
 
     def get_stats(self) -> StatsDict:
         return {}
