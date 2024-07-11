@@ -40,7 +40,7 @@ class DeltaSharingDatasource(Datasource):
 
         self._response = self._rest_client.list_files_in_table(
             self._table,
-            json_predicate_hints=self._json_predicate_hints,
+            jsonPredicateHints=self._json_predicate_hints,
             limitHint=self._limit,
             version=self._version,
             timestamp=self._timestamp,
