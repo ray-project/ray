@@ -76,7 +76,7 @@ click==8.1.7
 cloudpickle==2.2.0
 cma==3.2.2
 cmaes==0.10.0
-cmake==3.29.6
+cmake==3.30.0
 cmdstanpy==1.2.0
 colorama==0.4.6
 coloredlogs==15.0.1
@@ -238,7 +238,7 @@ lightgbm==3.3.5
 lightning-utilities==0.11.2
 linear-operator==0.4.0
 linkify-it-py==2.0.3
-lit==18.1.7
+lit==18.1.8
 llvmlite==0.41.1
 locket==1.0.0
 lxml==4.9.4
@@ -309,7 +309,7 @@ opt-einsum==3.3.0
 optax==0.1.7
 optuna==3.2.0
 orbax-checkpoint==0.2.3
-orjson==3.10.5
+orjson==3.10.6
 packaging==21.3
 pandas==1.5.3
 pandocfilters==1.5.0
@@ -383,7 +383,8 @@ PyYAML==6.0.1
 pyzmq==24.0.1
 qpd==0.4.4
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=2d7c022c1796166fcd34a01db84f0f3f84fe81d498579291202eda031fb416d7
+ray @ file:///home/ray/ray-2.32.0-cp39-cp39-manylinux2014_x86_64.whl#sha256=04176a2a8c53d96c01df42772526ca982b4f1fe0771e227907d6c28e2c4c758e
+ray-cpp==2.32.0
 recsim==0.2.4
 redis==3.5.3
 referencing==0.35.1
@@ -397,7 +398,7 @@ retry_decorator==1.1.1
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
 rich==12.6.0
-rpds-py==0.18.1
+rpds-py==0.19.0
 rsa==4.7.2
 ruamel.yaml @ file:///croot/ruamel.yaml_1666304550667/work
 ruamel.yaml.clib @ file:///croot/ruamel.yaml.clib_1666302247304/work
@@ -448,7 +449,7 @@ tensorflow-probability==0.23.0
 tensorstore==0.1.45
 termcolor==2.3.0
 terminado==0.18.0
-textual==0.70.0
+textual==0.71.0
 tf-slim==1.1.0
 tf2onnx==1.15.1
 threadpoolctl==3.1.0
