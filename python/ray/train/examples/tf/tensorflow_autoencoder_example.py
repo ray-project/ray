@@ -121,7 +121,7 @@ def train_tensorflow_mnist(
 ) -> Result:
     train_dataset = get_dataset(split_type="train")
     config = {"lr": 1e-3, "batch_size": 64, "epochs": epochs}
-    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu)
+    scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
