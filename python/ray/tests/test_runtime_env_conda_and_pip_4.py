@@ -129,9 +129,12 @@ class TestGC:
 
         ray.shutdown()
 
-
+# pytest-virtualenv doesn't support Python 3.12 as of now, see more details here:
+# https://github.com/man-group/pytest-plugins/issues/220
 @pytest.mark.skipif(
-    "IN_VIRTUALENV" in os.environ or sys.platform != "linux",
+    "IN_VIRTUALENV" in os.environ
+    or sys.platform != "linux"
+    or (sys.version_info.major == 3 and sys.version_info.minor >= 12),
     reason="Requires PR wheels built in CI, so only run on linux CI machines.",
 )
 def test_run_in_virtualenv(cloned_virtualenv):
