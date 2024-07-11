@@ -157,7 +157,7 @@ def test_run_in_virtualenv(cloned_virtualenv):
 def test_runtime_env_with_pip_config(start_cluster):
     @ray.remote(
         runtime_env={
-            "pip": {"packages": ["pip-install-test==0.5"], "pip_version": "==20.2.3"}
+            "pip": {"packages": ["pip-install-test==0.5"], "pip_version": "==24.1.2"}
         }
     )
     def f():
@@ -165,7 +165,7 @@ def test_runtime_env_with_pip_config(start_cluster):
 
         return pip.__version__
 
-    assert ray.get(f.remote()) == "20.2.3"
+    assert ray.get(f.remote()) == "24.1.2"
 
 
 if __name__ == "__main__":

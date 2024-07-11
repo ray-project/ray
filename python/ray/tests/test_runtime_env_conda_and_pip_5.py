@@ -8,10 +8,10 @@ import ray
 def test_runtime_env_with_pip_config(start_cluster):
 
     pip_versions = [
-        ("==20.2.3", lambda pip_version: parse(pip_version) == parse("20.2.3")),
+        ("==24.1.2", lambda pip_version: parse(pip_version) == parse("24.1.2")),
         (
-            "<20.3, >19",
-            lambda pip_version: parse("19") < parse(pip_version) < parse("20.3"),
+            "<24.2, >19",
+            lambda pip_version: parse("19") < parse(pip_version) < parse("24.2"),
         ),
     ]
 
