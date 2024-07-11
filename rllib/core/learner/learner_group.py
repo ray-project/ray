@@ -786,9 +786,9 @@ class LearnerGroup(Checkpointable):
             The results of
             `self.get_state(components='learner/rl_module')['learner']['rl_module']`.
         """
-        return self.get_state(
-            components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
-        )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+        return self.get_state(components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE)[
+            COMPONENT_LEARNER
+        ][COMPONENT_RL_MODULE]
 
     def set_weights(self, weights) -> None:
         """Convenience method instead of self.set_state({'learner': {'rl_module': ..}}).
