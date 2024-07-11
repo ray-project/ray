@@ -12,7 +12,7 @@ from docutils import nodes
 import pathlib
 import logging
 
-DEFAULT_API_GROUP = "others"
+DEFAULT_API_GROUP = "Others"
 
 logger = logging.getLogger(__name__)
 
@@ -401,7 +401,10 @@ def get_api_groups(method_names, class_name, module_name):
     cls = getattr(import_module(module_name), class_name)
     for method_name in method_names:
         method = getattr(cls, method_name)
-        api_groups.add(safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP))
+        if _is_public_api(method):
+            api_groups.add(
+                safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP)
+            )
 
     return sorted(api_groups)
 

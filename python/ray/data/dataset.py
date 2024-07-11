@@ -123,6 +123,15 @@ TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 CollatedData = TypeVar("CollatedData")
 TorchBatchType = Union[Dict[str, "torch.Tensor"], CollatedData]
 
+BT_API_GROUP = "Basic Transformations"
+SSR_API_GROUP = "Sorting, Shuffling and Repartitioning"
+SMD_API_GROUP = "Splitting and Merging datasets"
+GGA_API_GROUP = "Grouped and Global aggregations"
+CD_API_GROUP = "Consuming Data"
+IOC_API_GROUP = "I/O and Conversion"
+IM_API_GROUP = "Inspecting Metadata"
+E_API_GROUP = "Execution"
+
 
 @PublicAPI
 class Dataset:
@@ -229,6 +238,7 @@ class Dataset:
         else:
             return _as(ds._plan.copy(), ds._logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
@@ -367,6 +377,7 @@ class Dataset:
         """Returns the dataset name"""
         return self._plan._dataset_name
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def map_batches(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
@@ -650,6 +661,7 @@ class Dataset:
         logical_plan = LogicalPlan(map_batches_op)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def add_column(
         self,
         col: str,
@@ -719,6 +731,7 @@ class Dataset:
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def drop_columns(
         self,
         cols: List[str],
@@ -774,6 +787,7 @@ class Dataset:
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def select_columns(
         self,
         cols: List[str],
@@ -829,6 +843,7 @@ class Dataset:
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
@@ -948,6 +963,7 @@ class Dataset:
         logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def filter(
         self,
         fn: UserDefinedFunction[Dict[str, Any], bool],
@@ -1013,6 +1029,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
+    @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
         self,
         num_blocks: int,
@@ -1070,6 +1087,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
+    @PublicAPI(api_group=SSR_API_GROUP)
     def random_shuffle(
         self,
         *,
@@ -1119,6 +1137,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
+    @PublicAPI(api_group=SSR_API_GROUP)
     def randomize_block_order(
         self,
         *,
@@ -1154,6 +1173,7 @@ class Dataset:
         logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
     ) -> "Dataset":
@@ -1210,6 +1230,7 @@ class Dataset:
         return self.map_batches(random_sample, batch_format=None)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=SMD_API_GROUP)
     def streaming_split(
         self,
         n: int,
@@ -1303,6 +1324,7 @@ class Dataset:
         return StreamSplitDataIterator.create(self, n, equal, locality_hints)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=SMD_API_GROUP)
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
     ) -> List["MaterializedDataset"]:
@@ -1527,6 +1549,7 @@ class Dataset:
         return split_datasets
 
     @ConsumptionAPI
+    @PublicAPI(api_group=SMD_API_GROUP)
     def split_at_indices(self, indices: List[int]) -> List["MaterializedDataset"]:
         """Materialize and split the dataset at the given indices (like ``np.split``).
 
@@ -1601,6 +1624,7 @@ class Dataset:
         return splits
 
     @ConsumptionAPI
+    @PublicAPI(api_group=SMD_API_GROUP)
     def split_proportionately(
         self, proportions: List[float]
     ) -> List["MaterializedDataset"]:
@@ -1681,6 +1705,7 @@ class Dataset:
         return self.split_at_indices(split_indices)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=SMD_API_GROUP)
     def train_test_split(
         self,
         test_size: Union[int, float],
@@ -1742,6 +1767,7 @@ class Dataset:
                 )
             return ds.split_at_indices([ds_length - test_size])
 
+    @PublicAPI(api_group=SMD_API_GROUP)
     def union(self, *other: List["Dataset"]) -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
@@ -1788,6 +1814,7 @@ class Dataset:
         )
 
     @AllToAllAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def groupby(
         self,
         key: Union[str, List[str], None],
@@ -1841,6 +1868,7 @@ class Dataset:
         return GroupedData(self, key)
 
     @AllToAllAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def unique(self, column: str) -> List[Any]:
         """List the unique elements in a given column.
 
@@ -1884,6 +1912,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
         """Aggregate values using one or more functions.
 
@@ -1924,6 +1953,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -1967,6 +1997,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -2010,6 +2041,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -2053,6 +2085,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -2096,6 +2129,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def std(
         self,
         on: Optional[Union[str, List[str]]] = None,
@@ -2152,6 +2186,7 @@ class Dataset:
         return self._aggregate_result(ret)
 
     @AllToAllAPI
+    @PublicAPI(api_group=SSR_API_GROUP)
     def sort(
         self,
         key: Union[str, List[str], None] = None,
@@ -2217,6 +2252,7 @@ class Dataset:
         logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=SMD_API_GROUP)
     def zip(self, other: "Dataset") -> "Dataset":
         """Materialize and zip the columns of this dataset with the columns of another.
 
@@ -2254,6 +2290,7 @@ class Dataset:
         logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
 
@@ -2281,6 +2318,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def take_batch(
         self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
     ) -> DataBatch:
@@ -2340,6 +2378,7 @@ class Dataset:
         return res
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def take(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Return up to ``limit`` rows from the :class:`Dataset`.
 
@@ -2390,6 +2429,7 @@ class Dataset:
         return output
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Return all of the rows in this :class:`Dataset`.
 
@@ -2431,6 +2471,7 @@ class Dataset:
         return output
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def show(self, limit: int = 20) -> None:
         """Print up to the given number of rows from the :class:`Dataset`.
 
@@ -2463,6 +2504,7 @@ class Dataset:
         datasource_metadata="row count",
         pattern="Examples:",
     )
+    @PublicAPI(api_group=IM_API_GROUP)
     def count(self) -> int:
         """Count the number of rows in the dataset.
 
@@ -2504,6 +2546,7 @@ class Dataset:
         extra_condition="or if ``fetch_if_missing=True`` (the default)",
         pattern="Time complexity:",
     )
+    @PublicAPI(api_group=IM_API_GROUP)
     def schema(self, fetch_if_missing: bool = True) -> Optional["Schema"]:
         """Return the schema of the dataset.
 
@@ -2548,6 +2591,7 @@ class Dataset:
         extra_condition="or if ``fetch_if_missing=True`` (the default)",
         pattern="Time complexity:",
     )
+    @PublicAPI(api_group=IM_API_GROUP)
     def columns(self, fetch_if_missing: bool = True) -> Optional[List[str]]:
         """Returns the columns of this Dataset.
 
@@ -2575,6 +2619,7 @@ class Dataset:
             return schema.names
         return None
 
+    @PublicAPI(api_group=IM_API_GROUP)
     def num_blocks(self) -> int:
         """Return the number of blocks of this :class:`Dataset`.
 
@@ -2594,6 +2639,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IM_API_GROUP)
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
 
@@ -2613,6 +2659,7 @@ class Dataset:
         return sum(m.size_bytes for m in metadata)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IM_API_GROUP)
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
 
@@ -2629,6 +2676,7 @@ class Dataset:
         return list(set(self._plan.input_files()))
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def write_parquet(
         self,
         path: str,
@@ -2727,6 +2775,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def write_json(
         self,
         path: str,
@@ -2834,7 +2883,7 @@ class Dataset:
             concurrency=concurrency,
         )
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI
     def write_images(
         self,
@@ -2907,6 +2956,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def write_csv(
         self,
         path: str,
@@ -3013,6 +3063,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def write_tfrecords(
         self,
         path: str,
@@ -3107,8 +3158,8 @@ class Dataset:
             concurrency=concurrency,
         )
 
-    @PublicAPI(stability="alpha")
     @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     def write_webdataset(
         self,
         path: str,
@@ -3193,6 +3244,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def write_numpy(
         self,
         path: str,
@@ -3347,7 +3399,7 @@ class Dataset:
             concurrency=concurrency,
         )
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI
     def write_mongo(
         self,
@@ -3562,6 +3614,7 @@ class Dataset:
         ),
         pattern="Returns:",
     )
+    @PublicAPI(api_group=CD_API_GROUP)
     def iterator(self) -> DataIterator:
         """Return a :class:`~ray.data.DataIterator` over this dataset.
 
@@ -3573,6 +3626,7 @@ class Dataset:
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def iter_rows(
         self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
     ) -> Iterable[Dict[str, Any]]:
@@ -3602,6 +3656,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def iter_batches(
         self,
         *,
@@ -3672,6 +3727,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def iter_torch_batches(
         self,
         *,
@@ -3778,6 +3834,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def iter_tf_batches(
         self,
         *,
@@ -3860,6 +3917,7 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_torch(
         self,
         *,
@@ -3986,6 +4044,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_tf(
         self,
         feature_columns: Union[str, List[str]],
@@ -4109,6 +4168,7 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_dask(
         self,
         meta: Union[
@@ -4220,6 +4280,7 @@ class Dataset:
         return ddf
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_mars(self) -> "mars.dataframe.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
@@ -4253,6 +4314,7 @@ class Dataset:
         return op(index_value=index_value, columns_value=columns_value, dtypes=dtypes)
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_modin(self) -> "modin.pandas.dataframe.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
@@ -4280,6 +4342,7 @@ class Dataset:
         return from_partitions(pd_objs, axis=0)
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_spark(self, spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
@@ -4304,6 +4367,7 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
         """Convert this :class:`~ray.data.Dataset` to a single pandas DataFrame.
 
@@ -4483,6 +4547,7 @@ class Dataset:
         return RandomAccessDataset(self, key, num_workers=num_workers)
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
+    @PublicAPI(api_group=E_API_GROUP)
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this dataset into object store memory.
 
@@ -4531,6 +4596,7 @@ class Dataset:
         output._plan.execute()  # No-op that marks the plan as fully executed.
         return output
 
+    @PublicAPI(api_group=IM_API_GROUP)
     def stats(self) -> str:
         """Returns a string containing execution timing information.
 
