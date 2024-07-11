@@ -209,7 +209,7 @@ class Checkpointable(abc.ABC):
                                 state=(
                                     ray.get(_state)
                                     if _state is not None
-                                    else w.get_state(),
+                                    else w.get_state()
                                 ),
                             )
                         ),

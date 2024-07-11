@@ -774,8 +774,9 @@ class LearnerGroup(Checkpointable):
             if self.is_local:
                 self._learner.set_state(state[COMPONENT_LEARNER])
             else:
-                self._worker_manager.foreach_actor(
-                    lambda w: w.set_state(state[COMPONENT_LEARNER])
+                state_ref = ray.put(state[COMPONENT_LEARNER])
+                self.foreach_learner(
+                    lambda _learner, _ref=state_ref: _learner.set_state(ray.get(_ref))
                 )
 
     def get_weights(self) -> StateDict:
@@ -785,9 +786,9 @@ class LearnerGroup(Checkpointable):
             The results of
             `self.get_state(components='learner/rl_module')['learner']['rl_module']`.
         """
-        return self.get_state(components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE)[
-            COMPONENT_LEARNER
-        ][COMPONENT_RL_MODULE]
+        return self.get_state(
+            components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+        )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
 
     def set_weights(self, weights) -> None:
         """Convenience method instead of self.set_state({'learner': {'rl_module': ..}}).
