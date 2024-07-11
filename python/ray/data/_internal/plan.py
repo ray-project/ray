@@ -352,10 +352,8 @@ class ExecutionPlan:
         elif self._logical_plan.dag.schema() is not None:
             schema = self._logical_plan.dag.schema()
         elif fetch_if_missing:
-            # blocks_with_metadata, _, _ = self.execute_to_iterator()
             iter_ref_bundles, _, _ = self.execute_to_iterator()
             for ref_bundle in iter_ref_bundles:
-                # for _, metadata in blocks_with_metadata:
                 for metadata in ref_bundle.metadata:
                     if metadata.schema is not None and (
                         metadata.num_rows is None or metadata.num_rows > 0
@@ -368,14 +366,11 @@ class ExecutionPlan:
             # blocks_with_metadata, _, _ = self.execute_to_iterator()
             iter_ref_bundles, _, _ = self.execute_to_iterator()
             try:
-                # _, metadata = next(iter(blocks_with_metadata))
                 ref_bundle = next(iter(iter_ref_bundles))
                 for metadata in ref_bundle.metadata:
                     if metadata.schema is not None:
                         schema = metadata.schema
                         break
-                # metadata = ref_bundle.metadata[0]
-                # schema = metadata.schema
             except StopIteration:  # Empty dataset.
                 schema = None
 
@@ -432,12 +427,6 @@ class ExecutionPlan:
 
         metrics_tag = create_dataset_tag(self._dataset_name, self._dataset_uuid)
         executor = StreamingExecutor(copy.deepcopy(ctx.execution_options), metrics_tag)
-        # TODO(scottjlee): replace with `execute_to_legacy_bundle_iterator` and
-        # update execute_to_iterator usages to handle RefBundles instead of Blocks
-        # block_iter = execute_to_legacy_block_iterator(
-        #     executor,
-        #     self,
-        # )
         bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
