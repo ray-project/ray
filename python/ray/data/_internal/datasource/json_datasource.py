@@ -120,22 +120,32 @@ class JSONDatasource(FileBasedDatasource):
     def _read_stream(self, f: "pyarrow.NativeFile", path: str):
         import pyarrow as pa
 
-        buffer_size = DataContext.get_current().target_max_block_size
-        buffer = bytearray()
-        partial_line = ""
+        def _try_read_json(buffer):
+            try:
+                yield from self._read_with_pyarrow_read_json(buffer)
+            except pa.ArrowInvalid as e:
+                # If read with PyArrow fails, try falling back to native json.load().
+                logger.warning(
+                    f"Error reading with pyarrow.json.read_json(). "
+                    f"Falling back to native json.load(), which may be slower. "
+                    f"PyArrow error was:\n{e}"
+                )
+                yield from self._read_with_python_json(buffer)
 
-        # Detect if the file is JSONL or JSON based on file extension
         is_jsonl = path.endswith(".jsonl")
+        if is_jsonl:
+            buffer_size = DataContext.get_current().target_max_block_size
+            buffer = bytearray()
+            partial_line = ""
 
-        while True:
-            chunk = f.read(buffer_size)
-            if not chunk:
-                if partial_line:
-                    buffer.extend(partial_line.encode("utf-8"))
-                    yield from self._read_with_pyarrow_read_json(pa.py_buffer(buffer))
-                break
+            while True:
+                chunk = f.read(buffer_size)
+                if not chunk:
+                    if partial_line:
+                        buffer.extend(partial_line.encode("utf-8"))
+                        yield from _try_read_json(pa.py_buffer(buffer))
+                    break
 
-            if is_jsonl:
                 lines = chunk.decode("utf-8").split("\n")
                 lines[0] = partial_line + lines[0]
                 partial_line = lines.pop()
@@ -144,12 +154,8 @@ class JSONDatasource(FileBasedDatasource):
                     buffer.extend((line + "\n").encode("utf-8"))
 
                 if buffer:
-                    yield from self._read_with_pyarrow_read_json(pa.py_buffer(buffer))
+                    yield from _try_read_json(pa.py_buffer(buffer))
                     buffer.clear()
-            else:
-                buffer.extend(chunk)
-                # Since this is a JSON file, we should read it as a whole
-                if buffer:
-                    yield from self._read_with_pyarrow_read_json(pa.py_buffer(buffer))
-                    buffer.clear()
-                    break
+        else:
+            buffer: pa.lib.Buffer = f.read_buffer()
+            yield from _try_read_json(buffer)
