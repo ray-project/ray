@@ -324,11 +324,6 @@ cython==0.29.37
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gpy
 dask==2024.6.0
-    # via
-    #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
-    #   dask-expr
-    #   distributed
-dask-expr==1.1.3
     # via dask
 databricks-cli==0.18.0
     # via mlflow
@@ -1243,7 +1238,6 @@ pandas==2.2.2
     #   ax-platform
     #   cmdstanpy
     #   dask
-    #   dask-expr
     #   datasets
     #   evaluate
     #   gradio
@@ -1381,7 +1375,6 @@ pyarrow==14.0.2 ; python_version >= "3.12"
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   dask
-    #   dask-expr
     #   datasets
     #   feather-format
     #   mlflow
