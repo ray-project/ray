@@ -463,20 +463,20 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
                 scaling_mode
             )
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-            initial_learner_group = config.build_learner_group(env=env)
+            learner_group = config.build_learner_group(env=env)
 
             # Checkpoint the initial learner state for later comparison.
             initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
-            initial_learner_group.save_to_path(initial_learner_checkpoint_dir)
+            learner_group.save_to_path(initial_learner_checkpoint_dir)
             # Test the convenience method `.get_weights()`.
-            initial_learner_group_weights = initial_learner_group.get_weights()
+            initial_weights = learner_group.get_weights()
 
             # Do a single update.
-            initial_learner_group.update_from_batch(batch.as_multi_agent())
+            learner_group.update_from_batch(batch.as_multi_agent())
             # Weights after the update must be different from original ones.
             check(
-                initial_learner_group_weights,
-                initial_learner_group.get_state(
+                initial_weights,
+                learner_group.get_state(
                     components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
                 )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
                 false=True,
@@ -484,47 +484,49 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
 
             # Checkpoint the learner state after 1 update for later comparison.
             learner_after_1_update_checkpoint_dir = tempfile.TemporaryDirectory().name
-            initial_learner_group.save_to_path(learner_after_1_update_checkpoint_dir)
+            learner_group.save_to_path(learner_after_1_update_checkpoint_dir)
 
             # Remove that learner, construct a new one, and load the state of the old
             # learner into the new one.
-            initial_learner_group.shutdown()
-            del initial_learner_group
-            new_learner_group = config.build_learner_group(env=env)
-            new_learner_group.restore_from_path(learner_after_1_update_checkpoint_dir)
+            learner_group.shutdown()
+            del learner_group
+
+            learner_group = config.build_learner_group(env=env)
+            learner_group.restore_from_path(learner_after_1_update_checkpoint_dir)
 
             # Do another update.
-            results_with_break = new_learner_group.update_from_batch(
+            results_2nd_update_with_break = learner_group.update_from_batch(
                 batch=batch.as_multi_agent()
             )
-            weights_after_1_update_with_break = new_learner_group.get_state(
+            weights_after_2_updates_with_break = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-            new_learner_group.shutdown()
-            del new_learner_group
+            learner_group.shutdown()
+            del learner_group
 
             # Construct a new learner group and load the initial state of the learner.
             learner_group = config.build_learner_group(env=env)
             learner_group.restore_from_path(initial_learner_checkpoint_dir)
             check(
-                initial_learner_group_weights,
+                initial_weights,
                 learner_group.get_state(
                     components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
                 )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
             )
+            # Perform 2 updates to get to the same state as the previous learners.
             learner_group.update_from_batch(batch.as_multi_agent())
-            results_without_break = learner_group.update_from_batch(
+            results_2nd_without_break = learner_group.update_from_batch(
                 batch=batch.as_multi_agent()
             )
-            weights_after_1_update_without_break = learner_group.get_weights()
+            weights_after_2_updates_without_break = learner_group.get_weights()
             learner_group.shutdown()
             del learner_group
 
             # Compare the results of the two updates.
-            check(results_with_break, results_without_break)
+            check(results_2nd_update_with_break, results_2nd_without_break)
             check(
-                weights_after_1_update_with_break,
-                weights_after_1_update_without_break,
+                weights_after_2_updates_with_break,
+                weights_after_2_updates_without_break,
                 rtol=0.0075,
             )
 
