@@ -2637,7 +2637,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
@@ -2709,6 +2709,9 @@ class Dataset:
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
         """  # noqa: E501
+        if arrow_parquet_args_fn is None:
+            arrow_parquet_args_fn = lambda: {}  # noqa: E731
+
         datasink = ParquetDatasink(
             path,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
@@ -2735,7 +2738,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        pandas_json_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
@@ -2817,6 +2820,9 @@ class Dataset:
                 :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
         """
+        if pandas_json_args_fn is None:
+            pandas_json_args_fn = lambda: {}  # noqa: E731
+
         datasink = JSONDatasink(
             path,
             pandas_json_args_fn=pandas_json_args_fn,
@@ -2915,7 +2921,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        arrow_csv_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
@@ -2995,6 +3001,9 @@ class Dataset:
                     #pyarrow.csv.write_csv>`_
                 when writing each block to a file.
         """
+        if arrow_csv_args_fn is None:
+            arrow_csv_args_fn = lambda: {}  # noqa: E731
+
         datasink = CSVDatasink(
             path,
             arrow_csv_args_fn=arrow_csv_args_fn,

@@ -23,7 +23,7 @@ class ParquetDatasink(_FileDatasink):
         self,
         path: str,
         *,
-        arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         arrow_parquet_args: Optional[Dict[str, Any]] = None,
         num_rows_per_file: Optional[int] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -32,6 +32,9 @@ class ParquetDatasink(_FileDatasink):
         filename_provider: Optional[FilenameProvider] = None,
         dataset_uuid: Optional[str] = None,
     ):
+        if arrow_parquet_args_fn is None:
+            arrow_parquet_args_fn = lambda: {}  # noqa: E731
+
         if arrow_parquet_args is None:
             arrow_parquet_args = {}
 
