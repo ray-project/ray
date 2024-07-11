@@ -27,7 +27,7 @@ config = (
     .environment(env="multi_agent_pendulum")
     .training(
         initial_alpha=1.001,
-        lr=3e-4,
+        lr=8e-4,
         target_entropy="auto",
         n_step=1,
         tau=0.005,
@@ -40,6 +40,13 @@ config = (
             "beta": 0.0,
         },
         num_steps_sampled_before_learning_starts=256,
+    )
+    .rl_module(
+        model_config_dict={
+            "fcnet_hiddens": [256, 256],
+            "fcnet_activation": "tanh",
+            "fcnet_weights_initializer": nn.init.xavier_uniform_,
+        }
     )
     .resources(
         num_cpus_for_main_process=2,
