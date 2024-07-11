@@ -2594,15 +2594,12 @@ def maybe_initialize_job_config():
         print(job_id_magic_token, file=sys.stderr, end="")
 
         # Configure worker process's Python logging.
-        log_config_dict = {}
         serialized_py_logging_config = \
             core_worker.get_job_config().serialized_py_logging_config
         if serialized_py_logging_config:
             logging_config = pickle.loads(serialized_py_logging_config)
-            log_config_dict = logging_config._get_dict_config()
-        if log_config_dict:
             try:
-                logging.config.dictConfig(log_config_dict)
+                logging_config._apply()
             except Exception as e:
                 backtrace = \
                     "".join(traceback.format_exception(type(e), e, e.__traceback__))

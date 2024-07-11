@@ -192,13 +192,13 @@ def test_split_map(shutdown_only, use_actors):
     bundles: Iterable[RefBundle] = ds2.map(
         identity_fn, **kwargs
     ).iter_internal_ref_bundles()
-    nblocks = sum([len(b.block_refs) for b in bundles])
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
     bundles: Iterable[RefBundle] = ds2.map(
         identity_fn, **kwargs
     ).iter_internal_ref_bundles()
-    nblocks = sum([len(b.block_refs) for b in bundles])
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert 4 < nblocks < 7 or use_actors, nblocks
 
     # Disabled.
@@ -206,7 +206,7 @@ def test_split_map(shutdown_only, use_actors):
     ctx.target_max_block_size = 2**64
     ds3 = ray.data.range(1000, override_num_blocks=1).map(arrow_fn, **kwargs)
     bundles = ds3.map(identity_fn, **kwargs).iter_internal_ref_bundles()
-    nblocks = sum([len(b.block_refs) for b in bundles])
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert nblocks == 1, nblocks
 
 
@@ -217,11 +217,11 @@ def test_split_flat_map(ray_start_regular_shared):
     ctx.target_max_block_size = 20_000_000
     ds2 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
     bundles = ds2.flat_map(lambda x: [x]).iter_internal_ref_bundles()
-    nblocks = sum([len(b.block_refs) for b in bundles])
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
     bundles = ds2.flat_map(lambda x: [x]).iter_internal_ref_bundles()
-    nblocks = sum([len(b.block_refs) for b in bundles])
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert 4 < nblocks < 7, nblocks
 
 
@@ -232,11 +232,11 @@ def test_split_map_batches(ray_start_regular_shared):
     ctx.target_max_block_size = 20_000_000
     ds2 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
     bundles = ds2.map_batches(lambda x: x, batch_size=1).iter_internal_ref_bundles()
-    nblocks = sum([len(b.block_refs) for b in bundles])
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
     bundles = ds2.map_batches(lambda x: x, batch_size=16).iter_internal_ref_bundles()
-    nblocks = sum([len(b.block_refs) for b in bundles])
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert 4 < nblocks < 7, nblocks
 
 
