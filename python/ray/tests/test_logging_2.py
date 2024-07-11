@@ -9,7 +9,6 @@ import time
 
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
-from ray._private.ray_logging import setup_log_record_factory
 from ray.job_config import LoggingConfig
 from ray._private.test_utils import run_string_as_driver
 
@@ -397,7 +396,8 @@ class TestSetupLogRecordFactory:
         logging.setLogRecordFactory(orig_factory)
 
     def test_setup_log_record_factory(self, log_record_factory):
-        setup_log_record_factory()
+        logging_config = LoggingConfig()
+        logging_config._setup_log_record_factory()
 
         ct = time.time_ns()
         with patch("time.time_ns") as patched_ns:
@@ -413,7 +413,8 @@ class TestSetupLogRecordFactory:
 
         logging.setLogRecordFactory(existing_factory)
 
-        setup_log_record_factory()
+        logging_config = LoggingConfig()
+        logging_config._setup_log_record_factory()
 
         ct = time.time_ns()
         with patch("time.time_ns") as patched_ns:
