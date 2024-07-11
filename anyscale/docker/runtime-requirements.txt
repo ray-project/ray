@@ -8,4 +8,5 @@
 # requirements_compiled.txt file.
 
 decord
+snowflake-connector-python
 soundfile

@@ -1,11 +1,12 @@
 import functools
-from typing import Protocol
+from typing import Any, Dict, Optional, Protocol
 
 from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
     ExpandPaths,
 )
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.anyscale.data.api.streaming_aggregate import StreamingAggFn
+from ray.anyscale.data.datasource.snowflake_datasink import SnowflakeDatasink
 from ray.anyscale.data.logical_operators.streaming_aggregate import StreamingAggregate
 from ray.data import Dataset
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
@@ -98,3 +99,42 @@ class DatasetMixin:
             return list({row["path"] for row in dataset.take_all()})
         else:
             return list(set(self._plan.input_files()))
+
+    def write_snowflake(
+        self,
+        table: str,
+        connection_parameters: str,
+        *,
+        ray_remote_args: Dict[str, Any] = None,
+        concurrency: Optional[int] = None,
+    ):
+        """Write this ``Dataset`` to a Snowflake table.
+
+        Example:
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                connection_parameters = dict(
+                    user=...,
+                    account="ABCDEFG-ABC12345",
+                    password=...,
+                    database="SNOWFLAKE_SAMPLE_DATA",
+                    schema="TPCDS_SF100TCL"
+                )
+                ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+                ds.write_snowflake("MY_DATABASE.MY_SCHEMA.IRIS"", connection_parameters)
+
+        Args:
+            table: The name of the table to write to.
+            connection_parameters: Keyword arguments to pass to
+                ``snowflake.connector.connect``. To view supported parameters, read
+                https://docs.snowflake.com/developer-guide/python-connector/python-connector-api#functions.
+        """  # noqa: E501
+        return self.write_datasink(
+            SnowflakeDatasink(table, connection_parameters),
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+        )

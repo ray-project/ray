@@ -161,13 +161,12 @@ from ray.anyscale.data.api.read_api import (  # noqa: E402, F811, isort:skip
     read_images,
     read_json,
     read_numpy,
+    read_snowflake,
     read_text,
     read_webdataset,
 )
 
 
-__all__ += [
-    "StreamingAggFn",
-]
+__all__ += ["StreamingAggFn", "read_snowflake"]
 
 apply_anyscale_patches()
