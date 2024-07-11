@@ -1527,11 +1527,6 @@ void ReferenceCounter::UpdateObjectReady(const ObjectID &object_id) {
   UpdateObjectPendingCreationInternal(object_id, /*pending_creation*/ false);
 }
 
-void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id) {
-  absl::MutexLock lock(&mutex_);
-  UpdateObjectPendingCreationInternal(object_id, /*pending_creation*/ true);
-}
-
 bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);

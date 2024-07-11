@@ -562,9 +562,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Update that the object is ready to be fetched.
   void UpdateObjectReady(const ObjectID &object_id);
 
-  /// Update that the object's creator task is scheduled/executing.
-  void UpdateObjectPendingCreation(const ObjectID &object_id);
-
   /// Whether the object is pending creation (the task that creates it is
   /// scheduled/executing).
   bool IsObjectPendingCreation(const ObjectID &object_id) const;
