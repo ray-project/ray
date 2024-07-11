@@ -14,7 +14,7 @@ from ray import train
 from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.data.datasource import SimpleTensorFlowDatasource
 from ray.data.extensions import TensorArray
-from ray.train import Result
+from ray.train import Result, ScalingConfig
 from ray.train.tensorflow import TensorflowTrainer, prepare_dataset_shard
 
 
