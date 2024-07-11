@@ -69,7 +69,7 @@ def test_large_e2e_backpressure(is_flink: bool):
 
     def produce(batch):
         logger.log({"name": "producer_start", "id": [int(x) for x in batch["id"]]})
-        if int(batch["id"][0]) < NUM_ROWS_TOTAL / 2:
+        if int(batch["id"][0].item()) < NUM_ROWS_TOTAL / 2:
             time.sleep(TIME_UNIT * 10)
         else:
             time.sleep(TIME_UNIT)
@@ -83,7 +83,7 @@ def test_large_e2e_backpressure(is_flink: bool):
             }
 
     def consume(batch):
-        logger.log({"name": "consume", "id": int(batch["id"])})
+        logger.log({"name": "consume", "id": int(batch["id"].item())})
         if int(batch["id"]) < NUM_ROWS_TOTAL / 2:
             time.sleep(TIME_UNIT)
         else:

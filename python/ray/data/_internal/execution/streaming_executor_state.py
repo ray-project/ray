@@ -660,11 +660,10 @@ def select_operator_to_run(
     #         resource_manager.get_op_usage(op).object_store_memory,
     #     ),
     # )
-    op = ops[0]  # @lsf prefer the producer
-    # if op is not None:
-    # wall_time = time.time() - topology[op].start_time
-    # logger.info(f"@lsf Selected: {op.name} @ {wall_time:.3f}")
-    return op
+    if ray.data.DataContext.get_current().is_budget_policy:
+        op = ops[0]  # @lsf prefer the producer
+        return op
+    
     selected_op = None
     if ops:
         # Run metadata-only operators first. After that, choose the operator with the
