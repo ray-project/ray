@@ -49,6 +49,7 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
     // `object` is now a nullptr.
   }
 
+  // TODO (kevin85421): Create only one IO thread for all remote reader nodes.
   if (!node_ids.empty()) {
     // Start a thread that repeatedly listens for values on this object and then sends
     // them via RPC to the remote reader.

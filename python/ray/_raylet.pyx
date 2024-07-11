@@ -665,6 +665,24 @@ cdef c_vector[CNodeID] NodeIDsToVector(node_ids):
     return result
 
 
+cdef c_vector[CActorID] ActorIDsToVector(actor_ids):
+    # TODO (kevin85421): Add comments
+    cdef:
+        c_vector[CActorID] result
+    for actor_id in actor_ids:
+        result.push_back((<ActorID>actor_id).native())
+    return result
+
+
+cdef c_vector[int64_t] IntListToVector(int_list):
+    # TODO (kevin85421): Add comments
+    cdef:
+        c_vector[int64_t] result
+    for i in int_list:
+        result.push_back(i)
+    return result
+
+
 def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes):
     cdef:
         CActorTableData data
@@ -3701,19 +3719,41 @@ cdef class CoreWorker:
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,
                                              reader_refs,
-                                             writer_node,
                                              remote_reader_nodes,
-                                             ActorID reader,
-                                             int64_t num_readers):
-        # TODO (kevin85421): Update reader, num_readers
+                                             reader_actors,
+                                             num_readers):
+
+        """
+        Args:
+            writer_ref: The object reference of the writer.
+            reader_refs: A list of object references, each corresponding to a remote
+                reader node.
+            remote_reader_nodes: The node IDs of the remote reader nodes. There are
+                no duplicate node IDs in the list.
+            reader_actors: A list of actor IDs, each corresponding to a reader actor
+                for a remote reader node.
+            num_readers: The number of readers for each remote reader node.
+
+        Note:
+            The lengths of `reader_refs`, `remote_reader_nodes`, `reader_actors`, and
+            `num_readers` should be the same. For a given index i, `reader_refs[i]` is
+            the object reference of the remote reader node `remote_reader_nodes[i]`,
+            with a reader actor ID `reader_actors[i]` and `num_readers[i]` as the number
+            of readers on the node.
+        """
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
+            c_vector[CNodeID] c_remote_reader_nodes = NodeIDsToVector(
+                remote_reader_nodes
+            )
             c_vector[CObjectID] c_reader_refs = ObjectRefsToVector(reader_refs)
-            c_vector[CNodeID] c_remote_reader_nodes = NodeIDsToVector(remote_reader_nodes)
-            CActorID c_reader_actor = reader.native()
+            c_vector[CActorID] c_reader_actors = ActorIDsToVector(reader_actors)
+            c_vector[int64_t] c_num_readers = IntListToVector(num_readers)
 
-        if num_readers == 0:
-            return
+        for num_reader in num_readers:
+            if num_reader == 0:
+                # TODO (kevin85421): Maybe we should raise a ValueError instead?
+                return
 
         # TODO (kevin85421): how to support readers on both local and remote?
         with nogil:
@@ -3726,8 +3766,8 @@ cdef class CoreWorker:
                 check_status(
                         CCoreWorkerProcess.GetCoreWorker()
                         .ExperimentalRegisterMutableObjectReaderRemote(c_writer_ref,
-                                                                       c_reader_actor,
-                                                                       num_readers,
+                                                                       c_reader_actors,
+                                                                       c_num_readers,
                                                                        c_reader_refs
                                                                        ))
 

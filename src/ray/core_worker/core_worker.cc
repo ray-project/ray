@@ -1487,19 +1487,23 @@ Status CoreWorker::ExperimentalChannelReadRelease(
   return experimental_mutable_object_provider_->ReadRelease(object_ids[0]);
 }
 
-Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
-                                                           const std::vector<NodeID> &node_ids) {
+Status CoreWorker::ExperimentalRegisterMutableObjectWriter(
+    const ObjectID &object_id, const std::vector<NodeID> &node_ids) {
   experimental_mutable_object_provider_->RegisterWriterChannel(object_id, node_ids);
   return Status::OK();
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     const ObjectID &writer_object_id,
-    const ActorID &reader_actor,
-    int64_t num_readers,
+    const std::vector<ActorID> &reader_actors,
+    std::vector<int64_t> num_readers,
     const std::vector<ObjectID> &reader_object_ids) {
+  // TODO (kevin85421): Iterate reader_object_ids and execute the following logic for each
+  // reader_objec_id.
+  ActorID reader_actor = reader_actors[0];
+  int64_t num_reader = num_readers[0];
   ObjectID reader_object_id = reader_object_ids[0];
-  
+
   rpc::Address addr;
   {
     std::promise<void> promise;
@@ -1528,7 +1532,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
 
     rpc::RegisterMutableObjectReaderRequest req;
     req.set_writer_object_id(writer_object_id.Binary());
-    req.set_num_readers(num_readers);
+    req.set_num_readers(num_reader);
     req.set_reader_object_id(reader_object_id.Binary());
     rpc::RegisterMutableObjectReaderReply reply;
 

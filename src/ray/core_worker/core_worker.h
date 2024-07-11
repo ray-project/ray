@@ -752,14 +752,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// the node that `reader_actor` is on.
   ///
   /// \param[in] writer_object_id The ID of the object that is written on this node.
-  /// \param[in] reader_actor The actor that reads the object.
-  /// \param[in] num_readers The total number of readers.
-  /// \param[in] reader_object_ids The IDs of the corresponding object that are read on the
-  /// remote nodes.
-  Status ExperimentalRegisterMutableObjectReaderRemote(const ObjectID &writer_object_id,
-                                                       const ActorID &reader_actor,
-                                                       int64_t num_readers,
-                                                       const std::vector<ObjectID> &reader_object_ids);
+  /// \param[in] reader_actors A list of actor IDs, each corresponding to a reader actor
+  /// for a remote reader node. \param[in] num_readers The number of readers for each
+  /// remote reader node. \param[in] reader_object_ids The IDs of the corresponding object
+  /// that are read on the remote nodes.
+  Status ExperimentalRegisterMutableObjectReaderRemote(
+      const ObjectID &writer_object_id,
+      const std::vector<ActorID> &reader_actors,
+      std::vector<int64_t> num_readers,
+      const std::vector<ObjectID> &reader_object_ids);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
