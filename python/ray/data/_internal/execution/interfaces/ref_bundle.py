@@ -130,7 +130,7 @@ class RefBundle:
 def _ref_bundles_iterator_to_block_refs_list(
     ref_bundles: Iterator[RefBundle],
 ) -> List[ObjectRef[Block]]:
-    """Convert an iterator of RefBundles to a list of object references to Blocks."""
+    """Convert an iterator of RefBundles to a list of Block object references."""
     return [
         block_ref for ref_bundle in ref_bundles for block_ref in ref_bundle.block_refs
     ]
