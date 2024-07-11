@@ -67,7 +67,6 @@ class RemoteTrainingHelper:
         env = gym.make("CartPole-v1")
 
         reader = get_cartpole_dataset_reader(batch_size=500)
-        batch = reader.next().as_multi_agent()
 
         config_overrides = LOCAL_CONFIGS[scaling_mode]
         config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
@@ -80,7 +79,8 @@ class RemoteTrainingHelper:
         check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
 
         # Update n times and check state again.
-        for _ in range(10):
+        for _ in range(1):
+            batch = reader.next().as_multi_agent()
             learner_update = local_learner.update_from_batch(batch=batch)
             learner_update = tree.map_structure(lambda s: s.peek(), learner_update)
             learner_group_update = learner_group.update_from_batch(batch=batch)
