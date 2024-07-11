@@ -30,6 +30,15 @@ const int64_t kTaskFailureThrottlingThreshold = 50;
 // Throttle task failure logs to once this interval.
 const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
+absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsConsumed() const {
+  absl::flat_hash_set<ObjectID> result;
+  for (int64_t index = 0; index < next_index_; index++) {
+    const auto &object_id = GetObjectRefAtIndex(index);
+    result.emplace(object_id);
+  }
+  return result;
+}
+
 absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   absl::flat_hash_set<ObjectID> result;
   for (int64_t index = 0; index <= max_index_seen_; index++) {
@@ -1016,6 +1025,16 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
+    if (spec.IsStreamingGenerator()) {
+      absl::MutexLock lock(&object_ref_stream_ops_mu_);
+      const auto generator_id = spec.ReturnId(0);
+      auto stream_it = object_ref_streams_.find(generator_id);
+      if (stream_it != object_ref_streams_.end()) {
+        for (ObjectID obj : stream_it->second.GetItemsConsumed()) {
+          reference_counter_->UpdateObjectPendingCreation(obj);
+        }
+      }
+    }
     retry_task_callback_(spec, /*object_recovery*/ false, update_seqno, delay_ms);
     return true;
   } else {

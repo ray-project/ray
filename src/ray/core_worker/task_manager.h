@@ -161,6 +161,8 @@ class ObjectRefStream {
   /// \return A list of object IDs that are not read yet.
   absl::flat_hash_set<ObjectID> GetItemsUnconsumed() const;
 
+  absl::flat_hash_set<ObjectID> GetItemsConsumed() const;
+
   /// Pop all ObjectIDs that are not read yet via
   /// TryReadNextItem.
   ///
