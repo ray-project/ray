@@ -278,8 +278,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             columns = [columns]
             should_be_single_ndarray = True
 
+        table_column_names = set(self._table.column_names)
         for column in columns:
-            if column not in self._table.column_names:
+            if column not in table_column_names:
                 raise ValueError(
                     f"Cannot find column {column}, available columns: "
                     f"{self._table.column_names}"
