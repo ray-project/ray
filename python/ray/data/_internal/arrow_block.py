@@ -60,13 +60,14 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
 
+ARROW_OBJECT_FIXABLE_ERRORS = (
+    pyarrow.lib.ArrowTypeError,
+    pyarrow.lib.ArrowNotImplementedError,
+    pyarrow.lib.ArrowInvalid,
+)
+
 
 def is_object_fixable_error(e: ArrowConversionError) -> bool:
-    ARROW_OBJECT_FIXABLE_ERRORS = (
-        pyarrow.lib.ArrowTypeError,
-        pyarrow.lib.ArrowNotImplementedError,
-        pyarrow.lib.ArrowInvalid,
-    )
     """Returns whether this error can be fixed by using an ArrowPythonObjectArray"""
     return isinstance(e.__cause__, ARROW_OBJECT_FIXABLE_ERRORS)
 
