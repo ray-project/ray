@@ -129,6 +129,7 @@ class TestGC:
 
         ray.shutdown()
 
+
 # pytest-virtualenv doesn't support Python 3.12 as of now, see more details here:
 # https://github.com/man-group/pytest-plugins/issues/220
 @pytest.mark.skipif(
