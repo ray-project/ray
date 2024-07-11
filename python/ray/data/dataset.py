@@ -1411,7 +1411,7 @@ class Dataset:
                 )
             return split_datasets
 
-        metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
+        metadata_mapping = dict(zip(block_refs, metadata))
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
