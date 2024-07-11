@@ -16,14 +16,6 @@ TEAM_API_CONFIGS = {
             "ray.data.dataset.MaterializedDataset",
             # special case where we cannot deprecate although we want to
             "ray.data.random_access_dataset.RandomAccessDataset",
-            # TODO(can): apis that are auto-generated so falsely classified as not
-            # documented with the current logic
-            "ray.data.iterator.DataIterator",
-            "ray.data.iterator.DataIterator.iter_batches",
-            "ray.data.iterator.DataIterator.iter_torch_batches",
-            "ray.data.iterator.DataIterator.to_tf",
-            "ray.data.iterator.DataIterator.materialize",
-            "ray.data.iterator.DataIterator.stats",
         },
     },
 }
