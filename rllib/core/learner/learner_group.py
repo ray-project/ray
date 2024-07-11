@@ -480,8 +480,8 @@ class LearnerGroup:
                     partials = [
                         partial(
                             _learner_update,
-                            episodes_shard=episodes_shard,
-                            min_total_mini_batches=min_total_mini_batches,
+                            _episodes_shard=episodes_shard,
+                            _min_total_mini_batches=min_total_mini_batches,
                         )
                         for episodes_shard in episodes
                     ]
@@ -519,8 +519,8 @@ class LearnerGroup:
                     partials = [
                         partial(
                             _learner_update,
-                            episodes_shard=eps_shard,
-                            min_total_mini_batches=min_total_mini_batches,
+                            _episodes_shard=eps_shard,
+                            _min_total_mini_batches=min_total_mini_batches,
                         )
                         for eps_shard in eps_shards
                     ]
