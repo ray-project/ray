@@ -1498,53 +1498,47 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     const std::vector<ActorID> &reader_actors,
     std::vector<int64_t> num_readers,
     const std::vector<ObjectID> &reader_object_ids) {
-  // TODO (kevin85421): Iterate reader_object_ids and execute the following logic for each
-  // reader_objec_id.
-  ActorID reader_actor = reader_actors[0];
-  int64_t num_reader = num_readers[0];
-  ObjectID reader_object_id = reader_object_ids[0];
+  for (size_t i = 0; i < reader_object_ids.size(); i++) {
+    rpc::Address addr;
+    {
+      std::promise<void> promise;
+      RAY_CHECK(gcs_client_->Actors()
+                    .AsyncGet(reader_actors[i],
+                              [&addr, &promise](
+                                  Status status,
+                                  const boost::optional<rpc::ActorTableData> &result) {
+                                RAY_CHECK(result);
+                                if (result) {
+                                  addr.set_ip_address(result->address().ip_address());
+                                  addr.set_port(result->address().port());
+                                  addr.set_worker_id(result->address().worker_id());
+                                }
+                                promise.set_value();
+                              })
+                    .ok());
+      promise.get_future().wait();
+    }
 
-  rpc::Address addr;
-  {
-    std::promise<void> promise;
-    RAY_CHECK(gcs_client_->Actors()
-                  .AsyncGet(reader_actor,
-                            [&addr, &promise](
-                                Status status,
-                                const boost::optional<rpc::ActorTableData> &result) {
-                              RAY_CHECK(result);
-                              if (result) {
-                                addr.set_ip_address(result->address().ip_address());
-                                addr.set_port(result->address().port());
-                                addr.set_worker_id(result->address().worker_id());
-                              }
-                              promise.set_value();
-                            })
-                  .ok());
-    promise.get_future().wait();
-  }
+    {
+      std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
+          core_worker_client_pool_->GetOrConnect(addr);
 
-  // TODO(jhumphri): Support case where there are readers on multiple different nodes.
-  // Currently, this code only supports the case where all readers are on a single node.
-  {
-    std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
-        core_worker_client_pool_->GetOrConnect(addr);
+      rpc::RegisterMutableObjectReaderRequest req;
+      req.set_writer_object_id(writer_object_id.Binary());
+      req.set_num_readers(num_readers[i]);
+      req.set_reader_object_id(reader_object_ids[i].Binary());
+      rpc::RegisterMutableObjectReaderReply reply;
 
-    rpc::RegisterMutableObjectReaderRequest req;
-    req.set_writer_object_id(writer_object_id.Binary());
-    req.set_num_readers(num_reader);
-    req.set_reader_object_id(reader_object_id.Binary());
-    rpc::RegisterMutableObjectReaderReply reply;
-
-    std::promise<void> promise;
-    conn->RegisterMutableObjectReader(
-        req,
-        [&promise](const Status &status,
-                   const rpc::RegisterMutableObjectReaderReply &reply) {
-          RAY_CHECK(status.ok());
-          promise.set_value();
-        });
-    promise.get_future().wait();
+      std::promise<void> promise;
+      conn->RegisterMutableObjectReader(
+          req,
+          [&promise](const Status &status,
+                    const rpc::RegisterMutableObjectReaderReply &reply) {
+            RAY_CHECK(status.ok());
+            promise.set_value();
+          });
+      promise.get_future().wait();
+    }
   }
 
   return Status::OK();
