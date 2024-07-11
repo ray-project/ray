@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.3-labs
 
 ARG HOSTTYPE
-FROM quay.io/pypa/manylinux2014_${HOSTTYPE}:2023-11-13-f6b0c51
+FROM quay.io/pypa/manylinux2014_${HOSTTYPE}:2024-07-02-9ac04ee
 
 ARG BUILDKITE_BAZEL_CACHE_URL
 
