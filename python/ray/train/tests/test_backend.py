@@ -193,7 +193,9 @@ def test_local_world_size(ray_2_node_2_cpu):
 
 def test_local_world_size_with_same_ip_nodes(ray_2_node_2_cpu):
     config = TestConfig()
-    with patch.object(WorkerGroup, "add_workers", mock_add_workers_to_nodes_with_same_ip):
+    with patch.object(
+        WorkerGroup, "add_workers", mock_add_workers_to_nodes_with_same_ip
+    ):
         e = BackendExecutor(config, num_workers=3)
         e.start()
 
@@ -219,7 +221,9 @@ def test_node_ranks(ray_2_node_2_cpu):
 
 def test_node_ranks_with_same_ip_nodes(ray_2_node_2_cpu):
     config = TestConfig()
-    with patch.object(WorkerGroup, "add_workers", mock_add_workers_to_nodes_with_same_ip):
+    with patch.object(
+        WorkerGroup, "add_workers", mock_add_workers_to_nodes_with_same_ip
+    ):
         e = BackendExecutor(config, num_workers=3)
         e.start()
 
