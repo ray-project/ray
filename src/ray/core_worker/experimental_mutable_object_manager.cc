@@ -454,11 +454,15 @@ MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
   return timeout_point;
 }
 
-Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
+Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
   Channel *channel = GetChannel(object_id);
   if (!channel) {
     return Status::NotFound(
         absl::StrFormat("Could not find channel for object ID %s.", object_id.Hex()));
+  }
+  if ((is_reader && channel->reader_registered) ||
+      (!is_reader && channel->writer_registered)) {
+    return Status::OK();
   }
   return channel->mutable_object->header->CheckHasError();
 }
@@ -502,7 +506,8 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
                                           const uint8_t *metadata,
                                           int64_t metadata_size,
                                           int64_t num_readers,
-                                          std::shared_ptr<Buffer> &data) {
+                                          std::shared_ptr<Buffer> &data,
+                                          int64_t timeout_ms) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
@@ -511,7 +516,8 @@ Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
 }
 
 Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
-                                         std::shared_ptr<RayObject> &result)
+                                         std::shared_ptr<RayObject> &result,
+                                         int64_t timeout_ms)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   return Status::NotImplemented("Not supported on Windows.");
 }
@@ -538,7 +544,7 @@ MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
   return nullptr;
 }
 
-Status MutableObjectManager::IsChannelClosed(const ObjectID &object_id) {
+Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

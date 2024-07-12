@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Container, Dict, Optional, TYPE_CHECKING
+from typing import Any, Collection, Dict, Optional, TYPE_CHECKING
 
 import tree  # pip install dm_tree
 
@@ -79,9 +79,9 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
 
     def get_state(
         self,
-        components: Optional[Container[str]] = None,
+        components: Optional[Collection[str]] = None,
         *,
-        module_ids: Optional[Container[ModuleID]] = None,
+        module_ids: Optional[Collection[ModuleID]] = None,
         inference_only: bool = False,
     ) -> Dict[str, Any]:
         """Returns this EnvRunner's (possibly serialized) current state as a dict.
@@ -92,7 +92,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                 of the state is expensive (e.g. reading/compiling the weights of a large
                 NN) and at the same time, these components are not required by the
                 caller.
-            module_ids: An optional container of ModuleIDs to return. Only applies, if
+            module_ids: An optional collection of ModuleIDs to return. Only applies, if
                 components contains the "rl_module" key. Allows for selecting only
                 specific single-agent RLModules within a MultiAgentRLModule.
             inference_only: Whether to return the inference-only weight set of the
