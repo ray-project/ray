@@ -81,11 +81,12 @@ class LimitOperator(OneToOneOperator):
         if self._limit_reached():
             self.mark_execution_completed()
 
-        # We cannot estimate if we have only consumed empty blocks
-        if self._consumed_rows > 0:
+        # We cannot estimate if we have only consumed empty blocks,
+        # or if the input dependency's total number of output bundles is unknown.
+        num_inputs = self.input_dependencies[0].num_outputs_total()
+        if self._consumed_rows > 0 and num_inputs is not None:
             # Estimate number of output bundles
             # Check the case where _limit > # of input rows
-            num_inputs = self.input_dependencies[0].num_outputs_total()
             estimated_total_output_rows = min(
                 self._limit, self._consumed_rows / self._cur_output_bundles * num_inputs
             )
