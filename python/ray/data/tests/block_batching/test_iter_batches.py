@@ -34,7 +34,9 @@ def ref_bundle_generator(num_rows: int, num_blocks: int) -> Iterator[RefBundle]:
 
 @pytest.mark.parametrize("num_batches_to_prefetch", [1, 2])
 @pytest.mark.parametrize("batch_size", [None, 1, 4])
-def test_prefetch_batches_locally(num_batches_to_prefetch, batch_size):
+def test_prefetch_batches_locally(
+    ray_start_regular_shared, num_batches_to_prefetch, batch_size
+):
     class DummyPrefetcher(BlockPrefetcher):
         def __init__(self):
             self.windows = []
