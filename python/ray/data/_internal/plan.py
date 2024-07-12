@@ -363,7 +363,6 @@ class ExecutionPlan:
         elif self.is_read_only():
             # For consistency with the previous implementation, we fetch the schema if
             # the plan is read-only even if `fetch_if_missing` is False.
-            # blocks_with_metadata, _, _ = self.execute_to_iterator()
             iter_ref_bundles, _, _ = self.execute_to_iterator()
             try:
                 ref_bundle = next(iter(iter_ref_bundles))
