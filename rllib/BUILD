@@ -753,7 +753,7 @@ py_test(
     name = "learning_tests_multi_agent_pendulum_sac_gpu",
     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "gpu"],
-    size = "large",
+    size = "enormous",
     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=4"]
 )
