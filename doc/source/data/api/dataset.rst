@@ -18,7 +18,7 @@ Developer API
   Dataset.to_pandas_refs
   Dataset.to_numpy_refs
   Dataset.to_arrow_refs
-  Dataset.get_internal_block_refs
+  Dataset.iter_internal_ref_bundles
   block.Block
   block.BlockExecStats
   block.BlockMetadata
