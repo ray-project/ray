@@ -105,6 +105,19 @@ def mock_add_workers(self, num_workers):
         worker.metadata = metadata
 
 
+def mock_add_workers_to_nodes_with_same_ip(self, num_workers):
+    original_add_workers(self, num_workers)
+    for i, worker in enumerate(self.workers):
+        metadata = WorkerMetadata(
+            node_id=str(i % 2),
+            node_ip=0,
+            hostname=0,
+            resource_ids={"GPU": ["0"]},
+            pid=0,
+        )
+        worker.metadata = metadata
+
+
 def test_start(ray_start_2_cpus):
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
@@ -178,9 +191,35 @@ def test_local_world_size(ray_2_node_2_cpu):
         assert list(e.finish_training()) == [2, 2, 1]
 
 
+def test_local_world_size_with_same_ip_nodes(ray_2_node_2_cpu):
+    config = TestConfig()
+    with patch.object(WorkerGroup, "add_workers", mock_add_workers_to_nodes_with_same_ip):
+        e = BackendExecutor(config, num_workers=3)
+        e.start()
+
+        def train_func():
+            return train.get_context().get_local_world_size()
+
+        _start_training(e, train_func)
+        assert list(e.finish_training()) == [2, 2, 1]
+
+
 def test_node_ranks(ray_2_node_2_cpu):
     config = TestConfig()
     with patch.object(WorkerGroup, "add_workers", mock_add_workers):
+        e = BackendExecutor(config, num_workers=3)
+        e.start()
+
+        def train_func():
+            return train.get_context().get_node_rank()
+
+        _start_training(e, train_func)
+        assert list(e.finish_training()) == [0, 0, 1]
+
+
+def test_node_ranks_with_same_ip_nodes(ray_2_node_2_cpu):
+    config = TestConfig()
+    with patch.object(WorkerGroup, "add_workers", mock_add_workers_to_nodes_with_same_ip):
         e = BackendExecutor(config, num_workers=3)
         e.start()
 

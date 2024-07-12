@@ -180,7 +180,7 @@ def test_execute_args(ray_start_2_cpus):
     assert all(o == 1 for o in outputs)
 
 
-def test_group_workers_by_ip(ray_start_2_cpus):
+def test_group_workers_by_node_id(ray_start_2_cpus):
     def create_worker_group(node_ids):
         wg = WorkerGroup(num_workers=2)
         wg.workers = [
