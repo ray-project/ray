@@ -66,7 +66,7 @@ class InputDataBuffer(PhysicalOperator):
         self._input_data_index += 1
         return bundle
 
-    def num_outputs_total(self) -> int:
+    def num_outputs_total(self) -> Optional[int]:
         return self._num_output_bundles
 
     def get_stats(self) -> StatsDict:

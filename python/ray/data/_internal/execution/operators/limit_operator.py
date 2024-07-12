@@ -1,6 +1,6 @@
 import copy
 from collections import deque
-from typing import Deque, List, Tuple
+from typing import Deque, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
@@ -108,7 +108,7 @@ class LimitOperator(OneToOneOperator):
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
 
-    def num_outputs_total(self) -> int:
+    def num_outputs_total(self) -> Optional[int]:
         # Before execution is completed, we don't know how many output
         # bundles we will have. We estimate based off the consumption so far.
         if self._execution_completed:

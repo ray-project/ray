@@ -43,13 +43,18 @@ class ProgressBar:
     def __init__(
         self,
         name: str,
-        total: int,
+        total: Optional[int],
         unit: str,
         position: int = 0,
         enabled: Optional[bool] = None,
     ):
         self._desc = name
         self._progress = 0
+        # If the total is not known (e.g. no tasks have finished yet),
+        # don't display the full progress bar. Still displays basic
+        # progress stats from tqdm.
+        # if not total:
+        #     total = float("inf")
         if enabled is None:
             from ray.data import DataContext
 
