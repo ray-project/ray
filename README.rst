@@ -35,7 +35,7 @@ Or more about `Ray Core`_ and its key abstractions:
 
 Learn more about Monitoring and Debugging:
 
-- Debug Ray applications with `Ray Distributed Debugger <https://docs.ray.io/en/latest/ray-observability/ray-distributed-debugger.html>`__.
+- Debug Ray applications with the `Ray Distributed Debugger <https://docs.ray.io/en/latest/ray-observability/ray-distributed-debugger.html>`__.
 - Monitor Ray applications and clusters with `Ray dashboard <https://docs.ray.io/en/latest/ray-core/ray-dashboard.html>`__.
 
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
