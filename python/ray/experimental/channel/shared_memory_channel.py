@@ -210,11 +210,6 @@ class Channel(ChannelInterface):
             typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE)
         elif isinstance(typ, int):
             typ = SharedMemoryType(typ)
-        elif not isinstance(typ, SharedMemoryType):
-            raise ValueError(
-                "`typ` must be an `int` representing the max buffer size in "
-                "bytes or a SharedMemoryType"
-            )
 
         if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
             raise ValueError(

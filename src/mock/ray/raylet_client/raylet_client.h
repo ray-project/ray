@@ -104,8 +104,7 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const ObjectID &object_id,
                uint64_t data_size,
                uint64_t metadata_size,
-               void *data,
-               const rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback),
+               void *data),
               (override));
   MOCK_METHOD(void,
               GetSystemConfig,

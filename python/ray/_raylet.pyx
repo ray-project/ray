@@ -657,7 +657,14 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
 
 
 cdef c_vector[CNodeID] NodeIDsToVector(node_ids):
-    # TODO (kevin85421): Add comments
+    """A helper function that converts a Python list of node ids to a vector.
+
+    Args:
+        node_ids (list): The Python list of node ids.
+
+    Returns:
+        The output vector.
+    """
     cdef:
         c_vector[CNodeID] result
     for node_id in node_ids:
@@ -666,7 +673,14 @@ cdef c_vector[CNodeID] NodeIDsToVector(node_ids):
 
 
 cdef c_vector[CActorID] ActorIDsToVector(actor_ids):
-    # TODO (kevin85421): Add comments
+    """A helper function that converts a Python list of actor ids to a vector.
+
+    Args:
+        actor_ids (list): The Python list of actor ids.
+
+    Returns:
+        The output vector.
+    """
     cdef:
         c_vector[CActorID] result
     for actor_id in actor_ids:
@@ -675,7 +689,14 @@ cdef c_vector[CActorID] ActorIDsToVector(actor_ids):
 
 
 cdef c_vector[int64_t] IntListToVector(int_list):
-    # TODO (kevin85421): Add comments
+    """A helper function that converts a Python list of integers to a vector.
+
+    Args:
+        int_list (list): The Python list of integers.
+
+    Returns:
+        The output vector.
+    """
     cdef:
         c_vector[int64_t] result
     for i in int_list:
