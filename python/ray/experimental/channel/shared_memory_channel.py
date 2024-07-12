@@ -268,14 +268,7 @@ class Channel(ChannelInterface):
                 ray.runtime_context.get_runtime_context().get_node_id()
             )
             self._writer_ref = _create_channel_ref(self, typ.buffer_size_bytes)
-
             self._reader_node_id = _get_reader_node_id(self, readers[0])
-            for reader in readers:
-                reader_node_id = _get_reader_node_id(self, reader)
-                if reader_node_id != self._reader_node_id:
-                    raise NotImplementedError(
-                        "All readers must be on the same node for now."
-                    )
             self._create_reader_ref(readers, typ.buffer_size_bytes)
 
             assert self._reader_ref is not None

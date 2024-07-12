@@ -129,10 +129,12 @@ struct GcsServerMocker {
         const ObjectID &local_reader_object_id,
         const rpc::ClientCallback<rpc::RegisterMutableObjectReply> &callback) override {}
 
-    void PushMutableObject(const ObjectID &object_id,
-                           uint64_t data_size,
-                           uint64_t metadata_size,
-                           void *data) override {}
+    void PushMutableObject(
+        const ObjectID &object_id,
+        uint64_t data_size,
+        uint64_t metadata_size,
+        void *data,
+        const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) override {}
 
     // Trigger reply to RequestWorkerLease.
     bool GrantWorkerLease(const std::string &address,

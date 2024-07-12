@@ -186,19 +186,24 @@ void MutableObjectProvider::PollWriterClosure(
   RAY_CHECK(object->GetData());
   RAY_CHECK(object->GetMetadata());
 
+  auto counter = std::make_shared<std::atomic<int>>(readers.size());
   for (const auto &reader : readers) {
-    reader->PushMutableObject(object_id,
-                              object->GetData()->Size(),
-                              object->GetMetadata()->Size(),
-                              object->GetData()->Data());
+    reader->PushMutableObject(
+        object_id,
+        object->GetData()->Size(),
+        object->GetMetadata()->Size(),
+        object->GetData()->Data(),
+        [this, &io_context, object_id, counter, readers](
+            const Status &status, const rpc::PushMutableObjectReply &reply) {
+          if (--(*counter) == 0) {
+            io_context.post(
+                [this, &io_context, object_id, readers]() {
+                  PollWriterClosure(io_context, object_id, readers);
+                },
+                "experimental::MutableObjectProvider.PollWriter");
+          }
+        });
   }
-
-  // TODO (kevin85421): Is `PushMutableObject` synchronous?
-  io_context.post(
-      [this, &io_context, object_id, readers]() {
-        PollWriterClosure(io_context, object_id, readers);
-      },
-      "experimental::MutableObjectProvider.PollWriter");
 }
 
 void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {

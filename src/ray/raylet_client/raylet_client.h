@@ -201,10 +201,14 @@ class MutableObjectReaderInterface {
   /// \param metadata_size The size of the metadata to write to the mutable object on this
   /// local node.
   /// \param data The data and metadata to write. This is formatted as (data | metadata).
-  virtual void PushMutableObject(const ObjectID &writer_object_id,
-                                 uint64_t data_size,
-                                 uint64_t metadata_size,
-                                 void *data) = 0;
+  /// \param callback This callback is executed to send a reply to the remote node once
+  /// the mutable object is transferred.
+  virtual void PushMutableObject(
+      const ObjectID &writer_object_id,
+      uint64_t data_size,
+      uint64_t metadata_size,
+      void *data,
+      const rpc::ClientCallback<rpc::PushMutableObjectReply> &callback) = 0;
 };
 
 class RayletClientInterface : public PinObjectsInterface,
@@ -462,7 +466,9 @@ class RayletClient : public RayletClientInterface {
   void PushMutableObject(const ObjectID &writer_object_id,
                          uint64_t data_size,
                          uint64_t metadata_size,
-                         void *data) override;
+                         void *data,
+                         const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply>
+                             &callback) override;
 
   /// Implements WorkerLeaseInterface.
   void ReportWorkerBacklog(
