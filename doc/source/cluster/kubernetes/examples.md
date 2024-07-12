@@ -14,6 +14,7 @@ examples/rayjob-batch-inference-example
 examples/rayjob-kueue-priority-scheduling
 examples/rayjob-kueue-gang-scheduling
 examples/distributed-checkpointing-with-gcsfuse
+examples/modin-example
 ```
 
 
@@ -28,3 +29,4 @@ This section presents example Ray workloads to try out on your Kubernetes cluste
 - {ref}`kuberay-kueue-priority-scheduling-example`
 - {ref}`kuberay-kueue-gang-scheduling-example`
 - {ref}`kuberay-distributed-checkpointing-gcsefuse`
+- {ref}`kuberay-modin-example`
