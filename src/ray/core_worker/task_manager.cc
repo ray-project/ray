@@ -267,8 +267,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     returned_refs.push_back(std::move(ref));
   }
 
-  reference_counter_->UpdateObjectsPendingCreation(return_ids, true);
-  reference_counter_->UpdateSubmittedTaskReferences(task_deps);
+  reference_counter_->UpdateSubmittedTaskReferences(return_ids, task_deps);
 
   // If it is a generator task, create an object ref stream.
   // The language frontend is responsible for calling DeleteObjectRefStream.
@@ -304,6 +303,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
   TaskSpecification spec;
   bool resubmit = false;
+  std::vector<ObjectID> return_ids;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -330,6 +330,10 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
         RAY_CHECK(it->second.num_retries_left == -1);
       }
       spec = it->second.spec;
+
+      for (const auto &return_id : it->second.reconstructable_return_ids) {
+        return_ids.push_back(return_id);
+      }
     }
   }
 
@@ -345,7 +349,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
       }
     }
 
-    reference_counter_->UpdateResubmittedTaskReferences(*task_deps);
+    reference_counter_->UpdateResubmittedTaskReferences(return_ids, *task_deps);
 
     for (const auto &task_dep : *task_deps) {
       bool was_freed = reference_counter_->TryMarkFreedObjectInUseAgain(task_dep);
@@ -362,7 +366,8 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     }
     if (spec.IsActorTask()) {
       const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
-      reference_counter_->UpdateResubmittedTaskReferences({actor_creation_return_id});
+      reference_counter_->UpdateResubmittedTaskReferences(return_ids,
+                                                          {actor_creation_return_id});
     }
 
     RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
@@ -701,7 +706,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
       num_objects_written += 1;
     }
     // When an object is reported, the object is ready to be fetched.
-    reference_counter_->UpdateObjectsPendingCreation({object_id}, false);
+    reference_counter_->UpdateObjectReady(object_id);
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
@@ -1145,6 +1150,7 @@ void TaskManager::OnTaskDependenciesInlined(
     const std::vector<ObjectID> &contained_ids) {
   std::vector<ObjectID> deleted;
   reference_counter_->UpdateSubmittedTaskReferences(
+      /*return_ids=*/{},
       /*argument_ids_to_add=*/contained_ids,
       /*argument_ids_to_remove=*/inlined_dependency_ids,
       &deleted);
@@ -1190,10 +1196,13 @@ void TaskManager::RemoveFinishedTaskReferences(
     }
   }
 
-  reference_counter_->UpdateObjectsPendingCreation(return_ids, false);
   std::vector<ObjectID> deleted;
-  reference_counter_->UpdateFinishedTaskReferences(
-      plasma_dependencies, release_lineage, borrower_addr, borrowed_refs, &deleted);
+  reference_counter_->UpdateFinishedTaskReferences(return_ids,
+                                                   plasma_dependencies,
+                                                   release_lineage,
+                                                   borrower_addr,
+                                                   borrowed_refs,
+                                                   &deleted);
   in_memory_store_->Delete(deleted);
 }
 

@@ -405,7 +405,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   ObjectID SubmitTaskWithArg(const ObjectID &arg_id) {
     ObjectID return_id = ObjectID::FromRandom();
     if (!arg_id.IsNil()) {
-      rc_.UpdateSubmittedTaskReferences({arg_id});
+      rc_.UpdateSubmittedTaskReferences({return_id}, {arg_id});
     }
     rc_.AddOwnedObject(return_id, {}, address_, "", 0, false, /*add_local_ref=*/true);
     return_ids_.push_back(return_id);
@@ -442,9 +442,8 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     if (!arg_id.IsNil()) {
       arguments.push_back(arg_id);
     }
-    rc_.UpdateObjectsPendingCreation({return_id}, false);
     rc_.UpdateFinishedTaskReferences(
-        arguments, false, borrower_address, borrower_refs, nullptr);
+        {return_id}, arguments, false, borrower_address, borrower_refs, nullptr);
   }
 
   WorkerID GetID() const { return WorkerID::FromBinary(address_.worker_id()); }
@@ -507,21 +506,22 @@ TEST_F(ReferenceCountTest, TestBasic) {
   rc->AddLocalReference(return_id2, "");
   ASSERT_FALSE(rc->IsObjectPendingCreation(return_id1));
   ASSERT_FALSE(rc->IsObjectPendingCreation(return_id2));
-  rc->UpdateObjectsPendingCreation({return_id1, return_id2}, true);
-  rc->UpdateSubmittedTaskReferences({id1});
-  rc->UpdateSubmittedTaskReferences({id2});
+  rc->UpdateSubmittedTaskReferences({return_id1}, {id1});
+  rc->UpdateSubmittedTaskReferences({return_id2}, {id1, id2});
   ASSERT_TRUE(rc->IsObjectPendingCreation(return_id1));
   ASSERT_TRUE(rc->IsObjectPendingCreation(return_id2));
 
   ASSERT_EQ(rc->NumObjectIDsInScope(), 4);
-  rc->UpdateObjectsPendingCreation({return_id1, return_id2}, false);
-  rc->UpdateFinishedTaskReferences({id1}, false, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences(
+      {return_id1}, {id1}, false, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 4);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id2}, false, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences(
+      {return_id2}, {id2}, false, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 3);
   ASSERT_EQ(out.size(), 1);
-  rc->UpdateFinishedTaskReferences({id1}, false, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences(
+      {return_id2}, {id1}, false, empty_borrower, empty_refs, &out);
   ASSERT_EQ(out.size(), 2);
   ASSERT_FALSE(rc->IsObjectPendingCreation(return_id1));
   ASSERT_FALSE(rc->IsObjectPendingCreation(return_id2));
@@ -532,16 +532,18 @@ TEST_F(ReferenceCountTest, TestBasic) {
 
   // Local & submitted task references.
   rc->AddLocalReference(id1, "");
-  rc->UpdateSubmittedTaskReferences({id1, id2});
+  rc->UpdateSubmittedTaskReferences({return_id1}, {id1, id2});
   rc->AddLocalReference(id2, "");
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   rc->RemoveLocalReference(id1, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id2}, false, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences(
+      {return_id1}, {id2}, false, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 2);
   ASSERT_EQ(out.size(), 0);
-  rc->UpdateFinishedTaskReferences({id1}, false, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences(
+      {return_id1}, {id1}, false, empty_borrower, empty_refs, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
   rc->RemoveLocalReference(id2, &out);
@@ -550,11 +552,11 @@ TEST_F(ReferenceCountTest, TestBasic) {
   out.clear();
 
   // Submitted task with inlined references.
-  rc->UpdateSubmittedTaskReferences({id1});
-  rc->UpdateSubmittedTaskReferences({id2}, {id1}, &out);
+  rc->UpdateSubmittedTaskReferences({return_id1}, {id1});
+  rc->UpdateSubmittedTaskReferences({return_id1}, {id2}, {id1}, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 1);
   ASSERT_EQ(out.size(), 1);
-  rc->UpdateSubmittedTaskReferences({}, {id2}, &out);
+  rc->UpdateSubmittedTaskReferences({return_id1}, {}, {id2}, &out);
   ASSERT_EQ(rc->NumObjectIDsInScope(), 0);
   ASSERT_EQ(out.size(), 2);
   out.clear();
@@ -583,9 +585,9 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   ASSERT_FALSE(rc->SetDeleteCallback(id, callback));
   rc->AddOwnedObject(id, {}, address, "", 0, false, /*add_local_ref=*/false);
   ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
-  rc->UpdateSubmittedTaskReferences({id});
+  rc->UpdateSubmittedTaskReferences({}, {id});
   ASSERT_FALSE(*out_of_scope);
-  rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({}, {id}, false, empty_borrower, empty_refs, &out);
   ASSERT_TRUE(*out_of_scope);
 }
 
@@ -2450,19 +2452,20 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
   ASSERT_FALSE(rc->SetDeleteCallback(id, callback));
   rc->AddOwnedObject(id, {}, address, "", 0, false, /*add_local_ref=*/false);
   ASSERT_TRUE(rc->SetDeleteCallback(id, callback));
-  rc->UpdateObjectsPendingCreation({return_id}, true);
-  rc->UpdateSubmittedTaskReferences({id});
+  rc->UpdateSubmittedTaskReferences({return_id}, {id});
   ASSERT_TRUE(rc->IsObjectPendingCreation(return_id));
   ASSERT_FALSE(*out_of_scope);
-  rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences(
+      {return_id}, {id}, false, empty_borrower, empty_refs, &out);
   ASSERT_FALSE(rc->IsObjectPendingCreation(return_id));
   ASSERT_FALSE(*out_of_scope);
 
   // Unreconstructable objects go out of scope once their lineage ref count
   // reaches 0.
-  rc->UpdateResubmittedTaskReferences({id});
+  rc->UpdateResubmittedTaskReferences({return_id}, {id});
   ASSERT_TRUE(rc->IsObjectPendingCreation(return_id));
-  rc->UpdateFinishedTaskReferences({id}, true, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences(
+      {return_id}, {id}, true, empty_borrower, empty_refs, &out);
   ASSERT_FALSE(rc->IsObjectPendingCreation(return_id));
   ASSERT_TRUE(*out_of_scope);
 }
@@ -2529,11 +2532,11 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
     auto id = ids[i];
     // Submit a dependent task on id.
     ASSERT_TRUE(rc->HasReference(id));
-    rc->UpdateSubmittedTaskReferences({id});
+    rc->UpdateSubmittedTaskReferences({}, {id});
     rc->RemoveLocalReference(id, nullptr);
 
     // The task finishes but is retryable.
-    rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+    rc->UpdateFinishedTaskReferences({}, {id}, false, empty_borrower, empty_refs, &out);
     // We should fail to set the deletion callback because the object has
     // already gone out of scope.
     ASSERT_FALSE(rc->SetDeleteCallback(
@@ -2574,10 +2577,10 @@ TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
       });
 
   // ID1 depends on ID0.
-  rc->UpdateSubmittedTaskReferences({ids[0]});
+  rc->UpdateSubmittedTaskReferences({ids[1]}, {ids[0]});
   rc->RemoveLocalReference(ids[0], nullptr);
   rc->UpdateFinishedTaskReferences(
-      {ids[0]}, /*release_lineage=*/false, empty_borrower, empty_refs, nullptr);
+      {ids[1]}, {ids[0]}, /*release_lineage=*/false, empty_borrower, empty_refs, nullptr);
 
   bool lineage_evicted = false;
   for (const auto &id : ids) {
@@ -2617,22 +2620,22 @@ TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
   ASSERT_TRUE(rc->HasReference(id));
 
   // Submit 2 dependent tasks.
-  rc->UpdateSubmittedTaskReferences({id});
-  rc->UpdateSubmittedTaskReferences({id});
+  rc->UpdateSubmittedTaskReferences({}, {id});
+  rc->UpdateSubmittedTaskReferences({}, {id});
   rc->RemoveLocalReference(id, nullptr);
   ASSERT_TRUE(rc->HasReference(id));
 
   // Both tasks finish, 1 is retryable.
-  rc->UpdateFinishedTaskReferences({id}, true, empty_borrower, empty_refs, &out);
-  rc->UpdateFinishedTaskReferences({id}, false, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({}, {id}, true, empty_borrower, empty_refs, &out);
+  rc->UpdateFinishedTaskReferences({}, {id}, false, empty_borrower, empty_refs, &out);
   // The dependency is no longer in scope, but we still keep a reference to it
   // because it is in the lineage of the retryable task.
   ASSERT_EQ(out.size(), 1);
   ASSERT_TRUE(rc->HasReference(id));
 
   // Simulate retrying the task.
-  rc->UpdateResubmittedTaskReferences({id});
-  rc->UpdateFinishedTaskReferences({id}, true, empty_borrower, empty_refs, &out);
+  rc->UpdateResubmittedTaskReferences({}, {id});
+  rc->UpdateFinishedTaskReferences({}, {id}, true, empty_borrower, empty_refs, &out);
   ASSERT_FALSE(rc->HasReference(id));
   ASSERT_EQ(lineage_deleted.size(), 1);
 }

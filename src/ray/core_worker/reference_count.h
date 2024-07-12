@@ -121,6 +121,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[out] deleted Any objects that are newly out of scope after this
   /// function call.
   void UpdateSubmittedTaskReferences(
+      const std::vector<ObjectID> return_ids,
       const std::vector<ObjectID> &argument_ids_to_add,
       const std::vector<ObjectID> &argument_ids_to_remove = std::vector<ObjectID>(),
       std::vector<ObjectID> *deleted = nullptr) ABSL_LOCKS_EXCLUDED(mutex_);
@@ -130,14 +131,15 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// have already incremented them when the task was first submitted.
   ///
   /// \param[in] argument_ids The arguments of the task to add references for.
-  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids)
+  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> return_ids,
+                                       const std::vector<ObjectID> &argument_ids)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Update object references that were given to a submitted task. The task
   /// may still be borrowing any object IDs that were contained in its
   /// arguments. This should be called when the task finishes.
   ///
-  /// \param[in] argument_ids The object IDs to remove references for.
+  /// \param[in] object_ids The object IDs to remove references for.
   /// \param[in] release_lineage Whether to decrement the arguments' lineage
   /// ref count.
   /// \param[in] worker_addr The address of the worker that executed the task.
@@ -147,7 +149,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// arguments. Some references in this table may still be borrowed by the
   /// worker and/or a task that the worker submitted.
   /// \param[out] deleted The object IDs whos reference counts reached zero.
-  void UpdateFinishedTaskReferences(const std::vector<ObjectID> &argument_ids,
+  void UpdateFinishedTaskReferences(const std::vector<ObjectID> return_ids,
+                                    const std::vector<ObjectID> &argument_ids,
                                     bool release_lineage,
                                     const rpc::Address &worker_addr,
                                     const ReferenceTableProto &borrowed_refs,
@@ -556,9 +559,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] min_bytes_to_evict The minimum number of bytes to evict.
   int64_t EvictLineage(int64_t min_bytes_to_evict);
 
-  /// Update whether the objects are pending creation.
-  void UpdateObjectsPendingCreation(const std::vector<ObjectID> &object_ids,
-                                    bool pending_creation);
+  /// Update that the object is ready to be fetched.
+  void UpdateObjectReady(const ObjectID &object_id);
 
   /// Whether the object is pending creation (the task that creates it is
   /// scheduled/executing).
@@ -800,8 +802,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// any child object is in scope.
     bool has_nested_refs_to_report = false;
 
-    /// Whether the object has no locations in the cluster and
-    /// the task that creates this object is scheduled/executing.
+    /// Whether the task that creates this object is scheduled/executing.
     bool pending_creation = false;
 
     /// Whether or not this object was spilled.

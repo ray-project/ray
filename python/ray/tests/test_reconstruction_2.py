@@ -9,7 +9,6 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.internal_api import memory_summary
 from ray._private.test_utils import Semaphore, SignalActor, wait_for_condition
-import ray.exceptions
 
 # Task status.
 WAITING_FOR_DEPENDENCIES = "PENDING_ARGS_AVAIL"
@@ -497,50 +496,6 @@ def test_reconstruct_freed_object(config, ray_start_cluster, reconstruction_enab
             ray.get(x)
         with pytest.raises(ray.exceptions.ObjectFreedError):
             ray.get(obj)
-
-
-def test_pending_creation(config, ray_start_cluster):
-    config["fetch_fail_timeout_milliseconds"] = 5000
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=0, resources={"head": 1}, _system_config=config)
-    ray.init(address=cluster.address)
-
-    @ray.remote(num_cpus=0, resources={"head": 0.1})
-    class Counter:
-        def __init__(self):
-            self.count = 0
-
-        def inc(self):
-            self.count = self.count + 1
-            return self.count
-
-    counter = Counter.remote()
-
-    @ray.remote(num_cpus=1, max_retries=-1)
-    def generator(counter):
-        if ray.get(counter.inc.remote()) == 1:
-            # first attempt
-            yield np.zeros(10**6, dtype=np.uint8)
-            time.sleep(10000000)
-            yield np.zeros(10**6, dtype=np.uint8)
-        else:
-            time.sleep(10000000)
-            yield np.zeros(10**6, dtype=np.uint8)
-            time.sleep(10000000)
-            yield np.zeros(10**6, dtype=np.uint8)
-
-    worker = cluster.add_node(num_cpus=8)
-    gen = generator.remote(counter)
-    obj = next(gen)
-
-    cluster.remove_node(worker, allow_graceful=False)
-    # After removing the node, the generator task will be retried
-    # and the obj will be reconstructured.
-    cluster.add_node(num_cpus=8)
-
-    # This should raise GetTimeoutError instead of ObjectFetchTimedOutError
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(obj, timeout=10)
 
 
 if __name__ == "__main__":
