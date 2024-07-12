@@ -1250,6 +1250,7 @@ def get_log(
 
     api_server_url = ray_address_to_api_server_url(address)
     media_type = "stream" if follow else "file"
+    output_format = "leading_1" if media_type == "stream" else "text"
 
     options = GetLogOptions(
         node_id=node_id,
@@ -1266,7 +1267,7 @@ def get_log(
         submission_id=submission_id,
         attempt_number=attempt_number,
     )
-    options_dict = {}
+    options_dict = {"format": output_format}
     for field in fields(options):
         option_val = getattr(options, field.name)
         if option_val is not None:
@@ -1279,8 +1280,8 @@ def get_log(
     ) as r:
         if r.status_code != 200:
             raise RayStateApiException(r.text)
-        # For stream we need to handle the prepending char.
-        if media_type == "stream":
+        # For leading_1 format we need to handle the prepending char.
+        if output_format == "leading_1":
             for bytes in r.iter_content(chunk_size=None):
                 bytes = bytearray(bytes)
                 # First byte 1 means success.
@@ -1295,6 +1296,7 @@ def get_log(
                     raise RayStateApiException(error_msg)
                 yield logs
         else:
+            assert output_format == "text"
             for bytes in r.iter_content(chunk_size=None):
                 if encoding is not None:
                     yield bytes.decode(encoding=encoding, errors=errors)

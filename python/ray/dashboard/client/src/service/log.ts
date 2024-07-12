@@ -21,6 +21,10 @@ export type StateApiLogInput = {
    * -1 for all lines.
    */
   maxLines?: number;
+  /**
+   * Use "text" for orignal log, "leading_1" for an error bit for each chunk.
+   */
+  format?: "text" | "leading_1";
 };
 
 export const getStateApiDownloadLogUrl = ({
@@ -29,6 +33,7 @@ export const getStateApiDownloadLogUrl = ({
   taskId,
   actorId,
   suffix,
+  format = "text",
   maxLines = MAX_LINES_FOR_LOGS,
 }: StateApiLogInput) => {
   if (
@@ -51,21 +56,28 @@ export const getStateApiDownloadLogUrl = ({
       : []),
     ...(suffix !== undefined ? [`suffix=${encodeURIComponent(suffix)}`] : []),
     `lines=${maxLines}`,
+    `format=${format}`,
   ];
 
   return `api/v0/logs/file?${variables.join("&")}`;
 };
 
 export const getStateApiLog = async (props: StateApiLogInput) => {
+  props.format = "leading_1";
   const url = getStateApiDownloadLogUrl(props);
   if (url === null) {
     return undefined;
   }
   const resp = await get<string>(url);
-  if (resp.status === 200) {
-    return resp.data;
+  // Handle case where log file is empty.
+  if (resp.status === 200 && resp.data.length === 0) {
+    return "";
   }
-  throw new Error(resp.data);
+  // TODO(aguo): get rid of this first byte check once we support state-api logs without this streaming byte.
+  if (resp.data[0] !== "1") {
+    throw new Error(resp.data.substring(1));
+  }
+  return resp.data.substring(1);
 };
 
 type ListStateApiLogsResponse = {
