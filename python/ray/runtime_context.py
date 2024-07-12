@@ -420,10 +420,16 @@ class RuntimeContext(object):
         for (
             accelerator_resource_name
         ) in ray._private.accelerators.get_all_accelerator_resource_names():
+            # respect placement_group_bundle_index if specified.
             accelerator_ids = worker.get_accelerator_ids_for_accelerator_resource(
                 accelerator_resource_name,
-                f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
+                f"^{accelerator_resource_name}_group_[0-9]+_[0-9A-Za-z]+$",
             )
+            if not accelerator_ids:
+                accelerator_ids = worker.get_accelerator_ids_for_accelerator_resource(
+                    accelerator_resource_name,
+                    f"^{accelerator_resource_name}_group_[0-9A-Za-z]+$",
+                )
             ids_dict[accelerator_resource_name] = [str(id) for id in accelerator_ids]
         return ids_dict
 

@@ -7,6 +7,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
+from ray.util.placement_group import placement_group, PlacementGroupSchedulingStrategy
 
 
 def test_actor_deletion_with_gpus(shutdown_only):
@@ -676,6 +677,49 @@ def test_actor_cuda_visible_devices(shutdown_only):
     assert ray.get(actor.get_cuda_visible_devices.remote()) == "0"
     ray.get(actor.set_cuda_visible_devices.remote("0,1"))
     assert ray.get(actor.get_cuda_visible_devices.remote()) == "0,1"
+
+
+def test_actor_cuda_visible_devices_placement_group_bundle_index(shutdown_only):
+    ray.init(num_cpus=4, num_gpus=2)
+
+    @ray.remote
+    class Actor:
+        def __init__(self) -> None:
+            self.gpu_ids = ray.get_gpu_ids()
+
+        def get_cuda_visible_devices(self):
+            gpu_ids = os.environ["CUDA_VISIBLE_DEVICES"]
+            assert int(gpu_ids) == self.gpu_ids[0]
+            return gpu_ids
+
+    bundles = [{"GPU": 1, "CPU": 2}] * 2
+    pg = placement_group(bundles)
+    pg.ready()
+
+    m1 = [
+        Actor.options(
+            num_gpus=0.1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=i
+            ),
+        ).remote()
+        for i in range(2)
+    ]
+
+    m2 = [
+        Actor.options(
+            num_gpus=0.1,
+            scheduling_strategy=PlacementGroupSchedulingStrategy(
+                placement_group=pg, placement_group_bundle_index=i
+            ),
+        ).remote()
+        for i in range(2)
+    ]
+
+    assert ray.get(m1[0].get_cuda_visible_devices.remote()) == "0"
+    assert ray.get(m1[1].get_cuda_visible_devices.remote()) == "1"
+    assert ray.get(m2[0].get_cuda_visible_devices.remote()) == "0"
+    assert ray.get(m2[1].get_cuda_visible_devices.remote()) == "1"
 
 
 if __name__ == "__main__":
