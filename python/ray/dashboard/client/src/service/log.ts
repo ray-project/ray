@@ -63,8 +63,7 @@ export const getStateApiDownloadLogUrl = ({
 };
 
 export const getStateApiLog = async (props: StateApiLogInput) => {
-  props.format = "leading_1";
-  const url = getStateApiDownloadLogUrl(props);
+  const url = getStateApiDownloadLogUrl({ ...props, format: "leading_1" });
   if (url === null) {
     return undefined;
   }
