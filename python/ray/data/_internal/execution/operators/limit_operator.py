@@ -91,7 +91,7 @@ class LimitOperator(OneToOneOperator):
             )
             # _consumed_rows / _limit is roughly equal to
             # _cur_output_bundles / total output blocks
-            self._estimated_output_blocks = round(
+            self._estimated_num_output_bundles = round(
                 estimated_total_output_rows
                 / self._consumed_rows
                 * self._cur_output_bundles
@@ -113,8 +113,8 @@ class LimitOperator(OneToOneOperator):
         # bundles we will have. We estimate based off the consumption so far.
         if self._execution_completed:
             return self._cur_output_bundles
-        elif self._estimated_output_blocks is not None:
-            return self._estimated_output_blocks
+        elif self._estimated_num_output_bundles is not None:
+            return self._estimated_num_output_bundles
         else:
             return self.input_dependencies[0].num_outputs_total()
 

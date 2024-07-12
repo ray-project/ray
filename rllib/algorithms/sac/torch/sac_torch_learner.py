@@ -42,7 +42,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     # TODO (simon): Set different learning rates for optimizers.
     @override(DQNRainbowTorchLearner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
+        self, module_id: ModuleID, config: AlgorithmConfig = None
     ) -> None:
         # Receive the module.
         module = self._module[module_id]
