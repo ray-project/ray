@@ -1072,7 +1072,11 @@ setup(
         with open(python_filename, "w+") as f:
             f.writelines(python_code)
 
-        gz_filename = os.path.join(tmp_path, "dist", "{name}-{ver}.tar.gz".format(name=package_name, ver=package_version))
+        gz_filename = os.path.join(
+            tmp_path,
+            "dist",
+            "{name}-{ver}.tar.gz".format(name=package_name, ver=package_version),
+        )
         subprocess.check_call(["python", "setup.py", "sdist"])
 
         with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
