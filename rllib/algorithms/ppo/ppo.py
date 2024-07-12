@@ -533,12 +533,17 @@ class PPO(Algorithm):
                 train_batch = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_agent_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
                 )
             else:
                 train_batch = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_env_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
                 )
+            # Return early if all our workers failed.
+            if not train_batch:
+                return {}
             train_batch = train_batch.as_multi_agent()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
             self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
