@@ -246,10 +246,10 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
   return Status::OK();
 }
 
-Status MutableObjectManager::WriteGetObjectBackingStore(const ObjectID &object_id,
-                                                        int64_t data_size,
-                                                        int64_t metadata_size,
-                                                        std::shared_ptr<Buffer> &data) {
+Status MutableObjectManager::GetObjectBackingStore(const ObjectID &object_id,
+                                                   int64_t data_size,
+                                                   int64_t metadata_size,
+                                                   std::shared_ptr<Buffer> &data) {
   RAY_LOG(DEBUG) << "WriteGetObjectBackingStore " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
 

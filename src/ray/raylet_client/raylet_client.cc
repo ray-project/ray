@@ -450,12 +450,13 @@ void raylet::RayletClient::PushMutableObject(
 
     // Only execute the callback once the entire object has been sent.
     bool execute_callback = (i == total_num_chunks - 1);
+    // TODO: Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(
         request,
         [callback, execute_callback](const Status &status,
                                      const rpc::PushMutableObjectReply &reply) {
           if (!status.ok()) {
-            RAY_LOG(INFO) << "Error pushing mutable object: " << status;
+            RAY_LOG(ERROR) << "Error pushing mutable object: " << status;
           }
           if (execute_callback) {
             callback(status, reply);

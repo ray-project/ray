@@ -115,10 +115,10 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// \param[in] metadata_size The size of the metadata in the object.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   /// \return The return status.
-  Status WriteGetObjectBackingStore(const ObjectID &object_id,
-                                    int64_t data_size,
-                                    int64_t metadata_size,
-                                    std::shared_ptr<Buffer> &data);
+  Status GetObjectBackingStore(const ObjectID &object_id,
+                               int64_t data_size,
+                               int64_t metadata_size,
+                               std::shared_ptr<Buffer> &data);
 
   /// Acquires a write lock on the object that prevents readers from reading
   /// until we are done writing. This is safe for concurrent writers.
