@@ -49,3 +49,6 @@ class LogKey(str, Enum):
     FILENAME = "filename"
     LINENO = "lineno"
     EXC_TEXT = "exc_text"
+
+    # Ray logging context
+    TIMESTAMP_NS = "timestamp_ns"
