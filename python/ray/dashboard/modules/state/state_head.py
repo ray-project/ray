@@ -439,7 +439,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                     await response.write(logs)
             except asyncio.CancelledError:
                 # This happens when the client side closes the connection.
-                # Fofce close the connection and do no-op.
+                # Force close the connection and do no-op.
                 response.force_close()
                 raise
             except Exception as e:
