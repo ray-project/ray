@@ -150,9 +150,10 @@ class MutableObjectProvider {
 
   // Listens for local changes to `object_id` and sends the changes to remote nodes via
   // the network.
-  void PollWriterClosure(instrumented_io_context &io_context,
-                         const ObjectID &object_id,
-                         std::shared_ptr<MutableObjectReaderInterface> reader);
+  void PollWriterClosure(
+      instrumented_io_context &io_context,
+      const ObjectID &object_id,
+      std::vector<std::shared_ptr<MutableObjectReaderInterface>> readers);
 
   // Kicks off `io_context`.
   void RunIOContext(instrumented_io_context &io_context);

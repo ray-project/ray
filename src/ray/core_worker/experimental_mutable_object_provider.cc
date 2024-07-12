@@ -60,16 +60,17 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
             boost::asio::executor_work_guard<boost::asio::io_context::executor_type>>(
             io_context.get_executor()));
     client_call_managers_.push_back(std::make_unique<rpc::ClientCallManager>(io_context));
-    // TODO (kevin85421): Create a new reader for each node.
-    std::shared_ptr<MutableObjectReaderInterface> reader =
-        raylet_client_factory_(node_ids[0], *client_call_managers_.back());
-    RAY_CHECK(reader);
+    std::vector<std::shared_ptr<MutableObjectReaderInterface>> readers;
+    for (const NodeID &node_id : node_ids) {
+      readers.push_back(raylet_client_factory_(node_id, *client_call_managers_.back()));
+    }
+    RAY_CHECK(readers.size() > 0);
+
     // TODO(jhumphri): Extend this to support multiple channels. Currently, we must have
     // one thread per channel because the thread blocks on the channel semaphore.
-
     io_context.post(
-        [this, &io_context, object_id, reader]() {
-          PollWriterClosure(io_context, object_id, reader);
+        [this, &io_context, object_id, readers]() {
+          PollWriterClosure(io_context, object_id, readers);
         },
         "experimental::MutableObjectProvider.PollWriter");
     io_threads_.push_back(std::make_unique<std::thread>(
@@ -170,7 +171,7 @@ Status MutableObjectProvider::GetChannelStatus(const ObjectID &object_id,
 void MutableObjectProvider::PollWriterClosure(
     instrumented_io_context &io_context,
     const ObjectID &object_id,
-    std::shared_ptr<MutableObjectReaderInterface> reader) {
+    std::vector<std::shared_ptr<MutableObjectReaderInterface>> readers) {
   std::shared_ptr<RayObject> object;
   // The corresponding ReadRelease() will be automatically called when
   // `object` goes out of scope.
@@ -186,19 +187,20 @@ void MutableObjectProvider::PollWriterClosure(
   RAY_CHECK(object->GetData());
   RAY_CHECK(object->GetMetadata());
 
-  reader->PushMutableObject(
-      object_id,
-      object->GetData()->Size(),
-      object->GetMetadata()->Size(),
-      object->GetData()->Data(),
-      [this, &io_context, object_id, reader](const Status &status,
-                                             const rpc::PushMutableObjectReply &reply) {
-        io_context.post(
-            [this, &io_context, object_id, reader]() {
-              PollWriterClosure(io_context, object_id, reader);
-            },
-            "experimental::MutableObjectProvider.PollWriter");
-      });
+  for (const auto &reader : readers) {
+    reader->PushMutableObject(object_id,
+                              object->GetData()->Size(),
+                              object->GetMetadata()->Size(),
+                              object->GetData()->Data(),
+                              nullptr);
+  }
+
+  // TODO (kevin85421): Is `PushMutableObject` synchronous?
+  io_context.post(
+      [this, &io_context, object_id, readers]() {
+        PollWriterClosure(io_context, object_id, readers);
+      },
+      "experimental::MutableObjectProvider.PollWriter");
 }
 
 void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {
