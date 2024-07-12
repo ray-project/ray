@@ -606,11 +606,17 @@ class ReporterAgent(
             return []
         else:
             workers = {}
-            # windows, get the child process not the runner
-            for child in raylet_proc.children():
-                if child.children():
-                    child = child.children()[0]
-                workers[self._generate_worker_key(child)] = child
+            if sys.platform == "win32":
+                # windows, get the child process not the runner
+                for child in raylet_proc.children():
+                    if child.children():
+                        child = child.children()[0]
+                    workers[self._generate_worker_key(child)] = child
+            else:
+                workers = {
+                    self._generate_worker_key(proc): proc
+                    for proc in raylet_proc.children()
+                }
 
             # We should keep `raylet_proc.children()` in `self` because
             # when `cpu_percent` is first called, it returns the meaningless 0.
