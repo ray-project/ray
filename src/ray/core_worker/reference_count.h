@@ -131,8 +131,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// have already incremented them when the task was first submitted.
   ///
   /// \param[in] argument_ids The arguments of the task to add references for.
-  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> return_ids,
-                                       const std::vector<ObjectID> &argument_ids)
+  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Update object references that were given to a submitted task. The task
@@ -559,8 +558,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] min_bytes_to_evict The minimum number of bytes to evict.
   int64_t EvictLineage(int64_t min_bytes_to_evict);
 
-  /// Update that the object is ready to be fetched.
-  void UpdateObjectReady(const ObjectID &object_id);
+  /// Update whether the object is pending creation.
+  void UpdateObjectPendingCreation(const ObjectID &object_id, bool pending_creation);
 
   /// Whether the object is pending creation (the task that creates it is
   /// scheduled/executing).
