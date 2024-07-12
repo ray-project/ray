@@ -424,7 +424,9 @@ void raylet::RayletClient::PushMutableObject(
     uint64_t metadata_size,
     void *data,
     const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback) {
-  static constexpr uint64_t kMaxGrpcPayloadSize = 1024 * 1024 * 450;  // 450 MiB.
+  // Ray sets the gRPC max payload size to ~512 MiB. We set the max chunk size to a
+  // slightly lower value to allow extra padding just in case.
+  static constexpr uint64_t kMaxGrpcPayloadSize = 1024 * 1024 * 500;  // 500 MiB.
   uint64_t total_size = data_size + metadata_size;
   uint64_t total_num_chunks = total_size / kMaxGrpcPayloadSize;
   // If `total_size` is not a multiple of `kMaxGrpcPayloadSize`, then we need to send an

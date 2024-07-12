@@ -13,6 +13,7 @@ import numpy as np
 import pytest
 
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 import ray
 import ray._private
 import ray.cluster_utils
@@ -1261,8 +1262,39 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
         dag.experimental_compile()
 
 
-def test_large_payload(ray_start_regular):
-    a = Actor.remote(0)
+def test_payload_large(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor).
+    first_node_handle = cluster.add_node(num_cpus=1)
+    # This node is for the reader.
+    second_node_handle = cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
+    # then back to a list to remove duplicates. Then we check that the length of `nodes`
+    # is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote(0)
+
+    def get_node_id(self):
+        return ray.get_runtime_context().get_node_id()
+
+    driver_node = get_node_id(None)
+    nodes.remove(driver_node)
+
+    a = create_actor(nodes[0])
+    a_node = ray.get(a.__ray_call__.remote(get_node_id))
+    assert a_node == nodes[0]
+    # Check that the driver and actor are on different nodes.
+    assert driver_node != a_node
+
     with InputNode() as i:
         dag = a.echo.bind(i)
 

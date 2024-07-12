@@ -938,7 +938,7 @@ def test_put_error(ray_start_cluster):
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
 )
-def test_payload_too_large(ray_start_cluster):
+def test_payload_large(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver.
     first_node_handle = cluster.add_node(num_cpus=1)
@@ -987,7 +987,7 @@ def test_payload_too_large(ray_start_cluster):
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
 )
-def test_payload_resize_too_large(ray_start_cluster):
+def test_payload_resize_large(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver.
     first_node_handle = cluster.add_node(num_cpus=1)
