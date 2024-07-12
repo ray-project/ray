@@ -68,7 +68,7 @@ def test_large_e2e_backpressure(is_flink: bool):
 
     def produce(batch):
         logger.log({"name": "producer_start", "id": [int(x) for x in batch["id"]]})
-        if int(batch["id"][0].item()) % 10 == 0:
+        if (int(batch["id"][0].item()) / 10) % 10 == 0:
             time.sleep(TIME_UNIT * 10)
         else:
             time.sleep(TIME_UNIT)
@@ -103,8 +103,8 @@ def test_large_e2e_backpressure(is_flink: bool):
     ds = ray.data.range(NUM_ROWS_TOTAL, override_num_blocks=NUM_TASKS)
     
     if is_flink:
-        ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK, concurrency=3)
-        ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99, concurrency=5) 
+        ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK, concurrency=2)
+        ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99, concurrency=6) 
     else:
         ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)
         ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99)
@@ -125,8 +125,5 @@ def test_large_e2e_backpressure(is_flink: bool):
 
 if __name__ == "__main__": 
 
-    # Runtime: 203s
-    # test_large_e2e_backpressure(is_flink=True) 
-    
-    
+    test_large_e2e_backpressure(is_flink=True) 
     test_large_e2e_backpressure(is_flink=False)

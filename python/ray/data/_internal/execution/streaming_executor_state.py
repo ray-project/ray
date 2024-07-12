@@ -324,7 +324,7 @@ class OpState:
         # Assume no more than one output.
         assert len(self.op.output_dependencies) <= 1
         for op in self.op.output_dependencies:
-            logger.info(
+            logger.debug(
                 "@mzm: average_bytes_inputs_per_task "
                 f"{op._metrics.average_bytes_inputs_per_task}, "
                 f"average_task_duration: {op._metrics.average_task_duration}, "
@@ -363,7 +363,7 @@ class OpState:
         self.output_budget += time_elapsed * grow_rate
         # Cap output_budget to object_store_memory
         self.output_budget = min(INITIAL_BUDGET, self.output_budget)
-        logger.info(
+        logger.debug(
             f"@mzm INITIAL_BUDGET: {INITIAL_BUDGET}, "
             f"self.output_budget: {self.output_budget}, "
             f"time elapsed: {time_elapsed} "
@@ -384,7 +384,7 @@ class OpState:
         self._replenish_output_budget(resource_manager)
         output_size = self._get_average_ouput_size() or INITIAL_BUDGET
 
-        logger.info(
+        logger.debug(
             f"@mzm output_budget: {self.output_budget}, output_size: {output_size}"
         )
 
@@ -661,7 +661,7 @@ def select_operator_to_run(
     #     ),
     # )
     if ray.data.DataContext.get_current().is_budget_policy:
-        op = ops[0]  # @lsf prefer the producer
+        op = ops[0]  # @lsf prefer the producer 
         return op
     
     selected_op = None
