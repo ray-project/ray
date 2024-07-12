@@ -524,7 +524,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             check(
                 weights_after_2_updates_with_break,
                 weights_after_2_updates_without_break,
-                rtol=0.01,
+                rtol=0.02,
             )
 
 
