@@ -43,7 +43,7 @@ class AggregateFn:
         name: str,
         accumulate_row: Callable[[AggType, T], AggType] = None,
         accumulate_block: Callable[[AggType, Block], AggType] = None,
-        finalize: Callable[[AggType], U] = lambda a: a,
+        finalize: Optional[Callable[[AggType], U]] = None,
     ):
         if (accumulate_row is None and accumulate_block is None) or (
             accumulate_row is not None and accumulate_block is not None
@@ -61,6 +61,9 @@ class AggregateFn:
 
         if not isinstance(name, str):
             raise TypeError("`name` must be provided.")
+
+        if finalize is None:
+            finalize = lambda a: a  # noqa: E731
 
         self.init = init
         self.merge = merge

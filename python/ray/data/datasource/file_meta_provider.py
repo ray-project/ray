@@ -398,7 +398,9 @@ def _fetch_metadata_parallel(
     # dominates the Ray task overhead while ensuring good parallelism.
     # Always launch at least 2 parallel fetch tasks.
     parallelism = max(len(uris) // desired_uris_per_task, 2)
-    metadata_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
+    metadata_fetch_bar = ProgressBar(
+        "Metadata Fetch Progress", total=parallelism, unit="task"
+    )
     fetch_tasks = []
     for uri_chunk in np.array_split(uris, parallelism):
         if len(uri_chunk) == 0:
@@ -420,7 +422,7 @@ def _get_file_infos(
     except OSError as e:
         _handle_read_os_error(e, path)
     if file_info.type == FileType.Directory:
-        for (file_path, file_size) in _expand_directory(path, filesystem):
+        for file_path, file_size in _expand_directory(path, filesystem):
             file_infos.append((file_path, file_size))
     elif file_info.type == FileType.File:
         file_infos.append((path, file_info.size))
