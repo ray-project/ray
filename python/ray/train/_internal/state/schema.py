@@ -66,7 +66,7 @@ class TrainRunInfo(BaseModel):
     )
     run_status: RunStatusEnum = Field(
         description="The current status of the train run. It can be one of the "
-        "following: STARTED, FINISHED, or ERRORED."
+        "following: STARTED, FINISHED, ERRORED, or ABORTED."
     )
     status_detail: str = Field(
         description="Detailed information about the current run status, "
