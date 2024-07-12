@@ -127,10 +127,12 @@ void MutableObjectProvider::HandlePushMutableObject(
                                                total_metadata_size,
                                                info.num_readers,
                                                object_backing_store));
-    RAY_CHECK(object_backing_store);
+  } else {
+    RAY_CHECK_OK(object_manager_->GetObjectBackingStore(info.local_object_id,
+                                                        total_data_size,
+                                                        total_metadata_size,
+                                                        object_backing_store));
   }
-  RAY_CHECK_OK(object_manager_->GetObjectBackingStore(
-      info.local_object_id, total_data_size, total_metadata_size, object_backing_store));
   RAY_CHECK(object_backing_store);
 
   // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
