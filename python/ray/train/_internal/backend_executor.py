@@ -665,12 +665,10 @@ class BackendExecutor:
                 run_status = RunStatusEnum.FINISHED
                 status_detail = ""
 
-            self.state_manager.update_train_run_info(
-                updates=dict(
-                    run_status=run_status,
-                    status_detail=status_detail,
-                    end_time_ms=int(time.time() * 1000),
-                )
+            self.state_manager.end_train_run(
+                run_status=run_status,
+                status_detail=status_detail,
+                end_time_ms=int(time.time() * 1000),
             )
 
     def get_with_failure_handling(self, remote_values):

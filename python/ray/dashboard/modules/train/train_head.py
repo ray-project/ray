@@ -58,7 +58,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         else:
             try:
                 train_runs = await stats_actor.get_all_train_runs.remote()
-                await self._add_actor_status(train_runs)
+                await self._add_actor_status_and_update_run_status(train_runs)
                 # Sort train runs in reverse chronological order
                 train_runs = sorted(
                     train_runs.values(),
@@ -94,14 +94,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             content_type="application/json",
         )
 
-    async def _add_actor_status(self, train_runs):
-        try:
-            from ray.train._internal.state.schema import ActorStatusEnum, RunStatusEnum
-        except ImportError:
-            logger.exception(
-                "Train is not installed. Please run `pip install ray[train]` "
-                "when setting up Ray on your cluster."
-            )
+    async def _add_actor_status_and_update_run_status(self, train_runs):
+        from ray.train._internal.state.schema import ActorStatusEnum, RunStatusEnum
 
         actor_status_table = {}
         try:
@@ -131,6 +125,9 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                 and train_run.run_status == RunStatusEnum.STARTED
             ):
                 train_run.run_status = RunStatusEnum.ABORTED
+                train_run.status_detail = (
+                    "Abnormally terminated by system error or interruption."
+                )
 
     @staticmethod
     def is_minimal_module():

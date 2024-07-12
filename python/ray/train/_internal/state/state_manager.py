@@ -5,6 +5,7 @@ from typing import Any, Dict
 import ray
 from ray.data import Dataset
 from ray.train._internal.state.schema import (
+    RunStatusEnum,
     TrainDatasetInfo,
     TrainRunInfo,
     TrainWorkerInfo,
@@ -85,7 +86,7 @@ class TrainRunStateManager:
             for ds_name, ds in datasets.items()
         ]
 
-        self.train_run_info_dict = dict(
+        updates = dict(
             id=run_id,
             job_id=job_id,
             name=run_name,
@@ -96,10 +97,18 @@ class TrainRunStateManager:
             run_status=run_status,
             status_detail=status_detail,
         )
-        train_run_info = TrainRunInfo(**self.train_run_info_dict)
-        ray.get(self.state_actor.register_train_run.remote(train_run_info))
+        self._update_train_run_info(updates)
 
-    def update_train_run_info(self, updates: Dict[str, Any]) -> None:
+    def end_train_run(
+        self, run_status: RunStatusEnum, status_detail: str, end_time_ms: int
+    ):
+        """Update the train run status when the training is finished."""
+        updates = dict(
+            run_status=run_status, status_detail=status_detail, end_time_ms=end_time_ms
+        )
+        self._update_train_run_info(updates)
+
+    def _update_train_run_info(self, updates: Dict[str, Any]) -> None:
         """Update specific fields of a registered TrainRunInfo instance."""
         self.train_run_info_dict.update(updates)
         train_run_info = TrainRunInfo(**self.train_run_info_dict)
