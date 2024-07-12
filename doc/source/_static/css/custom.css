@@ -390,3 +390,79 @@ table.autosummary tr > td:first-child > p > a > code > span {
   color: var(--pst-color-light);
   text-decoration: underline;
 }
+
+/* Reused from dashpay/docs-core */
+/* These are hacks to hide the pydata-theme search popup behind the readthedocs
+sphinx search extension interface.
+*/
+.search-button__wrapper.show .search-button__search-container,
+.search-button__wrapper.show .search-button__overlay {
+  z-index: 1;
+}
+
+.search-button__wrapper.show .search-button__overlay {
+  display: none;
+}
+
+/* Make sure it doesn't stick out on the sides of the RtD search screen */
+.search-button__wrapper.show .search-button__search-container {
+  width: 15%;
+}
+
+/* Handle actual styling of the RtD search extension's screen */
+.search__outer {
+  background-color: var(--pst-color-on-background);
+  border: var(--pst-color-border);
+  border-radius: 0.25em;
+}
+
+.search__outer__input {
+  background-color: var(--pst-color-on-background);
+  color: var(--pst-color-text-base);
+  font-size: var(--pst-font-size-icon);
+}
+
+.rtd__search__credits {
+  background-color: var(--pst-color-background);
+  color: var(--pst-color-text-muted);
+}
+
+.rtd__search__credits a {
+  color: var(--pst-color-link);
+}
+
+.search__result__content,
+.search__result__subheading,
+.search__error__box {
+  color: var(--pst-color-text-base);
+}
+
+.search__result__subheading span {
+  border-bottom-color: var(--pst-color-text-base);
+}
+
+[data-theme='dark'] .search__outer .search__result__content span,
+[data-theme='dark'] .search__outer .search__result__title span {
+  background-color: var(
+    --pst-color-muted-highlight
+  ); /* Dark mode background color */
+}
+
+.search__outer .search__result__content span,
+.search__outer .search__result__title span {
+  border-bottom-color: var(--pst-color-text-base);
+}
+
+/* Make sure "X" remains visible */
+.search__cross__img {
+  fill: var(--pst-color-text-base);
+}
+
+/* Prevent hover from actually changing the color by setting it to what it
+  already is */
+.outer_div_page_results:hover,
+.search__result__box .active {
+  background-color: var(--pst-color-on-background);
+}
+
+/* End of styling of the RtD search extension's screen */

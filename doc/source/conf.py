@@ -66,6 +66,9 @@ extensions = [
     "sphinx.ext.intersphinx",
 ]
 
+if os.environ.get("READTHEDOCS", None):
+    extensions.append("sphinx_search.extension")
+
 remove_from_toctrees = [
     "cluster/running-applications/job-submission/doc/*",
     "ray-observability/reference/doc/*",
@@ -492,6 +495,8 @@ def setup(app):
 
     doctest.register_optionflag("MOCK")
     app.connect("html-page-context", update_context)
+
+    app.add_js_file("js/pydata-search-close.js")
 
     app.add_config_value("navbar_content_path", "navbar.yml", "env")
     app.connect("config-inited", parse_navbar_config)
