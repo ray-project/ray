@@ -1339,6 +1339,9 @@ class CompiledDAG:
         Helper method to check that the DAG args provided by the user during
         execution are valid according to the defined DAG.
         """
+        if len(args) == 1 and isinstance(args[0], list):
+            args = args[0]
+
         if len(args) != self._input_num_positional_args:
             raise ValueError(
                 "dag.execute() or dag.execute_async() must be "
