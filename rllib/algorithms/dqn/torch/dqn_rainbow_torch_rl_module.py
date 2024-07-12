@@ -17,9 +17,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface,
-)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType, TensorStructType
@@ -37,45 +34,16 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # If we use a noisy encoder. Note, only if the observation
         # space is a flat space we can use a noisy encoder.
         self.uses_noisy_encoder = isinstance(self.encoder, TorchNoisyMLPEncoder)
-        # If we have target networks we need to sync them.
+
+        # If we have target networks ,we need to make them not trainable.
         if not self.inference_only:
-            # We do not want to train the target networks.
-            # AND sync all target nets with the actual (trained) ones.
             self.target_encoder.requires_grad_(False)
-            self.target_encoder.load_state_dict(self.encoder.state_dict())
-
             self.af_target.requires_grad_(False)
-            self.af_target.load_state_dict(self.af.state_dict())
-
             if self.uses_dueling:
                 self.vf_target.requires_grad_(False)
-                self.vf_target.load_state_dict(self.vf.state_dict())
 
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
-
-    @override(RLModuleWithTargetNetworksInterface)
-    def sync_target_networks(self, tau: float) -> None:
-        pairs = [(self.target_encoder, self.encoder), (self.af_target, self.af)] + (
-            # If we have a dueling architecture we need to update the value stream
-            # target, too.
-            [
-                (self.vf_target, self.vf),
-            ]
-            if self.uses_dueling
-            else []
-        )
-        # Loop through all individual networks that have a corresponding target net.
-        for target_net, main_net in pairs:
-            # Get the current parameters from the main network.
-            state_dict = main_net.state_dict()
-            # Use here Polyak averaging.
-            new_target_state_dict = {
-                k: tau * state_dict[k] + (1 - tau) * v
-                for k, v in target_net.state_dict().items()
-            }
-            # Apply the new parameters to the target Q network.
-            target_net.load_state_dict(new_target_state_dict)
 
     # TODO (simon): Refactor to parent method.
     @override(TorchRLModule)

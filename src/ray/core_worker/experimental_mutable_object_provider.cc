@@ -131,22 +131,15 @@ void MutableObjectProvider::HandlePushMutableObject(
   RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
 }
 
-bool MutableObjectProvider::ReaderChannelRegistered(const ObjectID &object_id) {
-  return object_manager_->ReaderChannelRegistered(object_id);
-}
-
-bool MutableObjectProvider::WriterChannelRegistered(const ObjectID &object_id) {
-  return object_manager_->WriterChannelRegistered(object_id);
-}
-
 Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,
                                            int64_t data_size,
                                            const uint8_t *metadata,
                                            int64_t metadata_size,
                                            int64_t num_readers,
-                                           std::shared_ptr<Buffer> &data) {
+                                           std::shared_ptr<Buffer> &data,
+                                           int64_t timeout_ms) {
   return object_manager_->WriteAcquire(
-      object_id, data_size, metadata, metadata_size, num_readers, data);
+      object_id, data_size, metadata, metadata_size, num_readers, data, timeout_ms);
 }
 
 Status MutableObjectProvider::WriteRelease(const ObjectID &object_id) {
@@ -154,8 +147,9 @@ Status MutableObjectProvider::WriteRelease(const ObjectID &object_id) {
 }
 
 Status MutableObjectProvider::ReadAcquire(const ObjectID &object_id,
-                                          std::shared_ptr<RayObject> &result) {
-  return object_manager_->ReadAcquire(object_id, result);
+                                          std::shared_ptr<RayObject> &result,
+                                          int64_t timeout_ms) {
+  return object_manager_->ReadAcquire(object_id, result, timeout_ms);
 }
 
 Status MutableObjectProvider::ReadRelease(const ObjectID &object_id) {
@@ -164,6 +158,11 @@ Status MutableObjectProvider::ReadRelease(const ObjectID &object_id) {
 
 Status MutableObjectProvider::SetError(const ObjectID &object_id) {
   return object_manager_->SetError(object_id);
+}
+
+Status MutableObjectProvider::GetChannelStatus(const ObjectID &object_id,
+                                               bool is_reader) {
+  return object_manager_->GetChannelStatus(object_id, is_reader);
 }
 
 void MutableObjectProvider::PollWriterClosure(
@@ -176,7 +175,7 @@ void MutableObjectProvider::PollWriterClosure(
   Status status = object_manager_->ReadAcquire(object_id, object);
   // Check if the thread returned from ReadAcquire() because the process is exiting, not
   // because there is something to read.
-  if (status.code() == StatusCode::IOError) {
+  if (status.code() == StatusCode::ChannelError) {
     // The process is exiting.
     return;
   }

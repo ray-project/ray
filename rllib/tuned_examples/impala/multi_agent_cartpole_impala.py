@@ -14,7 +14,7 @@ parser.set_defaults(num_agents=2, num_env_runners=4)
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
-register_env("env", lambda cfg: MultiAgentCartPole(config=cfg))
+register_env("multi_cart", lambda cfg: MultiAgentCartPole(config=cfg))
 
 
 config = (
@@ -23,13 +23,14 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment("env", env_config={"num_agents": args.num_agents})
+    .environment("multi_cart", env_config={"num_agents": args.num_agents})
     .training(
-        train_batch_size_per_learner=750,
+        train_batch_size_per_learner=1000,
         grad_clip=30.0,
         grad_clip_by="global_norm",
-        lr=0.00065,
+        lr=0.0005,
         vf_loss_coeff=0.01,
+        entropy_coeff=0.0,
     )
     .rl_module(
         model_config_dict={
@@ -45,7 +46,7 @@ config = (
 
 stop = {
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 400.0 * args.num_agents,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME: 2000000,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: 2500000,
 }
 
 

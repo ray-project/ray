@@ -215,10 +215,6 @@ Updates
     }
     default_batch = SampleBatch(DUMMY_BATCH)
     DUMMY_BATCH = default_batch.as_multi_agent()
-    ADDITIONAL_UPDATE_KWARGS = {
-        "timestep": 0,
-        "sampled_kl_values": {DEFAULT_MODULE_ID: 1e-4},
-    }
 
     learner.build() # needs to be called on the learner before calling any functions
 
@@ -229,44 +225,42 @@ Updates
 
         .. testcode::
 
+            TIMESTEPS = {"num_env_steps_sampled_lifetime": 250}
+
             # This is a blocking update.
-            results = learner_group.update_from_batch(batch=DUMMY_BATCH)
+            results = learner_group.update_from_batch(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
 
             # This is a non-blocking update. The results are returned in a future
             # call to `update_from_batch(..., async_update=True)`
-            _ = learner_group.update_from_batch(batch=DUMMY_BATCH, async_update=True)
+            _ = learner_group.update_from_batch(batch=DUMMY_BATCH, async_update=True, timesteps=TIMESTEPS)
 
             # Artificially wait for async request to be done to get the results
             # in the next call to
             # `LearnerGroup.update_from_batch(..., async_update=True)`.
             time.sleep(5)
             results = learner_group.update_from_batch(
-                batch=DUMMY_BATCH, async_update=True
+                batch=DUMMY_BATCH, async_update=True, timesteps=TIMESTEPS
             )
             # `results` is an already reduced dict, which is the result of
             # reducing over the individual async `update_from_batch(..., async_update=True)`
             # calls.
             assert isinstance(results, dict), results
 
-            # This is an additional non-gradient based update.
-            learner_group.additional_update(**ADDITIONAL_UPDATE_KWARGS)
-
-        When updating a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` you can perform blocking or async updates on batches of data. Async updates are necessary for implementing async algorithms such as APPO/IMPALA.
-        You can perform non-gradient based updates using :py:meth:`~ray.rllib.core.learner.learner_group.LearnerGroup.additional_update`.
+        When updating a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` you can perform blocking or async updates on batches of data.
+        Async updates are necessary for implementing async algorithms such as APPO/IMPALA.
 
     .. tab-item:: Updating a Learner
 
         .. testcode::
 
             # This is a blocking update (given a training batch).
-            result = learner.update_from_batch(batch=DUMMY_BATCH)
-
-            # This is an additional non-gradient based update.
-            learner_group.additional_update(**ADDITIONAL_UPDATE_KWARGS)
+            result = learner.update_from_batch(batch=DUMMY_BATCH, timesteps=TIMESTEPS)
 
         When updating a :py:class:`~ray.rllib.core.learner.learner.Learner` you can only perform blocking updates on batches of data.
-        You can perform non-gradient based updates using :py:meth:`~ray.rllib.core.learner.learner.Learner.additional_update`.
-    
+        You can perform non-gradient based updates before or after the gradient-based ones by overriding
+        :py:meth:`~ray.rllib.core.learner.learner.Learner.before_gradient_based_update` and
+        :py:meth:`~ray.rllib.core.learner.learner.Learner.after_gradient_based_update`.
+
 
 Getting and setting state
 -------------------------
@@ -368,8 +362,8 @@ Implementation
      - set up any optimizers for a RLModule.
    * - :py:meth:`~ray.rllib.core.learner.learner.Learner.compute_loss_for_module()`
      - calculate the loss for gradient based update to a module.
-   * - :py:meth:`~ray.rllib.core.learner.learner.Learner.additional_update_for_module()`
-     - do any non gradient based updates to a RLModule, e.g. target network updates.
+   * - :py:meth:`~ray.rllib.core.learner.learner.Learner.before_gradient_based_update()`
+     - do any non-gradient based updates to a RLModule before(!) the gradient based ones, e.g. add noise to your network.
 
 Starter Example
 ---------------

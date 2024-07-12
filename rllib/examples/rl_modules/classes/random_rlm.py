@@ -1,5 +1,5 @@
 import pathlib
-from typing import Mapping, Any
+from typing import Any, Dict
 
 import gymnasium as gym
 import numpy as np
@@ -59,7 +59,7 @@ class RandomRLModule(RLModule):
         observation_space: gym.Space,
         action_space: gym.Space,
         *,
-        model_config_dict: Mapping[str, Any],
+        model_config_dict: Dict[str, Any],
     ) -> "RLModule":
         return cls(action_space)
 

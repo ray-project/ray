@@ -123,6 +123,8 @@ array-record==0.5.0 ; sys_platform != "darwin" and platform_system != "Windows"
     #   tensorflow-datasets
 arrow==1.3.0
     # via isoduration
+asn1crypto==1.5.1
+    # via snowflake-connector-python
 asttokens==2.4.1
     # via stack-data
 astunparse==1.6.3
@@ -261,12 +263,14 @@ certifi==2023.11.17
     #   msrest
     #   requests
     #   sentry-sdk
+    #   snowflake-connector-python
 cffi==1.16.0
     # via
     #   argon2-cffi-bindings
     #   cryptography
     #   pymunk
     #   pynacl
+    #   snowflake-connector-python
     #   soundfile
 cfn-lint==0.83.3
     # via moto
@@ -274,6 +278,7 @@ charset-normalizer==3.3.2
     # via
     #   aiohttp
     #   requests
+    #   snowflake-connector-python
 chess==1.7.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 chex==0.1.7
@@ -325,6 +330,7 @@ cmdstanpy==1.2.0
     # via prophet
 colorama==0.4.6
     # via
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   bayesian-optimization
     #   semgrep
 coloredlogs==15.0.1
@@ -370,6 +376,7 @@ cryptography==38.0.1
     #   pyjwt
     #   pyopenssl
     #   python-jose
+    #   snowflake-connector-python
     #   sshpubkeys
     #   trustme
 cupy-cuda11x==13.1.0 ; sys_platform != "darwin"
@@ -399,6 +406,8 @@ decorator==5.1.1
     #   moviepy
     #   paramz
     #   tensorflow-probability
+decord==0.6.0
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 deepspeed==0.12.3
     # via -r /ray/ci/../python/requirements/ml/train-requirements.txt
 defusedxml==0.7.1
@@ -510,6 +519,7 @@ filelock==3.13.1
     #   aim
     #   huggingface-hub
     #   ray
+    #   snowflake-connector-python
     #   torch
     #   transformers
     #   virtualenv
@@ -775,6 +785,7 @@ idna==3.7
     #   httpx
     #   jsonschema
     #   requests
+    #   snowflake-connector-python
     #   trustme
     #   yarl
 imageio==2.31.1
@@ -1235,6 +1246,7 @@ numpy==1.24.4
     #   cupy-cuda11x
     #   dask
     #   datasets
+    #   decord
     #   deepspeed
     #   dm-control
     #   dm-env
@@ -1429,6 +1441,7 @@ packaging==21.3
     #   ray
     #   scikit-image
     #   semgrep
+    #   snowflake-connector-python
     #   sphinx
     #   statsmodels
     #   tensorboardx
@@ -1515,6 +1528,7 @@ platformdirs==3.11.0
     # via
     #   black
     #   jupyter-core
+    #   snowflake-connector-python
     #   virtualenv
 plotly==5.18.0
     # via
@@ -1674,6 +1688,7 @@ pyjwt==2.8.0
     #   azure-cli-core
     #   databricks-cli
     #   msal
+    #   snowflake-connector-python
 pylance==0.10.18
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 pymars==0.10.0
@@ -1699,6 +1714,7 @@ pyopenssl==23.0.0
     #   azure-cli-core
     #   gcs-oauth2-boto-plugin
     #   gsutil
+    #   snowflake-connector-python
     #   vapi-runtime
 pyparsing==3.1.1
     # via
@@ -1801,6 +1817,7 @@ pytz==2022.7.1
     #   aim
     #   mlflow
     #   pandas
+    #   snowflake-connector-python
 pyu2f==0.1.5
     # via google-reauth
 pyvmomi==8.0.2.0.1
@@ -1904,6 +1921,7 @@ requests==2.31.0
     #   responses
     #   segment-analytics-python
     #   semgrep
+    #   snowflake-connector-python
     #   sphinx
     #   tensorboard
     #   tensorflow-datasets
@@ -2108,8 +2126,12 @@ sniffio==1.3.0
     #   httpx
 snowballstemmer==2.2.0
     # via sphinx
+snowflake-connector-python==3.11.0
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 sortedcontainers==2.4.0
-    # via distributed
+    # via
+    #   distributed
+    #   snowflake-connector-python
 soundfile==0.12.1
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 soupsieve==2.5
@@ -2266,7 +2288,9 @@ tomli==2.0.1
     #   pytest
     #   semgrep
 tomlkit==0.12.3
-    # via yq
+    # via
+    #   snowflake-connector-python
+    #   yq
 toolz==0.12.0
     # via
     #   altair
@@ -2413,6 +2437,7 @@ typing-extensions==4.8.0
     #   pydantic-core
     #   pytorch-lightning
     #   semgrep
+    #   snowflake-connector-python
     #   tensorflow
     #   torch
     #   typer

@@ -3,7 +3,7 @@ import gymnasium as gym
 from ray.rllib.algorithms.impala import ImpalaConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
-from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn import TinyAtariCNN
+from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm import TinyAtariCNN
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -21,7 +21,7 @@ parser.add_argument(
     "3 CNN layers ([32, 4, 2, same], [64, 4, 2, same], [256, 11, 1, valid]) for the "
     "base features and then a CNN pi-head with an output of [num-actions, 1, 1] and "
     "a Linear(1) layer for the values. The actual RLModule class used can be found "
-    "here: ray.rllib.examples.rl_modules.classes.tiny_atari_cnn",
+    "here: ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm",
 )
 args = parser.parse_args()
 
