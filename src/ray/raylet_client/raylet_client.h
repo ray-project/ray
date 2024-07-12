@@ -201,11 +201,10 @@ class MutableObjectReaderInterface {
   /// \param metadata_size The size of the metadata to write to the mutable object on this
   /// local node.
   /// \param data The data and metadata to write. This is formatted as (data | metadata).
-  virtual void PushMutableObject(
-      const ObjectID &writer_object_id,
-      uint64_t data_size,
-      uint64_t metadata_size,
-      void *data) = 0;
+  virtual void PushMutableObject(const ObjectID &writer_object_id,
+                                 uint64_t data_size,
+                                 uint64_t metadata_size,
+                                 void *data) = 0;
 };
 
 class RayletClientInterface : public PinObjectsInterface,

@@ -418,11 +418,10 @@ void raylet::RayletClient::RegisterMutableObjectReader(
   grpc_client_->RegisterMutableObject(request, callback);
 }
 
-void raylet::RayletClient::PushMutableObject(
-    const ObjectID &writer_object_id,
-    uint64_t data_size,
-    uint64_t metadata_size,
-    void *data) {
+void raylet::RayletClient::PushMutableObject(const ObjectID &writer_object_id,
+                                             uint64_t data_size,
+                                             uint64_t metadata_size,
+                                             void *data) {
   rpc::PushMutableObjectRequest request;
   request.set_writer_object_id(writer_object_id.Binary());
   request.set_data_size(data_size);
@@ -431,8 +430,7 @@ void raylet::RayletClient::PushMutableObject(
   // metadata).
   request.set_data(data, data_size + metadata_size);
   grpc_client_->PushMutableObject(
-      request,
-      [](const Status &status, const rpc::PushMutableObjectReply &reply) {
+      request, [](const Status &status, const rpc::PushMutableObjectReply &reply) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Error pushing mutable object: " << status;
         }
