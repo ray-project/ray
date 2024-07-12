@@ -2,6 +2,11 @@ group: Pre-release checks
 depends_on:
   - forge
 steps:
+  - block: "Run pre-release checks"
+    if: build.env("RAY_VERSION") != null
+    key: block-pre-release-checks
+    depends_on: []
+
   - label: "Check release blockers"
     key: check-release-blockers
     instance_type: small_branch

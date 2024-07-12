@@ -44,6 +44,9 @@ from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.operators.all_to_all_operator import (
@@ -91,7 +94,7 @@ from ray.data.datasource import Connection, Datasink, FilenameProvider
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
@@ -122,6 +125,15 @@ TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
 
 CollatedData = TypeVar("CollatedData")
 TorchBatchType = Union[Dict[str, "torch.Tensor"], CollatedData]
+
+BT_API_GROUP = "Basic Transformations"
+SSR_API_GROUP = "Sorting, Shuffling and Repartitioning"
+SMD_API_GROUP = "Splitting and Merging datasets"
+GGA_API_GROUP = "Grouped and Global aggregations"
+CD_API_GROUP = "Consuming Data"
+IOC_API_GROUP = "I/O and Conversion"
+IM_API_GROUP = "Inspecting Metadata"
+E_API_GROUP = "Execution"
 
 
 @PublicAPI
@@ -229,6 +241,7 @@ class Dataset:
         else:
             return _as(ds._plan.copy(), ds._logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], Dict[str, Any]],
@@ -367,6 +380,7 @@ class Dataset:
         """Returns the dataset name"""
         return self._plan._dataset_name
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def map_batches(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
@@ -650,6 +664,7 @@ class Dataset:
         logical_plan = LogicalPlan(map_batches_op)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def add_column(
         self,
         col: str,
@@ -719,6 +734,7 @@ class Dataset:
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def drop_columns(
         self,
         cols: List[str],
@@ -774,6 +790,7 @@ class Dataset:
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def select_columns(
         self,
         cols: List[str],
@@ -829,6 +846,7 @@ class Dataset:
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
@@ -948,6 +966,7 @@ class Dataset:
         logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def filter(
         self,
         fn: UserDefinedFunction[Dict[str, Any], bool],
@@ -1013,6 +1032,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
+    @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
         self,
         num_blocks: int,
@@ -1070,6 +1090,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
+    @PublicAPI(api_group=SSR_API_GROUP)
     def random_shuffle(
         self,
         *,
@@ -1119,6 +1140,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
+    @PublicAPI(api_group=SSR_API_GROUP)
     def randomize_block_order(
         self,
         *,
@@ -1154,6 +1176,7 @@ class Dataset:
         logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
     ) -> "Dataset":
@@ -1210,6 +1233,7 @@ class Dataset:
         return self.map_batches(random_sample, batch_format=None)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=SMD_API_GROUP)
     def streaming_split(
         self,
         n: int,
@@ -1303,6 +1327,7 @@ class Dataset:
         return StreamSplitDataIterator.create(self, n, equal, locality_hints)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=SMD_API_GROUP)
     def split(
         self, n: int, *, equal: bool = False, locality_hints: Optional[List[Any]] = None
     ) -> List["MaterializedDataset"]:
@@ -1527,6 +1552,7 @@ class Dataset:
         return split_datasets
 
     @ConsumptionAPI
+    @PublicAPI(api_group=SMD_API_GROUP)
     def split_at_indices(self, indices: List[int]) -> List["MaterializedDataset"]:
         """Materialize and split the dataset at the given indices (like ``np.split``).
 
@@ -1601,6 +1627,7 @@ class Dataset:
         return splits
 
     @ConsumptionAPI
+    @PublicAPI(api_group=SMD_API_GROUP)
     def split_proportionately(
         self, proportions: List[float]
     ) -> List["MaterializedDataset"]:
@@ -1681,6 +1708,7 @@ class Dataset:
         return self.split_at_indices(split_indices)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=SMD_API_GROUP)
     def train_test_split(
         self,
         test_size: Union[int, float],
@@ -1742,6 +1770,7 @@ class Dataset:
                 )
             return ds.split_at_indices([ds_length - test_size])
 
+    @PublicAPI(api_group=SMD_API_GROUP)
     def union(self, *other: List["Dataset"]) -> "Dataset":
         """Concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
@@ -1788,6 +1817,7 @@ class Dataset:
         )
 
     @AllToAllAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def groupby(
         self,
         key: Union[str, List[str], None],
@@ -1841,6 +1871,7 @@ class Dataset:
         return GroupedData(self, key)
 
     @AllToAllAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def unique(self, column: str) -> List[Any]:
         """List the unique elements in a given column.
 
@@ -1884,6 +1915,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
         """Aggregate values using one or more functions.
 
@@ -1924,6 +1956,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -1967,6 +2000,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -2010,6 +2044,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -2053,6 +2088,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
@@ -2096,6 +2132,7 @@ class Dataset:
 
     @AllToAllAPI
     @ConsumptionAPI
+    @PublicAPI(api_group=GGA_API_GROUP)
     def std(
         self,
         on: Optional[Union[str, List[str]]] = None,
@@ -2152,6 +2189,7 @@ class Dataset:
         return self._aggregate_result(ret)
 
     @AllToAllAPI
+    @PublicAPI(api_group=SSR_API_GROUP)
     def sort(
         self,
         key: Union[str, List[str], None] = None,
@@ -2217,6 +2255,7 @@ class Dataset:
         logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=SMD_API_GROUP)
     def zip(self, other: "Dataset") -> "Dataset":
         """Materialize and zip the columns of this dataset with the columns of another.
 
@@ -2254,6 +2293,7 @@ class Dataset:
         logical_plan = LogicalPlan(op)
         return Dataset(plan, logical_plan)
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def limit(self, limit: int) -> "Dataset":
         """Truncate the dataset to the first ``limit`` rows.
 
@@ -2281,6 +2321,7 @@ class Dataset:
         return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def take_batch(
         self, batch_size: int = 20, *, batch_format: Optional[str] = "default"
     ) -> DataBatch:
@@ -2340,6 +2381,7 @@ class Dataset:
         return res
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def take(self, limit: int = 20) -> List[Dict[str, Any]]:
         """Return up to ``limit`` rows from the :class:`Dataset`.
 
@@ -2390,6 +2432,7 @@ class Dataset:
         return output
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def take_all(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         """Return all of the rows in this :class:`Dataset`.
 
@@ -2431,6 +2474,7 @@ class Dataset:
         return output
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def show(self, limit: int = 20) -> None:
         """Print up to the given number of rows from the :class:`Dataset`.
 
@@ -2463,6 +2507,7 @@ class Dataset:
         datasource_metadata="row count",
         pattern="Examples:",
     )
+    @PublicAPI(api_group=IM_API_GROUP)
     def count(self) -> int:
         """Count the number of rows in the dataset.
 
@@ -2504,6 +2549,7 @@ class Dataset:
         extra_condition="or if ``fetch_if_missing=True`` (the default)",
         pattern="Time complexity:",
     )
+    @PublicAPI(api_group=IM_API_GROUP)
     def schema(self, fetch_if_missing: bool = True) -> Optional["Schema"]:
         """Return the schema of the dataset.
 
@@ -2548,6 +2594,7 @@ class Dataset:
         extra_condition="or if ``fetch_if_missing=True`` (the default)",
         pattern="Time complexity:",
     )
+    @PublicAPI(api_group=IM_API_GROUP)
     def columns(self, fetch_if_missing: bool = True) -> Optional[List[str]]:
         """Returns the columns of this Dataset.
 
@@ -2575,6 +2622,7 @@ class Dataset:
             return schema.names
         return None
 
+    @PublicAPI(api_group=IM_API_GROUP)
     def num_blocks(self) -> int:
         """Return the number of blocks of this :class:`Dataset`.
 
@@ -2594,6 +2642,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IM_API_GROUP)
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
 
@@ -2613,6 +2662,7 @@ class Dataset:
         return sum(m.size_bytes for m in metadata)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IM_API_GROUP)
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
 
@@ -2629,6 +2679,7 @@ class Dataset:
         return list(set(self._plan.input_files()))
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def write_parquet(
         self,
         path: str,
@@ -2637,7 +2688,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
@@ -2709,6 +2760,9 @@ class Dataset:
                         #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
         """  # noqa: E501
+        if arrow_parquet_args_fn is None:
+            arrow_parquet_args_fn = lambda: {}  # noqa: E731
+
         datasink = ParquetDatasink(
             path,
             arrow_parquet_args_fn=arrow_parquet_args_fn,
@@ -2727,6 +2781,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def write_json(
         self,
         path: str,
@@ -2735,7 +2790,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        pandas_json_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        pandas_json_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
@@ -2817,6 +2872,9 @@ class Dataset:
                 :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
         """
+        if pandas_json_args_fn is None:
+            pandas_json_args_fn = lambda: {}  # noqa: E731
+
         datasink = JSONDatasink(
             path,
             pandas_json_args_fn=pandas_json_args_fn,
@@ -2834,7 +2892,7 @@ class Dataset:
             concurrency=concurrency,
         )
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI
     def write_images(
         self,
@@ -2907,6 +2965,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def write_csv(
         self,
         path: str,
@@ -2915,7 +2974,7 @@ class Dataset:
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        arrow_csv_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        arrow_csv_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         num_rows_per_file: Optional[int] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
@@ -2995,6 +3054,9 @@ class Dataset:
                     #pyarrow.csv.write_csv>`_
                 when writing each block to a file.
         """
+        if arrow_csv_args_fn is None:
+            arrow_csv_args_fn = lambda: {}  # noqa: E731
+
         datasink = CSVDatasink(
             path,
             arrow_csv_args_fn=arrow_csv_args_fn,
@@ -3013,6 +3075,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def write_tfrecords(
         self,
         path: str,
@@ -3107,8 +3170,8 @@ class Dataset:
             concurrency=concurrency,
         )
 
-    @PublicAPI(stability="alpha")
     @ConsumptionAPI
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     def write_webdataset(
         self,
         path: str,
@@ -3193,6 +3256,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def write_numpy(
         self,
         path: str,
@@ -3347,7 +3411,7 @@ class Dataset:
             concurrency=concurrency,
         )
 
-    @PublicAPI(stability="alpha")
+    @PublicAPI(stability="alpha", api_group=IOC_API_GROUP)
     @ConsumptionAPI
     def write_mongo(
         self,
@@ -3562,6 +3626,7 @@ class Dataset:
         ),
         pattern="Returns:",
     )
+    @PublicAPI(api_group=CD_API_GROUP)
     def iterator(self) -> DataIterator:
         """Return a :class:`~ray.data.DataIterator` over this dataset.
 
@@ -3573,6 +3638,7 @@ class Dataset:
         return DataIteratorImpl(self)
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def iter_rows(
         self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
     ) -> Iterable[Dict[str, Any]]:
@@ -3602,6 +3668,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def iter_batches(
         self,
         *,
@@ -3672,6 +3739,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def iter_torch_batches(
         self,
         *,
@@ -3778,6 +3846,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=CD_API_GROUP)
     def iter_tf_batches(
         self,
         *,
@@ -3860,6 +3929,7 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_torch(
         self,
         *,
@@ -3986,6 +4056,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_tf(
         self,
         feature_columns: Union[str, List[str]],
@@ -4109,6 +4180,7 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_dask(
         self,
         meta: Union[
@@ -4166,14 +4238,14 @@ class Dataset:
         dask.config.set(scheduler=ray_dask_get)
 
         @dask.delayed
-        def block_to_df(block: Block):
-            if isinstance(block, (ray.ObjectRef, ClientObjectRef)):
+        def block_to_df(block_ref: ObjectRef[Block]) -> pd.DataFrame:
+            if isinstance(block_ref, (ray.ObjectRef, ClientObjectRef)):
                 raise ValueError(
                     "Dataset.to_dask() must be used with Dask-on-Ray, please "
                     "set the Dask scheduler to ray_dask_get (located in "
                     "ray.util.dask)."
                 )
-            return _block_to_df(block)
+            return _block_to_df(block_ref)
 
         if meta is None:
             from ray.data.extensions import TensorDtype
@@ -4212,14 +4284,20 @@ class Dataset:
                 else:
                     meta = schema.empty_table().to_pandas()
 
+        dfs = []
+        for ref_bundle in self.iter_internal_ref_bundles():
+            for block_ref in ref_bundle.block_refs:
+                dfs.append(block_to_df(block_ref))
+
         ddf = dd.from_delayed(
-            [block_to_df(block) for block in self.get_internal_block_refs()],
+            dfs,
             meta=meta,
             verify_meta=verify_meta,
         )
         return ddf
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_mars(self) -> "mars.dataframe.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
@@ -4253,6 +4331,7 @@ class Dataset:
         return op(index_value=index_value, columns_value=columns_value, dtypes=dtypes)
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_modin(self) -> "modin.pandas.dataframe.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
@@ -4266,7 +4345,7 @@ class Dataset:
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
         underlying data, consider using :meth:`.to_arrow_refs` or
-        :meth:`.get_internal_block_refs`.
+        :meth:`.iter_internal_ref_bundles`.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -4280,6 +4359,7 @@ class Dataset:
         return from_partitions(pd_objs, axis=0)
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_spark(self, spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
@@ -4299,11 +4379,13 @@ class Dataset:
         schema = self.schema()
         if isinstance(schema, Schema):
             schema = schema.base_schema
-        return raydp.spark.ray_dataset_to_spark_dataframe(
-            spark, schema, self.get_internal_block_refs()
-        )
+
+        ref_bundles = self.iter_internal_ref_bundles()
+        block_refs = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
+        return raydp.spark.ray_dataset_to_spark_dataframe(spark, schema, block_refs)
 
     @ConsumptionAPI(pattern="Time complexity:")
+    @PublicAPI(api_group=IOC_API_GROUP)
     def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
         """Convert this :class:`~ray.data.Dataset` to a single pandas DataFrame.
 
@@ -4343,10 +4425,12 @@ class Dataset:
                     f"{count} rows will fit in local memory, set "
                     "ds.to_pandas(limit=None) to disable limits."
                 )
-        blocks = self.get_internal_block_refs()
+        bundles = self.iter_internal_ref_bundles()
         output = DelegatingBlockBuilder()
-        for block in blocks:
-            output.add_block(ray.get(block))
+
+        for bundle in bundles:
+            for block_ref in bundle.block_refs:
+                output.add_block(ray.get(block_ref))
         block = output.build()
         return _block_to_df(block)
 
@@ -4360,7 +4444,7 @@ class Dataset:
 
         This function induces a copy of the data. For zero-copy access to the
         underlying data, consider using :meth:`Dataset.to_arrow_refs` or
-        :meth:`Dataset.get_internal_block_refs`.
+        :meth:`Dataset.iter_internal_ref_bundles`.
 
         Examples:
             >>> import ray
@@ -4376,7 +4460,11 @@ class Dataset:
         """
 
         block_to_df = cached_remote_fn(_block_to_df)
-        return [block_to_df.remote(block) for block in self.get_internal_block_refs()]
+        pandas_refs = []
+        for bundle in self.iter_internal_ref_bundles():
+            for block_ref in bundle.block_refs:
+                pandas_refs.append(block_to_df.remote(block_ref))
+        return pandas_refs
 
     @DeveloperAPI
     def to_numpy_refs(
@@ -4388,7 +4476,7 @@ class Dataset:
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
         underlying data, consider using :meth:`Dataset.to_arrow_refs` or
-        :meth:`Dataset.get_internal_block_refs`.
+        :meth:`Dataset.iter_internal_ref_bundles`.
 
         Examples:
             >>> import ray
@@ -4408,10 +4496,11 @@ class Dataset:
             A list of remote NumPy ndarrays created from this dataset.
         """
         block_to_ndarray = cached_remote_fn(_block_to_ndarray)
-        return [
-            block_to_ndarray.remote(block, column=column)
-            for block in self.get_internal_block_refs()
-        ]
+        numpy_refs = []
+        for bundle in self.iter_internal_ref_bundles():
+            for block_ref in bundle.block_refs:
+                numpy_refs.append(block_to_ndarray.remote(block_ref, column=column))
+        return numpy_refs
 
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
@@ -4439,18 +4528,21 @@ class Dataset:
         """
         import pyarrow as pa
 
-        blocks: List[ObjectRef["pyarrow.Table"]] = self.get_internal_block_refs()
+        ref_bundles: Iterator[RefBundle] = self.iter_internal_ref_bundles()
+        block_refs: List[
+            ObjectRef["pyarrow.Table"]
+        ] = _ref_bundles_iterator_to_block_refs_list(ref_bundles)
         # Schema is safe to call since we have already triggered execution with
-        # get_internal_block_refs.
+        # iter_internal_ref_bundles.
         schema = self.schema(fetch_if_missing=True)
         if isinstance(schema, Schema):
             schema = schema.base_schema
         if isinstance(schema, pa.Schema):
             # Zero-copy path.
-            return blocks
+            return block_refs
 
         block_to_arrow = cached_remote_fn(_block_to_arrow)
-        return [block_to_arrow.remote(block) for block in blocks]
+        return [block_to_arrow.remote(block) for block in block_refs]
 
     @ConsumptionAPI(pattern="Args:")
     def to_random_access_dataset(
@@ -4483,6 +4575,7 @@ class Dataset:
         return RandomAccessDataset(self, key, num_workers=num_workers)
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
+    @PublicAPI(api_group=E_API_GROUP)
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this dataset into object store memory.
 
@@ -4531,6 +4624,7 @@ class Dataset:
         output._plan.execute()  # No-op that marks the plan as fully executed.
         return output
 
+    @PublicAPI(api_group=IM_API_GROUP)
     def stats(self) -> str:
         """Returns a string containing execution timing information.
 
@@ -4599,8 +4693,8 @@ class Dataset:
         self._synchronize_progress_bar()
         return iter_ref_bundles
 
+    @Deprecated
     @ConsumptionAPI(pattern="Examples:")
-    @DeveloperAPI
     def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
         """Get a list of references to the underlying blocks of this dataset.
 
@@ -4616,8 +4710,10 @@ class Dataset:
         Returns:
             A list of references to this dataset's blocks.
         """
-        # TODO(scottjlee): replace get_internal_block_refs() usages with
-        # iter_internal_ref_bundles()
+        logger.warning(
+            "`Dataset.get_internal_block_refs()` is deprecated. Use "
+            "`Dataset.iter_internal_ref_bundles()` instead.",
+        )
         block_refs = self._plan.execute().block_refs
         self._synchronize_progress_bar()
         return block_refs
@@ -4937,13 +5033,19 @@ class Dataset:
 
     def _block_num_rows(self) -> List[int]:
         get_num_rows = cached_remote_fn(_get_num_rows)
-        return ray.get([get_num_rows.remote(b) for b in self.get_internal_block_refs()])
+        num_rows = []
+        for ref_bundle in self.iter_internal_ref_bundles():
+            for block_ref in ref_bundle.block_refs:
+                num_rows.append(get_num_rows.remote(block_ref))
+        return ray.get(num_rows)
 
     def _block_size_bytes(self) -> List[int]:
         get_size_bytes = cached_remote_fn(_get_size_bytes)
-        return ray.get(
-            [get_size_bytes.remote(b) for b in self.get_internal_block_refs()]
-        )
+        size_bytes = []
+        for ref_bundle in self.iter_internal_ref_bundles():
+            for block_ref in ref_bundle.block_refs:
+                size_bytes.append(get_size_bytes.remote(block_ref))
+        return ray.get(size_bytes)
 
     def _meta_count(self) -> Optional[int]:
         return self._plan.meta_count()
@@ -5102,7 +5204,7 @@ def _get_size_bytes(block: Block) -> int:
     return block.size_bytes()
 
 
-def _block_to_df(block: Block):
+def _block_to_df(block: Block) -> "pandas.DataFrame":
     block = BlockAccessor.for_block(block)
     return block.to_pandas()
 

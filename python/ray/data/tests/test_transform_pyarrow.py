@@ -444,7 +444,8 @@ def test_fallback_to_pandas_on_incompatible_data(
     # Ray Data will fall back to using Pandas.
     ds = _create_datasset(op, data)
     ds = ds.materialize()
-    block = ray.get(ds.get_internal_block_refs()[0])
+    bundles = ds.iter_internal_ref_bundles()
+    block = ray.get(next(bundles).block_refs[0])
     assert isinstance(block, pd.DataFrame)
 
 
