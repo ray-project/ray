@@ -121,6 +121,7 @@ if __name__ == "__main__":
     do_link("widgets", force=args.yes, skip_list=args.skip)
     do_link("cluster_utils.py", force=args.yes, skip_list=args.skip)
     do_link("_private", force=args.yes, skip_list=args.skip)
+    do_link("dashboard", force=args.yes, skip_list=args.skip)
 
     if args.extras is not None:
         for package in args.extras:
