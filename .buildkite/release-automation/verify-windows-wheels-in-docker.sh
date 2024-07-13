@@ -23,6 +23,6 @@ cp /c/workdir/release/util/sanity_check.py /c/tmp/verify/release/util/sanity_che
 
 docker build -t rayproject/win-verifier /c/tmp/verify
 
-/c/tmp/winpty/winpty-0.4.3-msys2-2.7.0-x64/bin/winpty.exe docker run -it --rm --env RAY_VERSION --env RAY_COMMIT rayproject/win-verifier
+/c/tmp/winpty/winpty-0.4.3-msys2-2.7.0-x64/bin/winpty.exe docker run -t --rm --env RAY_VERSION --env RAY_COMMIT rayproject/win-verifier
 
 # python -c "import time; time.sleep(1000000)"
