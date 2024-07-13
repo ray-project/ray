@@ -456,8 +456,8 @@ void raylet::RayletClient::PushMutableObject(
     // TODO: Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(
         request,
-        [callback, execute_callback, &wait](const Status &status,
-                                            const rpc::PushMutableObjectReply &reply) {
+        [callback, execute_callback](const Status &status,
+                                     const rpc::PushMutableObjectReply &reply) {
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Error pushing mutable object: " << status;
           }
