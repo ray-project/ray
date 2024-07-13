@@ -112,11 +112,22 @@ void MutableObjectProvider::HandlePushMutableObject(
   size_t total_data_size = request.total_data_size();
   size_t total_metadata_size = request.total_metadata_size();
 
-  uint64_t written_so_far = request.written_so_far();
+  uint64_t offset = request.offset();
   uint64_t chunk_size = request.chunk_size();
 
+  uint64_t tmp_written_so_far = 0;
+  {
+    absl::MutexLock guard(&written_so_far_lock_);
+
+    tmp_written_so_far = written_so_far_[writer_object_id];
+    written_so_far_[writer_object_id] += chunk_size;
+    if (written_so_far_[writer_object_id] == total_size) {
+      written_so_far_[writer_object_id] = 0;
+    }
+  }
+
   std::shared_ptr<Buffer> object_backing_store;
-  if (!written_so_far) {
+  if (!tmp_written_so_far) {
     // We set `metadata` to nullptr since the metadata is at the end of the object, which
     // we will not have until the last chunk is received (or until the two last chunks are
     // received, if the metadata happens to span both). The metadata will end up being
@@ -138,12 +149,10 @@ void MutableObjectProvider::HandlePushMutableObject(
   // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
   // above checks that the buffer size is large enough to hold both the data and the
   // metadata.
-  memcpy(object_backing_store->Data() + written_so_far,
-         request.payload().data(),
-         chunk_size);
+  memcpy(object_backing_store->Data() + offset, request.payload().data(), chunk_size);
 
   size_t total_size = total_data_size + total_metadata_size;
-  size_t total_written = written_so_far + chunk_size;
+  size_t total_written = tmp_written_so_far + chunk_size;
   RAY_CHECK_LE(total_written, total_size);
   if (total_written == total_size) {
     // The entire object has been written, so call `WriteRelease()`.

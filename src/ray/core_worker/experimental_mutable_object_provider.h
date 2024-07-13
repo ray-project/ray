@@ -193,6 +193,13 @@ class MutableObjectProvider {
   // and then send the changes to remote nodes via the network.
   std::vector<std::unique_ptr<std::thread>> io_threads_;
 
+  // Protects the `written_so_far_` map.
+  absl::Mutex written_so_far_lock_;
+  // For objects larger than the gRPC max payload size *that this node receives from a
+  // writer node*, this map tracks how many bytes have been received so far for a single
+  // object write.
+  std::unordered_map<ObjectID, uint64_t> written_so_far_;
+
   friend class MutableObjectProvider_MutableObjectBufferReadRelease_Test;
 };
 

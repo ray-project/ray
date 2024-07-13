@@ -444,12 +444,12 @@ void raylet::RayletClient::PushMutableObject(
 
     uint64_t chunk_size = (i < total_num_chunks - 1) ? kMaxGrpcPayloadSize
                                                      : (total_size % kMaxGrpcPayloadSize);
-    uint64_t written_so_far = i * kMaxGrpcPayloadSize;
-    request.set_written_so_far(written_so_far);
+    uint64_t offset = i * kMaxGrpcPayloadSize;
+    request.set_offset(offset);
     request.set_chunk_size(chunk_size);
     // This assumes that the format of the object is a contiguous buffer of (data |
     // metadata).
-    request.set_payload(static_cast<char *>(data) + written_so_far, chunk_size);
+    request.set_payload(static_cast<char *>(data) + offset, chunk_size);
 
     // Only execute the callback once the entire object has been sent.
     bool execute_callback = (i == total_num_chunks - 1);
