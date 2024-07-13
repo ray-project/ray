@@ -11,13 +11,11 @@ steps:
     key: check-release-blockers
     instance_type: small_branch
     commands:
-      - exit 42
       - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
 
   - label: "Check commit hash"
     key: check-commit-hash
     commands:
-      - exit 42
       - bash .buildkite/release-automation/check-commit-hash.sh
   
   - label: "Build update version binary"
