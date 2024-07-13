@@ -8,6 +8,9 @@ from ray.util.annotations import PublicAPI
 
 from dataclasses import dataclass
 
+import logging
+import time
+
 
 class DictConfigProvider(ABC):
     @abstractmethod
@@ -87,6 +90,31 @@ class LoggingConfig:
             dict: The logging configuration.
         """
         return _dict_config_provider.get_dict_config(self.encoding, self.log_level)
+
+    def _setup_log_record_factory(self):
+        old_factory = logging.getLogRecordFactory()
+
+        def record_factory(*args, **kwargs):
+            record = old_factory(*args, **kwargs)
+            # Python logging module starts to use `time.time_ns()` to generate `created`
+            # from Python 3.13 to avoid the precision loss caused by the float type.
+            # Here, we generate the `created` for the LogRecord to support older Python
+            # versions.
+            ct = time.time_ns()
+            record.created = ct / 1e9
+
+            from ray._private.ray_logging.constants import LogKey
+
+            record.__dict__[LogKey.TIMESTAMP_NS.value] = ct
+
+            return record
+
+        logging.setLogRecordFactory(record_factory)
+
+    def _apply(self):
+        """Set up both the LogRecord factory and the logging configuration."""
+        self._setup_log_record_factory()
+        logging.config.dictConfig(self._get_dict_config())
 
 
 LoggingConfig.__doc__ = f"""

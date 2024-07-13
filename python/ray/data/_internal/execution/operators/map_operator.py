@@ -322,7 +322,7 @@ class MapOperator(OneToOneOperator, ABC):
                 / self._metrics.num_inputs_received
                 * self._next_data_task_idx
             )
-            self._estimated_output_blocks = round(
+            self._estimated_num_output_bundles = round(
                 estimated_num_tasks
                 * self._metrics.num_outputs_of_finished_tasks
                 / self._metrics.num_tasks_finished

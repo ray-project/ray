@@ -106,7 +106,8 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   /// \param[in] callback The callback function that handles reply.
   /// \return if the rpc call succeeds
   virtual void NumPendingTasks(std::unique_ptr<NumPendingTasksRequest> request,
-                               const ClientCallback<NumPendingTasksReply> &callback) {}
+                               const ClientCallback<NumPendingTasksReply> &callback,
+                               int64_t timeout_ms = -1) {}
 
   /// Notify a wait has completed for direct actor call arguments.
   ///
@@ -392,13 +393,10 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   }
 
   void NumPendingTasks(std::unique_ptr<NumPendingTasksRequest> request,
-                       const ClientCallback<NumPendingTasksReply> &callback) override {
-    INVOKE_RPC_CALL(CoreWorkerService,
-                    NumPendingTasks,
-                    *request,
-                    callback,
-                    grpc_client_,
-                    /*method_timeout_ms*/ -1);
+                       const ClientCallback<NumPendingTasksReply> &callback,
+                       int64_t timeout_ms = -1) override {
+    INVOKE_RPC_CALL(
+        CoreWorkerService, NumPendingTasks, *request, callback, grpc_client_, timeout_ms);
   }
 
   /// Send as many pending tasks as possible. This method is thread-safe.

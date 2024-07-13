@@ -5,11 +5,14 @@ import os
 import logging
 import sys
 import json
+import time
 
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray.job_config import LoggingConfig
 from ray._private.test_utils import run_string_as_driver
+
+from unittest.mock import patch
 
 
 class TestCoreContextFilter:
@@ -89,8 +92,15 @@ class TestJSONFormatter:
         formatter = JSONFormatter()
         record = logging.makeLogRecord({})
         formatted = formatter.format(record)
+
         record_dict = json.loads(formatted)
-        should_exist = ["asctime", "levelname", "message", "filename", "lineno"]
+        should_exist = [
+            "asctime",
+            "levelname",
+            "message",
+            "filename",
+            "lineno",
+        ]
         for key in should_exist:
             assert key in record_dict
         assert len(record_dict) == len(should_exist)
@@ -123,7 +133,14 @@ class TestJSONFormatter:
         record = logging.makeLogRecord({"user": "ray"})
         formatted = formatter.format(record)
         record_dict = json.loads(formatted)
-        should_exist = ["asctime", "levelname", "message", "filename", "lineno", "user"]
+        should_exist = [
+            "asctime",
+            "levelname",
+            "message",
+            "filename",
+            "lineno",
+            "user",
+        ]
         for key in should_exist:
             assert key in record_dict
         assert record_dict["user"] == "ray"
@@ -217,6 +234,7 @@ ray.get(obj_ref)
 """
         stderr = run_string_as_driver(script)
         should_exist = [
+            "timestamp_ns",
             "job_id",
             "worker_id",
             "node_id",
@@ -251,6 +269,7 @@ ray.get(actor_instance.print_message.remote())
 """
         stderr = run_string_as_driver(script)
         should_exist = [
+            "timestamp_ns",
             "job_id",
             "worker_id",
             "node_id",
@@ -261,6 +280,34 @@ ray.get(actor_instance.print_message.remote())
         ]
         for s in should_exist:
             assert s in stderr
+
+    def test_text_mode_driver(self, shutdown_only):
+        script = """
+import ray
+import logging
+
+ray.init(
+    logging_config=ray.LoggingConfig(encoding="TEXT")
+)
+
+logger = logging.getLogger()
+logger.info("This is a Ray driver")
+"""
+        stderr = run_string_as_driver(script)
+        should_exist = [
+            "timestamp_ns",
+            "job_id",
+            "worker_id",
+            "node_id",
+            "INFO",
+            "This is a Ray driver",
+        ]
+        for s in should_exist:
+            assert s in stderr
+
+        should_not_exist = ["actor_id", "task_id"]
+        for s in should_not_exist:
+            assert s not in stderr
 
     @pytest.mark.parametrize(
         "ray_start_cluster_head_with_env_vars",
@@ -303,6 +350,7 @@ ray.get(actor_instance.print_message.remote())
             "task_id",
             "INFO",
             "This is a Ray actor",
+            "timestamp_ns",
         ]
         for s in should_exist:
             assert s in stderr
@@ -334,9 +382,46 @@ ray.get(actor_instance.print_message.remote())
             "actor_id",
             "task_id",
             "This is a Ray actor",
+            "timestamp_ns",
         ]
         for s in should_not_exist:
             assert s not in stderr
+
+
+class TestSetupLogRecordFactory:
+    @pytest.fixture
+    def log_record_factory(self):
+        orig_factory = logging.getLogRecordFactory()
+        yield
+        logging.setLogRecordFactory(orig_factory)
+
+    def test_setup_log_record_factory(self, log_record_factory):
+        logging_config = LoggingConfig()
+        logging_config._setup_log_record_factory()
+
+        ct = time.time_ns()
+        with patch("time.time_ns") as patched_ns:
+            patched_ns.return_value = ct
+            record = logging.makeLogRecord({})
+            assert record.__dict__["timestamp_ns"] == ct
+
+    def test_setup_log_record_factory_already_set(self, log_record_factory):
+        def existing_factory(*args, **kwargs):
+            record = logging.LogRecord(*args, **kwargs)
+            record.__dict__["existing_factory"] = True
+            return record
+
+        logging.setLogRecordFactory(existing_factory)
+
+        logging_config = LoggingConfig()
+        logging_config._setup_log_record_factory()
+
+        ct = time.time_ns()
+        with patch("time.time_ns") as patched_ns:
+            patched_ns.return_value = ct
+            record = logging.makeLogRecord({})
+            assert record.__dict__["timestamp_ns"] == ct
+            assert record.__dict__["existing_factory"]
 
 
 if __name__ == "__main__":

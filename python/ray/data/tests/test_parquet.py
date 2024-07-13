@@ -18,6 +18,9 @@ from ray.data._internal.datasource.parquet_datasource import (
     _deserialize_fragments_with_retry,
     _SerializedFragment,
 )
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
@@ -1139,11 +1142,12 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     ds = ray.data.read_parquet(data_path)
 
     # Force reads.
-    blocks = ds.get_internal_block_refs()
-    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-    location_data = ray.experimental.get_object_locations(blocks)
+    bundles = ds.iter_internal_ref_bundles()
+    block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
+    ray.wait(block_refs, num_returns=len(block_refs), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(block_refs)
     locations = []
-    for block in blocks:
+    for block in block_refs:
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {node1_id, node2_id}
 

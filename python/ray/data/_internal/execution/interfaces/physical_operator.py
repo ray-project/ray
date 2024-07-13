@@ -184,7 +184,7 @@ class PhysicalOperator(Operator):
         self._started = False
         self._in_task_submission_backpressure = False
         self._metrics = OpRuntimeMetrics(self)
-        self._estimated_output_blocks = None
+        self._estimated_num_output_bundles = None
         self._execution_completed = False
 
     def __reduce__(self):
@@ -269,8 +269,8 @@ class PhysicalOperator(Operator):
         The value returned may be an estimate based off the consumption so far.
         This is useful for reporting progress.
         """
-        if self._estimated_output_blocks is not None:
-            return self._estimated_output_blocks
+        if self._estimated_num_output_bundles is not None:
+            return self._estimated_num_output_bundles
         if len(self.input_dependencies) == 1:
             return self.input_dependencies[0].num_outputs_total()
         raise AttributeError

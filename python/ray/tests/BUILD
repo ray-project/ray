@@ -209,7 +209,6 @@ py_test_module_list(
     "test_streaming_generator_4.py",
     "test_streaming_generator_backpressure.py",
     "test_streaming_generator_regression.py",
-    "test_implicit_resource.py",
   ],
   size = "medium",
   tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
@@ -527,6 +526,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_plasma_unlimited.py",
+    "test_implicit_resource.py",
   ],
   size = "enormous",
   tags = ["exclusive", "large_size_python_tests_shard_1", "team:core"],
