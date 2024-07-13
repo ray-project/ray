@@ -10,7 +10,7 @@ RAY_COMMIT="${RAY_COMMIT:-607f2f30f5f21543b6a5568ee77ea779eeba30a8}"
 # Download winpty
 mkdir -p /c/tmp/winpty
 which curl
-curl -sfL https://github.com/rprichard/winpty/releases/download/0.4.3/winpty-0.4.3-cygwin-2.8.0-x64.tar.gz -o /c/tmp/winpty/winpty.tar.gz
+wget https://github.com/rprichard/winpty/releases/download/0.4.3/winpty-0.4.3-cygwin-2.8.0-x64.tar.gz -O /c/tmp/winpty/winpty.tar.gz
 tar -xzf /c/tmp/winpty/winpty.tar.gz -C /c/tmp/winpty
 
 # Setup verify context
