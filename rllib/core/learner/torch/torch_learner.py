@@ -39,8 +39,7 @@ from ray.rllib.utils.metrics import (
     NUM_NON_TRAINABLE_PARAMETERS,
 )
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor, copy_torch_tensors
 from ray.rllib.utils.typing import (
     ModuleID,
     Optimizer,
@@ -173,7 +172,7 @@ class TorchLearner(Learner):
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
         return {
-            name: convert_to_numpy(optim.state_dict())
+            name: copy_torch_tensors(optim.state_dict(), device="cpu")
             for name, optim in self._named_optimizers.items()
         }
 
@@ -186,7 +185,7 @@ class TorchLearner(Learner):
                     f"Known optimizers are {self._named_optimizers.keys()}"
                 )
             self._named_optimizers[name].load_state_dict(
-                convert_to_torch_tensor(state_dict, device=self._device)
+                copy_torch_tensors(state_dict, device=self._device)
             )
 
     @override(Learner)
