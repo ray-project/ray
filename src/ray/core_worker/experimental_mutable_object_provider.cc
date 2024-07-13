@@ -102,8 +102,8 @@ void MutableObjectProvider::HandleRegisterMutableObject(
 void MutableObjectProvider::HandlePushMutableObject(
     const rpc::PushMutableObjectRequest &request, rpc::PushMutableObjectReply *reply) {
   LocalReaderInfo info;
+  const ObjectID writer_object_id = ObjectID::FromBinary(request.writer_object_id());
   {
-    const ObjectID writer_object_id = ObjectID::FromBinary(request.writer_object_id());
     absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
     auto it = remote_writer_object_to_local_reader_.find(writer_object_id);
     RAY_CHECK(it != remote_writer_object_to_local_reader_.end());
@@ -111,6 +111,7 @@ void MutableObjectProvider::HandlePushMutableObject(
   }
   size_t total_data_size = request.total_data_size();
   size_t total_metadata_size = request.total_metadata_size();
+  size_t total_size = total_data_size + total_metadata_size;
 
   uint64_t offset = request.offset();
   uint64_t chunk_size = request.chunk_size();
@@ -151,7 +152,6 @@ void MutableObjectProvider::HandlePushMutableObject(
   // metadata.
   memcpy(object_backing_store->Data() + offset, request.payload().data(), chunk_size);
 
-  size_t total_size = total_data_size + total_metadata_size;
   size_t total_written = tmp_written_so_far + chunk_size;
   RAY_CHECK_LE(total_written, total_size);
   if (total_written == total_size) {
