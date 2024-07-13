@@ -157,6 +157,9 @@ void MutableObjectProvider::HandlePushMutableObject(
   if (total_written == total_size) {
     // The entire object has been written, so call `WriteRelease()`.
     RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
+    reply->set_done(true);
+  } else {
+    reply->set_done(false);
   }
 }
 

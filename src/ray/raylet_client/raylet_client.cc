@@ -451,17 +451,16 @@ void raylet::RayletClient::PushMutableObject(
     // metadata).
     request.set_payload(static_cast<char *>(data) + offset, chunk_size);
 
-    // Only execute the callback once the entire object has been sent.
-    bool execute_callback = (i == total_num_chunks - 1);
     // TODO: Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(
         request,
-        [callback, execute_callback](const Status &status,
-                                     const rpc::PushMutableObjectReply &reply) {
+        [callback](const Status &status, const rpc::PushMutableObjectReply &reply) {
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Error pushing mutable object: " << status;
           }
-          if (execute_callback) {
+          if (reply.done()) {
+            // The callback is only executed once the receiver node receives all chunks
+            // for the mutable object write.
             callback(status, reply);
           }
         });

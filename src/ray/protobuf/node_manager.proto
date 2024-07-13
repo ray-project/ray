@@ -372,7 +372,9 @@ message PushMutableObjectRequest {
 }
 
 message PushMutableObjectReply {
-  // Empty for now.
+  // The receiver sets this to true once it has received all chunks for a mutable object
+  // write, false otherwise (i.e., the receiver still expects to receive more chunks).
+  bool done = 1;
 }
 
 // Service for inter-node-manager communication.
