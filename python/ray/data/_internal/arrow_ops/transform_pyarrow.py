@@ -80,18 +80,28 @@ def unify_schemas(
     # Rollup columns with opaque (null-typed) lists, to override types in
     # the following for-loop.
     cols_with_null_list = set()
+
+    all_columns = set()
     for schema in schemas:
         for col_name in schema.names:
             col_type = schema.field(col_name).type
             if pa.types.is_list(col_type) and pa.types.is_null(col_type.value_type):
                 cols_with_null_list.add(col_name)
+            all_columns.add(col_name)
 
     arrow_tensor_types = (ArrowVariableShapedTensorType, ArrowTensorType)
     columns_with_objects = set()
     columns_with_tensor_array = set()
-    for col_field in schemas[0]:
-        col_name = col_field.name
+    for col_name in all_columns:
         for s in schemas:
+            indices = s.get_all_field_indices(col_name)
+            if len(indices) > 1:
+                # This is broken for Pandas blocks and broken with the logic here
+                raise ValueError(
+                    f"Schema {s} has multiple fields with the same name: {col_name}"
+                )
+            elif len(indices) == 0:
+                continue
             if isinstance(s.field(col_name).type, ArrowPythonObjectType):
                 columns_with_objects.add(col_name)
             if isinstance(s.field(col_name).type, arrow_tensor_types):
