@@ -484,8 +484,11 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateResubmittedTaskReferences(
-    const std::vector<ObjectID> &argument_ids) {
+    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids) {
   absl::MutexLock lock(&mutex_);
+  for (const auto &return_id : return_ids) {
+    UpdateObjectPendingCreationInternal(return_id, true);
+  }
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
     RAY_CHECK(it != object_id_refs_.end());
@@ -1519,10 +1522,9 @@ bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
   return it->second.is_reconstructable;
 }
 
-void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
-                                                   bool pending_creation) {
+void ReferenceCounter::UpdateObjectReady(const ObjectID &object_id) {
   absl::MutexLock lock(&mutex_);
-  UpdateObjectPendingCreationInternal(object_id, pending_creation);
+  UpdateObjectPendingCreationInternal(object_id, /*pending_creation*/ false);
 }
 
 bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const {

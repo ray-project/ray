@@ -303,6 +303,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
   TaskSpecification spec;
   bool resubmit = false;
+  std::vector<ObjectID> return_ids;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -329,6 +330,10 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
         RAY_CHECK(it->second.num_retries_left == -1);
       }
       spec = it->second.spec;
+
+      for (const auto &return_id : it->second.reconstructable_return_ids) {
+        return_ids.push_back(return_id);
+      }
     }
   }
 
@@ -344,7 +349,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
       }
     }
 
-    reference_counter_->UpdateResubmittedTaskReferences(*task_deps);
+    reference_counter_->UpdateResubmittedTaskReferences(return_ids, *task_deps);
 
     for (const auto &task_dep : *task_deps) {
       bool was_freed = reference_counter_->TryMarkFreedObjectInUseAgain(task_dep);
@@ -361,7 +366,8 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     }
     if (spec.IsActorTask()) {
       const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
-      reference_counter_->UpdateResubmittedTaskReferences({actor_creation_return_id});
+      reference_counter_->UpdateResubmittedTaskReferences(return_ids,
+                                                          {actor_creation_return_id});
     }
 
     RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
@@ -700,7 +706,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
       num_objects_written += 1;
     }
     // When an object is reported, the object is ready to be fetched.
-    reference_counter_->UpdateObjectPendingCreation(object_id, false);
+    reference_counter_->UpdateObjectReady(object_id);
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
