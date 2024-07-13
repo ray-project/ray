@@ -1,8 +1,8 @@
 (kuberay-mnist-training-example)=
 
-# Train a PyTorch Model on Fashion MNIST with CPUs on Kubernetes
+# Train a PyTorch model on Fashion MNIST with CPUs on Kubernetes
 
-This example runs distributed training of a PyTorch model on Fashion MNIST with Ray Train. See [Train a PyTorch Model on Fashion MNIST](train-pytorch-fashion-mnist) for more details.
+This example runs distributed training of a PyTorch model on Fashion MNIST with Ray Train. See [Train a PyTorch model on Fashion MNIST](train-pytorch-fashion-mnist) for more details.
 
 ## Step 1: Create a Kubernetes cluster
 
@@ -18,7 +18,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 
 ## Step 3: Create a RayJob
 
-A RayJob consists of a RayCluster custom resource and a job that can be submitted to the RayCluster. With RayJob, KubeRay creates a RayCluster and submits a job when the cluster is ready. Here is a CPU-only RayJob description YAML file for MNIST training on a PyTorch model.
+A RayJob consists of a RayCluster custom resource and a job that can you can submit to the RayCluster. With RayJob, KubeRay creates a RayCluster and submits a job when the cluster is ready. The following is a CPU-only RayJob description YAML file for MNIST training on a PyTorch model.
 
 ```sh
 # Download `ray-job.pytorch-mnist.yaml`
@@ -26,16 +26,16 @@ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operat
 ```
 
 You might need to adjust some fields in the RayJob description YAML file so that it can run in your environment:
-* `replicas` under `workerGroupSpecs` in `rayClusterSpec`: This field specifies the number of worker Pods that will be scheduled to the Kubernetes cluster. Each worker Pod and the head Pod, as described in the `template` field, require 2 CPUs. A RayJob submitter Pod requires 1 CPU. For example, if your machine has 8 CPUs, the maximum `replicas` value will be 2 to allow all Pods to reach the `Running` status.
+* `replicas` under `workerGroupSpecs` in `rayClusterSpec`: This field specifies the number of worker Pods that KubeRay schedules to the Kubernetes cluster. Each worker Pod and the head Pod, as described in the `template` field, requires 2 CPUs. A RayJob submitter Pod requires 1 CPU. For example, if your machine has 8 CPUs, the maximum `replicas` value is 2 to allow all Pods to reach the `Running` status.
 * `NUM_WORKERS` under `runtimeEnvYAML` in `spec`: This field indicates the number of Ray actors to launch (see `ScalingConfig` in this [Document](ray-train-configs-api) for more information). Each Ray actor must be served by a worker Pod in the Kubernetes cluster. Therefore, `NUM_WORKERS` must be less than or equal to `replicas`.
 
 ```sh
-# `replicas` and `NUM_WORKERS` set to 2
-# Create a RayJob
+# `replicas` and `NUM_WORKERS` set to 2.
+# Create a RayJob.
 kubectl apply -f ray-job.pytorch-mnist.yaml
 
-# Check existing Pods: According to `replicas`, there should be 2 worker Pods
-# Make sure all the Pods are in the `Running` status
+# Check existing Pods: According to `replicas`, there should be 2 worker Pods.
+# Make sure all the Pods are in the `Running` status.
 kubectl get pods
 # NAME                                                      READY   STATUS    RESTARTS   AGE
 # kuberay-operator-6dddd689fb-ksmcs                         1/1     Running   0          6m8s
@@ -66,7 +66,7 @@ kubectl get rayjob
 After seeing `JOB_STATUS` marked as `SUCCEEDED`, you can check the training logs:
 
 ```sh
-# Check Pods name
+# Check Pods name.
 kubectl get pods
 # NAME                                                      READY   STATUS      RESTARTS   AGE
 # kuberay-operator-6dddd689fb-ksmcs                         1/1     Running     0          113m
@@ -75,7 +75,7 @@ kubectl get pods
 # rayjob-pytorch-mnist-nxmj2                                0/1     Completed   0          38m
 # rayjob-pytorch-mnist-raycluster-rkdmq-head-m4dsl          1/1     Running     0          38m
 
-# Check training logs
+# Check training logs.
 kubectl logs -f rayjob-pytorch-mnist-nxmj2
 
 # 2024-06-16 22:23:01,047 INFO cli.py:36 -- Job submission server address: http://rayjob-pytorch-mnist-raycluster-rkdmq-head-svc.default.svc.cluster.local:8265
@@ -111,7 +111,7 @@ kubectl logs -f rayjob-pytorch-mnist-nxmj2
 # ...
 ```
 
-## Clean-up
+## Clean up
 
 Delete your RayJob with the following command:
 
