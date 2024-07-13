@@ -198,7 +198,8 @@ class MutableObjectProvider {
   // For objects larger than the gRPC max payload size *that this node receives from a
   // writer node*, this map tracks how many bytes have been received so far for a single
   // object write.
-  std::unordered_map<ObjectID, uint64_t> written_so_far_;
+  std::unordered_map<ObjectID, uint64_t> written_so_far_
+      ABSL_GUARDED_BY(written_so_far_lock_);
 
   friend class MutableObjectProvider_MutableObjectBufferReadRelease_Test;
 };
