@@ -1021,22 +1021,13 @@ def test_runtime_env_override(call_ray_start):
     reason="This test is only run on linux CI machines.",
 )
 def test_pip_with_env_vars(start_cluster, tmp_path):
-    """
-    The file structure:
-        $tmp_path/
-        │
-        ├── setup.py
-        ├── dist/ # the tar.gz file will be generated here
-        └── test_package/
-            └── test.py
-    """
+
     with chdir(tmp_path):
         TEST_ENV_NAME = "TEST_ENV_VARS"
         TEST_ENV_VALUE = "TEST"
         package_name = "test_package"
-        package_version = "0.0.1"
-        package_dir = tmp_path
-        try_to_create_directory(os.path.join(package_dir, package_name))
+        package_dir = os.path.join(tmp_path, package_name)
+        try_to_create_directory(package_dir)
 
         setup_filename = os.path.join(package_dir, "setup.py")
         setup_code = """import os
@@ -1047,37 +1038,28 @@ class InstallTestPackage(install):
     # this function will be called when pip install this package
     def run(self):
         assert os.environ.get('{TEST_ENV_NAME}') == '{TEST_ENV_VALUE}'
-        super().run()
 
 setup(
-    name='{package_name}',
-    version='{package_version}',
+    name='test_package',
+    version='0.0.1',
     packages=find_packages(),
     cmdclass=dict(install=InstallTestPackage),
     license="MIT",
     zip_safe=False,
 )
 """.format(
-            TEST_ENV_NAME=TEST_ENV_NAME,
-            TEST_ENV_VALUE=TEST_ENV_VALUE,
-            package_name=package_name,
-            package_version=package_version,
+            TEST_ENV_NAME=TEST_ENV_NAME, TEST_ENV_VALUE=TEST_ENV_VALUE
         )
-
-        with open(setup_filename, "w+") as f:
+        with open(setup_filename, "wt") as f:
             f.writelines(setup_code)
 
-        python_filename = os.path.join(package_dir, package_name, "test.py")
+        python_filename = os.path.join(package_dir, "test.py")
         python_code = "import os; print(os.environ)"
-        with open(python_filename, "w+") as f:
+        with open(python_filename, "wt") as f:
             f.writelines(python_code)
 
-        gz_filename = os.path.join(
-            tmp_path,
-            "dist",
-            "{name}-{ver}.tar.gz".format(name=package_name, ver=package_version),
-        )
-        subprocess.check_call(["python", "setup.py", "sdist"])
+        gz_filename = os.path.join(tmp_path, package_name + ".tar.gz")
+        subprocess.check_call(["tar", "-zcvf", gz_filename, package_name])
 
         with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
 
