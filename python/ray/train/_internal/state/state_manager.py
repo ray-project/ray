@@ -1,5 +1,6 @@
 import logging
 import os
+from collections import defaultdict
 from typing import Any, Dict
 
 import ray
@@ -24,7 +25,7 @@ class TrainRunStateManager:
 
     def __init__(self, state_actor) -> None:
         self.state_actor = state_actor
-        self.train_run_info_dict = {}
+        self.train_run_info_dict = defaultdict(dict)
 
     def register_train_run(
         self,
@@ -97,19 +98,27 @@ class TrainRunStateManager:
             run_status=run_status,
             status_detail=status_detail,
         )
-        self._update_train_run_info(updates)
+
+        # Clear the cached info to avoid registering the same run twice
+        self.train_run_info_dict[run_id].clear()
+        self._update_train_run_info(run_id, updates)
 
     def end_train_run(
-        self, run_status: RunStatusEnum, status_detail: str, end_time_ms: int
+        self,
+        run_id: str,
+        run_status: RunStatusEnum,
+        status_detail: str,
+        end_time_ms: int,
     ):
         """Update the train run status when the training is finished."""
         updates = dict(
             run_status=run_status, status_detail=status_detail, end_time_ms=end_time_ms
         )
-        self._update_train_run_info(updates)
+        self._update_train_run_info(run_id, updates)
 
-    def _update_train_run_info(self, updates: Dict[str, Any]) -> None:
+    def _update_train_run_info(self, run_id: str, updates: Dict[str, Any]) -> None:
         """Update specific fields of a registered TrainRunInfo instance."""
-        self.train_run_info_dict.update(updates)
-        train_run_info = TrainRunInfo(**self.train_run_info_dict)
-        ray.get(self.state_actor.register_train_run.remote(train_run_info))
+        if run_id in self.train_run_info_dict:
+            self.train_run_info_dict[run_id].update(updates)
+            train_run_info = TrainRunInfo(**self.train_run_info_dict[run_id])
+            ray.get(self.state_actor.register_train_run.remote(train_run_info))

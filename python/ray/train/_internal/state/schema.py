@@ -8,9 +8,15 @@ from ray.util.annotations import DeveloperAPI
 
 @DeveloperAPI
 class RunStatusEnum(str, Enum):
+    """Enumeration for the status of a train run."""
+
+    # The train run has started
     STARTED = "STARTED"
+    # The train run was terminated as expected
     FINISHED = "FINISHED"
+    # The train run was terminated early due to errors in the training function
     ERRORED = "ERRORED"
+    # The train run was terminated early due to system errors or controller errors
     ABORTED = "ABORTED"
 
 

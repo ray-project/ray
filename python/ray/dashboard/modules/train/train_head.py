@@ -115,8 +115,11 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             for worker_info in train_run.workers:
                 worker_info.status = actor_status_table.get(worker_info.actor_id, None)
 
-            # If the controller died but the run status is not updated,
-            # mark the train run as aborted
+            # The train run can be unexpectedly terminated before the final run
+            # status was updated. This could be due to errors outside of the training
+            # function (e.g., system failure or user interruption) that crashed the
+            # train controller.
+            # We need to detect this case and mark the train run as ABORTED.
             controller_actor_status = actor_status_table.get(
                 train_run.controller_actor_id, None
             )
@@ -126,7 +129,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             ):
                 train_run.run_status = RunStatusEnum.ABORTED
                 train_run.status_detail = (
-                    "Abnormally terminated by system error or interruption."
+                    "Unexpectedly terminated due to system errors."
                 )
 
     @staticmethod

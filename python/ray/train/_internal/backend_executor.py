@@ -660,12 +660,13 @@ class BackendExecutor:
 
             if errored:
                 run_status = RunStatusEnum.ERRORED
-                status_detail = "User Error"
+                status_detail = "Terminated due to an error in the training function."
             else:
                 run_status = RunStatusEnum.FINISHED
                 status_detail = ""
 
             self.state_manager.end_train_run(
+                run_id=self._trial_info.run_id,
                 run_status=run_status,
                 status_detail=status_detail,
                 end_time_ms=int(time.time() * 1000),
