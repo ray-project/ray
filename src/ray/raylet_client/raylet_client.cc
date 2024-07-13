@@ -453,7 +453,6 @@ void raylet::RayletClient::PushMutableObject(
 
     // Only execute the callback once the entire object has been sent.
     bool execute_callback = (i == total_num_chunks - 1);
-    absl::Notification wait;
     // TODO: Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(
         request,
@@ -465,9 +464,7 @@ void raylet::RayletClient::PushMutableObject(
           if (execute_callback) {
             callback(status, reply);
           }
-          wait.Notify();
         });
-    wait.WaitForNotification();
   }
 }
 
