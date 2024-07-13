@@ -100,7 +100,7 @@ class TrainRunStateManager:
         )
 
         # Clear the cached info to avoid registering the same run twice
-        self.train_run_info_dict[run_id].clear()
+        self.train_run_info_dict[run_id] = {}
         self._update_train_run_info(run_id, updates)
 
     def end_train_run(
