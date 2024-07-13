@@ -142,6 +142,8 @@ def _fetch_metadata_with_tasks_and_threads(
     for split in np.array_split(paths, num_fetch_tasks):
         fetch_tasks.append(remote_fetch_func.remote(split))
 
-    progress_bar = ProgressBar("Metadata Fetch Progress", total=num_fetch_tasks)
+    progress_bar = ProgressBar(
+        "Metadata Fetch Progress", total=num_fetch_tasks, unit="task"
+    )
     results = progress_bar.fetch_until_complete(fetch_tasks)
     return list(itertools.chain.from_iterable(results))
