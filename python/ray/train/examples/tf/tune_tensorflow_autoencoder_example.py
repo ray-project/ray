@@ -2,6 +2,7 @@ import argparse
 
 import ray
 from ray import tune
+from ray.train import ScalingConfig
 from ray.train.examples.tf.tensorflow_mnist_example import train_func
 from ray.train.tensorflow import TensorflowTrainer
 from ray.tune.tune_config import TuneConfig
@@ -11,7 +12,7 @@ from ray.tune.tuner import Tuner
 def tune_tensorflow_mnist(
     num_workers: int = 2, num_samples: int = 2, use_gpu: bool = False
 ):
-    scaling_config = dict(num_workers=num_workers, use_gpu=use_gpu)
+    scaling_config = ScalingConfig(num_workers=num_workers, use_gpu=use_gpu)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
