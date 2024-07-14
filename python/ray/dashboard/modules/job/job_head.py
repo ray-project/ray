@@ -15,6 +15,7 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._private import ray_constants
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
@@ -23,21 +24,29 @@ from ray._private.runtime_env.packaging import (
 from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.modules.job.common import (
+    JOB_ID_METADATA_KEY,
     JobDeleteResponse,
     JobInfoStorageClient,
     JobLogsResponse,
+    JobStatus,
     JobStopResponse,
     JobSubmitRequest,
     JobSubmitResponse,
     http_uri_components_to_uri,
 )
-from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
+from ray.dashboard.modules.job.pydantic_models import (
+    DriverInfo,
+    JobDetails,
+    JobType,
+    SubmitDetails,
+)
 from ray.dashboard.modules.job.utils import (
     find_job_by_ids,
     get_driver_jobs,
     parse_and_validate_request,
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
+from ray.runtime_env import RuntimeEnv
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -348,6 +357,25 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
         )
 
+    @routes.get("/api/submit/{submission_id}")
+    async def get_submission_info(self, req: Request) -> Response:
+        submission_id = req.match_info["submission_id"]
+
+        submission_info = await self._job_info_client.get_info(submission_id)
+        if not submission_info:
+            return Response(
+                text=f"Submission {submission_id} does not exist",
+                status=aiohttp.web.HTTPNotFound.status_code,
+            )
+        submit = SubmitDetails(
+            **dataclasses.asdict(submission_info),
+            submission_id=submission_id,
+        )
+        return Response(
+            text=json.dumps(submit.dict()),
+            content_type="application/json",
+        )
+
     @routes.delete("/api/jobs/{job_or_submission_id}")
     async def delete_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
@@ -399,6 +427,79 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return Response(
             text=json.dumps(job.dict()),
+            content_type="application/json",
+        )
+
+    @routes.get("/api/submit/list")
+    async def query_submit_list(self, req: Request) -> Response:
+        submission_jobs = await self._job_info_client.get_all_jobs()
+        submission_jobs = [
+            SubmitDetails(
+                **dataclasses.asdict(job),
+                submission_id=submission_id,
+            )
+            for submission_id, job in submission_jobs.items()
+        ]
+        return Response(
+            text=json.dumps(
+                [
+                    *[submission_job.dict() for submission_job in submission_jobs],
+                ]
+            ),
+            content_type="application/json",
+        )
+
+    # TODO(rickyx): This endpoint's logic is also mirrored in state API's endpoint.
+    # We should eventually unify the backend logic (and keep the logic in sync before
+    # that).
+    @routes.get("/api/job/list")
+    async def query_job_list(self, req: Request) -> Response:
+        submission_id = req.query.get("submission_id")
+        job_infos = await self._dashboard_head.gcs_aio_client.get_all_job_info()
+        sorted_job_infos = sorted(
+            job_infos.values(), key=lambda job_table_entry: job_table_entry.job_id.hex()
+        )
+        core_jobs = {}
+        for job_table_entry in sorted_job_infos:
+            if job_table_entry.config.ray_namespace.startswith(
+                ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
+            ):
+                # Skip jobs in any _ray_internal_ namespace
+                continue
+            job_id = job_table_entry.job_id.hex()
+            metadata = dict(job_table_entry.config.metadata)
+            job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
+            if submission_id and submission_id != job_submission_id:
+                continue
+
+            driver = DriverInfo(
+                id=job_id,
+                node_ip_address=job_table_entry.driver_address.ip_address,
+                pid=str(job_table_entry.driver_pid),
+            )
+            job = JobDetails(
+                job_id=job_id,
+                submission_id=job_submission_id,
+                type=JobType.DRIVER,
+                status=JobStatus.SUCCEEDED
+                if job_table_entry.is_dead
+                else JobStatus.RUNNING,
+                entrypoint=job_table_entry.entrypoint,
+                start_time=job_table_entry.start_time,
+                end_time=job_table_entry.end_time,
+                metadata=metadata,
+                runtime_env=RuntimeEnv.deserialize(
+                    job_table_entry.config.runtime_env_info.serialized_runtime_env
+                ).to_dict(),
+                driver_info=driver,
+            )
+            core_jobs[job_id] = job
+        return Response(
+            text=json.dumps(
+                [
+                    *[job_info.dict() for job_info in core_jobs.values()],
+                ]
+            ),
             content_type="application/json",
         )
 

@@ -19,7 +19,7 @@ export const JobDetailActorsPage = () => {
         }}
       />
       <Section title="Actors">
-        <ActorList jobId={params.id} />
+        <ActorList jobId={params.jobId} />
       </Section>
     </Box>
   );

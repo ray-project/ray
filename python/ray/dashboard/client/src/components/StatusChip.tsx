@@ -11,6 +11,7 @@ import {
   ServeReplicaState,
   ServeSystemActorStatus,
 } from "../type/serve";
+import { SubmitStatus } from "../type/submit";
 
 const orange = "#DB6D00";
 const grey = "#5F6469";
@@ -39,6 +40,13 @@ const colorMap = {
     [TaskStatus.PENDING_NODE_ASSIGNMENT]: orange,
     [TaskStatus.PENDING_ARGS_AVAIL]: orange,
     [TaskStatus.UNKNOWN]: grey,
+  },
+  submit: {
+    [SubmitStatus.PENDING]: orange,
+    [SubmitStatus.RUNNING]: blue,
+    [SubmitStatus.STOPPED]: grey,
+    [SubmitStatus.SUCCEEDED]: green,
+    [SubmitStatus.FAILED]: red,
   },
   job: {
     [JobStatus.PENDING]: orange,

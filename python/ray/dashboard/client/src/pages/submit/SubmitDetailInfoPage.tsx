@@ -6,7 +6,7 @@ import {
 } from "../../common/CodeDialogButton";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
-import { JobStatusWithIcon } from "../../common/JobStatus";
+import { SubmitStatusWithIcon } from "../../common/JobStatus";
 import {
   CpuProfilingLink,
   CpuStackTraceLink,
@@ -17,17 +17,16 @@ import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
-import { UnifiedJob } from "../../type/job";
+import { SubmitInfo } from "../../type/submit";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 
-import { useJobDetail } from "./hook/useJobDetail";
+import { useSubmitDetail } from "./hook/useSubmitDetail";
 
-export const JobDetailInfoPage = () => {
+export const SubmitDetailInfoPage = () => {
   // TODO(aguo): Add more content to this page!
+  const { submit, msg, isLoading, params } = useSubmitDetail();
 
-  const { job, msg, isLoading, params } = useJobDetail();
-
-  if (!job) {
+  if (!submit) {
     return (
       <Box sx={{ padding: 2, backgroundColor: "white" }}>
         <MainNavPageInfo
@@ -38,8 +37,8 @@ export const JobDetailInfoPage = () => {
           }}
         />
         <Loading loading={isLoading} />
-        <TitleCard title={`JOB - ${params.jobId}`}>
-          <StatusChip type="job" status="LOADING" />
+        <TitleCard title={`SUBMIT - ${params.submitId}`}>
+          <StatusChip type="submit" status="LOADING" />
           <br />
           Request Status: {msg} <br />
         </TitleCard>
@@ -52,30 +51,67 @@ export const JobDetailInfoPage = () => {
       <MainNavPageInfo
         pageInfo={{
           title: "Info",
-          id: "job-info",
-          path: job.job_id ? `/jobs/${job.job_id}/info` : undefined,
+          id: "submit-info",
+          path: submit.submission_id
+            ? `/jobs/${submit.submission_id}/info`
+            : undefined,
         }}
       />
-      <Typography variant="h2">{job.job_id}</Typography>
-      <JobMetadataSection job={job} />
+      <Typography variant="h2">{submit.submission_id}</Typography>
+      <SubmitMetadataSection submit={submit} />
     </Box>
   );
 };
 
-type JobMetadataSectionProps = {
-  job: UnifiedJob;
+type SubmitMetadataSectionProps = {
+  submit: SubmitInfo;
 };
 
-export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
+export const SubmitMetadataSection = ({
+  submit,
+}: SubmitMetadataSectionProps) => {
   return (
     <MetadataSection
       metadataList={[
         {
+          label: "Submission ID",
+          content: {
+            value: submit.submission_id,
+            copyableValue: submit.submission_id,
+          },
+        },
+        {
           label: "Entrypoint",
-          content: job.entrypoint
+          content: submit.entrypoint
             ? {
-                value: job.entrypoint,
-                copyableValue: job.entrypoint,
+                value: submit.entrypoint,
+                copyableValue: submit.entrypoint,
+              }
+            : { value: "-" },
+        },
+        {
+          label: "Entrypoint CPU",
+          content: {
+            value: submit.entrypoint_num_cpus.toFixed(2).toString(),
+          },
+        },
+        {
+          label: "Entrypoint GPU",
+          content: {
+            value: submit.entrypoint_num_gpus.toFixed(2).toString(),
+          },
+        },
+        {
+          label: "Entrypoint Memory",
+          content: {
+            value: submit.entrypoint_memory.toFixed(2).toString(),
+          },
+        },
+        {
+          label: "Entrypoint Resource",
+          content: submit.entrypoint_resources
+            ? {
+                value: submit.entrypoint_resources.toString(),
               }
             : { value: "-" },
         },
@@ -83,11 +119,11 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
           label: "Status",
           content: (
             <React.Fragment>
-              <JobStatusWithIcon job={job} />{" "}
-              {job.message && (
+              <SubmitStatusWithIcon submit={submit} />{" "}
+              {submit.message && (
                 <CodeDialogButton
                   title="Status details"
-                  code={job.message}
+                  code={submit.message}
                   buttonText="View details"
                 />
               )}
@@ -95,29 +131,12 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
           ),
         },
         {
-          label: "Job ID",
-          content: job.job_id
-            ? {
-                value: job.job_id,
-                copyableValue: job.job_id,
-              }
-            : { value: "-" },
-        },
-        {
-          label: "Submission ID",
-          content: job.submission_id
-            ? {
-                value: job.submission_id,
-                copyableValue: job.submission_id,
-              }
-            : {
-                value: "-",
-              },
-        },
-        {
           label: "Duration",
-          content: job.start_time ? (
-            <DurationText startTime={job.start_time} endTime={job.end_time} />
+          content: submit.start_time ? (
+            <DurationText
+              startTime={submit.start_time}
+              endTime={submit.end_time}
+            />
           ) : (
             <React.Fragment>-</React.Fragment>
           ),
@@ -125,23 +144,27 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
         {
           label: "Started at",
           content: {
-            value: job.start_time ? formatDateFromTimeMs(job.start_time) : "-",
+            value: submit.start_time
+              ? formatDateFromTimeMs(submit.start_time)
+              : "-",
           },
         },
         {
           label: "Ended at",
           content: {
-            value: job.end_time ? formatDateFromTimeMs(job.end_time) : "-",
+            value: submit.end_time
+              ? formatDateFromTimeMs(submit.end_time)
+              : "-",
           },
         },
         {
           label: "Runtime environment",
-          ...(job.runtime_env
+          ...(submit.runtime_env
             ? {
                 content: (
                   <CodeDialogButton
                     title="Runtime environment"
-                    code={filterRuntimeEnvSystemVariables(job.runtime_env)}
+                    code={filterRuntimeEnvSystemVariables(submit.runtime_env)}
                   />
                 ),
               }
@@ -151,16 +174,16 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
                 },
               }),
         },
-        ...(job.type === "SUBMISSION"
+        ...(submit.type === "SUBMISSION"
           ? [
               {
                 label: "User-provided metadata",
                 content:
-                  job.metadata && Object.keys(job.metadata).length ? (
+                  submit.metadata && Object.keys(submit.metadata).length ? (
                     <CodeDialogButtonWithPreview
                       sx={{ display: "inline-flex", maxWidth: "100%" }}
                       title="User-provided metadata"
-                      code={JSON.stringify(job.metadata, undefined, 2)}
+                      code={JSON.stringify(submit.metadata, undefined, 2)}
                     />
                   ) : undefined,
               },
@@ -171,20 +194,20 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
           content: (
             <div>
               <CpuStackTraceLink
-                pid={job.driver_info?.pid}
-                ip={job.driver_info?.node_ip_address}
+                pid={submit.driver_info?.pid}
+                ip={submit.driver_info?.node_ip_address}
                 type="Driver"
               />
               <br />
               <CpuProfilingLink
-                pid={job.driver_info?.pid}
-                ip={job.driver_info?.node_ip_address}
+                pid={submit.driver_info?.pid}
+                ip={submit.driver_info?.node_ip_address}
                 type="Driver"
               />
               <br />
               <MemoryProfilingButton
-                pid={job.driver_info?.pid}
-                ip={job.driver_info?.node_ip_address}
+                pid={submit.driver_info?.pid}
+                ip={submit.driver_info?.node_ip_address}
                 type="Driver"
               />
             </div>

@@ -67,7 +67,7 @@ export enum JobStatus {
 }
 
 export type UnifiedJob = {
-  job_id: string | null;
+  job_id: string;
   submission_id: string | null;
   type: string;
   status: JobStatus;

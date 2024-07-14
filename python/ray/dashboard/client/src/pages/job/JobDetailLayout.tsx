@@ -12,7 +12,7 @@ import { useJobDetail } from "./hook/useJobDetail";
 export const JobPage = () => {
   const { job, params } = useJobDetail();
 
-  const jobId = job?.job_id ?? job?.submission_id;
+  const jobId = job?.job_id;
   const pageInfo = jobId
     ? {
         title: jobId ?? "Job",
@@ -23,7 +23,7 @@ export const JobPage = () => {
     : {
         title: "Job",
         id: "job-detail",
-        path: params.id,
+        path: params.jobId,
       };
   return (
     <div>
