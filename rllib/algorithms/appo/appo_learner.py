@@ -19,7 +19,7 @@ from ray.rllib.utils.typing import ModuleID
 class AppoLearner(ImpalaLearner):
     """Adds KL coeff updates via `after_gradient_based_update()` to Impala logic.
 
-    Framework-specific sub-classes must override `_update_module_kl_coeff()`.
+    Framework-specific subclasses must override `_update_module_kl_coeff()`.
     """
 
     @override(ImpalaLearner)
