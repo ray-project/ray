@@ -1,13 +1,14 @@
 from collections import defaultdict
 import logging
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Collection, Dict, List, Optional, Tuple, Type, Union
 
 import gymnasium as gym
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import EpisodeType
+from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.typing import EpisodeType, StateDict
 from ray.util.annotations import PublicAPI
 from ray.util.timer import _Timer
 
@@ -215,21 +216,44 @@ class ConnectorPipelineV2(ConnectorV2):
         )
 
     @override(ConnectorV2)
-    def get_state(self) -> Dict[str, Any]:
-        states = {}
-        for i, connector in enumerate(self.connectors):
-            key = f"{i:03d}_{type(connector).__name__}"
-            state = connector.get_state()
-            states[key] = state
-        return states
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
+        state = {}
+        for conn in self.connectors:
+            conn_name = type(conn).__name__
+            if self._check_component(conn_name, components, not_components):
+                state[conn_name] = conn.get_state(
+                    components=self._get_subcomponents(conn_name, components),
+                    not_components=self._get_subcomponents(conn_name, not_components),
+                    **kwargs,
+                )
+        return state
 
     @override(ConnectorV2)
     def set_state(self, state: Dict[str, Any]) -> None:
-        for i, connector in enumerate(self.connectors):
-            key = f"{i:03d}_{type(connector).__name__}"
-            if key not in state:
-                raise KeyError(f"No state found in `state` for connector piece: {key}!")
-            connector.set_state(state[key])
+        for conn in self.connectors:
+            conn_name = type(conn).__name__
+            if conn_name in state:
+                conn.set_state(state[conn_name])
+
+    @override(Checkpointable)
+    def get_checkpointable_components(self) -> List[Tuple[str, "Checkpointable"]]:
+        return [(type(conn).__name__, conn) for conn in self.connectors]
+
+    # Note that we don't have to override Checkpointable.get_ctor_args_and_kwargs and
+    # don't have to return the `connectors` c'tor kwarg from there. This is b/c all
+    # connector pieces in this pipeline are themselves Checkpointable components,
+    # so they will be properly written into this pipeline's checkpoint.
+
+    @override(ConnectorV2)
+    def reset_state(self) -> None:
+        for conn in self.connectors:
+            conn.reset_state()
 
     @override(ConnectorV2)
     def merge_states(self, states: List[Dict[str, Any]]) -> Dict[str, Any]:

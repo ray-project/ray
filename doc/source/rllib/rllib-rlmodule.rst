@@ -409,7 +409,7 @@ There are two possible ways to extend existing RL Modules:
 Checkpointing RL Modules
 ------------------------
 
-RL Modules can be checkpointed with their two methods :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.save_to_checkpoint` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.from_checkpoint`.
+RL Modules can be checkpointed with their two methods :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.save_to_path` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.from_checkpoint`.
 The following example shows how these methods can be used outside of, or in conjunction with, an RLlib Algorithm.
 
 .. literalinclude:: doc_code/rlmodule_guide.py

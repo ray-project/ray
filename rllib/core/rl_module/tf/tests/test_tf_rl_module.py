@@ -117,7 +117,7 @@ class TestRLModule(unittest.TestCase):
             )
         )
         with tempfile.TemporaryDirectory() as tmpdir:
-            module.save_to_checkpoint(tmpdir)
+            module.save_to_path(tmpdir)
             new_module = DiscreteBCTFModule.from_checkpoint(tmpdir)
 
         check(module.get_state(), new_module.get_state())
