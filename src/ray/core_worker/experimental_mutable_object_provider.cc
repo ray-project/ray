@@ -63,7 +63,7 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
     for (const NodeID &node_id : node_ids) {
       readers.push_back(raylet_client_factory_(node_id, *client_call_managers_.back()));
     }
-    RAY_CHECK(readers.size() > 0);
+    RAY_CHECK(!readers.empty());
 
     // TODO(jhumphri): Extend this to support multiple channels. Currently, we must have
     // one thread per channel because the thread blocks on the channel semaphore.

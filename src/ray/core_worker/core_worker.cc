@@ -1508,11 +1508,9 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
                                   Status status,
                                   const boost::optional<rpc::ActorTableData> &result) {
                                 RAY_CHECK(result);
-                                if (result) {
-                                  addr.set_ip_address(result->address().ip_address());
-                                  addr.set_port(result->address().port());
-                                  addr.set_worker_id(result->address().worker_id());
-                                }
+                                addr.set_ip_address(result->address().ip_address());
+                                addr.set_port(result->address().port());
+                                addr.set_worker_id(result->address().worker_id());
                                 promise.set_value();
                               })
                     .ok());
