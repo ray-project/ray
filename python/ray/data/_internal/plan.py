@@ -35,24 +35,16 @@ logger = logging.getLogger(__name__)
 
 
 class ExecutionPlan:
-    """A lazy execution plan for a Dataset."""
+    """A lazy execution plan for a Dataset.
 
-    # Implementation Notes:
-    #
-    # This lazy execution plan takes in an input block list and builds up a chain of
-    # List[BlockRef] --> List[BlockRef] operators. Prior to execution,
-    # we apply a set of logical plan optimizations, such as operator fusion,
-    # in order to reduce Ray task overhead and data copies.
-    #
-    # Internally, the execution plan holds two block lists:
-    #   * _in_blocks: The (possibly lazy) input block list.
-    #   * _snapshot_blocks: A snapshot of a computed block list, where this snapshot
-    #     is the cached output of executing some prefix in the operator chain.
-    #
-    # The operators in this execution plan are partitioned into two subchains:
-    # before the snapshot and after the snapshot. When the snapshot exists from a
-    # previous execution, any future executions will only have to execute the "after the
-    # snapshot" subchain, using the snapshot as the input to that subchain.
+    This lazy execution plan builds up a chain of ``List[RefBundle]`` -->
+    ``List[RefBundle]`` operators. Prior to execution, we apply a set of logical
+    plan optimizations, such as operator fusion, in order to reduce Ray task
+    overhead and data copies.
+
+    Internally, the execution plan holds a snapshot of a computed list of
+    blocks and their associated metadata under ``self._snapshot_bundle``,
+    where this snapshot is the cached output of executing the operator chain."""
 
     def __init__(
         self,
@@ -64,7 +56,7 @@ class ExecutionPlan:
 
         Args:
             stats: Stats for the base blocks.
-            dataset_uuid: Dataset's UUID.
+            data_context: DataContext object to use for execution.
         """
         self._in_stats = stats
         # A computed snapshot of some prefix of operators and their corresponding
