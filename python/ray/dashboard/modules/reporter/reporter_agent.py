@@ -657,6 +657,7 @@ class ReporterAgent(
                 # The dashboard agent is a child of the raylet process.
                 # It is not necessarily the direct child (python-windows
                 # typically uses a py.exe runner to run python), so search
+                # up for a process named 'raylet'
                 candidate = curr_proc.parent()
                 while candidate:
                     if "raylet" in candidate.name():
