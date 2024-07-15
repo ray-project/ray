@@ -16,11 +16,7 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import (
-    DEFAULT_MAX_ONGOING_REQUESTS,
-    SERVE_DEFAULT_APP_NAME,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
@@ -256,7 +252,6 @@ def deployment(
     placement_group_strategy: Default[str] = DEFAULT.VALUE,
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
-    max_concurrent_queries: Default[int] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
@@ -305,8 +300,6 @@ def deployment(
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.
-        max_concurrent_queries: [DEPRECATED] Maximum number of queries that are sent to
-            a replica of this deployment without receiving a response. Defaults to 5.
         max_ongoing_requests: Maximum number of requests that are sent to a
             replica of this deployment without receiving a response. Defaults to 5.
         max_queued_requests: [EXPERIMENTAL] Maximum number of requests to this
@@ -369,14 +362,11 @@ def deployment(
     if max_ongoing_requests is None:
         raise ValueError("`max_ongoing_requests` must be non-null, got None.")
     elif max_ongoing_requests is DEFAULT.VALUE:
-        if max_concurrent_queries is None:
-            logger.warning(
-                "The default value for `max_ongoing_requests` has changed from "
-                "100 to 5 in Ray 2.32.0."
-            )
-            max_ongoing_requests = DEFAULT_MAX_ONGOING_REQUESTS
-        else:
-            max_ongoing_requests = max_concurrent_queries
+        logger.warning(
+            "The default value for `max_ongoing_requests` has changed from "
+            "100 to 5 in Ray 2.32.0."
+        )
+
     if num_replicas == "auto":
         num_replicas = None
         max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
@@ -420,12 +410,6 @@ def deployment(
             "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
             "deprecated. To specify a route prefix for an application, pass it into "
             "`serve.run` instead."
-        )
-
-    if max_concurrent_queries is not DEFAULT.VALUE:
-        logger.warning(
-            "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` has "
-            "been deprecated and replaced by `max_ongoing_requests`."
         )
 
     if max_ongoing_requests is DEFAULT.VALUE:

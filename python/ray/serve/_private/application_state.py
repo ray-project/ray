@@ -1091,10 +1091,8 @@ def override_deployment_info(
 
     # Override options for each deployment listed in the config.
     for options in deployment_override_options:
-        if "max_concurrent_queries" in options or "max_ongoing_requests" in options:
-            options["max_ongoing_requests"] = options.get(
-                "max_ongoing_requests"
-            ) or options.get("max_concurrent_queries")
+        if "max_ongoing_requests" in options:
+            options["max_ongoing_requests"] = options.get("max_ongoing_requests")
 
         deployment_name = options["name"]
         info = deployment_infos[deployment_name]

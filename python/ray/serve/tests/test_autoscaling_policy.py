@@ -1132,13 +1132,7 @@ app = g.bind()
     not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     reason="Only works when collecting request metrics at handle.",
 )
-@pytest.mark.parametrize(
-    "use_max_concurrent_queries,use_max_ongoing_requests",
-    [(True, True), (True, False), (False, True)],
-)
-def test_max_ongoing_requests_set_to_one(
-    serve_instance_with_signal, use_max_concurrent_queries, use_max_ongoing_requests
-):
+def test_max_ongoing_requests_set_to_one(serve_instance_with_signal):
     assert RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
     _, signal = serve_instance_with_signal
 
@@ -1152,6 +1146,7 @@ def test_max_ongoing_requests_set_to_one(
             metrics_interval_s=0.5,
             look_back_period_s=2,
         ),
+        max_ongoing_requests=1,
         graceful_shutdown_timeout_s=1,
         ray_actor_options={"num_cpus": 0},
     )
@@ -1159,10 +1154,6 @@ def test_max_ongoing_requests_set_to_one(
         await signal.wait.remote()
         return os.getpid()
 
-    if use_max_concurrent_queries:
-        f = f.options(max_concurrent_queries=1)
-    if use_max_ongoing_requests:
-        f = f.options(max_ongoing_requests=1)
     h = serve.run(f.bind())
 
     check_num_replicas_eq("f", 1)
