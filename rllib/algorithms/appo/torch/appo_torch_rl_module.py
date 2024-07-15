@@ -22,7 +22,7 @@ class APPOTorchRLModule(PPOTorchRLModule, APPORLModule):
         super().setup()
 
         # If the module is not for inference only, update the target networks.
-        if not self.inference_only:
+        if not self.config.inference_only:
             self.old_pi.load_state_dict(self.pi.state_dict())
             self.old_encoder.load_state_dict(self.encoder.state_dict())
             # We do not train the targets.

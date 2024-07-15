@@ -246,6 +246,25 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
   return Status::OK();
 }
 
+Status MutableObjectManager::GetObjectBackingStore(const ObjectID &object_id,
+                                                   int64_t data_size,
+                                                   int64_t metadata_size,
+                                                   std::shared_ptr<Buffer> &data) {
+  RAY_LOG(DEBUG) << "WriteGetObjectBackingStore " << object_id;
+  absl::ReaderMutexLock guard(&destructor_lock_);
+
+  Channel *channel = GetChannel(object_id);
+  if (!channel) {
+    return Status::ChannelError("Channel has not been registered");
+  }
+  RAY_CHECK(channel->written);
+
+  std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
+  int64_t total_size = data_size + metadata_size;
+  data = SharedMemoryBuffer::Slice(object->buffer, 0, total_size);
+  return Status::OK();
+}
+
 Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
   RAY_LOG(DEBUG) << "WriteRelease " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
