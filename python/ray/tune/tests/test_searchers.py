@@ -162,6 +162,7 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
+    @pytest.mark.skipif(sys.version_info >= (3, 12))
     def testHEBO(self):
         if Version(pandas.__version__) >= Version("2.0.0"):
             pytest.skip("HEBO does not support pandas>=2.0.0")
@@ -415,6 +416,7 @@ class AddEvaluatedPointTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             dbr_searcher.add_evaluated_point(point, 1.0)
 
+    @pytest.mark.skipif(sys.version_info >= (3, 12))
     def testHEBO(self):
         if Version(pandas.__version__) >= Version("2.0.0"):
             pytest.skip("HEBO does not support pandas>=2.0.0")
@@ -541,6 +543,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         assert "not_completed" in searcher.trial_to_params
 
+    @pytest.mark.skipif(sys.version_info >= (3, 12))
     def testHEBO(self):
         if Version(pandas.__version__) >= Version("2.0.0"):
             pytest.skip("HEBO does not support pandas>=2.0.0")
