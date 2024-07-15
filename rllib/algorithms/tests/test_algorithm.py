@@ -40,7 +40,7 @@ class TestAlgorithm(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_add_delete_rl_module(self):
+    def test_add_module_and_remove_module(self):
         config = (
             ppo.PPOConfig()
             .api_stack(
@@ -91,7 +91,7 @@ class TestAlgorithm(unittest.TestCase):
             # Add a new RLModule by class (and options).
             mid = f"p{i}"
             print(f"Adding new RLModule {mid} ...")
-            new_module = algo.add_module(
+            new_marl_spec = algo.add_module(
                 module_id=mid,
                 module_spec=SingleAgentRLModuleSpec.from_module(mod0),
                 # Test changing the mapping fn.
@@ -99,9 +99,11 @@ class TestAlgorithm(unittest.TestCase):
                 # Change the list of modules to train.
                 new_should_module_be_updated=[f"p{i}", f"p{i-1}"],
             )
+            new_module = algo.get_module(mid)
             self._assert_modules_added(
-                algo,
-                ["p0", mid],
+                algo=algo,
+                marl_spec=new_marl_spec,
+                mids=[0, i],
                 trainable=[i, i - 1],
                 mapped=[i, i - 1],
                 not_mapped=[i - 2],
@@ -115,16 +117,17 @@ class TestAlgorithm(unittest.TestCase):
                 self.assertTrue(f"p{j}" in marl_module)
             self.assertTrue(len(marl_module) == i + 1)
             algo.train()
-            checkpoint = algo.save().checkpoint
+            checkpoint = algo.save_to_path()
 
             # Test restoring from the checkpoint (which has more policies
             # than what's defined in the config dict).
             test = Algorithm.from_checkpoint(checkpoint)
             self._assert_modules_added(
-                test,
-                ["p0", mid],
-                trainable=[i, i - 1],
-                mapped=[i, i - 1],
+                algo=test,
+                marl_spec=None,
+                mids=[0, i - 1, i],
+                trainable=[i - 1, i],
+                mapped=[i - 1, i],
                 not_mapped=[i - 2],
             )
             # Make sure algorithm can continue training the restored policy.
@@ -143,22 +146,23 @@ class TestAlgorithm(unittest.TestCase):
             self.assertTrue(action_dist_inputs.shape == (1, 2))
             test.stop()
 
-            # After having added 2 policies, try to restore the Algorithm,
-            # but only with 1 of the originally added policies (plus the initial
+            # After having added 2 Modules, try to restore the Algorithm,
+            # but only with 1 of the originally added Modules (plus the initial
             # p0).
             if i == 2:
 
-                def new_mapping_fn(agent_id, episode, worker, **kwargs):
+                def new_mapping_fn(agent_id, episode, **kwargs):
                     return f"p{choice([0, 2])}"
 
-                test2 = Algorithm.from_checkpoint(
-                    checkpoint=checkpoint,
-                    module_ids=["p0", "p2"],
+                test2 = Algorithm.from_checkpoint(path=checkpoint)
+                test2.remove_module(
+                    module_id="p1",
                     new_agent_to_module_mapping_fn=new_mapping_fn,
                     new_should_module_be_updated=["p0"],
                 )
                 self._assert_modules_added(
                     algo=test2,
+                    marl_spec=None,
                     mids=[0, 2],
                     trainable=[0],
                     mapped=[0, 2],
@@ -184,7 +188,7 @@ class TestAlgorithm(unittest.TestCase):
         # Delete all added modules again from Algorithm.
         for i in range(2, 0, -1):
             mid = f"p{i}"
-            algo.remove_module(
+            marl_spec = algo.remove_module(
                 mid,
                 # Note that the complete signature of a policy_mapping_fn
                 # is: `agent_id, episode, worker, **kwargs`.
@@ -194,33 +198,19 @@ class TestAlgorithm(unittest.TestCase):
                 # Update list of policies to train.
                 new_should_module_be_updated=[f"p{i - 1}"],
             )
-            # Make sure removed policy is no longer part of remote workers in the
-            # worker set and the eval worker set.
-            self.assertTrue(
-                all(
-                    algo.workers.foreach_worker(
-                        func=lambda w, mid=mid: mid not in w.module
-                    )
-                )
+            self._assert_modules_added(
+                algo=algo,
+                marl_spec=marl_spec,
+                mids=[0, i - 1],
+                trainable=[i - 1],
+                mapped=[i - 1],
+                not_mapped=[i, i + 1],
             )
-            self.assertTrue(
-                all(
-                    algo.evaluation_workers.foreach_worker(
-                        func=lambda w, mid=mid: mid not in w.module
-                    )
-                )
-            )
-            # Assert removed policy is no longer part of local worker
-            # (eval worker set does NOT have a local worker, only the main
-            # EnvRunnerGroup does).
-            marl_module = algo.workers.local_worker().module
-            self.assertTrue(mid not in marl_module)
-            self.assertTrue(len(marl_module) == i)
 
         algo.stop()
 
     @OldAPIStack
-    def test_add_delete_policy(self):
+    def test_add_policy_and_remove_policy(self):
         config = (
             ppo.PPOConfig()
             .environment(
@@ -334,7 +324,7 @@ class TestAlgorithm(unittest.TestCase):
 
                 # Test restoring from the checkpoint (which has more policies
                 # than what's defined in the config dict).
-                test = ppo.PPO.from_checkpoint(checkpoint)
+                test = ppo.PPO.from_checkpoint(checkpoint=checkpoint)
 
                 # Make sure evaluation worker also got the restored, added policy.
                 def _has_policies(w, pid=pid):
@@ -365,7 +355,7 @@ class TestAlgorithm(unittest.TestCase):
                         return f"p{choice([0, 2])}"
 
                     test2 = ppo.PPO.from_checkpoint(
-                        checkpoint=checkpoint,
+                        path=checkpoint,
                         policy_ids=["p0", "p2"],
                         policy_mapping_fn=new_mapping_fn,
                         policies_to_train=["p0"],
@@ -650,33 +640,45 @@ class TestAlgorithm(unittest.TestCase):
         counter_values2 = list(algo2._counters.values())
         self.assertEqual(counter_values, counter_values2)
 
-    def _assert_modules_added(self, algo, mids, trainable, mapped, not_mapped):
+    def _assert_modules_added(
+        self,
+        *,
+        algo,
+        marl_spec,
+        mids,
+        trainable,
+        mapped,
+        not_mapped,
+    ):
         # Make sure Learner has the correct `should_module_be_updated` list.
         self.assertEqual(
-            algo.learner_group._learner.config.policies_to_train,
-            [f"p{i}" for i in trainable],
+            set(algo.learner_group._learner.config.policies_to_train),
+            {f"p{i}" for i in trainable},
         )
+        # Make sure mids are all in marl_spec.
+        if marl_spec is not None:
+            self.assertTrue(all(f"p{m}" in marl_spec for m in mids))
         # Make sure module is part of remote EnvRunners in the
         # EnvRunnerGroup and the eval EnvRunnerGroup.
         self.assertTrue(
             all(
                 algo.workers.foreach_worker(
-                    lambda w, mids=mids: all(i in w.module for i in mids)
+                    lambda w, mids=mids: all(f"p{i}" in w.module for i in mids)
                 )
             )
         )
         self.assertTrue(
             all(
                 algo.evaluation_workers.foreach_worker(
-                    lambda w, mids=mids: all(i in w.module for i in mids)
+                    lambda w, mids=mids: all(f"p{i}" in w.module for i in mids)
                 )
             )
         )
         # Make sure that EnvRunners have received the correct mapping fn.
-        mapped_pols = list(
+        mapped_pols = [
             algo.workers.local_worker().config.policy_mapping_fn(0, None)
             for _ in range(100)
-        )
+        ]
         self.assertTrue(all(f"p{i}" in mapped_pols for i in mapped))
         self.assertTrue(not any(f"p{i}" in mapped_pols for i in not_mapped))
 

@@ -1,4 +1,6 @@
+import pathlib
 from collections import defaultdict, Counter
+import copy
 from functools import partial
 from typing import (
     Any,
@@ -18,10 +20,16 @@ import ray
 from ray import ObjectRef
 from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+from ray.rllib.utils.actor_manager import (
+    FaultTolerantActorManager,
+    RemoteCallResults,
+    ResultOrError,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import (
@@ -35,10 +43,12 @@ from ray.rllib.utils.minibatch_utils import (
     ShardEpisodesIterator,
     ShardObjectRefIterator,
 )
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
     RLModuleSpec,
+    ShouldModuleBeUpdatedFn,
     StateDict,
     T,
 )
@@ -97,8 +107,7 @@ class LearnerGroup(Checkpointable):
             module_spec: If not already specified in `config`, a separate overriding
                 RLModuleSpec may be provided via this argument.
         """
-        # scaling_config = learner_spec.learner_group_scaling_config
-        self.config = config
+        self.config = config.copy(copy_frozen=False)
         self._module_spec = module_spec
 
         learner_class = self.config.learner_class
@@ -626,43 +635,79 @@ class LearnerGroup(Checkpointable):
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-    ) -> None:
-        """Add a module to the Learners maintained by this LearnerGroup.
+        config_overrides: Optional[Dict] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiAgentRLModuleSpec:
+        """Adds a module to the underlying MultiAgentRLModule.
+
+        Changes this Learner's config in order to make this architectural change
+        permanent wrt. to checkpointing.
 
         Args:
-            module_id: The id of the module to add.
-            module_spec:  #TODO (Kourosh) fill in here.
+            module_id: The ModuleID of the module to be added.
+            module_spec: The ModuleSpec of the module to be added.
+            config_overrides: The `AlgorithmConfig` overrides that should apply to
+                the new Module, if any.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+
+        Returns:
+            The new MultiAgentRLModuleSpec (after the change has been performed).
         """
-        if self.is_local:
-            self._learner.add_module(
+        validate_policy_id(module_id, error=True)
+
+        # Force-set inference-only = False.
+        module_spec = copy.deepcopy(module_spec)
+        module_spec.inference_only = False
+
+        results = self.foreach_learner(
+            func=lambda _learner: _learner.add_module(
                 module_id=module_id,
                 module_spec=module_spec,
-            )
-        else:
-            results = self._worker_manager.foreach_actor(
-                lambda w: w.add_module(
-                    module_id=module_id,
-                    module_spec=module_spec,
-                )
-            )
-            return self._get_results(results)
+                config_overrides=config_overrides,
+                new_should_module_be_updated=new_should_module_be_updated,
+            ),
+        )
+        marl_spec = self._get_results(results)[0]
 
-    def remove_module(self, module_id: ModuleID) -> None:
-        """Remove a module from the Learners maintained by this LearnerGroup.
+        # Change our config (AlgorithmConfig) to contain the new Module.
+        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
+        #  but we'll deprecate config.policies soon anyway.
+        self.config.policies[module_id] = PolicySpec()
+        if config_overrides is not None:
+            self.config.multi_agent(
+                algorithm_config_overrides_per_module={module_id: config_overrides}
+            )
+        self.config.rl_module(rl_module_spec=marl_spec)
+        if new_should_module_be_updated is not None:
+            self.config.multi_agent(policies_to_train=new_should_module_be_updated)
+
+        return marl_spec
+
+    def remove_module(
+        self,
+        module_id: ModuleID,
+        *,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiAgentRLModuleSpec:
+        """Removes a module from the Learner.
 
         Args:
-            module_id: The id of the module to remove.
+            module_id: The ModuleID of the module to be removed.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
 
+        Returns:
+            The new MultiAgentRLModuleSpec (after the change has been performed).
         """
-        if self.is_local:
-            self._learner.remove_module(module_id)
-        else:
-            refs = []
-            for worker in self._workers:
-                ref = worker.remove_module.remote(module_id)
-                refs.append(ref)
-            ray.get(refs)
-
         # Remove all stats from the module from our metrics logger (hybrid API stack
         # only), so we don't report results from this module again.
         if (
@@ -670,6 +715,25 @@ class LearnerGroup(Checkpointable):
             and module_id in self._metrics_logger_old_and_hybrid_stack.stats
         ):
             del self._metrics_logger_old_and_hybrid_stack.stats[module_id]
+
+        results = self.foreach_learner(
+            func=lambda _learner: _learner.remove_module(
+                module_id=module_id,
+                new_should_module_be_updated=new_should_module_be_updated,
+            ),
+        )
+        marl_spec = self._get_results(results)[0]
+
+        # Change self.config to reflect the new architecture.
+        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
+        #  but we'll deprecate config.policies soon anyway.
+        del self.config.policies[module_id]
+        self.config.algorithm_config_overrides_per_module.pop(module_id, None)
+        if new_should_module_be_updated is not None:
+            self.config.multi_agent(policies_to_train=new_should_module_be_updated)
+        self.config.rl_module(rl_module_spec=marl_spec)
+
+        return marl_spec
 
     @override(Checkpointable)
     def get_state(
@@ -693,16 +757,10 @@ class LearnerGroup(Checkpointable):
             else:
                 worker = self._worker_manager.healthy_actor_ids()[0]
                 assert len(self._workers) == self._worker_manager.num_healthy_actors()
+                _comps = self._get_subcomponents(COMPONENT_LEARNER, components)
+                _not_comps = self._get_subcomponents(COMPONENT_LEARNER, not_components)
                 results = self._worker_manager.foreach_actor(
-                    lambda w: w.get_state(
-                        components=self._get_subcomponents(
-                            COMPONENT_LEARNER, components
-                        ),
-                        not_components=self._get_subcomponents(
-                            COMPONENT_LEARNER, not_components
-                        ),
-                        **kwargs,
-                    ),
+                    lambda w: w.get_state(_comps, not_components=_not_comps, **kwargs),
                     remote_actor_ids=[worker],
                 )
                 state[COMPONENT_LEARNER] = self._get_results(results)[0]
@@ -715,8 +773,9 @@ class LearnerGroup(Checkpointable):
             if self.is_local:
                 self._learner.set_state(state[COMPONENT_LEARNER])
             else:
-                self._worker_manager.foreach_actor(
-                    lambda w: w.set_state(state[COMPONENT_LEARNER])
+                state_ref = ray.put(state[COMPONENT_LEARNER])
+                self.foreach_learner(
+                    lambda _learner, _ref=state_ref: _learner.set_state(ray.get(_ref))
                 )
 
     def get_weights(self) -> StateDict:
@@ -762,19 +821,61 @@ class LearnerGroup(Checkpointable):
         ]
 
     def foreach_learner(
-        self, func: Callable[[Learner, Optional[Any]], T], **kwargs
-    ) -> List[T]:
+        self,
+        func: Callable[[Learner, Optional[Any]], T],
+        *,
+        healthy_only: bool = True,
+        remote_actor_ids: List[int] = None,
+        timeout_seconds: Optional[float] = None,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = True,
+        **kwargs,
+    ) -> RemoteCallResults:
         """Calls the given function on each Learner L with the args: (L, \*\*kwargs).
 
         Args:
-            func: The function to call on each Learner L with (L, \*\*kwargs).
+            func: The function to call on each Learner L with args: (L, \*\*kwargs).
+            healthy_only: If True, applies `func` only to Learner actors currently
+                tagged "healthy", otherwise to all actors. If `healthy_only=False` and
+                `mark_healthy=True`, will send `func` to all actors and mark those
+                actors "healthy" that respond to the request within `timeout_seconds`
+                and are currently tagged as "unhealthy".
+            remote_actor_ids: Apply func on a selected set of remote actors. Use None
+                (default) for all actors.
+            timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
+                fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
+                synchronous execution).
+            return_obj_refs: whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of the context of this manager.
+            mark_healthy: Whether to mark all those actors healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that actors are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also not that this setting is ignored if `healthy_only=True` (b/c this
+                setting only affects actors that are currently tagged as unhealthy).
 
         Returns:
             A list of size len(Learners) with the return values of all calls to `func`.
         """
         if self.is_local:
-            return [func(self._learner, **kwargs)]
-        return self._worker_manager.foreach_actor(partial(func, **kwargs))
+            results = RemoteCallResults()
+            results.add_result(
+                None,
+                ResultOrError(result=func(self._learner, **kwargs)),
+                None,
+            )
+            return results
+
+        return self._worker_manager.foreach_actor(
+            func=partial(func, **kwargs),
+            healthy_only=healthy_only,
+            remote_actor_ids=remote_actor_ids,
+            timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
+        )
 
     def shutdown(self):
         """Shuts down the LearnerGroup."""
@@ -813,6 +914,88 @@ class LearnerGroup(Checkpointable):
         # Just in case, we would like to revert this API retirement, we can do so
         # easily.
         return self._update(*args, **kwargs, async_update=True)
+
+    @Deprecated(new="LearnerGroup.save_to_path(...)", error=True)
+    def save_state(self, *args, **kwargs):
+        pass
+
+    @Deprecated(new="LearnerGroup.restore_from_path(...)", error=True)
+    def load_state(self, *args, **kwargs):
+        pass
+
+    @Deprecated(new="LearnerGroup.load_from_path(path=..., component=...)", error=False)
+    def load_module_state(
+        self,
+        *,
+        marl_module_ckpt_dir: Optional[str] = None,
+        modules_to_load: Optional[Set[str]] = None,
+        rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
+    ) -> None:
+        """Load the checkpoints of the modules being trained by this LearnerGroup.
+
+        `load_module_state` can be used 3 ways:
+            1. Load a checkpoint for the MultiAgentRLModule being trained by this
+                LearnerGroup. Limit the modules that are loaded from the checkpoint
+                by specifying the `modules_to_load` argument.
+            2. Load the checkpoint(s) for single agent RLModules that
+                are in the MultiAgentRLModule being trained by this LearnerGroup.
+            3. Load a checkpoint for the MultiAgentRLModule being trained by this
+                LearnerGroup and load the checkpoint(s) for single agent RLModules
+                that are in the MultiAgentRLModule. The checkpoints for the single
+                agent RLModules take precedence over the module states in the
+                MultiAgentRLModule checkpoint.
+
+        NOTE: At lease one of marl_module_ckpt_dir or rl_module_ckpt_dirs is
+            must be specified. modules_to_load can only be specified if
+            marl_module_ckpt_dir is specified.
+
+        Args:
+            marl_module_ckpt_dir: The path to the checkpoint for the
+                MultiAgentRLModule.
+            modules_to_load: A set of module ids to load from the checkpoint.
+            rl_module_ckpt_dirs: A mapping from module ids to the path to a
+                checkpoint for a single agent RLModule.
+        """
+        if not (marl_module_ckpt_dir or rl_module_ckpt_dirs):
+            raise ValueError(
+                "At least one of `marl_module_ckpt_dir` or "
+                "`rl_module_ckpt_dirs` must be provided!"
+            )
+        if marl_module_ckpt_dir:
+            marl_module_ckpt_dir = pathlib.Path(marl_module_ckpt_dir)
+        if rl_module_ckpt_dirs:
+            for module_id, path in rl_module_ckpt_dirs.items():
+                rl_module_ckpt_dirs[module_id] = pathlib.Path(path)
+
+        # MARLModule checkpoint is provided.
+        if marl_module_ckpt_dir:
+            # Restore the entire MARLModule state.
+            if modules_to_load is None:
+                self.restore_from_path(
+                    marl_module_ckpt_dir,
+                    component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+                )
+            # Restore individual module IDs.
+            else:
+                for module_id in modules_to_load:
+                    self.restore_from_path(
+                        marl_module_ckpt_dir / module_id,
+                        component=(
+                            COMPONENT_LEARNER
+                            + "/"
+                            + COMPONENT_RL_MODULE
+                            + "/"
+                            + module_id
+                        ),
+                    )
+        if rl_module_ckpt_dirs:
+            for module_id, path in rl_module_ckpt_dirs.items():
+                self.restore_from_path(
+                    path,
+                    component=(
+                        COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id
+                    ),
+                )
 
     @Deprecated(new="LearnerGroup.save(...)", error=True)
     def save_state(self, *args, **kwargs):

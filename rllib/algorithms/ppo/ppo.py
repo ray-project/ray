@@ -513,16 +513,16 @@ class PPO(Algorithm):
             #  as it might be a very large set (100s of Modules) vs a smaller Modules
             #  set that's present in the current train batch.
             modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-            if self.workers.num_remote_workers() > 0:
-                self.workers.sync_weights(
-                    # Sync weights from learner_group to all rollout workers.
-                    from_worker_or_learner_group=self.learner_group,
-                    policies=modules_to_update,
-                    inference_only=True,
-                )
-            else:
-                weights = self.learner_group.get_weights(inference_only=True)
-                self.workers.local_worker().set_weights(weights)
+            # if self.workers.num_remote_workers() > 0:
+            self.workers.sync_weights(
+                # Sync weights from learner_group to all EnvRunners.
+                from_worker_or_learner_group=self.learner_group,
+                policies=modules_to_update,
+                inference_only=True,
+            )
+            # else:
+            #    weights = self.learner_group.get_weights(inference_only=True)
+            #    self.workers.local_worker().set_weights(weights)
 
         return self.metrics.reduce()
 
@@ -533,12 +533,17 @@ class PPO(Algorithm):
                 train_batch = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_agent_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
                 )
             else:
                 train_batch = synchronous_parallel_sample(
                     worker_set=self.workers,
                     max_env_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
                 )
+            # Return early if all our workers failed.
+            if not train_batch:
+                return {}
             train_batch = train_batch.as_multi_agent()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
             self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()

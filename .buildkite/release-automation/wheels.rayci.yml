@@ -12,9 +12,11 @@ steps:
     job_env: forge
     instance_type: small_branch
     commands:
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
+      - source .buildkite/release-automation/set-ray-version.sh
       - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
-        --ray_version="$RAY_VERSION"
-        --commit_hash="$BUILDKITE_COMMIT"
+        --ray_version="$$RAY_VERSION" --commit_hash="$$RAY_COMMIT"
         --pypi_env=test
 
   - block: "Download & validate Ray wheels from TestPyPI Linux x86_64"
@@ -93,7 +95,9 @@ steps:
     job_env: forge
     instance_type: small_branch
     commands:
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
+      - source .buildkite/release-automation/set-ray-version.sh
       - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
-        --ray_version="$RAY_VERSION" 
-        --commit_hash="$BUILDKITE_COMMIT" 
+        --ray_version="$$RAY_VERSION" --commit_hash="$$RAY_COMMIT"
         --pypi_env=prod

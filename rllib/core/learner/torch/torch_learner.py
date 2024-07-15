@@ -4,6 +4,7 @@ from typing import (
     Callable,
     Dict,
     Hashable,
+    Optional,
     Sequence,
     Tuple,
 )
@@ -13,7 +14,10 @@ from ray.rllib.algorithms.algorithm_config import (
     TorchCompileWhatToCompile,
 )
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     SingleAgentRLModuleSpec,
@@ -28,7 +32,6 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
 )
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -36,15 +39,13 @@ from ray.rllib.utils.metrics import (
     NUM_NON_TRAINABLE_PARAMETERS,
 )
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.torch_utils import (
-    convert_to_torch_tensor,
-    copy_torch_tensors,
-)
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor, copy_torch_tensors
 from ray.rllib.utils.typing import (
     ModuleID,
     Optimizer,
     Param,
     ParamDict,
+    ShouldModuleBeUpdatedFn,
     StateDict,
     TensorType,
 )
@@ -103,21 +104,14 @@ class TorchLearner(Learner):
         self,
         module_id: ModuleID,
         config: "AlgorithmConfig" = None,
-        hps=None,
     ) -> None:
-        if hps is not None:
-            deprecation_warning(
-                old="Learner.configure_optimizers_for_module(.., hps=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
         module = self._module[module_id]
 
         # For this default implementation, the learning rate is handled by the
         # attached lr Scheduler (controlled by self.config.lr, which can be a
         # fixed value of a schedule setting).
-        optimizer = torch.optim.Adam(self.get_parameters(module))
         params = self.get_parameters(module)
+        optimizer = torch.optim.Adam(params)
 
         # Register the created optimizer (under the default optimizer name).
         self.register_optimizer(
@@ -177,12 +171,10 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
-        optimizer_name_state = {}
-        for name, optim in self._named_optimizers.items():
-            optim_state_dict = optim.state_dict()
-            optim_state_dict_cpu = copy_torch_tensors(optim_state_dict, device="cpu")
-            optimizer_name_state[name] = optim_state_dict_cpu
-        return optimizer_name_state
+        return {
+            name: copy_torch_tensors(optim.state_dict(), device="cpu")
+            for name, optim in self._named_optimizers.items()
+        }
 
     @override(Learner)
     def _set_optimizer_state(self, state: StateDict) -> None:
@@ -192,11 +184,9 @@ class TorchLearner(Learner):
                     f"Optimizer {name} in `state` is not known."
                     f"Known optimizers are {self._named_optimizers.keys()}"
                 )
-            optim = self._named_optimizers[name]
-            state_dict_correct_device = copy_torch_tensors(
-                state_dict, device=self._device
+            self._named_optimizers[name].load_state_dict(
+                copy_torch_tensors(state_dict, device=self._device)
             )
-            optim.load_state_dict(state_dict_correct_device)
 
     @override(Learner)
     def get_param_ref(self, param: Param) -> Hashable:
@@ -220,10 +210,15 @@ class TorchLearner(Learner):
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
-    ) -> None:
-        super().add_module(
+        config_overrides: Optional[Dict] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiAgentRLModuleSpec:
+        # Call super's add_module method.
+        marl_spec = super().add_module(
             module_id=module_id,
             module_spec=module_spec,
+            config_overrides=config_overrides,
+            new_should_module_be_updated=new_should_module_be_updated,
         )
 
         # we need to ddpify the module that was just added to the pool
@@ -259,9 +254,11 @@ class TorchLearner(Learner):
                     module_id, TorchDDPRLModule(module), override=True
                 )
 
+        return marl_spec
+
     @override(Learner)
-    def remove_module(self, module_id: ModuleID) -> None:
-        super().remove_module(module_id)
+    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiAgentRLModuleSpec:
+        marl_spec = super().remove_module(module_id, **kwargs)
 
         if self._torch_compile_complete_update:
             # When compiling the update, we need to reset and recompile
@@ -274,6 +271,8 @@ class TorchLearner(Learner):
                 mode=self._torch_compile_cfg.torch_dynamo_mode,
                 **self._torch_compile_cfg.kwargs,
             )
+
+        return marl_spec
 
     @override(Learner)
     def build(self) -> None:

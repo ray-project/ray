@@ -121,15 +121,7 @@ if __name__ == "__main__":
     do_link("widgets", force=args.yes, skip_list=args.skip)
     do_link("cluster_utils.py", force=args.yes, skip_list=args.skip)
     do_link("_private", force=args.yes, skip_list=args.skip)
-    # Link package's `dashboard` directly to local (repo's) dashboard.
-    # The repo's `dashboard` is a file, soft-linking to which will not work
-    # on Mac.
-    do_link(
-        "dashboard",
-        force=args.yes,
-        skip_list=args.skip,
-        local_path="../../../dashboard",
-    )
+    do_link("dashboard", force=args.yes, skip_list=args.skip)
 
     if args.extras is not None:
         for package in args.extras:

@@ -12,7 +12,7 @@ from docutils import nodes
 import pathlib
 import logging
 
-DEFAULT_API_GROUP = "others"
+DEFAULT_API_GROUP = "Others"
 
 logger = logging.getLogger(__name__)
 
@@ -287,7 +287,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """<b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=regDocs6_5g">Register</a></b> for Ray Summit 2024 now. Get your early bird pass by June 27th to save $100.""",
+    "announcement": """<b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=regDocs6_5g">Register for Ray Summit 2024</a></b> with keynotes from Mira Murati, Marc Andreessen, and Anastasis Germanidis.""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
@@ -310,7 +310,6 @@ html_theme_options = {
         "csat",
     ],
     "navigation_depth": 4,
-    "analytics": {"google_analytics_id": "UA-110413294-1"},
     "pygment_light_style": "stata-dark",
     "pygment_dark_style": "stata-dark",
 }
@@ -402,7 +401,10 @@ def get_api_groups(method_names, class_name, module_name):
     cls = getattr(import_module(module_name), class_name)
     for method_name in method_names:
         method = getattr(cls, method_name)
-        api_groups.add(safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP))
+        if _is_public_api(method):
+            api_groups.add(
+                safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP)
+            )
 
     return sorted(api_groups)
 

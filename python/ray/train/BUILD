@@ -503,7 +503,7 @@ py_test(
 
 py_test(
     name = "test_state",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_state.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib", ":conftest"]

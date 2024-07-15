@@ -79,7 +79,7 @@ class SingleAgentRLModuleSpec:
             observation_space=self.observation_space,
             action_space=self.action_space,
             inference_only=self.inference_only,
-            model_config_dict=self.model_config_dict,
+            model_config_dict=self.model_config_dict or {},
             catalog_class=self.catalog_class,
         )
 
@@ -91,8 +91,6 @@ class SingleAgentRLModuleSpec:
             raise ValueError("Observation space is not set.")
         if self.action_space is None:
             raise ValueError("Action space is not set.")
-        if self.model_config_dict is None:
-            raise ValueError("Model config is not set.")
 
         module_config = self.get_rl_module_config()
         module = self.module_class(module_config)
@@ -715,13 +713,12 @@ class RLModule(Checkpointable, abc.ABC):
                 "`RLModule.get_state()` base implementation! Override this method in "
                 "your custom RLModule subclass."
             )
-        elif inference_only is True:
-            raise ValueError(
-                "`inference_only=True` not supported in "
-                "`RLModule.get_state()` base implementation! Override this method in "
-                "your custom RLModule subclass."
-            )
         return {}
+
+    @OverrideToImplementCustomLogic
+    @override(Checkpointable)
+    def set_state(self, state: StateDict) -> None:
+        pass
 
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):

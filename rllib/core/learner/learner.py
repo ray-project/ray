@@ -1,5 +1,6 @@
 import abc
 from collections import defaultdict
+import copy
 from dataclasses import dataclass
 from functools import partial
 import logging
@@ -56,6 +57,7 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import (
     EpisodeType,
@@ -66,6 +68,7 @@ from ray.rllib.utils.typing import (
     ParamRef,
     ParamDict,
     ResultDict,
+    ShouldModuleBeUpdatedFn,
     StateDict,
     TensorType,
 )
@@ -146,6 +149,7 @@ class Learner(Checkpointable):
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule
             )
+            from ray.rllib.core import COMPONENT_RL_MODULE
             from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
             env = gym.make("CartPole-v1")
@@ -192,11 +196,11 @@ class Learner(Checkpointable):
             # Set the state of the learner.
             learner.set_state(state)
 
-            # Get the weights of the underly multi-agent RLModule.
-            weights = learner.get_module_state()
+            # Get the weights of the underlying multi-agent RLModule.
+            weights = learner.get_state(components=COMPONENT_RL_MODULE)
 
-            # Set the weights of the underly multi-agent RLModule.
-            learner.set_module_state(weights)
+            # Set the weights of the underlying multi-agent RLModule.
+            learner.set_state({COMPONENT_RL_MODULE: weights})
 
 
     Extension pattern:
@@ -419,7 +423,7 @@ class Learner(Checkpointable):
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
+        self, module_id: ModuleID, config: "AlgorithmConfig" = None
     ) -> None:
         """Configures an optimizer for the given module_id.
 
@@ -686,32 +690,49 @@ class Learner(Checkpointable):
             on the correct device.
         """
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def add_module(
         self,
         *,
         module_id: ModuleID,
         module_spec: SingleAgentRLModuleSpec,
         config_overrides: Optional[Dict] = None,
-    ) -> None:
-        """Add a module to the underlying MultiAgentRLModule and the Learner.
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiAgentRLModuleSpec:
+        """Adds a module to the underlying MultiAgentRLModule.
+
+        Changes this Learner's config in order to make this architectural change
+        permanent wrt. to checkpointing.
 
         Args:
-            module_id: The id of the module to add.
-            module_spec: The module spec of the module to add.
+            module_id: The ModuleID of the module to be added.
+            module_spec: The ModuleSpec of the module to be added.
             config_overrides: The `AlgorithmConfig` overrides that should apply to
                 the new Module, if any.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+
+        Returns:
+            The new MultiAgentRLModuleSpec (after the change has been performed).
         """
+        validate_policy_id(module_id, error=True)
         self._check_is_built()
+
+        # Force-set inference-only = False.
+        module_spec = copy.deepcopy(module_spec)
+        module_spec.inference_only = False
 
         # Build the new RLModule and add it to self.module.
         module = module_spec.build()
         self.module.add_module(module_id, module)
 
         # Change our config (AlgorithmConfig) to contain the new Module.
-        self.config.multi_agent(
-            policies=self.config.policies | {module_id: PolicySpec()},
-        )
+        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
+        #  but we'll deprecate config.policies soon anyway.
+        self.config.policies[module_id] = PolicySpec()
         if config_overrides is not None:
             self.config.multi_agent(
                 algorithm_config_overrides_per_module={module_id: config_overrides}
@@ -719,30 +740,46 @@ class Learner(Checkpointable):
         self.config.rl_module(
             rl_module_spec=MultiAgentRLModuleSpec.from_module(self.module)
         )
+        if new_should_module_be_updated is not None:
+            self.config.multi_agent(policies_to_train=new_should_module_be_updated)
+
         # Allow the user to configure one or more optimizers for this new module.
         self.configure_optimizers_for_module(
             module_id=module_id,
             config=self.config.get_config_for_module(module_id),
         )
+        return self.config.rl_module_spec
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def remove_module(self, module_id: ModuleID) -> None:
-        """Remove a module from the Learner.
+    def remove_module(
+        self,
+        module_id: ModuleID,
+        *,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiAgentRLModuleSpec:
+        """Removes a module from the Learner.
 
         Args:
-            module_id: The id of the module to remove.
+            module_id: The ModuleID of the module to be removed.
+            new_should_module_be_updated: An optional sequence of ModuleIDs or a
+                callable taking ModuleID and SampleBatchType and returning whether the
+                ModuleID should be updated (trained).
+                If None, will keep the existing setup in place. RLModules,
+                whose IDs are not in the list (or for which the callable
+                returns False) will not be updated.
+
+        Returns:
+            The new MultiAgentRLModuleSpec (after the change has been performed).
         """
         self._check_is_built()
         module = self.module[module_id]
 
+        # Delete the removed module's parameters and optimizers.
         if self._is_module_compatible_with_learner(module):
-            # Delete the removed module's parameters.
             parameters = self.get_parameters(module)
             for param in parameters:
                 param_ref = self.get_param_ref(param)
                 if param_ref in self._params:
                     del self._params[param_ref]
-            # Delete the removed module's registered optimizers.
             for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
                 del self._optimizer_parameters[optimizer]
                 name = module_id + "_" + optimizer_name
@@ -751,6 +788,7 @@ class Learner(Checkpointable):
                     del self._optimizer_lr_schedules[optimizer]
             del self._module_optimizers[module_id]
 
+        # Remove the module from the MARLModule.
         self.module.remove_module(module_id)
         # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
         #  but we'll deprecate config.policies soon anyway.
@@ -760,10 +798,23 @@ class Learner(Checkpointable):
             rl_module_spec=MultiAgentRLModuleSpec.from_module(self.module)
         )
 
+        # Change self.config to reflect the new architecture.
+        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
+        #  but we'll deprecate config.policies soon anyway.
+        del self.config.policies[module_id]
+        self.config.algorithm_config_overrides_per_module.pop(module_id, None)
+        if new_should_module_be_updated is not None:
+            self.config.multi_agent(policies_to_train=new_should_module_be_updated)
+        self.config.rl_module(
+            rl_module_spec=MultiAgentRLModuleSpec.from_module(self.module)
+        )
+
         # Remove all stats from the module from our metrics logger, so we don't report
         # results from this module again.
         if module_id in self.metrics.stats:
             del self.metrics.stats[module_id]
+
+        return self.config.rl_module_spec
 
     @OverrideToImplementCustomLogic
     def should_module_be_updated(self, module_id, multi_agent_batch=None):
@@ -1514,11 +1565,11 @@ class Learner(Checkpointable):
     def additional_update_for_module(self, *args, **kwargs):
         pass
 
-    @Deprecated(new="Learner.save(...)", error=True)
+    @Deprecated(new="Learner.save_to_path(...)", error=True)
     def save_state(self, *args, **kwargs):
         pass
 
-    @Deprecated(new="Learner.restore(...)", error=True)
+    @Deprecated(new="Learner.restore_from_path(...)", error=True)
     def load_state(self, *args, **kwargs):
         pass
 

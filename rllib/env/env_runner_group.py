@@ -580,26 +580,29 @@ class EnvRunnerGroup:
                     "`from_worker_or_trainer` is None. In this case, EnvRunnerGroup "
                     "should have local_env_runner. But local_env_runner is also None."
                 )
-            # New API stack: Use the unified `get_state` API.
-            if self._remote_config.enable_env_runner_and_connector_v2:
-                # LearnerGroup has-a Learner has-a RLModule.
-                if isinstance(weights_src, LearnerGroup):
-                    rl_module_state = weights_src.get_state(
-                        components=[
-                            COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + p
-                            for p in policies
-                        ],
-                        inference_only=inference_only,
-                    )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-                # Envrunner has-a RLModule.
-                else:
-                    rl_module_state = weights_src.get_state(
-                        components=[COMPONENT_RL_MODULE + "/" + p for p in policies],
-                        inference_only=inference_only,
-                    )[COMPONENT_RL_MODULE]
-            # Old API stack: Use `get_weights`.
+
+            modules = (
+                [COMPONENT_RL_MODULE + "/" + p for p in policies]
+                if policies is not None
+                else [COMPONENT_RL_MODULE]
+            )
+            # LearnerGroup has-a Learner has-a RLModule.
+            if isinstance(weights_src, LearnerGroup):
+                rl_module_state = weights_src.get_state(
+                    components=[COMPONENT_LEARNER + "/" + m for m in modules],
+                    inference_only=inference_only,
+                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            # EnvRunner has-a RLModule.
+            elif self._remote_config.enable_env_runner_and_connector_v2:
+                rl_module_state = weights_src.get_state(
+                    components=modules,
+                    inference_only=inference_only,
+                )[COMPONENT_RL_MODULE]
             else:
-                rl_module_state = weights_src.get_weights(policies, inference_only)
+                rl_module_state = weights_src.get_weights(
+                    policies=policies,
+                    inference_only=inference_only,
+                )
 
             # Move weights to the object store to avoid having to make n pickled copies
             # of the weights dict for each worker.
@@ -629,7 +632,12 @@ class EnvRunnerGroup:
         # EnvRunnerGroup's local worker.
         if self.local_worker() is not None:
             if from_worker_or_learner_group is not None:
-                self.local_worker().set_state({COMPONENT_RL_MODULE: rl_module_state})
+                if self._remote_config.enable_env_runner_and_connector_v2:
+                    self.local_worker().set_state(
+                        {COMPONENT_RL_MODULE: rl_module_state}
+                    )
+                else:
+                    self.local_worker().set_weights(rl_module_state)
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.
             if global_vars is not None:

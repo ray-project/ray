@@ -12,6 +12,7 @@ from typing import (
 )
 
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
     SingleAgentRLModuleSpec,
@@ -23,7 +24,6 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
 )
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.nested_dict import NestedDict
@@ -70,14 +70,8 @@ class TfLearner(Learner):
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: "AlgorithmConfig" = None, hps=None
+        self, module_id: ModuleID, config: "AlgorithmConfig" = None
     ) -> None:
-        if hps is not None:
-            deprecation_warning(
-                old="Learner.configure_optimizers_for_module(.., hps=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
         module = self._module[module_id]
 
         # For this default implementation, the learning rate is handled by the
@@ -222,14 +216,16 @@ class TfLearner(Learner):
             )
 
     @override(Learner)
-    def remove_module(self, module_id: ModuleID) -> None:
+    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiAgentRLModuleSpec:
         with self._strategy.scope():
-            super().remove_module(module_id)
+            marl_spec = super().remove_module(module_id, **kwargs)
 
         if self._enable_tf_function:
             self._possibly_traced_update = tf.function(
                 self._untraced_update, reduce_retracing=True
             )
+
+        return marl_spec
 
     def _make_distributed_strategy_if_necessary(self) -> "tf.distribute.Strategy":
         """Create a distributed strategy for the learner.
