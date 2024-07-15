@@ -67,7 +67,9 @@ class InputDataBuffer(PhysicalOperator):
         return bundle
 
     def num_outputs_total(self) -> Optional[int]:
-        return self._num_output_bundles
+        if not self._estimated_num_output_bundles:
+            self._estimated_num_output_bundles = len(self._input_data)
+        return self._estimated_num_output_bundles
 
     def get_stats(self) -> StatsDict:
         return {}
@@ -78,7 +80,6 @@ class InputDataBuffer(PhysicalOperator):
     def _initialize_metadata(self):
         assert self._input_data is not None and self._is_input_initialized
 
-        self._num_output_bundles = len(self._input_data)
         block_metadata = []
         for bundle in self._input_data:
             block_metadata.extend(bundle.metadata)

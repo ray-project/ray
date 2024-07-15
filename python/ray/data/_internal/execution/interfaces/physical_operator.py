@@ -265,17 +265,13 @@ class PhysicalOperator(Operator):
 
     def num_outputs_total(self) -> Optional[int]:
         """Returns the total number of output bundles of this operator,
-        or None if unable to provide a reasonable estimate (for example,
+        or ``None`` if unable to provide a reasonable estimate (for example,
         if no tasks have finished yet).
 
         The value returned may be an estimate based off the consumption so far.
         This is useful for reporting progress.
         """
-        if self._estimated_num_output_bundles is not None:
-            return self._estimated_num_output_bundles
-        if len(self.input_dependencies) == 1:
-            return self.input_dependencies[0].num_outputs_total()
-        return None
+        return self._estimated_num_output_bundles
 
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.

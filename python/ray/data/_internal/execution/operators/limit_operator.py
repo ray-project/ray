@@ -114,10 +114,7 @@ class LimitOperator(OneToOneOperator):
         # bundles we will have. We estimate based off the consumption so far.
         if self._execution_completed:
             return self._cur_output_bundles
-        elif self._estimated_num_output_bundles is not None:
-            return self._estimated_num_output_bundles
-        else:
-            return self.input_dependencies[0].num_outputs_total()
+        return self._estimated_num_output_bundles
 
     def throttling_disabled(self) -> bool:
         return True

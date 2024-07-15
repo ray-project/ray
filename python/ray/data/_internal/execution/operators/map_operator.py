@@ -98,18 +98,6 @@ class MapOperator(OneToOneOperator, ABC):
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
 
-    def num_outputs_total(self) -> Optional[int]:
-        """Returns the total number of output bundles of this operator,
-        or None if unable to provide a reasonable estimate (for example,
-        if no tasks have finished yet).
-
-        The value returned may be an estimate based off the consumption so far.
-        This is useful for reporting progress.
-        """
-        if self._estimated_num_output_bundles is not None:
-            return self._estimated_num_output_bundles
-        return None
-
     @property
     def name(self) -> str:
         name = super().name
