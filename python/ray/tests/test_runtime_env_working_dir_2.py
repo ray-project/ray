@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import datetime
 
 import pytest
 from ray._private.test_utils import (
@@ -277,6 +278,31 @@ def test_concurrent_downloads(shutdown_only):
 
     refs = [f.remote(), g.remote()]
     ray.get(refs)
+
+
+def test_file_created_before_1980(shutdown_only, tmp_working_dir):
+    # Make sure working_dir supports file created before 1980
+    # https://github.com/ray-project/ray/issues/46379
+    working_path = Path(tmp_working_dir)
+    file_1970 = working_path / "1970"
+    with file_1970.open(mode="w") as f:
+        f.write("1970")
+    os.utime(
+        file_1970,
+        (
+            datetime.datetime(1970, 1, 1, 10, 30).timestamp(),
+            datetime.datetime(1970, 1, 1, 10, 30).timestamp(),
+        ),
+    )
+
+    ray.init(runtime_env={"working_dir": tmp_working_dir})
+
+    @ray.remote
+    def task():
+        with open("1970") as f:
+            assert f.read() == "1970"
+
+    ray.get(task.remote())
 
 
 if __name__ == "__main__":
