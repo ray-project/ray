@@ -3,7 +3,7 @@ import json
 import os
 import time
 import numpy as np
-
+import timeline
 import ray
 
 LOG_FILE = "test_large_e2e_backpressure.log"
@@ -120,7 +120,7 @@ def test_large_e2e_backpressure(is_flink: bool):
     print(ds.stats())
     print(ray._private.internal_api.memory_summary(stats_only=True))
     print(f"Total time: {end_time - start_time:.4f}s")
-    ray.timeline(f"timeline_{'ray' if not is_flink else 'flink'}_spiky.json")
+    timeline.save_timeline(f"timeline_{'ray' if not is_flink else 'flink'}_spiky.json")
     ray.shutdown()
 
 if __name__ == "__main__": 
