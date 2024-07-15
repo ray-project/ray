@@ -269,36 +269,6 @@ def _torch_stubs():
     return None, nn
 
 
-@PublicAPI
-def update_target_network(
-    *,
-    main_net: NetworkType,
-    target_net: NetworkType,
-    tau: float,
-    framework: str = "torch",
-) -> None:
-    """Updates a target network (from a "main" network) using Polyak averaging.
-
-    new_target_net_weight = (
-        tau * main_net_weight + (1.0 - tau) * current_target_net_weight
-    )
-
-    Args:
-        main_net: The nn.Module to update from.
-        target_net: The target network to update.
-        tau: The tau value to use in the Polyak averaging formula.
-        framework: The framework specifier. Must be "torch" or "tf2".
-    """
-    assert framework in ["torch", "tf2"]
-    if framework == "torch":
-        from ray.rllib.utils.torch_utils import update_target_network as _update_target
-
-    else:
-        from ray.rllib.utils.tf_utils import update_target_network as _update_target
-
-    _update_target(main_net=main_net, target_net=target_net, tau=tau)
-
-
 @DeveloperAPI
 def get_variable(
     value: Any,

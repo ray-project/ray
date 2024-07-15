@@ -1,9 +1,13 @@
 import abc
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
 from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.utils import update_target_network
+from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
@@ -13,7 +17,7 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import ModuleID
+from ray.rllib.utils.typing import ModuleID, ShouldModuleBeUpdatedFn
 
 
 class AppoLearner(ImpalaLearner):
@@ -26,14 +30,9 @@ class AppoLearner(ImpalaLearner):
     def build(self):
         super().build()
 
-        # Initially sync target networks (w/ tau=1.0 -> full overwrite).
-        # Make target nets non-trainable.
-        def _setup_target_nets(mid, module):
-            module.sync_target_networks(tau=1.0)
-            for target_net, _ in module.get_target_network_pairs():
-                target_net.requires_grad_(False)
-
-        self.module.foreach_module(_setup_target_nets)
+        self.module.foreach_module(
+            lambda mid, mod: mod.unwrapped().make_target_networks()
+        )
 
         # The current kl coefficients per module as (framework specific) tensor
         # variables.
@@ -45,10 +44,26 @@ class AppoLearner(ImpalaLearner):
             )
         )
 
+    @override(Learner)
+    def add_module(
+        self,
+        *,
+        module_id: ModuleID,
+        module_spec: SingleAgentRLModuleSpec,
+        config_overrides: Optional[Dict] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiAgentRLModuleSpec:
+        marl_spec = super().add_module(module_id=module_id)
+        # Create target networks for added Module, if applicable.
+        if isinstance(self.module[module_id].unwrapped(), TargetNetworkAPI):
+            self.module[module_id].unwrapped().make_target_networks()
+        return marl_spec
+
     @override(ImpalaLearner)
-    def remove_module(self, module_id: str):
-        super().remove_module(module_id)
+    def remove_module(self, module_id: str) -> MultiAgentRLModuleSpec:
+        marl_spec = super().remove_module(module_id)
         self.curr_kl_coeffs_per_module.pop(module_id)
+        return marl_spec
 
     @override(Learner)
     def after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
@@ -81,7 +96,12 @@ class AppoLearner(ImpalaLearner):
                 timestep - self.metrics.peek(last_update_ts_key, default=0)
                 >= config.target_update_frequency
             ):
-                module.sync_target_networks(tau=config.tau)
+                for main_net, target_net in module.unwrapped().get_target_network_pairs():
+                    update_target_network(
+                        main_net=main_net,
+                        target_net=target_net,
+                        tau=config.tau,
+                    )
                 # Increase lifetime target network update counter by one.
                 self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
                 # Update the (single-value -> window=1) last updated timestep metric.

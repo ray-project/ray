@@ -9,6 +9,7 @@ from typing import (
     Dict,
     List,
     Optional,
+    Set,
     Type,
     TYPE_CHECKING,
     Union,
@@ -996,11 +997,3 @@ class LearnerGroup(Checkpointable):
                         COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id
                     ),
                 )
-
-    @Deprecated(new="LearnerGroup.save(...)", error=True)
-    def save_state(self, *args, **kwargs):
-        pass
-
-    @Deprecated(new="LearnerGroup.restore(...)", error=True)
-    def load_state(self, *args, **kwargs):
-        pass

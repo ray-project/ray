@@ -51,7 +51,6 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
@@ -89,7 +88,6 @@ from ray.rllib.utils.checkpoints import (
     Checkpointable,
     CHECKPOINT_VERSION,
     CHECKPOINT_VERSION_LEARNER,
-    CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER,
     get_checkpoint_info,
     try_import_msgpack,
 )
@@ -325,22 +323,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         Args:
             path: The path (str) to the checkpoint directory to use
                 or an AIR Checkpoint instance to restore from.
-            module_ids: ID of the RLModules from recover from the checkpoint. This
-                allows users to restore an Algorithm with only a subset of the
-                originally present RLModules.
-                IMPORTANT: Must not contain characters that
-                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
-                or a dot, space or backslash at the end of the ID.
-            new_agent_to_module_mapping_fn: An optional (updated) AgentID to ModuleID
-                mapping function to use from here on. Note that already ongoing
-                episodes will not change their mapping but will use the old mapping till
-                the end of the episode.
-            new_should_module_be_updated: An optional sequence of ModuleIDs or a
-                callable taking ModuleID and MultiAgentBatch and returning whether the
-                ModuleID should be updated (trained).
-                If None, will keep the existing setup in place. RLModules,
-                whose IDs are not in the sequence (or for which the callable
-                returns False) will not be updated.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
@@ -415,9 +397,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         state = Algorithm._checkpoint_info_to_algorithm_state(
             checkpoint_info=checkpoint_info,
-            module_ids=module_ids,
-            new_agent_to_module_mapping_fn=new_agent_to_module_mapping_fn,
-            new_should_module_be_updated=new_should_module_be_updated,
             policy_ids=policy_ids,
             policy_mapping_fn=policy_mapping_fn,
             policies_to_train=policies_to_train,
@@ -2057,7 +2036,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """
         return self.workers.local_worker().get_policy(policy_id)
 
-    # TODO (sven): Bring Algorithm into `Checkpointable` API.
     @PublicAPI
     def get_weights(self, policies: Optional[List[PolicyID]] = None) -> dict:
         """Return a dictionary of policy ids to weights.
@@ -2068,7 +2046,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """
         return self.workers.local_worker().get_weights(policies)
 
-    # TODO (sven): Bring Algorithm into `Checkpointable` API.
     @PublicAPI
     def set_weights(self, weights: Dict[PolicyID, dict]):
         """Set policy weights by policy id.
@@ -2493,7 +2470,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             raise KeyError(f"Policy with ID {policy_id} not found in Algorithm!")
         policy.export_checkpoint(export_dir)
 
-    # TODO (sven): Bring Algorithm into `Checkpointable` API.
     @override(Trainable)
     def save_checkpoint(self, checkpoint_dir: str) -> None:
         """Exports checkpoint to a local directory.
@@ -2561,7 +2537,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     "format": "cloudpickle",
                     "state_file": str(state_file),
                     "policy_ids": list(policy_states.keys()),
-                    "module_ids": list(module_states.keys()),
                     "ray_version": ray.__version__,
                     "ray_commit": ray.__commit__,
                 },
@@ -3274,22 +3249,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             checkpoint_info: A checkpoint info dict as returned by
                 `ray.rllib.utils.checkpoints.get_checkpoint_info(
                 [checkpoint dir or AIR Checkpoint])`.
-            module_ids: ID of the RLModules from recover from the checkpoint. This
-                allows users to restore an Algorithm with only a subset of the
-                originally present RLModules.
-                IMPORTANT: Must not contain characters that
-                are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
-                or a dot, space or backslash at the end of the ID.
-            new_agent_to_module_mapping_fn: An optional (updated) AgentID to ModuleID
-                mapping function to use from here on. Note that already ongoing
-                episodes will not change their mapping but will use the old mapping till
-                the end of the episode.
-            new_should_module_be_updated: An optional sequence of ModuleIDs or a
-                callable taking ModuleID and MultiAgentBatch and returning whether the
-                ModuleID should be updated (trained).
-                If None, will keep the existing setup in place. RLModules,
-                whose IDs are not in the sequence (or for which the callable
-                returns False) will not be updated.
             policy_ids: Optional list/set of PolicyIDs. If not None, only those policies
                 listed here will be included in the returned state. Note that
                 state items such as filters, the `is_policy_to_train` function, as

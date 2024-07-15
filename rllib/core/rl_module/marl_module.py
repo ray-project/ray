@@ -249,24 +249,6 @@ class MultiAgentRLModule(RLModule):
             return default
         return self._rl_modules[module_id]
 
-    def get(
-        self,
-        module_id: ModuleID,
-        default: Optional[RLModule] = None,
-    ) -> Optional[RLModule]:
-        """Returns the module with the given module ID or default if not found in self.
-
-        Args:
-            module_id: The module ID to get.
-
-        Returns:
-            The RLModule with the given module ID or `default` if `module_id` not found
-            in `self`.
-        """
-        if module_id not in self._rl_modules:
-            return default
-        return self._rl_modules[module_id]
-
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
         return []

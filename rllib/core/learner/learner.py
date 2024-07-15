@@ -690,6 +690,7 @@ class Learner(Checkpointable):
             on the correct device.
         """
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def add_module(
         self,
         *,
@@ -750,6 +751,7 @@ class Learner(Checkpointable):
         )
         return self.config.rl_module_spec
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def remove_module(
         self,
         module_id: ModuleID,
@@ -790,13 +792,6 @@ class Learner(Checkpointable):
 
         # Remove the module from the MARLModule.
         self.module.remove_module(module_id)
-        # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
-        #  but we'll deprecate config.policies soon anyway.
-        del self.config.policies[module_id]
-        self.config.algorithm_config_overrides_per_module.pop(module_id, None)
-        self.config.rl_module(
-            rl_module_spec=MultiAgentRLModuleSpec.from_module(self.module)
-        )
 
         # Change self.config to reflect the new architecture.
         # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,

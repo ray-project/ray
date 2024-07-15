@@ -3,9 +3,9 @@ from typing import Any, Collection, Dict, Optional, Union, Type
 from packaging import version
 
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface,
-)
+#from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+#    RLModuleWithTargetNetworksInterface,
+#)
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.models.torch.torch_distributions import TorchDistribution
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
@@ -178,17 +178,17 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         return self.module
 
 
-class TorchDDPRLModuleWithTargetNetworksInterface(
-    TorchDDPRLModule,
-    RLModuleWithTargetNetworksInterface,
-):
-    @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self, *args, **kwargs):
-        return self.module.get_target_network_pairs(*args, **kwargs)
+#class TorchDDPRLModuleWithTargetNetworksInterface(
+#    TorchDDPRLModule,
+#    RLModuleWithTargetNetworksInterface,
+#):
+#    @override(RLModuleWithTargetNetworksInterface)
+#    def get_target_network_pairs(self, *args, **kwargs):
+#        return self.module.get_target_network_pairs(*args, **kwargs)
 
-    @override(RLModuleWithTargetNetworksInterface)
-    def sync_target_networks(self, *args, **kwargs):
-        return self.module.sync_target_networks(*args, **kwargs)
+#    @override(RLModuleWithTargetNetworksInterface)
+#    def sync_target_networks(self, *args, **kwargs):
+#        return self.module.sync_target_networks(*args, **kwargs)
 
 
 def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):
