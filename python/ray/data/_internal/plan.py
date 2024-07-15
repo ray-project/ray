@@ -56,7 +56,8 @@ class ExecutionPlan:
 
         Args:
             stats: Stats for the base blocks.
-            data_context: DataContext object to use for execution.
+            data_context: :class:`~ray.data.context.DataContext`
+                object to use for execution.
         """
         self._in_stats = stats
         # A computed snapshot of some prefix of operators and their corresponding
