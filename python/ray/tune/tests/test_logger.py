@@ -295,6 +295,7 @@ class LoggerSuite(unittest.TestCase):
         assert "INFO" in cm.output[0]
 
 
+@pytest.mark.skipif(sys.version_info >= (3, 12))
 class AimLoggerSuite(unittest.TestCase):
     """Test Aim integration."""
 

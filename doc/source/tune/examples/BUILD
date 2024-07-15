@@ -22,6 +22,7 @@ py_test_run_all_notebooks(
         "tune-xgboost.ipynb",
         "pbt_transformers.ipynb",  # Transformers uses legacy Tune APIs.
         "horovod_simple.ipynb",  # CI do not have Horovod
+        "tune-aim.ipynb",  # CI does not have `aim`
    ],
     tags = [
         "exclusive",
