@@ -505,7 +505,7 @@ py_test(
     size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"]
+    tags = ["team:ml", "exclusive", "example", "manual"]
 )
 
 py_test(
