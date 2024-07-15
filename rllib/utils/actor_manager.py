@@ -491,7 +491,7 @@ class FaultTolerantActorManager:
             actor_id = remote_actor_ids[remote_calls.index(ready)]
             tag = tags[remote_calls.index(ready)]
 
-            # If caller wants ObjectRefs, return directly without resolve them.
+            # If caller wants ObjectRefs, return directly without resolving.
             if return_obj_refs:
                 remote_results.add_result(actor_id, ResultOrError(result=ready), tag)
                 continue

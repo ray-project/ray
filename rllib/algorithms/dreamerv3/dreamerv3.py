@@ -753,7 +753,7 @@ class DreamerV3(Algorithm):
         super().__setstate__(state=state)
 
         # Assign the module to the local `EnvRunner` if sharing is enabled.
-        # Note, in `Learner.load_state()` the module is first deleted
+        # Note, in `Learner.restore_from_path()` the module is first deleted
         # and then a new one is built - therefore the worker has no
         # longer a copy of the learner.
         if self.config.share_module_between_env_runner_and_learner:
