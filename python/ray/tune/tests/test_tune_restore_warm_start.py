@@ -7,7 +7,6 @@ import unittest
 import numpy as np
 import pandas
 import pytest
-from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 from hyperopt import hp
 from nevergrad.optimization import optimizerlib
 from packaging.version import Version
@@ -251,10 +250,13 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+@pytest.mark.skipif(sys.version_info >= (3, 12))
 class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         if Version(pandas.__version__) >= Version("2.0.0"):
             pytest.skip("HEBO does not support pandas>=2.0.0")
+
+        from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
         space_config = [
             {"name": "width", "type": "num", "lb": 0, "ub": 20},
