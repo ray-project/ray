@@ -1,7 +1,8 @@
+import io
 import logging
 import uuid
 from types import ModuleType
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union
 
 import ray
 import ray.util.serialization
@@ -25,6 +26,158 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Signature for a torch.Tensor allocator is:
+# (shape: Tuple[int], dtype: torch.dtype) -> torch.Tensor.
+TorchTensorAllocator = Callable[[Tuple[int], "torch.dtype"], "torch.Tensor"]
+
+
+class NestedTorchTensorNcclChannel(ChannelInterface):
+    def __init__(
+        self,
+        writer: ray.actor.ActorHandle,
+        readers: List[ray.actor.ActorHandle],
+        gpu_data_typ: "TorchTensorType",
+        cpu_data_typ: Optional["SharedMemoryType"] = None,
+        _gpu_data_channel: Optional["TorchTensorNcclChannel"] = None,
+        _cpu_data_channel: Optional["Channel"] = None,
+    ):
+        """
+        Can be used to send GPU tensors nested inside other data. The data is
+        sent via shared memory while the GPU tensors are sent through a P2P
+        transport (NCCL).
+
+        NOTE: This class is currently not thread-safe because it reads and
+        writes the worker-local
+        ray.experimental.channel.serialization_context._SerializationContext
+        when serializing data.
+        """
+        self._writer = writer
+        self._readers = readers
+
+        if _gpu_data_channel is not None or _cpu_data_channel is not None:
+            # This path is used when the NestedTorchTensorNcclChannel is being
+            # deserialized.
+            assert (
+                writer is None
+                and readers is None
+                and gpu_data_typ is None
+                and cpu_data_typ is None
+            )
+            assert _gpu_data_channel is not None and _cpu_data_channel is not None
+            self._gpu_data_channel = _gpu_data_channel
+            self._cpu_data_channel = _cpu_data_channel
+        else:
+            # This path is used when the NestedTorchTensorNcclChannel is first
+            # being created, by the writer of the channel.
+            self._gpu_data_channel: TorchTensorNcclChannel = (
+                gpu_data_typ.create_channel(writer, readers)
+            )
+            self._cpu_data_channel: Optional["Channel"] = None
+            if cpu_data_typ is not None:
+                self._cpu_data_channel = cpu_data_typ.create_channel(writer, readers)
+
+        # Used for serialization.
+        self._worker = ray._private.worker.global_worker
+        self._worker.check_connected()
+
+        ctx = ChannelContext.get_current()
+        self.serialization_ctx = ctx.serialization_context
+        assert self.serialization_ctx is not None
+
+    @classmethod
+    def from_channels(
+        cls,
+        gpu_data_channel: "TorchTensorNcclChannel",
+        cpu_data_channel: Optional["Channel"],
+    ):
+        return cls(
+            writer=None,
+            readers=None,
+            gpu_data_typ=None,
+            cpu_data_typ=None,
+            _gpu_data_channel=gpu_data_channel,
+            _cpu_data_channel=cpu_data_channel,
+        )
+
+    def __reduce__(self):
+        return (
+            NestedTorchTensorNcclChannel.from_channels,
+            (self._gpu_data_channel, self._cpu_data_channel),
+        )
+
+    def ensure_registered_as_writer(self):
+        self._gpu_data_channel.ensure_registered_as_writer()
+        if self._cpu_data_channel is not None:
+            self._cpu_data_channel.ensure_registered_as_writer()
+
+    def ensure_registered_as_reader(self):
+        self._gpu_data_channel.ensure_registered_as_reader()
+        if self._cpu_data_channel is not None:
+            self._cpu_data_channel.ensure_registered_as_reader()
+
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
+        self.serialization_ctx.reset_tensors([])
+        # All tensors found in `value` will be transferred via NCCL.
+        self.serialization_ctx.set_use_external_transport(True)
+
+        try:
+            # Serialize the data. All tensors that match our current device
+            # will be extracted into the serialization context and replaced
+            # with a placeholder.
+            serialized_cpu_data = self._worker.get_serialization_context().serialize(
+                value
+            )
+        except TypeError as e:
+            sio = io.StringIO()
+            ray.util.inspect_serializability(value, print_file=sio)
+            msg = (
+                "Could not serialize the put value "
+                f"{repr(value)}:\n"
+                f"{sio.getvalue()}"
+            )
+            raise TypeError(msg) from e
+        finally:
+            # Pop the tensors that were found during serialization of `value`.
+            tensors_to_send = self.serialization_ctx.reset_tensors([])
+            # Reset the serialization method to now serialize torch.Tensors
+            # normally.
+            self.serialization_ctx.set_use_external_transport(False)
+
+        # Send the extracted tensors through a GPU-specific channel.
+        self._gpu_data_channel.write(tensors_to_send)
+        # Send the rest of the data, with placeholders for the extracted
+        # tensors, through a CPU-specific channel.
+        self._cpu_data_channel.write(serialized_cpu_data)
+
+    def read(self, timeout: Optional[float] = None) -> Any:
+        tensors = self._gpu_data_channel.read()
+
+        if self._gpu_data_channel.has_static_type():
+            # If the channel was declared with a static TorchTensorType, then
+            # the task is allowed to return at most one tensor, and its shape
+            # and dtype must match the declared type. Wrap the tensor in a
+            # list since the following calls expect a list.
+            tensors = [tensors]
+
+        self.serialization_ctx.reset_tensors(tensors)
+        data = self._cpu_data_channel.read()
+        self.serialization_ctx.reset_tensors([])
+
+        return data
+
+    def close(self) -> None:
+        self._gpu_data_channel.close()
+        if self._cpu_data_channel is not None:
+            self._cpu_data_channel.close()
+
+
+def _torch_zeros_allocator(shape: Tuple[int], dtype: "torch.dtype"):
+    import torch
+
+    ctx = ChannelContext.get_current()
+    return torch.zeros(shape, dtype=dtype, device=ctx.torch_device)
+
+
 @DeveloperAPI
 class TorchTensorNcclChannel(ChannelInterface):
     def __init__(
@@ -33,13 +186,27 @@ class TorchTensorNcclChannel(ChannelInterface):
         readers: List[ray.actor.ActorHandle],
         typ: "TorchTensorType",
         _meta_channel: Optional["Channel"] = None,
+        _torch_tensor_allocator: Optional[TorchTensorAllocator] = None,
     ):
+        """
+        Create a channel for torch.Tensors transferred via NCCL.
+
+        Args:
+            writer: The actor that may write to the channel. None signifies the driver.
+            readers: The actors that may read from the channel. None signifies
+                the driver.
+            typ: Type information about the values passed through the channel.
+            _meta_channel: A channel used to send metadata for the tensors,
+                i.e. shape and dtype. If not provided, and if the typ does not
+                specify a static shape and dtype, then a metadata channel based
+                on shared memory will be created.
+            _torch_tensor_allocator: An optional allocator function for
+                allocating torch.Tensor buffers on receivers. By default,
+                torch.zeros will be used.
+        """
         import torch
 
-        from ray.experimental.channel.torch_tensor_type import (
-            TorchTensorType,
-            _get_default_torch_device,
-        )
+        from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
         self.torch: ModuleType = torch
 
@@ -49,9 +216,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._reader_ranks: Optional[List[int]] = None
         self._writer_registered: bool = False
         self._reader_registered: bool = False
-
-        # TODO(swang): Allow default device to be overridden.
-        self._device = _get_default_torch_device()
+        self._torch_tensor_allocator = _torch_tensor_allocator
+        if self._torch_tensor_allocator is None:
+            self._torch_tensor_allocator = _torch_zeros_allocator
 
         assert isinstance(typ, TorchTensorType)
         assert typ.transport == typ.NCCL
@@ -108,17 +275,25 @@ class TorchTensorNcclChannel(ChannelInterface):
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
         assert self._writer_registered
-        assert self._device.type == "cuda"
+        ctx = ChannelContext.get_current()
+        assert ctx.torch_device.type == "cuda"
 
     def ensure_registered_as_reader(self) -> bool:
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
         assert self._reader_registered
-        assert self._device.type == "cuda"
+        ctx = ChannelContext.get_current()
+        assert ctx.torch_device.type == "cuda"
 
     def __reduce__(self):
         return (
             self.__class__,
-            (self._writer, self._readers, self._typ, self._meta_channel),
+            (
+                self._writer,
+                self._readers,
+                self._typ,
+                self._meta_channel,
+                self._torch_tensor_allocator,
+            ),
         )
 
     def _get_tensor_meta(self, tensor: "torch.Tensor") -> Optional["TorchTensorType"]:
@@ -127,39 +302,60 @@ class TorchTensorNcclChannel(ChannelInterface):
         if not isinstance(tensor, self.torch.Tensor):
             raise ValueError("Task must return torch.Tensors")
 
-        if tensor.device != self._device:
+        ctx = ChannelContext.get_current()
+        if tensor.device != ctx.torch_device:
             raise ValueError(
-                f"torch.Tensor must be on the default device: {self._device}"
+                f"torch.Tensor must be on the default device: {ctx.torch_device}"
             )
 
         meta: Optional["TorchTensorType"] = None
         if not self.has_static_type():
             # User did not declare a static type, so we must send the metadata
             # for this tensor.
-            meta = TorchTensorType(shape=tensor.shape, dtype=tensor.dtype)
-        elif tensor.shape != self._typ.shape:
+            meta = TorchTensorType(_shape=tensor.shape, _dtype=tensor.dtype)
+        elif tensor.shape != self._typ._shape:
             raise ValueError(
-                f"torch.Tensor has shape {tensor.shape}, expected {self._typ.shape}"
+                f"torch.Tensor has shape {tensor.shape}, expected {self._typ._shape}"
             )
-        elif tensor.dtype != self._typ.dtype:
+        elif tensor.dtype != self._typ._dtype:
             raise ValueError(
-                f"torch.Tensor has dtype {tensor.dtype}, expected {self._typ.dtype}"
+                f"torch.Tensor has dtype {tensor.dtype}, expected {self._typ._dtype}"
             )
 
         return meta
 
     def write(
         self,
-        tensor: "torch.Tensor",
+        tensors: Union["torch.Tensor", List["torch.Tensor"], Exception],
+        timeout: Optional[float] = None,
     ):
-        if isinstance(tensor, ray.exceptions.RayTaskError):
+        if isinstance(tensors, ray.exceptions.RayTaskError):
             # TODO(swang): Write exceptions to the meta channel if it is
             # available.
-            raise tensor
+            raise tensors
 
-        meta = self._get_tensor_meta(tensor)
-        if meta is not None:
-            self._meta_channel.write(meta)
+        if isinstance(tensors, list):
+            meta_list = []
+            for tensor in tensors:
+                meta_list.append(self._get_tensor_meta(tensor))
+            if self.has_static_type():
+                # Make sure that there is exactly one tensor to send, and its
+                # metadata should have matched the static type.
+                if meta_list != [None]:
+                    raise ValueError(
+                        "DAGNode annotated with "
+                        "TorchTensorType(_shape=shape, _dtype=dtype))` can return at "
+                        "most one tensor with the declared `_shape` and `_dtype`. "
+                        "Use TorchTensorType() if value contains more than one "
+                        "tensor or tensor of dynamic size."
+                    )
+            else:
+                self._meta_channel.write(meta_list)
+        else:
+            meta = self._get_tensor_meta(tensors)
+            if meta is not None:
+                self._meta_channel.write(meta)
+            tensors = [tensors]
 
         # NOTE(swang): We must send the metadata *before* launching the NCCL
         # send. We are using blocking NCCL ops, so the following calls will
@@ -167,26 +363,34 @@ class TorchTensorNcclChannel(ChannelInterface):
         # kernel together before either can proceed. Therefore, we send the
         # metadata first so that the receiver can read the metadata and then
         # launch the same NCCL op.
-        # TODO: If there are multiple readers, can replace with a
-        # broadcast.
-        for rank in self._reader_ranks:
-            self._nccl_group.send(tensor, rank)
+        for tensor in tensors:
+            # TODO: If there are multiple readers, can replace with a
+            # broadcast.
+            for rank in self._reader_ranks:
+                self._nccl_group.send(tensor, rank)
 
-    def begin_read(self) -> "torch.Tensor":
-        if self._meta_channel is not None:
-            typ = self._meta_channel.begin_read()
-            # It's safe to release the channel because shape and dtype should get
-            # copied during deserialization.
-            self._meta_channel.end_read()
-        else:
-            typ = self._typ
-
-        buf = self.torch.zeros(typ.shape, dtype=typ.dtype, device=self._device)
+    def _read_single_tensor(self, typ: "TorchTensorType") -> "torch.Tensor":
+        buf = self._torch_tensor_allocator(typ._shape, typ._dtype)
         self._nccl_group.recv(buf, self._writer_rank)
         return buf
 
-    def end_read(self) -> None:
-        return
+    def read(
+        self, timeout: Optional[float] = None
+    ) -> Union["torch.Tensor", List["torch.Tensor"]]:
+        if self._meta_channel is not None:
+            meta = self._meta_channel.read()
+        else:
+            meta = self._typ
+
+        if not isinstance(meta, list):
+            return self._read_single_tensor(meta)
+
+        bufs: List["torch.Tensor"] = []
+        for typ in meta:
+            bufs.append(self._read_single_tensor(typ))
+        # TODO: Sync CUDA stream after receiving all tensors, instead of after
+        # each tensor.
+        return bufs
 
     def close(self) -> None:
         if self._meta_channel is not None:
@@ -201,8 +405,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
         return (
-            self._typ.shape != TorchTensorType.AUTO
-            and self._typ.dtype != TorchTensorType.AUTO
+            self._typ._shape != TorchTensorType.AUTO
+            and self._typ._dtype != TorchTensorType.AUTO
         )
 
 

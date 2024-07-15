@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any, Collection, Dict, Optional, Union
 
 from ray.rllib.algorithms.sac.sac_rl_module import (
     ACTION_DIST_INPUTS_NEXT,
@@ -9,15 +9,11 @@ from ray.rllib.algorithms.sac.sac_rl_module import SACRLModule
 from ray.rllib.core.models.base import ENCODER_OUT, Encoder, Model
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface,
-)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.typing import NetworkType
-
+from ray.rllib.utils.typing import StateDict
 
 torch, nn = try_import_torch()
 
@@ -31,22 +27,73 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
 
         # If not an inference-only module (e.g., for evaluation), set up the
         # parameter names to be removed or renamed when syncing from the state dict
-        # when synching.
-        if not self.inference_only:
+        # when syncing.
+        if not self.config.inference_only:
+            # We do not want to train the target networks. Instead, we sync them
+            # with the actual (trained) ones.
+            self.qf_target_encoder.requires_grad_(False)
+            self.qf_target_encoder.load_state_dict(self.qf_encoder.state_dict())
+            self.qf_target.requires_grad_(False)
+            self.qf_target.load_state_dict(self.qf.state_dict())
+
+            # If necessary, also synchronize the twin networks.
+            if self.twin_q:
+                self.qf_target_twin_encoder.requires_grad_(False)
+                self.qf_target_twin_encoder.load_state_dict(
+                    self.qf_twin_encoder.state_dict()
+                )
+                self.qf_target_twin.requires_grad_(False)
+                self.qf_target_twin.load_state_dict(self.qf_twin.state_dict())
+
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
 
+    # @override(RLModuleWithTargetNetworksInterface)
+    # def sync_target_networks(self, tau: float) -> None:
+    #    pairs = [
+    #        (self.qf_target_encoder, self.qf_encoder),
+    #        (self.qf_target, self.qf),
+    #    ] + (
+    #        # If we have twin networks we need to update them, too.
+    #        [
+    #            (self.qf_target_twin_encoder, self.qf_twin_encoder),
+    #            (self.qf_target_twin, self.qf_twin),
+    #        ]
+    #        if self.twin_q
+    #        else []
+    #    )
+    #    # Loop through all individual networks that have a corresponding target net.
+    #    for target_net, main_net in pairs:
+    #        # Get the current parameters from the main network.
+    #        state_dict = main_net.state_dict()
+    #        # Use here Polyak averaging.
+    #        new_target_state_dict = {
+    #            k: tau * state_dict[k] + (1 - tau) * v
+    #            for k, v in target_net.state_dict().items()
+    #        }
+    #        # Apply the new parameters to the target Q network.
+    #        target_net.load_state_dict(new_target_state_dict)
+
     @override(TorchRLModule)
-    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
-        state_dict = self.state_dict()
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        inference_only: bool = False,
+        **kwargs,
+    ) -> StateDict:
+        state = super(SACTorchRLModule, self).get_state(
+            components=components, not_components=not_components, **kwargs
+        )
         # If this module is not for inference, but the state dict is.
-        if not self.inference_only and inference_only:
+        if not self.config.inference_only and inference_only:
             # Call the local hook to remove or rename the parameters.
-            return self._inference_only_get_state_hook(state_dict)
+            return self._inference_only_get_state_hook(state)
         # Otherwise, the state dict is for checkpointing or saving the model.
         else:
             # Return the state dict as is.
-            return state_dict
+            return state
 
     @override(RLModule)
     def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
@@ -66,7 +113,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
-        if self.inference_only:
+        if self.config.inference_only:
             raise RuntimeError(
                 "Trying to train a module that is not a learner module. Set the "
                 "flag `inference_only=False` when building the module."
@@ -145,22 +192,6 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
             )
             if self.twin_q
             else {}
-        )
-
-    @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
-        """Returns target Q and Q network(s) to update the target network(s)."""
-        return [
-            (self.qf_target_encoder, self.qf_encoder),
-            (self.qf_target, self.qf),
-        ] + (
-            # If we have twin networks we need to update them, too.
-            [
-                (self.qf_target_twin_encoder, self.qf_twin_encoder),
-                (self.qf_target_twin, self.qf_twin),
-            ]
-            if self.twin_q
-            else []
         )
 
     @override(SACRLModule)

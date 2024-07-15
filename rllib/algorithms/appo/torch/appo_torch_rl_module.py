@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 
 from ray.rllib.algorithms.appo.appo import (
     OLD_ACTION_DIST_LOGITS_KEY,
@@ -13,17 +13,16 @@ from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.typing import NetworkType
 
 
-class APPOTorchRLModule(
-    PPOTorchRLModule, RLModuleWithTargetNetworksInterface, APPORLModule
-):
+class APPOTorchRLModule(PPOTorchRLModule, APPORLModule):
     @override(PPOTorchRLModule)
     def setup(self):
         super().setup()
 
         # If the module is not for inference only, update the target networks.
-        if not self.inference_only:
+        if not self.config.inference_only:
             self.old_pi.load_state_dict(self.pi.state_dict())
             self.old_encoder.load_state_dict(self.encoder.state_dict())
             # We do not train the targets.
@@ -31,7 +30,7 @@ class APPOTorchRLModule(
             self.old_encoder.requires_grad_(False)
 
     @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self):
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
         return [(self.old_pi, self.pi), (self.old_encoder, self.encoder)]
 
     @override(PPOTorchRLModule)

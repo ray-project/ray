@@ -649,15 +649,11 @@ def capitalize(s: str):
 def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
+    block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    import pyarrow as pa
-
-    block = pa.table(df)
     return (
         block,
-        BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        ),
+        BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build()),
     )
 
 
@@ -668,9 +664,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
 
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
-    metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
+    metadata = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
     return block, metadata
 
 
@@ -680,9 +674,7 @@ def get_table_block_metadata(
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
-    return BlockAccessor.for_block(table).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
+    return BlockAccessor.for_block(table).get_metadata(exec_stats=stats.build())
 
 
 def unify_block_metadata_schema(

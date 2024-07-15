@@ -13,7 +13,7 @@ from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient import discovery, errors
 
-from ray._private.accelerators import TPUAcceleratorManager, tpu
+from ray._private.accelerators import TPUAcceleratorManager
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -48,6 +48,11 @@ HAS_TPU_PROVIDER_FIELD = "_has_tpus"
 # NOTE: iam.serviceAccountUser allows the Head Node to create worker nodes
 # with ServiceAccounts.
 
+# By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
+# For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
+DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
+DEFAULT_TPU_CORES_PER_CHIP = 2
+
 
 def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
     """Convert a provided accelerator_config to accelerator_type.
@@ -67,7 +72,14 @@ def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
     # Reduce e.g. "2x2x2" to 8
     chip_dimensions = [int(chip_count) for chip_count in topology.split("x")]
     num_chips = reduce(lambda x, y: x * y, chip_dimensions)
-    num_cores = num_chips * 2
+    num_cores = num_chips * DEFAULT_TPU_CORES_PER_CHIP
+
+    # V5LitePod is rendered as "V5LITE_POD" in accelerator configuration but
+    # accelerator type uses a format like "v5litepod-{cores}", so we need
+    # to manually convert the string here.
+    if generation == "v5lite_pod":
+        generation = "v5litepod"
+        num_cores = num_chips
 
     return f"{generation}-{num_cores}"
 
@@ -106,7 +118,7 @@ def _validate_tpu_config(node: dict):
         generation_pattern = re.compile(r"^V\d+[a-zA-Z]*$")
         topology_pattern = re.compile(r"^\d+x\d+(x\d+)?$")
 
-        if not generation_pattern.match(generation):
+        if generation != "V5LITE_POD" and not generation_pattern.match(generation):
             raise ValueError(f"type should match V(generation). Got {generation}.")
         if generation == "V2" or generation == "V3":
             raise ValueError(
@@ -118,13 +130,31 @@ def _validate_tpu_config(node: dict):
             )
 
 
+def _get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
+    if accelerator_type == "v5litepod-8":
+        return 8
+
+    return DEFAULT_TPU_NUM_CHIPS_PER_HOST
+
+
+def _get_tpu_cores_per_chip(accelerator_type: str) -> int:
+    # accelerator_type  is in the form v{generateion}-{cores}
+    accelerator_type = accelerator_type.split("-")[0]
+
+    # V5Litepods have 1 core per chip
+    if accelerator_type == "v5litepod":
+        return 1
+
+    return DEFAULT_TPU_CORES_PER_CHIP
+
+
 def _get_num_tpu_chips(node: dict) -> int:
     chips = 0
     if "acceleratorType" in node:
         accelerator_type = node["acceleratorType"]
         # `acceleratorType` is typically v{generation}-{cores}
         cores = int(accelerator_type.split("-")[1])
-        chips = cores / tpu.TPU_CORES_PER_CHIP
+        chips = cores / _get_tpu_cores_per_chip(accelerator_type)
     if "acceleratorConfig" in node:
         topology = node["acceleratorConfig"]["topology"]
         # `topology` is typically {chips}x{chips}x{chips}
@@ -136,7 +166,14 @@ def _get_num_tpu_chips(node: dict) -> int:
 
 
 def _is_single_host_tpu(node: dict) -> bool:
-    return _get_num_tpu_chips(node) == tpu.TPU_NUM_CHIPS_PER_HOST
+    accelerator_type = ""
+    if "acceleratorType" in node:
+        accelerator_type = node["acceleratorType"]
+    else:
+        accelerator_type = tpu_accelerator_config_to_type(node["acceleratorConfig"])
+    return _get_num_tpu_chips(node) == _get_num_tpu_visible_chips_per_host(
+        accelerator_type
+    )
 
 
 def get_node_type(node: dict) -> GCPNodeType:

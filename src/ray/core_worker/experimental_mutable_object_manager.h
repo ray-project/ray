@@ -34,8 +34,32 @@
 namespace ray {
 namespace experimental {
 
-class MutableObjectManager {
+class MutableObjectManager : public std::enable_shared_from_this<MutableObjectManager> {
  public:
+  /// Buffer for a mutable object. This buffer wraps a shared memory buffer of
+  /// a mutable object, and read-releases the mutable object when it is destructed.
+  /// This auto-releasing behavior enables a cleaner API for accelerated DAG so that
+  /// manual calls to ReadRelease() are not needed.
+  class MutableObjectBuffer : public SharedMemoryBuffer {
+   public:
+    MutableObjectBuffer(std::shared_ptr<MutableObjectManager> mutable_object_manager,
+                        std::shared_ptr<Buffer> buffer,
+                        const ObjectID &object_id)
+        : SharedMemoryBuffer(buffer, 0, buffer->Size()),
+          mutable_object_manager_(mutable_object_manager),
+          object_id_(object_id) {}
+
+    ~MutableObjectBuffer() {
+      RAY_UNUSED(mutable_object_manager_->ReadRelease(object_id_));
+    }
+
+    const ObjectID &object_id() const { return object_id_; }
+
+   private:
+    std::shared_ptr<MutableObjectManager> mutable_object_manager_;
+    ObjectID object_id_;
+  };
+
   struct Channel {
     Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
         : lock(std::make_unique<std::mutex>()),
@@ -79,34 +103,22 @@ class MutableObjectManager {
   /// Checks if a channel is registered for an object.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered for object_id, false otherwise.
+  /// \return The return status. True if the channel is registered for object_id, false
+  ///         otherwise.
   bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
 
-  /// Checks if a reader channel is registered for an object.
+  /// Gets the backing store for an object. WriteAcquire() must have already been called
+  /// before this method is called, and WriteRelease() must not yet have been called.
   ///
   /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a reader for object_id,
-  /// false otherwise.
-  bool ReaderChannelRegistered(const ObjectID &object_id) {
-    Channel *c = GetChannel(object_id);
-    if (!c) {
-      return false;
-    }
-    return c->reader_registered;
-  }
-
-  /// Checks if a writer channel is registered for an object.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a writer for object_id,
-  /// false otherwise.
-  bool WriterChannelRegistered(const ObjectID &object_id) {
-    Channel *c = GetChannel(object_id);
-    if (!c) {
-      return false;
-    }
-    return c->writer_registered;
-  }
+  /// \param[in] data_size The size of the data in the object.
+  /// \param[in] metadata_size The size of the metadata in the object.
+  /// \param[out] data The mutable object buffer in plasma that can be written to.
+  /// \return The return status.
+  Status GetObjectBackingStore(const ObjectID &object_id,
+                               int64_t data_size,
+                               int64_t metadata_size,
+                               std::shared_ptr<Buffer> &data);
 
   /// Acquires a write lock on the object that prevents readers from reading
   /// until we are done writing. This is safe for concurrent writers.
@@ -122,13 +134,18 @@ class MutableObjectManager {
   /// value we will write before the next WriteAcquire can proceed. The readers
   /// may not start reading until WriteRelease is called.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the write lock.
+  /// If this is 0, the method will try to acquire the write lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  /// will block indefinitely until the write lock is acquired.
   /// \return The return status.
   Status WriteAcquire(const ObjectID &object_id,
                       int64_t data_size,
                       const uint8_t *metadata,
                       int64_t metadata_size,
                       int64_t num_readers,
-                      std::shared_ptr<Buffer> &data);
+                      std::shared_ptr<Buffer> &data,
+                      int64_t timeout_ms = -1);
 
   /// Releases an acquired write lock on the object, allowing readers to read.
   /// This is the equivalent of "Seal" for normal objects.
@@ -143,9 +160,15 @@ class MutableObjectManager {
   /// \param[in] object_id The ID of the object.
   /// \param[out] result The read object. This buffer is guaranteed to be valid
   /// until the caller calls ReadRelease next.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the read lock.
+  /// If this is 0, the method will try to acquire the read lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  /// will block indefinitely until the read lock is acquired.
   /// \return The return status. The ReadAcquire can fail if there have already
   /// been `num_readers` for the current value.
-  Status ReadAcquire(const ObjectID &object_id, std::shared_ptr<RayObject> &result);
+  Status ReadAcquire(const ObjectID &object_id,
+                     std::shared_ptr<RayObject> &result,
+                     int64_t timeout_ms = -1);
 
   /// Releases the object, allowing it to be written again. If the caller did
   /// not previously ReadAcquire the object, then this first blocks until the
@@ -164,8 +187,32 @@ class MutableObjectManager {
   /// an error on acquire.
   Status SetErrorAll();
 
- private:
+  /// Returns the channel for object_id. If no channel exists for object_id, returns
+  /// nullptr.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \return The channel or nullptr.
   Channel *GetChannel(const ObjectID &object_id);
+
+  /// Returns the current status of the channel for the object. Possible statuses are:
+  /// 1. Status::OK()
+  //     - The channel is registered and open.
+  /// 2. Status::ChannelError()
+  ///    - The channel was registered and previously open, but is now closed.
+  /// 3. Status::NotFound()
+  ///    - No channel exists for this object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] is_reader Whether the channel is a reader channel.
+  /// \return Current status of the channel.
+  Status GetChannelStatus(const ObjectID &object_id, bool is_reader);
+
+ private:
+  /// Converts a timeout in milliseconds to a timeout point.
+  /// \param[in] timeout_ms The timeout in milliseconds.
+  /// \return The timeout point, or nullptr if the timeout_ms is -1.
+  std::unique_ptr<std::chrono::steady_clock::time_point> ToTimeoutPoint(
+      int64_t timeout_ms);
 
   // Returns the plasma object header for the object.
   PlasmaObjectHeader *GetHeader(const ObjectID &object_id);
