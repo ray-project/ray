@@ -50,6 +50,12 @@ class MyTrainableClass(Trainable):
 
 
 if __name__ == "__main__":
+    import pytest
+    import sys
+
+    if sys.version_info >= (3, 12):
+        pytest.skip("TuneBOHB is not compatible with Python 3.12")
+
     ray.init(num_cpus=8)
 
     config = {
