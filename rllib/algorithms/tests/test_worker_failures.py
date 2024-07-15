@@ -235,11 +235,10 @@ class AddModuleCallback(DefaultCallbacks):
         spec = algorithm.config.get_default_rl_module_spec()
         spec.observation_space = gym.spaces.Box(low=0, high=1, shape=(8,))
         spec.action_space = gym.spaces.Discrete(2)
-        spec.model_config_dict = {"_inference_only": True}
+        spec.inference_only = True
         algorithm.add_module(
             module_id="test_module",
             module_spec=spec,
-            module_state=None,
             evaluation_workers=True,
         )
 
