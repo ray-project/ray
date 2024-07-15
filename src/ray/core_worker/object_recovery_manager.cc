@@ -171,6 +171,7 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   auto resubmitted = task_resubmitter_->ResubmitTask(task_id, &task_deps);
 
   if (resubmitted) {
+    reference_counter_->UpdateObjectPendingCreation(object_id, true);
     // Try to recover the task's dependencies.
     for (const auto &dep : task_deps) {
       auto recovered = RecoverObject(dep);

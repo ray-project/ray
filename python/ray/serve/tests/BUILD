@@ -148,7 +148,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "large",
+    size = "enormous",
     files = [
         "test_deploy_app.py",
         "test_metrics.py",
@@ -160,7 +160,7 @@ py_test_module_list(
     tags = [
         "exclusive",
         "team:serve",
-         "use_all_core_windows",
+        "use_all_core_windows",
     ],
     deps = [
         ":common",

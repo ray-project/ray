@@ -543,6 +543,8 @@ class BackendExecutor:
 
         # Register Train Run before training starts
         if self.state_tracking_enabled:
+            from ray.train._internal.state.schema import RunStatusEnum
+
             core_context = ray.runtime_context.get_runtime_context()
 
             self.state_manager.register_train_run(
@@ -553,6 +555,7 @@ class BackendExecutor:
                 datasets=datasets,
                 worker_group=self.worker_group,
                 start_time_ms=self._start_time_ms,
+                run_status=RunStatusEnum.STARTED,
             )
 
         # Run the training function asynchronously in its own thread.
@@ -649,6 +652,25 @@ class BackendExecutor:
         futures = self.worker_group.execute_async(end_training)
         results = self.get_with_failure_handling(futures)
         return results
+
+    def report_final_run_status(self, errored=False):
+        """Report the final train run status and end time to TrainStateActor."""
+        if self.state_tracking_enabled:
+            from ray.train._internal.state.schema import RunStatusEnum
+
+            if errored:
+                run_status = RunStatusEnum.ERRORED
+                status_detail = "Terminated due to an error in the training function."
+            else:
+                run_status = RunStatusEnum.FINISHED
+                status_detail = ""
+
+            self.state_manager.end_train_run(
+                run_id=self._trial_info.run_id,
+                run_status=run_status,
+                status_detail=status_detail,
+                end_time_ms=int(time.time() * 1000),
+            )
 
     def get_with_failure_handling(self, remote_values):
         """Gets the remote values while handling for worker failures.

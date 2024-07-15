@@ -23,7 +23,6 @@ from packaging import version
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.rl_module import INFERENCE_ONLY
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
@@ -1132,7 +1131,7 @@ class AlgorithmConfig(_Config):
             rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
 
         # Construct the actual LearnerGroup.
-        learner_group = LearnerGroup(config=self, module_spec=rl_module_spec)
+        learner_group = LearnerGroup(config=self.copy(), module_spec=rl_module_spec)
 
         return learner_group
 
@@ -2534,7 +2533,9 @@ class AlgorithmConfig(_Config):
     def multi_agent(
         self,
         *,
-        policies=NotProvided,
+        policies: Optional[
+            Union[MultiAgentPolicyConfigDict, Collection[PolicyID]]
+        ] = NotProvided,
         algorithm_config_overrides_per_module: Optional[
             Dict[ModuleID, PartialAlgorithmConfigDict]
         ] = NotProvided,
@@ -2622,6 +2623,9 @@ class AlgorithmConfig(_Config):
             for pid in policies:
                 validate_policy_id(pid, error=True)
 
+            # Collection: Convert to dict.
+            if isinstance(policies, (set, tuple, list)):
+                policies = {p: PolicySpec() for p in policies}
             # Validate each policy spec in a given dict.
             if isinstance(policies, dict):
                 for pid, spec in policies.items():
@@ -2643,7 +2647,12 @@ class AlgorithmConfig(_Config):
                             f"Multi-agent policy config for {pid} must be a dict or "
                             f"AlgorithmConfig object, but got {type(spec.config)}!"
                         )
-            self.policies = policies
+                self.policies = policies
+            else:
+                raise ValueError(
+                    "`policies` must be dict mapping PolicyID to PolicySpec OR a "
+                    "set/tuple/list of PolicyIDs!"
+                )
 
         if algorithm_config_overrides_per_module is not NotProvided:
             if not isinstance(algorithm_config_overrides_per_module, dict):
@@ -2652,7 +2661,7 @@ class AlgorithmConfig(_Config):
                     "module IDs to config override dicts! You provided "
                     f"{algorithm_config_overrides_per_module}."
                 )
-            self.algorithm_config_overrides_per_module = (
+            self.algorithm_config_overrides_per_module.update(
                 algorithm_config_overrides_per_module
             )
 
@@ -3049,7 +3058,7 @@ class AlgorithmConfig(_Config):
         if rl_module_spec is not NotProvided:
             self._rl_module_spec = rl_module_spec
 
-        if _enable_rl_module_api is not NotProvided:
+        if _enable_rl_module_api != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
                 new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
@@ -3708,6 +3717,7 @@ class AlgorithmConfig(_Config):
             single_agent_rl_module_spec = (
                 single_agent_rl_module_spec or current_rl_module_spec
             )
+            single_agent_rl_module_spec.inference_only = inference_only
             # Now construct the proper MultiAgentRLModuleSpec.
             marl_module_spec = MultiAgentRLModuleSpec(
                 module_specs={
@@ -3734,6 +3744,7 @@ class AlgorithmConfig(_Config):
                     single_agent_spec = single_agent_rl_module_spec or (
                         current_rl_module_spec.module_specs
                     )
+                    single_agent_spec.inference_only = inference_only
                     module_specs = {
                         k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
                     }
@@ -3746,6 +3757,7 @@ class AlgorithmConfig(_Config):
                     single_agent_spec = (
                         single_agent_rl_module_spec or default_rl_module_spec
                     )
+                    single_agent_spec.inference_only = inference_only
                     module_specs = {
                         k: copy.deepcopy(
                             current_rl_module_spec.module_specs.get(
@@ -3797,6 +3809,8 @@ class AlgorithmConfig(_Config):
                             "`AlgorithmConfig.get_marl_module_spec("
                             "policy_dict=.., single_agent_rl_module_spec=..)`."
                         )
+
+                single_agent_rl_module_spec.inference_only = inference_only
 
                 # Now construct the proper MultiAgentRLModuleSpec.
                 marl_module_spec = current_rl_module_spec.__class__(
@@ -3885,8 +3899,6 @@ class AlgorithmConfig(_Config):
                 module_spec.model_config_dict = (
                     self.model_config | module_spec.model_config_dict
                 )
-            # Set the `inference_only` flag for the module spec.
-            module_spec.model_config_dict[INFERENCE_ONLY] = inference_only
 
         return marl_module_spec
 
@@ -4010,7 +4022,7 @@ class AlgorithmConfig(_Config):
             A dictionary with the automatically included properties/settings of this
             `AlgorithmConfig` object into `self.model_config`.
         """
-        return MODEL_DEFAULTS | {"_inference_only": False}
+        return MODEL_DEFAULTS
 
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.
