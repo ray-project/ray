@@ -25,7 +25,7 @@ class AnyscaleImageURIPlugin(RuntimeEnvPlugin):
     ) -> int:
         image_uri = runtime_env.image_uri()
         if not image_uri:
-            return
+            return 0
 
         logger.info(f"Pulling image {image_uri}.")
         # Don't set timeout, and rely on RuntimeEnvAgent to cancel
@@ -37,7 +37,10 @@ class AnyscaleImageURIPlugin(RuntimeEnvPlugin):
         ) as session:
             async with session.post(
                 "http://unix/pull_image",
-                json={"image_uri": image_uri},
+                json={
+                    "image_uri": image_uri,
+                    "check_ray_and_python_version": True,
+                },
             ) as resp:
                 if resp.status != 200:
                     raise RuntimeError(await resp.text())

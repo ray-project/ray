@@ -34,7 +34,10 @@ async def anyscaled_service(pull_delay_s: int = 0):
         req_json = await req.json()
         print("Received execute_ray_worker request with", req_json)
 
+        # Check request context from pull image request
         assert request_ctx["image_uri"] == req_json["image_uri"]
+        assert request_ctx["check_ray_and_python_version"]
+
         request_ctx.update(await req.json())
 
         subprocess.Popen(
