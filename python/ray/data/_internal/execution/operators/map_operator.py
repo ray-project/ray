@@ -88,7 +88,6 @@ class MapOperator(OneToOneOperator, ABC):
         # too-large blocks, which may reduce parallelism for
         # the subsequent operator.
         self._additional_split_factor = None
-        self._estimated_num_output_bundles = None
 
     def get_additional_split_factor(self) -> int:
         if self._additional_split_factor is None:
