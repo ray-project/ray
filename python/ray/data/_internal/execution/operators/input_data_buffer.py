@@ -40,7 +40,7 @@ class InputDataBuffer(PhysicalOperator):
             assert input_data_factory is not None
             self._input_data_factory = input_data_factory
             self._is_input_initialized = False
-        self._num_output_blocks = num_output_blocks
+        self._input_data_index = 0
         super().__init__("Input", [], target_max_block_size=None)
 
     def start(self, options: ExecutionOptions) -> None:
@@ -57,16 +57,17 @@ class InputDataBuffer(PhysicalOperator):
         super().start(options)
 
     def has_next(self) -> bool:
-        return len(self._input_data) > 0
+        return self._input_data_index < len(self._input_data)
 
     def _get_next_inner(self) -> RefBundle:
-        return self._input_data.pop(0)
-
-    def _set_num_output_blocks(self, num_output_blocks):
-        self._num_output_blocks = num_output_blocks
+        # We can't pop the input data. If we do, Ray might garbage collect the block
+        # references, and Ray won't be able to reconstruct downstream objects.
+        bundle = self._input_data[self._input_data_index]
+        self._input_data_index += 1
+        return bundle
 
     def num_outputs_total(self) -> int:
-        return self._num_output_blocks or self._num_output_bundles
+        return self._num_output_bundles
 
     def get_stats(self) -> StatsDict:
         return {}

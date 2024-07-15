@@ -829,6 +829,22 @@ class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
+@PublicAPI(stability="alpha")
+class RayChannelError(RaySystemError):
+    """Indicates that Ray encountered a system error related
+    to ray.experimental.channel.
+    """
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayChannelTimeoutError(RayChannelError, TimeoutError):
+    """Raised when the accelerated DAG channel operation times out."""
+
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,
@@ -854,4 +870,6 @@ RAY_EXCEPTION_TYPES = [
     ActorDiedError,
     ActorUnschedulableError,
     ActorUnavailableError,
+    RayChannelError,
+    RayChannelTimeoutError,
 ]

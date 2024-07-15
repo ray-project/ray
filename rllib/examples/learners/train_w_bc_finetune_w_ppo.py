@@ -2,12 +2,12 @@
 This example shows how to pretrain an RLModule using behavioral cloning from offline
 data and, thereafter, continue training it online with PPO (fine-tuning).
 """
+from typing import Dict
 
 import gymnasium as gym
 import shutil
 import tempfile
 import torch
-from typing import Mapping
 
 import ray
 from ray import tune
@@ -49,7 +49,7 @@ class BCActor(torch.nn.Module):
         self.distribution_cls = distribution_cls
 
     def forward(
-        self, batch: Mapping[str, torch.Tensor]
+        self, batch: Dict[str, torch.Tensor]
     ) -> torch.distributions.Distribution:
         """Return an action distribution output by the policy network.
 
@@ -102,7 +102,7 @@ def train_ppo_module_with_bc_finetune(
         print(f"Epoch {epoch} loss: {loss.detach().item()}")
 
     checkpoint_dir = tempfile.mkdtemp()
-    module.save_to_checkpoint(checkpoint_dir)
+    module.save_to_path(checkpoint_dir)
     return checkpoint_dir
 
 

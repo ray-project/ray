@@ -102,6 +102,7 @@ class DataIterator(abc.ABC):
         """
         raise NotImplementedError
 
+    @PublicAPI(stability="beta")
     def iter_batches(
         self,
         *,
@@ -249,6 +250,7 @@ class DataIterator(abc.ABC):
         return _IterableFromIterator(_wrapped_iterator)
 
     @abc.abstractmethod
+    @PublicAPI(stability="beta")
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
         raise NotImplementedError
@@ -258,6 +260,7 @@ class DataIterator(abc.ABC):
         """Return the schema of the dataset iterated over."""
         raise NotImplementedError
 
+    @PublicAPI(stability="beta")
     def iter_torch_batches(
         self,
         *,
@@ -674,6 +677,7 @@ class DataIterator(abc.ABC):
 
         return TorchIterableDataset(make_generator)
 
+    @PublicAPI(stability="beta")
     def to_tf(
         self,
         feature_columns: Union[str, List[str]],
@@ -839,7 +843,7 @@ class DataIterator(abc.ABC):
 
         if feature_type_spec is None or label_type_spec is None:
             schema = self.schema()
-            valid_columns = schema.names
+            valid_columns = set(schema.names)
             validate_columns(feature_columns)
             validate_columns(label_columns)
             feature_type_spec = get_type_spec(schema, columns=feature_columns)
@@ -855,6 +859,7 @@ class DataIterator(abc.ABC):
         )
         return dataset.with_options(options)
 
+    @PublicAPI(stability="beta")
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this data iterator into object store memory.
 
@@ -875,10 +880,7 @@ class DataIterator(abc.ABC):
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
         return MaterializedDataset(
-            ExecutionPlan(
-                stats,
-                run_by_consumer=owned_by_consumer,
-            ),
+            ExecutionPlan(stats),
             logical_plan,
         )
 

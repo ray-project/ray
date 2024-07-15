@@ -123,6 +123,8 @@ array-record==0.5.0 ; sys_platform != "darwin" and platform_system != "Windows"
     #   tensorflow-datasets
 arrow==1.3.0
     # via isoduration
+asn1crypto==1.5.1
+    # via snowflake-connector-python
 asttokens==2.4.1
     # via stack-data
 astunparse==1.6.3
@@ -261,12 +263,14 @@ certifi==2023.11.17
     #   msrest
     #   requests
     #   sentry-sdk
+    #   snowflake-connector-python
 cffi==1.16.0
     # via
     #   argon2-cffi-bindings
     #   cryptography
     #   pymunk
     #   pynacl
+    #   snowflake-connector-python
     #   soundfile
 cfn-lint==0.83.3
     # via moto
@@ -274,6 +278,7 @@ charset-normalizer==3.3.2
     # via
     #   aiohttp
     #   requests
+    #   snowflake-connector-python
 chess==1.7.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 chex==0.1.7
@@ -292,6 +297,7 @@ click==8.1.7
     #   databricks-cli
     #   distributed
     #   flask
+    #   jupyter-cache
     #   mlflow
     #   ray
     #   semgrep
@@ -324,8 +330,8 @@ cmdstanpy==1.2.0
     # via prophet
 colorama==0.4.6
     # via
+    #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   bayesian-optimization
-    #   nbdime
     #   semgrep
 coloredlogs==15.0.1
     # via onnxruntime
@@ -370,6 +376,7 @@ cryptography==38.0.1
     #   pyjwt
     #   pyopenssl
     #   python-jose
+    #   snowflake-connector-python
     #   sshpubkeys
     #   trustme
 cupy-cuda11x==13.1.0 ; sys_platform != "darwin"
@@ -399,6 +406,8 @@ decorator==5.1.1
     #   moviepy
     #   paramz
     #   tensorflow-probability
+decord==0.6.0
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 deepspeed==0.12.3
     # via -r /ray/ci/../python/requirements/ml/train-requirements.txt
 defusedxml==0.7.1
@@ -510,6 +519,7 @@ filelock==3.13.1
     #   aim
     #   huggingface-hub
     #   ray
+    #   snowflake-connector-python
     #   torch
     #   transformers
     #   virtualenv
@@ -592,7 +602,6 @@ gitdb==4.0.11
 gitpython==3.1.40
     # via
     #   mlflow
-    #   nbdime
     #   wandb
 glfw==2.6.3
     # via
@@ -776,6 +785,7 @@ idna==3.7
     #   httpx
     #   jsonschema
     #   requests
+    #   snowflake-connector-python
     #   trustme
     #   yarl
 imageio==2.31.1
@@ -790,9 +800,9 @@ imagesize==1.4.1
 importlib-metadata==6.11.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   jupyter-cache
     #   mlflow
     #   mosaicml
-    #   myst-nb
 importlib-resources==5.13.0
     # via
     #   ale-py
@@ -817,17 +827,15 @@ ipython==8.12.3
     #   myst-nb
 ipython-genutils==0.2.0
     # via
-    #   ipywidgets
     #   nbclassic
     #   notebook
-ipywidgets==7.7.2
+ipywidgets==8.0.6
     # via
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   ax-platform
     #   jupyter-sphinx
-    #   myst-nb
 isodate==0.6.1
     # via msrest
 isoduration==20.11.0
@@ -875,7 +883,6 @@ jinja2==3.1.2
     #   myst-parser
     #   nbclassic
     #   nbconvert
-    #   nbdime
     #   notebook
     #   sphinx
     #   torch
@@ -926,7 +933,7 @@ jsonschema-spec==0.1.6
     # via openapi-spec-validator
 junit-xml==1.9
     # via cfn-lint
-jupyter-cache==0.4.3
+jupyter-cache==0.6.1
     # via myst-nb
 jupyter-client==7.3.4
     # via
@@ -950,19 +957,15 @@ jupyter-events==0.6.3
 jupyter-server==1.24.0
     # via
     #   jupyter-server-fileid
-    #   jupyter-server-mathjax
     #   jupyterlab
     #   jupyterlab-server
     #   nbclassic
-    #   nbdime
     #   notebook-shim
 jupyter-server-fileid==0.9.0
     # via jupyter-server-ydoc
-jupyter-server-mathjax==0.2.6
-    # via nbdime
 jupyter-server-ydoc==0.6.1
     # via jupyterlab
-jupyter-sphinx==0.3.2
+jupyter-sphinx==0.2.4a1
     # via myst-nb
 jupyter-ydoc==0.2.5
     # via
@@ -976,7 +979,7 @@ jupyterlab-pygments==0.3.0
     # via nbconvert
 jupyterlab-server==2.24.0
     # via jupyterlab
-jupyterlab-widgets==1.1.7
+jupyterlab-widgets==3.0.11
     # via ipywidgets
 jupytext==1.13.6
     # via -r /ray/ci/../python/requirements/test-requirements.txt
@@ -1151,9 +1154,9 @@ mypy-extensions==1.0.0
     # via
     #   black
     #   mypy
-myst-nb==0.13.1
+myst-nb==0.6.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-myst-parser==0.15.2
+myst-parser==0.14.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   myst-nb
@@ -1164,6 +1167,7 @@ nbclassic==1.0.0
 nbclient==0.5.13
     # via
     #   jupyter-cache
+    #   myst-nb
     #   nbconvert
 nbconvert==6.5.4
     # via
@@ -1172,8 +1176,6 @@ nbconvert==6.5.4
     #   myst-nb
     #   nbclassic
     #   notebook
-nbdime==4.0.1
-    # via jupyter-cache
 nbformat==5.9.2
     # via
     #   jupyter-cache
@@ -1184,7 +1186,6 @@ nbformat==5.9.2
     #   nbclassic
     #   nbclient
     #   nbconvert
-    #   nbdime
     #   notebook
 nest-asyncio==1.5.8
     # via
@@ -1209,9 +1210,7 @@ nevergrad==0.4.3.post7
 ninja==1.11.1.1
     # via deepspeed
 notebook==6.5.6
-    # via
-    #   jupyterlab
-    #   widgetsnbextension
+    # via jupyterlab
 notebook-shim==0.2.3
     # via nbclassic
     # via vsphere-automation-sdk
@@ -1247,6 +1246,7 @@ numpy==1.24.4
     #   cupy-cuda11x
     #   dask
     #   datasets
+    #   decord
     #   deepspeed
     #   dm-control
     #   dm-env
@@ -1441,6 +1441,7 @@ packaging==21.3
     #   ray
     #   scikit-image
     #   semgrep
+    #   snowflake-connector-python
     #   sphinx
     #   statsmodels
     #   tensorboardx
@@ -1527,6 +1528,7 @@ platformdirs==3.11.0
     # via
     #   black
     #   jupyter-core
+    #   snowflake-connector-python
     #   virtualenv
 plotly==5.18.0
     # via
@@ -1678,7 +1680,6 @@ pygments==2.13.0
     #   ipython
     #   knack
     #   nbconvert
-    #   nbdime
     #   rich
     #   sphinx
 pyjwt==2.8.0
@@ -1687,6 +1688,7 @@ pyjwt==2.8.0
     #   azure-cli-core
     #   databricks-cli
     #   msal
+    #   snowflake-connector-python
 pylance==0.10.18
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 pymars==0.10.0
@@ -1712,6 +1714,7 @@ pyopenssl==23.0.0
     #   azure-cli-core
     #   gcs-oauth2-boto-plugin
     #   gsutil
+    #   snowflake-connector-python
     #   vapi-runtime
 pyparsing==3.1.1
     # via
@@ -1814,6 +1817,7 @@ pytz==2022.7.1
     #   aim
     #   mlflow
     #   pandas
+    #   snowflake-connector-python
 pyu2f==0.1.5
     # via google-reauth
 pyvmomi==8.0.2.0.1
@@ -1834,6 +1838,7 @@ pyyaml==6.0.1
     #   gradio
     #   huggingface-hub
     #   jsonschema-spec
+    #   jupyter-cache
     #   jupyter-events
     #   jupytext
     #   knack
@@ -1910,13 +1915,13 @@ requests==2.31.0
     #   moto
     #   msal
     #   msrest
-    #   nbdime
     #   ray
     #   requests-oauthlib
     #   requests-toolbelt
     #   responses
     #   segment-analytics-python
     #   semgrep
+    #   snowflake-connector-python
     #   sphinx
     #   tensorboard
     #   tensorflow-datasets
@@ -2121,13 +2126,17 @@ sniffio==1.3.0
     #   httpx
 snowballstemmer==2.2.0
     # via sphinx
+snowflake-connector-python==3.11.0
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 sortedcontainers==2.4.0
-    # via distributed
+    # via
+    #   distributed
+    #   snowflake-connector-python
 soundfile==0.12.1
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 soupsieve==2.5
     # via beautifulsoup4
-sphinx==4.3.2
+sphinx==2.4.5
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   jupyter-sphinx
@@ -2187,6 +2196,7 @@ sympy==1.12
 tabulate==0.9.0
     # via
     #   databricks-cli
+    #   jupyter-cache
     #   knack
     #   mosaicml
 tblib==3.0.0
@@ -2278,7 +2288,9 @@ tomli==2.0.1
     #   pytest
     #   semgrep
 tomlkit==0.12.3
-    # via yq
+    # via
+    #   snowflake-connector-python
+    #   yq
 toolz==0.12.0
     # via
     #   altair
@@ -2341,7 +2353,6 @@ tornado==6.1
     #   jupyter-server
     #   jupyterlab
     #   nbclassic
-    #   nbdime
     #   notebook
     #   pymars
     #   terminado
@@ -2426,6 +2437,7 @@ typing-extensions==4.8.0
     #   pydantic-core
     #   pytorch-lightning
     #   semgrep
+    #   snowflake-connector-python
     #   tensorflow
     #   torch
     #   typer
@@ -2526,7 +2538,7 @@ wheel==0.42.0
     #   astunparse
     #   lightgbm
     #   sphinx-togglebutton
-widgetsnbextension==3.6.6
+widgetsnbextension==4.0.11
     # via ipywidgets
 wrapt==1.14.1
     # via
