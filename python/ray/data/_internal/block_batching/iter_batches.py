@@ -273,9 +273,8 @@ def prefetch_batches_locally(
     ):
         try:
             next_ref_bundle = next(ref_bundles)
-            for block_ref_and_md in next_ref_bundle.blocks:
-                sliding_window.append(block_ref_and_md)
-                current_window_size += block_ref_and_md[1].num_rows
+            sliding_window.extend(next_ref_bundle.blocks)
+            current_window_size += next_ref_bundle.num_rows()
         except StopIteration:
             break
 
