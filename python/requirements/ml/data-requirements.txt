@@ -1,7 +1,7 @@
 # Used by CI for datasets and docs.
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
-dask[complete]==2024.6.0
+dask[complete]==2022.10.1
 aioboto3==11.2.0
 crc32c==2.3
 flask_cors
