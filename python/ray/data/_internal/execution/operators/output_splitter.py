@@ -91,6 +91,9 @@ class OutputSplitter(PhysicalOperator):
     def _get_next_inner(self) -> RefBundle:
         output = self._output_queue.popleft()
         self._metrics.on_output_dequeued(output)
+        if self._estimated_num_output_bundles is None:
+            self._estimated_num_output_bundles = 0
+        self._estimated_num_output_bundles += 1
         return output
 
     def get_stats(self) -> StatsDict:

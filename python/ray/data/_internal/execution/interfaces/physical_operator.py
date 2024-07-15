@@ -270,6 +270,9 @@ class PhysicalOperator(Operator):
 
         The value returned may be an estimate based off the consumption so far.
         This is useful for reporting progress.
+
+        Subclasses should either override this method, or update
+        ``self._estimated_num_output_bundles`` appropriately.
         """
         return self._estimated_num_output_bundles
 
