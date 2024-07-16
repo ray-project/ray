@@ -13,6 +13,8 @@ from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.annotations import override
 
+# TODO (simon): Write a light-weight version of this class for the `TFRLModule`
+
 
 @ExperimentalAPI
 class PPORLModule(RLModule, abc.ABC):

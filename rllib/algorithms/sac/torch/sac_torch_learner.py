@@ -12,10 +12,8 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_MAX_KEY,
     QF_MIN_KEY,
     QF_PREDS,
-    TARGET_QF_PREDS,
     QF_TWIN_LOSS_KEY,
     QF_TWIN_PREDS,
-    TARGET_QF_TWIN_PREDS,
     TD_ERROR_MEAN_KEY,
     SACLearner,
 )
@@ -118,11 +116,9 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # Receive the current alpha hyperparameter.
         alpha = torch.exp(self.curr_log_alpha[module_id])
 
-        module = self.module[module_id].unwrapped()
-
         # Get the train action distribution for the current policy and current state.
         # This is needed for the policy (actor) loss in SAC.
-        action_dist_class = module.get_train_action_dist_cls()
+        action_dist_class = self.module[module_id].get_train_action_dist_cls()
         action_dist_curr = action_dist_class.from_logits(
             fwd_out[Columns.ACTION_DIST_INPUTS]
         )
@@ -168,39 +164,33 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
                 Columns.ACTIONS: actions_curr,
             }
         )
-        q_values = module.compute_q_values(q_batch_curr)
-        q_curr = q_values[QF_PREDS] #module._qf_forward_train(q_batch_curr)[QF_PREDS]
-        # If a twin Q network should be used, use the minimum.
+        q_curr = self.module[module_id]._qf_forward_train(q_batch_curr)[QF_PREDS]
+        # If a twin Q network should be used, calculate twin Q-values and use the
+        # minimum.
         if config.twin_q:
-            #q_twin_curr = q_values[]#module._qf_twin_forward_train(q_batch_curr)[
-            #    #QF_PREDS
-            #]
-            q_curr = torch.min(q_curr, q_values[QF_TWIN_PREDS])
+            q_twin_curr = self.module[module_id]._qf_twin_forward_train(q_batch_curr)[
+                QF_PREDS
+            ]
+            q_curr = torch.min(q_curr, q_twin_curr)
 
         # Compute Q-values from the target Q network for the next state with the
         # sampled actions for the next state.
-        q_batch_next = {
-            Columns.OBS: batch[Columns.NEXT_OBS],
-            Columns.ACTIONS: actions_next,
-        }
-        target_fwd_out = module.forward_target(q_batch_next)
-        q_target_next = target_fwd_out[TARGET_QF_PREDS]
-        # If a twin Q network should be used, use the minimum.
-        if config.twin_q:
-            q_target_next = torch.min(
-                q_target_next, target_fwd_out[TARGET_QF_TWIN_PREDS]
-            )
-
-        #q_target_next = module._qf_target_forward_train(q_batch_next)[
-        #    QF_PREDS
-        #]
+        q_batch_next = NestedDict(
+            {
+                Columns.OBS: batch[Columns.NEXT_OBS],
+                Columns.ACTIONS: actions_next,
+            }
+        )
+        q_target_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[
+            QF_PREDS
+        ]
         # If a twin Q network should be used, calculate twin Q-values and use the
         # minimum.
-        #if config.twin_q:
-        #    q_target_twin_next = module._qf_target_twin_forward_train(
-        #        q_batch_next
-        #    )[QF_PREDS]
-        #    q_target_next = torch.min(q_target_next, q_target_twin_next)
+        if config.twin_q:
+            q_target_twin_next = self.module[module_id]._qf_target_twin_forward_train(
+                q_batch_next
+            )[QF_PREDS]
+            q_target_next = torch.min(q_target_next, q_target_twin_next)
 
         # Compute value function for next state (see eq. (3) in Haarnoja et al. (2018)).
         # Note, we use here the sampled actions in the log probabilities.
