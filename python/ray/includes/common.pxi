@@ -60,7 +60,7 @@ cdef class GcsClientOptions:
     cdef CGcsClientOptions* native(self):
         return <CGcsClientOptions*>(self.inner.get())
 
-cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) nogil except -1:
+cdef int check_status(const CRayStatus& status) nogil except -1:
     if status.ok():
         return 0
 
@@ -78,7 +78,7 @@ cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) nogil excep
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
-        raise RpcError(message, rpc_code=CGrpcStatusCode.DEADLINE_EXCEEDED)
+        raise GetTimeoutError(message)
     elif status.IsNotFound():
         raise ValueError(message)
     elif status.IsObjectNotFound():
@@ -103,16 +103,14 @@ cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) nogil excep
     else:
         raise RaySystemError(message)
 
-
-cdef int check_status(const CRayStatus& status) nogil except -1:
+cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) nogil except -1:
     with gil:
         try:
-            return check_status_timeout_as_rpc_error(status)
-        except RpcError as e:
-            if e.rpc_code == CGrpcStatusCode.DEADLINE_EXCEEDED:
-                raise GetTimeoutError(e.message)
-            else:
-                raise e
+            return check_status(status)
+        except GetTimeoutError:
+            raise RpcError(status.message().decode(),
+                           rpc_code=CGrpcStatusCode.DEADLINE_EXCEEDED)
+
 
 WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)
 RESOURCE_UNIT_SCALING = kResourceUnitScaling

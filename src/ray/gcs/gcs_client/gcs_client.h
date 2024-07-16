@@ -116,6 +116,11 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Warning: since it may send *sync* RPCs to GCS, if the caller is in GCS itself, it
   /// must provide a non-Nil cluster ID to avoid deadlocks.
   ///
+  /// Thread Safety: GcsClient holds unique ptr to client_call_manager_ which is used
+  /// by RPC calls. Before a call to `Connect()` or after a `Disconnect()`, that field
+  /// is nullptr and a call to RPC methods can cause segfaults.
+  ///
+  ///
   /// \param instrumented_io_context IO execution service.
   /// \param timeout_ms Timeout in milliseconds, default to
   /// gcs_rpc_server_connect_timeout_s (5s).
@@ -124,6 +129,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   virtual Status Connect(instrumented_io_context &io_service, int64_t timeout_ms = -1);
 
   /// Disconnect with GCS Service. Non-thread safe.
+  /// Must be called without any concurrent RPC calls. After this call, the client
+  /// must not be used until a next Connect() call.
   virtual void Disconnect();
 
   virtual std::pair<std::string, int> GetGcsServerAddress() const;

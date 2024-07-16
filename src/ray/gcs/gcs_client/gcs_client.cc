@@ -104,6 +104,10 @@ GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
 Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_ms) {
+  if (gcs_rpc_client_ && !gcs_rpc_client_->IsShutdown()) {
+    RAY_LOG(DEBUG) << "GcsClient has already connected.";
+    return Status::OK();
+  }
   if (timeout_ms < 0) {
     timeout_ms = RayConfig::instance().gcs_rpc_server_connect_timeout_s() * 1000;
   }
@@ -761,7 +765,10 @@ class SingletonIoContext {
 
  private:
   SingletonIoContext() : work_(io_service_) {
-    io_thread_ = std::thread([this] { io_service_.run(); });
+    io_thread_ = std::thread([this] {
+      SetThreadName("singleton_io_context.gcs_client");
+      io_service_.run();
+    });
   }
   ~SingletonIoContext() {
     io_service_.stop();

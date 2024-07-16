@@ -594,6 +594,7 @@ class GcsRpcClient {
       RAY_LOG(DEBUG) << "GCS RPC client has already shutdown.";
     }
   }
+  bool IsShutdown() { return shutdown_; }
 
   std::pair<std::string, int64_t> GetAddress() const {
     return std::make_pair(gcs_address_, gcs_port_);
