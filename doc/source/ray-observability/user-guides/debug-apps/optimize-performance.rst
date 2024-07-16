@@ -139,7 +139,7 @@ execution time of all function calls made within the profiled code.
 cProfile's detailed list of profiled function calls
 **includes** internal function calls and function calls made within Ray.
 
-cProfile can be enabled with minimal changes to your application code (given that each section of the code you want
+You can enable cProfile with minimal changes to your app code, given that each section of the code you want
 to profile is defined as its own function. To use cProfile, add an import
 statement, then replace calls to the loop functions as follows:
 
