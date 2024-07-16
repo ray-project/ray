@@ -2,7 +2,6 @@ import abc
 from typing import Any, Dict
 
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.learner.utils import update_target_network
 from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
     AddObservationsFromEpisodesToBatch,
 )
@@ -42,9 +41,9 @@ class DQNRainbowLearner(Learner):
     def build(self) -> None:
         super().build()
 
-        # Make target networks.
+        # Initially sync target networks (w/ tau=1.0 -> full overwrite).
         self.module.foreach_module(
-            lambda mid, mod: mod.unwrapped().make_target_networks()
+            lambda mid, module: module.sync_target_networks(tau=1.0)
         )
 
         # Prepend a NEXT_OBS from episodes to train batch connector piece (right
@@ -73,16 +72,7 @@ class DQNRainbowLearner(Learner):
                 timestep - self.metrics.peek(last_update_ts_key, default=0)
                 >= config.target_network_update_freq
             ):
-                for (
-                    main_net,
-                    target_net,
-                ) in module.unwrapped().get_target_network_pairs():
-                    update_target_network(
-                        main_net=main_net,
-                        target_net=target_net,
-                        tau=config.tau,
-                    )
-
+                module.sync_target_networks(tau=config.tau)
                 # Increase lifetime target network update counter by one.
                 self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
                 # Update the (single-value -> window=1) last updated timestep metric.
