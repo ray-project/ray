@@ -329,28 +329,9 @@ def deployment(
     if autoscaling_config not in [DEFAULT.VALUE, None]:
         if (
             isinstance(autoscaling_config, dict)
-            and "target_num_ongoing_requests_per_replica" in autoscaling_config
-        ) or (
-            isinstance(autoscaling_config, AutoscalingConfig)
-            and "target_num_ongoing_requests_per_replica"
-            in autoscaling_config.dict(exclude_unset=True)
-        ):
-            logger.warning(
-                "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
-                "`autoscaling_config` has been deprecated and replaced by "
-                "`target_ongoing_requests`. "
-                "`target_num_ongoing_requests_per_replica` will be removed in a future "
-                "version."
-            )
-
-        if (
-            isinstance(autoscaling_config, dict)
-            and "target_num_ongoing_requests_per_replica" not in autoscaling_config
             and "target_ongoing_requests" not in autoscaling_config
         ) or (
             isinstance(autoscaling_config, AutoscalingConfig)
-            and "target_num_ongoing_requests_per_replica"
-            not in autoscaling_config.dict(exclude_unset=True)
             and "target_ongoing_requests"
             not in autoscaling_config.dict(exclude_unset=True)
         ):
