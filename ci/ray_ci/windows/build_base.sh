@@ -2,6 +2,9 @@
 
 set -ex
 
+export TORCH_VERSION=2.0.1
+export TORCHVISION_VERSION=0.15.2
+
 # Delete the existing bazel and replace it with bazelisk.
 powershell ci/ray_ci/windows/install_bazelisk.ps1
 
