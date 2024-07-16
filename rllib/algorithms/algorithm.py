@@ -659,7 +659,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             default_policy_class=self.get_default_policy_class(self.config),
             config=self.config,
             num_env_runners=0
-            if (self.config.input_ and self.config.input_ != "sampler")
+            if (
+                self.config.input_
+                and isinstance(self.config.input_, str)
+                and self.config.input_ != "sampler"
+            )
             else self.config.num_env_runners,
             local_env_runner=True,
             logdir=self.logdir,
@@ -670,6 +674,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # an `OfflineData` instance.
         if (
             self.config.input_
+            and isinstance(self.config.input_, str)
             and self.config.input_ != "sampler"
             and self.config.enable_rl_module_and_learner
             and self.config.enable_env_runner_and_connector_v2

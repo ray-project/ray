@@ -326,7 +326,7 @@ py_test(
     name = "learning_tests_pendulum_cql_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
     data = [

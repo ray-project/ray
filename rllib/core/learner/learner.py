@@ -5,7 +5,6 @@ from dataclasses import dataclass
 from functools import partial
 import logging
 import numpy
-import pathlib
 from typing import (
     Any,
     Callable,
