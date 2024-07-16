@@ -184,9 +184,9 @@ def placement_group(
             This currently only works with STRICT_PACK pg.
 
     Raises:
-        ValueError if bundle type is not a list.
-        ValueError if empty bundle or empty resource bundles are given.
-        ValueError if the wrong lifetime arguments are given.
+        ValueError: if bundle type is not a list.
+        ValueError: if empty bundle or empty resource bundles are given.
+        ValueError: if the wrong lifetime arguments are given.
 
     Return:
         PlacementGroup: Placement group object.

@@ -157,6 +157,8 @@ message RequestMetadata {
   string multiplexed_model_id = 5;
 
   string route = 6;
+
+  string internal_request_id = 7;
 }
 
 message RequestWrapper {

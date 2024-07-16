@@ -56,7 +56,7 @@ class MetricsLogger:
 
     def log_value(
         self,
-        key: Union[str, Tuple[str]],
+        key: Union[str, Tuple[str, ...]],
         value: Any,
         *,
         reduce: Optional[str] = "mean",
@@ -102,7 +102,7 @@ class MetricsLogger:
 
             # Log a value under a deeper nested key.
             logger.log_value(("some", "nested", "key"), -1.0)
-            check(logger.peek("some", "nested", "key"), -1.0)
+            check(logger.peek(("some", "nested", "key")), -1.0)
 
             # Log n values without reducing them (we want to just collect some items).
             logger.log_value("some_items", 5.0, reduce=None)
@@ -169,12 +169,16 @@ class MetricsLogger:
         if not self._key_in_stats(key):
             self._set_key(
                 key,
-                Stats(
-                    value,
-                    reduce=reduce,
-                    window=window,
-                    ema_coeff=ema_coeff,
-                    clear_on_reduce=clear_on_reduce,
+                (
+                    Stats.similar_to(value, init_value=value.values)
+                    if isinstance(value, Stats)
+                    else Stats(
+                        value,
+                        reduce=reduce,
+                        window=window,
+                        ema_coeff=ema_coeff,
+                        clear_on_reduce=clear_on_reduce,
+                    )
                 ),
             )
         # If value itself is a stat, we merge it on time axis into `self`.
@@ -188,7 +192,7 @@ class MetricsLogger:
         self,
         stats_dict,
         *,
-        key: Optional[Union[str, Tuple[str]]] = None,
+        key: Optional[Union[str, Tuple[str, ...]]] = None,
         reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
@@ -229,7 +233,7 @@ class MetricsLogger:
             # Peek at the current (reduced) values under "a" and "b".
             check(logger.peek("a"), 0.15)
             check(logger.peek("b"), -0.15)
-            check(logger.peek("c", "d"), 5.0)
+            check(logger.peek(("c", "d")), 5.0)
 
             # Reduced all stats.
             results = logger.reduce(return_stats_obj=False)
@@ -288,7 +292,7 @@ class MetricsLogger:
         self,
         stats_dicts: List[Dict[str, Any]],
         *,
-        key: Optional[Union[str, Tuple[str]]] = None,
+        key: Optional[Union[str, Tuple[str, ...]]] = None,
         reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
@@ -320,7 +324,7 @@ class MetricsLogger:
                 [learner1_results, learner2_results],
                 key="learners",
             )
-            check(main_logger.peek("learners", "loss"), 0.15)
+            check(main_logger.peek(("learners", "loss")), 0.15)
 
             # Example: m EnvRunners logging episode returns to be merged.
             main_logger = MetricsLogger()
@@ -358,7 +362,7 @@ class MetricsLogger:
                 main_logger.stats["env_runners"]["mean_ret"].values,
                 [325, 325, 425, 425],
             )
-            check(main_logger.peek("env_runners", "mean_ret"), (325 + 425 + 425) / 3)
+            check(main_logger.peek(("env_runners", "mean_ret")), (325 + 425 + 425) / 3)
 
             # Example: Lifetime sum over n parallel components' stats.
             main_logger = MetricsLogger()
@@ -488,14 +492,14 @@ class MetricsLogger:
 
     def log_time(
         self,
-        key: Union[str, Tuple[str]],
+        key: Union[str, Tuple[str, ...]],
         *,
         reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
-        # throughput_key: Optional[Union[str, Tuple[str]]] = None,
-        # throughput_key_of_unit_count: Optional[Union[str, Tuple[str]]] = None,
+        # throughput_key: Optional[Union[str, Tuple[str, ...]]] = None,
+        # throughput_key_of_unit_count: Optional[Union[str, Tuple[str, ...]]] = None,
     ) -> None:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
@@ -596,15 +600,20 @@ class MetricsLogger:
 
     def tensors_to_numpy(self, tensor_metrics):
         """Converts all previously logged and returned tensors back to numpy values."""
-        for key, value in tensor_metrics.items():
+        for key, values in tensor_metrics.items():
             assert self._key_in_stats(key)
-            self._get_key(key).numpy(value)
+            self._get_key(key).set_to_numpy_values(values)
 
     @property
     def tensor_mode(self):
         return self._tensor_mode
 
-    def peek(self, *key, default: Optional[Any] = None) -> Any:
+    def peek(
+        self,
+        key: Union[str, Tuple[str, ...]],
+        *,
+        default: Optional[Any] = None,
+    ) -> Any:
         """Returns the (reduced) value(s) found under the given key or key sequence.
 
         If `key` only reaches to a nested dict deeper in `self`, that
@@ -635,7 +644,7 @@ class MetricsLogger:
 
             # Peek at the (reduced) nested struct under ("some", "nested").
             check(
-                logger.peek("some", "nested"),  # <- *args work as well
+                logger.peek(("some", "nested")),
                 {"key": {"sequence": expected_reduced}},
             )
 
@@ -669,7 +678,7 @@ class MetricsLogger:
 
     def set_value(
         self,
-        key: Union[str, Tuple[str]],
+        key: Union[str, Tuple[str, ...]],
         value: Any,
         *,
         reduce: Optional[str] = "mean",
@@ -727,9 +736,22 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
             )
 
+    def delete(self, *key: Tuple[str, ...], key_error: bool = True) -> None:
+        """Deletes th egiven `key` from this metrics logger's stats.
+
+        Args:
+            key: The key or key sequence (for nested location within self.stats),
+                to delete from this MetricsLogger's stats.
+            key_error: Whether to throw a KeyError if `key` cannot be found in `self`.
+
+        Raises:
+            KeyError: If `key` cannot be found in `self` AND `key_error` is True.
+        """
+        self._del_key(key, key_error)
+
     def reduce(
         self,
-        key: Optional[Union[str, Tuple[str]]] = None,
+        key: Optional[Union[str, Tuple[str, ...]]] = None,
         *,
         return_stats_obj: bool = True,
     ) -> Dict:
@@ -893,6 +915,19 @@ class MetricsLogger:
             if key not in _dict:
                 _dict[key] = {}
             _dict = _dict[key]
+
+    def _del_key(self, flat_key, key_error=False):
+        flat_key = force_tuple(tree.flatten(flat_key))
+        _dict = self.stats
+        try:
+            for i, key in enumerate(flat_key):
+                if i == len(flat_key) - 1:
+                    del _dict[key]
+                    return
+                _dict = _dict[key]
+        except KeyError as e:
+            if key_error:
+                raise e
 
     @Deprecated(new="MetricsLogger.merge_and_log_n_dicts()", error=True)
     def log_n_dicts(self, *args, **kwargs):

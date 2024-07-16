@@ -38,7 +38,7 @@ class MinimalClusterManager(ClusterManager):
                 dict(
                     name=dict(equals=self.cluster_env_name),
                     paging=dict(count=50, paging_token=paging_token),
-                    project_id=None if self.test.is_byod_cluster() else self.project_id,
+                    project_id=None,
                 )
             )
             paging_token = result.metadata.next_paging_token

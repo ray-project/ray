@@ -53,6 +53,9 @@ class ActorManager {
   /// \param[in] outer_object_id The object ID that contained the serialized
   /// actor handle, if any.
   /// \param[in] call_site The caller's site.
+  /// \param[in] Whether to add a local ref for this actor handle. Ref count
+  /// should be incremented for strong refs, i.e. ones where the actor handle
+  /// was passed from the original handle via task arguments or returns.
   /// \param[in] is_self Whether this handle is current actor's handle. If true, actor
   /// manager won't subscribe actor info from GCS.
   /// \return The ActorID of the deserialized handle.
@@ -60,6 +63,7 @@ class ActorManager {
                               const ObjectID &outer_object_id,
                               const std::string &call_site,
                               const rpc::Address &caller_address,
+                              bool add_local_ref,
                               bool is_self = false);
 
   /// Get a handle to an actor.
@@ -101,13 +105,15 @@ class ActorManager {
   ///
   /// \param actor_handle The handle to the actor.
   /// \param[in] call_site The caller's site.
-  /// \param[in] is_detached Whether or not the actor of a handle is detached (named)
-  /// actor. \return True if the handle was added and False if we already had a handle to
+  /// \param[in] owned Whether or not we own the this actor, i.e. the actor is
+  /// not detached and we were the process that submitted the actor creation
+  /// task.
+  /// \return True if the handle was added and False if we already had a handle to
   /// the same actor.
   bool AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                          const std::string &call_site,
                          const rpc::Address &caller_address,
-                         bool is_detached);
+                         bool owned);
 
   /// Wait for actor out of scope.
   ///
@@ -145,6 +151,7 @@ class ActorManager {
   /// \param[in] call_site The caller's site.
   /// \param[in] actor_id The id of an actor
   /// \param[in] actor_creation_return_id object id of this actor creation
+  /// \param[in] Whether to add a local reference for this actor.
   /// \param[in] is_self Whether this handle is current actor's handle. If true, actor
   /// to the same actor.
   /// manager won't subscribe actor info from GCS.
@@ -155,6 +162,7 @@ class ActorManager {
                       const rpc::Address &caller_address,
                       const ActorID &actor_id,
                       const ObjectID &actor_creation_return_id,
+                      bool add_local_ref,
                       bool is_self = false);
 
   /// Check if named actor is cached locally.

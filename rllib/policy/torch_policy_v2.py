@@ -971,7 +971,7 @@ class TorchPolicyV2(Policy):
 
         Raises:
             AssertionError: If the `stats_name` cannot be found in any one
-            of the tower's `tower_stats` dicts.
+                of the tower's `tower_stats` dicts.
         """
         data = []
         for model in self.model_gpu_towers:

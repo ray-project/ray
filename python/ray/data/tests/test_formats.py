@@ -85,6 +85,23 @@ def test_get_internal_block_refs(ray_start_regular_shared):
     assert out == list(range(10)), out
 
 
+def test_iter_internal_ref_bundles(ray_start_regular_shared):
+    n = 10
+    ds = ray.data.range(n, override_num_blocks=n)
+    iter_ref_bundles = ds.iter_internal_ref_bundles()
+
+    out = []
+    ref_bundle_count = 0
+    for ref_bundle in iter_ref_bundles:
+        for block_ref, block_md in ref_bundle.blocks:
+            b = ray.get(block_ref)
+            out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
+        ref_bundle_count += 1
+    out = sorted(out)
+    assert ref_bundle_count == n
+    assert out == list(range(n)), out
+
+
 def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     """Same as `test_parquet_write` but using a custom, fsspec filesystem.
 
@@ -106,7 +123,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert ds._plan.execute()._num_computed() == 0
+    assert not ds._plan.has_started_execution
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")

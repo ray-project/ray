@@ -6,25 +6,24 @@ tensorflow-macos==2.15.1; sys_platform == 'darwin' and platform_machine == 'arm6
 tensorflow-probability==0.23.0
 tensorflow-io-gcs-filesystem==0.31.0
 tensorflow-datasets
-array-record==0.5.0; sys_platform != 'darwin' and platform_system != "Windows"
-etils==1.3.0
+array-record==0.5.1; sys_platform != 'darwin' and platform_system != "Windows"
+etils==1.5.2
 
 # If you make changes below this line, please also make the corresponding changes to `dl-gpu-requirements.txt`
 # and to `install-dependencies.sh`!
 
 --extra-index-url https://download.pytorch.org/whl/cpu  # for CPU versions of torch, torchvision
---find-links https://data.pyg.org/whl/torch-1.13.0+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
---find-links https://data.pyg.org/whl/torch-2.0.1+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
+--find-links https://data.pyg.org/whl/torch-2.3.0+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
 
-torch==2.0.1
+torch==2.3.0
 torchmetrics==0.10.3
-torchtext==0.15.2
-torchvision==0.15.2
+torchtext==0.18.0
+torchvision==0.18.0
 
-torch-scatter==2.1.1
-torch-sparse==0.6.17
-torch-cluster==1.6.1
+torch-scatter==2.1.2
+torch-sparse==0.6.18
+torch-cluster==1.6.3
 torch-spline-conv==1.2.2
-torch-geometric==2.3.1
+torch-geometric==2.5.3
 
-cupy-cuda11x==13.1.0; sys_platform != 'darwin'
+cupy-cuda12x==13.1.0; sys_platform != 'darwin'

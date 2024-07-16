@@ -73,6 +73,13 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources() ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Get total resources of all nodes.
+  ///
+  /// \return total resources of all nodes. To support multi-language, we serialize
+  /// each TotalResources and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllTotalResources() ABSL_LOCKS_EXCLUDED(mutex_);
+
   /// Get draining nodes.
   ///
   /// \return Draining node id to draining deadline.

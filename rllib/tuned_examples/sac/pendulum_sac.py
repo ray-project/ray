@@ -6,11 +6,15 @@ parser = add_rllib_example_script_args(
     default_reward=-250.0,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 config = (
     SACConfig()
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .environment(env="Pendulum-v1")
     .training(
         initial_alpha=1.001,
@@ -40,7 +44,6 @@ config = (
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
-        min_sample_timesteps_per_iteration=1000,
     )
 )
 
