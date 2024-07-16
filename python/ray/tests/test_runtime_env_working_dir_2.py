@@ -2,7 +2,6 @@ import os
 from pathlib import Path
 import sys
 import tempfile
-import datetime
 
 import pytest
 from ray._private.test_utils import (
@@ -289,10 +288,7 @@ def test_file_created_before_1980(shutdown_only, tmp_working_dir):
         f.write("1970")
     os.utime(
         file_1970,
-        (
-            datetime.datetime(1970, 1, 1, 10, 30).timestamp(),
-            datetime.datetime(1970, 1, 1, 10, 30).timestamp(),
-        ),
+        (0, 0),
     )
 
     ray.init(runtime_env={"working_dir": tmp_working_dir})
