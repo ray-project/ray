@@ -169,12 +169,9 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             }
         )
         q_values = module.compute_q_values(q_batch_curr)
-        q_curr = q_values[QF_PREDS] #module._qf_forward_train(q_batch_curr)[QF_PREDS]
+        q_curr = q_values[QF_PREDS]  # module._qf_forward_train(q_batch_curr)[QF_PREDS]
         # If a twin Q network should be used, use the minimum.
         if config.twin_q:
-            #q_twin_curr = q_values[]#module._qf_twin_forward_train(q_batch_curr)[
-            #    #QF_PREDS
-            #]
             q_curr = torch.min(q_curr, q_values[QF_TWIN_PREDS])
 
         # Compute Q-values from the target Q network for the next state with the
@@ -190,17 +187,6 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             q_target_next = torch.min(
                 q_target_next, target_fwd_out[TARGET_QF_TWIN_PREDS]
             )
-
-        #q_target_next = module._qf_target_forward_train(q_batch_next)[
-        #    QF_PREDS
-        #]
-        # If a twin Q network should be used, calculate twin Q-values and use the
-        # minimum.
-        #if config.twin_q:
-        #    q_target_twin_next = module._qf_target_twin_forward_train(
-        #        q_batch_next
-        #    )[QF_PREDS]
-        #    q_target_next = torch.min(q_target_next, q_target_twin_next)
 
         # Compute value function for next state (see eq. (3) in Haarnoja et al. (2018)).
         # Note, we use here the sampled actions in the log probabilities.

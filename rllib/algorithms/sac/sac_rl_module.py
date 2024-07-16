@@ -134,12 +134,10 @@ class SACRLModule(RLModule, TargetNetworkAPI):
 
         return output
 
-    #@override(QNetworkAPI)
+    # TODO (sven): Create `ValueFunctionAPI` and subclass from this.
     def compute_q_values(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         output = {
-            QF_PREDS: self._qf_forward_train_helper(
-                batch, self.qf_encoder, self.qf
-            )
+            QF_PREDS: self._qf_forward_train_helper(batch, self.qf_encoder, self.qf)
         }
         # If a twin Q network should be used, calculate twin Q-values.
         if self.twin_q:
@@ -209,38 +207,6 @@ class SACRLModule(RLModule, TargetNetworkAPI):
             if self.twin_q
             else []
         )
-
-    #@abstractmethod
-    #@OverrideToImplementCustomLogic
-    #def _qf_forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-    #    """Forward pass through Q network.
-    #
-    #    Note, this is only used in training.
-    #    """
-
-    #@abstractmethod
-    #@OverrideToImplementCustomLogic
-    #def _qf_twin_forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-    #    """Forward pass through twin Q network.
-    #
-    #    Note, this is only used in training and only if `twin_q=True`.
-    #    """
-
-    #@abstractmethod
-    #@OverrideToImplementCustomLogic
-    #def _qf_target_forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-    #    """Forward pass through target Q network.
-    #
-    #    Note, this is only used in training.
-    #    """
-
-    #@abstractmethod
-    #@OverrideToImplementCustomLogic
-    #def _qf_target_twin_forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-    #    """Forward pass through twin target Q network.
-    #
-    #    Note, this is only used in training and only if `twin_q=True`.
-    #    """
 
     @abstractmethod
     @OverrideToImplementCustomLogic

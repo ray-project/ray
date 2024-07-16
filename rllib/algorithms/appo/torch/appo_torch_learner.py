@@ -180,40 +180,6 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
         # Return the total loss.
         return total_loss
 
-    #@override(TorchLearner)
-    #def _make_modules_ddp_if_necessary(self) -> None:
-    #    """Logic for (maybe) making all Modules within self._module DDP.
-
-    #    This implementation differs from the super's default one in using the special
-    #    TorchDDPRLModuleWithTargetNetworksInterface wrapper, instead of the default
-    #    TorchDDPRLModule one.
-    #    """
-
-    #    # If the module is a MultiAgentRLModule and nn.Module we can simply assume
-    #    # all the submodules are registered. Otherwise, we need to loop through
-    #    # each submodule and move it to the correct device.
-    #    # TODO (Kourosh): This can result in missing modules if the user does not
-    #    #  register them in the MultiAgentRLModule. We should find a better way to
-    #    #  handle this.
-    #    if self._distributed:
-    #        # Single agent module: Convert to
-    #        # `TorchDDPRLModuleWithTargetNetworksInterface`.
-    #        if isinstance(self._module, RLModuleWithTargetNetworksInterface):
-    #            self._module = TorchDDPRLModuleWithTargetNetworksInterface(self._module)
-    #        # Multi agent module: Convert each submodule to
-    #        # `TorchDDPRLModuleWithTargetNetworksInterface`.
-    #        else:
-    #            assert isinstance(self._module, MultiAgentRLModule)
-    #            for key in self._module.keys():
-    #                sub_module = self._module[key]
-    #                if isinstance(sub_module, TorchRLModule):
-    #                    # Wrap and override the module ID key in self._module.
-    #                    self._module.add_module(
-    #                        key,
-    #                        TorchDDPRLModuleWithTargetNetworksInterface(sub_module),
-    #                        override=True,
-    #                    )
-
     @override(AppoLearner)
     def _update_module_kl_coeff(self, module_id: ModuleID, config: APPOConfig) -> None:
         # Update the current KL value based on the recently measured value.

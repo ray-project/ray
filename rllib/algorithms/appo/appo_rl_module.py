@@ -27,6 +27,6 @@ class APPORLModule(PPORLModule, TargetNetworkAPI, abc.ABC):
 
     @override(TargetNetworkAPI)
     def forward_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-         old_pi_inputs_encoded = self._old_encoder(batch)[ENCODER_OUT][ACTOR]
-         old_action_dist_logits = self._old_pi(old_pi_inputs_encoded)
-         return {OLD_ACTION_DIST_LOGITS_KEY: old_action_dist_logits}
+        old_pi_inputs_encoded = self._old_encoder(batch)[ENCODER_OUT][ACTOR]
+        old_action_dist_logits = self._old_pi(old_pi_inputs_encoded)
+        return {OLD_ACTION_DIST_LOGITS_KEY: old_action_dist_logits}

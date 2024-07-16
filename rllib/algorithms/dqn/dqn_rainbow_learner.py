@@ -73,7 +73,10 @@ class DQNRainbowLearner(Learner):
                 timestep - self.metrics.peek(last_update_ts_key, default=0)
                 >= config.target_network_update_freq
             ):
-                for main_net, target_net in module.unwrapped().get_target_network_pairs():
+                for (
+                    main_net,
+                    target_net,
+                ) in module.unwrapped().get_target_network_pairs():
                     update_target_network(
                         main_net=main_net,
                         target_net=target_net,

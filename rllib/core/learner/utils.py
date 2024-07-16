@@ -38,6 +38,7 @@ def update_target_network(
 ) -> None:
     """Updates a target network (from a "main" network) using Polyak averaging.
 
+    Thereby:
     new_target_net_weight = (
         tau * main_net_weight + (1.0 - tau) * current_target_net_weight
     )
@@ -45,7 +46,9 @@ def update_target_network(
     Args:
         main_net: The nn.Module to update from.
         target_net: The target network to update.
-        tau: The tau value to use in the Polyak averaging formula.
+        tau: The tau value to use in the Polyak averaging formula. Use 1.0 for a
+            complete sync of the weights (target and main net will be the exact same
+            after updating).
     """
     if isinstance(main_net, torch.nn.Module):
         from ray.rllib.utils.torch_utils import update_target_network as _update_target
@@ -54,22 +57,3 @@ def update_target_network(
         raise ValueError(f"Unsupported framework for given `main_net` {main_net}!")
 
     _update_target(main_net=main_net, target_net=target_net, tau=tau)
-
-
-#def sync_target_networks(self, tau: float = 1.0) -> None:
-#    """Update the target network(s) from their corresponding "main" networks.
-
-#    The update is made via Polyak averaging (if tau=1.0, the target network(s)
-#    are completely overridden by the main network(s)' weights, if tau=0.0, the
-#    target network(s) are left as-is).
-
-#    Args:
-#        tau: The tau value to use for polyak averaging.
-#    """
-#    for target_net, main_net in self._target_network_pairs:
-#        update_target_network(
-#            main_net=main_net,
-#            target_net=target_net,
-#            tau=tau,
-#            framework=self.framework,
-#        )

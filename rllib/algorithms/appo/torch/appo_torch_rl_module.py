@@ -1,23 +1,9 @@
-from typing import List
-
-from ray.rllib.algorithms.appo.appo import (
-    OLD_ACTION_DIST_LOGITS_KEY,
-)
 from ray.rllib.algorithms.appo.appo_rl_module import APPORLModule
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-from ray.rllib.core.columns import Columns
 from ray.rllib.utils.annotations import override
 
 
 class APPOTorchRLModule(PPOTorchRLModule, APPORLModule):
-    #@override(PPOTorchRLModule)
-    #def output_specs_train(self) -> List[str]:
-    #    return [
-    #        Columns.ACTION_DIST_INPUTS,
-    #        #OLD_ACTION_DIST_LOGITS_KEY,
-    #        Columns.VF_PREDS,
-    #    ]
-
     @override(PPOTorchRLModule)
     def _set_inference_only_state_dict_keys(self) -> None:
         # Get the model_parameters from the `PPOTorchRLModule`.

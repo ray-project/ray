@@ -2,7 +2,7 @@ import abc
 from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
-from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
+from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
 from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
@@ -97,7 +97,10 @@ class AppoLearner(ImpalaLearner):
                 timestep - self.metrics.peek(last_update_ts_key, default=0)
                 >= config.target_update_frequency
             ):
-                for main_net, target_net in module.unwrapped().get_target_network_pairs():
+                for (
+                    main_net,
+                    target_net,
+                ) in module.unwrapped().get_target_network_pairs():
                     update_target_network(
                         main_net=main_net,
                         target_net=target_net,
@@ -127,6 +130,3 @@ class AppoLearner(ImpalaLearner):
             module_id: The module whose KL loss coefficient to update.
             config: The AlgorithmConfig specific to the given `module_id`.
         """
-
-
-AppoLearner = APPOLearner
