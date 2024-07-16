@@ -4,7 +4,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import asdict
 from datetime import datetime
-from typing import Callable, List, Optional, Tuple
+from typing import AsyncIterable, Callable, List, Optional, Tuple
 
 import aiohttp.web
 from aiohttp.web import Response
@@ -400,6 +400,19 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
     @routes.get("/api/v0/logs/{media_type}")
     @RateLimitedModule.enforce_max_concurrent_calls
     async def get_logs(self, req: aiohttp.web.Request):
+        """
+        Fetches logs from the given criteria.
+
+        Output format is from the query parameter `format`.
+        - `leading_1` (default): Each chunk of data is prepended with a char `1` if the
+            chunk is successful, or `0` if the chunk is failed. After a `0` and its
+            error message, the stream is closed.
+        - `text`: Plain text format. Returns the original log data as-is. If an
+            exception occurs, yields `[get_logs] Fetch log error` with error message and
+            closes the stream.
+
+        Note: all formats always return 200 even if the log fetching fails.
+        """
         record_extra_usage_tag(TagKey.CORE_STATE_API_GET_LOG, "1")
         options = GetLogOptions(
             timeout=int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT)),
@@ -417,37 +430,59 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
             attempt_number=req.query.get("attempt_number", 0),
         )
 
+        output_format = req.query.get("format", "leading_1")
+        logger.info(f"Streaming logs with format {output_format} options: {options}")
+
+        async def formatter_text(response, async_gen: AsyncIterable[bytes]):
+            try:
+                async for logs in async_gen:
+                    await response.write(logs)
+            except asyncio.CancelledError:
+                # This happens when the client side closes the connection.
+                # Force close the connection and do no-op.
+                response.force_close()
+                raise
+            except Exception as e:
+                logger.exception("Error while streaming logs")
+                await response.write(f"[get_logs] Fetch log error: {e}".encode())
+
+        async def formatter_leading_1(response, async_gen: AsyncIterable[bytes]):
+            # NOTE: The first byte indicates the success / failure of individual
+            # stream. If the first byte is b"1", it means the stream was successful.
+            # If it is b"0", it means it is failed.
+            try:
+                async for logs in async_gen:
+                    logs_to_stream = bytearray(b"1")
+                    logs_to_stream.extend(logs)
+                    await response.write(bytes(logs_to_stream))
+            except asyncio.CancelledError:
+                # This happens when the client side closes the connection.
+                # Fofce close the connection and do no-op.
+                response.force_close()
+                raise
+            except Exception as e:
+                logger.exception("Error while streaming logs")
+                error_msg = bytearray(b"0")
+                error_msg.extend(
+                    f"Closing HTTP stream due to internal server error.\n{e}".encode()
+                )
+                await response.write(bytes(error_msg))
+
         response = aiohttp.web.StreamResponse()
         response.content_type = "text/plain"
         await response.prepare(req)
 
-        logger.info(f"Streaming logs with options: {options}")
-
-        # NOTE: The first byte indicates the success / failure of individual
-        # stream. If the first byte is b"1", it means the stream was successful.
-        # If it is b"0", it means it is failed.
-        try:
-            async for logs_in_bytes in self._log_api.stream_logs(options):
-                logs_to_stream = bytearray(b"1")
-                logs_to_stream.extend(logs_in_bytes)
-                await response.write(bytes(logs_to_stream))
-            await response.write_eof()
-            return response
-        except asyncio.CancelledError:
-            # This happens when the client side closes the connection.
-            # Fofce close the connection and do no-op.
-            response.force_close()
-            raise
-        except Exception as e:
-            logger.exception(e)
-            error_msg = bytearray(b"0")
-            error_msg.extend(
-                f"Closing HTTP stream due to internal server error.\n{e}".encode()
+        logs_gen = self._log_api.stream_logs(options)
+        if output_format == "text":
+            await formatter_text(response, logs_gen)
+        elif output_format == "leading_1":
+            await formatter_leading_1(response, logs_gen)
+        else:
+            raise ValueError(
+                f"Unsupported format: {output_format}, use 'text' or " "'leading_1'"
             )
-
-            await response.write(bytes(error_msg))
-            await response.write_eof()
-            return response
+        await response.write_eof()
+        return response
 
     async def _handle_summary_api(
         self,
