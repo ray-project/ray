@@ -5,9 +5,7 @@ from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.sac_learner import (
     ACTION_DIST_INPUTS_NEXT,
     QF_PREDS,
-    TARGET_QF_PREDS,
     QF_TWIN_PREDS,
-    TARGET_QF_TWIN_PREDS,
 )
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
@@ -117,34 +115,6 @@ class SACRLModule(RLModule, TargetNetworkAPI):
             if self.twin_q
             else []
         )
-
-    @override(TargetNetworkAPI)
-    def forward_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        output = {
-            TARGET_QF_PREDS: self._qf_forward_train_helper(
-                batch, self.target_qf_encoder, self.target_qf
-            )
-        }
-
-        # If a twin Q network should be used, calculate twin Q-values.
-        if self.twin_q:
-            output[TARGET_QF_TWIN_PREDS] = self._qf_forward_train_helper(
-                batch, self.target_qf_twin_encoder, self.target_qf_twin
-            )
-
-        return output
-
-    # TODO (sven): Create `ValueFunctionAPI` and subclass from this.
-    def compute_q_values(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        output = {
-            QF_PREDS: self._qf_forward_train_helper(batch, self.qf_encoder, self.qf)
-        }
-        # If a twin Q network should be used, calculate twin Q-values.
-        if self.twin_q:
-            output[QF_TWIN_PREDS] = self._qf_forward_train_helper(
-                batch, self.qf_twin_encoder, self.qf_twin
-            )
-        return output
 
     @override(RLModule)
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
