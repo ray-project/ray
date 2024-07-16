@@ -14,6 +14,10 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.core import (
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_runner_group import _handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
@@ -74,7 +78,7 @@ logger = logging.getLogger(__name__)
 LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
-class ImpalaConfig(AlgorithmConfig):
+class IMPALAConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
     .. testcode::
@@ -488,14 +492,14 @@ class ImpalaConfig(AlgorithmConfig):
     def get_default_learner_class(self):
         if self.framework_str == "torch":
             from ray.rllib.algorithms.impala.torch.impala_torch_learner import (
-                ImpalaTorchLearner,
+                IMPALATorchLearner,
             )
 
-            return ImpalaTorchLearner
+            return IMPALATorchLearner
         elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
+            from ray.rllib.algorithms.impala.tf.impala_tf_learner import IMPALATfLearner
 
-            return ImpalaTfLearner
+            return IMPALATfLearner
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -527,7 +531,10 @@ class ImpalaConfig(AlgorithmConfig):
             )
 
 
-class Impala(Algorithm):
+ImpalaConfig = IMPALAConfig
+
+
+class IMPALA(Algorithm):
     """Importance weighted actor/learner architecture (IMPALA) Algorithm
 
     == Overview of data flow in IMPALA ==
@@ -811,7 +818,10 @@ class Impala(Algorithm):
             _episodes = _worker.sample()
             # Get the EnvRunner's connector states.
             _connector_states = _worker.get_state(
-                components=["env_to_module_connector", "module_to_env_connector"]
+                components=[
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                ]
             )
             _metrics = _worker.get_metrics()
             # Return episode lists by reference so we don't have to send them to the
@@ -851,7 +861,10 @@ class Impala(Algorithm):
             episode_refs = [ray.put(episodes)]
             connector_states = [
                 self.workers.local_worker().get_state(
-                    components=["env_to_module_connector", "module_to_env_connector"]
+                    components=[
+                        COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                        COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                    ]
                 )
             ]
 
@@ -1436,6 +1449,9 @@ class Impala(Algorithm):
                 result, overwrite_learner_info=False
             )
         return result
+
+
+Impala = IMPALA
 
 
 @DeveloperAPI

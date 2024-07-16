@@ -161,11 +161,13 @@ class BC(MARWIL):
                     train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
                         max_agent_steps=self.config.train_batch_size,
+                        sample_timeout_s=self.config.sample_timeout_s,
                     )
                 else:
                     train_batch = synchronous_parallel_sample(
                         worker_set=self.workers,
                         max_env_steps=self.config.train_batch_size,
+                        sample_timeout_s=self.config.sample_timeout_s,
                     )
 
                 # TODO (sven): Use metrics API as soon as we moved to new API stack

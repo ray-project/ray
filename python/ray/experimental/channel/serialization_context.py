@@ -15,24 +15,43 @@ class _SerializationContext:
         # execute one task at a time in `do_exec_tasks`. It will not execute multiple
         # Ray tasks on a single actor simultaneously.
         self.intra_process_channel_buffers: Dict[str, Any] = {}
+        # The number of readers for each channel. When the number of readers
+        # reaches 0, remove the data from the buffer.
+        self.channel_id_to_num_readers: Dict[str, int] = {}
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport
 
-    def set_data(self, channel_id: str, value: Any) -> None:
+    def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
+        assert num_readers > 0, "num_readers must be greater than 0."
         assert (
             channel_id not in self.intra_process_channel_buffers
         ), f"Channel {channel_id} already exists in the buffer."
+        assert (
+            channel_id not in self.channel_id_to_num_readers
+        ), f"Channel {channel_id} already exists in the channel_id_to_num_readers."
+
         self.intra_process_channel_buffers[channel_id] = value
+        self.channel_id_to_num_readers[channel_id] = num_readers
 
     def get_data(self, channel_id: str) -> Any:
         assert (
             channel_id in self.intra_process_channel_buffers
         ), f"Channel {channel_id} does not exist in the buffer."
-        return self.intra_process_channel_buffers.pop(channel_id)
+        assert (
+            channel_id in self.channel_id_to_num_readers
+        ), f"Channel {channel_id} does not exist in the channel_id_to_num_readers."
+
+        self.channel_id_to_num_readers[channel_id] -= 1
+        if self.channel_id_to_num_readers[channel_id] == 0:
+            # All readers have read the data, so we can remove it.
+            self.channel_id_to_num_readers.pop(channel_id)
+            return self.intra_process_channel_buffers.pop(channel_id)
+        return self.intra_process_channel_buffers[channel_id]
 
     def reset_data(self, channel_id: str) -> None:
         self.intra_process_channel_buffers.pop(channel_id, None)
+        self.channel_id_to_num_readers.pop(channel_id, None)
 
     def reset_tensors(self, tensors: List["torch.Tensor"]) -> List["torch.Tensor"]:
         prev_tensors = self.tensors

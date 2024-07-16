@@ -6,8 +6,8 @@ from ray.rllib.algorithms.appo.appo import (
     LEARNER_RESULTS_KL_KEY,
     OLD_ACTION_DIST_LOGITS_KEY,
 )
-from ray.rllib.algorithms.appo.appo_learner import AppoLearner
-from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
+from ray.rllib.algorithms.appo.appo_learner import APPOLearner
+from ray.rllib.algorithms.impala.tf.impala_tf_learner import IMPALATfLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
@@ -19,10 +19,10 @@ from ray.rllib.utils.typing import ModuleID, TensorType
 _, tf, _ = try_import_tf()
 
 
-class APPOTfLearner(AppoLearner, ImpalaTfLearner):
-    """Implements APPO loss / update logic on top of ImpalaTfLearner."""
+class APPOTfLearner(APPOLearner, IMPALATfLearner):
+    """Implements APPO loss / update logic on top of IMPALATfLearner."""
 
-    @override(ImpalaTfLearner)
+    @override(IMPALATfLearner)
     def compute_loss_for_module(
         self,
         *,
@@ -179,7 +179,7 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
         # Return the total loss.
         return total_loss
 
-    @override(AppoLearner)
+    @override(APPOLearner)
     def _update_module_kl_coeff(self, module_id: ModuleID, config: APPOConfig) -> None:
         # Update the current KL value based on the recently measured value.
         # Increase.

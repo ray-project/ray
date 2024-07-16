@@ -11,6 +11,7 @@ from ray.rllib.core.rl_module.marl_module import (
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.tf.tf_distributions import TfCategorical
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.typing import StateDict
 
 
 class DiscreteBCTFModule(TfRLModule):
@@ -72,11 +73,11 @@ class DiscreteBCTFModule(TfRLModule):
         return self._forward_shared(batch)
 
     @override(RLModule)
-    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
+    def get_state(self, *args, **kwargs) -> StateDict:
         return {"policy": self.policy.get_weights()}
 
     @override(RLModule)
-    def set_state(self, state: Dict[str, Any]) -> None:
+    def set_state(self, state: StateDict) -> None:
         self.policy.set_weights(state["policy"])
 
 
