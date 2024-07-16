@@ -26,7 +26,7 @@ The accelerators natively supported by Ray Core are:
      - Experimental, supported by the community
    * - `AWS Neuron Core <https://awsdocs-neuron.readthedocs-hosted.com/en/latest/general/arch/model-architecture-fit.html>`_
      - neuron_cores
-     - Experimental, supported by the community. See examples on AWS EKS `here <https://awslabs.github.io/data-on-eks/docs/gen-ai>`_
+     - Experimental, supported by the community. See `Generative AI on EKS <https://awslabs.github.io/data-on-eks/docs/gen-ai>`_ for examples.
    * - Google TPU
      - TPU
      - Experimental, supported by the community
