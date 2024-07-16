@@ -117,7 +117,8 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
 /// Statuses that are retried infinitely by the GcsClient.
 /// Now we only retry UNAVAILABLE status because that indicates the server may be down.
 inline bool IsGrpcRetryableStatus(Status status) {
-  return status.IsRpcError() && status.rpc_code() == grpc::StatusCode::UNAVAILABLE;
+  return status.IsRpcError() && (status.rpc_code() == grpc::StatusCode::UNAVAILABLE ||
+                                 status.rpc_code() == grpc::StatusCode::UNKNOWN);
 }
 
 /// Converts a Protobuf `RepeatedPtrField` to a vector.

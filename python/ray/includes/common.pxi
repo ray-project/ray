@@ -104,12 +104,16 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise RaySystemError(message)
 
 cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) nogil except -1:
-    with gil:
-        try:
-            return check_status(status)
-        except GetTimeoutError:
-            raise RpcError(status.message().decode(),
-                           rpc_code=CGrpcStatusCode.DEADLINE_EXCEEDED)
+    """
+    Same as check_status, except that it raises RpcError for timeout. This is for
+    backward compatibility: on timeout, `ray.get` raises GetTimeoutError, while
+    GcsClient methods raise RpcError. So in the binding, `get_objects` use check_status
+    and GcsClient methods use check_status_timeout_as_rpc_error.
+    """
+    if status.IsTimedOut():
+        raise RpcError(status.message().decode(),
+                       rpc_code=CGrpcStatusCode.DEADLINE_EXCEEDED)
+    return check_status(status)
 
 
 WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)

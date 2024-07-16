@@ -50,9 +50,9 @@ cdef class NewGcsClient:
             check_status_timeout_as_rpc_error(
                 ConnectOnSingletonIoContext(dereference(inner)))
 
-        my = NewGcsClient()
-        my.inner = inner
-        return my
+        gcs_client = NewGcsClient()
+        gcs_client.inner = inner
+        return gcs_client
 
     @property
     def address(self) -> str:
