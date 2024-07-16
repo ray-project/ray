@@ -106,13 +106,13 @@ class SACRLModule(RLModule, TargetNetworkAPI):
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
         """Returns target Q and Q network(s) to update the target network(s)."""
         return [
-            (self.target_qf_encoder, self.qf_encoder),
-            (self.target_qf, self.qf),
+            (self.qf_encoder, self.target_qf_encoder),
+            (self.qf, self.target_qf),
         ] + (
             # If we have twin networks we need to update them, too.
             [
-                (self.target_qf_twin_encoder, self.qf_twin_encoder),
-                (self.target_qf_twin, self.qf_twin),
+                (self.qf_twin_encoder, self.target_qf_twin_encoder),
+                (self.qf_twin, self.target_qf_twin),
             ]
             if self.twin_q
             else []

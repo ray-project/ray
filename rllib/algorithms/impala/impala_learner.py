@@ -42,7 +42,7 @@ QUEUE_SIZE_LEARNER_THREAD_QUEUE = "queue_size_learner_thread_queue"
 QUEUE_SIZE_RESULTS_QUEUE = "queue_size_results_queue"
 
 
-class IMPALALearner(Learner):
+class ImpalaLearner(Learner):
     @override(Learner)
     def build(self) -> None:
         super().build()
@@ -172,9 +172,6 @@ class IMPALALearner(Learner):
     def remove_module(self, module_id: str):
         super().remove_module(module_id)
         self.entropy_coeff_schedulers_per_module.pop(module_id)
-
-
-ImpalaLearner = IMPALALearner
 
 
 class _GPULoaderThread(threading.Thread):

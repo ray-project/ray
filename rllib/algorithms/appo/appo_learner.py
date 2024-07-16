@@ -20,13 +20,13 @@ from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ModuleID, ShouldModuleBeUpdatedFn
 
 
-class APPOLearner(IMPALALearner):
-    """Adds KL coeff updates via `after_gradient_based_update()` to IMPALA logic.
+class AppoLearner(ImpalaLearner):
+    """Adds KL coeff updates via `after_gradient_based_update()` to Impala logic.
 
     Framework-specific subclasses must override `_update_module_kl_coeff()`.
     """
 
-    @override(IMPALALearner)
+    @override(ImpalaLearner)
     def build(self):
         super().build()
 
@@ -60,7 +60,7 @@ class APPOLearner(IMPALALearner):
             self.module[module_id].unwrapped().make_target_networks()
         return marl_spec
 
-    @override(IMPALALearner)
+    @override(ImpalaLearner)
     def remove_module(self, module_id: str) -> MultiAgentRLModuleSpec:
         marl_spec = super().remove_module(module_id)
         self.curr_kl_coeffs_per_module.pop(module_id)
