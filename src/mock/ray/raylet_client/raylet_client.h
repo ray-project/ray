@@ -49,9 +49,9 @@ class MockRayletClientInterface : public RayletClientInterface {
                const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback),
               (override));
   MOCK_METHOD(void,
-              ReleaseUnusedWorkers,
+              ReleaseUnusedActorWorkers,
               (const std::vector<WorkerID> &workers_in_use,
-               const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback),
+               const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback),
               (override));
   MOCK_METHOD(void,
               CancelWorkerLease,

@@ -569,9 +569,6 @@ class TunerInternal:
             trial_name_creator=self._tune_config.trial_name_creator,
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
             _entrypoint=self._entrypoint,
-            # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
-            # For now, keep accepting both options.
-            local_dir=self._run_config.local_dir,
             # Deprecated
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
         )

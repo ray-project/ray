@@ -6,6 +6,8 @@ import json
 import ray
 import psutil
 
+from dashboard_test import DashboardTestAtScale
+
 
 def test_max_actors_launch(cpus_per_actor, total_actors):
     @ray.remote(num_cpus=cpus_per_actor)
@@ -93,8 +95,6 @@ def main():
     args, unknown = parse_script_args()
     args.total_actors.sort()
 
-    from distributed.dashboard_test import DashboardTestAtScale
-
     addr = ray.init(address="auto")
     dashboard_test = DashboardTestAtScale(addr)
 
@@ -109,20 +109,20 @@ def main():
     print(f"Result: {json.dumps(result, indent=2)}")
 
     if "TEST_OUTPUT_JSON" in os.environ and not args.no_report:
-        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-        perf = [
-            {
-                "perf_metric_name": name,
-                "perf_metric_value": r["throughput"],
-                "perf_metric_type": "THROUGHPUT",
-            }
-            for (name, r) in result.items()
-        ]
-        result["perf_metrics"] = perf
-        dashboard_test.update_release_test_result(result)
+        with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
+            perf = [
+                {
+                    "perf_metric_name": name,
+                    "perf_metric_value": r["throughput"],
+                    "perf_metric_type": "THROUGHPUT",
+                }
+                for (name, r) in result.items()
+            ]
+            result["perf_metrics"] = perf
+            dashboard_test.update_release_test_result(result)
 
-        print(f"Writing data into file: {os.environ['TEST_OUTPUT_JSON']}")
-        json.dump(result, out_file)
+            print(f"Writing data into file: {os.environ['TEST_OUTPUT_JSON']}")
+            json.dump(result, out_file)
 
     print("Test finished successfully!")
     ray.shutdown()

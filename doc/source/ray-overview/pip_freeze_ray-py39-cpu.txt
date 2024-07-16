@@ -2,6 +2,7 @@ adal==1.2.7
 aiohttp==3.8.6
 aiohttp-cors==0.7.0
 aiosignal==1.3.1
+anaconda-anon-usage @ file:///croot/anaconda-anon-usage_1710965072196/work
 annotated-types==0.6.0
 anyio==3.7.1
 applicationinsights==0.11.10
@@ -12,7 +13,7 @@ attrs==21.4.0
 azure-cli-core==2.40.0
 azure-cli-telemetry==1.0.8
 azure-common==1.1.28
-azure-core==1.30.1
+azure-core==1.30.2
 azure-identity==1.10.0
 azure-mgmt-compute==23.1.0
 azure-mgmt-core==1.4.0
@@ -32,13 +33,13 @@ click==8.1.7
 cloudpickle==2.2.0
 colorful==0.5.5
 commonmark==0.9.1
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1714990897816/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1715631935758/work
 conda-content-trust @ file:///croot/conda-content-trust_1714483159009/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
-conda-package-handling @ file:///croot/conda-package-handling_1714483155348/work
-conda_package_streaming @ file:///croot/conda-package-streaming_1690987966409/work
+conda-package-handling @ file:///croot/conda-package-handling_1718138267740/work
+conda_package_streaming @ file:///croot/conda-package-streaming_1718136078615/work
 cryptography==38.0.1
-Cython==0.29.32
+Cython==0.29.37
 distlib==0.3.7
 distro @ file:///croot/distro_1714488253808/work
 dm-tree==0.1.8
@@ -47,6 +48,7 @@ Farama-Notifications==0.0.4
 fastapi==0.109.2
 filelock==3.13.1
 flatbuffers==24.3.25
+frozendict @ file:///croot/frozendict_1713194832637/work
 frozenlist==1.4.0
 fsspec==2023.5.0
 google-api-core==1.34.0
@@ -61,14 +63,14 @@ h11==0.12.0
 httplib2==0.22.0
 httptools==0.6.1
 humanfriendly==10.0
-idna==3.6
+idna @ file:///croot/idna_1714398848350/work
 imageio==2.31.1
 importlib-metadata==6.11.0
 isodate==0.6.1
 jax-jumpy==1.0.0
 Jinja2==3.1.2
 jmespath==1.0.1
-jsonpatch @ file:///tmp/build/80754af9/jsonpatch_1615747632069/work
+jsonpatch @ file:///croot/jsonpatch_1714483231291/work
 jsonpointer==2.1
 jsonschema==4.17.3
 knack==0.10.1
@@ -77,7 +79,7 @@ libmambapy @ file:///croot/mamba-split_1714483352891/work/libmambapy
 lz4==4.3.2
 MarkupSafe==2.1.3
 memray==1.10.0
-menuinst @ file:///croot/menuinst_1714510563922/work
+menuinst @ file:///croot/menuinst_1718132535249/work
 msal==1.18.0b1
 msal-extensions==1.0.0
 msgpack==1.0.7
@@ -99,10 +101,10 @@ packaging==21.3
 pandas==1.5.3
 paramiko==2.12.0
 Pillow==9.2.0
-pkginfo==1.10.0
+pkginfo==1.11.1
 platformdirs==3.11.0
 pluggy @ file:///tmp/build/80754af9/pluggy_1648024445381/work
-portalocker==2.8.2
+portalocker==2.10.0
 prometheus-client==0.19.0
 protobuf==3.20.3
 psutil==5.9.8
@@ -126,9 +128,9 @@ python-dotenv==1.0.1
 pytz==2022.7.1
 PyWavelets==1.5.0
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=70227b0c3ff3294e988d6e1e826eecab3e9e1c312d94efe3e146e3b2097cad85
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=5339a94966d26d29d417eaf8647eb3f578adcf8bc8476d87bf4f1c4c1da65b51
 redis==3.5.3
-requests @ file:///croot/requests_1707355572290/work
+requests==2.31.0
 requests-oauthlib==2.0.0
 rich==12.6.0
 rsa==4.7.2
@@ -144,7 +146,7 @@ starlette==0.36.3
 tabulate==0.9.0
 tensorboardX==2.6.2.2
 tifffile==2023.7.10
-tqdm @ file:///croot/tqdm_1714567712644/work
+tqdm @ file:///croot/tqdm_1716395931952/work
 typer==0.9.0
 typing_extensions==4.8.0
 uritemplate==3.0.1

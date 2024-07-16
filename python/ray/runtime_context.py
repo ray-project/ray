@@ -277,6 +277,7 @@ class RuntimeContext(object):
                 "This method is only available when the process is a "
                 f"worker. Current mode: {self.worker.mode}"
             )
+            return None
         actor_id = self.worker.actor_id
         return self.worker.actor_name if not actor_id.is_nil() else None
 

@@ -28,10 +28,6 @@ logger = logging.getLogger(__name__)
 # fairly high since streaming backpressure prevents us from overloading actors.
 DEFAULT_MAX_TASKS_IN_FLIGHT = 4
 
-# The default time to wait for minimum requested actors
-# to start before raising a timeout, in seconds.
-DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 60 * 10
-
 
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool.
@@ -55,6 +51,7 @@ class ActorPoolMapOperator(MapOperator):
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
+        supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -72,6 +69,7 @@ class ActorPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            supports_fusion: Whether this operator supports fusion with other operators.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -86,6 +84,7 @@ class ActorPoolMapOperator(MapOperator):
             name,
             target_max_block_size,
             min_rows_per_bundle,
+            supports_fusion,
             ray_remote_args_fn,
             ray_remote_args,
         )
@@ -132,7 +131,8 @@ class ActorPoolMapOperator(MapOperator):
         # upstream operators, leading to a spike in memory usage prior to steady state.
         logger.debug(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
         try:
-            ray.get(refs, timeout=DEFAULT_WAIT_FOR_MIN_ACTORS_SEC)
+            timeout = DataContext.get_current().wait_for_min_actors_s
+            ray.get(refs, timeout=timeout)
         except ray.exceptions.GetTimeoutError:
             raise ray.exceptions.GetTimeoutError(
                 "Timed out while starting actors. "

@@ -16,21 +16,29 @@ from ray.rllib.utils.nested_dict import NestedDict
 _, tf, _ = try_import_tf()
 
 
-class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface, APPORLModule):
+class APPOTfRLModule(PPOTfRLModule, APPORLModule):
     @override(PPOTfRLModule)
     def setup(self):
         super().setup()
 
         # If the module is not for inference only, set up the target networks.
-        if not self.inference_only:
+        if not self.config.inference_only:
             self.old_pi.set_weights(self.pi.get_weights())
             self.old_encoder.set_weights(self.encoder.get_weights())
             self.old_pi.trainable = False
             self.old_encoder.trainable = False
 
     @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self):
-        return [(self.old_pi, self.pi), (self.old_encoder, self.encoder)]
+    def sync_target_networks(self, tau: float) -> None:
+        for target_network, current_network in [
+            (self.old_pi, self.pi),
+            (self.old_encoder, self.encoder),
+        ]:
+            for old_var, current_var in zip(
+                target_network.variables, current_network.variables
+            ):
+                updated_var = tau * current_var + (1.0 - tau) * old_var
+                old_var.assign(updated_var)
 
     @override(PPOTfRLModule)
     def output_specs_train(self) -> List[str]:

@@ -101,7 +101,7 @@ TFRecords
 
    read_tfrecords
    Dataset.write_tfrecords
-
+   datasource.tfrecords_datasource.TFXReadOptions
 
 Pandas
 ------
@@ -312,9 +312,8 @@ MetadataProvider API
 
    datasource.FileMetadataProvider
    datasource.BaseFileMetadataProvider
-   datasource.ParquetMetadataProvider
    datasource.DefaultFileMetadataProvider
-   datasource.DefaultParquetMetadataProvider
+   datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
 
    

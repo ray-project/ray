@@ -7,10 +7,9 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
-    Mapping,
     Optional,
     Tuple,
     Type,
@@ -262,7 +261,7 @@ class Policy(metaclass=ABCMeta):
     @staticmethod
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
-        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_ids: Optional[Collection[PolicyID]] = None,
     ) -> Union["Policy", Dict[PolicyID, "Policy"]]:
         """Creates new Policy instance(s) from a given Policy or Algorithm checkpoint.
 
@@ -1202,7 +1201,7 @@ class Policy(metaclass=ABCMeta):
 
         Raises:
             ValueError: If a native DL-framework based model (e.g. a keras Model)
-            cannot be saved to disk for various reasons.
+                cannot be saved to disk for various reasons.
         """
         raise NotImplementedError
 
@@ -1811,7 +1810,7 @@ class Policy(metaclass=ABCMeta):
 
 @OldAPIStack
 def get_gym_space_from_struct_of_tensors(
-    value: Union[Mapping, Tuple, List, TensorType],
+    value: Union[Dict, Tuple, List, TensorType],
     batched_input=True,
 ) -> gym.Space:
     start_idx = 1 if batched_input else 0
@@ -1827,7 +1826,7 @@ def get_gym_space_from_struct_of_tensors(
 
 @OldAPIStack
 def get_gym_space_from_struct_of_spaces(value: Union[Dict, Tuple]) -> gym.spaces.Dict:
-    if isinstance(value, Mapping):
+    if isinstance(value, dict):
         return gym.spaces.Dict(
             {k: get_gym_space_from_struct_of_spaces(v) for k, v in value.items()}
         )

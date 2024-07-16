@@ -60,12 +60,15 @@ void GlobalStateAccessor::Disconnect() {
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
+  // This method assumes GCS is HA and does not return any error. On GCS down, it
+  // retries indefinitely.
   std::vector<std::string> job_table_data;
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise)));
+        TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise),
+        /*timeout_ms=*/-1));
   }
   promise.get_future().get();
   return job_table_data;
@@ -82,12 +85,15 @@ JobID GlobalStateAccessor::GetNextJobID() {
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
+  // This method assumes GCS is HA and does not return any error. On GCS down, it
+  // retries indefinitely.
   std::vector<std::string> node_table_data;
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise)));
+        TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise),
+        /*timeout_ms=*/-1));
   }
   promise.get_future().get();
   return node_table_data;
@@ -116,6 +122,18 @@ std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
   }
   promise.get_future().get();
   return available_resources;
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllTotalResources() {
+  std::vector<std::string> total_resources;
+  std::promise<bool> promise;
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllTotalResources(
+        TransformForMultiItemCallback<rpc::TotalResources>(total_resources, promise)));
+  }
+  promise.get_future().get();
+  return total_resources;
 }
 
 std::unordered_map<NodeID, int64_t> GlobalStateAccessor::GetDrainingNodes() {
@@ -350,7 +368,7 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::strin
   absl::ReaderMutexLock lock(&mutex_);
   std::string value;
 
-  Status status = gcs_client_->InternalKV().Get(ns, key, value);
+  Status status = gcs_client_->InternalKV().Get(ns, key, GetGcsTimeoutMs(), value);
   return status.ok() ? std::make_unique<std::string>(value) : nullptr;
 }
 
@@ -382,7 +400,8 @@ ray::Status GlobalStateAccessor::GetAliveNodes(std::vector<rpc::GcsNodeInfo> &no
         [&promise](Status status, std::vector<rpc::GcsNodeInfo> &&nodes) {
           promise.set_value(
               std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, std::move(nodes)));
-        }));
+        },
+        /*timeout_ms=*/-1));
   }
   auto result = promise.get_future().get();
   auto status = result.first;

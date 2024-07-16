@@ -149,6 +149,8 @@ Constructor
     :toctree: doc/
 
     ~Algorithm
+    ~Algorithm.setup
+    ~Algorithm.get_default_config
 
 Inference and Evaluation
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -196,4 +198,3 @@ Multi Agent
 
     ~Algorithm.add_policy
     ~Algorithm.remove_policy
-

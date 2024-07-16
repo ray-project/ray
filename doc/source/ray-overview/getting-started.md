@@ -587,6 +587,21 @@ Learn more about launching Ray Clusters on AWS, GCP, Azure, and more
 
 `````
 
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on Kubernetes
+:animate: fade-in-slide-down
+
+Ray programs can run on a single node Kubernetes cluster, or seamlessly scale to larger clusters.
+
+```{button-ref}  kuberay-index
+:color: primary
+:outline:
+:expand:
+
+Learn more about launching Ray Clusters on Kubernetes
+```
+
+`````
+
 ## Debugging and Monitoring Quickstart
 
 Use built-in observability tools to monitor and debug Ray applications and clusters.

@@ -103,7 +103,7 @@ class MockJobInfoAccessor : public JobInfoAccessor {
               (override));
   MOCK_METHOD(Status,
               AsyncGetAll,
-              (const MultiItemCallback<rpc::JobTableData> &callback),
+              (const MultiItemCallback<rpc::JobTableData> &callback, int64_t timeout_ms),
               (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(Status,
@@ -139,8 +139,14 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (const std::function<void(Status, bool)> &callback, int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status,
+              AsyncCheckAlive,
+              (const std::vector<std::string> &raylet_addresses,
+               int64_t timeout_ms,
+               const MultiItemCallback<bool> &callback),
+              (override));
+  MOCK_METHOD(Status,
               AsyncGetAll,
-              (const MultiItemCallback<rpc::GcsNodeInfo> &callback),
+              (const MultiItemCallback<rpc::GcsNodeInfo> &callback, int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status,
               AsyncSubscribeToNodeChange,
@@ -155,6 +161,12 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               GetAll,
               (),
               (const, override));
+  MOCK_METHOD(Status,
+              CheckAlive,
+              (const std::vector<std::string> &raylet_addresses,
+               int64_t timeout_ms,
+               std::vector<bool> &nodes_alive),
+              (override));
   MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(Status,
@@ -296,12 +308,14 @@ class MockInternalKVAccessor : public InternalKVAccessor {
               AsyncInternalKVKeys,
               (const std::string &ns,
                const std::string &prefix,
+               const int64_t timeout_ms,
                const OptionalItemCallback<std::vector<std::string>> &callback),
               (override));
   MOCK_METHOD(Status,
               AsyncInternalKVGet,
               (const std::string &ns,
                const std::string &key,
+               const int64_t timeout_ms,
                const OptionalItemCallback<std::string> &callback),
               (override));
   MOCK_METHOD(Status,
@@ -310,12 +324,14 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                const std::string &key,
                const std::string &value,
                bool overwrite,
+               const int64_t timeout_ms,
                const OptionalItemCallback<int> &callback),
               (override));
   MOCK_METHOD(Status,
               AsyncInternalKVExists,
               (const std::string &ns,
                const std::string &key,
+               const int64_t timeout_ms,
                const OptionalItemCallback<bool> &callback),
               (override));
   MOCK_METHOD(Status,
@@ -323,7 +339,8 @@ class MockInternalKVAccessor : public InternalKVAccessor {
               (const std::string &ns,
                const std::string &key,
                bool del_by_prefix,
-               const StatusCallback &callback),
+               const int64_t timeout_ms,
+               const OptionalItemCallback<int> &callback),
               (override));
 };
 
