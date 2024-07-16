@@ -1127,6 +1127,14 @@ class Learner(Checkpointable):
         """
         raise NotImplementedError
 
+    def _set_optimizer_state(self, state: StateDict) -> None:
+        """Sets the state of all optimizers currently registered in this Learner.
+
+        Args:
+            state: The state of the optimizers.
+        """
+        raise NotImplementedError
+
     def update_from_iterator(
         self,
         iterator,
