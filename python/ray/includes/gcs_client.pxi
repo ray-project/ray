@@ -32,7 +32,7 @@ cdef class NewGcsClient:
     # cluster_id is in hex, if any.
     # TODO(ryw): we can also reuse the CoreWorker's GcsClient to save resources.
     @staticmethod
-    def standalone(gcs_address: str, cluster_id: str = None) -> "NewGcsClient":
+    def standalone(gcs_address: str, cluster_id: Optional[str] = None) -> "NewGcsClient":
         cdef GcsClientOptions gcs_options = None
         if cluster_id:
             gcs_options = GcsClientOptions.create(
