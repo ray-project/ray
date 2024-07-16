@@ -257,7 +257,7 @@ def test_inf_task_retries(ray_start_regular):
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 @pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
-def test_actor_task_retry_with_close_common_connections(ray_start_regular, caller):
+def test_actor_task_retry_by_connections_closed(ray_start_regular, caller):
     def body():
         a = Counter.remote()
         assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
@@ -266,6 +266,33 @@ def test_actor_task_retry_with_close_common_connections(ray_start_regular, calle
 
         close_common_connections(pid)
         assert ray.get(task) == 2 + 3 * 2
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["actor", "task", "driver"],
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
+def test_actor_task_retry_by_connections_closed_and_actor_restart(
+    ray_start_regular, caller
+):
+    def body():
+        a = Counter.options(max_restarts=-1).remote()
+        assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
+        pid = ray.get(a.getpid.remote())
+        task1 = a.slow_increment.options(max_task_retries=-1).remote(3, 5)
+
+        close_common_connections(pid)
+        assert ray.get(task1) == 2 + 3 * 2
+
+        task2 = a.slow_increment.options(max_task_retries=-1).remote(3, 5)
+        # Ensure that Actor has received the PushActorTaskReuqest.
+        time.sleep(1)
+        os.kill(pid, signal.SIGKILL)
+        assert ray.get(task2) == 3
 
     call_from(body, caller)
 
