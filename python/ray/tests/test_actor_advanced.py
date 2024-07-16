@@ -1083,11 +1083,9 @@ def test_actor_timestamps(ray_start_regular):
         actor_id = ray.get(actor.get_id.remote())
 
         state_after_starting = ray._private.state.actors()[actor_id]
-        time.sleep(1)
         actor.kill_self.remote()
-        time.sleep(1)
-        actor.kill_self.remote()
-        time.sleep(1)
+        with pytest.raises(ray.exceptions.ActorDiedError):
+            ray.get(actor.kill_self.remote())
         state_after_ending = ray._private.state.actors()[actor_id]
 
         assert state_after_starting["StartTime"] == state_after_ending["StartTime"]

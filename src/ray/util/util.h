@@ -40,6 +40,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 
@@ -227,6 +228,13 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port = 0);
 ///   offset: 8388878
 /// }
 std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::string url);
+
+/// Checks if the string ends with the given suffix.
+/// Note: C++20 supports ends_with, after upgrading to C++20, we can remove it.
+inline bool EndsWith(std::string_view str, std::string_view suffix) {
+  return str.size() >= suffix.size() &&
+         str.compare(str.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
 
 class InitShutdownRAII {
  public:

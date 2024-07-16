@@ -530,6 +530,9 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   /// Whether or not we will retry this actor task.
   auto will_retry = false;
 
+  /// Whether or not TaskSpec update seqno.
+  auto update_seqno = false;
+
   if (task_skipped) {
     // NOTE(simon):Increment the task counter regardless of the status because the
     // reply for a previously completed task. We are not calling CompletePendingTask
@@ -604,7 +607,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         &status,
         &error_info,
         /*mark_task_object_failed*/ is_actor_dead,
-        fail_immediately);
+        fail_immediately,
+        &update_seqno);
     if (!is_actor_dead && !will_retry) {
       // Ran out of retries, last failure = either user exception or actor death.
       if (status.ok()) {
@@ -652,7 +656,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     // Every seqno for the actor_submit_queue must be MarkSeqnoCompleted.
     // On exception-retry we update the seqno so we need to call;
     // On exception's or actor's last try we also need to call.
-    if ((!will_retry) || is_retryable_exception) {
+    if ((!will_retry) || update_seqno) {
       queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, task_spec);
     }
     queue.cur_pending_calls--;
