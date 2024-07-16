@@ -18,8 +18,8 @@ class APPORLModule(PPORLModule, RLModuleWithTargetNetworksInterface, abc.ABC):
     def setup(self):
         super().setup()
 
-        # If the module is not for inference only, set up the target networks.
-        if not self.inference_only:
+        # If the module is not for inference only, create the target networks.
+        if not self.config.inference_only:
             catalog = self.config.get_catalog()
             # Old pi and old encoder are the "target networks" that are used for
             # the stabilization of the updates of the current pi and encoder.

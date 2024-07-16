@@ -238,10 +238,7 @@ def create_serve_rest_api(
                 else:
                     continue
 
-                if (
-                    "target_num_ongoing_requests_per_replica" not in autoscaling_config
-                    and "target_ongoing_requests" not in autoscaling_config
-                ):
+                if "target_ongoing_requests" not in autoscaling_config:
                     logger.warning(
                         "The default value for `target_ongoing_requests` has changed "
                         "from 1.0 to 2.0 in Ray 2.32.0."

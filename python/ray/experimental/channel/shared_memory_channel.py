@@ -300,15 +300,11 @@ class Channel(ChannelInterface):
 
         self._num_readers = len(self._readers)
         if self.is_remote():
-            from ray.dag.context import DAGContext
-
-            if typ.buffer_size_bytes > DAGContext.get_current().max_grpc_payload:
-                raise ValueError(
-                    "The reader and writer are on different nodes, so the object "
-                    "written to the channel must have a size less than or equal to "
-                    "the max gRPC payload size "
-                    f"({DAGContext.get_current().max_grpc_payload} bytes)."
-                )
+            # Even though there may be multiple readers on a remote node, we set
+            # `self._num_readers` to 1 here. On this local node, only the IO thread in
+            # the mutable object provider will read the mutable object. The IO thread
+            # will then send a gRPC with the mutable object contents to the remote node
+            # where the readers are.
             self._num_readers = 1
 
     def _create_reader_ref(
@@ -417,15 +413,6 @@ class Channel(ChannelInterface):
         # include the size of the metadata, so we must account for the size of the
         # metadata explicitly.
         size = serialized_value.total_bytes + len(serialized_value.metadata)
-
-        from ray.dag.context import DAGContext
-
-        if size > DAGContext.get_current().max_grpc_payload and self.is_remote():
-            raise ValueError(
-                "The reader and writer are on different nodes, so the object written "
-                "to the channel must have a size less than or equal to the max gRPC "
-                f"payload size ({DAGContext.get_current().max_grpc_payload} bytes)."
-            )
         if size > self._typ.buffer_size_bytes:
             # Now make the channel backing store larger.
             self._typ.buffer_size_bytes = size

@@ -102,7 +102,7 @@ export const ServeDeploymentsListPage = () => {
                 page={constrainedPage}
                 onChange={(e, pageNo) => setPage("pageNo", pageNo)}
               />
-              <Table sx={{ tableLayout: "fixed" }}>
+              <Table>
                 <TableHead>
                   <TableRow>
                     {columns.map(({ label, helpInfo, width }) => (

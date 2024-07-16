@@ -2,7 +2,7 @@ import abc
 from typing import Any, Dict
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
-from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
+from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
@@ -16,13 +16,13 @@ from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ModuleID
 
 
-class AppoLearner(ImpalaLearner):
-    """Adds KL coeff updates via `after_gradient_based_update()` to Impala logic.
+class APPOLearner(IMPALALearner):
+    """Adds KL coeff updates via `after_gradient_based_update()` to IMPALA logic.
 
-    Framework-specific sub-classes must override `_update_module_kl_coeff()`.
+    Framework-specific subclasses must override `_update_module_kl_coeff()`.
     """
 
-    @override(ImpalaLearner)
+    @override(IMPALALearner)
     def build(self):
         super().build()
 
@@ -41,7 +41,7 @@ class AppoLearner(ImpalaLearner):
             )
         )
 
-    @override(ImpalaLearner)
+    @override(IMPALALearner)
     def remove_module(self, module_id: str):
         super().remove_module(module_id)
         self.curr_kl_coeffs_per_module.pop(module_id)
@@ -102,3 +102,6 @@ class AppoLearner(ImpalaLearner):
             module_id: The module whose KL loss coefficient to update.
             config: The AlgorithmConfig specific to the given `module_id`.
         """
+
+
+AppoLearner = APPOLearner
