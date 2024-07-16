@@ -250,7 +250,7 @@ def main(
         is_bisect_run=bisect_run_test_target is not None,
         run_flaky_tests=run_flaky_tests,
     )
-    sys.exit(0 if success else 42)
+    sys.exit(0 if success else 43)
 
 
 def _add_default_except_tags(except_tags: str) -> str:
