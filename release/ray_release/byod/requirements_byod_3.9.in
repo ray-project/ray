@@ -38,4 +38,5 @@ typer
 typing-extensions==4.8.0
 xarray
 xgboost
+wandb==0.13.4
 zarr

@@ -6,8 +6,6 @@ doctest(
         exclude=[
             "examples/**",
             "tests/**",
-            "horovod/**",  # CI do not have horovod installed
-            "mosaic/**",  # CI do not have mosaicml installed
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "_internal/session.py",
@@ -161,7 +159,7 @@ py_test(
     name = "horovod_cifar_pbt_example",
     size = "small",
     srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive", "manual"],
+    tags = ["team:ml", "exlusive"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -170,7 +168,7 @@ py_test(
     name = "horovod_pytorch_example",
     size = "small",
     srcs = ["examples/horovod/horovod_pytorch_example.py"],
-    tags = ["team:ml", "exclusive", "manual"],
+    tags = ["team:ml", "exclusive"],
     deps = [":train_lib"],
     args = ["--num-epochs=1"]
 )
@@ -179,7 +177,7 @@ py_test(
     name = "horovod_tune_example",
     size = "small",
     srcs = ["examples/horovod/horovod_tune_example.py"],
-    tags = ["team:ml", "exclusive", "manual"],
+    tags = ["team:ml", "exclusive"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -379,7 +377,7 @@ py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air", "manual"],
+    tags = ["team:ml", "exclusive", "ray_air"],
     deps = [":train_lib"]
 )
 
