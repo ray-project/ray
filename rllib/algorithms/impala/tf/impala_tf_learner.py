@@ -151,3 +151,6 @@ class IMPALATfLearner(IMPALALearner, TfLearner):
         vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
         # Squeeze out last dimension (single node value head).
         return tf.squeeze(vf_out, -1)
+
+
+ImpalaTfLearner = IMPALATfLearner

@@ -492,14 +492,14 @@ class IMPALAConfig(AlgorithmConfig):
     def get_default_learner_class(self):
         if self.framework_str == "torch":
             from ray.rllib.algorithms.impala.torch.impala_torch_learner import (
-                ImpalaTorchLearner,
+                IMPALATorchLearner,
             )
 
-            return ImpalaTorchLearner
+            return IMPALATorchLearner
         elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
+            from ray.rllib.algorithms.impala.tf.impala_tf_learner import IMPALATfLearner
 
-            return ImpalaTfLearner
+            return IMPALATfLearner
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "

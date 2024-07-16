@@ -158,3 +158,6 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
         )
         # Return the total loss.
         return total_loss
+
+
+ImpalaTorchLearner = IMPALATorchLearner
