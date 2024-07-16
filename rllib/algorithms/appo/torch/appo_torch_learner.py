@@ -6,8 +6,8 @@ from ray.rllib.algorithms.appo.appo import (
     LEARNER_RESULTS_KL_KEY,
     OLD_ACTION_DIST_LOGITS_KEY,
 )
-from ray.rllib.algorithms.appo.appo_learner import AppoLearner
-from ray.rllib.algorithms.impala.torch.impala_torch_learner import ImpalaTorchLearner
+from ray.rllib.algorithms.appo.appo_learner import APPOLearner
+from ray.rllib.algorithms.impala.torch.impala_torch_learner import IMPALATorchLearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     make_time_major,
     vtrace_torch,
@@ -24,10 +24,10 @@ from ray.rllib.utils.typing import ModuleID, TensorType
 torch, nn = try_import_torch()
 
 
-class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
-    """Implements APPO loss / update logic on top of ImpalaTorchLearner."""
+class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
+    """Implements APPO loss / update logic on top of IMPALATorchLearner."""
 
-    @override(ImpalaTorchLearner)
+    @override(IMPALATorchLearner)
     def compute_loss_for_module(
         self,
         *,
@@ -180,7 +180,7 @@ class APPOTorchLearner(AppoLearner, ImpalaTorchLearner):
         # Return the total loss.
         return total_loss
 
-    @override(AppoLearner)
+    @override(APPOLearner)
     def _update_module_kl_coeff(self, module_id: ModuleID, config: APPOConfig) -> None:
         # Update the current KL value based on the recently measured value.
         # Increase.
