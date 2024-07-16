@@ -324,7 +324,7 @@ class OpState:
         # Assume no more than one output.
         assert len(self.op.output_dependencies) <= 1
         for op in self.op.output_dependencies:
-            logger.info(
+            logger.debug(
                 "@mzm: average_bytes_inputs_per_task "
                 f"{op._metrics.average_bytes_inputs_per_task}, "
                 f"average_task_duration: {op._metrics.average_task_duration}, "
@@ -363,7 +363,7 @@ class OpState:
         self.output_budget += time_elapsed * grow_rate
         # Cap output_budget to object_store_memory
         self.output_budget = min(INITIAL_BUDGET, self.output_budget)
-        logger.info(
+        logger.debug(
             f"@mzm INITIAL_BUDGET: {INITIAL_BUDGET}, "
             f"self.output_budget: {self.output_budget}, "
             f"time elapsed: {time_elapsed} "
@@ -371,10 +371,12 @@ class OpState:
         )
         self.last_update_time = now
 
-    def lsf_admission_control(self, resource_manager: ResourceManager) -> bool:
+    def budget_policy_admission_control(self, resource_manager: ResourceManager) -> bool:
 
-        # TODO(MaoZiming)
-        if (self.op.name != "ReadRange->MapBatches(produce)" and self.op.name != "MapBatches(produce)"):
+        if not ray.data.DataContext.get_current().is_budget_policy:
+            return True
+                
+        if not (len(self.op.input_dependencies) == 1 and isinstance(self.op.input_dependencies[0], InputDataBuffer)): 
             return True
 
         INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
@@ -382,7 +384,7 @@ class OpState:
         self._replenish_output_budget(resource_manager)
         output_size = self._get_average_ouput_size() or INITIAL_BUDGET
 
-        logger.info(
+        logger.debug(
             f"@mzm output_budget: {self.output_budget}, output_size: {output_size}"
         )
 
@@ -617,7 +619,7 @@ def select_operator_to_run(
             and not op.completed()
             and state.num_queued() > 0
             and op.should_add_input()
-            and state.lsf_admission_control(resource_manager)
+            and state.budget_policy_admission_control(resource_manager)
         ):
             ops.append(op)
             op_runnable = True
@@ -643,26 +645,17 @@ def select_operator_to_run(
             op
             for op, state in topology.items()
             if state.num_queued() > 0 and not op.completed()
+            and state.budget_policy_admission_control(resource_manager)
         ]
 
     # Nothing to run.
     if not ops:
         return None
 
-    # Run metadata-only operators first. After that, choose the operator with the least
-    # memory usage.
-    # op = min(
-    #     ops,
-    #     key=lambda op: (
-    #         not op.throttling_disabled(),
-    #         resource_manager.get_op_usage(op).object_store_memory,
-    #     ),
-    # )
-    op = ops[0]  # @lsf prefer the producer
-    # if op is not None:
-    # wall_time = time.time() - topology[op].start_time
-    # logger.info(f"@lsf Selected: {op.name} @ {wall_time:.3f}")
-    return op
+    if ray.data.DataContext.get_current().is_budget_policy:
+        op = ops[0]  # @lsf prefer the producer 
+        return op
+    
     selected_op = None
     if ops:
         # Run metadata-only operators first. After that, choose the operator with the

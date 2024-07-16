@@ -4,11 +4,10 @@ import os
 import time
 
 import numpy as np
-
-import ray
 import ray.timeline_utils as timeline_utils
+import ray
 
-LOG_FILE = "test_large_e2e_backpressure.log"
+LOG_FILE = "variable_duration_benchmark.log"
 
 
 class Logger:
@@ -48,7 +47,10 @@ def main(is_flink: bool):
 
     def produce(batch):
         logger.log({"name": "producer_start", "id": [int(x) for x in batch["id"]]})
-        time.sleep(TIME_UNIT * 10)
+        if int(batch["id"][0].item()) < NUM_ROWS_TOTAL / 2:
+            time.sleep(TIME_UNIT * 10)
+        else:
+            time.sleep(TIME_UNIT)
         for id in batch["id"]:
             # logger.log({"name": "produce", "id": int(id)})
             yield {
@@ -60,7 +62,10 @@ def main(is_flink: bool):
 
     def consume(batch):
         logger.log({"name": "consume", "id": int(batch["id"].item())})
-        time.sleep(TIME_UNIT)
+        if int(batch["id"]) < NUM_ROWS_TOTAL / 2:
+            time.sleep(TIME_UNIT)
+        else:
+            time.sleep(TIME_UNIT * 2)
         return {"id": batch["id"], "result": [0 for _ in batch["id"]]}
 
     data_context = ray.data.DataContext.get_current()
@@ -71,7 +76,7 @@ def main(is_flink: bool):
         data_context.is_budget_policy = False # Disable our policy. 
     else:
         data_context.is_budget_policy = True
-
+        
     ray.init(num_cpus=NUM_CPUS, object_store_memory=25 * BLOCK_SIZE)
 
     ds = ray.data.range(NUM_ROWS_TOTAL, override_num_blocks=NUM_TASKS)
@@ -94,7 +99,7 @@ def main(is_flink: bool):
     print(ds.stats())
     print(ray._private.internal_api.memory_summary(stats_only=True))
     print(f"Total time: {end_time - start_time:.4f}s")
-    timeline_utils.save_timeline(f"timeline_{'ray' if not is_flink else 'flink'}.json")
+    timeline_utils.save_timeline(f"timeline_{'ray' if not is_flink else 'flink'}_variable.json")
     ray.shutdown()
 
 if __name__ == "__main__":

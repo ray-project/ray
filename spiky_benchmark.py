@@ -2,13 +2,11 @@ import datetime
 import json
 import os
 import time
-
 import numpy as np
-
+import timeline_utils
 import ray
-import ray.timeline_utils as timeline_utils
 
-LOG_FILE = "test_large_e2e_backpressure.log"
+LOG_FILE = "spiky_benchmark.log"
 
 
 class Logger:
@@ -43,12 +41,15 @@ def main(is_flink: bool):
     NUM_CPUS = 8
     NUM_ROWS_PER_TASK = 10
     NUM_TASKS = 16 * 5
-    NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS
+    NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS  
     BLOCK_SIZE = 10 * 1024 * 1024 * 10
 
     def produce(batch):
         logger.log({"name": "producer_start", "id": [int(x) for x in batch["id"]]})
-        time.sleep(TIME_UNIT * 10)
+        if (int(batch["id"][0].item()) / 10) % 10 == 0:
+            time.sleep(TIME_UNIT * 10)
+        else:
+            time.sleep(TIME_UNIT)
         for id in batch["id"]:
             # logger.log({"name": "produce", "id": int(id)})
             yield {
@@ -60,7 +61,10 @@ def main(is_flink: bool):
 
     def consume(batch):
         logger.log({"name": "consume", "id": int(batch["id"].item())})
-        time.sleep(TIME_UNIT)
+        if int(batch["id"][0].item()) % 10 == 0:
+            time.sleep(TIME_UNIT * 10)
+        else:
+            time.sleep(TIME_UNIT)
         return {"id": batch["id"], "result": [0 for _ in batch["id"]]}
 
     data_context = ray.data.DataContext.get_current()
@@ -71,14 +75,14 @@ def main(is_flink: bool):
         data_context.is_budget_policy = False # Disable our policy. 
     else:
         data_context.is_budget_policy = True
-
+        
     ray.init(num_cpus=NUM_CPUS, object_store_memory=25 * BLOCK_SIZE)
 
     ds = ray.data.range(NUM_ROWS_TOTAL, override_num_blocks=NUM_TASKS)
     
     if is_flink:
-        ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK, concurrency=4)
-        ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99, concurrency=4) 
+        ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK, concurrency=2)
+        ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99, concurrency=6) 
     else:
         ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)
         ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99)
@@ -94,9 +98,10 @@ def main(is_flink: bool):
     print(ds.stats())
     print(ray._private.internal_api.memory_summary(stats_only=True))
     print(f"Total time: {end_time - start_time:.4f}s")
-    timeline_utils.save_timeline(f"timeline_{'ray' if not is_flink else 'flink'}.json")
+    timeline_utils.save_timeline(f"timeline_{'ray' if not is_flink else 'flink'}_spiky.json")
     ray.shutdown()
 
-if __name__ == "__main__":
-    main(is_flink=True)
+if __name__ == "__main__": 
+
+    main(is_flink=True) 
     main(is_flink=False)
