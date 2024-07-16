@@ -100,10 +100,10 @@ def main(is_flink: bool):
     print(ds.stats())
     print(ray._private.internal_api.memory_summary(stats_only=True))
     print(f"Total time: {end_time - start_time:.4f}s")
-    timeline_utils.save_timeline(f"timeline_{'ray' if not is_flink else 'flink'}_three_stage.json")
+    timeline_utils.save_timeline_with_cpus_gpus(f"timeline_{'ray' if not is_flink else 'flink'}_three_stage.json", NUM_CPUS,  NUM_GPUS)
     ray.shutdown()
 
 if __name__ == "__main__": 
 
-    main(is_flink=True) 
+    # main(is_flink=True) 
     main(is_flink=False)
