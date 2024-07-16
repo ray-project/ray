@@ -3,7 +3,6 @@ import itertools
 import numpy as np
 import tempfile
 import unittest
-import pytest
 
 import tree  # pip install dm_tree
 
@@ -613,6 +612,7 @@ def _check_multi_worker_weights(learner_group, results):
 
 if __name__ == "__main__":
     import sys
+    import pytest
 
     class_ = sys.argv[1] if len(sys.argv) > 1 else None
     sys.exit(pytest.main(["-v", __file__ + ("" if class_ is None else "::" + class_)]))

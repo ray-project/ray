@@ -1099,7 +1099,7 @@
     byod:
       runtime_env:
         - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
-      type: cu123
+      type: gpu
     cluster_compute: train/compute_tpl_aws.yaml
 
   run:
