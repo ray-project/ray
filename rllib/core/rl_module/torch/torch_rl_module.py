@@ -1,15 +1,14 @@
-import pathlib
-from typing import Any, Dict, Union, Type
+from typing import Any, Collection, Dict, Optional, Union, Type
 
 from packaging import version
 
-from ray.rllib.core.rl_module import RLModule
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
 )
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.models.torch.torch_distributions import TorchDistribution
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import (
@@ -40,6 +39,9 @@ class TorchRLModule(nn.Module, RLModule):
 
     framework: str = "torch"
 
+    # Stick with torch default.
+    STATE_FILE_NAME = "module_state.pt"
+
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
@@ -64,27 +66,26 @@ class TorchRLModule(nn.Module, RLModule):
         """
         return compile_wrapper(self, compile_config)
 
+    @OverrideToImplementCustomLogic
     @override(RLModule)
-    def get_state(self, inference_only: bool = False) -> StateDict:
-        return self.state_dict()
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        inference_only: bool = False,
+        **kwargs,
+    ) -> StateDict:
+        return convert_to_numpy(self.state_dict())
 
+    @OverrideToImplementCustomLogic
     @override(RLModule)
-    def set_state(self, state_dict: StateDict) -> None:
-        state_dict = convert_to_torch_tensor(state_dict)
-        self.load_state_dict(state_dict)
-
-    def _module_state_file_name(self) -> pathlib.Path:
-        return pathlib.Path("module_state.pt")
-
-    @override(RLModule)
-    def save_state(self, dir: Union[str, pathlib.Path]) -> None:
-        path = str(pathlib.Path(dir) / self._module_state_file_name())
-        torch.save(convert_to_numpy(self.state_dict()), path)
-
-    @override(RLModule)
-    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
-        path = str(pathlib.Path(dir) / self._module_state_file_name())
-        self.set_state(torch.load(path))
+    def set_state(self, state: StateDict) -> None:
+        # If state contains more keys than `self.state_dict()`, then we simply ignore
+        # these keys (strict=False). This is most likely due to `state` coming from
+        # an `inference_only=False` RLModule, while `self` is an `inference_only=True`
+        # RLModule.
+        self.load_state_dict(convert_to_torch_tensor(state), strict=False)
 
     def _set_inference_only_state_dict_keys(self) -> None:
         """Sets expected and unexpected keys for the inference-only module.
@@ -154,24 +155,16 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         self.unwrapped().set_state(*args, **kwargs)
 
     @override(RLModule)
-    def save_state(self, *args, **kwargs):
-        self.unwrapped().save_state(*args, **kwargs)
+    def save_to_path(self, *args, **kwargs):
+        self.unwrapped().save_to_path(*args, **kwargs)
 
     @override(RLModule)
-    def load_state(self, *args, **kwargs):
-        self.unwrapped().load_state(*args, **kwargs)
+    def restore_from_path(self, *args, **kwargs):
+        self.unwrapped().restore_from_path(*args, **kwargs)
 
     @override(RLModule)
-    def save_to_checkpoint(self, *args, **kwargs):
-        self.unwrapped().save_to_checkpoint(*args, **kwargs)
-
-    @override(RLModule)
-    def _save_module_metadata(self, *args, **kwargs):
-        self.unwrapped()._save_module_metadata(*args, **kwargs)
-
-    @override(RLModule)
-    def _module_metadata(self, *args, **kwargs):
-        return self.unwrapped()._module_metadata(*args, **kwargs)
+    def get_metadata(self, *args, **kwargs):
+        self.unwrapped().get_metadata(*args, **kwargs)
 
     # TODO (sven): Figure out a better way to avoid having to method-spam this wrapper
     #  class, whenever we add a new API to any wrapped RLModule here. We could try

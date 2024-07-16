@@ -260,6 +260,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
   task_resubmitter_->AddTask(object_id.TaskId(), {});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_TRUE(ref_counter_->IsObjectPendingCreation(object_id));
   ASSERT_TRUE(object_directory_->Flush() == 1);
 
   ASSERT_TRUE(failed_reconstructions_.empty());

@@ -20,6 +20,12 @@ from typing import (
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
+from ray.rllib.core import (
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_LEARNER,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+    COMPONENT_RL_MODULE,
+)
 from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -432,7 +438,7 @@ class EnvRunnerGroup:
                         else {}
                     ),
                     **(
-                        {"rl_module": rl_module_state}
+                        {COMPONENT_RL_MODULE: rl_module_state}
                         if rl_module_state is not None
                         else {}
                     ),
@@ -455,8 +461,8 @@ class EnvRunnerGroup:
                     connector_states = self.foreach_worker(
                         lambda w: w.get_state(
                             components=[
-                                "env_to_module_connector",
-                                "module_to_env_connector",
+                                COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                                COMPONENT_MODULE_TO_ENV_CONNECTOR,
                             ]
                         ),
                         local_worker=False,
@@ -465,25 +471,28 @@ class EnvRunnerGroup:
                         ),
                     )
                 env_to_module_states = [
-                    s["env_to_module_connector"] for s in connector_states
+                    s[COMPONENT_ENV_TO_MODULE_CONNECTOR] for s in connector_states
                 ]
                 module_to_env_states = [
-                    s["module_to_env_connector"] for s in connector_states
+                    s[COMPONENT_MODULE_TO_ENV_CONNECTOR] for s in connector_states
                 ]
 
                 env_runner_states = {
-                    "env_to_module_connector": local_worker._env_to_module.merge_states(
-                        env_to_module_states
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR: (
+                        local_worker._env_to_module.merge_states(env_to_module_states)
                     ),
-                    "module_to_env_connector": local_worker._module_to_env.merge_states(
-                        module_to_env_states
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR: (
+                        local_worker._module_to_env.merge_states(module_to_env_states)
                     ),
                 }
         # Ignore states from remote EnvRunners (use the current `from_worker` states
         # only).
         else:
             env_runner_states = from_worker.get_state(
-                components=["env_to_module_connector", "module_to_env_connector"]
+                components=[
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                ]
             )
 
         # Update the global number of environment steps, if necessary.
@@ -492,15 +501,15 @@ class EnvRunnerGroup:
 
         # Update the rl_module component of the EnvRunner states, if necessary:
         if rl_module_state:
-            env_runner_states["rl_module"] = rl_module_state
+            env_runner_states[COMPONENT_RL_MODULE] = rl_module_state
 
         # If we do NOT want remote EnvRunners to get their Connector states updated,
         # only update the local worker here (with all state components) and then remove
         # the connector components.
         if not config.update_worker_filter_stats:
             local_worker.set_state(env_runner_states)
-            del env_runner_states["env_to_module_connector"]
-            del env_runner_states["module_to_env_connector"]
+            del env_runner_states[COMPONENT_ENV_TO_MODULE_CONNECTOR]
+            del env_runner_states[COMPONENT_MODULE_TO_ENV_CONNECTOR]
 
         # If there are components in the state left -> Update remote workers with these
         # state components (and maybe the local worker, if it hasn't been updated yet).
@@ -550,7 +559,7 @@ class EnvRunnerGroup:
                 for any sync calls to finish). Setting this to 0.0 might significantly
                 improve algorithm performance, depending on the algo's `training_step`
                 logic.
-            inference_only: Synch weights with workers that keep inference-only
+            inference_only: Sync weights with workers that keep inference-only
                 modules. This is needed for algorithms in the new stack that
                 use inference-only modules. In this case only a part of the
                 parameters are synced to the workers. Default is False.
@@ -562,7 +571,7 @@ class EnvRunnerGroup:
             )
 
         # Only sync if we have remote workers or `from_worker_or_trainer` is provided.
-        weights = None
+        rl_module_state = None
         if self.num_remote_workers() or from_worker_or_learner_group is not None:
             weights_src = from_worker_or_learner_group or self.local_worker()
 
@@ -571,33 +580,44 @@ class EnvRunnerGroup:
                     "`from_worker_or_trainer` is None. In this case, EnvRunnerGroup "
                     "should have local_env_runner. But local_env_runner is also None."
                 )
-            if self._remote_config.enable_env_runner_and_connector_v2:
-                weights = weights_src.get_state(
-                    components="rl_module",
+
+            modules = (
+                [COMPONENT_RL_MODULE + "/" + p for p in policies]
+                if policies is not None
+                else [COMPONENT_RL_MODULE]
+            )
+            # LearnerGroup has-a Learner has-a RLModule.
+            if isinstance(weights_src, LearnerGroup):
+                rl_module_state = weights_src.get_state(
+                    components=[COMPONENT_LEARNER + "/" + m for m in modules],
                     inference_only=inference_only,
-                    module_ids=policies,
-                )
-                if isinstance(weights_src, LearnerGroup):
-                    weights = weights["learner_state"]["rl_module"]
-                else:
-                    weights = weights["rl_module"]
+                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            # EnvRunner has-a RLModule.
+            elif self._remote_config.enable_env_runner_and_connector_v2:
+                rl_module_state = weights_src.get_state(
+                    components=modules,
+                    inference_only=inference_only,
+                )[COMPONENT_RL_MODULE]
             else:
-                weights = weights_src.get_weights(policies, inference_only)
+                rl_module_state = weights_src.get_weights(
+                    policies=policies,
+                    inference_only=inference_only,
+                )
 
             # Move weights to the object store to avoid having to make n pickled copies
             # of the weights dict for each worker.
-            weights_ref = ray.put(weights)
+            rl_module_state_ref = ray.put(rl_module_state)
 
             if self._remote_config.enable_env_runner_and_connector_v2:
 
                 def _set_weights(env_runner):
-                    _weights = ray.get(weights_ref)
-                    env_runner.set_state({"rl_module": _weights})
+                    _rl_module_state = ray.get(rl_module_state_ref)
+                    env_runner.set_state({COMPONENT_RL_MODULE: _rl_module_state})
 
             else:
 
                 def _set_weights(env_runner):
-                    _weights = ray.get(weights_ref)
+                    _weights = ray.get(rl_module_state_ref)
                     env_runner.set_weights(_weights, global_vars)
 
             # Sync to specified remote workers in this EnvRunnerGroup.
@@ -612,10 +632,15 @@ class EnvRunnerGroup:
         # EnvRunnerGroup's local worker.
         if self.local_worker() is not None:
             if from_worker_or_learner_group is not None:
-                self.local_worker().set_weights(weights, global_vars=global_vars)
+                if self._remote_config.enable_env_runner_and_connector_v2:
+                    self.local_worker().set_state(
+                        {COMPONENT_RL_MODULE: rl_module_state}
+                    )
+                else:
+                    self.local_worker().set_weights(rl_module_state)
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.
-            elif global_vars is not None:
+            if global_vars is not None:
                 self.local_worker().set_global_vars(global_vars)
 
     @DeveloperAPI

@@ -356,14 +356,25 @@ message RegisterMutableObjectReply {
 }
 
 message PushMutableObjectRequest {
+  // The object ID of the object written to on the writer node.
   bytes writer_object_id = 1;
-  uint64 data_size = 2;
-  uint64 metadata_size = 3;
-  bytes data = 4;
+  // The total size of the data (across all chunks).
+  uint64 total_data_size = 2;
+  // The total size of the metadata (across all chunks).
+  uint64 total_metadata_size = 3;
+
+  // The offset of the chunk (in bytes) within the object.
+  uint64 offset = 4;
+  // The size of this chunk. Note that this size could include both data and metadata.
+  uint64 chunk_size = 5;
+  // The chunk payload. Note that this could include both data and metadata.
+  bytes payload = 6;
 }
 
 message PushMutableObjectReply {
-  // Empty for now.
+  // The receiver sets this to true once it has received all chunks for a mutable object
+  // write, false otherwise (i.e., the receiver still expects to receive more chunks).
+  bool done = 1;
 }
 
 // Service for inter-node-manager communication.
