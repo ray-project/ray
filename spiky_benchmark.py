@@ -35,23 +35,6 @@ TIME_UNIT = 0.5
 
 
 def main(is_flink: bool):
-    """Test backpressure on a synthetic large-scale workload."""
-    # The cluster has 10 CPUs and 200MB object store memory.
-    # The dataset will have 200MB * 25% = 50MB memory budget.
-    #
-    # Each produce task generates 10 blocks, each of which has 10MB data.
-    #
-    # Without any backpressure, the producer tasks will output at most
-    # 10 * 10 * 10MB = 1000MB data.
-    #
-    # With StreamingOutputBackpressurePolicy and the following configuration,
-    # the executor will still schedule 10 produce tasks, but only the first task is
-    # allowed to output all blocks. The total size of pending blocks will be
-    # (10 + 9 * 1 + 1) * 10MB = 200MB, where
-    # - 10 is the number of blocks in the first task.
-    # - 9 * 1 is the number of blocks pending at the streaming generator level of
-    #   the other 15 tasks.
-    # - 1 is the number of blocks pending at the output queue.
 
     os.environ["RAY_DATA_OP_RESERVATION_RATIO"] = "0"
 
@@ -60,11 +43,6 @@ def main(is_flink: bool):
     NUM_TASKS = 16 * 5
     NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS  
     BLOCK_SIZE = 10 * 1024 * 1024 * 10
-
-    # Write the data to file.
-    # array = np.zeros(BLOCK_SIZE, dtype=np.uint8)
-    # file_path = 'zeros_block.bin'
-    # array.tofile(file_path)
 
     def produce(batch):
         logger.log({"name": "producer_start", "id": [int(x) for x in batch["id"]]})
