@@ -3,6 +3,7 @@ import glob
 import json
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
+import pytest
 
 import ray
 from ray.air.constants import (

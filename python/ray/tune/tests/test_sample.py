@@ -4,9 +4,9 @@ https://gist.github.com/xwjiang2010/13e6df091e5938aff5b44769bec8ffb8,
 change your pytest running directory to ray/python/ray/tune/tests/
 """
 
-from collections import defaultdict
 import sys
 import unittest
+from collections import defaultdict
 from unittest.mock import patch
 
 import numpy as np

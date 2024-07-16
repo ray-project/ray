@@ -1,6 +1,7 @@
 # coding: utf-8
 import os
 import shutil
+import sys
 import tempfile
 import unittest
 
@@ -347,6 +348,4 @@ class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))
