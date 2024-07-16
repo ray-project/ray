@@ -2,7 +2,7 @@ import abc
 from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
-from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
+from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
 from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
@@ -20,16 +20,17 @@ from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ModuleID, ShouldModuleBeUpdatedFn
 
 
-class AppoLearner(ImpalaLearner):
-    """Adds KL coeff updates via `after_gradient_based_update()` to Impala logic.
+class APPOLearner(IMPALALearner):
+    """Adds KL coeff updates via `after_gradient_based_update()` to IMPALA logic.
 
     Framework-specific subclasses must override `_update_module_kl_coeff()`.
     """
 
-    @override(ImpalaLearner)
+    @override(IMPALALearner)
     def build(self):
         super().build()
 
+        # Make target networks.
         self.module.foreach_module(
             lambda mid, mod: mod.unwrapped().make_target_networks()
         )
@@ -59,7 +60,7 @@ class AppoLearner(ImpalaLearner):
             self.module[module_id].unwrapped().make_target_networks()
         return marl_spec
 
-    @override(ImpalaLearner)
+    @override(IMPALALearner)
     def remove_module(self, module_id: str) -> MultiAgentRLModuleSpec:
         marl_spec = super().remove_module(module_id)
         self.curr_kl_coeffs_per_module.pop(module_id)
@@ -126,3 +127,6 @@ class AppoLearner(ImpalaLearner):
             module_id: The module whose KL loss coefficient to update.
             config: The AlgorithmConfig specific to the given `module_id`.
         """
+
+
+AppoLearner = APPOLearner

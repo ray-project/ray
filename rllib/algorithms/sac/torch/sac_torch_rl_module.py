@@ -1,6 +1,6 @@
 from typing import Any, Collection, Dict, Optional, Union
 
-from ray.rllib.algorithms.sac.sac_rl_module import (
+from ray.rllib.algorithms.sac.sac_learner import (
     ACTION_DIST_INPUTS_NEXT,
     QF_PREDS,
     QF_TWIN_PREDS,
@@ -88,15 +88,14 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         # Also encode the next observations (and next actions for the Q net).
         pi_encoder_next_outs = self.pi_encoder(batch_next)
 
-        # Q-network forward pass.
-        # TODO (simon): Use here `_qf_forward_train` instead of the helper.
+        # Q-network(s) forward passes.
         batch_curr.update({SampleBatch.ACTIONS: batch[SampleBatch.ACTIONS]})
-        output[QF_PREDS] = self._qf_forward_train(batch_curr)[QF_PREDS]
+        output[QF_PREDS] = self._qf_forward_train_helper(batch_curr, self.qf_encoder, self.qf)#self._qf_forward_train(batch_curr)[QF_PREDS]
         # If necessary make a forward pass through the twin Q network.
         if self.twin_q:
             output[QF_TWIN_PREDS] = self._qf_forward_train_helper(
                 batch_curr, self.qf_twin_encoder, self.qf_twin
-            )[QF_PREDS]
+            )
 
         # Policy head.
         action_logits = self.pi(pi_encoder_outs[ENCODER_OUT])
@@ -108,67 +107,65 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         # Return the network outputs.
         return output
 
-    @override(SACRLModule)
-    def _qf_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
-        """Forward pass through Q network.
+    #@override(SACRLModule)
+    #def _qf_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+    #    """Forward pass through Q network.
 
-        Note, this is only used in training.
-        """
-        return self._qf_forward_train_helper(batch, self.qf_encoder, self.qf)
+    #    Note, this is only used in training.
+    #    """
+    #    return self._qf_forward_train_helper(batch, self.qf_encoder, self.qf)
 
-    @override(SACRLModule)
-    def _qf_target_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
-        """Forward pass through Q target network.
+    #@override(SACRLModule)
+    #def _qf_target_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+    #    """Forward pass through Q target network.
 
-        Note, this is only used in training.
-        """
-        return self._qf_forward_train_helper(
-            batch, self.qf_target_encoder, self.qf_target
-        )
+    #    Note, this is only used in training.
+    #    """
+    #    return self._qf_forward_train_helper(
+    #        batch, self.qf_target_encoder, self.qf_target
+    #    )
 
-    @override(SACRLModule)
-    def _qf_twin_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
-        """Forward pass through twin Q network.
+    #@override(SACRLModule)
+    #def _qf_twin_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+    #    """Forward pass through twin Q network.
+    #
+    #    Note, this is only used in training if `twin_q=True`.
+    #    """
+    #    return (
+    #        self._qf_forward_train_helper(batch, self.qf_twin_encoder, self.qf_twin)
+    #        if self.twin_q
+    #        else {}
+    #    )
 
-        Note, this is only used in training if `twin_q=True`.
-        """
-        return (
-            self._qf_forward_train_helper(batch, self.qf_twin_encoder, self.qf_twin)
-            if self.twin_q
-            else {}
-        )
+    #@override(SACRLModule)
+    #def _qf_target_twin_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+    #    """Forward pass through twin Q target network.
 
-    @override(SACRLModule)
-    def _qf_target_twin_forward_train(self, batch: NestedDict) -> Dict[str, Any]:
-        """Forward pass through twin Q target network.
-
-        Note, this is only used in training if `twin_q=True`.
-        """
-        return (
-            self._qf_forward_train_helper(
-                batch, self.qf_target_twin_encoder, self.qf_target_twin
-            )
-            if self.twin_q
-            else {}
-        )
+    #    Note, this is only used in training if `twin_q=True`.
+    #    """
+    #    return (
+    #        self._qf_forward_train_helper(
+    #            batch, self.qf_target_twin_encoder, self.qf_target_twin
+    #        )
+    #        if self.twin_q
+    #        else {}
+    #    )
 
     @override(SACRLModule)
     def _qf_forward_train_helper(
-        self, batch: NestedDict, encoder: Encoder, head: Model
+        self, batch: Dict[str, Any], encoder: Encoder, head: Model
     ) -> Dict[str, Any]:
         """Executes the forward pass for Q networks.
 
         Args:
-            batch: NestedDict containing a concatencated tensor with observations
+            batch: Dict containing a concatenated tensor with observations
                 and actions under the key `SampleBatch.OBS`.
             encoder: An `Encoder` model for the Q state-action encoder.
             head: A `Model` for the Q head.
 
         Returns:
-            A `dict` cotnaining the estimated Q-values in the key `QF_PREDS`.
+            The estimated (single) Q-value.
         """
-        output = {}
-
         # Construct batch. Note, we need to feed observations and actions.
         qf_batch = {
             SampleBatch.OBS: torch.concat(
@@ -180,11 +177,9 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
 
         # Q head forward pass.
         qf_out = head(qf_encoder_outs[ENCODER_OUT])
-        # Squeeze out the last dimension (Q function node).
-        output[QF_PREDS] = qf_out.squeeze(dim=-1)
 
-        # Return Q values.
-        return output
+        # Squeeze out the last dimension (Q function node).
+        return qf_out.squeeze(dim=-1)
 
     @override(TorchRLModule)
     def _set_inference_only_state_dict_keys(self) -> None:

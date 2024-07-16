@@ -16,10 +16,13 @@ QF_MEAN_KEY = "qf_mean"
 QF_MAX_KEY = "qf_max"
 QF_MIN_KEY = "qf_min"
 QF_PREDS = "qf_preds"
-QF_TARGET_PREDS = "qf_target_preds"
+TARGET_QF_PREDS = "target_qf_preds"
 QF_TWIN_LOSS_KEY = "qf_twin_loss"
 QF_TWIN_PREDS = "qf_twin_preds"
+TARGET_QF_TWIN_PREDS = "target_qf_twin_preds"
 TD_ERROR_MEAN_KEY = "td_error_mean"
+CRITIC_TARGET = "critic_target"
+ACTION_DIST_INPUTS_NEXT = "action_dist_inputs_next"
 
 
 class SACLearner(DQNRainbowLearner):
@@ -38,15 +41,6 @@ class SACLearner(DQNRainbowLearner):
         # We need to call the `super()`'s `build()` method here to have the variables
         # for the alpha already defined.
         super().build()
-
-        # Initially sync target networks (w/ tau=1.0 -> full overwrite).
-        # Make target nets non-trainable.
-        def _setup_target_nets(mid, module):
-            module.sync_target_networks(tau=1.0)
-            for target_net, _ in module.get_target_network_pairs():
-                target_net.requires_grad_(False)
-
-        self.module.foreach_module(_setup_target_nets)
 
         def get_target_entropy(module_id):
             """Returns the target entropy to use for the loss.

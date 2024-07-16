@@ -1,8 +1,8 @@
 from typing import Dict
 
 import tree
-from ray.rllib.algorithms.impala.impala import ImpalaConfig
-from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
+from ray.rllib.algorithms.impala.impala import IMPALAConfig
+from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
@@ -17,7 +17,7 @@ from ray.rllib.utils.typing import ModuleID, TensorType
 _, tf, _ = try_import_tf()
 
 
-class ImpalaTfLearner(ImpalaLearner, TfLearner):
+class IMPALATfLearner(IMPALALearner, TfLearner):
     """Implements the IMPALA loss function in tensorflow."""
 
     @override(TfLearner)
@@ -25,7 +25,7 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         self,
         *,
         module_id: ModuleID,
-        config: ImpalaConfig,
+        config: IMPALAConfig,
         batch: NestedDict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:

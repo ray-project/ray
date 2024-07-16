@@ -78,7 +78,7 @@ logger = logging.getLogger(__name__)
 LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
-class ImpalaConfig(AlgorithmConfig):
+class IMPALAConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
     .. testcode::
@@ -531,7 +531,10 @@ class ImpalaConfig(AlgorithmConfig):
             )
 
 
-class Impala(Algorithm):
+ImpalaConfig = IMPALAConfig
+
+
+class IMPALA(Algorithm):
     """Importance weighted actor/learner architecture (IMPALA) Algorithm
 
     == Overview of data flow in IMPALA ==
@@ -1446,6 +1449,9 @@ class Impala(Algorithm):
                 result, overwrite_learner_info=False
             )
         return result
+
+
+Impala = IMPALA
 
 
 @DeveloperAPI
