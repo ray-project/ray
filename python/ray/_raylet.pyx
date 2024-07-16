@@ -2693,9 +2693,7 @@ cdef class GcsClient:
             self.inner = OldGcsClient(address, nums_reconnect_retry, cluster_id)
         else:
             # nums_reconnect_retry is ignored because now we rely on GcsRpcClient
-            # retry.
-            # TODO: it does not support initial connection when GCS is down. We need to
-            # support it in GcsRpcClient.
+            # retry. If the GCS is down when the client is created, it raises exception.
             self.inner = NewGcsClient.standalone(address, cluster_id)
         logger.debug(f"Created GcsClient. inner {self.inner}")
 
