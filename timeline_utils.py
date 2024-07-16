@@ -4,10 +4,12 @@ import ray
 
 producer_task_name = "task::ReadRange->MapBatches(produce)"
 consumer_task_name = "task::MapBatches(consume)"
+inference_task_name = "task::MapBatches(inference)"
 
 COLORS = {
     producer_task_name: "rail_response",
     consumer_task_name: "cq_build_passed",
+    inference_task_name: "cq_build_failed"
 }
 
 def save_timeline(addr: str):

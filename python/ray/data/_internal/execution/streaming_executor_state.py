@@ -371,7 +371,7 @@ class OpState:
         )
         self.last_update_time = now
 
-    def lsf_admission_control(self, resource_manager: ResourceManager) -> bool:
+    def budget_policy_admission_control(self, resource_manager: ResourceManager) -> bool:
 
         if not ray.data.DataContext.get_current().is_budget_policy:
             return True
@@ -619,7 +619,7 @@ def select_operator_to_run(
             and not op.completed()
             and state.num_queued() > 0
             and op.should_add_input()
-            and state.lsf_admission_control(resource_manager)
+            and state.budget_policy_admission_control(resource_manager)
         ):
             ops.append(op)
             op_runnable = True
@@ -645,21 +645,13 @@ def select_operator_to_run(
             op
             for op, state in topology.items()
             if state.num_queued() > 0 and not op.completed()
+            and state.budget_policy_admission_control(resource_manager)
         ]
 
     # Nothing to run.
     if not ops:
         return None
 
-    # Run metadata-only operators first. After that, choose the operator with the least
-    # memory usage.
-    # op = min(
-    #     ops,
-    #     key=lambda op: (
-    #         not op.throttling_disabled(),
-    #         resource_manager.get_op_usage(op).object_store_memory,
-    #     ),
-    # )
     if ray.data.DataContext.get_current().is_budget_policy:
         op = ops[0]  # @lsf prefer the producer 
         return op

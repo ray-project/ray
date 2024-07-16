@@ -6,7 +6,7 @@ import time
 import numpy as np
 
 import ray
-import timeline
+import ray.timeline_utils as timeline_utils
 
 LOG_FILE = "test_large_e2e_backpressure.log"
 
@@ -36,24 +36,7 @@ logger = Logger()
 TIME_UNIT = 0.5
 
 
-def test_large_e2e_backpressure(is_flink: bool):
-    """Test backpressure on a synthetic large-scale workload."""
-    # The cluster has 10 CPUs and 200MB object store memory.
-    # The dataset will have 200MB * 25% = 50MB memory budget.
-    #
-    # Each produce task generates 10 blocks, each of which has 10MB data.
-    #
-    # Without any backpressure, the producer tasks will output at most
-    # 10 * 10 * 10MB = 1000MB data.
-    #
-    # With StreamingOutputBackpressurePolicy and the following configuration,
-    # the executor will still schedule 10 produce tasks, but only the first task is
-    # allowed to output all blocks. The total size of pending blocks will be
-    # (10 + 9 * 1 + 1) * 10MB = 200MB, where
-    # - 10 is the number of blocks in the first task.
-    # - 9 * 1 is the number of blocks pending at the streaming generator level of
-    #   the other 15 tasks.
-    # - 1 is the number of blocks pending at the output queue.
+def main(is_flink: bool):
 
     os.environ["RAY_DATA_OP_RESERVATION_RATIO"] = "0"
 
@@ -62,11 +45,6 @@ def test_large_e2e_backpressure(is_flink: bool):
     NUM_TASKS = 16 * 5
     NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS
     BLOCK_SIZE = 10 * 1024 * 1024 * 10
-
-    # Write the data to file.
-    # array = np.zeros(BLOCK_SIZE, dtype=np.uint8)
-    # file_path = 'zeros_block.bin'
-    # array.tofile(file_path)
 
     def produce(batch):
         logger.log({"name": "producer_start", "id": [int(x) for x in batch["id"]]})
@@ -116,9 +94,9 @@ def test_large_e2e_backpressure(is_flink: bool):
     print(ds.stats())
     print(ray._private.internal_api.memory_summary(stats_only=True))
     print(f"Total time: {end_time - start_time:.4f}s")
-    timeline.save_timeline(f"timeline_{'ray' if not is_flink else 'flink'}.json")
+    timeline_utils.save_timeline(f"timeline_{'ray' if not is_flink else 'flink'}.json")
     ray.shutdown()
 
 if __name__ == "__main__":
-    test_large_e2e_backpressure(is_flink=True)
-    test_large_e2e_backpressure(is_flink=False)
+    main(is_flink=True)
+    main(is_flink=False)
