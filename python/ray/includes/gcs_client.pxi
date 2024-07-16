@@ -34,7 +34,7 @@ cdef class NewGcsClient:
     @staticmethod
     def standalone(gcs_address: str,
                    cluster_id: Optional[str] = None) -> "NewGcsClient":
-        cdef GcsClievi ntOptions gcs_options = None
+        cdef GcsClientOptions gcs_options = None
         if cluster_id:
             gcs_options = GcsClientOptions.create(
                 gcs_address, cluster_id, allow_cluster_id_nil=False,
