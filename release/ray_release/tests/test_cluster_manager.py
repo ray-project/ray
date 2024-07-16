@@ -134,7 +134,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(
             cluster_manager.cluster_env_name,
             "anyscale__env__"
-            "4a357b04dec89a619929eb16e1035bf8ffe1d9757bbd4fba520c03a3a2620d05",
+            "c16f4736a89c74e1b0d06ee497c35fa6e983ba02f0e8efb341f82e5c5da84636",
         )
 
     @patch("time.sleep", lambda *a, **kw: None)

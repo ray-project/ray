@@ -65,20 +65,6 @@ class MutableObjectProvider {
   void HandlePushMutableObject(const rpc::PushMutableObjectRequest &request,
                                rpc::PushMutableObjectReply *reply);
 
-  /// Checks if a reader channel is registered for an object.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a reader for object_id,
-  /// false otherwise.
-  bool ReaderChannelRegistered(const ObjectID &object_id);
-
-  /// Checks if a writer channel is registered for an object.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a writer for object_id,
-  /// false otherwise.
-  bool WriterChannelRegistered(const ObjectID &object_id);
-
   /// Acquires a write lock on the object that prevents readers from reading
   /// until we are done writing. This is safe for concurrent writers.
   ///
@@ -93,13 +79,18 @@ class MutableObjectProvider {
   /// value we will write before the next WriteAcquire can proceed. The readers
   /// may not start reading until WriteRelease is called.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the write lock.
+  /// If this is 0, the method will try to acquire the write lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  /// will block indefinitely until the write lock is acquired.
   /// \return The return status.
   Status WriteAcquire(const ObjectID &object_id,
                       int64_t data_size,
                       const uint8_t *metadata,
                       int64_t metadata_size,
                       int64_t num_readers,
-                      std::shared_ptr<Buffer> &data);
+                      std::shared_ptr<Buffer> &data,
+                      int64_t timeout_ms = -1);
 
   /// Releases an acquired write lock on the object, allowing readers to read.
   /// This is the equivalent of "Seal" for normal objects.
@@ -114,9 +105,15 @@ class MutableObjectProvider {
   /// \param[in] object_id The ID of the object.
   /// \param[out] result The read object. This buffer is guaranteed to be valid
   /// until the caller calls ReadRelease next.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the read lock.
+  /// If this is 0, the method will try to acquire the read lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  /// will block indefinitely until the read lock is acquired.
   /// \return The return status. The ReadAcquire can fail if there have already
   /// been `num_readers` for the current value.
-  Status ReadAcquire(const ObjectID &object_id, std::shared_ptr<RayObject> &result);
+  Status ReadAcquire(const ObjectID &object_id,
+                     std::shared_ptr<RayObject> &result,
+                     int64_t timeout_ms = -1);
 
   /// Releases the object, allowing it to be written again. If the caller did
   /// not previously ReadAcquire the object, then this first blocks until the
@@ -130,6 +127,19 @@ class MutableObjectProvider {
   ///
   /// \param[in] object_id The ID of the object.
   Status SetError(const ObjectID &object_id);
+
+  /// Returns the current status of the channel for the object. Possible statuses are:
+  /// 1. Status::OK()
+  //     - The channel is registered and open.
+  /// 2. Status::ChannelError()
+  ///    - The channel was registered and previously open, but is now closed.
+  /// 3. Status::NotFound()
+  ///    - No channel exists for this object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] is_reader Whether the channel is a reader channel.
+  /// \return Current status of the channel.
+  Status GetChannelStatus(const ObjectID &object_id, bool is_reader);
 
  private:
   struct LocalReaderInfo {
@@ -150,7 +160,7 @@ class MutableObjectProvider {
   std::shared_ptr<plasma::PlasmaClientInterface> plasma_;
 
   // Object manager for the mutable objects.
-  ray::experimental::MutableObjectManager object_manager_;
+  std::shared_ptr<ray::experimental::MutableObjectManager> object_manager_;
 
   // Protects `remote_writer_object_to_local_reader_`.
   absl::Mutex remote_writer_object_to_local_reader_lock_;
@@ -182,6 +192,16 @@ class MutableObjectProvider {
   // Threads that wait for local mutable object changes (one thread per mutable object)
   // and then send the changes to remote nodes via the network.
   std::vector<std::unique_ptr<std::thread>> io_threads_;
+
+  // Protects the `written_so_far_` map.
+  absl::Mutex written_so_far_lock_;
+  // For objects larger than the gRPC max payload size *that this node receives from a
+  // writer node*, this map tracks how many bytes have been received so far for a single
+  // object write.
+  std::unordered_map<ObjectID, uint64_t> written_so_far_
+      ABSL_GUARDED_BY(written_so_far_lock_);
+
+  friend class MutableObjectProvider_MutableObjectBufferReadRelease_Test;
 };
 
 }  // namespace experimental

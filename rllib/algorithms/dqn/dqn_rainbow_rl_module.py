@@ -1,5 +1,6 @@
-from abc import abstractmethod
-from typing import Any, Dict, Type, Union
+import abc
+from typing import Any, Dict, List, Tuple, Type, Union
+
 from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
 from ray.rllib.core.columns import Columns
@@ -16,7 +17,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.typing import NetworkType, TensorType
 
 ATOMS = "atoms"
 QF_LOGITS = "qf_logits"
@@ -63,7 +64,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         self.encoder = catalog.build_encoder(framework=self.framework)
         # If not an inference-only module (e.g., for evaluation), set up the
         # target networks and state dict keys to be taken care of when syncing.
-        if not self.inference_only or self.framework != "torch":
+        if not self.config.inference_only or self.framework != "torch":
             # Build the same encoder for the target network(s).
             self.target_encoder = catalog.build_encoder(framework=self.framework)
             # Holds the parameter names to be removed or renamed when synching
@@ -75,7 +76,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         if self.uses_dueling:
             # If in a dueling setting setup the value function head.
             self.vf = catalog.build_vf_head(framework=self.framework)
-        if not self.inference_only or self.framework != "torch":
+        if not self.config.inference_only or self.framework != "torch":
             # Implement the same heads for the target network(s).
             self.af_target = catalog.build_af_head(framework=self.framework)
             if self.uses_dueling:
@@ -85,6 +86,19 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # Define the action distribution for sampling the exploit action
         # during exploration.
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
+
+    @override(RLModuleWithTargetNetworksInterface)
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
+        """Returns target Q and Q network(s) to update the target network(s)."""
+        return [(self.target_encoder, self.encoder), (self.af_target, self.af)] + (
+            # If we have a dueling architecture we need to update the value stream
+            # target, too.
+            [
+                (self.vf_target, self.vf),
+            ]
+            if self.uses_dueling
+            else []
+        )
 
     @override(RLModule)
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
@@ -145,7 +159,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             ),
         ]
 
-    @abstractmethod
+    @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _qf(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Computes Q-values.
@@ -163,7 +177,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             ("qf_logits"), and the probabilities ("qf_probs").
         """
 
-    @abstractmethod
+    @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _qf_target(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Computes Q-values from the target network.
@@ -181,7 +195,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             Q-logits  ("qf_logits"), and the probabilities ("qf_probs").
         """
 
-    @abstractmethod
+    @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _af_dist(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
         """Compute the advantage distribution.
@@ -200,7 +214,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             of the discrete distribution (per action and atom of the support).
         """
 
-    @abstractmethod
+    @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _qf_forward_helper(
         self,
@@ -229,7 +243,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             ("qf_logits") and the probabilities for the support atoms ("qf_probs").
         """
 
-    @abstractmethod
+    @abc.abstractmethod
     @OverrideToImplementCustomLogic
     def _reset_noise(self, target: bool = False):
         """Resets the noise for the noisy layers.

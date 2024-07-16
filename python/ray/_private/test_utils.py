@@ -75,8 +75,11 @@ class RayTestTimeoutException(Exception):
 
 
 def make_global_state_accessor(ray_context):
-    gcs_options = GcsClientOptions.from_gcs_address(
-        ray_context.address_info["gcs_address"]
+    gcs_options = GcsClientOptions.create(
+        ray_context.address_info["gcs_address"],
+        None,
+        allow_cluster_id_nil=True,
+        fetch_cluster_id_if_nil=False,
     )
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
@@ -2182,14 +2185,6 @@ def skip_flaky_core_test_premerge(reason: str):
         )(func)
 
     return wrapper
-
-
-def get_ray_default_worker_file_path():
-    py_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
-    return (
-        f"/home/ray/anaconda3/lib/python{py_version}/"
-        "site-packages/ray/_private/workers/default_worker.py"
-    )
 
 
 def close_common_connections(pid):

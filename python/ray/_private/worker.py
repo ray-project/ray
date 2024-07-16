@@ -88,6 +88,7 @@ from ray.experimental.internal_kv import (
     _internal_kv_reset,
 )
 from ray.experimental import tqdm_ray
+from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.experimental.tqdm_ray import RAY_TQDM_MAGIC
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
@@ -813,6 +814,7 @@ class Worker:
         self,
         object_refs: list,
         timeout: Optional[float] = None,
+        return_exceptions: bool = False,
     ):
         """Get the values in the object store associated with the IDs.
 
@@ -825,6 +827,10 @@ class Worker:
                 whose values should be retrieved.
             timeout: The maximum amount of time in
                 seconds to wait before returning.
+            return_exceptions: If any of the objects deserialize to an
+                Exception object, whether to return them as values in the
+                returned list. If False, then the first found exception will be
+                raised.
         Returns:
             list: List of deserialized objects
             bytes: UUID of the debugger breakpoint we should drop
@@ -855,14 +861,17 @@ class Worker:
                         len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX) :
                     ]
         values = self.deserialize_objects(data_metadata_pairs, object_refs)
-        for i, value in enumerate(values):
-            if isinstance(value, RayError):
-                if isinstance(value, ray.exceptions.ObjectLostError):
-                    global_worker.core_worker.dump_object_store_memory_usage()
-                if isinstance(value, RayTaskError):
-                    raise value.as_instanceof_cause()
-                else:
-                    raise value
+        if not return_exceptions:
+            # Raise exceptions instead of returning them to the user.
+            for i, value in enumerate(values):
+                if isinstance(value, RayError):
+                    if isinstance(value, ray.exceptions.ObjectLostError):
+                        global_worker.core_worker.dump_object_store_memory_usage()
+                    if isinstance(value, RayTaskError):
+                        raise value.as_instanceof_cause()
+                    else:
+                        raise value
+
         return values, debugger_breakpoint
 
     def main_loop(self):
@@ -1343,7 +1352,7 @@ def init(
             "configure_logging" is true.
         logging_config: [Experimental] Logging configuration will be applied to the
             root loggers for both the driver process and all worker processes belonging
-            to the current job. See :class:`~LoggingConfig` for details.
+            to the current job. See :class:`~ray.LoggingConfig` for details.
         log_to_driver: If true, the output from all of the worker
             processes on all nodes will be directed to the driver.
         namespace: A namespace is a logical grouping of jobs and named actors.
@@ -1403,9 +1412,11 @@ def init(
         logging.getLogger("ray").handlers.clear()
 
     # Configure the logging settings for the driver process.
-    if logging_config:
-        dict_config = logging_config._get_dict_config()
-        logging.config.dictConfig(dict_config)
+    if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
+        logging_config = logging_config or LoggingConfig(
+            encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING
+        )
+        logging_config._apply()
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1581,7 +1592,7 @@ def init(
 
     # Pass the logging_config to job_config to configure loggers of all worker
     # processes belonging to the job.
-    if logging_config:
+    if logging_config is not None:
         job_config.set_py_logging_config(logging_config)
 
     redis_address, gcs_address = None, None
@@ -2237,7 +2248,12 @@ def connect(
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
     ray._private.state.state._initialize_global_state(
-        ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+        ray._raylet.GcsClientOptions.create(
+            node.gcs_address,
+            node.cluster_id.hex(),
+            allow_cluster_id_nil=False,
+            fetch_cluster_id_if_nil=False,
+        )
     )
     worker.gcs_publisher = ray._raylet.GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
@@ -2297,7 +2313,12 @@ def connect(
     elif not LOCAL_MODE:
         raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+    gcs_options = ray._raylet.GcsClientOptions.create(
+        node.gcs_address,
+        node.cluster_id.hex(),
+        allow_cluster_id_nil=False,
+        fetch_cluster_id_if_nil=False,
+    )
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
@@ -2551,10 +2572,15 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
     ...
 
 
+@overload
+def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
+    ...
+
+
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"]],
+    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"], CompiledDAGRef],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2621,6 +2647,9 @@ def get(
         # compatible to ray.get for dataset.
         if isinstance(object_refs, ObjectRefGenerator):
             return object_refs
+
+        if isinstance(object_refs, CompiledDAGRef):
+            return object_refs.get(timeout=timeout)
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:

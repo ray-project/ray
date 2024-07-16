@@ -29,6 +29,10 @@ LOGRECORD_STANDARD_ATTRS = {
     "taskName",
 }
 
+LOGGER_FLATTEN_KEYS = {
+    "ray_serve_extra_fields",
+}
+
 
 class LogKey(str, Enum):
     # Core context
@@ -46,32 +50,5 @@ class LogKey(str, Enum):
     LINENO = "lineno"
     EXC_TEXT = "exc_text"
 
-
-LOG_MODE_DICT = {
-    "TEXT": lambda log_level: {
-        "version": 1,
-        "disable_existing_loggers": False,
-        "formatters": {
-            "text": {
-                "()": "ray._private.ray_logging.formatters.TextFormatter",
-            },
-        },
-        "filters": {
-            "core_context": {
-                "()": "ray._private.ray_logging.filters.CoreContextFilter",
-            },
-        },
-        "handlers": {
-            "console": {
-                "level": log_level,
-                "class": "logging.StreamHandler",
-                "formatter": "text",
-                "filters": ["core_context"],
-            },
-        },
-        "root": {
-            "level": log_level,
-            "handlers": ["console"],
-        },
-    },
-}
+    # Ray logging context
+    TIMESTAMP_NS = "timestamp_ns"

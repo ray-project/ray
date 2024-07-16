@@ -54,7 +54,7 @@ class PPOCatalog(Catalog):
 
     Any module built for exploration or inference is built with the flag
     `ìnference_only=True` and does not contain a value network. This flag can be set
-    in the `model_config_dict` with the key `ray.rllib.core.rl_module.INFERENCE_ONLY`.
+    in the `SingleAgentModuleSpec` through the `inference_only` boolean flag.
     In case that the actor-critic-encoder is not shared between the policy and value
     function, the inference-only module will contain only the actor encoder network
     , but with different parameter names. We rename parameters when synching between
