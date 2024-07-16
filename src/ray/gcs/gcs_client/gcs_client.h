@@ -254,7 +254,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 // io_context. This is useful for connecting to the GCS server from Python.
 //
 // For param descriptions, see GcsClient::Connect().
-Status ConnectOnSingletonIoContext(GcsClient &gcs_client, int64_t timeout_ms = -1);
+Status ConnectOnSingletonIoContext(GcsClient &gcs_client, int64_t timeout_ms);
 
 // This client is only supposed to be used from Cython / Python
 class RAY_EXPORT PythonGcsClient {

@@ -512,7 +512,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRuntimeEnvAccessor& RuntimeEnvs()
         CAutoscalerStateAccessor& Autoscaler()
 
-    cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client)
+    cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
 
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)

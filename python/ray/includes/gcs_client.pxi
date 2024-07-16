@@ -33,7 +33,8 @@ cdef class NewGcsClient:
     # TODO(ryw): we can also reuse the CoreWorker's GcsClient to save resources.
     @staticmethod
     def standalone(gcs_address: str,
-                   cluster_id: Optional[str] = None) -> "NewGcsClient":
+                   cluster_id: Optional[str],
+                   timeout_ms: int) -> "NewGcsClient":
         cdef GcsClientOptions gcs_options = None
         if cluster_id:
             gcs_options = GcsClientOptions.create(
@@ -46,10 +47,11 @@ cdef class NewGcsClient:
         cdef CGcsClientOptions* native = gcs_options.native()
         cdef shared_ptr[CGcsClient] inner = make_shared[CGcsClient](
             dereference(native))
+        cdef int64_t c_timeout_ms = timeout_ms
 
         with nogil:
             check_status_timeout_as_rpc_error(
-                ConnectOnSingletonIoContext(dereference(inner)))
+                ConnectOnSingletonIoContext(dereference(inner), c_timeout_ms))
 
         gcs_client = NewGcsClient()
         gcs_client.inner = inner

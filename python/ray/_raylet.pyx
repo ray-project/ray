@@ -2686,15 +2686,19 @@ cdef class GcsClient:
     cdef c_bool use_old_client
 
     def __cinit__(self, address,
-                  nums_reconnect_retry=None,
+                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
+                  ),
                   cluster_id: str = None):
         self.use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
         if self.use_old_client:
             self.inner = OldGcsClient(address, nums_reconnect_retry, cluster_id)
         else:
-            # nums_reconnect_retry is ignored because now we rely on GcsRpcClient
-            # retry. If the GCS is down when the client is created, it raises exception.
-            self.inner = NewGcsClient.standalone(address, cluster_id)
+            # GcsRpcClient implicitly retries on GetClusterId in Connection. We set
+            # the total timeout to be nums_reconnect_retry * timeout_s to match the old
+            # behavior.
+            once_timeout_s = RayConfig.instance().py_gcs_connect_timeout_s()
+            timeout_ms = once_timeout_s * 1000 * nums_reconnect_retry
+            self.inner = NewGcsClient.standalone(address, cluster_id, timeout_ms)
         logger.debug(f"Created GcsClient. inner {self.inner}")
 
     def __getattr__(self, name):
@@ -2716,8 +2720,7 @@ cdef class OldGcsClient:
         ClusterID cluster_id
 
     def __cinit__(self, address,
-                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
-                  ),
+                  nums_reconnect_retry,
                   cluster_id: str = None):
         cdef GcsClientOptions gcs_options
         if cluster_id:
