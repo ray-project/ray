@@ -681,26 +681,18 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     wait_for_condition(partial(check_deployments_dead, [DeploymentID(name="f")]))
 
 
-@pytest.mark.parametrize("use_max_concurrent_queries", [True, False])
-def test_update_config_max_ongoing_requests(
-    client: ServeControllerClient, use_max_concurrent_queries
-):
+def test_update_config_max_ongoing_requests(client: ServeControllerClient):
     """Check that replicas stay alive when max_ongoing_requests is updated."""
 
     signal = SignalActor.options(name="signal123").remote()
 
-    max_ongoing_requests_field_name = (
-        "max_concurrent_queries"
-        if use_max_concurrent_queries
-        else "max_ongoing_requests"
-    )
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.get_signal.app",
         "deployments": [{"name": "A"}],
     }
-    config_template["deployments"][0][max_ongoing_requests_field_name] = 1000
+    config_template["deployments"][0]["max_ongoing_requests"] = 1000
 
-    # Deploy first time, max_concurent_queries set to 1000.
+    # Deploy first time, max_ongoing_requests set to 1000.
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
     wait_for_condition(check_running, timeout=15)
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
@@ -720,7 +712,7 @@ def test_update_config_max_ongoing_requests(
     # Reset for redeployment
     signal.send.remote(clear=True)
     # Redeploy with max concurrent queries set to 5
-    config_template["deployments"][0][max_ongoing_requests_field_name] = 5
+    config_template["deployments"][0]["max_ongoing_requests"] = 5
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
     wait_for_condition(check_running, timeout=2)
 

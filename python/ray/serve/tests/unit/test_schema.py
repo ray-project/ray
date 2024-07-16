@@ -189,11 +189,7 @@ class TestDeploymentSchema:
 
         return {"name": "deep"}
 
-    @pytest.mark.parametrize("use_max_concurrent_queries", [True, False])
-    @pytest.mark.parametrize("use_max_ongoing_requests", [True, False])
-    def test_valid_deployment_schema(
-        self, use_max_concurrent_queries, use_max_ongoing_requests
-    ):
+    def test_valid_deployment_schema(self):
         # Ensure a valid DeploymentSchema can be generated
 
         deployment_schema = {
@@ -207,6 +203,7 @@ class TestDeploymentSchema:
             "graceful_shutdown_timeout_s": 49,
             "health_check_period_s": 11,
             "health_check_timeout_s": 11,
+            "max_ongoing_requests": 32,
             "ray_actor_options": {
                 "runtime_env": {
                     "working_dir": TEST_MODULE_PINNED_URI,
@@ -220,11 +217,6 @@ class TestDeploymentSchema:
             },
         }
 
-        if use_max_concurrent_queries:
-            deployment_schema["max_concurrent_queries"] = 32
-        if use_max_ongoing_requests:
-            deployment_schema["max_ongoing_requests"] = 32
-
         DeploymentSchema.parse_obj(deployment_schema)
 
     def test_gt_zero_deployment_schema(self):
@@ -235,7 +227,6 @@ class TestDeploymentSchema:
 
         gt_zero_fields = [
             "num_replicas",
-            "max_concurrent_queries",
             "max_ongoing_requests",
             "health_check_period_s",
             "health_check_timeout_s",
