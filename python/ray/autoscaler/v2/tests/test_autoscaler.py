@@ -3,10 +3,9 @@ import os
 import subprocess
 import sys
 import time
+from unittest.mock import MagicMock
 
 import pytest
-
-from mock import MagicMock
 
 import ray
 from ray._private.test_utils import wait_for_condition
