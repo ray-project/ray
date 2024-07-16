@@ -1,8 +1,29 @@
+from enum import Enum
 from typing import List, Optional
 
 from ray._private.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.annotations import DeveloperAPI
+
+
+@DeveloperAPI
+class RunStatusEnum(str, Enum):
+    """Enumeration for the status of a train run."""
+
+    # The train run has started
+    STARTED = "STARTED"
+    # The train run was terminated as expected
+    FINISHED = "FINISHED"
+    # The train run was terminated early due to errors in the training function
+    ERRORED = "ERRORED"
+    # The train run was terminated early due to system errors or controller errors
+    ABORTED = "ABORTED"
+
+
+@DeveloperAPI
+class ActorStatusEnum(str, Enum):
+    DEAD = "DEAD"
+    ALIVE = "ALIVE"
 
 
 @DeveloperAPI
@@ -20,6 +41,9 @@ class TrainWorkerInfo(BaseModel):
     pid: int = Field(description="Process ID of the worker.")
     gpu_ids: List[int] = Field(
         description="A list of GPU ids allocated to that worker."
+    )
+    status: Optional[ActorStatusEnum] = Field(
+        description="The status of the train worker actor. It can be ALIVE or DEAD."
     )
 
 
@@ -46,8 +70,20 @@ class TrainRunInfo(BaseModel):
     datasets: List[TrainDatasetInfo] = Field(
         description="A List of dataset info for this Train run."
     )
+    run_status: RunStatusEnum = Field(
+        description="The current status of the train run. It can be one of the "
+        "following: STARTED, FINISHED, ERRORED, or ABORTED."
+    )
+    status_detail: str = Field(
+        description="Detailed information about the current run status, "
+        "such as error messages."
+    )
     start_time_ms: int = Field(
         description="The UNIX timestamp of the start time of this Train run."
+    )
+    end_time_ms: Optional[int] = Field(
+        description="The UNIX timestamp of the end time of this Train run. "
+        "If null, the Train run has not ended yet."
     )
 
 
