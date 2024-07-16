@@ -102,6 +102,5 @@ def main(is_flink: bool):
     ray.shutdown()
 
 if __name__ == "__main__": 
-
     main(is_flink=True) 
     main(is_flink=False)
