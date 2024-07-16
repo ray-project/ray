@@ -14,7 +14,7 @@ import urllib
 import warnings
 from abc import ABCMeta, abstractmethod
 from collections.abc import Mapping
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from typing import (
     IO,
@@ -876,6 +876,12 @@ class Worker:
 
         ray._private.utils.set_sigterm_handler(sigterm_handler)
         self.core_worker.run_task_loop()
+
+        with suppress(Exception):
+            from opentelemetry import trace
+
+            # if tracer provider can force flush, then flush the trace
+            trace.get_tracer_provider().force_flush()
         sys.exit(0)
 
     def print_logs(self):
