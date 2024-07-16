@@ -165,16 +165,16 @@ class _XGBoostRabitBackend(Backend):
                 )
 
 
-xgboost_args: dict = {}
-xgboost_args_lock = threading.Lock()
+_xgboost_args: dict = {}
+_xgboost_args_lock = threading.Lock()
 
 
 def _set_xgboost_args(args):
-    with xgboost_args_lock:
-        global xgboost_args
-        xgboost_args = args
+    with _xgboost_args_lock:
+        global _xgboost_args
+        _xgboost_args = args
 
 
-def _get_xgboost_args():
-    with xgboost_args_lock:
-        return xgboost_args
+def _get_xgboost_args() -> dict:
+    with _xgboost_args_lock:
+        return _xgboost_args
