@@ -1,8 +1,16 @@
+from enum import Enum
 from typing import Optional
 import inspect
 import sys
 import warnings
 from functools import wraps
+
+
+class AnnotationType(Enum):
+    PUBLIC_API = "PublicAPI"
+    DEVELOPER_API = "DeveloperAPI"
+    DEPRECATED = "Deprecated"
+    UNKNOWN = "Unknown"
 
 
 def PublicAPI(*args, **kwargs):
@@ -24,6 +32,8 @@ def PublicAPI(*args, **kwargs):
 
     Args:
         stability: One of {"stable", "beta", "alpha"}.
+        api_group: Optional. Used only for doc rendering purpose. APIs in the same group
+                   will be grouped together in the API doc pages.
 
     Examples:
         >>> from ray.util.annotations import PublicAPI
@@ -36,15 +46,14 @@ def PublicAPI(*args, **kwargs):
         ...     return y
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        return PublicAPI(stability="stable")(args[0])
+        return PublicAPI(stability="stable", api_group="Others")(args[0])
 
     if "stability" in kwargs:
         stability = kwargs["stability"]
         assert stability in ["stable", "beta", "alpha"], stability
-    elif kwargs:
-        raise ValueError("Unknown kwargs: {}".format(kwargs.keys()))
     else:
         stability = "stable"
+    api_group = kwargs.get("api_group", "Others")
 
     def wrap(obj):
         if stability in ["alpha", "beta"]:
@@ -54,7 +63,7 @@ def PublicAPI(*args, **kwargs):
             )
             _append_doc(obj, message=message)
 
-        _mark_annotated(obj)
+        _mark_annotated(obj, type=AnnotationType.PUBLIC_API, api_group=api_group)
         return obj
 
     return wrap
@@ -81,7 +90,7 @@ def DeveloperAPI(*args, **kwargs):
             obj,
             message="**DeveloperAPI:** This API may change across minor Ray releases.",
         )
-        _mark_annotated(obj)
+        _mark_annotated(obj, type=AnnotationType.DEVELOPER_API)
         return obj
 
     return wrap
@@ -144,7 +153,7 @@ def Deprecated(*args, **kwargs):
 
     def inner(obj):
         _append_doc(obj, message=doc_message, directive="warning")
-        _mark_annotated(obj)
+        _mark_annotated(obj, type=AnnotationType.DEPRECATED)
 
         if not warning:
             return obj
@@ -237,12 +246,23 @@ def _get_indent(docstring: str) -> int:
     return len(non_empty_lines[1]) - len(non_empty_lines[1].lstrip())
 
 
-def _mark_annotated(obj) -> None:
+def _mark_annotated(
+    obj, type: AnnotationType = AnnotationType.UNKNOWN, api_group="Others"
+) -> None:
     # Set magic token for check_api_annotations linter.
     if hasattr(obj, "__name__"):
         obj._annotated = obj.__name__
+        obj._annotated_type = type
+        obj._annotated_api_group = api_group
 
 
 def _is_annotated(obj) -> bool:
     # Check the magic token exists and applies to this class (not a subclass).
     return hasattr(obj, "_annotated") and obj._annotated == obj.__name__
+
+
+def _get_annotation_type(obj) -> Optional[str]:
+    if not _is_annotated(obj):
+        return None
+
+    return obj._annotated_type.value

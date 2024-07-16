@@ -53,7 +53,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
             output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Value head
-        if not self.inference_only:
+        if not self.config.inference_only:
             # Only, if this is a learner module we have a value function head.
             vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
             output[Columns.VF_PREDS] = tf.squeeze(vf_out, axis=-1)

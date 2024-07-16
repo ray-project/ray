@@ -88,9 +88,6 @@ class GcsActor {
     actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
     actor_table_data_.set_num_restarts(0);
 
-    auto dummy_object = TaskSpecification(task_spec).ActorDummyObject().Binary();
-    actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
-
     actor_table_data_.mutable_function_descriptor()->CopyFrom(
         task_spec.function_descriptor());
 
@@ -291,7 +288,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsPublisher> gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
-      std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
+      std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;

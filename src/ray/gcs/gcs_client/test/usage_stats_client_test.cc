@@ -51,7 +51,11 @@ class UsageStatsClientTest : public ::testing::Test {
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
     });
-    gcs::GcsClientOptions options("127.0.0.1:" + std::to_string(gcs_server_->GetPort()));
+    gcs::GcsClientOptions options("127.0.0.1",
+                                  gcs_server_->GetPort(),
+                                  gcs_server_->GetClusterId(),
+                                  /*allow_cluster_id_nil=*/false,
+                                  /*fetch_cluster_id_if_nil=*/false);
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
@@ -82,13 +86,16 @@ class UsageStatsClientTest : public ::testing::Test {
 
 TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
   gcs::UsageStatsClient usage_stats_client(
-      "127.0.0.1:" + std::to_string(gcs_server_->GetPort()), *client_io_service_);
+      "127.0.0.1:" + std::to_string(gcs_server_->GetPort()),
+      gcs_server_->GetClusterId(),
+      *client_io_service_);
+  RAY_LOG(ERROR) << "TestRecordExtraUsageTag init done";
   usage_stats_client.RecordExtraUsageTag(usage::TagKey::_TEST1, "value1");
   ASSERT_TRUE(WaitForCondition(
       [this]() {
         std::string value;
         RAY_CHECK_OK(this->gcs_client_->InternalKV().Get(
-            "usage_stats", "extra_usage_tag__test1", value));
+            "usage_stats", "extra_usage_tag__test1", gcs::GetGcsTimeoutMs(), value));
         return value == "value1";
       },
       10000));
@@ -98,7 +105,7 @@ TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
       [this]() {
         std::string value;
         RAY_CHECK_OK(this->gcs_client_->InternalKV().Get(
-            "usage_stats", "extra_usage_tag__test2", value));
+            "usage_stats", "extra_usage_tag__test2", gcs::GetGcsTimeoutMs(), value));
         return value == "value2";
       },
       10000));

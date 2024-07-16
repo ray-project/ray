@@ -15,6 +15,11 @@ from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 from ray.tune.registry import register_env
 
 
@@ -230,11 +235,10 @@ class AddModuleCallback(DefaultCallbacks):
         spec = algorithm.config.get_default_rl_module_spec()
         spec.observation_space = gym.spaces.Box(low=0, high=1, shape=(8,))
         spec.action_space = gym.spaces.Discrete(2)
-        spec.model_config_dict = {"_inference_only": True}
+        spec.inference_only = True
         algorithm.add_module(
             module_id="test_module",
             module_spec=spec,
-            module_state=None,
             evaluation_workers=True,
         )
 
@@ -862,7 +866,11 @@ class TestWorkerFailures(unittest.TestCase):
         )
         algo = config.build()
         results = algo.train()
-        self.assertTrue(np.isnan(results["evaluation_results"]["episode_return_mean"]))
+        self.assertTrue(
+            np.isnan(
+                results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+            )
+        )
 
 
 if __name__ == "__main__":

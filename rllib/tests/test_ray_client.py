@@ -3,6 +3,7 @@ import unittest
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.util.client.ray_client_helpers import ray_start_client_server
@@ -24,7 +25,7 @@ class TestRayClient(unittest.TestCase):
                 "lr": 0.01,
                 # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
                 "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-                "num_workers": 0,
+                "num_env_runners": 0,
                 "framework": "tf",
             }
             resources = ppo.PPO.default_resource_request(config)
@@ -43,9 +44,7 @@ class TestRayClient(unittest.TestCase):
                 "env": StatelessCartPole,
             }
 
-            stop = {
-                "training_iteration": 3,
-            }
+            stop = {TRAINING_ITERATION: 3}
 
             tune.Tuner(
                 "PPO",

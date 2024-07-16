@@ -175,7 +175,7 @@ IMAGE_NAME = "rayproject/ray:runtime_env_container"
 NESTED_IMAGE_NAME = "rayproject/ray:runtime_env_container_nested"
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def podman_docker_cluster():
     start_container_command = [
         "docker",

@@ -32,9 +32,8 @@ def generate_sort_fn(
         blocks = []
         metadata = []
         for ref_bundle in refs:
-            for block, block_metadata in ref_bundle.blocks:
-                blocks.append(block)
-                metadata.append(block_metadata)
+            blocks.extend(ref_bundle.block_refs)
+            metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
             return (blocks, {})
         sort_key.validate_schema(unify_block_metadata_schema(metadata))

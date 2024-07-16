@@ -251,8 +251,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             columns = [columns]
             should_be_single_ndarray = True
 
+        column_names_set = set(self._table.columns)
         for column in columns:
-            if column not in self._table.columns:
+            if column not in column_names_set:
                 raise ValueError(
                     f"Cannot find column {column}, available columns: "
                     f"{self._table.columns.tolist()}"
@@ -271,7 +272,9 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
 
-        return pyarrow.table(self._table)
+        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
+        # column to the resulting table.
+        return pyarrow.Table.from_pandas(self._table, preserve_index=False)
 
     @staticmethod
     def numpy_to_block(
@@ -512,9 +515,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
-        )
+        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
@@ -626,9 +627,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
-        )
+        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
 
     def block_type(self) -> BlockType:
         return BlockType.PANDAS

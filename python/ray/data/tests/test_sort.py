@@ -119,7 +119,7 @@ def test_sort_arrow(
             offset += shard
         if offset < num_items:
             dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
-        ds = ray.data.from_pandas(dfs).map_batches(
+        ds = ray.data.from_blocks(dfs).map_batches(
             lambda t: t, batch_format="pyarrow", batch_size=None
         )
 
@@ -181,7 +181,7 @@ def test_sort_arrow_with_empty_blocks(
         assert (
             len(
                 SortTaskSpec.sample_boundaries(
-                    ds._plan.execute().get_blocks(), SortKey("id"), 3
+                    ds._plan.execute().block_refs, SortKey("id"), 3
                 )
             )
             == 2
@@ -235,7 +235,7 @@ def test_sort_pandas(ray_start_regular, num_items, parallelism, use_push_based_s
         offset += shard
     if offset < num_items:
         dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
-    ds = ray.data.from_pandas(dfs)
+    ds = ray.data.from_blocks(dfs)
 
     def assert_sorted(sorted_ds, expected_rows):
         assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(
@@ -282,7 +282,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     assert (
         len(
             SortTaskSpec.sample_boundaries(
-                ds._plan.execute().get_blocks(), SortKey("id"), 3
+                ds._plan.execute().block_refs, SortKey("id"), 3
             )
         )
         == 2

@@ -5,6 +5,7 @@ import tempfile
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
@@ -45,7 +46,7 @@ if __name__ == "__main__":
     ).build()
 
     CHECKPOINT_DIR = tempfile.mkdtemp()
-    module_to_load.save_to_checkpoint(CHECKPOINT_DIR)
+    module_to_load.save_to_path(CHECKPOINT_DIR)
 
     # Create a module spec to load the checkpoint
     module_to_load_spec = SingleAgentRLModuleSpec(
@@ -68,7 +69,7 @@ if __name__ == "__main__":
         "PPO",
         param_space=config.to_dict(),
         run_config=air.RunConfig(
-            stop={"training_iteration": 1},
+            stop={TRAINING_ITERATION: 1},
             failure_config=air.FailureConfig(fail_fast="raise"),
         ),
     )

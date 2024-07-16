@@ -24,6 +24,7 @@ class TaskPoolMapOperator(MapOperator):
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
         concurrency: Optional[int] = None,
+        supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
@@ -41,6 +42,7 @@ class TaskPoolMapOperator(MapOperator):
                 The actual rows passed may be less if the dataset is small.
             concurrency: The maximum number of Ray tasks to use concurrently,
                 or None to use as many tasks as possible.
+            supports_fusion: Whether this operator supports fusion with other operators.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -55,6 +57,7 @@ class TaskPoolMapOperator(MapOperator):
             name,
             target_max_block_size,
             min_rows_per_bundle,
+            supports_fusion,
             ray_remote_args_fn,
             ray_remote_args,
         )
@@ -63,7 +66,6 @@ class TaskPoolMapOperator(MapOperator):
     def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.
         map_task = cached_remote_fn(_map_task, num_returns="streaming")
-        input_blocks = [block for block, _ in bundle.blocks]
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
             target_max_block_size=self.actual_target_max_block_size,
@@ -84,7 +86,7 @@ class TaskPoolMapOperator(MapOperator):
             self._map_transformer_ref,
             data_context,
             ctx,
-            *input_blocks,
+            *bundle.block_refs,
         )
         self._submit_data_task(gen, bundle)
 

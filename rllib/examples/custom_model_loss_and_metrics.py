@@ -1,4 +1,5 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
+
 #  Users should just inherit the Learner and extend the loss_fn.
 # TODO (sven): Move this example script to `examples/learners/...`
 
@@ -21,6 +22,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.examples._old_api_stack.models.custom_loss_model import (
     CustomLossModel,
@@ -87,9 +89,7 @@ if __name__ == "__main__":
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
-    stop = {
-        "training_iteration": args.stop_iters,
-    }
+    stop = {TRAINING_ITERATION: args.stop_iters}
 
     tuner = tune.Tuner(
         args.run,

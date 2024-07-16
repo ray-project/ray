@@ -140,15 +140,18 @@ class TaskCounter {
       float running = 0.0;
       float in_get = 0.0;
       float in_wait = 0.0;
+      float idle = 0.0;
       if (running_in_wait_counter_.Total() > 0) {
         in_wait = 1.0;
       } else if (running_in_get_counter_.Total() > 0) {
         in_get = 1.0;
       } else if (num_tasks_running_ > 0) {
         running = 1.0;
+      } else {
+        idle = 1.0;
       }
-      ray::stats::STATS_actors.Record(-(running + in_get + in_wait),
-                                      {{"State", "ALIVE"},
+      ray::stats::STATS_actors.Record(idle,
+                                      {{"State", "IDLE"},
                                        {"Name", actor_name_},
                                        {"Source", "executor"},
                                        {"JobId", job_id_}});
@@ -698,11 +701,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// current data size.
   /// \param[in] num_readers The number of readers that must read and release
   /// the object before the caller can write again.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the write lock.
+  /// If this is 0, the method will try to acquire the write lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  /// will block indefinitely until the write lock is acquired.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   Status ExperimentalChannelWriteAcquire(const ObjectID &object_id,
                                          const std::shared_ptr<Buffer> &metadata,
                                          uint64_t data_size,
                                          int64_t num_readers,
+                                         int64_t timeout_ms,
                                          std::shared_ptr<Buffer> *data);
 
   /// Experimental method for mutable objects. Releases a write lock on the
@@ -1062,9 +1070,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] serialized The serialized actor handle.
   /// \param[in] outer_object_id The object ID that contained the serialized
   /// actor handle, if any.
+  /// \param[in] add_local_ref Whether to add a local reference for this actor
+  /// handle. Handles that were created out-of-band (i.e. via getting actor by
+  /// name or getting a handle to self) should not add a local reference
+  /// because the distributed reference counting protocol does not ensure that
+  /// the owner will learn of this reference.
   /// \return The ActorID of the deserialized handle.
   ActorID DeserializeAndRegisterActorHandle(const std::string &serialized,
-                                            const ObjectID &outer_object_id);
+                                            const ObjectID &outer_object_id,
+                                            bool add_local_ref);
 
   /// Serialize an actor handle.
   ///
@@ -1731,9 +1745,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Helper for Get, used only to read experimental mutable objects.
   ///
   /// \param[in] ids IDs of the objects to get.
+  /// \param[in] timeout_ms Time out in milliseconds to get the objects.
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status GetExperimentalMutableObjects(const std::vector<ObjectID> &ids,
+                                       int64_t timeout_ms,
                                        std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.

@@ -26,6 +26,7 @@ from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
     from_arrow,
     from_arrow_refs,
+    from_blocks,
     from_dask,
     from_huggingface,
     from_items,
@@ -61,8 +62,7 @@ from ray.data.read_api import (  # noqa: F401
 
 # Module-level cached global functions for callable classes. It needs to be defined here
 # since it has to be process-global across cloudpickled funcs.
-_cached_fn = None
-_cached_cls = None
+_map_actor_context = None
 
 configure_logging()
 

@@ -48,6 +48,7 @@ from serve_test_cluster_utils import (
 )
 
 logger = logging.getLogger(__file__)
+logging.basicConfig(level=logging.INFO)
 
 # Experiment configs
 DEFAULT_SMOKE_TEST_NUM_REPLICA = 4
@@ -71,7 +72,13 @@ def setup_multi_deployment_replicas(num_replicas, num_deployments) -> List[str]:
     num_replica_per_deployment = num_replicas // num_deployments
     all_deployment_names = [f"Echo_{i+1}" for i in range(num_deployments)]
 
-    @serve.deployment(num_replicas=num_replica_per_deployment)
+    ray_actor_options = {"num_cpus": 1}
+    if not is_smoke_test():
+        ray_actor_options["resources"] = {"worker": 0.01}
+
+    @serve.deployment(
+        num_replicas=num_replica_per_deployment, ray_actor_options=ray_actor_options
+    )
     class Echo:
         def __init__(self):
             self.all_app_async_handles = []
@@ -159,13 +166,21 @@ def main(
         http_port,
         all_endpoints=all_endpoints,
         ignore_output=True,
+        exclude_head=not is_smoke_test(),
+        debug=True,
     )
 
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
-        trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
+        trial_length,
+        NUM_CONNECTIONS,
+        http_host,
+        http_port,
+        all_endpoints=all_endpoints,
+        exclude_head=not is_smoke_test(),
+        debug=True,
     )
 
     aggregated_metrics = aggregate_all_metrics(all_metrics)
