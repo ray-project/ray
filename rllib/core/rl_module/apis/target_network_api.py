@@ -7,12 +7,11 @@ from ray.rllib.utils.typing import NetworkType
 class TargetNetworkAPI(abc.ABC):
     """An API to be implemented by RLModules for handling target networks.
 
-    RLModules implementing this API must override the `get_nets_that_need_target_nets`
-    method and return a list of `NetworkType` from there, representing all network
-    modules that require a target network to be created and synched from time to time.
+    RLModules implementing this API must override the `make_target_networks`,
+    `get_target_network_pairs`, and the `forward_target` methods.
 
-    Note that the respective Learner that owns the RLModule handles all target net
-    creation- and syncing logic.
+    Note that the respective Learner that owns the implementing RLModule handles all
+    target syncing logic.
     """
 
     @abc.abstractmethod
