@@ -113,15 +113,12 @@ class _XGBoostRabitBackend(Backend):
         )
         self._tracker.start()
 
-        self._wait_thread = threading.Thread(target=self._tracker.wait_for)
-        self._wait_thread.daemon = True
+        # The RabitTracker is started in a separate thread, and the
+        # `wait_for` method must be called for `worker_args` to return.
+        self._wait_thread = threading.Thread(target=self._tracker.wait_for, daemon=True)
         self._wait_thread.start()
 
-        if Version(xgboost.__version__) >= Version("2.1.0"):
-            worker_args = self._tracker.worker_args()
-        else:
-            worker_args = self._tracker.worker_envs()
-        rabit_args.update(worker_args)
+        rabit_args.update(self._tracker.worker_args())
 
         start_log = (
             "RabitTracker coordinator started with parameters:\n"
