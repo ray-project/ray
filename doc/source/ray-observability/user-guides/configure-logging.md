@@ -53,7 +53,7 @@ System logs may include information about your applications. For example, ``runt
 - ``monitor.[out|err]``: Stdout and stderr of a cluster launcher.
 - ``monitor.log``: Ray's Cluster Launcher operates from a monitor process. It also manages the Autoscaler.
 - ``plasma_store.[out|err]``: Deprecated.
-- ``python-core-driver-[driver_id]_[pid].log``: Ray drivers consist of CPP core and a Python or Java frontend. CPP code generates this log file.
+- ``python-core-driver-[job_id]_[pid].log``: Ray drivers consist of CPP core and a Python or Java frontend. CPP code generates this log file.
 - ``python-core-worker-[worker_id]_[pid].log``: Ray workers consist of CPP core and a Python or Java frontend. CPP code generates this log file.
 - ``raylet.[out|err]``: A log file of raylets.
 - ``redis-shard_[shard_index].[out|err]``: Redis shard log files.
