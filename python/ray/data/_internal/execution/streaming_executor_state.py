@@ -368,7 +368,9 @@ class OpState:
                             
             time_for_op = output_input_multipler * next_op._metrics.average_task_duration / next_op._metrics.average_bytes_inputs_per_task
             
-            time_for_pipeline_to_process_one_data += time_for_op
+            if next_op.incremental_resource_usage().cpu:
+                # @MaoZiming: if it is on GPU, it doesn't take CPU time. 
+                time_for_pipeline_to_process_one_data += time_for_op
             
             output_input_multipler *= (next_op._metrics.average_bytes_outputs_per_task / next_op._metrics.average_bytes_inputs_per_task)
         
@@ -391,7 +393,7 @@ class OpState:
             self.last_update_time = time.time()
             return
 
-        grow_rate = self._get_grow_rate(resource_manager)
+        grow_rate = self._get_grow_rate_new(resource_manager)
         now = time.time()
         time_elapsed = now - self.last_update_time
 
