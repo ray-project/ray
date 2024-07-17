@@ -2694,7 +2694,7 @@ cdef class GcsClient:
             # the total timeout to be nums_reconnect_retry * timeout_s to match the old
             # behavior.
             once_timeout_s = RayConfig.instance().py_gcs_connect_timeout_s()
-            timeout_ms = once_timeout_s * 1000 * nums_reconnect_retry
+            timeout_ms = once_timeout_s * 1000 * (nums_reconnect_retry + 1)
             self.inner = NewGcsClient.standalone(address, cluster_id, timeout_ms)
         logger.debug(f"Created GcsClient. inner {self.inner}")
 
