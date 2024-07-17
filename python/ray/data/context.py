@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 from dataclasses import dataclass, field
@@ -93,6 +94,15 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error UNKNOWN (HTTP status 503)",
 )
 
+DEFAULT_RETRIED_FILESYSTEM_ERRORS = (
+    "AWS Error INTERNAL_FAILURE",
+    "AWS Error NETWORK_CONNECTION",
+    "AWS Error SLOW_DOWN",
+    "AWS Error UNKNOWN (HTTP status 503)",
+    "AWS Error ACCESS_DENIED",
+    "AWS Error NETWORK_CONNECTION",
+)
+
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
 DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS = False
@@ -132,6 +142,8 @@ DEFAULT_S3_TRY_CREATE_DIR = False
 DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", 60 * 10
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _execution_options_factory() -> "ExecutionOptions":
@@ -231,6 +243,9 @@ class DataContext:
             call is made with a S3 URI.
         wait_for_min_actors_s: The default time to wait for minimum requested
             actors to start before raising a timeout, in seconds.
+        retried_filesystem_errors: A list of substrings of error messages that should
+            trigger a retry when reading or writing files. This is useful for handling
+            transient errors when reading from remote storage systems.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -277,6 +292,7 @@ class DataContext:
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
+    retried_filesystem_errors: List[str] = DEFAULT_RETRIED_FILESYSTEM_ERRORS
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -292,6 +308,18 @@ class DataContext:
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if (
+            name == "write_file_retry_on_errors"
+            and value != DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
+        ):
+            logger.warning(
+                "`write_file_retry_on_errors` is deprecated. Configure "
+                "`retried_filesystem_errors` instead."
+            )
+
+        super().__setattr__(name, value)
 
     @staticmethod
     def get_current() -> "DataContext":

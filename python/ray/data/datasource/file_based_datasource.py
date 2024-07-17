@@ -54,9 +54,6 @@ FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
 # 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
 PATHS_PER_FILE_SIZE_FETCH_TASK = 16
 
-# The errors to retry for opening file.
-OPEN_FILE_RETRY_ON_ERRORS = ["AWS Error SLOW_DOWN", "AWS Error ACCESS_DENIED"]
-
 # The max retry backoff in seconds for opening file.
 OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
@@ -514,7 +511,7 @@ def _open_file_with_retry(
     return call_with_retry(
         open_file,
         description=f"open file {file_path}",
-        match=OPEN_FILE_RETRY_ON_ERRORS,
+        match=DataContext.get_current().retried_filesystem_errors,
         max_attempts=OPEN_FILE_MAX_ATTEMPTS,
         max_backoff_s=OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
     )
