@@ -1,26 +1,23 @@
-.. _kuberay-tpu:
+(kuberay-tpu)=
 
-Using TPUs with KubeRay
-=======================
+# Using TPUs with KubeRay
+
 This document provides tips on TPU usage with KubeRay.
 
 TPUs are available on Google Kubernetes Engine (GKE). To use TPUs with Kubernetes, configure
 both your Kubernetes setup and add additional values to your RayCluster configuration.
 Instructions for configuring a RayCluster with TPUs on GKE can be found here:
 
-- `kuberay-gke-tpu-cluster-setup`
+- {ref}`kuberay-gke-tpu-cluster-setup`
 
-
-Quickstart: Serve a Stable Diffusion model on GKE with TPUs
-___________________________________________________________
+## Quickstart: Serve a Stable Diffusion model on GKE with TPUs
 
 After setting up a GKE cluster with TPUs and the Ray TPU initialization webhook, you're ready to begin running
 workloads on Ray with TPUs. The :ref:`StableDiffusion example <kuberay-tpu-stable-diffusion-example>` shows how to
 serve a model with Ray on single-host TPUs.
 
 
-Configuring Ray Pods for TPU usage
-__________________________________
+## Configuring Ray Pods for TPU usage
 
 Using any TPU accelerator requires specifying `google.com/tpu` resource `limits` and `requests` in the container fields of your `RayCluster`'s
 `workerGroupSpecs`. This resource specifies the number of TPU chips for GKE to allocate each Pod. KubeRay v1.1.0 adds a `numOfHosts`
@@ -30,8 +27,7 @@ Additionally, GKE uses `gke-tpu` node selectors to schedule TPU pods on the node
 
 Below is a config snippet for a RayCluster worker group with 2 Ray TPU workers, each scheduled on their own GKE v4 TPU node.
 
-.. code-block:: yaml
-
+```
    groupName: tpu-group
    replicas: 1
    minReplicas: 0
@@ -59,10 +55,10 @@ Below is a config snippet for a RayCluster worker group with 2 Ray TPU workers, 
             cloud.google.com/gke-tpu-accelerator: tpu-v4-podslice
             cloud.google.com/gke-tpu-topology: 2x2x2
             ...
+```
 
+## TPU workload scheduling
 
-TPU workload scheduling
-~~~~~~~~~~~~~~~~~~~~~~~
 After a Ray pod with with TPU pod resources is deployed, it will be able to execute tasks and actors annotated with TPU requests.
 TPUs are supported on Ray as a [custom resource](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#custom-resources),
 and are requested by tasks or actors using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
@@ -70,6 +66,6 @@ and are requested by tasks or actors using the decorator `@ray.remote(resources=
 
 Further reference and discussion
 --------------------------------
-.. _`TPUs in GKE`: https://cloud.google.com/kubernetes-engine/docs/how-to/tpus
-.. _`TPU availability`: https://cloud.google.com/tpu/docs/regions-zones
-.. _`nodeSelectors`: https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector
+* See [TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus) for more details on using TPUs.
+* [TPU availability](https://cloud.google.com/tpu/docs/regions-zones)
+* [nodeSelectors](https://kubernetes.io/docs/concepts/scheduling-eviction/assign-pod-node/#nodeselector)
