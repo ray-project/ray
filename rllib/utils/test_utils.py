@@ -1894,18 +1894,26 @@ class ModelChecker:
         from ray.rllib.core.models.specs.specs_dict import SpecDict
 
         if isinstance(model.input_specs, SpecDict):
-            inputs = {}
-            for key, spec in model.input_specs.items():
-                dict_ = inputs
-                for i, sub_key in enumerate(key):
-                    if sub_key not in dict_:
-                        dict_[sub_key] = {}
-                    if i < len(key) - 1:
-                        dict_ = dict_[sub_key]
-                if spec is not None:
-                    dict_[sub_key] = spec.fill(self.random_fill_input_value)
+            # inputs = {}
+
+            def _fill(s):
+                if s is not None:
+                    return s.fill(self.random_fill_input_value)
                 else:
-                    dict_[sub_key] = None
+                    return None
+
+            inputs = tree.map_structure(_fill, dict(model.input_specs))
+            # for key, spec in model.input_specs.items():
+            #    dict_ = inputs
+            #    for i, sub_key in enumerate(key):
+            #        if sub_key not in dict_:
+            #            dict_[sub_key] = {}
+            #        if i < len(key) - 1:
+            #            dict_ = dict_[sub_key]
+            #    if spec is not None:
+            #        dict_[sub_key] = spec.fill(self.random_fill_input_value)
+            #    else:
+            #        dict_[sub_key] = None
         else:
             inputs = model.input_specs.fill(self.random_fill_input_value)
 
