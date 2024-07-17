@@ -1,6 +1,6 @@
-import logging
 import os
 import threading
+import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
@@ -142,8 +142,6 @@ DEFAULT_S3_TRY_CREATE_DIR = False
 DEFAULT_WAIT_FOR_MIN_ACTORS_S = env_integer(
     "RAY_DATA_DEFAULT_WAIT_FOR_MIN_ACTORS_S", 60 * 10
 )
-
-logger = logging.getLogger(__name__)
 
 
 def _execution_options_factory() -> "ExecutionOptions":
@@ -314,9 +312,10 @@ class DataContext:
             name == "write_file_retry_on_errors"
             and value != DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
         ):
-            logger.warning(
+            warnings.warn(
                 "`write_file_retry_on_errors` is deprecated. Configure "
-                "`retried_filesystem_errors` instead."
+                "`retried_filesystem_errors` instead.",
+                DeprecationWarning,
             )
 
         super().__setattr__(name, value)
