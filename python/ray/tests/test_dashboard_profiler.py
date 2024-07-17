@@ -252,8 +252,4 @@ def test_profiler_failure_message(ray_start_with_dashboard):
 
 
 if __name__ == "__main__":
-    # TODO(can): No py-spy for python 3.12
-    if sys.version_info >= (3, 12):
-        sys.exit(0)
-
     sys.exit(pytest.main(["-v", "-s", __file__]))
