@@ -46,7 +46,7 @@ kubectl port-forward svc/stable-diffusion-tpu-raycluster-ljw2r-head-svc 8265:826
 ```
 
 You may now monitor the status of the RayService in the Ray dashboard from the the 'Serve' tab. The installed RayService
-should create a running application with the name 'stable_diffusion'. The application will have two deployments, the
+should create a running application with the name 'stable_diffusion'. The Ray Serve application will have two Ray Serve deployments, the
 API ingress which will receive input prompts and the Stable Diffusion model server.
 
 
