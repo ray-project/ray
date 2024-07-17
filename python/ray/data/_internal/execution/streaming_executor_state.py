@@ -317,37 +317,8 @@ class OpState:
 
     def _get_average_ouput_size(self) -> float:
         return self.op._metrics.average_bytes_outputs_per_task
-
-    def _get_grow_rate(self, resource_manager: ResourceManager) -> float:
-        cumulative_grow_rate = 0
-
-        # Assume no more than one output.
-        assert len(self.op.output_dependencies) <= 1
-        for op in self.op.output_dependencies:
-            logger.debug(
-                "@mzm: average_bytes_inputs_per_task "
-                f"{op._metrics.average_bytes_inputs_per_task}, "
-                f"average_task_duration: {op._metrics.average_task_duration}, "
-            )
-            # Initialize grow rate to be 0.
-            if (
-                not op._metrics.average_task_duration
-                or not op._metrics.average_bytes_inputs_per_task
-            ):
-                continue
-
-            cumulative_grow_rate += (
-                op._metrics.average_bytes_inputs_per_task
-                / op._metrics.average_task_duration
-                * (
-                    resource_manager.get_global_limits().cpu
-                    - self.op.num_active_tasks() * self.op.incremental_resource_usage().cpu
-                )
-            )
-
-        return cumulative_grow_rate
     
-    def _get_grow_rate_new(self, resource_manager: ResourceManager) -> float:
+    def _get_grow_rate(self, resource_manager: ResourceManager) -> float:
 
         time_for_pipeline_to_process_one_data = 0
         next_op = self.op
@@ -393,7 +364,7 @@ class OpState:
             self.last_update_time = time.time()
             return
 
-        grow_rate = self._get_grow_rate_new(resource_manager)
+        grow_rate = self._get_grow_rate(resource_manager)
         now = time.time()
         time_elapsed = now - self.last_update_time
 
