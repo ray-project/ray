@@ -5,14 +5,14 @@ tensorflow-macos==2.15.1; sys_platform == 'darwin' and platform_machine == 'arm6
 tensorflow-probability==0.23.0
 tensorflow-datasets
 
---extra-index-url https://download.pytorch.org/whl/cu118  # for GPU versions of torch, torchvision
---find-links https://data.pyg.org/whl/torch-2.0.1+cu118.html  # for GPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
+--extra-index-url https://download.pytorch.org/whl/cu121  # for GPU versions of torch, torchvision
+--find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html  # for GPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
 # specifying explicit plus-notation below so pip overwrites the existing cpu verisons
-torch==2.0.1+cu118
-torchvision==0.15.2+cu118
-torch-scatter==2.1.1+pt20cu118
-torch-sparse==0.6.17+pt20cu118
-torch-cluster==1.6.1+pt20cu118
-torch-spline-conv==1.2.2+pt20cu118
+torch==2.3.0+cu121
+torchvision==0.18.0+cu121
+torch-scatter==2.1.2+pt23cu121
+torch-sparse==0.6.18+pt23cu121
+torch-cluster==1.6.3+pt23cu121
+torch-spline-conv==1.2.2+pt23cu121
 
-cupy-cuda11x==13.1.0; sys_platform != 'darwin'
+cupy-cuda12x==13.1.0; sys_platform != 'darwin'
