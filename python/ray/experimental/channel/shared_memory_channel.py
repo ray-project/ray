@@ -183,6 +183,8 @@ class Channel(ChannelInterface):
         _reader_node_id: Optional["ray.NodeID"] = None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
         _reader_ref: Optional["ray.ObjectRef"] = None,
+        _writer_registered: bool = False,
+        _reader_registered: bool = False,
     ):
         """
         Create a channel that can be read and written by co-located Ray processes.
@@ -227,8 +229,8 @@ class Channel(ChannelInterface):
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
 
-        self._writer_registered = False
-        self._reader_registered = False
+        self._writer_registered = _writer_registered
+        self._reader_registered = _reader_registered
 
         if _writer_ref is None:
             # We are the writer. Check that the passed handle matches the
@@ -298,15 +300,11 @@ class Channel(ChannelInterface):
 
         self._num_readers = len(self._readers)
         if self.is_remote():
-            from ray.dag.context import DAGContext
-
-            if typ.buffer_size_bytes > DAGContext.get_current().max_grpc_payload:
-                raise ValueError(
-                    "The reader and writer are on different nodes, so the object "
-                    "written to the channel must have a size less than or equal to "
-                    "the max gRPC payload size "
-                    f"({DAGContext.get_current().max_grpc_payload} bytes)."
-                )
+            # Even though there may be multiple readers on a remote node, we set
+            # `self._num_readers` to 1 here. On this local node, only the IO thread in
+            # the mutable object provider will read the mutable object. The IO thread
+            # will then send a gRPC with the mutable object contents to the remote node
+            # where the readers are.
             self._num_readers = 1
 
     def _create_reader_ref(
@@ -375,6 +373,8 @@ class Channel(ChannelInterface):
         reader_node_id,
         writer_ref: "ray.ObjectRef",
         reader_ref: "ray.ObjectRef",
+        writer_registered: bool,
+        reader_registered: bool,
     ) -> "Channel":
         chan = Channel(
             writer,
@@ -384,6 +384,8 @@ class Channel(ChannelInterface):
             _reader_node_id=reader_node_id,
             _writer_ref=writer_ref,
             _reader_ref=reader_ref,
+            _writer_registered=writer_registered,
+            _reader_registered=reader_registered,
         )
         return chan
 
@@ -397,6 +399,8 @@ class Channel(ChannelInterface):
             self._reader_node_id,
             self._writer_ref,
             self._reader_ref,
+            self._writer_registered,
+            self._reader_registered,
         )
 
     def __str__(self) -> str:
@@ -409,15 +413,6 @@ class Channel(ChannelInterface):
         # include the size of the metadata, so we must account for the size of the
         # metadata explicitly.
         size = serialized_value.total_bytes + len(serialized_value.metadata)
-
-        from ray.dag.context import DAGContext
-
-        if size > DAGContext.get_current().max_grpc_payload and self.is_remote():
-            raise ValueError(
-                "The reader and writer are on different nodes, so the object written "
-                "to the channel must have a size less than or equal to the max gRPC "
-                f"payload size ({DAGContext.get_current().max_grpc_payload} bytes)."
-            )
         if size > self._typ.buffer_size_bytes:
             # Now make the channel backing store larger.
             self._typ.buffer_size_bytes = size
@@ -535,11 +530,13 @@ class CompositeChannel(ChannelInterface):
         readers: List[ray.actor.ActorHandle],
         _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
         _channels: Optional[Set[ChannelInterface]] = None,
+        _writer_registered: bool = False,
+        _reader_registered: bool = False,
     ):
         self._writer = writer
         self._readers = readers
-        self._writer_registered = False
-        self._reader_registered = False
+        self._writer_registered = _writer_registered
+        self._reader_registered = _reader_registered
         # A dictionary that maps the actor ID to the channel object.
         self._channel_dict = _channel_dict or {}
         # The set of channels is a deduplicated version of the _channel_dict values.
@@ -557,10 +554,7 @@ class CompositeChannel(ChannelInterface):
         # Create a local channel for the writer and the local readers.
         num_local_readers = len(self._readers) - len(remote_readers)
         if num_local_readers > 0:
-            assert (
-                num_local_readers == 1
-            ), "Only support one reader on the same actor for now."
-            local_channel = IntraProcessChannel(self._writer)
+            local_channel = IntraProcessChannel(num_local_readers)
             self._channels.add(local_channel)
             actor_id = self._get_actor_id(self._writer)
             self._channel_dict[actor_id] = local_channel
@@ -609,10 +603,15 @@ class CompositeChannel(ChannelInterface):
             self._readers,
             self._channel_dict,
             self._channels,
+            self._writer_registered,
+            self._reader_registered,
         )
 
     def __str__(self) -> str:
-        return f"CompositeChannel(_channels={self._channels})"
+        return (
+            "CompositeChannel(_channels="
+            f"{[str(channel) for channel in self._channels]})"
+        )
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         self.ensure_registered_as_writer()

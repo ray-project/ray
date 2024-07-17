@@ -1,5 +1,5 @@
 import tensorflow as tf
-from typing import Mapping, TYPE_CHECKING
+from typing import Dict, TYPE_CHECKING
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
@@ -18,7 +18,7 @@ class BCTfLearner(TfLearner, BaseTestingLearner):
         module_id: ModuleID,
         config: "AlgorithmConfig",
         batch: NestedDict,
-        fwd_out: Mapping[str, TensorType],
+        fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         BaseTestingLearner.compute_loss_for_module(
             self,

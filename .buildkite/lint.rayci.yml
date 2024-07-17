@@ -26,11 +26,10 @@ steps:
       - lint
     key: lint-medium
     instance_type: medium
-    depends_on:
-      - oss-ci-base_build
+    depends_on: docbuild
+    job_env: docbuild
     commands:
       - ./ci/lint/lint.sh {{matrix}}
-    job_env: oss-ci-base_build
     matrix:
       - api_annotations
       - api_policy_check data
