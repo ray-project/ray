@@ -7,7 +7,7 @@ import timeline_utils
 import ray
 import psutil
 
-LOG_FILE = "three_stage_problem.log"
+LOG_FILE = "three_cpu_stage_problem.log"
 
 
 class Logger:
@@ -39,7 +39,6 @@ def main(is_flink: bool):
     os.environ["RAY_DATA_OP_RESERVATION_RATIO"] = "0"
 
     NUM_CPUS = 8
-    NUM_GPUS = 4
     NUM_ROWS_PER_TASK = 10
     BUFFER_SIZE_LIMIT = 30
     NUM_TASKS = 16 * 5
@@ -57,15 +56,17 @@ def main(is_flink: bool):
                 "image": [np.zeros(BLOCK_SIZE, dtype=np.uint8)],
             }
 
+    def transform(batch):
+        logger.log({"name": "transform", "id": int(batch["id"].item())})
+        time.sleep(TIME_UNIT)
+        return {
+            "id": batch["id"],
+            "image": [np.zeros(BLOCK_SIZE, dtype=np.uint8)]}
+
     def consume(batch):
         logger.log({"name": "consume", "id": int(batch["id"].item())})
         time.sleep(TIME_UNIT)
         return {"id": batch["id"], "result": [0 for _ in batch["id"]]}
-
-    def inference(batch):
-        logger.log({"name": "inference", "id": int(batch["id"].item())})
-        time.sleep(TIME_UNIT)
-        return {"id": batch["id"]}
 
     data_context = ray.data.DataContext.get_current()
     data_context.execution_options.verbose_progress = True
@@ -76,18 +77,18 @@ def main(is_flink: bool):
     else:
         data_context.is_budget_policy = True
         
-    ray.init(num_cpus=NUM_CPUS, num_gpus=NUM_GPUS, object_store_memory=BUFFER_SIZE_LIMIT * BLOCK_SIZE)
+    ray.init(num_cpus=NUM_CPUS, object_store_memory=BUFFER_SIZE_LIMIT * BLOCK_SIZE)
 
     ds = ray.data.range(NUM_ROWS_TOTAL, override_num_blocks=NUM_TASKS)
     
     if is_flink:
         ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK, concurrency=3)
-        ds = ds.map_batches(consume, batch_size=1, num_cpus=0.99, concurrency=5)
-        ds = ds.map_batches(inference, batch_size=1, num_gpus=1, concurrency=4) 
+        ds = ds.map_batches(transform, batch_size=1, num_cpus=0.99, concurrency=5)
+        ds = ds.map_batches(consume, batch_size=1, num_cpus=1, concurrency=4) 
     else:
         ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)
-        ds = ds.map_batches(consume, batch_size=1, num_cpus=0.99)
-        ds = ds.map_batches(inference, batch_size=1, num_cpus=0, num_gpus=1) 
+        ds = ds.map_batches(transform, batch_size=1, num_cpus=0.99)
+        ds = ds.map_batches(consume, batch_size=1, num_cpus=1) 
 
     logger.record_start()
 
@@ -100,7 +101,7 @@ def main(is_flink: bool):
     print(ds.stats())
     print(ray._private.internal_api.memory_summary(stats_only=True))
     print(f"Total time: {end_time - start_time:.4f}s")
-    timeline_utils.save_timeline_with_cpus_gpus(f"timeline_{'ray' if not is_flink else 'flink'}_three_stage.json", NUM_CPUS,  NUM_GPUS)
+    timeline_utils.save_timeline_with_cpus_gpus(f"timeline_{'ray' if not is_flink else 'flink'}_three_cpu_stage.json", NUM_CPUS,  0)
     ray.shutdown()
 
 if __name__ == "__main__": 

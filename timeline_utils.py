@@ -5,11 +5,13 @@ import ray
 producer_task_name = "task::ReadRange->MapBatches(produce)"
 consumer_task_name = "task::MapBatches(consume)"
 inference_task_name = "task::MapBatches(inference)"
+transform_task_name = "task::MapBatches(transform)"
 
 COLORS = {
     producer_task_name: "rail_response",
     consumer_task_name: "cq_build_passed",
-    inference_task_name: "cq_build_failed"
+    inference_task_name: "cq_build_failed",
+    transform_task_name: "rail_load"
 }
 
 def assign_slots(events, num_cpus, num_gpus):

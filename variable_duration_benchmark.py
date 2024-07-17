@@ -4,7 +4,7 @@ import os
 import time
 
 import numpy as np
-import ray.timeline_utils as timeline_utils
+import timeline_utils
 import ray
 
 LOG_FILE = "variable_duration_benchmark.log"
@@ -62,7 +62,7 @@ def main(is_flink: bool):
 
     def consume(batch):
         logger.log({"name": "consume", "id": int(batch["id"].item())})
-        if int(batch["id"]) < NUM_ROWS_TOTAL / 2:
+        if int(batch["id"].item()) < NUM_ROWS_TOTAL / 2:
             time.sleep(TIME_UNIT)
         else:
             time.sleep(TIME_UNIT * 2)
@@ -103,5 +103,5 @@ def main(is_flink: bool):
     ray.shutdown()
 
 if __name__ == "__main__":
-    main(is_flink=True)
+    # main(is_flink=True)
     main(is_flink=False)

@@ -346,6 +346,41 @@ class OpState:
             )
 
         return cumulative_grow_rate
+    
+    def _get_grow_rate_new(self, resource_manager: ResourceManager) -> float:
+
+        time_for_pipeline_to_process_one_data = 0
+        next_op = self.op
+        output_input_multipler = 1
+
+        while len(next_op.output_dependencies) > 0:
+            assert len(next_op.output_dependencies) == 1
+
+            next_op = next_op.output_dependencies[0]
+
+            # Initialize grow rate to be 0.
+            if (
+                not next_op._metrics.average_task_duration
+                or not next_op._metrics.average_bytes_inputs_per_task
+                or not next_op._metrics.average_bytes_outputs_per_task
+            ):
+                continue
+                            
+            time_for_op = output_input_multipler * next_op._metrics.average_task_duration / next_op._metrics.average_bytes_inputs_per_task
+            
+            time_for_pipeline_to_process_one_data += time_for_op
+            
+            output_input_multipler *= (next_op._metrics.average_bytes_outputs_per_task / next_op._metrics.average_bytes_inputs_per_task)
+        
+        num_executors_not_running_op = (
+                    resource_manager.get_global_limits().cpu
+                    - self.op.num_active_tasks() * self.op.incremental_resource_usage().cpu
+                )
+
+        if time_for_pipeline_to_process_one_data == 0:
+            return 0
+        
+        return (1 / time_for_pipeline_to_process_one_data) * num_executors_not_running_op
 
     def _replenish_output_budget(self, resource_manager: ResourceManager) -> float:
 
