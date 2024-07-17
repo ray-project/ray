@@ -64,7 +64,7 @@ def check_for_failure(
 
 def get_address_and_port() -> Tuple[str, int]:
     """Returns the IP address and a free port on this node."""
-    addr = ray.util.get_node_ip_address()
+    addr = ray.util.get_cached_node_ip_address()
     port = find_free_port()
 
     return addr, port
