@@ -19,7 +19,11 @@ from ray._private.runtime_env.conda import (
     _current_py_version,
 )
 
-from ray._private.runtime_env.conda_utils import get_conda_env_list
+from ray._private.runtime_env.conda_utils import (
+    get_conda_env_list,
+    get_conda_info_json,
+    get_conda_envs,
+)
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
@@ -217,6 +221,79 @@ def test_task_actor_conda_env(conda_envs, shutdown_only):
     os.environ.get("CONDA_DEFAULT_ENV") is None,
     reason="must be run from within a conda environment",
 )
+def test_base_full_path(conda_envs, shutdown_only):
+    """
+    Test that `base` and its absolute path prefix can both work.
+    """
+    ray.init()
+
+    conda_info = get_conda_info_json()
+    prefix = conda_info["conda_prefix"]
+
+    test_conda_envs = ["base", prefix]
+
+    @ray.remote
+    def get_conda_env_name():
+        return os.environ.get("CONDA_DEFAULT_ENV")
+
+    # Basic conda runtime env
+    for conda_env in test_conda_envs:
+        runtime_env = {"conda": conda_env}
+
+        task = get_conda_env_name.options(runtime_env=runtime_env)
+        assert ray.get(task.remote()) == "base"
+
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment",
+)
+def test_task_actor_conda_env_full_path(conda_envs, shutdown_only):
+    ray.init()
+
+    conda_info = get_conda_info_json()
+    prefix = conda_info["conda_prefix"]
+
+    test_conda_envs = {
+        package_version: f"{prefix}/envs/package-{package_version}"
+        for package_version in EMOJI_VERSIONS
+    }
+
+    # Basic conda runtime env
+    for package_version, conda_full_path in test_conda_envs.items():
+        runtime_env = {"conda": conda_full_path}
+        print(f"Testing {package_version}, runtime env: {runtime_env}")
+
+        task = get_emoji_version.options(runtime_env=runtime_env)
+        assert ray.get(task.remote()) == package_version
+
+        actor = VersionActor.options(runtime_env=runtime_env).remote()
+        assert ray.get(actor.get_emoji_version.remote()) == package_version
+
+    # Runtime env should inherit to nested task
+    @ray.remote
+    def wrapped_version():
+        return ray.get(get_emoji_version.remote())
+
+    @ray.remote
+    class Wrapper:
+        def wrapped_version(self):
+            return ray.get(get_emoji_version.remote())
+
+    for package_version, conda_full_path in test_conda_envs.items():
+        runtime_env = {"conda": conda_full_path}
+
+        task = wrapped_version.options(runtime_env=runtime_env)
+        assert ray.get(task.remote()) == package_version
+
+        actor = Wrapper.options(runtime_env=runtime_env).remote()
+        assert ray.get(actor.wrapped_version.remote()) == package_version
+
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment",
+)
 def test_task_conda_env_validation_cached(conda_envs, shutdown_only):
     """Verify that when a task is running with the same conda env
     it doesn't validate if env exists.
@@ -327,6 +404,22 @@ def test_get_conda_env_dir(tmp_path):
         # Env tf2 still should exist.
         env_dir = get_conda_env_dir("tf2")
         assert env_dir == str(tmp_path / "envs" / "tf2")
+
+
+@pytest.mark.skipif(
+    os.environ.get("CONDA_DEFAULT_ENV") is None,
+    reason="must be run from within a conda environment",
+)
+def test_get_conda_envs(conda_envs):
+    """
+    Tests that we can at least find 3 conda envs: base, and two envs we created.
+    """
+    conda_info = get_conda_info_json()
+    envs = get_conda_envs(conda_info)
+    prefix = conda_info["conda_prefix"]
+    assert ("base", prefix) in envs
+    assert ("package-2.1.0", prefix + "/envs/package-2.1.0") in envs
+    assert ("package-2.2.0", prefix + "/envs/package-2.2.0") in envs
 
 
 @pytest.mark.skipif(

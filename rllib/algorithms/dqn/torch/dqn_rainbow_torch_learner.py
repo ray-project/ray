@@ -18,6 +18,14 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_learner import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
+    RLModuleWithTargetNetworksInterface,
+)
+from ray.rllib.core.rl_module.torch.torch_rl_module import (
+    TorchRLModule,
+    TorchDDPRLModuleWithTargetNetworksInterface,
+)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import TD_ERROR_KEY
@@ -252,6 +260,58 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             )
 
         return total_loss
+
+    @override(TorchLearner)
+    def _make_modules_ddp_if_necessary(self) -> None:
+        """Logic for (maybe) making all Modules within self._module DDP.
+
+        This implementation differs from the super's default one in using the special
+        TorchDDPRLModuleWithTargetNetworksInterface wrapper, instead of the default
+        TorchDDPRLModule one.
+        """
+
+        # If the module is a MultiAgentRLModule and nn.Module we can simply assume
+        # all the submodules are registered. Otherwise, we need to loop through
+        # each submodule and move it to the correct device.
+        # TODO (Kourosh): This can result in missing modules if the user does not
+        #  register them in the MultiAgentRLModule. We should find a better way to
+        #  handle this.
+        if self._distributed:
+            # Single agent module: Convert to
+            # `TorchDDPRLModuleWithTargetNetworksInterface`.
+            if isinstance(self._module, RLModuleWithTargetNetworksInterface):
+                self._module = TorchDDPRLModuleWithTargetNetworksInterface(self._module)
+            # Multi agent module: Convert each submodule to
+            # `TorchDDPRLModuleWithTargetNetworksInterface`.
+            else:
+                assert isinstance(self._module, MultiAgentRLModule)
+                for key in self._module.keys():
+                    sub_module = self._module[key]
+                    if isinstance(sub_module, TorchRLModule):
+                        # Wrap and override the module ID key in self._module.
+                        self._module.add_module(
+                            key,
+                            TorchDDPRLModuleWithTargetNetworksInterface(sub_module),
+                            override=True,
+                        )
+
+    def _update_module_target_networks(
+        self, module_id: ModuleID, config: DQNConfig
+    ) -> None:
+        module = self.module[module_id]
+
+        # Note, we have pairs of encoder and head networks.
+        target_current_network_pairs = module.get_target_network_pairs()
+        for target_network, current_network in target_current_network_pairs:
+            # Get the current parameters from the Q network.
+            current_state_dict = current_network.state_dict()
+            # Use here Polyak averaging.
+            new_state_dict = {
+                k: config.tau * current_state_dict[k] + (1 - config.tau) * v
+                for k, v in target_network.state_dict().items()
+            }
+            # Apply the new parameters to the target Q network.
+            target_network.load_state_dict(new_state_dict)
 
     def _reset_noise(self) -> None:
         # Reset the noise for all noisy modules, if necessary.
