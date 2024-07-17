@@ -231,11 +231,11 @@ class ImpalaTorchPolicy(
     ValueNetworkMixin,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with Impala."""
+    """PyTorch policy class used with IMPALA."""
 
     def __init__(self, observation_space, action_space, config):
         config = dict(
-            ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
+            ray.rllib.algorithms.impala.impala.IMPALAConfig().to_dict(), **config
         )
 
         # If Learner API is used, we don't need any loss-specific mixins.

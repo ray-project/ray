@@ -41,13 +41,7 @@ class AutoscalingConfig(BaseModel):
     initial_replicas: Optional[NonNegativeInt] = None
     max_replicas: PositiveInt = 1
 
-    # DEPRECATED: replaced by target_ongoing_requests
-    target_num_ongoing_requests_per_replica: PositiveFloat = Field(
-        default=DEFAULT_TARGET_ONGOING_REQUESTS,
-        description="[DEPRECATED] Please use `target_ongoing_requests` instead.",
-    )
-    # Will default to 1.0 in the future.
-    target_ongoing_requests: Optional[PositiveFloat] = None
+    target_ongoing_requests: PositiveFloat = DEFAULT_TARGET_ONGOING_REQUESTS
 
     # How often to scrape for metrics
     metrics_interval_s: PositiveFloat = 10.0
@@ -135,7 +129,6 @@ class AutoscalingConfig(BaseModel):
     @classmethod
     def default(cls):
         return cls(
-            target_num_ongoing_requests_per_replica=DEFAULT_TARGET_ONGOING_REQUESTS,
             target_ongoing_requests=DEFAULT_TARGET_ONGOING_REQUESTS,
             min_replicas=1,
             max_replicas=100,
@@ -158,9 +151,7 @@ class AutoscalingConfig(BaseModel):
         return self.downscale_smoothing_factor or self.smoothing_factor
 
     def get_target_ongoing_requests(self) -> PositiveFloat:
-        return (
-            self.target_ongoing_requests or self.target_num_ongoing_requests_per_replica
-        )
+        return self.target_ongoing_requests
 
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
