@@ -360,7 +360,8 @@ cython==0.29.37
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gpy
-dask==2024.6.0
+dask==2022.10.1; python_version < '3.12'
+dask==2024.6.0; python_version >= '3.12'
     # via dask
 databricks-cli==0.18.0
     # via mlflow
@@ -391,7 +392,8 @@ dill==0.3.8
     #   multiprocess
 distlib==0.3.7
     # via virtualenv
-distributed==2024.6.0
+distributed==2022.10.1; python_version < '3.12'
+distributed==2024.6.0; python_version >= '3.12'
     # via dask
 dm-control==1.0.20 ; python_version < "3.12"
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
