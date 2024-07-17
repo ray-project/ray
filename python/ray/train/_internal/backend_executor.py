@@ -123,8 +123,8 @@ class BackendExecutor:
             ResourceConfig(
                 ray_constants.NPU,
                 ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
-                ray_constants.NPU_RT_VISIBLE_DEVICES_ENV_VAR
-            )
+                ray_constants.NPU_RT_VISIBLE_DEVICES_ENV_VAR,
+            ),
         ]
 
         # Record the initialization time of BackendExecutor, which is
