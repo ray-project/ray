@@ -2,7 +2,7 @@
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
 python-snappy; python_version <= '3.10'
-tensorflow-datasets==4.9.0
+tensorflow-datasets==4.9.3
 datasets
 pytest-repeat
 soundfile

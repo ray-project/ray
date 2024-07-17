@@ -663,7 +663,9 @@ py_test(
     size = "medium",
     srcs = ["test_typing.py", "typing_files/check_typing_bad.py",
             "typing_files/check_typing_good.py"],
-    tags = ["exclusive", "small_size_python_tests", "team:core"],
+    # Note(can): known issue of mypy and latest torch on windows 
+    # (https://github.com/python/mypy/issues/17189)
+    tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 

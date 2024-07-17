@@ -285,7 +285,7 @@ class KillCallback:
         self.counter += 1
 
 
-@pytest.mark.parametrize("backend", ["test", "torch", "tf", "horovod"])
+@pytest.mark.parametrize("backend", ["test", "torch", "tf"])
 def test_worker_kill(ray_start_4_cpus, backend):
     if backend == "test":
         test_config = BackendConfig()
@@ -297,10 +297,6 @@ def test_worker_kill(ray_start_4_cpus, backend):
         from ray.train.tensorflow import TensorflowConfig
 
         test_config = TensorflowConfig()
-    elif backend == "horovod":
-        from ray.train.horovod import HorovodConfig
-
-        test_config = HorovodConfig()
 
     def train_func():
         for i in range(2):

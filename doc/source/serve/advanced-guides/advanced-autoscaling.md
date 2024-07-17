@@ -14,9 +14,6 @@ In this section, we go into more detail about Serve autoscaling concepts as well
 
 To define what the steady state of your deployments should be, set values for `target_ongoing_requests` and `max_ongoing_requests`.
 
-#### **target_num_ongoing_requests_per_replica [default=2]**
-This parameter is renamed to `target_ongoing_requests`. `target_num_ongoing_requests_per_replica` will be removed in a future release.
-
 #### **target_ongoing_requests [default=2]**
 :::{note}
 The default for `target_ongoing_requests` changed from 1.0 to 2.0 in Ray 2.32.0. You can continue to set it manually to override the default.
