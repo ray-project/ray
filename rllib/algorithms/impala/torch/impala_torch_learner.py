@@ -1,7 +1,7 @@
 from typing import Dict
 
-from ray.rllib.algorithms.impala.impala import ImpalaConfig
-from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
+from ray.rllib.algorithms.impala.impala import IMPALAConfig
+from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
@@ -17,7 +17,7 @@ from ray.rllib.utils.typing import ModuleID, TensorType
 torch, nn = try_import_torch()
 
 
-class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
+class IMPALATorchLearner(IMPALALearner, TorchLearner):
     """Implements the IMPALA loss function in torch."""
 
     @override(TorchLearner)
@@ -25,7 +25,7 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         self,
         *,
         module_id: ModuleID,
-        config: ImpalaConfig,
+        config: IMPALAConfig,
         batch: NestedDict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
@@ -158,3 +158,6 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         )
         # Return the total loss.
         return total_loss
+
+
+ImpalaTorchLearner = IMPALATorchLearner

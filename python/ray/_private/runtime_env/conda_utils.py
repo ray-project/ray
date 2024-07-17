@@ -161,7 +161,7 @@ def delete_conda_env(prefix: str, logger: Optional[logging.Logger] = None) -> bo
 
 def get_conda_env_list() -> list:
     """
-    Get conda env list.
+    Get conda env list in full paths.
     """
     conda_path = get_conda_bin_executable("conda")
     try:
@@ -171,6 +171,41 @@ def get_conda_env_list() -> list:
     _, stdout, _ = exec_cmd([conda_path, "env", "list", "--json"])
     envs = json.loads(stdout)["envs"]
     return envs
+
+
+def get_conda_info_json() -> dict:
+    """
+    Get `conda info --json` output.
+
+    Returns dict of conda info. See [1] for more details. We mostly care about these
+    keys:
+
+    - `conda_prefix`: str The path to the conda installation.
+    - `envs`: List[str] absolute paths to conda environments.
+
+    [1] https://github.com/conda/conda/blob/main/conda/cli/main_info.py
+    """
+    conda_path = get_conda_bin_executable("conda")
+    try:
+        exec_cmd([conda_path, "--help"], throw_on_error=False)
+    except EnvironmentError:
+        raise ValueError(f"Could not find Conda executable at {conda_path}.")
+    _, stdout, _ = exec_cmd([conda_path, "info", "--json"])
+    return json.loads(stdout)
+
+
+def get_conda_envs(conda_info: dict) -> List[Tuple[str, str]]:
+    """
+    Gets the conda environments, as a list of (name, path) tuples.
+    """
+    prefix = conda_info["conda_prefix"]
+    ret = []
+    for env in conda_info["envs"]:
+        if env == prefix:
+            ret.append(("base", env))
+        else:
+            ret.append((os.path.basename(env), env))
+    return ret
 
 
 class ShellCommandException(Exception):

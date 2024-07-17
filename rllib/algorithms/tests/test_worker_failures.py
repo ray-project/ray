@@ -410,10 +410,10 @@ class TestWorkerFailures(unittest.TestCase):
             .multi_agent(policies={"p0"}, policy_mapping_fn=lambda *a, **k: "p0"),
         )
 
-    # TODO (sven): Reinstate once Impala/APPO support EnvRunners.
+    # TODO (sven): Reinstate once IMPALA/APPO support EnvRunners.
     # def test_async_samples(self):
     #    self._do_test_fault_ignore(
-    #        ImpalaConfig()
+    #        IMPALAConfig()
     #        .api_stack(
     #            enable_rl_module_and_learner=True,
     #            enable_env_runners_and_connector_v2=True,
