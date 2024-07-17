@@ -222,5 +222,5 @@ class _TorchBackend(Backend):
             session = get_session()
             session.device_manager = device_manager
 
-        worker_group.execute(_set_torch_distributed_env_vars)
         worker_group.execute(_set_torch_device_manager)
+        worker_group.execute(_set_torch_distributed_env_vars)
