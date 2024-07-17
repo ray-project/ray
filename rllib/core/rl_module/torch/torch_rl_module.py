@@ -173,6 +173,9 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def _compute_values(self, *args, **kwargs):
         return self.unwrapped()._compute_values(*args, **kwargs)
 
+    def _reset_noise(self, *args, **kwargs):
+        return self.module._reset_noise(*args, **kwargs)
+
     @override(RLModule)
     def unwrapped(self) -> "RLModule":
         return self.module
