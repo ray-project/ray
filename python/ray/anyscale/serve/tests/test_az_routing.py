@@ -56,7 +56,7 @@ def test_handle_prefers_same_az(ray_cluster):
 
     signal = SignalActor.remote()
 
-    @serve.deployment(num_replicas=3, max_concurrent_queries=1)
+    @serve.deployment(num_replicas=3, max_ongoing_requests=1)
     def inner(block_on_signal):
         if block_on_signal:
             ray.get(signal.wait.remote())
@@ -143,7 +143,7 @@ def test_handle_prefers_same_az_without_prefer_node(ray_cluster):
 
     signal = SignalActor.remote()
 
-    @serve.deployment(num_replicas=3, max_concurrent_queries=1)
+    @serve.deployment(num_replicas=3, max_ongoing_requests=1)
     def inner(block_on_signal):
         if block_on_signal:
             ray.get(signal.wait.remote())
