@@ -7,6 +7,8 @@ import pytest
 from delta_sharing.protocol import Table
 from delta_sharing.rest_client import DataSharingRestClient
 
+from ray.data import Dataset
+from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
@@ -62,8 +64,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
             timestamp=None,
         )
 
-        self.assertEqual(datasource._table, self.table)
-        self.assertEqual(datasource._rest_client, self.mock_rest_client)
+        self.assertEqual(datasource._url, self.url)
         self.assertEqual(datasource._json_predicate_hints, self.json_predicate_hints)
         self.assertEqual(datasource._limit, self.limit)
         self.assertEqual(datasource._version, self.version)
@@ -90,30 +91,15 @@ class TestDeltaSharingDatasource(unittest.TestCase):
         self.assertEqual(len(read_tasks), 2)
         self.assertTrue(all(isinstance(task, ReadTask) for task in read_tasks))
 
-    @patch(
-        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource."
-        "setup_delta_sharing_connections"
-    )
-    def test_empty_files_warning(self, mock_setup_delta_sharing_connections):
-        self.mock_response.add_files = []
-        mock_setup_delta_sharing_connections.return_value = (
-            self.table,
-            self.mock_rest_client,
-        )
-        with self.assertLogs(
-            "ray.data.datasource.delta_sharing_datasource", level="WARNING"
-        ) as cm:
-            DeltaSharingDatasource(
-                url=self.url,
-                json_predicate_hints=self.json_predicate_hints,
-                limit=self.limit,
-                version=self.version,
-                timestamp=None,
-            )
-            self.assertIn(
-                "No files found from the delta sharing table or limit is 0",
-                cm.output[0],
-            )
+        for task in read_tasks:
+            metadata = task.get_metadata()
+            self.assertIsInstance(metadata, BlockMetadata)
+            self.assertEqual(len(metadata.input_files), 1)
+            self.assertTrue(metadata.input_files[0]["url"] in ["file1", "file2"])
+            self.assertEqual(metadata.num_rows, None)
+            self.assertEqual(metadata.size_bytes, None)
+            self.assertEqual(metadata.schema, None)
+            self.assertEqual(metadata.exec_stats, None)
 
 
 class TestParseDeltaSharingUrl(unittest.TestCase):
@@ -159,59 +145,85 @@ class TestParseDeltaSharingUrl(unittest.TestCase):
         self.assertEqual(str(context.exception), f"Invalid 'url': {url}")
 
 
+class MockDeltaSharingDatasource:
+    def __init__(
+        self, url, json_predicate_hints=None, limit=None, version=None, timestamp=None
+    ):
+        self._url = url
+        self._json_predicate_hints = json_predicate_hints
+        self._limit = limit
+        self._version = version
+        self._timestamp = timestamp
+
+    def setup_delta_sharing_connections(self, url):
+        # Return mock objects for table and rest_client
+        table = MagicMock()
+        rest_client = MagicMock()
+
+        # Mock the rest_client's list_files_in_table method
+        rest_client.list_files_in_table.return_value = MagicMock(
+            add_files=[
+                {
+                    "url": "https://s3-bucket-name.s3.us-west-2.amazonaws.com/delta-exchange-test/table2/date%3D2021-04-28/part-00000-591723a8-6a27-4240-a90e-57426f4736d2.c000.snappy.parquet",  # noqa E501
+                    "id": "591723a8-6a27-4240-a90e-57426f4736d2",
+                    "size": 573,
+                    "partitionValues": {"date": "2021-04-28"},
+                    "stats": '{"numRecords":1,"minValues":{"eventTime":"2021-04-28T23:33:48.719Z"},"maxValues":{"eventTime":"2021-04-28T23:33:48.719Z"},"nullCount":{"eventTime":0}}',  # noqa E501
+                    "expirationTimestamp": 1652140800000,
+                }
+            ],
+            metadata=MagicMock(
+                schema_string='{"type":"struct","fields":[{"name":"eventTime","type":"timestamp","nullable":true,"metadata":{}},{"name":"date","type":"date","nullable":true,"metadata":{}}]}'  # noqa E501
+            ),
+        )
+        return table, rest_client
+
+    def get_read_tasks(self, parallelism):
+        self._table, self._rest_client = self.setup_delta_sharing_connections(self._url)
+        response = self._rest_client.list_files_in_table(
+            self._table,
+            jsonPredicateHints=self._json_predicate_hints,
+            limitHint=self._limit,
+            version=self._version,
+            timestamp=self._timestamp,
+        )
+
+        read_tasks = []
+        for _ in range(parallelism):
+            read_task = MagicMock()
+            read_task.metadata = MagicMock(
+                num_rows=1,
+                schema=None,
+                input_files=[file["url"] for file in response.add_files],
+                size_bytes=573,
+                exec_stats=None,
+            )
+            read_task.data = MagicMock(
+                return_value=[
+                    {
+                        "eventTime": "2021-04-28T23:33:48.719Z",
+                        "date": "2021-04-28",
+                    }
+                ]
+            )
+            read_tasks.append(read_task)
+        return read_tasks
+
+
 @pytest.fixture
 def mock_delta_sharing_datasource(mocker):
     mock_datasource = mocker.patch(
-        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource"
+        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource",
+        new=MockDeltaSharingDatasource,
     )
-    mock_datasource_instance = mock_datasource.return_value
-    mock_datasource_instance.setup_delta_sharing_connections.return_value = (
-        MagicMock(),
-        MagicMock(),
-    )
-    mock_datasource_instance._response = MagicMock()
-    mock_datasource_instance._response.add_files = [
-        {
-            "file": {
-                "url": "https://s3-bucket-name.s3.us-west-2.amazonaws.com/delta-exchange-test/table2/date%3D2021-04-28/part-00000-591723a8-6a27-4240-a90e-57426f4736d2.c000.snappy.parquet",  # noqa E501
-                "id": "591723a8-6a27-4240-a90e-57426f4736d2",
-                "size": 573,
-                "partitionValues": {"date": "2021-04-28"},
-                "stats": '{"numRecords":1,"minValues":{"eventTime":"2021-04-28T23:33:48.719Z"},"maxValues":{"eventTime":"2021-04-28T23:33:48.719Z"},"nullCount":{"eventTime":0}}',  # noqa E501
-                "expirationTimestamp": 1652140800000,
-            }
-        }
-    ]
-    mock_datasource_instance._response.metadata = MagicMock()
-    mock_datasource_instance._response.metadata.schema_string = '{"type":"struct","fields":[{"name":"eventTime","type":"timestamp","nullable":true,"metadata":{}},{"name":"date","type":"date","nullable":true,"metadata":{}}]}'  # noqa E501
     return mock_datasource
 
 
 @pytest.fixture
-def mock_to_pandas(mocker):
-    return mocker.patch("delta_sharing.reader.DeltaSharingReader._to_pandas")
-
-
-@pytest.fixture
-def mock_rest_client(mocker):
-    mock_rest_client = mocker.patch("delta_sharing.rest_client.DataSharingRestClient")
-    mock_rest_client_instance = mock_rest_client.return_value
-    mock_rest_client_instance.list_files_in_table.return_value = MagicMock(
-        add_files=[
-            {
-                "url": "https://s3-bucket-name.s3.us-west-2.amazonaws.com/delta-exchange-test/table2/date%3D2021-04-28/part-00000-591723a8-6a27-4240-a90e-57426f4736d2.c000.snappy.parquet",  # noqa E501
-                "id": "591723a8-6a27-4240-a90e-57426f4736d2",
-                "size": 573,
-                "partitionValues": {"date": "2021-04-28"},
-                "stats": '{"numRecords":1,"minValues":{"eventTime":"2021-04-28T23:33:48.719Z"},"maxValues":{"eventTime":"2021-04-28T23:33:48.719Z"},"nullCount":{"eventTime":0}}',  # noqa E501
-                "expirationTimestamp": 1652140800000,
-            }
-        ],
-        metadata=MagicMock(
-            schema_string='{"type":"struct","fields":[{"name":"eventTime","type":"timestamp","nullable":true,"metadata":{}},{"name":"date","type":"date","nullable":true,"metadata":{}}]}'  # noqa E501
-        ),
-    )
-    return mock_rest_client
+def mock_ray_data_read_datasource(mocker):
+    mock_read_datasource = mocker.patch("ray.data.read_datasource")
+    mock_read_datasource.return_value = MagicMock(spec=Dataset)
+    return mock_read_datasource
 
 
 @pytest.fixture
@@ -228,29 +240,42 @@ def setup_profile_file(tmpdir):
 
 
 def test_read_delta_sharing_tables(
-    mock_delta_sharing_datasource, mock_to_pandas, mock_rest_client, setup_profile_file
+    mock_delta_sharing_datasource, mock_ray_data_read_datasource, setup_profile_file
 ):
-    # Mock the pandas DataFrame returned by _to_pandas
-    mock_to_pandas.return_value = MagicMock()
+    url = f"{setup_profile_file}#share.schema.table"
+    limit = 100
+    version = 1
+    timestamp = "2021-01-01T00:00:00Z"
+    json_predicate_hints = '{"eventTime": "2021-04-28T23:33:48.719Z"}'
+    ray_remote_args = {"num_cpus": 2}
+    concurrency = 4
+    override_num_blocks = 2
 
-    # Call the function with test parameters
-    dataset = read_delta_sharing_tables(
-        url=f"{setup_profile_file}#share.schema.table",
-        limit=10,
-        version=1,
-        timestamp="2021-11-12T00:12:29.0Z",
+    # Call the function under test
+    result = read_delta_sharing_tables(
+        url=url,
+        limit=limit,
+        version=version,
+        timestamp=timestamp,
+        json_predicate_hints=json_predicate_hints,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
-    # Validate the results
-    mock_delta_sharing_datasource.assert_called_once_with(
-        url=f"{setup_profile_file}#share.schema.table",
-        json_predicate_hints="{}",
-        limit=10,
-        version=1,
-        timestamp="2021-11-12T00:12:29.0Z",
-    )
-    assert mock_to_pandas.called
-    assert isinstance(dataset, MagicMock)
+    # Assert the result and interactions
+    assert isinstance(result, Dataset)
+    mock_ray_data_read_datasource.assert_called_once()
+    args, kwargs = mock_ray_data_read_datasource.call_args
+    datasource = kwargs["datasource"]
+    assert datasource._url == url
+    assert datasource._json_predicate_hints == json_predicate_hints
+    assert datasource._limit == limit
+    assert datasource._version == version
+    assert datasource._timestamp == timestamp
+    assert kwargs["ray_remote_args"] == ray_remote_args
+    assert kwargs["concurrency"] == concurrency
+    assert kwargs["override_num_blocks"] == override_num_blocks
 
 
 if __name__ == "__main__":

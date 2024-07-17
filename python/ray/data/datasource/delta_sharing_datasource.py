@@ -24,33 +24,16 @@ class DeltaSharingDatasource(Datasource):
     ):
         _check_import(self, module="delta_sharing", package="delta-sharing")
 
-        from delta_sharing.converter import to_converters
-
-        self._table, self._rest_client = self.setup_delta_sharing_connections(url)
-        self._json_predicate_hints = json_predicate_hints
-
         if limit is not None:
             assert (
                 isinstance(limit, int) and limit >= 0
             ), "'limit' must be a non-negative int"
 
+        self._url = url
+        self._json_predicate_hints = json_predicate_hints
         self._limit = limit
         self._version = version
         self._timestamp = timestamp
-
-        self._response = self._rest_client.list_files_in_table(
-            self._table,
-            jsonPredicateHints=self._json_predicate_hints,
-            limitHint=self._limit,
-            version=self._version,
-            timestamp=self._timestamp,
-        )
-
-        if len(self._response.add_files) == 0 or self._limit == 0:
-            logger.warning("No files found from the delta sharing table or limit is 0")
-
-        schema_json = loads(self._response.metadata.schema_string)
-        self._converters = to_converters(schema_json)
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         return None
@@ -83,6 +66,22 @@ class DeltaSharingDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         assert parallelism > 0, f"Invalid parallelism {parallelism}"
+        from delta_sharing.converter import to_converters
+
+        self._table, self._rest_client = self.setup_delta_sharing_connections(self._url)
+        self._response = self._rest_client.list_files_in_table(
+            self._table,
+            jsonPredicateHints=self._json_predicate_hints,
+            limitHint=self._limit,
+            version=self._version,
+            timestamp=self._timestamp,
+        )
+
+        if len(self._response.add_files) == 0 or self._limit == 0:
+            logger.warning("No files found from the delta sharing table or limit is 0")
+
+        schema_json = loads(self._response.metadata.schema_string)
+        self._converters = to_converters(schema_json)
 
         read_tasks = []
         # get file list to be read in this task and preserve original chunk order
