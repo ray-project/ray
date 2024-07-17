@@ -150,6 +150,7 @@ py_test_module_list(
 
 py_test_module_list(
     size = "enormous",
+    env = {"ANYSCALE_TRACING_EXPORTER_IMPORT_PATH": ""},
     files = [
         "test_deploy_app.py",
         "test_metrics.py",
