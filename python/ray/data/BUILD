@@ -21,7 +21,7 @@ py_library(
 py_test_module_list(
     files = glob(["tests/block_batching/test_*.py"]),
     size = "medium",
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 

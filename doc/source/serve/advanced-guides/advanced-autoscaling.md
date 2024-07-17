@@ -14,9 +14,6 @@ In this section, we go into more detail about Serve autoscaling concepts as well
 
 To define what the steady state of your deployments should be, set values for `target_ongoing_requests` and `max_ongoing_requests`.
 
-#### **target_num_ongoing_requests_per_replica [default=2]**
-This parameter is renamed to `target_ongoing_requests`. `target_num_ongoing_requests_per_replica` will be removed in a future release.
-
 #### **target_ongoing_requests [default=2]**
 :::{note}
 The default for `target_ongoing_requests` changed from 1.0 to 2.0 in Ray 2.32.0. You can continue to set it manually to override the default.
@@ -29,9 +26,6 @@ Always load test your workloads. For example, if the use case is latency sensiti
 :::{note}
 As an example, suppose you have two replicas of a synchronous deployment that has 100ms latency, serving a traffic load of 30 QPS. Then Serve assigns requests to replicas faster than the replicas can finish processing them; more and more requests queue up at the replica (these requests are "ongoing requests") as time progresses, and then the average number of ongoing requests at each replica steadily increases. Latency also increases because new requests have to wait for old requests to finish processing. If you set `target_ongoing_requests = 1`, Serve detects a higher than desired number of ongoing requests per replica, and adds more replicas. At 3 replicas, your system would be able to process 30 QPS with 1 ongoing request per replica on average.
 :::
-
-#### **max_concurrent_queries [default=5] (DEPRECATED)**
-This parameter is renamed to `max_ongoing_requests`. `max_concurrent_queries` will be removed in a future release.
 
 #### **max_ongoing_requests [default=5]**
 :::{note}
