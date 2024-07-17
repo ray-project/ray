@@ -32,17 +32,10 @@ kubectl get rayservice
 # stable-diffusion-tpu-serve-svc   Running          2
 ```
 
-Retrieve the name of the RayCluster Head service
+Port-forward the Ray dashboard from the Ray head service. To view the dashboard, open http://localhost:8265/ on your local machine.
 
 ```sh
-kubectl get svc
-```
-
-Then, port-forward the Ray dashboard. To view the dashboard, open http://localhost:8265/ on your local machine.
-
-```sh
-# change the service name to match the one output under `kubectl get svc`
-kubectl port-forward svc/stable-diffusion-tpu-raycluster-ljw2r-head-svc 8265:8265 &
+kubectl port-forward svc/stable-diffusion-tpu-head-svc 8265:8265 &
 ```
 
 You may now monitor the status of the RayService in the Ray dashboard from the the 'Serve' tab. The installed RayService
