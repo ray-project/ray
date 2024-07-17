@@ -40,37 +40,6 @@ def convert_to_canonical_format(spec: SpecType):
         checked and the value will be None in the canonical format.
         - a single constraint. The constraint can be a Spec object, a type, or None.
 
-
-        Examples of canoncial format #1:
-
-        >>> spec = {'foo': int, 'bar': {'baz': None}}
-        >>> convert_to_canonical_format(spec)
-        SpecDict({'foo': TypeSpec(<class 'int'>), 'bar': SpecDict({'baz': None})})
-
-        >>> spec = ['foo', ('bar', 'baz')]
-        >>> convert_to_canonical_format(spec)
-        SpecDict({'foo': None, 'bar': SpecDict({'baz': None})})
-
-        >>> from ray.rllib.core.models.specs.specs_base import TensorSpec
-        >>> spec = {'bar': {'baz': TensorSpec('b,h', framework='torch')}}
-        >>> convert_to_canonical_format(spec)
-        SpecDict({'bar': SpecDict({'baz': TensorSpec(shape=('b', 'h'), dtype=None)})})
-
-        Example of canoncial format #2:
-
-        >>> from ray.rllib.core.models.specs.specs_base import TensorSpec
-
-        >>> spec = int
-        >>> convert_to_canonical_format(spec)
-        TypeSpec(<class 'int'>)
-
-        >>> spec = None
-        >>> convert_to_canonical_format(spec) # Returns None
-
-        >>> spec = TensorSpec('b,h', framework='torch')
-        >>> convert_to_canonical_format(spec)
-        TensorSpec(shape=('b', 'h'), dtype=None)
-
     Args:
         spec: The spec to convert to canonical format.
 
