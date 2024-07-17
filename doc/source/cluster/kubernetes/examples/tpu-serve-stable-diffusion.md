@@ -65,6 +65,6 @@ curl -LO https://raw.githubusercontent.com/ray-project/serve_config_examples/mas
 python stable_diffusion_tpu_req.py  --save_pictures
 ```
 
-* The results of the stable diffusion inference will be saved to a file named diffusion_results.png.
+* The results of the stable diffusion inference will be saved to a file named "diffusion_results.png".
 
 ![diffusion_results](../images/diffusion_results.png)
