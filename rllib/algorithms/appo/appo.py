@@ -14,7 +14,7 @@ from typing import Optional, Type
 import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
+from ray.rllib.algorithms.impala.impala import IMPALA, IMPALAConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -38,7 +38,7 @@ OLD_ACTION_DIST_KEY = "old_action_dist"
 OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 
 
-class APPOConfig(ImpalaConfig):
+class APPOConfig(IMPALAConfig):
     """Defines a configuration class from which an APPO Algorithm can be built.
 
     .. testcode::
@@ -98,7 +98,7 @@ class APPOConfig(ImpalaConfig):
         self.kl_coeff = 1.0
         self.kl_target = 0.01
 
-        # Override some of ImpalaConfig's default values with APPO-specific values.
+        # Override some of IMPALAConfig's default values with APPO-specific values.
         self.num_env_runners = 2
         self.min_time_s_per_iteration = 10
         self.num_gpus = 0
@@ -142,7 +142,7 @@ class APPOConfig(ImpalaConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(ImpalaConfig)
+    @override(IMPALAConfig)
     def training(
         self,
         *,
@@ -217,7 +217,7 @@ class APPOConfig(ImpalaConfig):
 
         return self
 
-    @override(ImpalaConfig)
+    @override(IMPALAConfig)
     def get_default_learner_class(self):
         if self.framework_str == "torch":
             from ray.rllib.algorithms.appo.torch.appo_torch_learner import (
@@ -235,7 +235,7 @@ class APPOConfig(ImpalaConfig):
                 "Use either 'torch' or 'tf2'."
             )
 
-    @override(ImpalaConfig)
+    @override(IMPALAConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.appo.torch.appo_torch_rl_module import (
@@ -261,7 +261,7 @@ class APPOConfig(ImpalaConfig):
         return super()._model_config_auto_includes | {"vf_share_layers": False}
 
 
-class APPO(Impala):
+class APPO(IMPALA):
     def __init__(self, config, *args, **kwargs):
         """Initializes an APPO instance."""
         super().__init__(config, *args, **kwargs)
@@ -275,7 +275,7 @@ class APPO(Impala):
                 lambda p, _: p.update_target()
             )
 
-    @override(Impala)
+    @override(IMPALA)
     def training_step(self) -> ResultDict:
         train_results = super().training_step()
 
@@ -336,12 +336,12 @@ class APPO(Impala):
         return train_results
 
     @classmethod
-    @override(Impala)
+    @override(IMPALA)
     def get_default_config(cls) -> AlgorithmConfig:
         return APPOConfig()
 
     @classmethod
-    @override(Impala)
+    @override(IMPALA)
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:

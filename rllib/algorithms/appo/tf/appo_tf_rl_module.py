@@ -22,7 +22,7 @@ class APPOTfRLModule(PPOTfRLModule, APPORLModule):
         super().setup()
 
         # If the module is not for inference only, set up the target networks.
-        if not self.inference_only:
+        if not self.config.inference_only:
             self.old_pi.set_weights(self.pi.get_weights())
             self.old_encoder.set_weights(self.encoder.get_weights())
             self.old_pi.trainable = False

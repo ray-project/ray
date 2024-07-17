@@ -6,10 +6,17 @@ from packaging import version
 import pathlib
 import re
 import tempfile
+from types import MappingProxyType
 from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
 import ray
 import ray.cloudpickle as pickle
+from ray.rllib.core import (
+    COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_RL_MODULE,
+)
+from ray.rllib.utils import force_list
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -83,6 +90,7 @@ class Checkpointable(abc.ABC):
     def save_to_path(
         self,
         path: Optional[Union[str, pathlib.Path]] = None,
+        *,
         state: Optional[StateDict] = None,
     ) -> str:
         """Saves the state of the implementing class (or `state`) to `path`.
@@ -100,8 +108,17 @@ class Checkpointable(abc.ABC):
                         ...
                 [component2]/
                         ...
-                [cls.METADATA_FILE_NAME].json
-                [cls.STATE_FILE_NAME].pkl
+                [cls.METADATA_FILE_NAME] (json)
+                [cls.STATE_FILE_NAME] (pkl)
+
+        The main logic is to loop through all subcomponents of this Checkpointable
+        and call their respective `save_to_path` methods. Then save the remaining
+        (non subcomponent) state to this Checkpointable's STATE_FILE_NAME.
+        In the exception that a component is a FaultTolerantActorManager instance,
+        instead of calling `save_to_path` directly on that manager, the first healthy
+        actor is interpreted as the component and its `save_to_path` method is called.
+        Even if that actor is located on another node, the created file is automatically
+        synced to the local node.
 
         Args:
             path: The path to the directory to save the state of the implementing class
@@ -141,22 +158,24 @@ class Checkpointable(abc.ABC):
             )
 
         # Get the entire state of this Checkpointable, or use provided `state`.
-        state = state or self.get_state()
+        _state_provided = state is not None
+        state = state or self.get_state(
+            not_components=[c[0] for c in self.get_checkpointable_components()]
+        )
 
         # Write components of `self` that themselves are `Checkpointable`.
-        for component_name, component in self.get_checkpointable_components():
+        for comp_name, comp in self.get_checkpointable_components():
             # If subcomponent's name is not in `state`, ignore it and don't write this
             # subcomponent's state to disk.
-            if component_name not in state:
+            if _state_provided and comp_name not in state:
                 continue
-            component_state = state.pop(component_name)
-            component_path = path / component_name
+            comp_path = path / comp_name
 
             # If component is an ActorManager, save the manager's first healthy
             # actor's state to disk (even if it's on another node, in which case, we'll
             # sync the generated file(s) back to this node).
-            if isinstance(component, FaultTolerantActorManager):
-                actor_to_use = component.healthy_actor_ids()[0]
+            if isinstance(comp, FaultTolerantActorManager):
+                actor_to_use = comp.healthy_actor_ids()[0]
 
                 def _get_ip(_=None):
                     import ray
@@ -165,7 +184,7 @@ class Checkpointable(abc.ABC):
 
                 _result = next(
                     iter(
-                        component.foreach_actor(
+                        comp.foreach_actor(
                             _get_ip,
                             remote_actor_ids=[actor_to_use],
                         )
@@ -178,31 +197,41 @@ class Checkpointable(abc.ABC):
 
                 # Save the state to a temporary location on the `actor_to_use`'s
                 # node.
-                component_state_ref = ray.put(component_state)
+                comp_state_ref = None
+                if _state_provided:
+                    comp_state_ref = ray.put(state.pop(comp_name))
 
                 if worker_ip_addr == self_ip_addr:
-                    component.foreach_actor(
-                        lambda w, _path=component_path, _state=component_state_ref: (
-                            w.save_to_path(_path, state=ray.get(_state))
+                    comp.foreach_actor(
+                        lambda w, _path=comp_path, _state=comp_state_ref: (
+                            w.save_to_path(
+                                _path,
+                                state=(
+                                    ray.get(_state)
+                                    if _state is not None
+                                    else w.get_state()
+                                ),
+                            )
                         ),
                         remote_actor_ids=[actor_to_use],
                     )
                 else:
                     # Save the checkpoint to the temporary directory on the worker.
-                    def _save(_worker, _state=component_state_ref):
+                    def _save(w, _state=comp_state_ref):
                         import tempfile
 
                         # Create a temporary directory on the worker.
                         tmpdir = tempfile.mkdtemp()
-                        _worker.save_to_path(tmpdir, state=ray.get(_state))
+                        w.save_to_path(
+                            tmpdir,
+                            state=(
+                                ray.get(_state) if _state is not None else w.get_state()
+                            ),
+                        )
                         return tmpdir
 
                     _result = next(
-                        iter(
-                            component.foreach_actor(
-                                _save, remote_actor_ids=[actor_to_use]
-                            )
-                        )
+                        iter(comp.foreach_actor(_save, remote_actor_ids=[actor_to_use]))
                     )
                     if not _result.ok:
                         raise _result.get()
@@ -213,23 +242,27 @@ class Checkpointable(abc.ABC):
                         worker_ip_addr,
                         worker_temp_dir,
                         self_ip_addr,
-                        str(component_path),
+                        str(comp_path),
                     )
 
                     # Remove the temporary directory on the worker.
-                    def _rmdir(w, _dir=worker_temp_dir):
+                    def _rmdir(_, _dir=worker_temp_dir):
                         import shutil
 
                         shutil.rmtree(_dir)
 
-                    component.foreach_actor(_rmdir, remote_actor_ids=[actor_to_use])
+                    comp.foreach_actor(_rmdir, remote_actor_ids=[actor_to_use])
 
             # Local component (instance stored in a property of `self`).
             else:
+                if _state_provided:
+                    comp_state = state.pop(comp_name)
+                else:
+                    comp_state = self.get_state(components=comp_name)[comp_name]
                 # By providing the `state` arg, we make sure that the component does not
                 # have to call its own `get_state()` anymore, but uses what's provided
                 # here.
-                component.save_to_path(path / component_name, state=component_state)
+                comp.save_to_path(comp_path, state=comp_state)
 
         # Write all the remaining state to disk.
         with open(path / self.STATE_FILE_NAME, "wb") as f:
@@ -237,8 +270,21 @@ class Checkpointable(abc.ABC):
 
         return str(path)
 
-    def restore_from_path(self, path: Union[str, pathlib.Path], **kwargs) -> None:
+    def restore_from_path(
+        self,
+        path: Union[str, pathlib.Path],
+        *,
+        component: Optional[str] = None,
+        **kwargs,
+    ) -> None:
         """Restores the state of the implementing class from the given path.
+
+        If the `component` arg is provided, `path` refers to a checkpoint of a
+        subcomponent of `self`, thus allowing the user to load only the subcomponent's
+        state into `self` without affecting any of the other state information (for
+        example, loading only the NN state into a Checkpointable, which contains such
+        an NN, but also has other state information that should NOT be changed by
+        calling this method).
 
         The given `path` should have the following structure and contain the following
         files:
@@ -254,29 +300,93 @@ class Checkpointable(abc.ABC):
                         ...
                 [component2]/
                         ...
-                [cls.STATE_FILE_NAME].pkl
+                [cls.METADATA_FILE_NAME] (json)
+                [cls.STATE_FILE_NAME] (pkl)
 
         Note that the self.METADATA_FILE_NAME file is not required to restore the state.
 
         Args:
-            path: The path to load the implementing class' state from.
+            path: The path to load the implementing class' state from or to load the
+                state of only one subcomponent's state of the implementing class (if
+                `component` is provided).
+            component: If provided, `path` is interpreted as the checkpoint path of only
+                the subcomponent and thus, only that subcomponent's state is
+                restored/loaded. All other state of `self` remains unchanged in this
+                case.
             **kwargs: Forward compatibility kwargs.
         """
         path = pathlib.Path(path)
+        if not path.is_dir():
+            raise FileNotFoundError(f"`path` ({path}) not found!")
 
         # Restore components of `self` that themselves are `Checkpointable`.
-        for component_name, component in self.get_checkpointable_components():
-            component_dir = path / component_name
-            # If subcomponent's dir is not in path, ignore it and don't restore this
-            # subcomponent's state from disk.
-            if not component_dir.is_dir():
-                continue
-            # Call `restore_from_path()` on subcomponent, thereby passing in the
-            # **kwargs.
-            component.restore_from_path(component_dir, **kwargs)
+        for comp_name, comp in self.get_checkpointable_components():
 
-        state = pickle.load(open(path / self.STATE_FILE_NAME, "rb"))
-        self.set_state(state)
+            # The value of the `component` argument for the upcoming
+            # `[subcomponent].restore_from_path(.., component=..)` call.
+            comp_arg = None
+
+            if component is None:
+                comp_dir = path / comp_name
+                # If subcomponent's dir is not in path, ignore it and don't restore this
+                # subcomponent's state from disk.
+                if not comp_dir.is_dir():
+                    continue
+            else:
+                comp_dir = path
+
+                # `component` is a path that starts with `comp` -> Remove the name of
+                # `comp` from the `component` arg in the upcoming call to `restore_..`.
+                if component.startswith(comp_name + "/"):
+                    comp_arg = component[len(comp_name) + 1 :]
+                # `component` has nothing to do with `comp` -> Skip.
+                elif component != comp_name:
+                    continue
+
+            # If component is an ActorManager, restore all the manager's healthy
+            # actors' states from disk (even if they are on another node, in which case,
+            # we'll sync checkpoint file(s) to the respective node).
+            if isinstance(comp, FaultTolerantActorManager):
+                head_node_ip = ray.util.get_node_ip_address()
+                all_healthy_actors = comp.healthy_actor_ids()
+
+                def _restore(
+                    w,
+                    _kwargs=MappingProxyType(kwargs),
+                    _path=comp_dir,
+                    _head_ip=head_node_ip,
+                    _comp_arg=comp_arg,
+                ):
+                    import ray
+                    import tempfile
+
+                    worker_node_ip = ray.util.get_node_ip_address()
+                    # If the worker is on the same node as the head, load the checkpoint
+                    # directly from the path otherwise sync the checkpoint from the head
+                    # to the worker and load it from there.
+                    if worker_node_ip == _head_ip:
+                        w.restore_from_path(_path, component=_comp_arg, **_kwargs)
+                    else:
+                        with tempfile.TemporaryDirectory() as temp_dir:
+                            sync_dir_between_nodes(
+                                _head_ip, _path, worker_node_ip, temp_dir
+                            )
+                            w.restore_from_path(
+                                temp_dir, component=_comp_arg, **_kwargs
+                            )
+
+                comp.foreach_actor(_restore, remote_actor_ids=all_healthy_actors)
+
+            # Call `restore_from_path()` on local subcomponent, thereby passing in the
+            # **kwargs.
+            else:
+                comp.restore_from_path(comp_dir, component=comp_arg, **kwargs)
+
+        # Restore the rest of the state (not based on subcomponents).
+        if component is None:
+            with open(path / self.STATE_FILE_NAME, "rb") as f:
+                state = pickle.load(f)
+            self.set_state(state)
 
     @classmethod
     def from_checkpoint(
@@ -298,7 +408,8 @@ class Checkpointable(abc.ABC):
         path = pathlib.Path(path)
 
         # Get the class constructor to call.
-        ctor_info = pickle.load(open(path / cls.CLASS_AND_CTOR_ARGS_FILE_NAME, "rb"))
+        with open(path / cls.CLASS_AND_CTOR_ARGS_FILE_NAME, "rb") as f:
+            ctor_info = pickle.load(f)
         # Construct an initial object.
         obj = ctor_info["class"](
             *ctor_info["ctor_args_and_kwargs"][0],
@@ -312,15 +423,15 @@ class Checkpointable(abc.ABC):
     @abc.abstractmethod
     def get_state(
         self,
-        components: Optional[Collection[str]] = None,
+        components: Optional[Union[str, Collection[str]]] = None,
         *,
-        not_components: Optional[Collection[str]] = None,
+        not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> StateDict:
         """Returns the implementing class's current state as a dict.
 
         Args:
-            components: An optional list of string keys to be included in the
+            components: An optional collection of string keys to be included in the
                 returned state. This might be useful, if getting certain components
                 of the state is expensive (e.g. reading/compiling the weights of a large
                 NN) and at the same time, these components are not required by the
@@ -387,6 +498,29 @@ class Checkpointable(abc.ABC):
         """
         return []
 
+    def _check_component(self, name, components, not_components) -> bool:
+        comp_list = force_list(components)
+        not_comp_list = force_list(not_components)
+        if (
+            components is None
+            or any(c.startswith(name + "/") for c in comp_list)
+            or name in comp_list
+        ) and (not_components is None or name not in not_comp_list):
+            return True
+        return False
+
+    def _get_subcomponents(self, name, components):
+        if components is None:
+            return None
+
+        components = force_list(components)
+        subcomponents = []
+        for comp in components:
+            if comp.startswith(name + "/"):
+                subcomponents.append(comp[len(name) + 1 :])
+
+        return None if not subcomponents else subcomponents
+
 
 @PublicAPI(stability="alpha")
 def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
@@ -419,26 +553,28 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         "checkpoint_dir": None,
         "state_file": None,
         "policy_ids": None,
+        "module_ids": None,
     }
 
     # `checkpoint` is a Checkpoint instance: Translate to directory and continue.
     if isinstance(checkpoint, Checkpoint):
-        checkpoint: str = checkpoint.to_directory()
+        checkpoint = checkpoint.to_directory()
+    checkpoint = pathlib.Path(checkpoint)
 
     # Checkpoint is dir.
-    if os.path.isdir(checkpoint):
-        info.update({"checkpoint_dir": checkpoint})
+    if checkpoint.is_dir():
+        info.update({"checkpoint_dir": str(checkpoint)})
 
         # Figure out whether this is an older checkpoint format
         # (with a `checkpoint-\d+` file in it).
-        for file in os.listdir(checkpoint):
-            path_file = os.path.join(checkpoint, file)
-            if os.path.isfile(path_file):
-                if re.match("checkpoint-\\d+", file):
+        for file in checkpoint.iterdir():
+            path_file = checkpoint / file
+            if path_file.is_file():
+                if re.match("checkpoint-\\d+", file.name):
                     info.update(
                         {
                             "checkpoint_version": version.Version("0.1"),
-                            "state_file": path_file,
+                            "state_file": str(path_file),
                         }
                     )
                     return info
@@ -448,8 +584,8 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         # If rllib_checkpoint.json file present, read available information from it
         # and then continue with the checkpoint analysis (possibly overriding further
         # information).
-        if os.path.isfile(os.path.join(checkpoint, "rllib_checkpoint.json")):
-            with open(os.path.join(checkpoint, "rllib_checkpoint.json")) as f:
+        if (checkpoint / "rllib_checkpoint.json").is_file():
+            with open(checkpoint / "rllib_checkpoint.json") as f:
                 rllib_checkpoint_info = json.load(fp=f)
             if "checkpoint_version" in rllib_checkpoint_info:
                 rllib_checkpoint_info["checkpoint_version"] = version.Version(
@@ -468,15 +604,13 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
         # Policy checkpoint file found.
         for extension in ["pkl", "msgpck"]:
-            if os.path.isfile(os.path.join(checkpoint, "policy_state." + extension)):
+            if (checkpoint / ("policy_state." + extension)).is_file():
                 info.update(
                     {
                         "type": "Policy",
                         "format": "cloudpickle" if extension == "pkl" else "msgpack",
                         "checkpoint_version": CHECKPOINT_VERSION,
-                        "state_file": os.path.join(
-                            checkpoint, f"policy_state.{extension}"
-                        ),
+                        "state_file": str(checkpoint / f"policy_state.{extension}"),
                     }
                 )
                 return info
@@ -484,8 +618,8 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         # Valid Algorithm checkpoint >v0 file found?
         format = None
         for extension in ["pkl", "msgpck"]:
-            state_file = os.path.join(checkpoint, f"algorithm_state.{extension}")
-            if os.path.isfile(state_file):
+            state_file = checkpoint / f"algorithm_state.{extension}"
+            if state_file.is_file():
                 format = "cloudpickle" if extension == "pkl" else "msgpack"
                 break
         if format is None:
@@ -497,32 +631,48 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         info.update(
             {
                 "format": format,
-                "state_file": state_file,
+                "state_file": str(state_file),
             }
         )
 
         # Collect all policy IDs in the sub-dir "policies/".
-        policies_dir = os.path.join(checkpoint, "policies")
-        if os.path.isdir(policies_dir):
+        policies_dir = checkpoint / "policies"
+        if policies_dir.is_dir():
             policy_ids = set()
-            for policy_id in os.listdir(policies_dir):
-                policy_ids.add(policy_id)
+            for policy_id in policies_dir.iterdir():
+                policy_ids.add(policy_id.name)
             info.update({"policy_ids": policy_ids})
+
+        # Collect all module IDs in the sub-dir "learner/module_state/".
+        modules_dir = (
+            checkpoint
+            / COMPONENT_LEARNER_GROUP
+            / COMPONENT_LEARNER
+            / COMPONENT_RL_MODULE
+        )
+        if modules_dir.is_dir():
+            module_ids = set()
+            for module_id in modules_dir.iterdir():
+                # Only add subdirs (those are the ones where the RLModule data
+                # is stored, not files (could be json metadata files).
+                if (modules_dir / module_id).is_dir():
+                    module_ids.add(module_id.name)
+            info.update({"module_ids": module_ids})
 
     # Checkpoint is a file: Use as-is (interpreting it as old Algorithm checkpoint
     # version).
-    elif os.path.isfile(checkpoint):
+    elif checkpoint.is_file():
         info.update(
             {
                 "checkpoint_version": version.Version("0.1"),
-                "checkpoint_dir": os.path.dirname(checkpoint),
-                "state_file": checkpoint,
+                "checkpoint_dir": str(checkpoint.parent),
+                "state_file": str(checkpoint),
             }
         )
 
     else:
         raise ValueError(
-            f"Given checkpoint ({checkpoint}) not found! Must be a "
+            f"Given checkpoint ({str(checkpoint)}) not found! Must be a "
             "checkpoint directory (or a file for older checkpoint versions)."
         )
 
