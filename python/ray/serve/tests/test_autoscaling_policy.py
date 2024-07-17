@@ -122,45 +122,22 @@ def check_num_requests_ge(client, id: DeploymentID, expected: int):
 
 
 class TestAutoscalingMetrics:
-    @pytest.mark.parametrize(
-        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
-        [(True, True), (True, False), (False, True)],
-    )
-    def test_basic(
-        self,
-        serve_instance,
-        use_target_num_ongoing_requests_per_replica,
-        use_target_ongoing_requests,
-    ):
+    def test_basic(self, serve_instance):
         """Test that request metrics are sent correctly to the controller."""
 
         client = serve_instance
         signal = SignalActor.remote()
 
-        autoscaling_config = {
-            "metrics_interval_s": 0.1,
-            "min_replicas": 1,
-            "max_replicas": 10,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 0,
-            "look_back_period_s": 1,
-        }
-        if (
-            use_target_ongoing_requests
-            and not use_target_num_ongoing_requests_per_replica
-        ):
-            autoscaling_config["target_ongoing_requests"] = 10
-        elif (
-            use_target_ongoing_requests and use_target_num_ongoing_requests_per_replica
-        ):
-            autoscaling_config["target_ongoing_requests"] = 10
-            # Random setting, should get ignored
-            autoscaling_config["target_num_ongoing_requests_per_replica"] = 234
-        else:
-            autoscaling_config["target_num_ongoing_requests_per_replica"] = 10
-
         @serve.deployment(
-            autoscaling_config=autoscaling_config,
+            autoscaling_config={
+                "metrics_interval_s": 0.1,
+                "min_replicas": 1,
+                "max_replicas": 10,
+                "target_ongoing_requests": 10,
+                "upscale_delay_s": 0,
+                "downscale_delay_s": 0,
+                "look_back_period_s": 1,
+            },
             # We will send many requests. This will make sure replicas are
             # killed quickly during cleanup.
             graceful_shutdown_timeout_s=1,
