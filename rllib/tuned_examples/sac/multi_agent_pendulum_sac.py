@@ -27,7 +27,7 @@ config = (
     .environment(env="multi_agent_pendulum")
     .training(
         initial_alpha=1.001,
-        lr=3e-4,
+        lr=8e-4,
         target_entropy="auto",
         n_step=1,
         tau=0.005,
@@ -46,15 +46,13 @@ config = (
             "fcnet_hiddens": [256, 256],
             "fcnet_activation": "tanh",
             "fcnet_weights_initializer": nn.init.xavier_uniform_,
-            # "post_fcnet_hiddens": [],
-            # "post_fcnet_activation": None,
-            # "post_fcnet_weights_initializer": nn.init.orthogonal_,
-            # "post_fcnet_weights_initializer_config": {"gain": 0.01},
         }
+    )
+    .resources(
+        num_cpus_for_main_process=2,
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
-        min_sample_timesteps_per_iteration=1000,
     )
 )
 
