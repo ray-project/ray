@@ -1000,7 +1000,7 @@ def iterate_with_retry(
     through the iterable, while skipping the items that have already been yielded.
 
     Args:
-        f: The function to retry.
+        iterable_factory: A no-argument function that creates the iterable.
         match: A list of strings to match in the exception message. If ``None``, any
             error is retried.
         description: An imperitive description of the function being retried. For

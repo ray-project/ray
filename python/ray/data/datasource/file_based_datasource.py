@@ -297,6 +297,8 @@ class FileBasedDatasource(Datasource):
         import pyarrow as pa
         from pyarrow.fs import HadoopFileSystem
 
+        ctx = DataContext.get_current()
+
         compression = open_args.get("compression", None)
         if compression is None:
             try:
@@ -316,7 +318,6 @@ class FileBasedDatasource(Datasource):
 
         buffer_size = open_args.pop("buffer_size", None)
         if buffer_size is None:
-            ctx = DataContext.get_current()
             buffer_size = ctx.streaming_read_buffer_size
 
         if compression == "snappy":
@@ -327,7 +328,13 @@ class FileBasedDatasource(Datasource):
         else:
             open_args["compression"] = compression
 
-        file = filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
+        file = call_with_retry(
+            lambda: filesystem.open_input_stream(
+                path, buffer_size=buffer_size, **open_args
+            ),
+            description=f"open file {path}",
+            match=ctx.retried_filesystem_errors,
+        )
 
         if compression == "snappy":
             import snappy
