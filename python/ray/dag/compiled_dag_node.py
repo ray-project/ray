@@ -900,7 +900,7 @@ class CompiledDAG:
 
         from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
 
-        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and not self._detect_deadlock():
+        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and self._detect_deadlock():
             raise ValueError(
                 "This DAG cannot be compiled because it will deadlock on NCCL "
                 "calls. If you believe this is a false positive, please disable "
@@ -1068,6 +1068,9 @@ class CompiledDAG:
 
         If you are interested in the detailed explanation, please refer to
         https://github.com/ray-project/ray/pull/45960.
+
+        Returns:
+            True if deadlock is detected, otherwise False.
         """
         assert self.idx_to_task
         assert self.actor_to_tasks
@@ -1101,6 +1104,17 @@ class CompiledDAG:
             graph[from_idx].out_edges.add(to_idx)
             graph[to_idx].in_edges.add(from_idx)
 
+        def _is_same_actor(idx1: int, idx2: int) -> bool:
+            task1 = self.idx_to_task[idx1]
+            task2 = self.idx_to_task[idx2]
+            if not isinstance(task1.dag_node, ClassMethodNode):
+                return False
+            if not isinstance(task2.dag_node, ClassMethodNode):
+                return False
+            actor_id_1 = task1.dag_node._get_actor_handle()._actor_id
+            actor_id_2 = task2.dag_node._get_actor_handle()._actor_id
+            return actor_id_1 == actor_id_2
+
         graph = defaultdict(GraphNode)
         for idx, task in self.idx_to_task.items():
             # Add an edge from task_{bind_index} to task_{bind_index+1}
@@ -1111,6 +1125,14 @@ class CompiledDAG:
                 # Add an edge from the writer to the reader.
                 _add_edge(graph, idx, downstream_idx)
                 if task.dag_node.type_hint.requires_nccl():
+                    if _is_same_actor(idx, downstream_idx):
+                        logger.error(
+                            "Detect a deadlock caused by using NCCL channels to "
+                            "transfer data between tasks on the same actor. Please "
+                            "remove `TorchTensorType(transport=\"nccl\")` between "
+                            "DAG nodes on the same actor."
+                        )
+                        return True
                     # Add an edge from the reader of an NCCL channel to the node
                     # that has the next bind index on the same actor as the writer.
                     _add_edge(graph, downstream_idx, next_task_idx)
@@ -1148,7 +1170,7 @@ class CompiledDAG:
                 "https://github.com/ray-project/ray/issues/new/."
             )
 
-        return topological_order_exists
+        return not topological_order_exists
 
     def _monitor_failures(self):
         outer = self
