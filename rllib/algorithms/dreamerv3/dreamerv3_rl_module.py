@@ -124,27 +124,40 @@ class DreamerV3RLModule(RLModule, abc.ABC):
 
     @override(RLModule)
     def input_specs_inference(self) -> SpecDict:
-        pass
+        return [Columns.OBS, Columns.STATE_IN, "is_first"]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecDict:
-        pass
+        return [Columns.ACTIONS, Columns.STATE_OUT]
 
     @override(RLModule)
     def input_specs_exploration(self):
-        pass
+        return self.input_specs_inference()
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecDict:
-        pass
+        return self.output_specs_inference()
 
     @override(RLModule)
     def input_specs_train(self) -> SpecDict:
-        pass
+        return [Columns.OBS, Columns.ACTIONS, "is_first"]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:
-        pass
+        return [
+            "sampled_obs_symlog_BxT",
+            "obs_distribution_means_BxT",
+            "reward_logits_BxT",
+            "rewards_BxT",
+            "continue_distribution_BxT",
+            "continues_BxT",
+            # Sampled, discrete posterior z-states (t1 to T).
+            "z_posterior_states_BxT",
+            "z_posterior_probs_BxT",
+            "z_prior_probs_BxT",
+            # Deterministic, continuous h-states (t1 to T).
+            "h_states_BxT",
+        ]
 
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:

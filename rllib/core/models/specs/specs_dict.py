@@ -159,7 +159,9 @@ class SpecDict(dict, Spec):
             if key not in a:
                 return False, key
             if isinstance(a[key], dict):
-                if not isinstance(b[key], dict):
+                if b[key] is None:
+                    continue
+                elif not isinstance(b[key], dict):
                     return False, key
                 res = SpecDict.is_subset(a[key], b[key])
                 if not res[0]:
