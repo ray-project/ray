@@ -235,7 +235,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi_agent_cartpole_appo_old_api_stack.py"],
     args = ["--dir=tuned_examples/appo"]
@@ -257,7 +257,7 @@ py_test(
     name = "learning_tests_cartpole_appo_fake_gpus_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo-fake-gpus.yaml"],
     args = ["--dir=tuned_examples/appo"]
@@ -347,12 +347,66 @@ py_test(
 )
 
 py_test(
+    name = "learning_tests_cartpole_dqn_gpu",
+    main = "tuned_examples/dqn/cartpole_dqn.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
+    size = "large",
+    srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+)
+
+py_test(
+    name = "learning_tests_cartpole_dqn_multi_cpu",
+    main = "tuned_examples/dqn/cartpole_dqn.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "large",
+    srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+)
+
+py_test(
+    name = "learning_tests_cartpole_dqn_multi_gpu",
+    main = "tuned_examples/dqn/cartpole_dqn.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
+    size = "large",
+    srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+)
+
+py_test(
     name = "learning_tests_multi_agent_cartpole_dqn",
     main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4"]
+)
+
+py_test(
+    name = "learning_tests_multi_agent_cartpole_dqn_gpu",
+    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
+    size = "large",
+    srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=4"]
+)
+
+py_test(
+    name = "learning_tests_multi_agent_cartpole_dqn_multi_cpu",
+    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "large",
+    srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2", "--num-cpus=5"]
+)
+
+py_test(
+    name = "learning_tests_multi_agent_cartpole_dqn_multi_gpu",
+    main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
+    size = "large",
+    srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2", "--num-cpus=5"]
 )
 
 #@OldAPIStack
@@ -597,7 +651,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=4"]
 )
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo_multi_cpu",
@@ -658,6 +712,35 @@ py_test(
 )
 
 py_test(
+    name = "learning_tests_pendulum_sac_gpu",
+    main = "tuned_examples/sac/pendulum_sac.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "gpu"],
+    size = "large",
+    srcs = ["tuned_examples/sac/pendulum_sac.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+)
+
+# Does not run (yet) due to dynamic computation graphs in SAC that get propagated 
+# thorugh backwards multiple times (problem with nn.parallel.DistributedDataParallel).
+# py_test(
+#     name = "learning_tests_pendulum_sac_multi_cpu",
+#     main = "tuned_examples/sac/pendulum_sac.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
+#     size = "large",
+#     srcs = ["tuned_examples/sac/pendulum_sac.py"],
+#     args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+# )
+
+# py_test(
+#     name = "learning_tests_pendulum_sac_multi_gpu",
+#     main = "tuned_examples/sac/pendulum_sac.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "multi_gpu"],
+#     size = "large",
+#     srcs = ["tuned_examples/sac/pendulum_sac.py"],
+#     args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+# )
+
+py_test(
     name = "learning_tests_multi_agent_pendulum_sac",
     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
@@ -667,13 +750,33 @@ py_test(
 )
 
 py_test(
-    name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
+    name = "learning_tests_multi_agent_pendulum_sac_gpu",
     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "multi_gpu"],
-    size = "large",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "gpu"],
+    size = "enormous",
     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=4"]
 )
+
+# Does not run (yet) due to dynamic computation graphs in SAC that get propagated 
+# thorugh backwards multiple times (problem with nn.parallel.DistributedDataParallel).
+# py_test(
+#     name = "learning_tests_multi_agent_pendulum_sac_multi_cpu",
+#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous"],
+#     size = "large",
+#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+#     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+# )
+
+# py_test(
+#     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
+#     main = "tuned_examples/sac/multi_agent_pendulum_sac.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_pendulum", "learning_tests_continuous", "multi_gpu"],
+#     size = "large",
+#     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
+#     args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+# )
 
 #@OldAPIStack
 py_test(
@@ -715,6 +818,63 @@ py_test(
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "medium",
     srcs = ["algorithms/tests/test_algorithm_export_checkpoint.py"],
+)
+
+py_test(
+    name ="test_algorithm_save_load_checkpoint_learner",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "medium",
+    srcs = ["algorithms/tests/test_algorithm_save_load_checkpoint_learner.py"]
+)
+
+py_test(
+    name="test_algorithm_rl_module_restore",
+    tags=["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size="large",
+    srcs=["algorithms/tests/test_algorithm_rl_module_restore.py"]
+)
+
+py_test(
+    name = "test_algorithm_imports",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_algorithm_imports.py"]
+)
+
+py_test(
+    name = "test_algorithm_checkpoint_restore_ppo",
+    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "large",
+    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestorePPO"]
+)
+
+py_test(
+    name = "test_algorithm_checkpoint_restore_ppo_gpu",
+    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "gpu"],
+    size = "large",
+    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestorePPO"]
+)
+
+py_test(
+    name = "test_algorithm_checkpoint_restore_off_policy",
+    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "large",
+    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreOffPolicy"]
+)
+
+py_test(
+    name = "test_algorithm_checkpoint_restore_off_policy_gpu",
+    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "gpu"],
+    size = "large",
+    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreOffPolicy"]
 )
 
 py_test(
@@ -1384,20 +1544,6 @@ py_test(
 )
 
 py_test(
-    name ="tests/test_algorithm_save_load_checkpoint_learner",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["tests/test_algorithm_save_load_checkpoint_learner.py"]
-)
-
-py_test(
-    name="test_algorithm_rl_module_restore",
-    tags=["team:rllib", "core"],
-    size="large",
-    srcs=["tests/test_algorithm_rl_module_restore.py"]
-)
-
-py_test(
     name = "test_bc_algorithm",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -1828,53 +1974,10 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_algorithm_imports",
-    tags = ["team:rllib", "tests_dir"],
-    size = "small",
-    srcs = ["tests/test_algorithm_imports.py"]
-)
-
-py_test(
     name = "tests/test_catalog",
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
     srcs = ["tests/test_catalog.py"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_ppo",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePPO"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_ppo_gpu",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir", "gpu"],
-    size = "large",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePPO"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_off_policy",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreOffPolicy"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_off_policy_gpu",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir", "gpu"],
-    size = "large",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreOffPolicy"]
 )
 
 py_test(

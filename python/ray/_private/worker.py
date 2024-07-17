@@ -1407,14 +1407,10 @@ def init(
 
     # Configure the logging settings for the driver process.
     if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
-        dict_config = (
-            logging_config._get_dict_config()
-            if logging_config
-            else LoggingConfig(
-                encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING
-            )._get_dict_config()
+        logging_config = logging_config or LoggingConfig(
+            encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING
         )
-        logging.config.dictConfig(dict_config)
+        logging_config._apply()
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1590,11 +1586,8 @@ def init(
 
     # Pass the logging_config to job_config to configure loggers of all worker
     # processes belonging to the job.
-    if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
-        job_config.set_py_logging_config(
-            logging_config
-            or LoggingConfig(encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING)
-        )
+    if logging_config is not None:
+        job_config.set_py_logging_config(logging_config)
 
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
