@@ -316,7 +316,7 @@ class MapOperator(OneToOneOperator, ABC):
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
             self._metrics.on_task_finished(task_index, exception)
 
-            # Estimate number of tasks from inputs received and tasks submitted so far
+            # Estimate number of tasks and rows from inputs received and tasks submitted so far
             upstream_op_num_outputs = self.input_dependencies[0].num_outputs_total()
             if upstream_op_num_outputs:
                 estimated_num_tasks = (
@@ -329,6 +329,11 @@ class MapOperator(OneToOneOperator, ABC):
                     * self._metrics.num_outputs_of_finished_tasks
                     / self._metrics.num_tasks_finished
                 )
+                # Estimate the number of output rows based on completed tasks
+                total_output_rows = sum(bundle.num_rows() for bundle in self._output_metadata)
+                self._estimated_output_num_rows = round(
+                    total_output_rows / self._metrics.num_tasks_finished * estimated_num_tasks
+                )
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
@@ -336,12 +341,6 @@ class MapOperator(OneToOneOperator, ABC):
             if task_done_callback:
                 task_done_callback()
 
-        self._data_tasks[task_index] = DataOpTask(
-            task_index,
-            gen,
-            lambda output: _output_ready_callback(task_index, output),
-            functools.partial(_task_done_callback, task_index),
-        )
 
     def _submit_metadata_task(
         self, result_ref: ObjectRef, task_done_callback: Callable[[], None]
@@ -426,6 +425,10 @@ class MapOperator(OneToOneOperator, ABC):
         # 2. The number of active tasks in the progress bar will be more accurate
         #   to reflect the actual data processing tasks.
         return len(self._data_tasks)
+    
+    @property
+    def estimated_output_num_rows(self) -> Optional[int]:
+        return getattr(self, '_estimated_output_num_rows', None)
 
 
 def _map_task(
