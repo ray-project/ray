@@ -413,7 +413,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala",
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=6"]
@@ -430,7 +430,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_impala_multi_cpu",
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-    size = "large",
+    size = "enormous",
     srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2", "--num-cpus=7"]
 )
