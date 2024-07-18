@@ -1021,6 +1021,7 @@ def iterate_with_retry(
 
                 num_items_yielded += 1
                 yield item
+            return
         except Exception as e:
             is_retryable = match is None or any(
                 [pattern in str(e) for pattern in match]
