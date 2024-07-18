@@ -64,6 +64,7 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     Connection,
     Datasource,
+    DeltaSharingDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
 )
@@ -2641,6 +2642,92 @@ def from_arrow_refs(
     return MaterializedDataset(
         ExecutionPlan(DatasetStats(metadata={"FromArrow": metadata}, parent=None)),
         logical_plan,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_delta_sharing_tables(
+    url: str,
+    *,
+    limit: Optional[int] = None,
+    version: Optional[int] = None,
+    timestamp: Optional[str] = None,
+    json_predicate_hints: Optional[str] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """
+    Read data from a Delta Sharing table.
+    Delta Sharing projct https://github.com/delta-io/delta-sharing/tree/main
+
+    This function reads data from a Delta Sharing table specified by the URL.
+    It supports various options such as limiting the number of rows, specifying
+    a version or timestamp, and configuring concurrency.
+
+    Before calling this function, ensure that the URL is correctly formatted
+    to point to the Delta Sharing table you want to access. Make sure you have
+    a valid delta_share profile in the working directory.
+
+    Examples:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            ds = ray.data.read_delta_sharing_tables(
+                url=f"your-profile.json#your-share-name.your-schema-name.your-table-name",
+                limit=100000,
+                version=1,
+            )
+
+    Args:
+        url: A URL under the format
+            "<profile-file-path>#<share-name>.<schema-name>.<table-name>".
+            Example can be found at
+            https://github.com/delta-io/delta-sharing/blob/main/README.md#quick-start
+        limit: A non-negative integer. Load only the ``limit`` rows if the
+            parameter is specified. Use this optional parameter to explore the
+            shared table without loading the entire table into memory.
+        version: A non-negative integer. Load the snapshot of the table at
+            the specified version.
+        timestamp: A timestamp to specify the version of the table to read.
+        json_predicate_hints: Predicate hints to be applied to the table. For more
+            details, see:
+            https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md#json-predicates-for-filtering.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control the number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`Dataset` containing the queried data.
+
+    Raises:
+        ValueError: If the URL is not properly formatted or if there is an issue
+            with the Delta Sharing table connection.
+    """
+
+    datasource = DeltaSharingDatasource(
+        url=url,
+        json_predicate_hints=json_predicate_hints,
+        limit=limit,
+        version=version,
+        timestamp=timestamp,
+    )
+    # DeltaSharing limit is at the add_files level, it will not return
+    # exactly the limit number of rows but it will return less files and rows.
+    return ray.data.read_datasource(
+        datasource=datasource,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 

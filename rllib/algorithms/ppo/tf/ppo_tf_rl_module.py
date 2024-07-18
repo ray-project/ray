@@ -6,10 +6,12 @@ from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR, CRITIC
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, _ = try_import_tf()
 
@@ -83,8 +85,8 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
 
         return output
 
-    @override(PPORLModule)
-    def _compute_values(self, batch, device=None):
+    @override(ValueFunctionAPI)
+    def compute_values(self, batch: Dict[str, Any]) -> TensorType:
         infos = batch.pop(Columns.INFOS, None)
         batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
         if infos is not None:

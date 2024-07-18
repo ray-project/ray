@@ -51,7 +51,8 @@ def convert_to_canonical_format(spec: SpecType):
 
         def _to_nested(tup):
             nested_dict = current = {}
-            last_dict = key = None
+            last_dict = {}
+            key = None
             for key in tup:
                 current[key] = {}
                 last_dict = current
@@ -63,6 +64,8 @@ def convert_to_canonical_format(spec: SpecType):
         for k in spec:
             if not isinstance(k, tuple):
                 spec_dict[k] = None
+            elif len(k) == 1:
+                spec_dict[k[0]] = None
             else:
                 spec_dict[k[0]] = _to_nested(k[1:])
         return SpecDict(spec_dict)
