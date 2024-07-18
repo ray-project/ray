@@ -2,7 +2,7 @@ import io
 import logging
 import uuid
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Tuple, Union
 
 import ray
 import ray.util.serialization
