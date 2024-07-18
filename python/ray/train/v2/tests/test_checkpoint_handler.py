@@ -55,7 +55,9 @@ def test_checkpoint_handler(num_workers, num_ckpt, num_dummy, num_none, expected
     checkpoint_handler = CheckpointHandler(checkpoint_manager)
 
     worker_group = DummyWorkerGroup()
-    worker_group.start(num_workers=10, resources_per_worker={"CPU": 1})
+    worker_group.start(
+        train_fn=lambda: None, num_workers=10, resources_per_worker={"CPU": 1}
+    )
     checkpoint_handler.after_worker_group_start(worker_group)
 
     worker_group_status = generate_worker_group_status(
@@ -64,7 +66,7 @@ def test_checkpoint_handler(num_workers, num_ckpt, num_dummy, num_none, expected
     with unittest.mock.patch.object(
         _CheckpointManager, "register_checkpoint"
     ) as fake_register_checkpoint:
-        checkpoint_handler.handle_poll_results(worker_group_status)
+        checkpoint_handler.after_worker_group_poll_status(worker_group_status)
         assert fake_register_checkpoint.call_count == expected
 
     checkpoint_handler.before_worker_group_shutdown(worker_group)

@@ -2,6 +2,7 @@ import abc
 from dataclasses import dataclass
 from typing import Dict
 
+from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.worker_group import WorkerGroupStatus
 from ray.train.v2.api.config import ScalingConfig
 
@@ -22,7 +23,7 @@ class ResizeDecision(ScalingDecision):
     resources_per_worker: Dict[str, float]
 
 
-class ScalingPolicy(abc.ABC):
+class ScalingPolicy(abc.ABC, ControllerCallback):
     """A policy that determines when and how to scale a worker group.
 
     This can be used to implement elasticity and fault tolerance.
@@ -48,11 +49,3 @@ class ScalingPolicy(abc.ABC):
     ) -> ScalingDecision:
         """Makes a scaling decision when monitoring healthy, running workers."""
         raise NotImplementedError
-
-    def on_controller_run_start(self):
-        """Called when the control loop is started."""
-        pass
-
-    def on_controller_shutdown(self):
-        """Called when the controller shuts down."""
-        pass

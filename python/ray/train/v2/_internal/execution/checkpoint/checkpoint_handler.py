@@ -2,14 +2,14 @@ from collections import deque
 from typing import TYPE_CHECKING, List, Optional
 
 from ray.train._internal.checkpoint_manager import _CheckpointManager
-from ray.train.v2._internal.execution.callback import SystemCallback
+from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
 
 if TYPE_CHECKING:
     from ray.train._internal.session import _TrainingResult
 
 
-class CheckpointHandler(SystemCallback):
+class CheckpointHandler(WorkerGroupCallback):
     """
     The CheckpointHandler lives on TrainController and is responsible to
     consolidate the _TrainingResults from workers and register it to the
@@ -32,7 +32,20 @@ class CheckpointHandler(SystemCallback):
         # The checkpoint manager to register the consolidated checkpoint.
         self._checkpoint_manager: _CheckpointManager = checkpoint_manager
 
-    def handle_poll_results(self, worker_group_status: WorkerGroupStatus) -> None:
+    def _update_handler_training_result_queues(
+        self, training_results: List[Optional["_TrainingResult"]]
+    ) -> None:
+        for i in range(self._num_workers):
+            if training_results[i]:
+                self._training_result_queues[i].append(training_results[i])
+
+    # --------------------------
+    # WorkerGroupCallback
+    # --------------------------
+
+    def after_worker_group_poll_status(
+        self, worker_group_status: WorkerGroupStatus
+    ) -> None:
         """Handle poll results from workers.
 
         Steps:
@@ -98,19 +111,12 @@ class CheckpointHandler(SystemCallback):
         self._checkpoint_manager.register_checkpoint(consolidated_checkpoint_result)
         # TODO Step 5: snapshot checkpoint manager metadata to storage for recovery
 
-    def _update_handler_training_result_queues(
-        self, training_results: List[Optional["_TrainingResult"]]
-    ) -> None:
-        for i in range(self._num_workers):
-            if training_results[i]:
-                self._training_result_queues[i].append(training_results[i])
+    def after_worker_group_start(self, worker_group: WorkerGroup) -> None:
+        """Handle worker group start. Initialize internal states."""
+        self._num_workers = len(worker_group)
+        self._training_result_queues = [deque() for _ in range(self._num_workers)]
 
     def before_worker_group_shutdown(self, worker_group: WorkerGroup) -> None:
         """Handle worker group shutdown. clear internal states."""
         self._num_workers = None
         self._training_result_queues = None
-
-    def after_worker_group_start(self, worker_group: WorkerGroup) -> None:
-        """Handle worker group start. Initialize internal states."""
-        self._num_workers = len(worker_group)
-        self._training_result_queues = [deque() for _ in range(self._num_workers)]

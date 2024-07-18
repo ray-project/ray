@@ -16,7 +16,11 @@ from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
 )
-from ray.train.v2._internal.execution.callback import Callback, SystemCallback
+from ray.train.v2._internal.execution.callback import (
+    Callback,
+    ControllerCallback,
+    WorkerGroupCallback,
+)
 from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
     CheckpointHandler,
 )
@@ -94,10 +98,17 @@ class TrainController:
         )
         self._checkpoint_handler = CheckpointHandler(self._checkpoint_manager)
 
-        self._system_callbacks = [self._checkpoint_handler] + [
-            c for c in self._callbacks if isinstance(c, SystemCallback)
+        # Group callbacks by the hooks they're subscribed to.
+        self._controller_hooks = [self._scaling_policy] + [
+            c for c in self._callbacks if isinstance(c, ControllerCallback)
         ]
-        self._worker_group = self.worker_group_cls(run_config=self._run_config)
+        worker_group_hooks = [self._checkpoint_handler] + [
+            c for c in self._callbacks if isinstance(c, WorkerGroupCallback)
+        ]
+
+        self._worker_group = self.worker_group_cls(
+            run_config=self._run_config, callbacks=worker_group_hooks
+        )
         self._state = TrainControllerState.INITIALIZING
 
         self._latest_poll_time = float("-inf")
@@ -106,8 +117,15 @@ class TrainController:
         )
         self._training_failed_error: Optional[TrainingFailedError] = None
 
-    def _execute_scaling_decision(self, decision: ScalingDecision):
+    def _execute_scaling_decision(
+        self, decision: ScalingDecision, worker_group_status: WorkerGroupStatus
+    ):
         """Executes scaling decisions."""
+        for callback in self._controller_hooks:
+            callback.before_controller_execute_scaling_decision(
+                decision, worker_group_status
+            )
+
         if isinstance(decision, ResizeDecision):
             self._restart_worker_group(
                 num_workers=decision.num_workers,
@@ -119,6 +137,11 @@ class TrainController:
     ):
         """Executes failure handling decisions (ex: restart, terminate)."""
         assert worker_group_status.errors
+
+        for callback in self._controller_hooks:
+            callback.before_controller_execute_failure_decision(
+                failure_decision, worker_group_status
+            )
 
         if failure_decision == FailureDecision.NOOP:
             assert self._state == TrainControllerState.RUNNING
@@ -138,7 +161,7 @@ class TrainController:
                 f"{errors_str}"
             )
             # Shutdown the worker group so that we don't keep polling errored tasks.
-            self._maybe_shutdown_worker_group()
+            self._worker_group.shutdown()
             self._set_state(TrainControllerState.RECOVERING)
         elif failure_decision == FailureDecision.RAISE:
             logger.error(
@@ -168,7 +191,7 @@ class TrainController:
 
     def _restart_worker_group(self, num_workers: int, resources_per_worker: dict):
         """Restart the worker group and launch the train function."""
-        self._maybe_shutdown_worker_group()
+        self._worker_group.shutdown()
 
         # If there's a latest checkpoint that's been committed,
         # use it to restore the worker group.
@@ -180,6 +203,7 @@ class TrainController:
         # Start the worker group with the latest checkpoint.
         try:
             self._worker_group.start(
+                train_fn=self._train_fn,
                 num_workers=num_workers,
                 resources_per_worker=resources_per_worker,
                 checkpoint=latest_checkpoint,
@@ -188,26 +212,23 @@ class TrainController:
             logger.exception("Worker group startup failed:")
 
             # TODO: Should this logic go through the failure policy?
+            # The current logic will always try recovering unconditionally
+            # on startup errors without a retry limit.
             self._set_state(TrainControllerState.RECOVERING)
             return
 
-        for callback in self._system_callbacks:
-            callback.after_worker_group_start(self._worker_group)
-
-        self._worker_group.run_train_fn(self._train_fn)
         # TODO: Consider starting the worker group asynchronously.
         self._set_state(TrainControllerState.RUNNING)
 
-    def _maybe_shutdown_worker_group(self):
-        if self._worker_group.has_started():
-            for callback in self._system_callbacks:
-                callback.before_worker_group_shutdown(self._worker_group)
-
-            self._worker_group.shutdown()
+    def _start(self):
+        for callback in self._controller_hooks:
+            callback.after_controller_start()
 
     def _shutdown(self):
-        self._maybe_shutdown_worker_group()
-        self._scaling_policy.on_controller_shutdown()
+        self._worker_group.shutdown()
+
+        for callback in self._controller_hooks:
+            callback.before_controller_shutdown()
 
     def get_worker_group(self) -> WorkerGroup:
         return self._worker_group
@@ -216,7 +237,11 @@ class TrainController:
         return self._state
 
     def _set_state(self, state: TrainControllerState):
+        previous_state = self._state
         self._state = state
+
+        for callback in self._controller_hooks:
+            callback.after_controller_state_update(previous_state, state)
 
     def _run_control_loop_iteration(self):
         """Run a single iteration of the control loop.
@@ -238,11 +263,6 @@ class TrainController:
 
         worker_group_status = self._poll_workers()
 
-        # TODO: Better structure for the order of all handlers post processing.
-        # the worker group status.
-        if self.get_state() == TrainControllerState.RUNNING:
-            self._checkpoint_handler.handle_poll_results(worker_group_status)
-
         if worker_group_status.finished and not worker_group_status.errors:
             self._set_state(TrainControllerState.FINISHED)
             return
@@ -256,7 +276,7 @@ class TrainController:
                     worker_group_status
                 )
             )
-            self._execute_scaling_decision(scaling_decision)
+            self._execute_scaling_decision(scaling_decision, worker_group_status)
         elif self.get_state() == TrainControllerState.RUNNING:
             if worker_group_status.errors:
                 failure_decision = self._failure_policy.make_decision(
@@ -269,12 +289,12 @@ class TrainController:
                         worker_group_status
                     )
                 )
-                self._execute_scaling_decision(scaling_decision)
+                self._execute_scaling_decision(scaling_decision, worker_group_status)
 
     @wrap_auto_init
     def run(self):
         """Run the main control loop. Exits when training is finished or errored."""
-        self._scaling_policy.on_controller_run_start()
+        self._start()
 
         while self.get_state() not in (
             TrainControllerState.ERRORED,

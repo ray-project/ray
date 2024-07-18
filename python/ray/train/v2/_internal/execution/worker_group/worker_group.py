@@ -21,6 +21,7 @@ from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckFailedError,
     WorkerHealthCheckTimeoutError,
 )
+from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import DistributedContext, StorageContext
 from ray.train.v2._internal.execution.worker_group.worker import (
@@ -97,6 +98,7 @@ class WorkerGroup:
     def __init__(
         self,
         run_config: Optional[RunConfig] = None,
+        callbacks: Optional[List[WorkerGroupCallback]] = None,
     ):
         self._run_config = run_config or RunConfig()
         self._storage_context = StorageContext(
@@ -104,6 +106,7 @@ class WorkerGroup:
             experiment_dir_name=self._run_config.name,
             storage_filesystem=self._run_config.storage_filesystem,
         )
+        self._callbacks = callbacks or []
 
         # List of workers in this worker group.
         # These should always be in sorted order by world rank.
@@ -111,6 +114,7 @@ class WorkerGroup:
 
         self._latest_start_time = float("-inf")
         self._pg = None
+        self._sync_actor = None
 
         # Maps world rank to the ongoing poll task.
         self._world_rank_to_ongoing_poll: Dict[int, PollTask] = {}
@@ -177,14 +181,11 @@ class WorkerGroup:
             )
             for worker in self._workers
         ]
-        try:
-            ray.get(context_init_tasks)
-        except RayActorError as actor_error:
-            self.shutdown()
-            raise WorkerGroupStartupFailedError from actor_error
+        ray.get(context_init_tasks)
 
     def start(
         self,
+        train_fn: Callable[[], None],
         num_workers: int,
         resources_per_worker: dict,
         checkpoint: Optional[Checkpoint] = None,
@@ -236,7 +237,32 @@ class WorkerGroup:
         ).remote()
 
         self._workers = self._create_workers(num_workers, remote_actor_cls)
-        self._init_train_context_on_workers(checkpoint)
+
+        # All the ray.get calls in this try block can possibly error if the
+        # worker actors die during initialization.
+        # To prevent the driver from crashing, catch all `RayActorError`s and
+        # raise a specially handled error to the controller.
+        try:
+            self._init_train_context_on_workers(checkpoint)
+
+            for callback in self._callbacks:
+                callback.after_worker_group_start(self)
+
+            # Launch the training function on each worker.
+            # This task should start a worker thread and return immediately.
+            ray.get(
+                [worker.actor.run_train_fn.remote(train_fn) for worker in self._workers]
+            )
+
+            for callback in self._callbacks:
+                callback.after_worker_group_training_start(self)
+        except RayActorError as actor_error:
+            self.shutdown()
+
+            error_msg = "At least one of the worker actors failed to initialize."
+            raise WorkerGroupStartupFailedError(error_msg) from actor_error
+
+        self._latest_start_time = time_monotonic()
 
     @classmethod
     def _sort_workers_by_node_id_and_gpu_id(
@@ -338,6 +364,10 @@ class WorkerGroup:
                 this is less than or equal to 0, immediately force kill all
                 workers.
         """
+        if self._workers:
+            for callback in self._callbacks:
+                callback.before_worker_group_shutdown(self)
+
         logger.debug(f"Shutting down {len(self._workers)} workers.")
         if patience_s <= 0:
             for worker in self._workers:
@@ -371,17 +401,6 @@ class WorkerGroup:
     def _assert_workers_started(self):
         if not self._workers:
             raise ValueError("Workers not started.")
-
-    def run_train_fn(self, train_fn: Callable):
-        self._assert_workers_started()
-
-        # Launch the training function on each worker.
-        # This task should start a worker thread and return immediately.
-        ray.get(
-            [worker.actor.run_train_fn.remote(train_fn) for worker in self._workers]
-        )
-
-        self._latest_start_time = time_monotonic()
 
     def _get_poll_tasks(self) -> List[ObjectRef]:
         """Get the poll tasks for each worker.
@@ -508,7 +527,7 @@ class WorkerGroup:
 
         poll_results = self._poll_workers_and_collect_errors(timeout)
 
-        return WorkerGroupStatus(
+        worker_group_status = WorkerGroupStatus(
             num_workers=len(self._workers),
             latest_start_time=self._latest_start_time,
             worker_statuses={
@@ -516,6 +535,11 @@ class WorkerGroup:
                 for world_rank, worker_status in enumerate(poll_results)
             },
         )
+
+        for callback in self._callbacks:
+            callback.after_worker_group_poll_status(worker_group_status)
+
+        return worker_group_status
 
     def execute_async(self, fn: Callable, *fn_args, **fn_kwargs) -> List[ObjectRef]:
         """Execute ``func`` on each worker and return the futures.

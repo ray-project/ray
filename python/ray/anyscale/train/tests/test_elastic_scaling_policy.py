@@ -9,13 +9,14 @@ from ray.anyscale.train._internal.execution.scaling_policy.autoscaling_requester
 from ray.anyscale.train._internal.execution.scaling_policy.elastic import (
     ElasticScalingPolicy,
 )
+from ray.anyscale.train.api.config import ScalingConfig
+from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.scaling_policy import NoopDecision, ResizeDecision
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupStatus,
     WorkerStatus,
 )
 from ray.train.v2._internal.util import time_monotonic
-from ray.train.v2.api.config import ScalingConfig
 
 
 class MockAutoscalingRequester(AutoscalingRequester):
@@ -232,14 +233,15 @@ def test_request_and_clear():
             use_gpu=True, resources_per_worker=resources_per_worker, num_workers=(2, 4)
         )
     )
+    assert isinstance(policy, ControllerCallback)
 
-    policy.on_controller_run_start()
+    policy.after_controller_start()
     assert (
         policy.autoscaling_requester.get_requested_bundles()
         == [resources_per_worker] * 4
     )
 
-    policy.on_controller_shutdown()
+    policy.before_controller_shutdown()
     assert policy.autoscaling_requester.get_requested_bundles() == []
 
 

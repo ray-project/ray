@@ -1,14 +1,14 @@
 import logging
 import os
 
-from ray.train.v2._internal.execution.callback import SystemCallback
+from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.worker_group import WorkerGroup
 
 logger = logging.getLogger(__name__)
 
 
-class WorkingDirectorySetupCallback(SystemCallback):
+class WorkingDirectorySetupCallback(WorkerGroupCallback):
     def after_worker_group_start(self, worker_group: WorkerGroup):
         def chdir_to_working_dir() -> None:
             """Create the local working directory for the experiment."""

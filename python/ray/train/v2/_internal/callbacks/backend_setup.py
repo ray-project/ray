@@ -2,13 +2,13 @@ import logging
 
 from ray.exceptions import RayActorError
 from ray.train.backend import BackendConfig
-from ray.train.v2._internal.execution.callback import SystemCallback
+from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.worker_group import WorkerGroup
 
 logger = logging.getLogger(__name__)
 
 
-class BackendSetupCallback(SystemCallback):
+class BackendSetupCallback(WorkerGroupCallback):
     def __init__(self, backend_config: BackendConfig):
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()

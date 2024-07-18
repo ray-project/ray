@@ -72,6 +72,8 @@ class DataParallelTrainer:
             working_directory_setup_callback = WorkingDirectorySetupCallback()
             callbacks.append(working_directory_setup_callback)
 
+        # TODO: Add support for user-defined callbacks
+
         controller = TrainController(
             train_fn=train_fn,
             scaling_policy=create_scaling_policy(self.scaling_config),

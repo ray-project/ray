@@ -6,11 +6,11 @@ from ray.air.config import RunConfig as RunConfigV1
 from ray.air.config import SampleRange
 from ray.air.config import ScalingConfig as ScalingConfigV1
 from ray.train.v2._internal.constants import _UNSUPPORTED
+from ray.train.v2._internal.execution.callback import Callback
 from ray.train.v2._internal.util import date_str
 
 if TYPE_CHECKING:
     from ray.train import SyncConfig
-    from ray.tune.callback import Callback
     from ray.tune.experimental.output import AirVerbosity
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.stopper import Stopper
@@ -114,15 +114,14 @@ class RunConfig(RunConfigV1):
             prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
         checkpoint_config: Checkpointing configuration.
-
     """
 
+    callbacks: Optional[List["Callback"]] = _UNSUPPORTED
     sync_config: Optional["SyncConfig"] = _UNSUPPORTED
     verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = _UNSUPPORTED
     stop: Optional[
         Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]
     ] = _UNSUPPORTED
-    callbacks: Optional[List["Callback"]] = _UNSUPPORTED
     progress_reporter: Optional["ProgressReporter"] = _UNSUPPORTED
     log_to_file: Union[bool, str, Tuple[str, str]] = _UNSUPPORTED
 
@@ -130,10 +129,10 @@ class RunConfig(RunConfigV1):
         super().__post_init__()
 
         unsupported_params = [
+            "callbacks",
             "sync_config",
             "verbose",
             "stop",
-            "callbacks",
             "progress_reporter",
             "log_to_file",
         ]

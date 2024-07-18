@@ -5,6 +5,7 @@ import time
 import pytest
 
 import ray
+from ray.exceptions import RayActorError
 from ray.train.v2._internal.constants import (
     ENV_VARS_TO_PROPAGATE,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
@@ -16,6 +17,7 @@ from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckFailedError,
     WorkerHealthCheckTimeoutError,
 )
+from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.context import get_train_context
 from ray.train.v2._internal.execution.worker_group import (
     ActorMetadata,
@@ -33,7 +35,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-def test_start_failure():
+def test_actor_start_failure():
     class FailingWorker(RayTrainWorker):
         def __init__(self):
             raise RuntimeError("Worker failed to start.")
@@ -42,28 +44,55 @@ def test_start_failure():
     wg._worker_cls = FailingWorker
 
     with pytest.raises(WorkerGroupStartupFailedError):
-        wg.start(num_workers=4, resources_per_worker={"CPU": 1})
+        wg.start(train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 1})
+
+
+@pytest.mark.parametrize("error_type", [RayActorError, RuntimeError])
+def test_callback_start_failure(error_type):
+    class FailingCallback(WorkerGroupCallback):
+        def after_worker_group_start(self, worker_group):
+            raise error_type
+
+    wg = WorkerGroup(callbacks=[FailingCallback()])
+
+    if error_type is RayActorError:
+        # Actor errors are wrapped in WorkerGroupStartupFailedError.
+        with pytest.raises(WorkerGroupStartupFailedError):
+            wg.start(
+                train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 1}
+            )
+    else:
+        # Other errors are bugs in user code and should not be wrapped.
+        with pytest.raises(error_type):
+            wg.start(
+                train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 1}
+            )
+
+    wg.shutdown()
 
 
 def test_start_timeout(monkeypatch):
-    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0")
+    from ray.util.placement_group import PlacementGroup
 
-    class HangingWorker(RayTrainWorker):
-        def __init__(self):
-            super().__init__()
-            time.sleep(60)
+    @ray.remote(num_cpus=0)
+    def hanging_task(*args, **kwargs):
+        time.sleep(60)
+
+    monkeypatch.setenv(WORKER_GROUP_START_TIMEOUT_S_ENV_VAR, "0.1")
+    monkeypatch.setattr(PlacementGroup, "ready", hanging_task.remote)
 
     wg = WorkerGroup()
-    wg._worker_cls = HangingWorker
 
     with pytest.raises(WorkerGroupStartupTimeoutError):
-        wg.start(num_workers=4, resources_per_worker={"CPU": 1})
+        # Not enough CPU resources are available, so the workers will not start.
+        wg.start(train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 4})
 
 
 def test_poll_status_running():
     wg = WorkerGroup()
-    wg.start(num_workers=4, resources_per_worker={"CPU": 1})
-    wg.run_train_fn(lambda: time.sleep(60))
+    wg.start(
+        train_fn=lambda: time.sleep(60), num_workers=4, resources_per_worker={"CPU": 1}
+    )
     status = wg.poll_status()
     wg.shutdown()
 
@@ -74,8 +103,7 @@ def test_poll_status_running():
 
 def test_poll_status_finished():
     wg = WorkerGroup()
-    wg.start(num_workers=4, resources_per_worker={"CPU": 1})
-    wg.run_train_fn(lambda: "done")
+    wg.start(train_fn=lambda: "done", num_workers=4, resources_per_worker={"CPU": 1})
 
     # Wait for the workers to finish the training fn before polling.
     # Otherwise, the poll_status call may return before the workers finish.
@@ -105,8 +133,7 @@ def test_poll_status_failures(monkeypatch, training_failure, poll_failure):
         monkeypatch.setattr(RayTrainWorker, "poll_status", patched_poll_status)
 
     wg = WorkerGroup()
-    wg.start(num_workers=4, resources_per_worker={"CPU": 1})
-    wg.run_train_fn(train_fn)
+    wg.start(train_fn=train_fn, num_workers=4, resources_per_worker={"CPU": 1})
     while not wg.poll_status().finished:
         time.sleep(0.01)
 
@@ -145,8 +172,7 @@ def test_poll_status_healthcheck_timeout(monkeypatch):
 
     # Try 2x to ensure that shutdown clears the health-check miss count.
     for _ in range(2):
-        wg.start(num_workers=4, resources_per_worker={"CPU": 1})
-        wg.run_train_fn(lambda: None)
+        wg.start(train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 1})
 
         status = wg.poll_status(timeout=0.01)
 
@@ -275,7 +301,9 @@ def test_setup_worker_group(tmp_path):
     worker_group = WorkerGroup(
         run_config=RunConfig(name="test", storage_path=str(tmp_path))
     )
-    worker_group.start(num_workers=num_workers, resources_per_worker={"CPU": 1})
+    worker_group.start(
+        train_fn=lambda: None, num_workers=num_workers, resources_per_worker={"CPU": 1}
+    )
 
     def get_world_size():
         return ray.train.get_context().get_world_size()
@@ -297,15 +325,13 @@ def test_setup_worker_group(tmp_path):
 def test_flush_worker_result_queue(queue_backlog_length):
     """Make sure that the result queue is fully consumed before the worker exits."""
     wg = WorkerGroup()
-    wg.start(num_workers=4, resources_per_worker={"CPU": 1})
+    wg.start(train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 1})
 
     def populate_result_queue():
         get_train_context().get_result_queue().put("result")
 
     for _ in range(queue_backlog_length):
         wg.execute(populate_result_queue)
-
-    wg.run_train_fn(lambda: None)
 
     for _ in range(queue_backlog_length):
         status = wg.poll_status()
@@ -326,11 +352,46 @@ def test_env_var_propagation(monkeypatch):
     test_env_var = ENV_VARS_TO_PROPAGATE[0]
     monkeypatch.setenv(test_env_var, "1")
     w = WorkerGroup()
-    w.start(num_workers=4, resources_per_worker={"CPU": 1})
+    w.start(train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 1})
     env_vars = w.execute(lambda: os.environ.get(test_env_var))
     w.shutdown()
 
     assert env_vars == ["1"] * 4
+
+
+def test_worker_group_callback():
+    """Check that all worker group callback hooks are called."""
+
+    class AssertCallback(WorkerGroupCallback):
+        def __init__(self):
+            self.start_hook_called = False
+            self.training_start_hook_called = False
+            self.shutdown_hook_called = False
+            self.poll_status_hook_called = False
+
+        def after_worker_group_start(self, worker_group):
+            self.start_hook_called = True
+
+        def after_worker_group_training_start(self, worker_group):
+            self.training_start_hook_called = True
+
+        def before_worker_group_shutdown(self, worker_group):
+            self.shutdown_hook_called = True
+
+        def after_worker_group_poll_status(self, worker_group_status):
+            assert worker_group_status.num_workers == 4
+            self.poll_status_hook_called = True
+
+    hooks = AssertCallback()
+    wg = WorkerGroup(callbacks=[hooks])
+
+    wg.start(train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 1})
+    assert hooks.start_hook_called
+    assert hooks.training_start_hook_called
+    wg.poll_status()
+    assert hooks.poll_status_hook_called
+    wg.shutdown()
+    assert hooks.shutdown_hook_called
 
 
 if __name__ == "__main__":

@@ -118,7 +118,11 @@ class ElasticScalingPolicy(ScalingPolicy):
         )
         return decision
 
-    def on_controller_run_start(self):
+    # --------------------------
+    # ControllerCallback
+    # --------------------------
+
+    def after_controller_start(self):
         """Send cluster autoscaling requests when the control loop starts."""
         resources_per_worker = self.scaling_config._resources_per_worker_not_none
         max_workers = self.scaling_config.max_workers
@@ -134,7 +138,7 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         self.autoscaling_requester.request(bundles=[resources_per_worker] * max_workers)
 
-    def on_controller_shutdown(self):
+    def before_controller_shutdown(self):
         """Clear the autoscaling request when the control loop shuts down.
         If this is not cleared, the autoscaler will keep trying to upscale the cluster,
         and idle nodes will not be removed."""

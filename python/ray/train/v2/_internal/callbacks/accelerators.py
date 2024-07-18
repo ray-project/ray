@@ -8,14 +8,14 @@ import ray._private.ray_constants as ray_constants
 from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig
 from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
-from ray.train.v2._internal.execution.callback import SystemCallback
+from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, WorkerGroup
 from ray.train.v2.api.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
 
 
-class AcceleratorSetupCallback(SystemCallback):
+class AcceleratorSetupCallback(WorkerGroupCallback):
     """Perform accelerator setup for workers.
 
     For example, this callback can be used to share CUDA_VISIBLE_DEVICES
@@ -26,7 +26,7 @@ class AcceleratorSetupCallback(SystemCallback):
         self._backend = backend_config.backend_cls()
         self._scaling_config = scaling_config
 
-    def on_worker_group_start(self, worker_group: WorkerGroup):
+    def after_worker_group_start(self, worker_group: WorkerGroup):
         self._maybe_share_cuda_visible_devices(worker_group)
         # TODO: Add support for sharing other accelerator resources.
 

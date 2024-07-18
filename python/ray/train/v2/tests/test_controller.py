@@ -8,6 +8,7 @@ from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
     WorkerGroupStartupTimeoutError,
 )
+from ray.train.v2._internal.execution.callback import ControllerCallback
 from ray.train.v2._internal.execution.controller import (
     TrainController,
     TrainControllerState,
@@ -31,16 +32,14 @@ from ray.train.v2.api.config import ScalingConfig
 
 
 class DummyWorkerGroup:
-    def __init__(self, run_config=None):
+    def __init__(self, run_config=None, callbacks=None):
         self._active = False
         self._num_workers = 0
         self._latest_start_time = float("-inf")
         self._worker_statuses = {}
+        self._callbacks = callbacks or []
 
         self._start_failure = None
-
-    def run_train_fn(self, train_fn):
-        pass
 
     def poll_status(self, timeout: Optional[float] = None) -> WorkerGroupStatus:
         return WorkerGroupStatus(
@@ -49,7 +48,7 @@ class DummyWorkerGroup:
             worker_statuses=self._worker_statuses,
         )
 
-    def start(self, num_workers, resources_per_worker, checkpoint=None):
+    def start(self, train_fn, num_workers, resources_per_worker, checkpoint=None):
         if self._start_failure:
             raise self._start_failure
 
@@ -141,7 +140,6 @@ def test_resize():
     worker_group = controller.get_worker_group()
 
     controller._checkpoint_handler = MagicMock()
-    controller._system_callbacks = []
 
     decisions = [
         NoopDecision(),
@@ -190,7 +188,6 @@ def test_failure_handling():
     worker_group = controller.get_worker_group()
 
     controller._checkpoint_handler = MagicMock()
-    controller._system_callbacks = []
 
     assert controller.get_state() == TrainControllerState.INITIALIZING
     scaling_policy.queue_recovery_decision(
@@ -229,7 +226,6 @@ def test_worker_group_start_failure(error_type):
         failure_policy=failure_policy,
     )
     controller._checkpoint_handler = MagicMock()
-    controller._system_callbacks = []
 
     worker_group: DummyWorkerGroup = controller.get_worker_group()
     worker_group.set_start_failure(error_type)
@@ -266,6 +262,83 @@ def test_poll_frequency(monkeypatch):
 
     # No sleep calls for the first poll
     assert len(sleep_calls) == num_polls - 1
+
+
+def test_controller_callback():
+    """Check that all controller callback hooks are called."""
+
+    class AssertCallback(ControllerCallback):
+        def __init__(self):
+            self.start_called = False
+            self.latest_state_update = None
+            self.failure_decision_called = False
+            self.scaling_decision_called = False
+            self.shutdown_called = False
+
+        def after_controller_start(self):
+            self.start_called = True
+
+        def after_controller_state_update(
+            self,
+            previous_state: TrainControllerState,
+            current_state: TrainControllerState,
+        ):
+            self.latest_state_update = (previous_state, current_state)
+
+        def before_controller_execute_failure_decision(
+            self,
+            failure_decision: FailureDecision,
+            worker_group_status: WorkerGroupStatus,
+        ):
+            self.failure_decision_called = True
+
+        def before_controller_execute_scaling_decision(
+            self,
+            scaling_decision: ScalingDecision,
+            worker_group_status: WorkerGroupStatus,
+        ):
+            self.scaling_decision_called = True
+
+        def before_controller_shutdown(self):
+            self.shutdown_called = True
+
+    callback = AssertCallback()
+
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    controller = TrainController(
+        train_fn=lambda: None,
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+        callbacks=[callback],
+    )
+    controller._checkpoint_handler = MagicMock()
+    worker_group = controller.get_worker_group()
+
+    controller._start()
+    assert callback.start_called
+
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+    controller._run_control_loop_iteration()
+    assert callback.scaling_decision_called
+    assert callback.latest_state_update == (
+        TrainControllerState.INITIALIZING,
+        TrainControllerState.RUNNING,
+    )
+
+    worker_group.error_worker(1)
+    failure_policy.queue_decision(FailureDecision.RAISE)
+    controller._run_control_loop_iteration()
+    assert callback.failure_decision_called
+    assert callback.latest_state_update == (
+        TrainControllerState.RUNNING,
+        TrainControllerState.ERRORED,
+    )
+
+    controller._shutdown()
+    assert callback.shutdown_called
 
 
 if __name__ == "__main__":
