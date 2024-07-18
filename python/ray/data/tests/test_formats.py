@@ -306,15 +306,15 @@ def test_write_datasink_ray_remote_args(ray_start_cluster):
 def test_read_s3_file_error(shutdown_only, s3_path):
     dummy_path = s3_path + "_dummy"
     error_message = "Please check that file exists and has properly configured access."
-    with pytest.raises(OSError, match=error_message):
+    with pytest.raises(KeyError, match=error_message):
         ray.data.read_parquet(dummy_path)
-    with pytest.raises(OSError, match=error_message):
+    with pytest.raises(KeyError, match=error_message):
         ray.data.read_binary_files(dummy_path)
-    with pytest.raises(OSError, match=error_message):
+    with pytest.raises(KeyError, match=error_message):
         ray.data.read_csv(dummy_path)
-    with pytest.raises(OSError, match=error_message):
+    with pytest.raises(KeyError, match=error_message):
         ray.data.read_json(dummy_path)
-    with pytest.raises(OSError, match=error_message):
+    with pytest.raises(KeyError, match=error_message):
         error = OSError(
             f"Error creating dataset. Could not read schema from {dummy_path}: AWS "
             "Error [code 15]: No response body.. Is this a 'parquet' file?"
