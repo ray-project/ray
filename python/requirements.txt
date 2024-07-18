@@ -11,7 +11,7 @@ click>=7.0
 filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
-packaging
+packaging==23.0
 protobuf!=3.19.5,>=3.15.3
 pyyaml
 aiosignal
