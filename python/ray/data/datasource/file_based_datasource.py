@@ -333,7 +333,7 @@ class FileBasedDatasource(Datasource):
                 path, buffer_size=buffer_size, **open_args
             ),
             description=f"open file {path}",
-            match=ctx.retried_filesystem_errors,
+            match=ctx.retried_io_errors,
         )
 
         if compression == "snappy":
@@ -518,7 +518,7 @@ def _open_file_with_retry(
     return call_with_retry(
         open_file,
         description=f"open file {file_path}",
-        match=DataContext.get_current().retried_filesystem_errors,
+        match=DataContext.get_current().retried_io_errors,
         max_attempts=OPEN_FILE_MAX_ATTEMPTS,
         max_backoff_s=OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
     )

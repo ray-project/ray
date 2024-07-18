@@ -511,7 +511,7 @@ def _read_fragments(
         # way to retry specific batches.
         ctx = ray.data.DataContext.get_current()
         for batch in iterate_with_retry(
-            get_batch_iterable, "load batch", match=ctx.retried_filesystem_errors
+            get_batch_iterable, "load batch", match=ctx.retried_io_errors
         ):
             table = pa.Table.from_batches([batch], schema=schema)
             if include_paths:

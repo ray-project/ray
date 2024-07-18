@@ -424,7 +424,7 @@ def _get_file_infos(
         file_info = call_with_retry(
             lambda: filesystem.get_file_info(path),
             description="get file info",
-            match=ctx.retried_filesystem_errors,
+            match=ctx.retried_io_errors,
         )
     except OSError as e:
         _handle_read_os_error(e, path)

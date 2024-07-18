@@ -94,7 +94,7 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error UNKNOWN (HTTP status 503)",
 )
 
-DEFAULT_RETRIED_FILESYSTEM_ERRORS = (
+DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error INTERNAL_FAILURE",
     "AWS Error NETWORK_CONNECTION",
     "AWS Error SLOW_DOWN",
@@ -241,7 +241,7 @@ class DataContext:
             call is made with a S3 URI.
         wait_for_min_actors_s: The default time to wait for minimum requested
             actors to start before raising a timeout, in seconds.
-        retried_filesystem_errors: A list of substrings of error messages that should
+        retried_io_errors: A list of substrings of error messages that should
             trigger a retry when reading or writing files. This is useful for handling
             transient errors when reading from remote storage systems.
     """
@@ -290,7 +290,7 @@ class DataContext:
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
-    retried_filesystem_errors: List[str] = DEFAULT_RETRIED_FILESYSTEM_ERRORS
+    retried_io_errors: List[str] = DEFAULT_RETRIED_IO_ERRORS
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -314,7 +314,7 @@ class DataContext:
         ):
             warnings.warn(
                 "`write_file_retry_on_errors` is deprecated. Configure "
-                "`retried_filesystem_errors` instead.",
+                "`retried_io_errors` instead.",
                 DeprecationWarning,
             )
 
