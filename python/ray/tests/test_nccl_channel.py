@@ -21,6 +21,14 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 logger = logging.getLogger(__name__)
 
 
+def get_actor_node_id(actor_handle: "ray.actor.ActorHandle") -> str:
+    return ray.get(
+        actor_handle.__ray_call__.remote(
+            lambda self: ray.get_runtime_context().get_node_id()
+        )
+    )
+
+
 @ray.remote(num_cpus=0, num_gpus=1)
 class Worker:
     def __init__(self):
@@ -34,12 +42,14 @@ class Worker:
         self.chan = chan
 
     def create_nccl_channel(
-        self, typ: TorchTensorType, readers: List[ray.actor.ActorHandle]
+        self,
+        typ: TorchTensorType,
+        reader_to_node: List[Tuple[ray.actor.ActorHandle, str]],
     ):
         typ.register_custom_serializer()
         self.chan = typ.create_channel(
             ray.get_runtime_context().current_actor,
-            readers,
+            reader_to_node,
             _torch_tensor_allocator=lambda shape, dtype: torch.zeros(
                 shape, dtype=dtype
             ),
@@ -78,6 +88,7 @@ def test_p2p(ray_start_cluster):
 
     sender = Worker.remote()
     receiver = Worker.remote()
+    receiver_node = get_actor_node_id(receiver)
 
     ray.get(
         [
@@ -92,7 +103,7 @@ def test_p2p(ray_start_cluster):
         transport="nccl",
     )
     chan_typ.set_nccl_group_id(nccl_id)
-    chan_ref = sender.create_nccl_channel.remote(chan_typ, [receiver])
+    chan_ref = sender.create_nccl_channel.remote(chan_typ, [(receiver, receiver_node)])
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
 
@@ -128,8 +139,13 @@ def test_multiple_receivers(ray_start_cluster):
     ]  # noqa
 
     sender = Worker.remote()
-    receivers = [Worker.remote() for _ in range(3)]
-    workers = [sender] + receivers
+    receiver_to_node = []
+    for _ in range(3):
+        handle = Worker.remote()
+        node = get_actor_node_id(handle)
+        receiver_to_node.append((handle, node))
+
+    workers = [sender] + [receiver for receiver, _ in receiver_to_node]
 
     ray.get([worker.start_mock.remote() for worker in workers])
 
@@ -139,9 +155,10 @@ def test_multiple_receivers(ray_start_cluster):
         transport="nccl",
     )
     chan_typ.set_nccl_group_id(nccl_id)
-    chan_ref = sender.create_nccl_channel.remote(chan_typ, receivers)
+    chan_ref = sender.create_nccl_channel.remote(chan_typ, receiver_to_node)
     receiver_ready = [
-        receiver.set_nccl_channel.remote(chan_typ, chan_ref) for receiver in receivers
+        receiver.set_nccl_channel.remote(chan_typ, chan_ref)
+        for receiver, _ in receiver_to_node
     ]
     ray.get(receiver_ready)
 
@@ -151,7 +168,7 @@ def test_multiple_receivers(ray_start_cluster):
     all_refs = []
     for i in range(2):
         sender.produce.remote(i, shape, dtype)
-        all_refs.append([receiver.receive.remote() for receiver in receivers])
+        all_refs.append([receiver.receive.remote() for receiver, _ in receiver_to_node])
     # Check that all receivers received the correct value.
     for i, refs in enumerate(all_refs):
         for val in ray.get(refs):

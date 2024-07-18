@@ -4,7 +4,7 @@ import copy
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.experimental.channel.nccl_group import _NcclGroup
@@ -76,7 +76,7 @@ class ChannelOutputType:
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
-        readers: List[Optional["ray.actor.ActorHandle"]],
+        reader_to_node: List[Tuple["ray.actor.ActorHandle", str]],
     ) -> "ChannelInterface":
         """
         Instantiate a ChannelInterface class that can be used
