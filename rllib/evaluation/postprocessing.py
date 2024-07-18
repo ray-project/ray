@@ -6,7 +6,6 @@ from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI, OldAPIStack
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import AgentID
@@ -291,7 +290,6 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
             input_dict = policy.maybe_add_time_dimension(
                 input_dict, seq_lens=input_dict[SampleBatch.SEQ_LENS]
             )
-            input_dict = NestedDict(input_dict)
             fwd_out = policy.model.forward_exploration(input_dict)
             # For recurrent models, we need to remove the time dimension.
             fwd_out = policy.maybe_remove_time_dimension(fwd_out)
