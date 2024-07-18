@@ -3,7 +3,7 @@ This file holds framework-agnostic components for PPO's RLModules.
 """
 
 import abc
-from typing import Any, Type
+from typing import Type
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.configs import RecurrentEncoderConfig
@@ -95,19 +95,3 @@ class PPORLModule(RLModule, abc.ABC):
             Columns.VF_PREDS,
             Columns.ACTION_DIST_INPUTS,
         ]
-
-    @abc.abstractmethod
-    def _compute_values(self, batch) -> Any:
-        """Computes values using the vf-specific network(s) and given a batch of data.
-
-        Args:
-            batch: The input batch to pass through this RLModule (value function
-                encoder and vf-head).
-
-        Returns:
-            A dict mapping ModuleIDs to batches of value function outputs (already
-            squeezed on the last dimension (which should have shape (1,) b/c of the
-            single value output node). However, for complex multi-agent settings with
-            shareed value networks, the output might look differently (e.g. a single
-            return batch without the ModuleID-based mapping).
-        """
