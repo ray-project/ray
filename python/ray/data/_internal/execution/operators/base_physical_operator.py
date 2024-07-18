@@ -72,7 +72,7 @@ class AllToAllOperator(PhysicalOperator):
         self._stats: StatsDict = {}
         super().__init__(name, [input_op], target_max_block_size)
 
-    def num_outputs_total(self) -> int:
+    def num_outputs_total(self) -> Optional[int]:
         return (
             self._num_outputs
             if self._num_outputs

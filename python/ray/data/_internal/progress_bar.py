@@ -38,18 +38,26 @@ def set_progress_bars(enabled: bool) -> bool:
 
 
 class ProgressBar:
-    """Thin wrapper around tqdm to handle soft imports."""
+    """Thin wrapper around tqdm to handle soft imports.
+
+    If `total` is `None` known (for example, it is unknown
+    because no tasks have finished yet), doesn't display the full
+    progress bar. Still displays basic progress stats from tqdm."""
 
     def __init__(
         self,
         name: str,
-        total: int,
+        total: Optional[int],
         unit: str,
         position: int = 0,
         enabled: Optional[bool] = None,
     ):
         self._desc = name
         self._progress = 0
+        # Prepend a space to the unit for better formatting.
+        if unit[0] != " ":
+            unit = " " + unit
+
         if enabled is None:
             from ray.data import DataContext
 
