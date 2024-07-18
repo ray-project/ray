@@ -1315,6 +1315,155 @@ def test_payload_large(ray_start_cluster):
     compiled_dag.teardown()
 
 
+class TestActorInputOutput:
+    """
+    Accelerated DAGs support the following two cases for the input/output of the graph:
+
+    1. Both the input and output of the graph are the driver process.
+    2. Both the input and output of the graph are the same actor process.
+
+    This test suite covers the second case. The second case is useful when we use
+    Ray Serve to deploy the ADAG as a backend. In this case, the Ray Serve replica,
+    which is an actor, needs to be the input and output of the graph.
+    """
+
+    @ray.remote
+    class Worker:
+        def add_one(self, value):
+            return value + 1
+
+        def add(self, val1, val2):
+            return val1 + val2
+
+    def test_shared_memory_channel_only(ray_start_cluster):
+        """
+        Replica -> Worker -> Replica
+
+        This test uses shared memory channels for all communication between actors.
+        """
+
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                self.w = TestActorInputOutput.Worker.remote()
+                with InputNode() as inp:
+                    dag = self.w.add_one.bind(inp)
+                self.compiled_dag = dag.experimental_compile()
+
+            def no_op(self, value):
+                return ray.get(self.compiled_dag.execute(value))
+
+        replica = Replica.remote()
+        ref = replica.no_op.remote(1)
+        assert ray.get(ref) == 2
+
+    def test_intra_process_channel(ray_start_cluster):
+        """
+        Replica -> Worker -> Worker -> Replica
+
+        This test uses IntraProcessChannel between DAG nodes on the Worker actor.
+        Communication between the Replica and Worker actors is done through shared
+        memory channels.
+        """
+
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                self.w = TestActorInputOutput.Worker.remote()
+                with InputNode() as inp:
+                    dag = self.w.add_one.bind(inp)
+                    dag = self.w.add_one.bind(dag)
+                self.compiled_dag = dag.experimental_compile()
+
+            def call(self, value):
+                return ray.get(self.compiled_dag.execute(value))
+
+        replica = Replica.remote()
+        ref = replica.call.remote(1)
+        assert ray.get(ref) == 3
+
+    def test_multiple_readers_multiple_writers(ray_start_cluster):
+        """
+        Replica -> Worker1 -> Replica
+                |          |
+                -> Worker2 -
+
+        All communication in this DAG will be done through shared memory channels.
+        """
+
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                w1 = TestActorInputOutput.Worker.remote()
+                w2 = TestActorInputOutput.Worker.remote()
+                with InputNode() as inp:
+                    dag = MultiOutputNode([w1.add_one.bind(inp), w2.add_one.bind(inp)])
+                self.compiled_dag = dag.experimental_compile()
+
+            def call(self, value):
+                ref = self.compiled_dag.execute(value)
+                return ray.get(ref)
+
+        replica = Replica.remote()
+        ref = replica.call.remote(1)
+        assert ray.get(ref) == [2, 2]
+
+    def test_multiple_readers_single_writer(ray_start_cluster):
+        """
+        Replica -> Worker1 -> Worker1 -> Replica
+                |          |
+                -> Worker2 -
+
+        Communication between DAG nodes on Worker1 is done through IntraProcessChannel.
+        Communication between different actors is done through shared memory channels.
+        """
+
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                w1 = TestActorInputOutput.Worker.remote()
+                w2 = TestActorInputOutput.Worker.remote()
+                with InputNode() as inp:
+                    branch1 = w1.add_one.bind(inp)
+                    branch2 = w2.add_one.bind(inp)
+                    dag = w1.add.bind(branch1, branch2)
+                self.compiled_dag = dag.experimental_compile()
+
+            def call(self, value):
+                return ray.get(self.compiled_dag.execute(value))
+
+        replica = Replica.remote()
+        ref = replica.call.remote(1)
+        assert ray.get(ref) == 4
+
+    def test_single_reader_multiple_writers(ray_start_cluster):
+        """
+        Replica -> Worker1 -> Worker1 -> Replica
+                            |          |
+                            -> Worker2 -
+
+        Communication between DAG nodes on Worker1 is done through IntraProcessChannel.
+        Communication between different actors is done through shared memory channels.
+        """
+
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                w1 = TestActorInputOutput.Worker.remote()
+                w2 = TestActorInputOutput.Worker.remote()
+                with InputNode() as inp:
+                    dag = w1.add_one.bind(inp)
+                    dag = MultiOutputNode([w1.add_one.bind(dag), w2.add_one.bind(dag)])
+                self.compiled_dag = dag.experimental_compile()
+
+            def call(self, value):
+                return ray.get(self.compiled_dag.execute(value))
+
+        replica = Replica.remote()
+        ref = replica.call.remote(1)
+        assert ray.get(ref) == [3, 3]
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

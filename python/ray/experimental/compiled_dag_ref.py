@@ -44,7 +44,6 @@ class CompiledDAGRef:
         dag: "ray.experimental.CompiledDAG",
         execution_index: int,
     ):
-        print("CompiledDAGRef", "__init__")
         """
         Args:
             dag: The compiled DAG that generated this CompiledDAGRef.
@@ -79,7 +78,6 @@ class CompiledDAGRef:
             self.get()
 
     def get(self, timeout: Optional[float] = None):
-        print("CompiledDAGRef", "get()")
         if self._ray_get_called:
             raise ValueError(
                 "ray.get() can only be called once "
