@@ -68,14 +68,10 @@ class StreamSplitDataIterator(DataIterator):
         self._world_size = world_size
         self._iter_stats = DatasetStats(metadata={}, parent=None)
 
-    def _to_block_iterator(
+    def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-        Optional[DatasetStats],
-        bool,
-    ]:
-        def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+        def gen_blocks() -> Iterator[RefBundle]:
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
             )
@@ -83,16 +79,16 @@ class StreamSplitDataIterator(DataIterator):
                 Optional[ObjectRef[Block]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
-                block_ref: Optional[Tuple[ObjectRef[Block], BlockMetadata]] = ray.get(
-                    future
-                )
-                if not block_ref:
+                block_ref_and_md: Optional[
+                    Tuple[ObjectRef[Block], BlockMetadata]
+                ] = ray.get(future)
+                if not block_ref_and_md:
                     break
                 else:
                     future = self._coord_actor.get.remote(
                         cur_epoch, self._output_split_idx
                     )
-                    yield block_ref
+                    yield RefBundle(blocks=(block_ref_and_md,), owns_blocks=False)
 
         return gen_blocks(), self._iter_stats, False
 
@@ -175,8 +171,6 @@ class SplitCoordinator:
                 output_iterator = execute_to_legacy_bundle_iterator(
                     executor,
                     dataset._plan,
-                    True,
-                    dataset._plan._dataset_uuid,
                     dag_rewrite=add_split_op,
                 )
                 yield output_iterator

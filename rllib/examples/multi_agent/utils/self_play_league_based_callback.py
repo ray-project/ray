@@ -197,9 +197,10 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                 # Set all Learner workers' should_module_be_updated to the new
                 # value.
                 algorithm.learner_group.foreach_learner(
-                    lambda learner: learner.config.multi_agent(
+                    func=lambda learner: learner.config.multi_agent(
                         policies_to_train=_trainable_policies,
-                    )
+                    ),
+                    timeout_seconds=0.0,  # fire-and-forget
                 )
                 league_changed = True
             else:

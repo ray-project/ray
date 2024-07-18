@@ -12,7 +12,7 @@ environment:
   # NOTE: The following is invalid because you can't have both dockerfile
   #       and dockerimage
   dockerfile: The dockerfile to be built and ran the commands with.
-  dockerimage: The docker image to be used to run the project in, e.g. ubuntu:18.04.
+  dockerimage: The docker image to be used to run the project in, e.g. ubuntu:22.04.
 
   requirements: ray-project/requirements.txt
 

@@ -219,9 +219,19 @@ def assert_base_partitioned_ds():
         num_rows=6,
         schema="{one: int64, two: string}",
         sorted_values=None,
-        ds_take_transform_fn=lambda taken: [[s["one"], s["two"]] for s in taken],
-        sorted_values_transform_fn=lambda sorted_values: sorted_values,
+        ds_take_transform_fn=None,
+        sorted_values_transform_fn=None,
     ):
+        if ds_take_transform_fn is None:
+            ds_take_transform_fn = lambda taken: [  # noqa: E731
+                [s["one"], s["two"]] for s in taken
+            ]
+
+        if sorted_values_transform_fn is None:
+            sorted_values_transform_fn = (  # noqa: E731
+                lambda sorted_values: sorted_values
+            )
+
         if sorted_values is None:
             sorted_values = [[1, "a"], [1, "b"], [1, "c"], [3, "e"], [3, "f"], [3, "g"]]
         # Test metadata ops.

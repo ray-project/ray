@@ -82,6 +82,9 @@ Forward methods
     ~RLModule.forward_train
     ~RLModule.forward_exploration
     ~RLModule.forward_inference
+    ~RLModule._forward_train
+    ~RLModule._forward_exploration
+    ~RLModule._forward_inference
 
 IO specifications
 +++++++++++++++++
@@ -108,9 +111,8 @@ Saving and Loading
 
     ~RLModule.get_state
     ~RLModule.set_state
-    ~RLModule.save_state
-    ~RLModule.load_state
-    ~RLModule.save_to_checkpoint
+    ~RLModule.save_to_path
+    ~RLModule.restore_from_path
     ~RLModule.from_checkpoint
 
 

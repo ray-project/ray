@@ -102,41 +102,65 @@ void MutableObjectProvider::HandleRegisterMutableObject(
 void MutableObjectProvider::HandlePushMutableObject(
     const rpc::PushMutableObjectRequest &request, rpc::PushMutableObjectReply *reply) {
   LocalReaderInfo info;
+  const ObjectID writer_object_id = ObjectID::FromBinary(request.writer_object_id());
   {
-    const ObjectID writer_object_id = ObjectID::FromBinary(request.writer_object_id());
     absl::MutexLock guard(&remote_writer_object_to_local_reader_lock_);
     auto it = remote_writer_object_to_local_reader_.find(writer_object_id);
     RAY_CHECK(it != remote_writer_object_to_local_reader_.end());
     info = it->second;
   }
-  size_t data_size = request.data_size();
-  size_t metadata_size = request.metadata_size();
+  size_t total_data_size = request.total_data_size();
+  size_t total_metadata_size = request.total_metadata_size();
+  size_t total_size = total_data_size + total_metadata_size;
 
-  // Copy both the data and metadata to a local channel.
-  std::shared_ptr<Buffer> data;
-  const uint8_t *metadata_ptr =
-      reinterpret_cast<const uint8_t *>(request.data().data()) + request.data_size();
-  RAY_CHECK_OK(object_manager_->WriteAcquire(info.local_object_id,
-                                             data_size,
-                                             metadata_ptr,
-                                             metadata_size,
-                                             info.num_readers,
-                                             data));
-  RAY_CHECK(data);
+  uint64_t offset = request.offset();
+  uint64_t chunk_size = request.chunk_size();
 
-  size_t total_size = data_size + metadata_size;
+  uint64_t tmp_written_so_far = 0;
+  {
+    absl::MutexLock guard(&written_so_far_lock_);
+
+    tmp_written_so_far = written_so_far_[writer_object_id];
+    written_so_far_[writer_object_id] += chunk_size;
+    if (written_so_far_[writer_object_id] == total_size) {
+      written_so_far_[writer_object_id] = 0;
+    }
+  }
+
+  std::shared_ptr<Buffer> object_backing_store;
+  if (!tmp_written_so_far) {
+    // We set `metadata` to nullptr since the metadata is at the end of the object, which
+    // we will not have until the last chunk is received (or until the two last chunks are
+    // received, if the metadata happens to span both). The metadata will end up being
+    // written along with the data as the chunks are written.
+    RAY_CHECK_OK(object_manager_->WriteAcquire(info.local_object_id,
+                                               total_data_size,
+                                               /*metadata=*/nullptr,
+                                               total_metadata_size,
+                                               info.num_readers,
+                                               object_backing_store));
+  } else {
+    RAY_CHECK_OK(object_manager_->GetObjectBackingStore(info.local_object_id,
+                                                        total_data_size,
+                                                        total_metadata_size,
+                                                        object_backing_store));
+  }
+  RAY_CHECK(object_backing_store);
+
   // The buffer has the data immediately followed by the metadata. `WriteAcquire()`
-  // above checks that the buffer size is at least `total_size`.
-  memcpy(data->Data(), request.data().data(), total_size);
-  RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
-}
+  // above checks that the buffer size is large enough to hold both the data and the
+  // metadata.
+  memcpy(object_backing_store->Data() + offset, request.payload().data(), chunk_size);
 
-bool MutableObjectProvider::ReaderChannelRegistered(const ObjectID &object_id) {
-  return object_manager_->ReaderChannelRegistered(object_id);
-}
-
-bool MutableObjectProvider::WriterChannelRegistered(const ObjectID &object_id) {
-  return object_manager_->WriterChannelRegistered(object_id);
+  size_t total_written = tmp_written_so_far + chunk_size;
+  RAY_CHECK_LE(total_written, total_size);
+  if (total_written == total_size) {
+    // The entire object has been written, so call `WriteRelease()`.
+    RAY_CHECK_OK(object_manager_->WriteRelease(info.local_object_id));
+    reply->set_done(true);
+  } else {
+    reply->set_done(false);
+  }
 }
 
 Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,
@@ -144,9 +168,10 @@ Status MutableObjectProvider::WriteAcquire(const ObjectID &object_id,
                                            const uint8_t *metadata,
                                            int64_t metadata_size,
                                            int64_t num_readers,
-                                           std::shared_ptr<Buffer> &data) {
+                                           std::shared_ptr<Buffer> &data,
+                                           int64_t timeout_ms) {
   return object_manager_->WriteAcquire(
-      object_id, data_size, metadata, metadata_size, num_readers, data);
+      object_id, data_size, metadata, metadata_size, num_readers, data, timeout_ms);
 }
 
 Status MutableObjectProvider::WriteRelease(const ObjectID &object_id) {
@@ -154,8 +179,9 @@ Status MutableObjectProvider::WriteRelease(const ObjectID &object_id) {
 }
 
 Status MutableObjectProvider::ReadAcquire(const ObjectID &object_id,
-                                          std::shared_ptr<RayObject> &result) {
-  return object_manager_->ReadAcquire(object_id, result);
+                                          std::shared_ptr<RayObject> &result,
+                                          int64_t timeout_ms) {
+  return object_manager_->ReadAcquire(object_id, result, timeout_ms);
 }
 
 Status MutableObjectProvider::ReadRelease(const ObjectID &object_id) {
@@ -164,6 +190,11 @@ Status MutableObjectProvider::ReadRelease(const ObjectID &object_id) {
 
 Status MutableObjectProvider::SetError(const ObjectID &object_id) {
   return object_manager_->SetError(object_id);
+}
+
+Status MutableObjectProvider::GetChannelStatus(const ObjectID &object_id,
+                                               bool is_reader) {
+  return object_manager_->GetChannelStatus(object_id, is_reader);
 }
 
 void MutableObjectProvider::PollWriterClosure(
@@ -176,7 +207,7 @@ void MutableObjectProvider::PollWriterClosure(
   Status status = object_manager_->ReadAcquire(object_id, object);
   // Check if the thread returned from ReadAcquire() because the process is exiting, not
   // because there is something to read.
-  if (status.code() == StatusCode::IOError) {
+  if (status.code() == StatusCode::ChannelError) {
     // The process is exiting.
     return;
   }

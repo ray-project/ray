@@ -279,6 +279,28 @@ def test_concurrent_downloads(shutdown_only):
     ray.get(refs)
 
 
+def test_file_created_before_1980(shutdown_only, tmp_working_dir):
+    # Make sure working_dir supports file created before 1980
+    # https://github.com/ray-project/ray/issues/46379
+    working_path = Path(tmp_working_dir)
+    file_1970 = working_path / "1970"
+    with file_1970.open(mode="w") as f:
+        f.write("1970")
+    os.utime(
+        file_1970,
+        (0, 0),
+    )
+
+    ray.init(runtime_env={"working_dir": tmp_working_dir})
+
+    @ray.remote
+    def task():
+        with open("1970") as f:
+            assert f.read() == "1970"
+
+    ray.get(task.remote())
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
