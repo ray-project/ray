@@ -952,7 +952,7 @@ def call_with_retry(
     description: str,
     *,
     match: Optional[List[str]] = None,
-    max_attempts: int = 1,
+    max_attempts: int = 10,
     max_backoff_s: int = 32,
 ) -> Any:
     """Retry a function with exponential backoff.
@@ -975,8 +975,6 @@ def call_with_retry(
             is_retryable = match is None or any(
                 [pattern in str(e) for pattern in match]
             )
-            if is_retryable:
-                assert False, e
             if is_retryable and i + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
@@ -1025,8 +1023,6 @@ def iterate_with_retry(
                 yield item
             return
         except Exception as e:
-            print("SPAM")
-            assert False
             is_retryable = match is None or any(
                 [pattern in str(e) for pattern in match]
             )
