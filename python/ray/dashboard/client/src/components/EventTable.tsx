@@ -327,7 +327,7 @@ const EventTable = (props: EventTableProps) => {
                         </Grid>
                       )}
                     </Grid>
-                    <LogVirtualView content={message} language="prolog" />
+                    <pre style={{ whiteSpace: "pre-wrap" }}>{message}</pre>
                   </Box>
                 );
               },
