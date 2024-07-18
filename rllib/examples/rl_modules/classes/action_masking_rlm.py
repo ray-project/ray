@@ -3,7 +3,7 @@ from typing import Dict, Optional, Tuple
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.apis import ValueFunctionAPI
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
