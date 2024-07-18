@@ -89,14 +89,8 @@ class Humanify:
     """A class containing default methods to
     convert units into a human readable string."""
 
-    def timestamp(x):
-        """
-        Converts milliseconds to a datetime object.
-        If the input is -1, return an empty string.
-        If the input is not an int or float, raise a ValueError.
-        """
-        if x == -1:
-            return ""
+    def timestamp(x: float):
+        """Converts milliseconds to a datetime object."""
         return str(datetime.datetime.fromtimestamp(x / 1000))
 
     def memory(x: int):
@@ -636,12 +630,16 @@ class WorkerState(StateSchema):
     #: -> start_time_ms (worker is ready to be used).
     #: -> end_time_ms (worker is destroyed).
     worker_launch_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, format_fn=Humanify.timestamp
+        filterable=False,
+        detail=True,
+        format_fn=lambda x: "" if x == -1 else Humanify.timestamp(x),
     )
     #: The time worker is succesfully launched
     #: -1 if the value doesn't exist.
     worker_launched_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, format_fn=Humanify.timestamp
+        filterable=False,
+        detail=True,
+        format_fn=lambda x: "" if x == -1 else Humanify.timestamp(x),
     )
     #: The time when the worker is started and initialized.
     #: 0 if the value doesn't exist.
