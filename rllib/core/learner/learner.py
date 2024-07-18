@@ -1204,7 +1204,7 @@ class Learner(Checkpointable):
             if num_iters and i == num_iters:
                 break
 
-        print(f"[Learner] Iterations run: {i}")
+        logger.info(f"[Learner] Iterations run in epoch: {i}")
         # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
         # to actual (numpy) values.
         self.metrics.tensors_to_numpy(tensor_metrics)

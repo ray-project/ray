@@ -225,8 +225,8 @@ class BC(MARWIL):
                 )
             # Then we must have a local worker.
             else:
-                weights = self.learner_group.get_weights(inference_only=True)
-                self.workers.local_worker().set_weights(weights)
+                weights = self.learner_group.get_weights()  # inference_only=True)
+                self.workers.local_worker().set_state(weights)
 
         return self.metrics.reduce()
 

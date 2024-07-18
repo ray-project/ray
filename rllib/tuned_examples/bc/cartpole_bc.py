@@ -27,10 +27,8 @@ base_path = Path(__file__).parents[2]
 print(f"base_path={base_path}")
 data_path = "local://" + base_path.joinpath(data_path).as_posix()
 print(f"data_path={data_path}")
-
+args.num_gpus = 2
 # Define the BC config.
-args.num_gpus = 4
-
 config = (
     BCConfig()
     .environment(env="CartPole-v1")
@@ -51,7 +49,7 @@ config = (
     # as remote learners.
     .offline_data(
         input_=[data_path],
-        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1)},
+        # input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1)},
         prelearner_module_synch_period=20,
     )
     .training(
@@ -66,6 +64,6 @@ stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 120.0,
     TRAINING_ITERATION_TIMER: 350.0,
 }
-
+# args.local_mode=True
 if __name__ == "__main__":
     run_rllib_example_script_experiment(config, args, stop=stop)

@@ -7,6 +7,7 @@ from ray.actor import ActorHandle
 from typing import Any, Dict, List, Optional, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
@@ -93,7 +94,7 @@ class OfflineData:
                     "config": self.config,
                     "learner": self.learner_handles[0],
                 },
-                concurrency=(1, 2),
+                concurrency=2,
                 batch_size=num_samples,
             ).iter_batches(
                 batch_size=num_samples,
@@ -110,7 +111,9 @@ class OfflineData:
                 # TODO (simon): This is a workaround as along as learners cannot
                 # receive any calls from another actor.
                 module_state = ray.get(
-                    self.learner_handles[0].get_module_state.remote()
+                    self.learner_handles[0].get_state.remote(
+                        component=COMPONENT_RL_MODULE
+                    )
                 )
                 return self.data.map_batches(
                     # TODO (cheng su): At best the learner handle passed in here should

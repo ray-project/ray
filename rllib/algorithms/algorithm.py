@@ -658,23 +658,39 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             validate_env=self.validate_env,
             default_policy_class=self.get_default_policy_class(self.config),
             config=self.config,
-            num_env_runners=0
-            if (
-                self.config.input_
-                and isinstance(self.config.input_, str)
-                and self.config.input_ != "sampler"
-            )
-            else self.config.num_env_runners,
+            num_env_runners=(
+                0
+                if (
+                    self.config.input_
+                    and (
+                        isinstance(self.config.input_, str)
+                        or (
+                            isinstance(self.config.input_, list)
+                            and isinstance(self.config.input_[0], str)
+                        )
+                    )
+                    and self.config.input_ != "sampler"
+                    and self.config.enable_rl_module_and_learner
+                    and self.config.enable_env_runner_and_connector_v2
+                )
+                else self.config.num_env_runners
+            ),
             local_env_runner=True,
             logdir=self.logdir,
             tune_trial_id=self.trial_id,
         )
 
-        # If and input path is available and we are on the new API stack generate
+        # If an input path is available and we are on the new API stack generate
         # an `OfflineData` instance.
         if (
             self.config.input_
-            and isinstance(self.config.input_, str)
+            and (
+                isinstance(self.config.input_, str)
+                or (
+                    isinstance(self.config.input_, list)
+                    and isinstance(self.config.input_[0], str)
+                )
+            )
             and self.config.input_ != "sampler"
             and self.config.enable_rl_module_and_learner
             and self.config.enable_env_runner_and_connector_v2
@@ -765,8 +781,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # TODO (Rohan138): Refactor this and remove deprecated methods
             # Need to add back method_type in case Algorithm is restored from checkpoint
             method_config["type"] = method_type
-
-        # TODO (sven): Probably obsolete b/c the learner group is already None.
         self.learner_group = None
         if self.config.enable_rl_module_and_learner:
             local_worker = self.workers.local_worker()
