@@ -207,6 +207,8 @@ class OfflinePreLearner:
         # TODO (simon): Make synching work. Right now this becomes blocking or never
         # receives weights. Learners appear to be non accessable via other actors.
         # Increase the counter for updating the module.
+        # IDEA: put the module state into the object store. From there any actor has
+        # access.
         # self.iter_since_last_module_update += 1
 
         # if self._future:

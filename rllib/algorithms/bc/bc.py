@@ -217,16 +217,12 @@ class BC(MARWIL):
         # Update weights - after learning on the local worker -
         # on all remote workers.
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-            if self.workers.num_remote_workers() > 0:
-                self.workers.sync_weights(
-                    from_worker_or_learner_group=self.learner_group,
-                    policies=modules_to_update,
-                    inference_only=True,
-                )
-            # Then we must have a local worker.
-            else:
-                weights = self.learner_group.get_weights()  # inference_only=True)
-                self.workers.local_worker().set_state(weights)
+            self.workers.sync_weights(
+                # Sync weights from learner_group to all EnvRunners.
+                from_worker_or_learner_group=self.learner_group,
+                policies=modules_to_update,
+                inference_only=True,
+            )
 
         return self.metrics.reduce()
 
