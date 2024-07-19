@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Any, Dict
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
@@ -24,7 +24,6 @@ from ray.rllib.core.learner.learner import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 
 
@@ -107,7 +106,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         *,
         module_id: ModuleID,
         config: SACConfig,
-        batch: NestedDict,
+        batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # Only for debugging.
@@ -158,12 +157,10 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
 
         # Compute Q-values for the current policy in the current state with
         # the sampled actions.
-        q_batch_curr = NestedDict(
-            {
-                Columns.OBS: batch[Columns.OBS],
-                Columns.ACTIONS: actions_curr,
-            }
-        )
+        q_batch_curr = {
+            Columns.OBS: batch[Columns.OBS],
+            Columns.ACTIONS: actions_curr,
+        }
         q_curr = self.module[module_id]._qf_forward_train(q_batch_curr)[QF_PREDS]
         # If a twin Q network should be used, calculate twin Q-values and use the
         # minimum.
@@ -175,12 +172,10 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
 
         # Compute Q-values from the target Q network for the next state with the
         # sampled actions for the next state.
-        q_batch_next = NestedDict(
-            {
-                Columns.OBS: batch[Columns.NEXT_OBS],
-                Columns.ACTIONS: actions_next,
-            }
-        )
+        q_batch_next = {
+            Columns.OBS: batch[Columns.NEXT_OBS],
+            Columns.ACTIONS: actions_next,
+        }
         q_target_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[
             QF_PREDS
         ]
