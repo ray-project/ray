@@ -444,6 +444,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           to_resubmit_.push(std::move(task_to_retry));
         } else {
           if (spec.IsActorTask()) {
+            if (!update_seqno) {
+              RAY_LOG(ERROR).WithField(spec.ActorId()).WithField(spec.TaskId())
+                  << "update_seqno set to false " << ray::StackTrace();
+            }
+            update_seqno = true;
             if (update_seqno) {
               auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
               actor_handle->SetResubmittedActorTaskSpec(spec);
@@ -1072,6 +1077,11 @@ void CoreWorker::InternalHeartbeat() {
   for (auto &task_to_retry : tasks_to_resubmit) {
     auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
+      if (!task_to_retry.update_seqno) {
+        RAY_LOG(ERROR).WithField(spec.ActorId()).WithField(spec.TaskId())
+            << "task_to_retry.update_seqno set to false " << ray::StackTrace();
+      }
+      task_to_retry.update_seqno = true;
       if (task_to_retry.update_seqno) {
         auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
         actor_handle->SetResubmittedActorTaskSpec(spec);
