@@ -59,7 +59,8 @@ def do_allocate_channel(
     """Generic actor method to allocate an output channel.
 
     Args:
-        readers: The actor handles of the readers.
+        reader_to_node: A list of tuples, where each tuple contains a reader
+            actor handle and the node ID where the handle is located.
         typ: The output type hint for the channel.
 
     Returns:
@@ -788,6 +789,14 @@ class CompiledDAG:
         self._input_kwargs = tuple(input_kwargs)
 
     def _get_node_id(self, actor_handle: "ray.actor.ActorHandle") -> str:
+        """
+        Get the node ID of an actor handle and cache it.
+
+        Args:
+            actor_handle: The actor handle.
+        Returns:
+            The node ID of the actor handle.
+        """
         if actor_handle in self.actor_to_node_id:
             return self.actor_to_node_id[actor_handle]
         node_id = None

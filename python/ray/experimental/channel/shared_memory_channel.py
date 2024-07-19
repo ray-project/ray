@@ -107,8 +107,8 @@ class SharedMemoryType(ChannelOutputType):
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            readers: The actors that may read from the channel. None signifies
-                the driver.
+            reader_to_node: A list of tuples, where each tuple contains a reader
+                actor handle and the node ID where the handle is located.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
@@ -171,7 +171,8 @@ class Channel(ChannelInterface):
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            readers: The actors that may read from the channel. No reader may be None.
+            reader_to_node: A list of tuples, where each tuple contains a reader
+                actor handle and the node ID where the handle is located.
             typ: Type information about the values passed through the channel.
                 Either an integer representing the max buffer size in bytes
                 allowed, or a SharedMemoryType.
@@ -487,8 +488,8 @@ class CompositeChannel(ChannelInterface):
 
     Args:
         writer: The actor that may write to the channel. None signifies the driver.
-        readers: The actors that may read from the channel. None signifies
-            the driver.
+        reader_to_node: A list of tuples, where each tuple contains a reader
+            actor handle and the node ID where the handle is located.
     """
 
     def __init__(

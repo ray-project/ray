@@ -84,8 +84,8 @@ class ChannelOutputType:
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            readers: The actors that may read from the channel. None signifies
-                the driver.
+            reader_to_node: A list of tuples, where each tuple contains a reader
+                actor handle and the node ID where the handle is located.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.

@@ -14,7 +14,6 @@ import torch
 import pytest
 
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
-import ray.remote_function
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 import ray
 import ray._private

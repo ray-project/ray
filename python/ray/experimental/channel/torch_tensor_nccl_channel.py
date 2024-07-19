@@ -50,6 +50,13 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         writes the worker-local
         ray.experimental.channel.serialization_context._SerializationContext
         when serializing data.
+
+        Args:
+            writer: The actor that may write to the channel. None signifies the driver.
+            reader_to_node: A list of tuples, where each tuple contains a reader
+                actor handle and the node ID where the handle is located.
+            gpu_data_typ: Type information about the GPU tensors
+            cpu_data_typ: Type information about the CPU data
         """
         self._writer = writer
         self._reader_to_node = reader_to_node
@@ -195,8 +202,8 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            readers: The actors that may read from the channel. None signifies
-                the driver.
+            reader_to_node: A list of tuples, where each tuple contains a reader
+                actor handle and the node ID where the handle is located.
             typ: Type information about the values passed through the channel.
             _meta_channel: A channel used to send metadata for the tensors,
                 i.e. shape and dtype. If not provided, and if the typ does not
