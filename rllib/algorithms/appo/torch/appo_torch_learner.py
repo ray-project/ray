@@ -14,15 +14,7 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
-from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.core.rl_module.torch.torch_rl_module import (
-    TorchDDPRLModuleWithTargetNetworksInterface,
-    TorchRLModule,
-)
-from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface,
-)
+from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -44,15 +36,18 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
 
+        module = self.module[module_id].unwrapped()
+        assert isinstance(module, TargetNetworkAPI)
+
         values = fwd_out[Columns.VF_PREDS]
-        action_dist_cls_train = (
-            self.module[module_id].unwrapped().get_train_action_dist_cls()
-        )
+
+        action_dist_cls_train = module.get_train_action_dist_cls()
         target_policy_dist = action_dist_cls_train.from_logits(
             fwd_out[Columns.ACTION_DIST_INPUTS]
         )
+
         old_target_policy_dist = action_dist_cls_train.from_logits(
-            fwd_out[OLD_ACTION_DIST_LOGITS_KEY]
+            module.forward_target(batch)[OLD_ACTION_DIST_LOGITS_KEY]
         )
         old_target_policy_actions_logp = old_target_policy_dist.logp(
             batch[Columns.ACTIONS]
@@ -183,40 +178,6 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         )
         # Return the total loss.
         return total_loss
-
-    @override(TorchLearner)
-    def _make_modules_ddp_if_necessary(self) -> None:
-        """Logic for (maybe) making all Modules within self._module DDP.
-
-        This implementation differs from the super's default one in using the special
-        TorchDDPRLModuleWithTargetNetworksInterface wrapper, instead of the default
-        TorchDDPRLModule one.
-        """
-
-        # If the module is a MultiAgentRLModule and nn.Module we can simply assume
-        # all the submodules are registered. Otherwise, we need to loop through
-        # each submodule and move it to the correct device.
-        # TODO (Kourosh): This can result in missing modules if the user does not
-        #  register them in the MultiAgentRLModule. We should find a better way to
-        #  handle this.
-        if self._distributed:
-            # Single agent module: Convert to
-            # `TorchDDPRLModuleWithTargetNetworksInterface`.
-            if isinstance(self._module, RLModuleWithTargetNetworksInterface):
-                self._module = TorchDDPRLModuleWithTargetNetworksInterface(self._module)
-            # Multi agent module: Convert each submodule to
-            # `TorchDDPRLModuleWithTargetNetworksInterface`.
-            else:
-                assert isinstance(self._module, MultiAgentRLModule)
-                for key in self._module.keys():
-                    sub_module = self._module[key]
-                    if isinstance(sub_module, TorchRLModule):
-                        # Wrap and override the module ID key in self._module.
-                        self._module.add_module(
-                            key,
-                            TorchDDPRLModuleWithTargetNetworksInterface(sub_module),
-                            override=True,
-                        )
 
     @override(APPOLearner)
     def _update_module_kl_coeff(self, module_id: ModuleID, config: APPOConfig) -> None:
