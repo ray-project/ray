@@ -9,10 +9,12 @@ import re
 import sys
 import time
 import numpy as np
+import torch
 
 import pytest
 
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
+import ray.remote_function
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 import ray
 import ray._private
@@ -22,6 +24,7 @@ from ray.tests.conftest import *  # noqa
 from ray._private.utils import (
     get_or_create_event_loop,
 )
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 
 logger = logging.getLogger(__name__)
@@ -1335,6 +1338,15 @@ class TestActorInputOutput:
         def add(self, val1, val2):
             return val1 + val2
 
+        def generate_torch_tensor(self, size) -> torch.Tensor:
+            return torch.zeros(size)
+        
+        def add_value_to_tensor(self, value: int, tensor: torch.Tensor) -> torch.Tensor:
+            """
+            Add `value` to all elements of the tensor.
+            """
+            return tensor + value
+
     def test_shared_memory_channel_only(ray_start_cluster):
         """
         Replica -> Worker -> Replica
@@ -1462,6 +1474,35 @@ class TestActorInputOutput:
         replica = Replica.remote()
         ref = replica.call.remote(1)
         assert ray.get(ref) == [3, 3]
+
+    def test_torch_tensor_type(ray_start_cluster):
+        """
+        This test simulates the pattern of deploying a stable diffusion model with
+        Ray Serve. The base model takes a prompt and generates an image, which is a
+        tensor. Then, the refiner model takes the image tensor and the prompt to refine
+        the image. This test doesn't use the actual model but simulates the data flow.
+        """
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                self._base = TestActorInputOutput.Worker.remote()
+                self._refiner = TestActorInputOutput.Worker.remote()
+
+                with ray.dag.InputNode() as inp:
+                    dag = self._refiner.add_value_to_tensor.bind(
+                        inp,
+                        self._base.generate_torch_tensor.bind(
+                            inp,
+                        ).with_type_hint(TorchTensorType()),
+                    )
+                self._adag = dag.experimental_compile()
+
+            def call(self, value):
+                return ray.get(self._adag.execute(value))
+
+        replica = Replica.remote()
+        ref = replica.call.remote(5)
+        assert torch.equal(ray.get(ref), torch.tensor([5, 5, 5, 5, 5]))
 
 
 if __name__ == "__main__":
