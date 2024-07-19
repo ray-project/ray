@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 
 from ray.rllib.algorithms.appo.appo import OLD_ACTION_DIST_LOGITS_KEY
 from ray.rllib.algorithms.appo.appo_rl_module import APPORLModule
@@ -11,7 +11,6 @@ from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 
 _, tf, _ = try_import_tf()
 
@@ -37,7 +36,7 @@ class APPOTfRLModule(PPOTfRLModule, APPORLModule):
         ]
 
     @override(PPOTfRLModule)
-    def _forward_train(self, batch: NestedDict):
+    def _forward_train(self, batch: Dict):
         outs = super()._forward_train(batch)
         batch = batch.copy()
         old_pi_inputs_encoded = self.old_encoder(batch)[ENCODER_OUT][ACTOR]

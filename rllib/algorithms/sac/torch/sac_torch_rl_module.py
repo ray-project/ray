@@ -13,7 +13,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import StateDict
 
 torch, nn = try_import_torch()
@@ -55,7 +54,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
             return state
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict) -> Dict[str, Any]:
         output = {}
 
         # Pi encoder forward pass.
@@ -67,11 +66,11 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict, **kwargs) -> Dict[str, Any]:
         return self._forward_inference(batch)
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_train(self, batch: Dict) -> Dict[str, Any]:
         if self.config.inference_only:
             raise RuntimeError(
                 "Trying to train a module that is not a learner module. Set the "

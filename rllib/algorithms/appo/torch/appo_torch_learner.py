@@ -17,7 +17,6 @@ from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY
 from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import ModuleID, TensorType
 
@@ -33,7 +32,7 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         *,
         module_id: ModuleID,
         config: APPOConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
 

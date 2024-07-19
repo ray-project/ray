@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Any, Dict
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
@@ -24,7 +24,6 @@ from ray.rllib.core.learner.learner import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 
 
@@ -107,7 +106,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         *,
         module_id: ModuleID,
         config: SACConfig,
-        batch: NestedDict,
+        batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # Only for debugging.
@@ -160,12 +159,10 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
 
         # Compute Q-values for the current policy in the current state with
         # the sampled actions.
-        q_batch_curr = NestedDict(
-            {
-                Columns.OBS: batch[Columns.OBS],
-                Columns.ACTIONS: actions_curr,
-            }
-        )
+        q_batch_curr = {
+            Columns.OBS: batch[Columns.OBS],
+            Columns.ACTIONS: actions_curr,
+        }
         q_curr = module.compute_q_values(q_batch_curr)
 
         # Compute Q-values from the target Q network for the next state with the
