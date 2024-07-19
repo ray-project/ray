@@ -20,7 +20,6 @@ import { sliceToPage } from "../common/util";
 import { getEvents, getGlobalEvents } from "../service/event";
 import { Event } from "../type/event";
 import { useFilter } from "../util/hook";
-import LogVirtualView from "./LogView/LogVirtualView";
 import { StatusChip } from "./StatusChip";
 
 type EventTableProps = {
