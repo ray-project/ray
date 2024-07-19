@@ -24,17 +24,6 @@ from ray.types import ObjectRef
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
 
 
-def execute_to_legacy_block_iterator(
-    executor: Executor,
-    plan: ExecutionPlan,
-) -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
-    """Same as execute_to_legacy_bundle_iterator but returning blocks and metadata."""
-    bundle_iter = execute_to_legacy_bundle_iterator(executor, plan)
-    for bundle in bundle_iter:
-        for block, metadata in bundle.blocks:
-            yield block, metadata
-
-
 def execute_to_legacy_bundle_iterator(
     executor: Executor,
     plan: ExecutionPlan,
