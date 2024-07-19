@@ -330,9 +330,13 @@ class MapOperator(OneToOneOperator, ABC):
                     / self._metrics.num_tasks_finished
                 )
                 # Estimate the number of output rows based on completed tasks
-                total_output_rows = sum(bundle.num_rows() for bundle in self._output_metadata)
+                total_output_rows = sum(
+                    bundle.num_rows() for bundle in self._output_metadata
+                )
                 self._estimated_output_num_rows = round(
-                    total_output_rows / self._metrics.num_tasks_finished * estimated_num_tasks
+                    total_output_rows
+                    / self._metrics.num_tasks_finished
+                    * estimated_num_tasks
                 )
 
             self._data_tasks.pop(task_index)
@@ -431,10 +435,10 @@ class MapOperator(OneToOneOperator, ABC):
         # 2. The number of active tasks in the progress bar will be more accurate
         #   to reflect the actual data processing tasks.
         return len(self._data_tasks)
-    
+
     @property
     def estimated_output_num_rows(self) -> Optional[int]:
-        return getattr(self, '_estimated_output_num_rows', None)
+        return getattr(self, "_estimated_output_num_rows", None)
 
 
 def _map_task(
