@@ -532,7 +532,7 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   /// Whether or not we will retry this actor task.
   bool will_retry = false;
   /// Whether or not we need to mark the seqno as completed for the actor.
-  /// We always mark unless the actor is dead and task will be tried in a new actor.
+  /// We should always mark unless the task will retry without updating the seqno.
   bool mark_seqno_completed = true;
 
   if (task_skipped) {
@@ -606,14 +606,12 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       }
     }
 
-    // On actor died or unavailable, retry the same seqno. On other errors, including
-    // user exception or actor-complained STALE_TASK, update the seqno. This makes the
-    // tasks to no longer sequenced in the order of the submission.
+    // On actor died or unavailable, retry the same seqno.
+    // On other errors, including user exception or actor-complained STALE_TASK, update
+    // the seqno. This makes the tasks to no longer sequenced in the order of the
+    // submission.
     bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
                         error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
-
-    // if we update this task's seqno, mark the old seqno as completed. or it will hang.
-    mark_seqno_completed = update_seqno;
 
     // This task may have been waiting for dependency resolution, so cancel
     // this first.
@@ -627,6 +625,10 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         /*mark_task_object_failed=*/is_actor_dead,
         update_seqno,
         fail_immediately);
+
+    // if we update this task's seqno, mark the old seqno as completed. or it will hang.
+    mark_seqno_completed = (!will_retry) || update_seqno;
+
     if (!is_actor_dead && !will_retry) {
       // Ran out of retries, last failure = either user exception or actor death.
       if (status.ok()) {
@@ -676,7 +678,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     // Cases that need MarkSeqnoCompleted:
     // - the task won't be retried
     // - the task is retried, but the seqno is updated.
-    if ((!will_retry) || mark_seqno_completed) {
+
+    if (mark_seqno_completed) {
       RAY_LOG(ERROR).WithField(task_spec.TaskId())
           << "HandlePushTaskReply: MarkSeqnoCompleted for actor_id=" << actor_id
           << ", actor_counter=" << actor_counter << " will_retry = " << will_retry

@@ -82,12 +82,6 @@ std::map<uint64_t, TaskSpecification>
 SequentialActorSubmitQueue::PopAllOutOfOrderCompletedTasks() {
   auto result = std::move(out_of_order_completed_tasks);
   out_of_order_completed_tasks.clear();
-  RAY_LOG(ERROR) << "PopAllOutOfOrderCompletedTasks " << result.size();
-  for (const auto &[seqno, task_spec] : result) {
-    RAY_LOG(ERROR) << "PopAllOutOfOrderCompletedTasks " << seqno << " "
-                   << task_spec.TaskId();
-  }
-
   return result;
 }
 
@@ -95,11 +89,9 @@ void SequentialActorSubmitQueue::OnClientConnected() {
   // This assumes that all replies from the previous incarnation
   // of the actor have been received. This assumption should be OK
   // because we fail all inflight tasks in `DisconnectRpcClient`.
-  RAY_LOG(DEBUG) << "Resetting caller starts at for actor " << actor_id << " from "
-                 << caller_starts_at << " to " << next_task_reply_position;
-  RAY_LOG(ERROR) << "OnClientConnected:: Resetting caller starts at for actor "
-                 << actor_id << " from " << caller_starts_at << " to "
-                 << next_task_reply_position;
+  RAY_LOG(DEBUG).WithField(actor_id)
+      << "Resetting caller starts at for actor from " << caller_starts_at << " to "
+      << next_task_reply_position;
   caller_starts_at = next_task_reply_position;
 }
 
@@ -107,10 +99,6 @@ uint64_t SequentialActorSubmitQueue::GetSequenceNumber(
     const TaskSpecification &task_spec) const {
   RAY_CHECK(task_spec.ActorCounter() >= caller_starts_at)
       << "actor counter " << task_spec.ActorCounter() << " " << caller_starts_at;
-  RAY_LOG(ERROR).WithField(task_spec.TaskId())
-      << "GetSequenceNumber " << task_spec.ActorCounter() - caller_starts_at
-      << " from counter " << task_spec.ActorCounter() << " caller_starts_at "
-      << caller_starts_at;
   return task_spec.ActorCounter() - caller_starts_at;
 }
 

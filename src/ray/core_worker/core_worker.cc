@@ -2017,17 +2017,13 @@ void CoreWorker::RetryTask(TaskToRetry &task_to_retry) {
   auto &spec = task_to_retry.task_spec;
   spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
   if (spec.IsActorTask()) {
-    // if (!task_to_retry.update_seqno) {
-    RAY_LOG(ERROR).WithField(spec.ActorId()).WithField(spec.TaskId())
-        << "task_to_retry.update_seqno set to " << task_to_retry.update_seqno;
-    // }
-    // task_to_retry.update_seqno = true;
     if (task_to_retry.update_seqno) {
       auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
       actor_handle->SetResubmittedActorTaskSpec(spec);
     }
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
   } else {
+    RAY_CHECK(!task_to_retry.update_seqno);
     RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
   }
 }

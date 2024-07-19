@@ -87,20 +87,9 @@ void ActorSchedulingQueue::Add(
                    << client_processed_up_to;
     next_seq_no_ = client_processed_up_to + 1;
   }
-  RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
-  RAY_LOG(ERROR).WithField(task_id)
+  RAY_LOG(DEBUG).WithField(task_id)
       << "Enqueue " << seq_no << " next_seq_no_ " << next_seq_no_
       << "client_processed_up_to " << client_processed_up_to;
-
-  /*
-  Caller sent the task.
-  Actor recv'd the task. <- incremented next_seq_no_ here.
-  Conn break, Caller got UNAVILABLE.
-  Conn re-establish,
-  Caller resend with same seq_no.
-  Actor: duplicate task, cancel stale.
-
-  */
 
   pending_actor_tasks_[seq_no] = InboundRequest(std::move(accept_request),
                                                 std::move(reject_request),

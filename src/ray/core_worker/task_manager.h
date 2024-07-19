@@ -486,7 +486,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] update_seqno whether the task should be updated its actor_counter when
   /// retrying.
   /// \param[in] fail_immediately whether to fail the task and ignore the
-  /// retries that are available. \return Whether the task will be retried or not.
+  /// retries that are available.
+  /// \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
                               const Status *status = nullptr,

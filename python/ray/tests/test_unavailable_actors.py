@@ -70,7 +70,6 @@ def sigkill_actor(actor):
     ["actor", "task", "driver"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     def body():
         a = Counter.remote()
@@ -127,7 +126,35 @@ def test_retryable_tasks_conn_broken(ray_start_regular, caller):
     ["actor", "task", "driver"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
+def test_actor_task_retry_by_connections_closed_and_actor_restart(
+    ray_start_regular, caller
+):
+    def body():
+        a = Counter.options(max_restarts=-1).remote()
+        assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
+        pid = ray.get(a.getpid.remote())
+        task1 = a.slow_increment.options(max_task_retries=-1).remote(3, 5)
+
+        close_common_connections(pid)
+        assert ray.get(task1) == 2 + 3 * 2
+
+        task2 = a.slow_increment.options(max_task_retries=-1).remote(3, 5)
+        # Ensure that Actor has received the PushActorTaskReuqest.
+        time.sleep(1)
+        os.kill(pid, signal.SIGKILL)
+        # The 25 seconds here is to be less than the C constant
+        # kMaxReorderWaitSeconds, to ensuring that
+        # ActorSchedulingQueue's waiting timeout is not triggered.
+        assert ray.get(task2, timeout=25) == 3
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["actor", "task", "driver"],
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 def test_actor_unavailable_restarting(ray_start_regular, caller):
     def body():
         a = Counter.options(max_restarts=1).remote(init_time_s=5)
@@ -164,7 +191,6 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
     ["actor", "task", "driver"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_norestart(ray_start_regular, caller):
     def body():
         a = Counter.remote()
@@ -212,7 +238,6 @@ class SlowCtor:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_unavailable_then_actor_error(ray_start_regular):
     c = Counter.remote()
     # Restart config:
@@ -250,7 +275,6 @@ def test_unavailable_then_actor_error(ray_start_regular):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_inf_task_retries(ray_start_regular):
     c = Counter.remote()
     # The actor spends 2s in the init.

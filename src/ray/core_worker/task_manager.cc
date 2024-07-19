@@ -960,9 +960,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
   bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
-  RAY_LOG(ERROR).WithField(task_id)
-      << "RetryTaskIfPossible update_seqno: " << update_seqno << " error "
-      << error_info.DebugString();
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
