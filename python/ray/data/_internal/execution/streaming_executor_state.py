@@ -210,7 +210,7 @@ class OpState:
         )
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
-            self.op.estimated_output_num_rows(),
+            self.op.estimated_output_num_rows,
             unit="row",
             position=index,
             enabled=progress_bar_enabled,

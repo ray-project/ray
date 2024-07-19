@@ -438,7 +438,7 @@ class MapOperator(OneToOneOperator, ABC):
 
     @property
     def estimated_output_num_rows(self) -> Optional[int]:
-        return getattr(self, "_estimated_output_num_rows", None)
+        return getattr(self, "_estimated_output_num_rows", 0)
 
 
 def _map_task(
