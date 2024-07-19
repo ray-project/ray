@@ -56,4 +56,5 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 
+RUN ./ci/env/install-miniconda.sh
 RUN ./ci/env/install-bazel.sh
