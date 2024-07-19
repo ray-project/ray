@@ -568,9 +568,6 @@ class ExecutionPlan:
             return DatasetStats(metadata={}, parent=None)
         return self._snapshot_stats
 
-    def stats_summary(self) -> DatasetStatsSummary:
-        return self.stats().to_summary()
-
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""
         return all(isinstance(op, Read) for op in self._logical_plan.sources())

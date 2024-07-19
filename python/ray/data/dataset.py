@@ -4661,7 +4661,7 @@ class Dataset:
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
-        return self._plan.stats_summary()
+        return self._plan.stats().to_summary()
 
     @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI
