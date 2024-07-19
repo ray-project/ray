@@ -1105,6 +1105,15 @@ class CompiledDAG:
             graph[to_idx].in_edges.add(from_idx)
 
         def _is_same_actor(idx1: int, idx2: int) -> bool:
+            """
+            Args:
+                idx1: A key in the idx_to_task dictionary.
+                idx2: A key in the idx_to_task dictionary.
+
+            Returns:
+                True if both DAG nodes are on the same actor;
+                otherwise, False.
+            """
             task1 = self.idx_to_task[idx1]
             task2 = self.idx_to_task[idx2]
             if not isinstance(task1.dag_node, ClassMethodNode):
@@ -1126,10 +1135,18 @@ class CompiledDAG:
                 _add_edge(graph, idx, downstream_idx)
                 if task.dag_node.type_hint.requires_nccl():
                     if _is_same_actor(idx, downstream_idx):
+                        actor_handle = self.idx_to_task[
+                            idx
+                        ].dag_node._get_actor_handle()
+                        method = self.idx_to_task[idx].dag_node.get_method_name()
+                        downstream_method = self.idx_to_task[
+                            downstream_idx
+                        ].dag_node.get_method_name()
                         logger.error(
-                            "Detect a deadlock caused by using NCCL channels to "
-                            "transfer data between tasks on the same actor. Please "
-                            'remove `TorchTensorType(transport="nccl")` between '
+                            "Detected a deadlock caused by using NCCL channels to "
+                            f"transfer data between tasks {method} and "
+                            f"{downstream_method} on the same actor {actor_handle}. "
+                            'Please remove `TorchTensorType(transport="nccl")` between '
                             "DAG nodes on the same actor."
                         )
                         return True
