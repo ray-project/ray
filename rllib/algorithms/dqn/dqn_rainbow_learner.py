@@ -2,6 +2,7 @@ import abc
 from typing import Any, Dict
 
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.utils import update_target_network
 from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
     AddObservationsFromEpisodesToBatch,
 )
@@ -42,8 +43,13 @@ class DQNRainbowLearner(Learner):
         super().build()
 
         # Initially sync target networks (w/ tau=1.0 -> full overwrite).
+        # TODO (sven): Use TargetNetworkAPI as soon as DQN implements it.
         self.module.foreach_module(
-            lambda mid, module: module.sync_target_networks(tau=1.0)
+            lambda mid, module: (
+                module.sync_target_networks(tau=1.0)
+                if hasattr(module, "sync_target_networks")
+                else None
+            )
         )
 
         # Prepend a NEXT_OBS from episodes to train batch connector piece (right
@@ -72,7 +78,19 @@ class DQNRainbowLearner(Learner):
                 timestep - self.metrics.peek(last_update_ts_key, default=0)
                 >= config.target_network_update_freq
             ):
-                module.sync_target_networks(tau=config.tau)
+                # TODO (sven): Use TargetNetworkAPI as soon as DQN implements it.
+                if hasattr(module, "sync_target_networks"):
+                    module.sync_target_networks(tau=config.tau)
+                else:
+                    for (
+                        main_net,
+                        target_net,
+                    ) in module.unwrapped().get_target_network_pairs():
+                        update_target_network(
+                            main_net=main_net,
+                            target_net=target_net,
+                            tau=config.tau,
+                        )
                 # Increase lifetime target network update counter by one.
                 self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
                 # Update the (single-value -> window=1) last updated timestep metric.
