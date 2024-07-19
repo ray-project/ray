@@ -459,3 +459,8 @@ class PhysicalOperator(Operator):
     def supports_fusion(self) -> bool:
         """Returns ```True``` if this operator can be fused with other operators."""
         return False
+
+    @property
+    def estimated_output_num_rows(self) -> Optional[int]:
+        """Return the estimated number of output rows for this operator."""
+        return None

@@ -329,14 +329,10 @@ class MapOperator(OneToOneOperator, ABC):
                     * self._metrics.num_outputs_of_finished_tasks
                     / self._metrics.num_tasks_finished
                 )
-                # Estimate the number of output rows based on completed tasks
-                total_output_rows = sum(
-                    bundle.num_rows() for bundle in self._output_metadata
-                )
-                self._estimated_output_num_rows = round(
-                    total_output_rows
+                self._estimated_num_output_rows = round(
+                    estimated_num_tasks
+                    * self._metrics.rows_task_outputs_generated
                     / self._metrics.num_tasks_finished
-                    * estimated_num_tasks
                 )
 
             self._data_tasks.pop(task_index)

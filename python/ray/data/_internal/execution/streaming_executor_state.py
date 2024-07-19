@@ -242,7 +242,8 @@ class OpState:
         self.outqueue.append(ref)
         self.num_completed_tasks += 1
         if self.progress_bar:
-            self.progress_bar.update(1, self.op.num_outputs_total())
+            num_rows = sum(meta.num_rows for _, meta in ref.blocks)
+            self.progress_bar.update(num_rows, self.op.estimated_output_num_rows)
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
