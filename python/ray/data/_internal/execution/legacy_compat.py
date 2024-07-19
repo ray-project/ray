@@ -17,8 +17,7 @@ from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import unify_block_metadata_schema
-from ray.data.block import Block, BlockMetadata
-from ray.types import ObjectRef
+from ray.data.block import BlockMetadata
 
 # Warn about tasks larger than this.
 TASK_SIZE_WARN_THRESHOLD_BYTES = 100000
