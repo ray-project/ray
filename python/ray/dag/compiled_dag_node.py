@@ -1144,9 +1144,10 @@ class CompiledDAG:
                         ].dag_node.get_method_name()
                         logger.error(
                             "Detected a deadlock caused by using NCCL channels to "
-                            f"transfer data between tasks {method} and "
-                            f"{downstream_method} on the same actor {actor_handle}. "
-                            'Please remove `TorchTensorType(transport="nccl")` between '
+                            f"transfer data between the task `{method}` and "
+                            f"its downstream method `{downstream_method}` on the same "
+                            f"actor {actor_handle}. Please remove "
+                            '`TorchTensorType(transport="nccl")` between '
                             "DAG nodes on the same actor."
                         )
                         return True

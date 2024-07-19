@@ -105,8 +105,9 @@ def test_invalid_graph_1_actor_log(ray_start_regular):
 
     error_msg = (
         "Detected a deadlock caused by using NCCL channels to transfer "
-        f"data between tasks no_op and no_op on the same actor {str(a)}. "
-        'Please remove `TorchTensorType(transport="nccl")` between DAG '
+        f"data between the task `no_op` and its downstream method `no_op` on "
+        f"the same actor {str(a)}. Please remove "
+        '`TorchTensorType(transport="nccl")` between DAG '
         "nodes on the same actor."
     )
     error_msg_exist = False
