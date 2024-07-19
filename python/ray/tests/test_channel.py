@@ -15,16 +15,9 @@ import ray.experimental.channel as ray_channel
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.dag.compiled_dag_node import CompiledDAG
+from ray._private.test_utils import get_actor_node_id
 
 logger = logging.getLogger(__name__)
-
-
-def get_actor_node_id(actor_handle: "ray.actor.ActorHandle") -> str:
-    return ray.get(
-        actor_handle.__ray_call__.remote(
-            lambda self: ray.get_runtime_context().get_node_id()
-        )
-    )
 
 
 def create_driver_actor():

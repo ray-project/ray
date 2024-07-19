@@ -17,16 +17,9 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.torch_tensor_nccl_channel import (
     _init_nccl_group,
 )
+from ray._private.test_utils import get_actor_node_id
 
 logger = logging.getLogger(__name__)
-
-
-def get_actor_node_id(actor_handle: "ray.actor.ActorHandle") -> str:
-    return ray.get(
-        actor_handle.__ray_call__.remote(
-            lambda self: ray.get_runtime_context().get_node_id()
-        )
-    )
 
 
 @ray.remote(num_cpus=0, num_gpus=1)
