@@ -1340,7 +1340,7 @@ class TestActorInputOutput:
 
         def generate_torch_tensor(self, size) -> torch.Tensor:
             return torch.zeros(size)
-        
+
         def add_value_to_tensor(self, value: int, tensor: torch.Tensor) -> torch.Tensor:
             """
             Add `value` to all elements of the tensor.
@@ -1482,6 +1482,7 @@ class TestActorInputOutput:
         tensor. Then, the refiner model takes the image tensor and the prompt to refine
         the image. This test doesn't use the actual model but simulates the data flow.
         """
+
         @ray.remote
         class Replica:
             def __init__(self):
