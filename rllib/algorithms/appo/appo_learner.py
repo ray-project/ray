@@ -32,7 +32,11 @@ class APPOLearner(IMPALALearner):
 
         # Make target networks.
         self.module.foreach_module(
-            lambda mid, mod: mod.unwrapped().make_target_networks()
+            lambda mid, mod: (
+                mod.make_target_networks()
+                if isinstance(mod, TargetNetworkAPI)
+                else None
+            )
         )
 
         # The current kl coefficients per module as (framework specific) tensor

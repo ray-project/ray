@@ -1,12 +1,15 @@
 import numpy as np
 
-from typing import Dict
+from typing import Dict, Optional
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_learner import DQNRainbowLearner
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
-from ray.rllib.utils.typing import ModuleID, TensorType
+from ray.rllib.utils.typing import ModuleID, ShouldModuleBeUpdatedFn, TensorType
 
 # Now, this is double defined: In `SACRLModule` and here. I would keep it here
 # or push it into the `Learner` as these are recurring keys in RL.
@@ -40,6 +43,16 @@ class SACLearner(DQNRainbowLearner):
         # for the alpha already defined.
         super().build()
 
+        # Make target networks.
+        # TODO (sven): Move to DQN, once DQN implements the TargetNetworkAPI.
+        self.module.foreach_module(
+            lambda mid, mod: (
+                mod.make_target_networks()
+                if isinstance(mod, TargetNetworkAPI)
+                else None
+            )
+        )
+
         def get_target_entropy(module_id):
             """Returns the target entropy to use for the loss.
 
@@ -61,6 +74,22 @@ class SACLearner(DQNRainbowLearner):
         self.target_entropy: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(get_target_entropy(module_id))
         )
+
+    # TODO (sven): Move to DQN once DQN implements TargetNetworkAPI
+    @override(Learner)
+    def add_module(
+        self,
+        *,
+        module_id: ModuleID,
+        module_spec: SingleAgentRLModuleSpec,
+        config_overrides: Optional[Dict] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiAgentRLModuleSpec:
+        marl_spec = super().add_module(module_id=module_id)
+        # Create target networks for added Module, if applicable.
+        if isinstance(self.module[module_id].unwrapped(), TargetNetworkAPI):
+            self.module[module_id].unwrapped().make_target_networks()
+        return marl_spec
 
     @override(Learner)
     def remove_module(self, module_id: ModuleID) -> None:

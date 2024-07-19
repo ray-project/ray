@@ -207,7 +207,7 @@ class MultiAgentRLModule(RLModule):
             `func([module_id, module, **kwargs])`.
         """
         return [
-            func(module_id, module, **kwargs)
+            func(module_id, module.unwrapped(), **kwargs)
             for module_id, module in self._rl_modules.items()
         ]
 
