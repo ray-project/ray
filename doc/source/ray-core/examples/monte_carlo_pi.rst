@@ -3,6 +3,13 @@
 Monte Carlo Estimation of π
 ===========================
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-monte-carlo-pi" target="_blank" href="https://console.anyscale.com?utm_source=ray_docs&utm_medium=docs&utm_campaign=monte_carlo_pi">
+      <img src="../../_static/img/run-quickstart-anyscale.svg" alt="Run quickstart on Anyscale" />
+      <br/><br/>
+    </a>
+
 This tutorial shows you how to estimate the value of π using a `Monte Carlo method <https://en.wikipedia.org/wiki/Monte_Carlo_method>`_
 that works by randomly sampling points within a 2x2 square.
 We can use the proportion of the points that are contained within the unit circle centered at the origin
