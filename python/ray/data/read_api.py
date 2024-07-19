@@ -1708,7 +1708,7 @@ def read_tfrecords(
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
 
-    .. info:
+    .. tip::
         Using tfx-bsl for reading tfrecord files is prefered, When reading large
         datasets in production use cases. To use this implementation you should
         install tfx-bsl with:
