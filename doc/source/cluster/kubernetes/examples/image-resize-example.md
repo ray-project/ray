@@ -4,22 +4,11 @@
 
 In this guide, we show you how to run a sample Ray workload reading images from Google Cloud Storage and resizing them on Kubernetes infrastructure.
 
-## Prerequisites
-
-* [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.23), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4), [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation), and [Docker](https://docs.docker.com/engine/install/)
-* [Google Cloud Application Credential](https://cloud.google.com/docs/authentication/provide-credentials-adc)
-
-## Step 1: Create a Kubernetes cluster with Kind
-
-```shell
-kind create cluster --image=kindest/node:v1.26.0
-```
-
-## Step 2: Install the KubeRay operator
+## Step 1: Install the KubeRay operator
 
 Follow the [RayCluster Quickstart](kuberay-operator-deploy) to install the latest stable KubeRay operator by Helm repository.
 
-## Step 3: Install the RayJob
+## Step 2: Install the RayJob
 
 ```shell
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-data-image-resize/ray-job.image-resize.yaml
@@ -30,7 +19,7 @@ You might need to modify the following field in the Rayjob description YAML file
 
 The following example output is based on setting `replica` to 2.
 
-## Step 4: Verify the Kubernetes cluster status
+## Step 3: Verify the Kubernetes cluster status
 
 Check RayJob status. Expected status is `RUNNING` under `JOB STATUS` and `DEPLOYMENT STATUS`.
 
@@ -82,7 +71,7 @@ kubectl get rayjobs.ray.io image-resize -o jsonpath='{.status.jobDeploymentStatu
 # [Expected output]: "Complete"
 ```
 
-## Step 5: Check the output of the Ray job
+## Step 4: Check the output of the Ray job
 
 ```shell
 kubectl logs -l=job-name=image-resize
@@ -100,7 +89,7 @@ kubectl logs -l=job-name=image-resize
 # 2024-07-02 07:10:03,399 SUCC cli.py:62 -- ----------------------------------
 ```
 
-## Step 6: Clean up
+## Step 5: Clean up
 
 ```shell
 kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-data-image-resize/ray-job.image-resize.yaml
