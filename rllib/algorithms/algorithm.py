@@ -1683,7 +1683,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 inference_only=True,
             )
 
-        # Return reduced metrics (NestedDict).
+        # Return reduced metrics (Dict).
         # Note that these training results will further be processed (e.g.
         # merged with evaluation results) before eventually being returned from the
         # encapsulating `Algorithm.step()` call as a plain nested ResultDict.

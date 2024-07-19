@@ -7,7 +7,6 @@ from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import sequence_mask
 from ray.rllib.utils.typing import ModuleID, TensorType
 
@@ -24,7 +23,7 @@ class BCTorchLearner(TorchLearner):
         *,
         module_id: ModuleID,
         config: BCConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # In the RNN case, we expect incoming tensors to be padded to the maximum
