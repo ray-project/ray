@@ -40,5 +40,4 @@ class RLModuleWithTargetNetworksInterface(abc.ABC):
                 main_net=main_net,
                 target_net=target_net,
                 tau=tau,
-                framework=self.framework,
             )
