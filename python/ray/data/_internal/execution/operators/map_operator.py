@@ -316,7 +316,8 @@ class MapOperator(OneToOneOperator, ABC):
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
             self._metrics.on_task_finished(task_index, exception)
 
-            # Estimate number of tasks and rows from inputs received and tasks submitted so far
+            # Estimate number of tasks and rows from inputs received and tasks
+            # submitted so far
             upstream_op_num_outputs = self.input_dependencies[0].num_outputs_total()
             if upstream_op_num_outputs:
                 estimated_num_tasks = (
