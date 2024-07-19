@@ -95,7 +95,9 @@ def parse_vllm_args(cli_args: Dict[str, str]):
     Currently uses argparse because vLLM doesn't expose Python models for all of the
     config options we want to support.
     """
-    arg_parser = FlexibleArgumentParser(description="vLLM OpenAI-Compatible RESTful API server.")
+    arg_parser = FlexibleArgumentParser(
+        description="vLLM OpenAI-Compatible RESTful API server."
+    )
 
     parser = make_arg_parser(arg_parser)
     arg_strings = []
