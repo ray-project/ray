@@ -81,7 +81,7 @@ colorama
 myst-parser
 myst-nb==1.1.0
 sphinx
-jupytext
+jupytext>1.13.6
 jinja2
 pytest-docker-tools
 pytest-forked
