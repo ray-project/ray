@@ -107,6 +107,7 @@ class StreamingExecutor(Executor, threading.Thread):
                     message += f" Full logs are in {log_path}"
                 logger.info(message)
                 logger.info(f"Execution plan of Dataset: {dag}")
+                
             logger.debug("Execution config: %s", self._options)
 
         # Setup the streaming DAG topology and start the runner thread.

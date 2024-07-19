@@ -222,7 +222,6 @@ class OpState:
             num_progress_bars += self.op.initialize_sub_progress_bars(index + 1)
         return num_progress_bars if progress_bar_enabled else 0
 
-
     def close_progress_bars(self):
         """Close all progress bars for this operator."""
         if self.progress_bar:
