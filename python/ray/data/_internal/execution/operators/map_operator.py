@@ -340,6 +340,13 @@ class MapOperator(OneToOneOperator, ABC):
             self._output_queue.notify_task_completed(task_index)
             if task_done_callback:
                 task_done_callback()
+                
+        self._data_tasks[task_index] = DataOpTask(
+            task_index,
+            gen,
+            lambda output: _output_ready_callback(task_index, output),
+            functools.partial(_task_done_callback, task_index),
+        )
 
 
     def _submit_metadata_task(

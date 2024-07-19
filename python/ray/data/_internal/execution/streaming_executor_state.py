@@ -198,20 +198,27 @@ class OpState:
         return f"OpState({self.op.name})"
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
+        """Create progress bars at the given index (line offset in console).
+
+        For AllToAllOperator, zero or more sub progress bar would be created.
+        Return the number of enabled progress bars created for this operator.
+        """
         is_all_to_all = isinstance(self.op, AllToAllOperator)
+        # Only show 1:1 ops when in verbose progress mode.
         progress_bar_enabled = DataContext.get_current().enable_progress_bars and (
             is_all_to_all or verbose_progress
         )
-        total_estimated_rows = self.op.estimated_output_num_rows or self.op.num_outputs_total()
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
-            total_estimated_rows,
+            self.op.estimated_output_num_rows(),
             unit="row",
             position=index,
             enabled=progress_bar_enabled,
         )
         num_progress_bars = 1
         if is_all_to_all:
+            # Initialize must be called for sub progress bars, even the
+            # bars are not enabled via the DataContext.
             num_progress_bars += self.op.initialize_sub_progress_bars(index + 1)
         return num_progress_bars if progress_bar_enabled else 0
 

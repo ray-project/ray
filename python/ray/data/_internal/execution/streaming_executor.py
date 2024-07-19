@@ -99,7 +99,14 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time = time.perf_counter()
 
         if not isinstance(dag, InputDataBuffer):
-            # existing code
+            context = DataContext.get_current()
+            if context.print_on_execution_start:
+                message = "Starting execution of Dataset."
+                log_path = get_log_directory()
+                if log_path is not None:
+                    message += f" Full logs are in {log_path}"
+                logger.info(message)
+                logger.info(f"Execution plan of Dataset: {dag}")
             logger.debug("Execution config: %s", self._options)
 
         # Setup the streaming DAG topology and start the runner thread.
@@ -115,6 +122,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._has_op_completed = {op: False for op in self._topology}
 
         if not isinstance(dag, InputDataBuffer):
+            # Note: DAG must be initialized in order to query num_outputs_total.
             total_estimated_rows = dag.estimated_output_num_rows or dag.num_outputs_total()
             self._global_info = ProgressBar(
                 "Running", total_estimated_rows, unit="row"
