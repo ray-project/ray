@@ -99,7 +99,8 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     data,
                     Columns.TERMINATEDS,
                     items_to_add=(
-                        [False] * (len(sa_episode) - 1) + [sa_episode.is_terminated]
+                        [False] * (len(sa_episode) - 1)
+                        + [sa_episode.is_terminated] if len(sa_episode) > 0 else []
                     ),
                     num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
@@ -114,7 +115,8 @@ class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
                     data,
                     Columns.TRUNCATEDS,
                     items_to_add=(
-                        [False] * (len(sa_episode) - 1) + [sa_episode.is_truncated]
+                        [False] * (len(sa_episode) - 1)
+                        + [sa_episode.is_truncated] if len(sa_episode) > 0 else []
                     ),
                     num_items=len(sa_episode),
                     single_agent_episode=sa_episode,
