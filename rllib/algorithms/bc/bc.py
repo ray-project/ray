@@ -159,13 +159,13 @@ class BC(MARWIL):
                 # `RolloutWorker/EnvRunner` should be used.
                 if self.config.count_steps_by == "agent_steps":
                     train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
+                        worker_set=self.env_runner_group,
                         max_agent_steps=self.config.train_batch_size,
                         sample_timeout_s=self.config.sample_timeout_s,
                     )
                 else:
                     train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
+                        worker_set=self.env_runner_group,
                         max_env_steps=self.config.train_batch_size,
                         sample_timeout_s=self.config.sample_timeout_s,
                     )
@@ -208,14 +208,14 @@ class BC(MARWIL):
 
             # with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                if self.workers.num_remote_workers() > 0:
-                    self.workers.sync_weights(
+                if self.env_runner_group.num_remote_workers() > 0:
+                    self.env_runner_group.sync_weights(
                         from_worker_or_learner_group=self.learner_group,
                         policies=policies_to_update,
                     )
                 # Get weights from Learner to local worker.
                 else:
-                    self.workers.local_worker().set_weights(
+                    self.env_runner.set_weights(
                         self.learner_group.get_weights()
                     )
 

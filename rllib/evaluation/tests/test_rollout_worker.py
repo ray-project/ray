@@ -103,6 +103,16 @@ class TestRolloutWorker(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
+
+    @staticmethod
+    def _from_existing_env_runner(local_env_runner, remote_workers=None):
+        workers = EnvRunnerGroup(
+            env_creator=None, default_policy_class=None, config=None, _setup=False
+        )
+        workers.reset(remote_workers or [])
+        workers._local_env_runner = local_env_runner
+        return workers
+
     def test_basic(self):
         ev = RolloutWorker(
             env_creator=lambda _: gym.make("CartPole-v1"),
@@ -210,13 +220,13 @@ class TestRolloutWorker(unittest.TestCase):
         )
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             algo = config.build()
-            results = algo.workers.foreach_worker(
+            results = algo.env_runner_group.foreach_worker(
                 lambda w: w.total_rollout_fragment_length
             )
-            results2 = algo.workers.foreach_worker_with_id(
+            results2 = algo.env_runner_group.foreach_worker_with_id(
                 lambda i, w: (i, w.total_rollout_fragment_length)
             )
-            results3 = algo.workers.foreach_worker(
+            results3 = algo.env_runner_group.foreach_worker(
                 lambda w: w.foreach_env(lambda env: 1)
             )
             self.assertEqual(results, [10, 10, 10])
@@ -486,8 +496,8 @@ class TestRolloutWorker(unittest.TestCase):
             config=config,
         )
         sample = convert_ma_batch_to_sample_batch(ev.sample())
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         self.assertEqual(max(sample["rewards"]), 1)
@@ -532,8 +542,8 @@ class TestRolloutWorker(unittest.TestCase):
             .environment(clip_rewards=False),
         )
         sample = convert_ma_batch_to_sample_batch(ev2.sample())
-        ws2 = EnvRunnerGroup._from_existing(
-            local_worker=ev2,
+        ws2 = self._from_existing_env_runner(
+            local_env_runner=ev2,
             remote_workers=[],
         )
         self.assertEqual(max(sample["rewards"]), 100)
@@ -560,8 +570,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="complete_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[remote_ev],
         )
         ev.sample()
@@ -582,8 +592,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         for _ in range(8):
@@ -614,8 +624,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         batch = ev.sample()
@@ -639,8 +649,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         for _ in range(8):
@@ -666,8 +676,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         for _ in range(8):

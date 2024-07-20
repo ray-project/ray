@@ -101,7 +101,7 @@ def my_experiment(config: Dict):
     eval_algo.restore(checkpoint_training_low_lr)
     # The algo's local worker (SingleAgentEnvRunner) that holds a
     # gym.vector.Env object and an RLModule for computing actions.
-    local_env_runner = eval_algo.workers.local_worker()
+    local_env_runner = eval_algo.env_runner
     # Extract the gymnasium env object from the created algo (its local
     # SingleAgentEnvRunner worker). Note that the env in this single-agent
     # case is a gymnasium vector env and that we get its first sub-env here.
