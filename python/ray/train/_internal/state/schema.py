@@ -64,9 +64,9 @@ class ProcessStats(BaseModel):
 
 
 class ProcessGPUUsage(BaseModel):
-  # This gpu usage stats from a process
-  pid: int
-  gpuMemoryUsage: int
+    # This gpu usage stats from a process
+    pid: int
+    gpuMemoryUsage: int
 
 
 @DeveloperAPI
