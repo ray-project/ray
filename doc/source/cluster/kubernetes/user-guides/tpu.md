@@ -25,7 +25,7 @@ field to the RayCluster custom resource, specifying the number of TPU hosts to c
 replicas are treated as PodSlices rather than individual workers, with `numOfHosts` worker nodes being created per replica.
 Additionally, GKE uses `gke-tpu` node selectors to schedule TPU pods on the node matching the desired TPU accelerator and topology.
 
-Below is a config snippet for a RayCluster worker group with 2 Ray TPU workers, each scheduled on their own GKE v4 TPU node.
+Below is a config snippet for a RayCluster worker group with 2 Ray TPU worker pods, each scheduled on its own GKE v4 TPU node belonging to the same TPU PodSlice.
 
 ```
    groupName: tpu-group
