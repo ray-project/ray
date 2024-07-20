@@ -1709,12 +1709,13 @@ def read_tfrecords(
     messages.
 
     .. tip::
-        Using tfx-bsl for reading tfrecord files is prefered, When reading large
-        datasets in production use cases. To use this implementation you should
-        install tfx-bsl with:
+        Using the ``tfx-bsl`` library is more performant when reading large
+        datasets (for example, in production use cases). To use this
+        implementation, you must first install ``tfx-bsl``:
+
         1. `pip install tfx_bsl --no-dependencies`
         2. Pass tfx_read_options to read_tfrecords, for example:
-            `ds = read_tfrecords(path, ..., tfx_read_options=TFXReadOptions())`
+           `ds = read_tfrecords(path, ..., tfx_read_options=TFXReadOptions())`
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. If a file
