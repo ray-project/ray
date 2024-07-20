@@ -154,7 +154,8 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
                                                       error_type,
                                                       &status,
                                                       &error_info,
-                                                      /*mark_task_object_failed*/ true,
+                                                      /*mark_task_object_failed=*/true,
+                                                      /*update_seqno=*/true,
                                                       fail_immediately);
   }
 
@@ -322,7 +323,8 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
                                                         error_type,
                                                         &status,
                                                         &error_info,
-                                                        /*mark_task_object_failed*/ true,
+                                                        /*mark_task_object_failed=*/true,
+                                                        /*update_seqno=*/true,
                                                         fail_immediatedly);
     }
     if (!wait_for_death_info_tasks.empty()) {
@@ -528,7 +530,10 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   const auto task_skipped = task_spec.GetMessage().skip_execution();
   const bool is_retryable_exception = status.ok() && reply.is_retryable_error();
   /// Whether or not we will retry this actor task.
-  auto will_retry = false;
+  bool will_retry = false;
+  /// Whether or not we need to mark the seqno as completed for the actor.
+  /// We always mark unless the actor is dead and task will be tried in a new actor.
+  bool mark_seqno_completed = true;
 
   if (task_skipped) {
     // NOTE(simon):Increment the task counter regardless of the status because the
@@ -562,6 +567,13 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       RAY_CHECK(is_retryable_exception);
       error_info = gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
                                         reply.task_execution_error());
+    } else if (status.IsStaleTaskError()) {
+      // The task is considered stale by actor. This can heppen when the actor receives
+      // a task, and the connection broke, and the caller resubmits the task with the
+      // same seqno. This task may be retried out of order as if it's retryable user
+      // exception.
+      error_info.set_error_message("The task is considered stale by the actor.");
+      error_info.set_error_type(rpc::ErrorType::STALE_TASK);
     } else {
       // push task failed due to network error. For example, actor is dead
       // and no process response for the push task.
@@ -594,6 +606,15 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       }
     }
 
+    // On actor died or unavailable, retry the same seqno. On other errors, including
+    // user exception or actor-complained STALE_TASK, update the seqno. This makes the
+    // tasks to no longer sequenced in the order of the submission.
+    bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
+                        error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
+
+    // if we update this task's seqno, mark the old seqno as completed. or it will hang.
+    mark_seqno_completed = update_seqno;
+
     // This task may have been waiting for dependency resolution, so cancel
     // this first.
     resolver_.CancelDependencyResolution(task_id);
@@ -603,7 +624,8 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
         error_info.error_type(),
         &status,
         &error_info,
-        /*mark_task_object_failed*/ is_actor_dead,
+        /*mark_task_object_failed=*/is_actor_dead,
+        update_seqno,
         fail_immediately);
     if (!is_actor_dead && !will_retry) {
       // Ran out of retries, last failure = either user exception or actor death.
@@ -649,11 +671,22 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     auto queue_pair = client_queues_.find(actor_id);
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
-    // Every seqno for the actor_submit_queue must be MarkSeqnoCompleted.
-    // On exception-retry we update the seqno so we need to call;
-    // On exception's or actor's last try we also need to call.
-    if ((!will_retry) || is_retryable_exception) {
+    // Every seqno for the actor_submit_queue must be MarkSeqnoCompleted, or the actor
+    // will hang and don't execute the next tasks.
+    // Cases that need MarkSeqnoCompleted:
+    // - the task won't be retried
+    // - the task is retried, but the seqno is updated.
+    if ((!will_retry) || mark_seqno_completed) {
+      RAY_LOG(ERROR).WithField(task_spec.TaskId())
+          << "HandlePushTaskReply: MarkSeqnoCompleted for actor_id=" << actor_id
+          << ", actor_counter=" << actor_counter << " will_retry = " << will_retry
+          << " is_retryable_exception = " << is_retryable_exception;
       queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, task_spec);
+    } else {
+      RAY_LOG(ERROR) << "HandlePushTaskReply: NOT MarkSeqnoCompleted for actor_id="
+                     << actor_id << ", actor_counter=" << actor_counter
+                     << " will_retry = " << will_retry
+                     << " is_retryable_exception = " << is_retryable_exception;
     }
     queue.cur_pending_calls--;
   }

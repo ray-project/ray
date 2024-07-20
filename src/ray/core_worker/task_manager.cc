@@ -953,17 +953,16 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 }
 
 bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
+                                      bool update_seqno,
                                       const rpc::RayErrorInfo &error_info) {
   TaskSpecification spec;
   bool will_retry = false;
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
   bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
-  // If the actor isn't dead and it's a user exception, we should update the seq no. If an
-  // actor is dead and restarted, the seqno is reset, and we don't need to update it when
-  // resubmitting a task.
-  bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
-                      error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
+  RAY_LOG(ERROR).WithField(task_id)
+      << "RetryTaskIfPossible update_seqno: " << update_seqno << " error "
+      << error_info.DebugString();
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -1103,12 +1102,13 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
                                          const Status *status,
                                          const rpc::RayErrorInfo *ray_error_info,
                                          bool mark_task_object_failed,
+                                         bool update_seqno,
                                          bool fail_immediately) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
   RAY_LOG(WARNING) << "Task attempt " << task_id << " failed with error "
-                   << rpc::ErrorType_Name(error_type) << " Fail immediately? "
-                   << fail_immediately << ", status "
+                   << rpc::ErrorType_Name(error_type) << " Update seqno? " << update_seqno
+                   << " Fail immediately? " << fail_immediately << ", status "
                    << (status == nullptr ? "null" : status->ToString()) << ", error info "
                    << (ray_error_info == nullptr ? "null"
                                                  : ray_error_info->DebugString());
@@ -1117,6 +1117,7 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
   if (!fail_immediately) {
     will_retry = RetryTaskIfPossible(
         task_id,
+        update_seqno,
         ray_error_info == nullptr ? gcs::GetRayErrorInfo(error_type) : *ray_error_info);
   }
 

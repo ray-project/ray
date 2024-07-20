@@ -38,6 +38,7 @@ class TaskFinisherInterface {
                                    bool is_application_error) = 0;
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
+                                   bool update_seqno,
                                    const rpc::RayErrorInfo &error_info) = 0;
 
   virtual void FailPendingTask(const TaskID &task_id,
@@ -50,6 +51,7 @@ class TaskFinisherInterface {
                                       const Status *status,
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
                                       bool mark_task_object_failed = true,
+                                      bool update_seqno = true,
                                       bool fail_immediately = false) = 0;
 
   virtual void MarkTaskWaitingForExecution(const TaskID &task_id,
@@ -466,6 +468,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id ID of the task to be retried.
   /// \return true if task is scheduled to be retried.
   bool RetryTaskIfPossible(const TaskID &task_id,
+                           bool update_seqno,
                            const rpc::RayErrorInfo &error_info) override;
 
   /// A pending task failed. This will either retry the task or mark the task
@@ -480,14 +483,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] mark_task_object_failed whether or not it marks the task
   /// return object as failed. If this is set to false, then the caller is
   /// responsible for later failing or completing the task.
-  /// \param[in] fail_immediately whether to fail the task and ignore
-  /// the retries that are available.
-  /// \return Whether the task will be retried or not.
+  /// \param[in] update_seqno whether the task should be updated its actor_counter when
+  /// retrying.
+  /// \param[in] fail_immediately whether to fail the task and ignore the
+  /// retries that are available. \return Whether the task will be retried or not.
   bool FailOrRetryPendingTask(const TaskID &task_id,
                               rpc::ErrorType error_type,
                               const Status *status = nullptr,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
                               bool mark_task_object_failed = true,
+                              bool update_seqno = true,
                               bool fail_immediately = false) override;
 
   /// A pending task failed. This will mark the task as failed.

@@ -145,6 +145,11 @@ void ActorHandle::SetActorTaskSpec(
 void ActorHandle::SetResubmittedActorTaskSpec(TaskSpecification &spec) {
   absl::MutexLock guard(&mutex_);
   auto mutable_spec = spec.GetMutableMessage().mutable_actor_task_spec();
+  RAY_LOG(ERROR)
+          .WithField(spec.TaskId())
+          .WithField(ActorID::FromBinary(inner_.actor_id()))
+      << "SetResubmittedActorTaskSpec updating seqno from "
+      << mutable_spec->actor_counter() << " to " << task_counter_ + 1;
   mutable_spec->set_actor_counter(task_counter_++);
 }
 

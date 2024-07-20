@@ -88,6 +88,19 @@ void ActorSchedulingQueue::Add(
     next_seq_no_ = client_processed_up_to + 1;
   }
   RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
+  RAY_LOG(ERROR).WithField(task_id)
+      << "Enqueue " << seq_no << " next_seq_no_ " << next_seq_no_
+      << "client_processed_up_to " << client_processed_up_to;
+
+  /*
+  Caller sent the task.
+  Actor recv'd the task. <- incremented next_seq_no_ here.
+  Conn break, Caller got UNAVILABLE.
+  Conn re-establish,
+  Caller resend with same seq_no.
+  Actor: duplicate task, cancel stale.
+
+  */
 
   pending_actor_tasks_[seq_no] = InboundRequest(std::move(accept_request),
                                                 std::move(reject_request),
@@ -134,7 +147,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
     auto head = pending_actor_tasks_.begin();
     RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
                    << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
-    head->second.Cancel(Status::Invalid("client cancelled stale rpc"));
+    head->second.Cancel(Status::StaleTaskError("client cancelled stale rpc"));
     {
       absl::MutexLock lock(&mu_);
       pending_task_id_to_is_canceled.erase(head->second.TaskID());
@@ -199,7 +212,7 @@ void ActorSchedulingQueue::OnSequencingWaitTimeout() {
                  << ", cancelling all queued tasks";
   while (!pending_actor_tasks_.empty()) {
     auto head = pending_actor_tasks_.begin();
-    head->second.Cancel(Status::Invalid("client cancelled stale rpc"));
+    head->second.Cancel(Status::StaleTaskError("client cancelled stale rpc"));
     next_seq_no_ = std::max(next_seq_no_, head->first + 1);
     {
       absl::MutexLock lock(&mu_);

@@ -253,6 +253,10 @@ enum ErrorType {
   // ACTOR_DIED is that the actor may still be alive and may become available again
   // after some retries.
   ACTOR_UNAVAILABLE = 25;
+  // The task is considered stale by the actor, can only be retried with an updated
+  // seqno.
+  // This error is internal, and if user sees it it's a bug.
+  STALE_TASK = 26;
 }
 
 /// The information per ray error type.

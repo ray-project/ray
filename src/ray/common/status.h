@@ -118,6 +118,8 @@ enum class StatusCode : char {
   ChannelError = 35,
   // Indicates that a read or write on a channel (a mutable plasma object) timed out.
   ChannelTimeoutError = 36,
+  // The core worker received a stale actor task and it's not executed.
+  StaleTaskError = 37,
 };
 
 #if defined(__clang__)
@@ -261,6 +263,10 @@ class RAY_EXPORT Status {
     return Status(StatusCode::ChannelTimeoutError, msg);
   }
 
+  static Status StaleTaskError(const std::string &msg) {
+    return Status(StatusCode::StaleTaskError, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
@@ -314,6 +320,8 @@ class RAY_EXPORT Status {
   bool IsChannelError() const { return code() == StatusCode::ChannelError; }
 
   bool IsChannelTimeoutError() const { return code() == StatusCode::ChannelTimeoutError; }
+
+  bool IsStaleTaskError() const { return code() == StatusCode::StaleTaskError; }
 
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.

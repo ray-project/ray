@@ -690,6 +690,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
                      !reply.is_retryable_error() ||
                      !task_finisher_->RetryTaskIfPossible(
                          task_id,
+                         /*update_seqno=*/true,
                          gcs::GetRayErrorInfo(rpc::ErrorType::TASK_EXECUTION_EXCEPTION,
                                               reply.task_execution_error()))) {
             task_finisher_->CompletePendingTask(

@@ -105,6 +105,28 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     ["actor", "task", "driver"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+def test_retryable_tasks_conn_broken(ray_start_regular, caller):
+    def body():
+        a = Counter.remote()
+        assert ray.get(a.slow_increment.remote(1, 0.1)) == 1
+        pid = ray.get(a.getpid.remote())
+        task = a.slow_increment.options(max_task_retries=-1).remote(2, secs=5)
+        # Break the grpc connection from this process to the actor process. The caller
+        # gets a retryable task failure (ACTOR_UNAVAILABLE), and it retries. The retry
+        # happens after RAY_task_retry_delay_ms (default 0) wait. Resubmission
+        # reestablishes the connection so the task succeeds.
+        close_common_connections(pid)
+        # The actor received 2 calls, so 1 + 2 + 2 = 5.
+        assert ray.get(task) == 5
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["actor", "task", "driver"],
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 @pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_restarting(ray_start_regular, caller):
     def body():

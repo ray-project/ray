@@ -66,6 +66,8 @@ namespace ray {
 #define STATUS_CODE_AUTH_ERROR "AuthError"
 #define STATUS_CODE_INVALID_ARGUMENT "InvalidArgument"
 #define STATUS_CODE_CHANNEL_ERROR "ChannelError"
+#define STATUS_CODE_CHANNEL_TIMEOUT_ERROR "ChannelTimeoutError"
+#define STATUS_CODE_STALE_TASK_ERROR "StaleTaskError"
 
 // not a real status (catch all for codes not known)
 #define STATUS_CODE_UNKNOWN "Unknown"
@@ -105,6 +107,8 @@ const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
     {StatusCode::AuthError, STATUS_CODE_AUTH_ERROR},
     {StatusCode::InvalidArgument, STATUS_CODE_INVALID_ARGUMENT},
     {StatusCode::ChannelError, STATUS_CODE_CHANNEL_ERROR},
+    {StatusCode::ChannelTimeoutError, STATUS_CODE_CHANNEL_TIMEOUT_ERROR},
+    {StatusCode::StaleTaskError, STATUS_CODE_STALE_TASK_ERROR},
 };
 
 const absl::flat_hash_map<std::string, StatusCode> kStrToCode = []() {
