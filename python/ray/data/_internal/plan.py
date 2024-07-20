@@ -11,7 +11,7 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
+from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import create_dataset_tag, unify_block_metadata_schema
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
@@ -572,9 +572,6 @@ class ExecutionPlan:
         if not self._snapshot_stats:
             return DatasetStats(metadata={}, parent=None)
         return self._snapshot_stats
-
-    def stats_summary(self) -> DatasetStatsSummary:
-        return self.stats().to_summary()
 
     def has_lazy_input(self) -> bool:
         """Return whether this plan has lazy input blocks."""

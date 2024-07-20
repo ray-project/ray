@@ -178,6 +178,8 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         return self.module
 
 
+# TODO (sven): Deprecate in favor of TargetNetworkAPI (only DQN still using
+#  this old API).
 class TorchDDPRLModuleWithTargetNetworksInterface(
     TorchDDPRLModule,
     RLModuleWithTargetNetworksInterface,

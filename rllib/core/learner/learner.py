@@ -690,6 +690,7 @@ class Learner(Checkpointable):
             on the correct device.
         """
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def add_module(
         self,
         *,
@@ -750,6 +751,7 @@ class Learner(Checkpointable):
         )
         return self.config.rl_module_spec
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def remove_module(
         self,
         module_id: ModuleID,
