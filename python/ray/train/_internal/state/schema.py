@@ -51,8 +51,8 @@ class TrainWorkerInfo(BaseModel):
 class MemoryInfo(BaseModel):
     rss: int
     vms: int
-    pfaults: int
-    pageins: int
+    pfaults: Optional[int]
+    pageins: Optional[int]
 
 
 @DeveloperAPI
