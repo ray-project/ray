@@ -48,6 +48,48 @@ class TrainWorkerInfo(BaseModel):
 
 
 @DeveloperAPI
+class MemoryInfo(BaseModel):
+    rss: int
+    vms: int
+    pfaults: int
+    pageins: int
+
+
+@DeveloperAPI
+class ProcessStats(BaseModel):
+    cpuPercent: float
+    # total memory, free memory, memory used ratio
+    mem: Optional[List[int]]
+    memoryInfo: MemoryInfo
+
+
+@DeveloperAPI
+class GPUStats(BaseModel):
+    uuid: str
+    index: int
+    name: str
+    utilization_gpu: Optional[float]
+    memory_used: float
+    memory_total: float
+
+
+@DeveloperAPI
+class TrainWorkerInfoWithDetails(TrainWorkerInfo):
+    """Metadata of a Ray Train worker."""
+
+    process_stats: Optional[ProcessStats] = Field(
+        ..., description="Process stats of the worker."
+    )
+    gpus: List[GPUStats] = Field(
+        default_factory=list,
+        description=(
+            "GPU stats of the worker. "
+            "Only returns GPUs that are attached to the worker process."
+        ),
+    )
+
+
+@DeveloperAPI
 class TrainDatasetInfo(BaseModel):
     name: str = Field(
         description="The key of the dataset dict specified in Ray Train Trainer."
@@ -91,6 +133,9 @@ class TrainRunInfo(BaseModel):
 class TrainRunInfoWithDetails(TrainRunInfo):
     """Metadata for a Ray Train run and information about its workers."""
 
+    workers: List[TrainWorkerInfoWithDetails] = Field(
+        description="A List of Train workers sorted by global ranks."
+    )
     job_details: Optional[JobDetails] = Field(
         None, description="Details of the job that started this Train run."
     )
