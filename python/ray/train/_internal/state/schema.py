@@ -63,6 +63,12 @@ class ProcessStats(BaseModel):
     memoryInfo: MemoryInfo
 
 
+class ProcessGPUUsage(BaseModel):
+  # This gpu usage stats from a process
+  pid: int
+  gpuMemoryUsage: int
+
+
 @DeveloperAPI
 class GPUStats(BaseModel):
     uuid: str
@@ -71,6 +77,7 @@ class GPUStats(BaseModel):
     utilization_gpu: Optional[float]
     memory_used: float
     memory_total: float
+    processes: Optional[List[ProcessGPUUsage]]
 
 
 @DeveloperAPI
