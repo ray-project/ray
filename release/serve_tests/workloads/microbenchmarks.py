@@ -117,7 +117,7 @@ async def _main(output_path: Optional[str]):
     payload_1mb = generate_payload(1000000)
     payload_10mb = generate_payload(10000000)
 
-    # HTTP
+    # HTP
     serve.run(Noop.bind())
     # Microbenchmark: HTTP noop latencies
     latencies = await run_latency_benchmark(
