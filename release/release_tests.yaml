@@ -895,9 +895,6 @@
   cluster:
     byod:
       type: gpu
-      pip:
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
       post_build_script: byod_vicuna_test.sh
     cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
 

@@ -13,4 +13,6 @@ sudo mount /dev/nvme1n1 /mnt/local_storage || true
 EOF
 pip3 uninstall -y pytorch-lightning
 pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-pip3 install lightning==2.0.3  transformers==4.30.2 accelerate==0.20.3 deepspeed==0.12.3
+pip3 install lightning==2.0.3  transformers==4.30.2 accelerate==0.20.3 \
+  deepspeed==0.12.3 myst-parser==0.15.2 myst-nb==0.13.1 \
+  wandb==0.13.4
