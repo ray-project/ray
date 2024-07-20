@@ -317,35 +317,43 @@ class OpState:
 
     def _get_average_ouput_size(self) -> float:
         return self.op._metrics.average_bytes_outputs_per_task
-
+    
     def _get_grow_rate(self, resource_manager: ResourceManager) -> float:
-        cumulative_grow_rate = 0
 
-        # Assume no more than one output.
-        assert len(self.op.output_dependencies) <= 1
-        for op in self.op.output_dependencies:
-            logger.debug(
-                "@mzm: average_bytes_inputs_per_task "
-                f"{op._metrics.average_bytes_inputs_per_task}, "
-                f"average_task_duration: {op._metrics.average_task_duration}, "
-            )
+        time_for_pipeline_to_process_one_data = 0
+        next_op = self.op
+        output_input_multipler = 1
+
+        while len(next_op.output_dependencies) > 0:
+            assert len(next_op.output_dependencies) == 1
+
+            next_op = next_op.output_dependencies[0]
+
             # Initialize grow rate to be 0.
             if (
-                not op._metrics.average_task_duration
-                or not op._metrics.average_bytes_inputs_per_task
+                not next_op._metrics.average_task_duration
+                or not next_op._metrics.average_bytes_inputs_per_task
+                or not next_op._metrics.average_bytes_outputs_per_task
             ):
                 continue
-
-            cumulative_grow_rate += (
-                op._metrics.average_bytes_inputs_per_task
-                / op._metrics.average_task_duration
-                * (
+                            
+            time_for_op = output_input_multipler * next_op._metrics.average_task_duration / next_op._metrics.average_bytes_inputs_per_task
+            
+            if next_op.incremental_resource_usage().cpu:
+                # @MaoZiming: if it is on GPU, it doesn't take CPU time. 
+                time_for_pipeline_to_process_one_data += time_for_op
+            
+            output_input_multipler *= (next_op._metrics.average_bytes_outputs_per_task / next_op._metrics.average_bytes_inputs_per_task)
+        
+        num_executors_not_running_op = (
                     resource_manager.get_global_limits().cpu
                     - self.op.num_active_tasks() * self.op.incremental_resource_usage().cpu
                 )
-            )
 
-        return cumulative_grow_rate
+        if time_for_pipeline_to_process_one_data == 0:
+            return 0
+        
+        return (1 / time_for_pipeline_to_process_one_data) * num_executors_not_running_op
 
     def _replenish_output_budget(self, resource_manager: ResourceManager) -> float:
 

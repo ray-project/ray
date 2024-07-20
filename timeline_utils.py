@@ -5,11 +5,15 @@ import ray
 producer_task_name = "task::ReadRange->MapBatches(produce)"
 consumer_task_name = "task::MapBatches(consume)"
 inference_task_name = "task::MapBatches(inference)"
+transform_task_name = "task::MapBatches(transform)"
+write_task_name = "task::MapBatches(write)"
 
 COLORS = {
     producer_task_name: "rail_response",
     consumer_task_name: "cq_build_passed",
-    inference_task_name: "cq_build_failed"
+    inference_task_name: "cq_build_failed",
+    transform_task_name: "rail_load", 
+    write_task_name: "cq_build_running"
 }
 
 def assign_slots(events, num_cpus, num_gpus):
@@ -31,7 +35,7 @@ def assign_slots(events, num_cpus, num_gpus):
         assigned = False
         # Find an available slot for the worker
         for i in range(num_cpus + num_gpus):
-            if event['cat'] in [producer_task_name, consumer_task_name] and i > num_cpus:
+            if event['cat'] in [producer_task_name, consumer_task_name, write_task_name] and i > num_cpus:
                 continue
             if event['cat'] in [inference_task_name] and i < num_cpus: 
                 continue
@@ -113,4 +117,4 @@ def read_and_save_timeline_with_cpus_gpus(addr: str, num_cpus: int, num_gpus: in
     print(f"Processed and saved modified data to {addr}")
     
 # if __name__ == "__main__":
-#     read_and_save_timeline_with_cpus_gpus('timeline_flink_three_stage.json', 8, 4)
+#     read_and_save_timeline_with_cpus_gpus('timeline_flink_four_stage.json', 8, 4)
