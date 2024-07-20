@@ -607,17 +607,17 @@ class AlgorithmConfig(_Config):
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
-        config["num_cpus_for_driver"] = config.pop(
-            "num_cpus_for_local_worker", config.pop("num_cpus_for_main_process", 1)
-        )
-        config["num_workers"] = config.pop(
-            "num_env_runners", config.pop("num_rollout_workers", 0)
-        )
-        config["num_cpus_per_worker"] = config.pop("num_cpus_per_env_runner", 1)
-        config["num_gpus_per_worker"] = config.pop("num_gpus_per_env_runner", 0)
-        config["num_learner_workers"] = config.pop("num_learners", 0)
-        config["num_cpus_per_learner_worker"] = config.pop("num_cpus_per_learner", 1)
-        config["num_gpus_per_learner_worker"] = config.pop("num_gpus_per_learner", 0)
+        # config["num_cpus_for_driver"] = config.pop(
+        #    "num_cpus_for_local_worker", config.pop("num_cpus_for_main_process", 1)
+        # )
+        # config["num_workers"] = config.pop(
+        #    "num_env_runners", config.pop("num_rollout_workers", 0)
+        # )
+        # config["num_cpus_per_worker"] = config.pop("num_cpus_per_env_runner", 1)
+        # config["num_gpus_per_worker"] = config.pop("num_gpus_per_env_runner", 0)
+        # config["num_learner_workers"] = config.pop("num_learners", 0)
+        # config["num_cpus_per_learner_worker"] = config.pop("num_cpus_per_learner", 1)
+        # config["num_gpus_per_learner_worker"] = config.pop("num_gpus_per_learner", 0)
 
         # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
         # These would be useless in the returned dict anyways.
@@ -2824,9 +2824,7 @@ class AlgorithmConfig(_Config):
             log_level: Set the ray.rllib.* log level for the agent process and its
                 workers. Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level
                 will also periodically print out summaries of relevant internal dataflow
-                (this is also printed out once at startup at the INFO level). When using
-                the `rllib train` command, you can also use the `-v` and `-vv` flags as
-                shorthand for INFO and DEBUG.
+                (this is also printed out once at startup at the INFO level).
             log_sys_usage: Log system resource metrics to results. This requires
                 `psutil` to be installed for sys stats, and `gputil` for GPU metrics.
             fake_sampler: Use fake (infinite speed) sampler. For testing only.

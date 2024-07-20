@@ -176,6 +176,22 @@ def add_rllib_example_script_args(
         "one.",
     )
 
+    # RLlib logging options.
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="The output directory to write trajectories to, which are collected by "
+        "the algo's EnvRunners.",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default=None,  # None -> use default
+        values=["INFO", "DEBUG", "WARN", "ERROR"],
+        help="The log-level to be used by the RLlib logger.",
+    )
+
     # tune.Tuner options.
     parser.add_argument(
         "--no-tune",
@@ -1494,6 +1510,14 @@ def run_rllib_example_script_experiment(
                 evaluation_duration_unit=args.evaluation_duration_unit,
                 evaluation_parallel_to_training=args.evaluation_parallel_to_training,
             )
+
+        # Set the log-level (if applicable).
+        if args.log_level is not None:
+            config.debugging(log_level=args.log_level)
+
+        # Set the output dir (if applicable).
+        if args.output is not None:
+            config.offline_data(output=args.output)
 
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
