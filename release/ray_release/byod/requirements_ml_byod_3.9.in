@@ -1,6 +1,5 @@
 # Python requirements to run release tests from anyscale byod (gpu type, python 3.9)
 
--c requirements_compiled.txt
 accelerate
 bitsandbytes
 boto3
@@ -58,5 +57,5 @@ typing-extensions
 urllib3
 uvicorn
 validators
-wandb
+wandb==0.17.0
 xgboost

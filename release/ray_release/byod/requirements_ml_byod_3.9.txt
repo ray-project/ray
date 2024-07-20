@@ -4,27 +4,18 @@
 #
 #    bazel run //release:requirements_ml_byod_3.9.update
 #
---extra-index-url https://download.pytorch.org/whl/cpu
---find-links https://data.pyg.org/whl/torch-1.13.0+cpu.html
---find-links https://data.pyg.org/whl/torch-2.0.1+cpu.html
-
 absl-py==1.4.0 \
     --hash=sha256:0d3fe606adfa4f7db64792dd4c7aee4ee0c38ab75dfd353b7a83ed3e957fcb47 \
     --hash=sha256:d2c244d01048ba476e7c080bd2c6df5e141d211de80223460d5b3b8a2a58433d
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   rouge-score
+    # via rouge-score
 accelerate==0.28.0 \
     --hash=sha256:32019a49f4b3a85cc179ac4e38e9e2971f1a997dee026be0512816499464c4d5 \
     --hash=sha256:8ae25f8a8dc4cf12283842c469113836300545fb0dfa46fef331fb0a2ac8b421
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 adagio==0.2.4 \
     --hash=sha256:c6c4d812f629fc3141284a0b3cfe483731b28da3a1b18f3d5498695ff87dcc12 \
     --hash=sha256:e58abc4539184a65faf9956957d3787616bedeb1303ac5c9b1a201d8af6b87d7
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   fugue
     #   qpd
 aiohttp==3.8.6 \
@@ -116,7 +107,6 @@ aiohttp==3.8.6 \
     --hash=sha256:fc37e9aef10a696a5a4474802930079ccfc14d9f9c10b4662169671ff034b7df \
     --hash=sha256:fdee8405931b0615220e5ddf8cd7edd8592c606a8e4ca2a00704883c396e4479
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   datasets
     #   fsspec
     #   gcsfs
@@ -125,63 +115,45 @@ aiohttp==3.8.6 \
 aiosignal==1.3.1 \
     --hash=sha256:54cd96e15e1649b75d6c87526a6ff0b6c1b0dd3459f43d9ca11d48c339b68cfc \
     --hash=sha256:f8376fb07dd1e86a584e4fcdec80b36b7f81aac666ebc724e2c090300dd83b17
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   aiohttp
+    # via aiohttp
 alembic==1.12.1 \
     --hash=sha256:47d52e3dfb03666ed945becb723d6482e52190917fdb47071440cfdba05d92cb \
     --hash=sha256:bca5877e9678b454706347bc10b97cb7d67f300320fa5c3a94423e8266e2823f
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   dataset
+    # via dataset
 annotated-types==0.6.0 \
     --hash=sha256:0641064de18ba7a25dee8f96403ebc39113d0cb953a01429249d5c7564666a43 \
     --hash=sha256:563339e807e53ffd9c267e99fc6d9ea23eb8443c08f112651963e24e22f84a5d
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   pydantic
+    # via pydantic
 antlr4-python3-runtime==4.11.1 \
     --hash=sha256:a53de701312f9bdacc5258a6872cd6c62b90d3a90ae25e494026f76267333b60 \
     --hash=sha256:ff1954eda1ca9072c02bf500387d0c86cb549bef4dbb3b64f39468b547ec5f6b
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   fugue-sql-antlr
     #   qpd
 anyio==3.7.1 \
     --hash=sha256:44a3c9aba0f5defa43261a8b3efb97891f2bd7d804e0e1f56419befa1adfc780 \
     --hash=sha256:91dee416e570e92c64041bd18b900d1d6fa78dff7048769ce5ac5ddad004fbb5
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   starlette
+    # via starlette
 appdirs==1.4.4 \
     --hash=sha256:7d5d0167b2b1ba821647616af46a749d1c653740dd0d2415100fe26e27afdf41 \
     --hash=sha256:a841dacd6b99318a741b166adb07e19ee71a274450e68237b4650ca1055ab128
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   fs
+    # via fs
 argcomplete==1.12.3 \
     --hash=sha256:291f0beca7fd49ce285d2f10e4c1c77e9460cf823eef2de54df0c0fec88b0d81 \
     --hash=sha256:2c7dbffd8c045ea534921e63b0be6fe65e88599990d8dc408ac8c542b72a5445
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   gsutil
+    # via gsutil
 asttokens==2.4.1 \
     --hash=sha256:051ed49c3dcae8913ea7cd08e46a606dba30b79993209636c4875bc1d637bc24 \
     --hash=sha256:b03869718ba9a6eb027e134bfdf69f38a236d681c83c160d510768af11254ba0
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   stack-data
+    # via stack-data
 async-timeout==4.0.3 \
     --hash=sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f \
     --hash=sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   aiohttp
+    # via aiohttp
 attrs==21.4.0 \
     --hash=sha256:2d27e3784d7a565d36ab851fe94887c5eccd6a463168875832a1be79c82828b4 \
     --hash=sha256:626ba8234211db98e869df76230a137c4c40a12d72445c45d5f5b716f076e2fd
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   aiohttp
     #   jsonlines
     #   jsonschema
@@ -190,9 +162,7 @@ attrs==21.4.0 \
 backcall==0.2.0 \
     --hash=sha256:5cbdbf27be5e7cfadb448baf0aa95508f91f2bbc6c6437cd9cd06e2a4c215e1e \
     --hash=sha256:fbbce6a29f263178a1f7915c1940bde0ec2b2a967566fe1c65c1dfb7422bd255
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipython
+    # via ipython
 banal==1.0.6 \
     --hash=sha256:2fe02c9305f53168441948f4a03dfbfa2eacc73db30db4a93309083cb0e250a5 \
     --hash=sha256:877aacb16b17f8fa4fd29a7c44515c5a23dc1a7b26078bc41dd34829117d85e1
@@ -204,20 +174,15 @@ bitsandbytes==0.41.0 \
 boto==2.49.0 \
     --hash=sha256:147758d41ae7240dc989f0039f27da8ca0d53734be0eb869ef16e3adcfa462e8 \
     --hash=sha256:ea0d3b40a2d852767be77ca343b58a9e3a4b00d9db440efb8da74b4e58025e5a
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   gcs-oauth2-boto-plugin
+    # via gcs-oauth2-boto-plugin
 boto3==1.26.76 \
     --hash=sha256:30c7d967ed1c6b5a05643e42cae9d4d36c3f1cb6782637ddc7007a104cfd9027 \
     --hash=sha256:b4c2969b7677762914394b8273cc1905dfe5b71f250741c1a575487ae357e729
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 botocore==1.29.76 \
     --hash=sha256:70735b00cd529f152992231ca6757e458e5ec25db43767b3526e9a35b2f143b7 \
     --hash=sha256:c2f67b6b3f8acf2968eafca06526f07b9fb0d27bac4c68a635d51abb675134a7
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   boto3
     #   s3transfer
 brotli==1.1.0 \
@@ -308,14 +273,11 @@ brotli==1.1.0 \
 cachetools==5.3.2 \
     --hash=sha256:086ee420196f7b2ab9ca2db2520aca326318b68fe5ba8bc4d49cca91add450f2 \
     --hash=sha256:861f35a13a451f94e301ce2bec7cac63e881232ccce7ed67fab9b5df4d3beaa1
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   google-auth
+    # via google-auth
 certifi==2023.11.17 \
     --hash=sha256:9b469f3a900bf28dc19b8cfbf8019bf47f7fdd1a65a1d4ffb98fc14166beb4d1 \
     --hash=sha256:e036ab49d5b79556f99cfc2d9320b34cfbe5be05c5871b51de9329f0603b0474
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   geventhttpclient
     #   requests
     #   sentry-sdk
@@ -372,9 +334,7 @@ cffi==1.16.0 \
     --hash=sha256:ee07e47c12890ef248766a6e55bd38ebfb2bb8edd4142d56db91b21ea68b7627 \
     --hash=sha256:fa3a0128b152627161ce47201262d3140edb5a5c3da88d73a1b790a959126956 \
     --hash=sha256:fcc8eb6d5902bb1cf6dc4f187ee3ea80a1eba0a89aba40a5cb20a5087d961357
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   cryptography
+    # via cryptography
 chardet==5.1.0 \
     --hash=sha256:0d62712b956bc154f85fb0a266e2a3c5913c2967e00348701b32411d6def31e5 \
     --hash=sha256:362777fb014af596ad31334fde1e8c327dfdb076e1960d1694662d46a6917ab9
@@ -471,14 +431,12 @@ charset-normalizer==3.3.2 \
     --hash=sha256:fd1abc0d89e30cc4e02e4064dc67fcc51bd941eb395c502aac3ec19fab46b519 \
     --hash=sha256:ff8fa367d09b717b2a17a052544193ad76cd49979c805768879cb63d9ca50561
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   aiohttp
     #   requests
 click==8.1.7 \
     --hash=sha256:ae74fb96c20a0277a1d615f1e4d73c8414f5a98db8b799a7931d1582f3390c28 \
     --hash=sha256:ca9853ad459e787e2192211578cc907e7594e294c7ccc834310722b41b9ca6de
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   flask
     #   nltk
     #   typer
@@ -487,9 +445,7 @@ click==8.1.7 \
 cloudpickle==2.2.0 \
     --hash=sha256:3f4219469c55453cfe4737e564b67c2a149109dabf7f242478948b895f61106f \
     --hash=sha256:7428798d5926d8fcbfd092d18d01a2a03daf8237d8fcdc8095d256b8490796f0
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   statsforecast
+    # via statsforecast
 cmake==3.26.4 \
     --hash=sha256:05cfd76c637eb22058c95e2dc383cadd4e0615e2643e637bb498a6cc24825790 \
     --hash=sha256:1b92f9f59f48c803106dbdd6750b0f571a0500e25d3a62c42ba84bb7a9240d10 \
@@ -514,21 +470,15 @@ cmake==3.26.4 \
 colorama==0.4.6 \
     --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 \
     --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   tqdm-multiprocess
+    # via tqdm-multiprocess
 comm==0.2.0 \
     --hash=sha256:2da8d9ebb8dd7bfc247adaff99f24dce705638a8042b85cb995066793e391001 \
     --hash=sha256:a517ea2ca28931c7007a7a99c562a0fa5883cfb48963140cf642c41c948498be
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipykernel
+    # via ipykernel
 commonmark==0.9.1 \
     --hash=sha256:452f9dc859be7f06631ddcb328b6919c67984aca654e5fefb3914d54691aed60 \
     --hash=sha256:da2f38c92590f83de410ba1a3cbceafbc74fee9def35f9251ba9a971d6d66fd9
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   rich
+    # via rich
 configargparse==1.7 \
     --hash=sha256:d249da6591465c6c26df64a9f73d2536e743be2f244eb3ebe61114af2f94f86b \
     --hash=sha256:e7067471884de5478c58a511e529f0f9bd1c66bfef1dea90935438d6c23306d1
@@ -586,9 +536,7 @@ contourpy==1.1.1 \
     --hash=sha256:f44d78b61740e4e8c71db1cf1fd56d9050a4747681c59ec1094750a658ceb970 \
     --hash=sha256:f6aec19457617ef468ff091669cca01fa7ea557b12b59a7908b9474bb9674cf0 \
     --hash=sha256:f9dc7f933975367251c1b34da882c4f0e0b2e24bb35dc906d2f598a40b72bfc7
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   matplotlib
+    # via matplotlib
 crc32c==2.3 \
     --hash=sha256:0369e637d13db5c06e45a34b069ff2ba292ac881e8a44a8658ccf3edaa9c392f \
     --hash=sha256:0c1f3e28b8aec8a0f7727337fafa31f0ace38e59e054c51fecb923535c6dc6e6 \
@@ -657,14 +605,10 @@ crc32c==2.3 \
     --hash=sha256:f9a070dbe10dac29c2f591a59300c37448e3c7a747b6ea18d4826b7c94a956bd \
     --hash=sha256:fac1b4248625acd65985378f6b34a00b73cfc9db5b8ccc73101744de2e3dfa66 \
     --hash=sha256:fddf16ed92dcb8ee34a12bd0757d5719d3c750a9dc813d82972477885b114339
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 crcmod==1.7 \
     --hash=sha256:dc7051a0db5f2bd48665a990d3ec1cc305a466a77358ca4492826f41f283601e
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   gsutil
+    # via gsutil
 cryptography==38.0.1 \
     --hash=sha256:0297ffc478bdd237f5ca3a7dc96fc0d315670bfa099c04dc3a4a2172008a405a \
     --hash=sha256:10d1f29d6292fc95acb597bacefd5b9e812099d75a6469004fd38ba5471a977f \
@@ -692,9 +636,7 @@ cryptography==38.0.1 \
     --hash=sha256:d3971e2749a723e9084dd507584e2a2761f78ad2c638aa31e80bc7a15c9db4f9 \
     --hash=sha256:d4ef6cc305394ed669d4d9eebf10d3a101059bdcf2669c366ec1d14e4fb227bd \
     --hash=sha256:d9e69ae01f99abe6ad646947bba8941e896cb3aa805be2597a0400e0764b5818
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   pyopenssl
+    # via pyopenssl
 cupy-cuda113==10.6.0 \
     --hash=sha256:10dc6899577e445426d81f0960ba9059d9aaa750426997c61fad882d6345264c \
     --hash=sha256:22363c2863727cae5154aa4bab9e8a648d7fe66c9e2195d81dd4e8693c2e61ce \
@@ -708,9 +650,7 @@ cupy-cuda113==10.6.0 \
 cycler==0.12.1 \
     --hash=sha256:85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30 \
     --hash=sha256:88bb128f02ba341da8ef447245a9e138fae777f6a23943da4540077d3601eb1c
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   matplotlib
+    # via matplotlib
 dataproperty==1.0.1 \
     --hash=sha256:0b8b07d4fb6453fcf975b53d35dea41f3cfd69c9d79b5010c3cf224ff0407a7a \
     --hash=sha256:723e5729fa6e885e127a771a983ee1e0e34bb141aca4ffe1f0bfa7cde34650a4
@@ -725,7 +665,6 @@ datasets==2.14.0 \
     --hash=sha256:1bb3d1c992a593949a8d3e445b358ac1db4ead00e6619ea2e5e7b6dfc222dde1 \
     --hash=sha256:93081cc3d9d0ce860c81f950a3ba23d24704da2eacbe2722092ef4f6ae0ada96
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   evaluate
     #   lm-eval
@@ -748,14 +687,11 @@ debugpy==1.8.0 \
     --hash=sha256:e3412f9faa9ade82aa64a50b602544efcba848c91384e9f93497a458767e6926 \
     --hash=sha256:ef54404365fae8d45cf450d0544ee40cefbcb9cb85ea7afe89a963c27028261e \
     --hash=sha256:ef9ab7df0b9a42ed9c878afd3eaaff471fce3fa73df96022e1f5c9f8f8c87ada
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipykernel
+    # via ipykernel
 decorator==5.1.1 \
     --hash=sha256:637996211036b6385ef91435e4fae22989472f9d571faba8927ba8253acbc330 \
     --hash=sha256:b8c3f85900b9dc423225913c5aace94729fe1fa9763b38939a95226f02d37186
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   gcsfs
     #   ipython
 decord==0.6.0 \
@@ -767,9 +703,7 @@ decord==0.6.0 \
     # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 deepspeed==0.12.3 \
     --hash=sha256:dc8a0c261589856743c3b3e7bf9829eded2cc8b2464a40456c3a997ed3a01a08
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 diffusers==0.12.1 \
     --hash=sha256:9d1c078ebec37a1410a52b5dfb0fd9b32675c54f4ef8d13bdad5cfa130381db6 \
     --hash=sha256:baabdf8cc36dcc0e282dae750d43d8feaa4892aea986b606e5b33b7745a91d4e
@@ -778,7 +712,6 @@ dill==0.3.7 \
     --hash=sha256:76b122c08ef4ce2eedcd4d1abd8e641114bfc6c2867f49f3c41facf65bf19f5e \
     --hash=sha256:cc1c8b182eb3013e24bd475ff2e9295af86c1a38eb1aff128dac8962a9ce3c03
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   datasets
     #   evaluate
     #   multiprocess
@@ -790,21 +723,15 @@ diskcache==5.6.3 \
 docker-pycreds==0.4.0 \
     --hash=sha256:6ce3270bcaf404cc4c3e27e4b6c70d3521deae82fb508767870fdbf772d584d4 \
     --hash=sha256:7266112468627868005106ec19cd0d722702d2b7d5912a28e19b826c3d37af49
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   wandb
+    # via wandb
 entrypoints==0.4 \
     --hash=sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4 \
     --hash=sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   jupyter-client
+    # via jupyter-client
 evaluate==0.4.0 \
     --hash=sha256:4b528de0f270cdfb077ca4877035dc17584d2c4b1cbc3fdd46afc3942ed557fd \
     --hash=sha256:bd6a59879be9ae13b681684e56ae3e6ea657073c4413b30335e9efa9856e4f44
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 exceptiongroup==1.2.0 \
     --hash=sha256:4bfd3996ac73b41e9b9628b04e079f193850720ea5945fc96a08633c66912f14 \
     --hash=sha256:91f5c769735f051a4290d52edd0858999b57e5876e9f85937691bd4c9fa3ed68
@@ -812,33 +739,24 @@ exceptiongroup==1.2.0 \
 executing==2.0.1 \
     --hash=sha256:35afe2ce3affba8ee97f2d69927fa823b08b472b7b994e36a52a964b93d16147 \
     --hash=sha256:eac49ca94516ccc753f9fb5ce82603156e590b27525a8bc32cce8ae302eb61bc
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   stack-data
+    # via stack-data
 fairscale==0.4.6 \
     --hash=sha256:9e8548ddb26b331d89340ed76ae9a0a51e50cc419d2b339bcbff62ca1a7712fc
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 fastapi==0.109.2 \
     --hash=sha256:2c9bab24667293b501cad8dd388c05240c850b58ec5876ee3283c47d6e1e3a4d \
     --hash=sha256:f3817eac96fe4f65a2ebb4baa000f394e55f5fccdaf7f75250804bc58f354f73
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 fasteners==0.19 \
     --hash=sha256:758819cb5d94cdedf4e836988b74de396ceacb8e2794d21f82d131fd9ee77237 \
     --hash=sha256:b4f37c3ac52d8a445af3a66bce57b33b5e90b97c696b7b984f530cf8f0ded09c
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   google-apitools
     #   gsutil
 fastjsonschema==2.19.0 \
     --hash=sha256:b9fd1a2dd6971dbc7fee280a95bd199ae0dd9ce22beb91cc75e9c1c528a5170e \
     --hash=sha256:e25df6647e1bc4a26070b700897b07b542ec898dd4f1f6ea013e7f6a88417225
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   nbformat
+    # via nbformat
 fastrlock==0.8.2 \
     --hash=sha256:067edb0a0805bf61e17a251d5046af59f6e9d2b8ad01222e0ef7a0b7937d5548 \
     --hash=sha256:07ed3c7b3867c05a3d6be4ced200c7767000f3431b9be6da66972822dd86e8be \
@@ -915,9 +833,7 @@ fastrlock==0.8.2 \
     --hash=sha256:ebb32d776b61acd49f859a1d16b9e3d84e7b46d0d92aebd58acd54dc38e96664 \
     --hash=sha256:fb5363cf0fddd9b50525ddbf64a1e1b28ec4c6dfb28670a940cb1cf988a6786b \
     --hash=sha256:ff75c90663d6e8996610d435e71487daa853871ad1770dd83dc0f2fc4997241e
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   cupy-cuda113
+    # via cupy-cuda113
 ffmpeg-python==0.2.0 \
     --hash=sha256:65225db34627c578ef0e11c8b1eb528bb35e024752f6f10b78c011f6f64c4127 \
     --hash=sha256:ac441a0404e053f8b6a1113a77c0f452f1cfc62f6344a769475ffdc0f56c23c5
@@ -926,7 +842,6 @@ filelock==3.13.1 \
     --hash=sha256:521f5f56c50f8426f5e03ad3b281b490a87ef15bc6c526f168290f0c7148d44e \
     --hash=sha256:57dbda9b35157b05fb3e58ee91448612eb674172fab98ee235ccb0b5bee19a1c
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   diffusers
     #   huggingface-hub
@@ -937,7 +852,6 @@ flask==2.1.3 \
     --hash=sha256:15972e5017df0575c3d6c090ba168b6db90259e620ac8d7ea813a396bad5b6cb \
     --hash=sha256:9013281a7402ad527f8fd56375164f3aa021ecfaff89bfe3825346c24f87e04c
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   flask-basicauth
     #   flask-cors
     #   locust
@@ -947,9 +861,7 @@ flask-basicauth==0.2.0 \
 flask-cors==4.0.0 \
     --hash=sha256:bc3492bfd6368d27cfe79c7821df5a8a319e1a6d5eab277a3794be19bdc51783 \
     --hash=sha256:f268522fcb2f73e2ecdde1ef45e2fd5c71cc48fe03cffb4b441c6d1b40684eb0
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   locust
+    # via locust
 fonttools==4.45.1 \
     --hash=sha256:03ed3bda541e86725f6b4e1b94213f13ed1ae51a5a1f167028534cedea38c010 \
     --hash=sha256:0dc7617d96b1e668eea9250e1c1fe62d0c78c3f69573ce7e3332cc40e6d84356 \
@@ -993,9 +905,7 @@ fonttools==4.45.1 \
     --hash=sha256:f22eb69996a0bd49f76bdefb30be54ce8dbb89a0d1246874d610f05c2aa2e69e \
     --hash=sha256:fb36e5f40191274a95938b40c0a1fa7f895e36935aea8709e1d6deff0b2d0d4f \
     --hash=sha256:ff6a698bdd435d24c379f6e8a54908cd9bb7dda23719084d56bf8c87709bf3bd
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   matplotlib
+    # via matplotlib
 frozenlist==1.4.0 \
     --hash=sha256:007df07a6e3eb3e33e9a1fe6a9db7af152bbd8a185f9aaa6ece10a3529e3e1c6 \
     --hash=sha256:008eb8b31b3ea6896da16c38c1b136cb9fec9e249e77f6211d479db79a4eaf01 \
@@ -1059,20 +969,16 @@ frozenlist==1.4.0 \
     --hash=sha256:f61e2dc5ad442c52b4887f1fdc112f97caeff4d9e6ebe78879364ac59f1663e1 \
     --hash=sha256:fec520865f42e5c7f050c2a79038897b1c7d1595e907a9e08e3353293ffc948e
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   aiohttp
     #   aiosignal
 fs==2.4.16 \
     --hash=sha256:660064febbccda264ae0b6bace80a8d1be9e089e0a5eb2427b7d517f9a91545c \
     --hash=sha256:ae97c7d51213f4b70b6a958292530289090de3a7e15841e108fbe144f069d313
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   triad
+    # via triad
 fsspec[http]==2023.5.0 \
     --hash=sha256:51a4ad01a5bb66fcc58036e288c0d53d3975a0df2a5dc59a93b59bade0391f2a \
     --hash=sha256:b3b56e00fb93ea321bc9e5d9cf6f8522a0198b20eb24e02774d329e9c6fb84ce
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   datasets
     #   evaluate
     #   gcsfs
@@ -1084,25 +990,18 @@ fsspec[http]==2023.5.0 \
 fugue==0.8.7 \
     --hash=sha256:4c56946de46083778cdd6ec5b91ac5d37a847164c80790771edc6832bb9a260d \
     --hash=sha256:d4dc16bac9850024109b999cd163a6ca4976bd0bf190a85730d91ff74737c3f2
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   statsforecast
+    # via statsforecast
 fugue-sql-antlr==0.2.0 \
     --hash=sha256:e15433aaf09502c5b0423019d9fa93e161172ceb08e7bd27af0175dadf3cf552
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   fugue
+    # via fugue
 future==0.18.3 \
     --hash=sha256:34a17436ed1e96697a86f9de3d15a3b0be01d8bc8de9c1dffd59fb8234ed5307
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   ffmpeg-python
     #   petastorm
 gcs-oauth2-boto-plugin==3.0 \
     --hash=sha256:f4120b08b7f8d32904674c98f07d4caf4083a58343c0c0fa0016e0f0254dfe31
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   gsutil
+    # via gsutil
 gcsfs==2023.5.0 \
     --hash=sha256:02a815e1cf28197ab4f57335e89dc5df8744a065c7c956d42692b50a9e8f1625 \
     --hash=sha256:4f2ebc41814de3f566f85dec208704cf19823b9d04a55fd12b3142aef9046525
@@ -1265,33 +1164,25 @@ geventhttpclient==2.0.12 \
 gitdb==4.0.11 \
     --hash=sha256:81a3407ddd2ee8df444cbacea00e2d038e40150acfa3001696fe0dcf1d3adfa4 \
     --hash=sha256:bf5421126136d6d0af55bc1e7c1af1c397a34f5b7bd79e776cd3e89785c2b04b
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   gitpython
+    # via gitpython
 gitpython==3.1.40 \
     --hash=sha256:22b126e9ffb671fdd0c129796343a02bf67bf2994b35449ffc9321aa755e18a4 \
     --hash=sha256:cf14627d5a8049ffbf49915732e5eddbe8134c3bdb9d476e6182b676fc573f8a
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   wandb
+    # via wandb
 google-api-core==1.34.0 \
     --hash=sha256:6fb380f49d19ee1d09a9722d0379042b7edb06c0112e4796c7a395078a043e71 \
     --hash=sha256:7421474c39d396a74dfa317dddbc69188f2336835f526087c7648f91105e32ff
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   google-cloud-core
     #   google-cloud-storage
 google-apitools==0.5.32 \
     --hash=sha256:b78f74116558e0476e19501b5b4b2ac7c93261a69c5449c861ea95cbc853c688 \
     --hash=sha256:c3763e52289f61e21c41d5531e20fbda9cc8484a088b8686fd460770db8bad13
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   gsutil
+    # via gsutil
 google-auth[aiohttp]==2.23.4 \
     --hash=sha256:79905d6b1652187def79d491d6e23d0cbb3a21d3c7ba0dbaa9c8a01906b13ff3 \
     --hash=sha256:d4bbc92fe4b8bfd2f3e8d88e5ba7085935da208ee38a134fc280e7ce682a05f2
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   gcsfs
     #   google-api-core
     #   google-auth-oauthlib
@@ -1301,21 +1192,15 @@ google-auth[aiohttp]==2.23.4 \
 google-auth-oauthlib==1.0.0 \
     --hash=sha256:95880ca704928c300f48194d1770cf5b1462835b6e49db61445a520f793fd5fb \
     --hash=sha256:e375064964820b47221a7e1b7ee1fd77051b6323c3f9e3e19785f78ab67ecfc5
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   gcsfs
+    # via gcsfs
 google-cloud-core==2.4.1 \
     --hash=sha256:9b7749272a812bde58fff28868d0c5e2f585b82f37e09a1f6ed2d4d10f134073 \
     --hash=sha256:a9e6a4422b9ac5c29f79a0ede9485473338e2ce78d91f2370c01e730eab22e61
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   google-cloud-storage
+    # via google-cloud-storage
 google-cloud-storage==2.14.0 \
     --hash=sha256:2d23fcf59b55e7b45336729c148bb1c464468c69d5efbaee30f7201dd90eb97e \
     --hash=sha256:8641243bbf2a2042c16a6399551fbb13f062cbc9a2de38d6c0bb5426962e9dbd
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   gcsfs
+    # via gcsfs
 google-crc32c==1.5.0 \
     --hash=sha256:024894d9d3cfbc5943f8f230e23950cd4906b2fe004c72e29b209420a1e6b05a \
     --hash=sha256:02c65b9817512edc6a4ae7c7e987fea799d2e0ee40c53ec573a692bee24de876 \
@@ -1386,28 +1271,22 @@ google-crc32c==1.5.0 \
     --hash=sha256:fd8536e902db7e365f49e7d9029283403974ccf29b13fc7028b97e2295b33556 \
     --hash=sha256:fe70e325aa68fa4b5edf7d1a4b6f691eb04bbccac0ace68e34820d283b5f80d4
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   google-cloud-storage
     #   google-resumable-media
 google-reauth==0.1.1 \
     --hash=sha256:cb39074488d74c8853074dde47368bbf8f739d4a4338b89aab696c895b6d8368 \
     --hash=sha256:f9f6852a55c2c5453d581cd01f3d1278e86147c03d008409800390a834235892
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
     #   gsutil
 google-resumable-media==2.6.0 \
     --hash=sha256:972852f6c65f933e15a4a210c2b96930763b47197cdf4aa5f5bea435efb626e7 \
     --hash=sha256:fc03d344381970f79eebb632a3c18bb1828593a2dc5572b5f90115ef7d11e81b
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   google-cloud-storage
+    # via google-cloud-storage
 googleapis-common-protos==1.61.0 \
     --hash=sha256:22f1915393bb3245343f6efe87f6fe868532efc12aa26b391b15132e1279f1c0 \
     --hash=sha256:8a64866a97f6304a7179873a465d6eee97b7a24ec6cfd78e0f575e96b821240b
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   google-api-core
+    # via google-api-core
 greenlet==3.0.1 \
     --hash=sha256:0a02d259510b3630f330c86557331a3b0e0c79dac3d166e449a39363beaae174 \
     --hash=sha256:0b6f9f8ca7093fd4433472fd99b5650f8a26dcd8ba410e14094c1e44cd3ceddd \
@@ -1467,31 +1346,23 @@ greenlet==3.0.1 \
     --hash=sha256:f89e21afe925fcfa655965ca8ea10f24773a1791400989ff32f467badfe4a064 \
     --hash=sha256:fa24255ae3c0ab67e613556375a4341af04a084bd58764731972bcbc8baeba36
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   gevent
     #   sqlalchemy
 gsutil==5.27 \
     --hash=sha256:681a2d844acdf05fac989da6dd406944ae11cb27a4cf3c9edef74d2585ab5f05
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 h11==0.12.0 \
     --hash=sha256:36a3cb8c0a032f56e2da7084577878a035d3b61d104230d4bd49c0c6b555a9c6 \
     --hash=sha256:47222cb6067e4a307d535814917cd98fd0a57b6788ce715755fa2b6c28b56042
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   uvicorn
+    # via uvicorn
 hjson==3.1.0 \
     --hash=sha256:55af475a27cf83a7969c808399d7bccdec8fb836a07ddbd574587593b9cdcf75 \
     --hash=sha256:65713cdcf13214fb554eb8b4ef803419733f4f5e551047c9b711098ab7186b89
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   deepspeed
+    # via deepspeed
 httplib2==0.20.4 \
     --hash=sha256:58a98e45b4b1a48273073f905d2961666ecf0fbac4250ea5b47aef259eb5c585 \
     --hash=sha256:8b6a905cb1c79eefd03f8669fd993c36dc341f7c558f056cb5a33b5c2f458543
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
     #   google-apitools
     #   gsutil
@@ -1500,7 +1371,6 @@ huggingface-hub==0.19.4 \
     --hash=sha256:176a4fc355a851c17550e7619488f383189727eab209534d7cef2114dae77b22 \
     --hash=sha256:dba013f779da16f14b606492828f3760600a1e1801432d09fe1c33e50b825bb5
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   accelerate
     #   datasets
     #   diffusers
@@ -1511,7 +1381,6 @@ idna==3.7 \
     --hash=sha256:028ff3aadf0609c1fd278d8ea3089299412a7a8b9bd005dd08b9f8285bcb5cfc \
     --hash=sha256:82fee1fc78add43492d3a1898bfa6d8a904cc97d8427f683ed8e798d07761aa0
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   anyio
     #   requests
     #   yarl
@@ -1519,57 +1388,42 @@ importlib-metadata==6.11.0 \
     --hash=sha256:1231cf92d825c9e03cfc4da076a16de6422c863558229ea0b22b675657463443 \
     --hash=sha256:f0afba6205ad8f8947c7d338b5342d5db2afbfd82f9cbef7879a9539cc12eb9b
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   diffusers
     #   flask
 importlib-resources==5.13.0 \
     --hash=sha256:82d5c6cca930697dbbd86c93333bb2c2e72861d4789a11c2662b933e5ad2b528 \
     --hash=sha256:9f7bd0c97b79972a6cce36a366356d16d5e13b09679c11a58f1014bfdf8e64b2
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   matplotlib
+    # via matplotlib
 iniconfig==2.0.0 \
     --hash=sha256:2d91e135bf72d31a410b17c16da610a82cb55f6b0477d1a902134b24a455b8b3 \
     --hash=sha256:b6a85871a79d2e3b22d2d1b94ac2824226a63c6b741c88f7ae975f18b6778374
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   pytest
+    # via pytest
 ipykernel==6.27.1 \
     --hash=sha256:7d5d594b6690654b4d299edba5e872dc17bb7396a8d0609c97cb7b8a1c605de6 \
     --hash=sha256:dab88b47f112f9f7df62236511023c9bdeef67abc73af7c652e4ce4441601686
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipywidgets
+    # via ipywidgets
 ipython==8.12.3 \
     --hash=sha256:3910c4b54543c2ad73d06579aa771041b7d5707b033bd488669b4cf544e3b363 \
     --hash=sha256:b0340d46a933d27c657b211a329d0be23793c36595acf9e6ef4164bc01a1804c
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   ipykernel
     #   ipywidgets
 ipywidgets==8.0.6 \
     --hash=sha256:a60bf8d2528997e05ac83fd19ea2fbe65f2e79fbe1b2b35779bdfc46c2941dcc \
     --hash=sha256:de7d779f2045d60de9f6c25f653fdae2dba57898e6a1284494b3ba20b6893bb8
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 itsdangerous==2.1.2 \
     --hash=sha256:2c2349112351b88699d8d4b6b075022c0808887cb7ad10069318a8b0bc88db44 \
     --hash=sha256:5dbbc68b317e5e42f327f9021763545dc3fc3bfe22e6deb96aaf1fc38874156a
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   flask
+    # via flask
 jedi==0.19.1 \
     --hash=sha256:cf0496f3651bc65d7174ac1b7d043eff454892c708a87d1b683e57b569927ffd \
     --hash=sha256:e983c654fe5c02867aef4cdfce5a2fbb4a50adc0af145f70504238f18ef5e7e0
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipython
+    # via ipython
 jinja2==3.1.2 \
     --hash=sha256:31351a702a408a9e7595a8fc6150fc3f43bb6bf7e319770cbc0db9df9437e852 \
     --hash=sha256:6088930bfe239f0e6710546ab9c19c9ef35e29792895fed6e6e31a023a182a61
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   flask
     #   fugue
     #   fugue-sql-antlr
@@ -1579,14 +1433,12 @@ jmespath==1.0.1 \
     --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
     --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   boto3
     #   botocore
 joblib==1.2.0 \
     --hash=sha256:091138ed78f800342968c523bdde947e7a305b8594b910a0fea2ab83c3c6d385 \
     --hash=sha256:e1cee4a79e4af22881164f218d4311f60074197fb707e082e803b61f6d137018
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   nltk
     #   scikit-learn
 jsonlines==3.1.0 \
@@ -1596,35 +1448,26 @@ jsonlines==3.1.0 \
 jsonschema==4.17.3 \
     --hash=sha256:0f864437ab8b6076ba6707453ef8f98a6a0d512a80e93f8abdb676f737ecb60d \
     --hash=sha256:a870ad254da1a8ca84b6a2905cac29d265f805acc57af304784962a2aa6508f6
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   nbformat
+    # via nbformat
 jupyter-client==7.3.4 \
     --hash=sha256:17d74b0d0a7b24f1c8c527b24fcf4607c56bee542ffe8e3418e50b21e514b621 \
     --hash=sha256:aa9a6c32054b290374f95f73bb0cae91455c58dfb84f65c8591912b8f65e6d56
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipykernel
+    # via ipykernel
 jupyter-core==5.5.0 \
     --hash=sha256:880b86053bf298a8724994f95e99b99130659022a4f7f45f563084b6223861d3 \
     --hash=sha256:e11e02cd8ae0a9de5c6c44abf5727df9f2581055afe00b22183f621ba3585805
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   ipykernel
     #   jupyter-client
     #   nbformat
 jupyterlab-widgets==3.0.11 \
     --hash=sha256:78287fd86d20744ace330a61625024cf5521e1c012a352ddc0a3cdc2348becd0 \
     --hash=sha256:dd5ac679593c969af29c9bed054c24f26842baa51352114736756bc035deee27
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipywidgets
+    # via ipywidgets
 jupytext==1.13.6 \
     --hash=sha256:2160774e30587fb427213231f0267ed070ba4ede41cf6121dbb2b14225eb83ba \
     --hash=sha256:c6c25918ddb6403d0d8504e08d35f6efc447baf0dbeb6a28b73adf39e866a0c4
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 kiwisolver==1.4.5 \
     --hash=sha256:00bd361b903dc4bbf4eb165f24d1acbee754fce22ded24c3d56eec268658a5cf \
     --hash=sha256:040c1aebeda72197ef477a906782b5ab0d387642e93bda547336b8957c61022e \
@@ -1730,15 +1573,11 @@ kiwisolver==1.4.5 \
     --hash=sha256:fcc700eadbbccbf6bc1bcb9dbe0786b4b1cb91ca0dcda336eef5c2beed37b797 \
     --hash=sha256:fd32ea360bcbb92d28933fc05ed09bffcb1704ba3fc7942e81db0fd4f81a7892 \
     --hash=sha256:fdb7adb641a0d13bdcd4ef48e062363d8a9ad4a182ac7647ec88f695e719ae9f
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   matplotlib
+    # via matplotlib
 lightning-utilities==0.11.2 \
     --hash=sha256:541f471ed94e18a28d72879338c8c52e873bb46f4c47644d89228faeb6751159 \
     --hash=sha256:adf4cf9c5d912fe505db4729e51d1369c6927f3a8ac55a9dff895ce5c0da08d9
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   pytorch-lightning
+    # via pytorch-lightning
 lit==16.0.6 \
     --hash=sha256:84623c9c23b6b14763d637f4e63e6b721b3446ada40bf7001d8fee70b8e77a9a
     # via triton
@@ -1767,9 +1606,7 @@ llvmlite==0.41.1 \
     --hash=sha256:f19f767a018e6ec89608e1f6b13348fa2fcde657151137cb64e56d48598a92db \
     --hash=sha256:f8afdfa6da33f0b4226af8e64cfc2b28986e005528fbf944d0a24a72acfc9432 \
     --hash=sha256:fa1469901a2e100c17eb8fe2678e34bd4255a3576d1a543421356e9c14d6e2ae
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   numba
+    # via numba
 lm-eval==0.3.0 \
     --hash=sha256:643b12bf9374f4d7c78ce55471b6ad82c130ab1aa0577d97fdfa48875dbc598b \
     --hash=sha256:a1b3cc6c3f1291717cac79a995dc2204547fe086ecfdec0e440ff1cea20b2ac2
@@ -1781,14 +1618,11 @@ locust==2.18.0 \
 mako==1.3.0 \
     --hash=sha256:57d4e997349f1a92035aa25c17ace371a4213f2ca42f99bee9a602500cfd54d9 \
     --hash=sha256:e3a9d388fd00e87043edbe8792f45880ac0114e9c4adc69f6e9bfb2c55e3b11b
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   alembic
+    # via alembic
 markdown-it-py==1.1.0 \
     --hash=sha256:36be6bb3ad987bfdb839f5ba78ddf094552ca38ccbd784ae4f74a4e1419fc6e3 \
     --hash=sha256:98080fc0bc34c4f2bcf0846a096a9429acbd9d5d8e67ed34026c03c61c464389
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   jupytext
     #   mdit-py-plugins
 markupsafe==2.1.3 \
@@ -1843,7 +1677,6 @@ markupsafe==2.1.3 \
     --hash=sha256:e4dd52d80b8c83fdce44e12478ad2e85c64ea965e75d66dbeafb0a3e77308fcc \
     --hash=sha256:fec21693218efe39aa7f8599346e90c705afa52c5b31ae019b2e57e8f6542bb2
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   jinja2
     #   mako
     #   werkzeug
@@ -1895,14 +1728,11 @@ matplotlib==3.7.4 \
     --hash=sha256:f8c725d1dd2901b2e7ec6cd64165e00da2978cc23d4143cb9ef745bec88e6b04 \
     --hash=sha256:f8fc2df756105784e650605e024d36dc2d048d68e5c1b26df97ee25d1bd41f9f \
     --hash=sha256:ff539c4a17ecdf076ed808ee271ffae4a30dcb7e157b99ccae2c837262c07db6
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 matplotlib-inline==0.1.6 \
     --hash=sha256:f1f41aab5328aa5aaea9b16d083b128102f8712542f819fe7e6a420ff581b311 \
     --hash=sha256:f887e5f10ba98e8d2b150ddcf4702c1e5f8b3a20005eb0f74bfdbd360ee6f304
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   ipykernel
     #   ipython
 mbstrdecoder==1.1.3 \
@@ -1915,10 +1745,8 @@ mbstrdecoder==1.1.3 \
 mdit-py-plugins==0.2.8 \
     --hash=sha256:1833bf738e038e35d89cb3a07eb0d227ed647ce7dd357579b65343740c6d249c \
     --hash=sha256:5991cef645502e80a5388ec4fc20885d2313d4871e8b8e320ca2de14ac0c015f
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   jupytext
-memray==1.10.0 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64" \
+    # via jupytext
+memray==1.10.0 \
     --hash=sha256:0a21745fb516b7a6efcd40aa7487c59e9313fcfc782d0193fcfcf00b48426874 \
     --hash=sha256:22f2a47871c172a0539bd72737bb6b294fc10c510464066b825d90fcd3bb4916 \
     --hash=sha256:23e8c402625cfb32d0e9edb5ec0945f3e5e54bc6b0c5699f6284302082b80bd4 \
@@ -1954,33 +1782,23 @@ memray==1.10.0 ; platform_system != "Windows" and sys_platform != "darwin" and p
     --hash=sha256:cf6d683c4f8d25c6ad06ae18715f218983c5eb86803953615e902d632fdf6ec1 \
     --hash=sha256:e356af93e3b031c83957e9ac1a653f5aaba5df1e357dd17142f5ed19bb3dc660 \
     --hash=sha256:f16c5c8730b616613dc8bafe32649ca6bd7252606251eb00148582011758d0b5
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 modin==0.22.2 \
     --hash=sha256:532fe0bfb2dcf06c0ad2d467721ef489fd58bb3ef7150bcf4a7ddd1069be1e4d \
     --hash=sha256:fa897dc59d5b9a8496be044185689fdd337b9f26cc81c4144b217a2a94d029bc
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 monotonic==1.6 \
     --hash=sha256:3a55207bcfed53ddd5c5bae174524062935efed17792e9de2ad0205ce9ad63f7 \
     --hash=sha256:68687e19a14f11f26d140dd5c86f3dba4bf5df58003000ed467e0e2a69bca96c
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   gsutil
+    # via gsutil
 more-itertools==10.1.0 \
     --hash=sha256:626c369fa0eb37bac0291bce8259b332fd59ac792fa5497b59837309cd5b114a \
     --hash=sha256:64e0735fcfdc6f3464ea133afe8ea4483b1c5fe3a3d69852e6503b43a0b222e6
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   openai-whisper
+    # via openai-whisper
 mpmath==1.3.0 \
     --hash=sha256:7a28eb2a9774d00c7bc92411c19a89209d5da7c4c9a9e227be8330a23a25b91f \
     --hash=sha256:a0b2b9fe80bbcd81a6647ff13108738cfb482d481d826cc0e02f5b35e5c88d2c
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   sympy
+    # via sympy
 msgpack==1.0.7 \
     --hash=sha256:04ad6069c86e531682f9e1e71b71c1c3937d6014a7c3e9edd2aa81ad58842862 \
     --hash=sha256:0bfdd914e55e0d2c9e1526de210f6fe8ffe9705f2b1dfcc4aecc92a4cb4b533d \
@@ -2038,9 +1856,7 @@ msgpack==1.0.7 \
     --hash=sha256:f6ffbc252eb0d229aeb2f9ad051200668fc3a9aaa8994e49f0cb2ffe2b7867e7 \
     --hash=sha256:f9a7c509542db4eceed3dcf21ee5267ab565a83555c9b88a8109dcecc4709002 \
     --hash=sha256:ff1d0899f104f3921d94579a5638847f783c9b04f2d5f229392ca77fba5b82fc
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   locust
+    # via locust
 multidict==6.0.4 \
     --hash=sha256:01a3a55bd90018c9c080fbb0b9f4891db37d148a0a18722b42f94694f8b6d4c9 \
     --hash=sha256:0b1a97283e0c85772d613878028fec909f003993e1007eafa715b24b377cb9b8 \
@@ -2117,7 +1933,6 @@ multidict==6.0.4 \
     --hash=sha256:fc35cb4676846ef752816d5be2193a1e8367b4c1397b74a565a9d0389c433a1d \
     --hash=sha256:ff959bee35038c4624250473988b24f846cbeb2c6639de3602c073f10410ceba
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   aiohttp
     #   yarl
 multiprocess==0.70.15 \
@@ -2138,28 +1953,22 @@ multiprocess==0.70.15 \
     --hash=sha256:f20eed3036c0ef477b07a4177cf7c1ba520d9a2677870a4f47fe026f0cd6787e \
     --hash=sha256:f7d4a1629bccb433114c3b4885f69eccc200994323c80f6feee73b0edc9199c5
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   datasets
     #   evaluate
 nbformat==5.9.2 \
     --hash=sha256:1c5172d786a41b82bcfd0c23f9e6b6f072e8fb49c39250219e4acfff1efe89e9 \
     --hash=sha256:5f98b5ba1997dff175e77e0c17d5c10a96eaed2cbd1de3533d1fc35d5e111192
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   jupytext
+    # via jupytext
 nest-asyncio==1.5.8 \
     --hash=sha256:25aa2ca0d2a5b5531956b9e273b45cf664cae2b145101d73b86b199978d48fdb \
     --hash=sha256:accda7a339a70599cb08f9dd09a67e0c2ef8d8d6f4c07f96ab203f2ae254e48d
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   ipykernel
     #   jupyter-client
 networkx==3.2.1 \
     --hash=sha256:9f1bb5cf3409bf324e0a722c20bdb4c20ee39bf1c30ce8ae499c8502b0b5e0c6 \
     --hash=sha256:f18c69adc97877c42332c170849c96cefa91881c99a7cb3e95b7c659ebdc1ec2
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   torch
+    # via torch
 ninja==1.11.1.1 \
     --hash=sha256:18302d96a5467ea98b68e1cae1ae4b4fb2b2a56a82b955193c637557c7273dbd \
     --hash=sha256:185e0641bde601e53841525c4196278e9aaf4463758da6dd1e752c0a0f54136a \
@@ -2176,9 +1985,7 @@ ninja==1.11.1.1 \
     --hash=sha256:d491fc8d89cdcb416107c349ad1e3a735d4c4af5e1cb8f5f727baca6350fdaea \
     --hash=sha256:ecf80cf5afd09f14dcceff28cb3f11dc90fb97c999c89307aea435889cb66877 \
     --hash=sha256:fa2ba9d74acfdfbfbcf06fad1b8282de8a7a8c481d9dee45c859a8c93fcc1082
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   deepspeed
+    # via deepspeed
 nltk==3.8.1 \
     --hash=sha256:1834da3d0682cba4f2cede2f9aad6b0fafb6461ba451db0efb6f9c39798d64d3 \
     --hash=sha256:fd5c9109f976fa86bcadba8f91e47f5e9293bd034474752e92a520f81c93dda5
@@ -2206,7 +2013,6 @@ numba==0.58.1 \
     --hash=sha256:e63d6aacaae1ba4ef3695f1c2122b30fa3d8ba039c8f517784668075856d79e2 \
     --hash=sha256:ea5bfcf7d641d351c6a80e8e1826eb4a145d619870016eeaf20bbd71ef5caa22
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   openai-whisper
     #   statsforecast
 numexpr==2.8.4 \
@@ -2240,9 +2046,7 @@ numexpr==2.8.4 \
     --hash=sha256:eaec59e9bf70ff05615c34a8b8d6c7bd042bd9f55465d7b495ea5436f45319d0 \
     --hash=sha256:f3a920bfac2645017110b87ddbe364c9c7a742870a4d2f6120b8786c25dc6db3 \
     --hash=sha256:ff5835e8af9a212e8480003d731aad1727aaea909926fd009e8ae6a1cba7f141
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   lm-eval
+    # via lm-eval
 numpy==1.24.4 \
     --hash=sha256:04640dab83f7c6c85abf9cd729c5b65f1ebd0ccf9de90b270cd61935eef0197f \
     --hash=sha256:1452241c290f3e2a312c137a9999cdbf63f78864d63c79039bda65ee86943f61 \
@@ -2273,7 +2077,6 @@ numpy==1.24.4 \
     --hash=sha256:f136bab9c2cfd8da131132c2cf6cc27331dd6fae65f95f69dcd4ae3c3639c810 \
     --hash=sha256:f3a86ed21e4f87050382c7bc96571755193c4c1392490744ac73d660e8f564a9
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   accelerate
     #   contourpy
@@ -2358,15 +2161,12 @@ oauth2client==4.1.3 \
     --hash=sha256:b8a81cc5d60e2d364f0b1b98f958dbd472887acaf1a5b05e21c28c31a2d6d3ac \
     --hash=sha256:d486741e451287f69568a4d26d70d9acd73a2bbfa275746c535b4209891cccc6
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
     #   google-apitools
 oauthlib==3.2.2 \
     --hash=sha256:8139f29aac13e25d502680e9e19963e83f16838d48a0d71c287fe40e7067fbca \
     --hash=sha256:9859c40929662bec5d64f34d01c99e093149682a3f38915dc0655d5a633dd918
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   requests-oauthlib
+    # via requests-oauthlib
 openai==0.27.8 \
     --hash=sha256:2483095c7db1eee274cebac79e315a986c4e55207bb4fa7b82d185b3a2ed9536 \
     --hash=sha256:e0a7c2f7da26bdbe5354b03c6d4b82a2f34bd4458c7a17ae1a7092c3e397e03c
@@ -2382,7 +2182,6 @@ packaging==21.3 \
     --hash=sha256:dd47c42927d89ab911e606518907cc2d3a1f38bbd026385970643f9c5b8ecfeb \
     --hash=sha256:ef103e05f519cdc783ae24ea4e2e0f508a9c99b2d4969652eed6a2e1ea5bd522
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   accelerate
     #   datasets
     #   deepspeed
@@ -2431,7 +2230,6 @@ pandas==1.5.3 \
     --hash=sha256:e474390e60ed609cec869b0da796ad94f420bb057d86784191eefc62b65819ae \
     --hash=sha256:f76d097d12c82a535fda9dfe5e8dd4127952b45fea9b0276cb30cca5ea313fbc
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   datasets
     #   evaluate
     #   modin
@@ -2444,14 +2242,7 @@ pandas==1.5.3 \
 parso==0.8.3 \
     --hash=sha256:8c07be290bb59f03588915921e29e8a50002acaf2cdc5fa0e0114f91709fafa0 \
     --hash=sha256:c001d4636cd3aecdaf33cbb40aebb59b094be2a74c556778ef5576c175e19e75
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   jedi
-pathtools==0.1.2 \
-    --hash=sha256:7c35c5421a39bb82e58018febd90e3b6e5db34c5443aaaf742b3f33d4655f1c0
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   wandb
+    # via jedi
 pathvalidate==3.1.0 \
     --hash=sha256:426970226e24199fd90d93995d223c1e28bda967cdf4370755a14cdf72a2a8ee \
     --hash=sha256:912fd1d2e1a2a6a6f98da36a91f21ed86746473810ff625b9c34f3d06c0caa1d
@@ -2459,25 +2250,19 @@ pathvalidate==3.1.0 \
 patsy==0.5.3 \
     --hash=sha256:7eb5349754ed6aa982af81f636479b1b8db9d5b1a6e957a6016ec0534b5c86b7 \
     --hash=sha256:bdc18001875e319bc91c812c1eb6a10be4bb13cb81eb763f466179dca3b67277
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   statsmodels
+    # via statsmodels
 petastorm==0.12.1 \
     --hash=sha256:25f7737bbbd8ebcbe6aac9546c50ee7e739902facd434c1dd2d4c6fe7c0acfe9
     # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 pexpect==4.8.0 \
     --hash=sha256:0b48a55dcb3c05f3329815901ea4fc1537514d6ba867a152b581d69ae3710937 \
     --hash=sha256:fc65a43959d153d0114afe13997d439c22823a27cefceb5ff35c2178c6784c0c
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipython
+    # via ipython
 pickleshare==0.7.5 \
     --hash=sha256:87683d47965c1da65cdacaf31c8441d12b8044cdec9aca500cd78fc2c683afca \
     --hash=sha256:9649af414d74d4df115d5d718f82acb59c9d418196b7b4290ed47a12ce62df56
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipython
-pillow==9.2.0 ; platform_system != "Windows" \
+    # via ipython
+pillow==9.2.0 \
     --hash=sha256:0030fdbd926fb85844b8b92e2f9449ba89607231d3dd597a21ae72dc7fe26927 \
     --hash=sha256:030e3460861488e249731c3e7ab59b07c7853838ff3b8e16aac9561bb345da14 \
     --hash=sha256:0ed2c4ef2451de908c90436d6e8092e13a43992f1860275b4d8082667fbb2ffc \
@@ -2537,7 +2322,6 @@ pillow==9.2.0 ; platform_system != "Windows" \
     --hash=sha256:fa768eff5f9f958270b081bb33581b4b569faabf8774726b283edb06617101dc \
     --hash=sha256:fac2d65901fb0fdf20363fbd345c01958a742f2dc62a8dd4495af66e3ff502a4
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   diffusers
     #   matplotlib
     #   torchvision
@@ -2545,31 +2329,20 @@ platformdirs==3.11.0 \
     --hash=sha256:cf8ee52a3afdb965072dcc652433e0c7e3e40cf5ea1477cd4b3b1d2eb75495b3 \
     --hash=sha256:e9d171d00af68be50e9202731309c4e658fd8bc76f55c11c7dd760d023bda68e
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   jupyter-core
+    #   wandb
 pluggy==1.3.0 \
     --hash=sha256:cf61ae8f126ac6f7c451172cf30e3e43d3ca77615509771b3a984a0730651e12 \
     --hash=sha256:d89c696a773f8bd377d18e5ecda92b7a3793cbe66c87060a6fb58c7b6e1061f7
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   pytest
+    # via pytest
 portalocker==2.8.2 \
     --hash=sha256:2b035aa7828e46c58e9b31390ee1f169b98e1066ab10b9a6a861fe7e25ee4f33 \
     --hash=sha256:cfb86acc09b9aa7c3b43594e19be1345b9d16af3feb08bf92f23d4dce513a28e
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   sacrebleu
-promise==2.3 \
-    --hash=sha256:dfd18337c523ba4b6a58801c164c1904a9d4d1b1747c7d5dbf45b693a49d93d0
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   wandb
+    # via sacrebleu
 prompt-toolkit==3.0.41 \
     --hash=sha256:941367d97fc815548822aa26c2a269fdc4eb21e9ec05fc5d447cf09bad5d75f0 \
     --hash=sha256:f36fe301fafb7470e86aaf90f036eef600a3210be4decf461a5b1ca8403d3cb2
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipython
+    # via ipython
 protobuf==3.20.3 \
     --hash=sha256:03038ac1cfbc41aa21f6afcbcd357281d7521b4157926f30ebecc8d4ea59dcb7 \
     --hash=sha256:28545383d61f55b57cf4df63eebd9827754fd2dc25f80c5253f9184235db242c \
@@ -2594,7 +2367,6 @@ protobuf==3.20.3 \
     --hash=sha256:f4bd856d702e5b0d96a00ec6b307b0f51c1982c2bf9c0052cf9019e9a544ba99 \
     --hash=sha256:f4c42102bc82a51108e449cbb32b19b180022941c727bac0cfd50170341f16ee
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   google-api-core
     #   googleapis-common-protos
@@ -2618,7 +2390,6 @@ psutil==5.9.6 \
     --hash=sha256:fb8a697f11b0f5994550555fcfe3e69799e5b060c8ecf9e2f75c69302cc35c0d \
     --hash=sha256:ff18b8d1a784b810df0b0fff3bcb50ab941c3b8e2c8de5726f9c71c601c611aa
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   accelerate
     #   deepspeed
     #   ipykernel
@@ -2629,33 +2400,23 @@ psutil==5.9.6 \
 ptyprocess==0.7.0 \
     --hash=sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35 \
     --hash=sha256:5c5d0a3b48ceee0b48485e0c26037c0acd7d29765ca3fbb5cb3831d347423220
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   pexpect
+    # via pexpect
 pure-eval==0.2.2 \
     --hash=sha256:01eaab343580944bc56080ebe0a674b39ec44a945e6d09ba7db3cb8cec289350 \
     --hash=sha256:2b45320af6dfaa1750f543d714b6d1c520a1688dec6fd24d339063ce0aaa9ac3
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   stack-data
+    # via stack-data
 py==1.11.0 \
     --hash=sha256:51c75c4126074b472f746a24399ad32f6053d1b34b68d2fa41e558e6f4a98719 \
     --hash=sha256:607c53218732647dff4acdfcd50cb62615cedf612e72d1724fb1a0cc6405b378
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   pytest
+    # via pytest
 py-cpuinfo==9.0.0 \
     --hash=sha256:3cdbbf3fac90dc6f118bfd64384f309edeadd902d7c8fb17f02ffa1fc3f49690 \
     --hash=sha256:859625bc251f64e21f077d099d4162689c762b5d6a4c3c97553d56241c9674d5
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   deepspeed
+    # via deepspeed
 py4j==0.10.9.7 \
     --hash=sha256:0b6e5315bb3ada5cf62ac651d107bb2ebc02def3dee9d9548e3baac644ea8dbb \
     --hash=sha256:85defdfd2b2376eb3abf5ca6474b51ab7e0de341c75a02f46dc9b5976f5a5c1b
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   pyspark
+    # via pyspark
 pyarrow==12.0.1 \
     --hash=sha256:051f9f5ccf585f12d7de836e50965b3c235542cc896959320d9776ab93f3b33d \
     --hash=sha256:1887bdae17ec3b4c046fcf19951e71b6a619f39fa674f9881216173566c8f718 \
@@ -2683,7 +2444,6 @@ pyarrow==12.0.1 \
     --hash=sha256:e0d8730c7f6e893f6db5d5b86eda42c0a130842d101992b581e2138e4d5663d3 \
     --hash=sha256:e2c9cb8eeabbadf5fcfc3d1ddea616c7ce893db2ce4dcef0ac13b099ad7ca082
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   datasets
     #   petastorm
@@ -2692,7 +2452,6 @@ pyasn1==0.5.1 \
     --hash=sha256:4439847c58d40b1d0a573d07e3856e95333f1976294494c325775aeca506eb58 \
     --hash=sha256:6d391a96e59b23130a5cfa74d6fd7f388dbbe26cc8f1edf39fdddf08d9d6676c
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   oauth2client
     #   pyasn1-modules
     #   rsa
@@ -2700,7 +2459,6 @@ pyasn1-modules==0.3.0 \
     --hash=sha256:5bd01446b736eb9d31512a30d46c1ac3395d676c6f3cafa4c03eb54b9925631c \
     --hash=sha256:d3ccd6ed470d9ffbc716be08bd90efbd44d0734bc9303818f7336070984a162d
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   google-auth
     #   oauth2client
 pybind11==2.11.1 \
@@ -2713,14 +2471,11 @@ pycountry==22.3.5 \
 pycparser==2.21 \
     --hash=sha256:8ee45429555515e1f6b185e78100aea234072576aa43ab53aefcae078162fca9 \
     --hash=sha256:e644fdec12f7872f86c58ff790da456218b10f863970249516d60a5eaca77206
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   cffi
+    # via cffi
 pydantic==2.5.0 \
     --hash=sha256:69bd6fb62d2d04b7055f59a396993486a2ee586c43a0b89231ce0000de07627c \
     --hash=sha256:7ce6e766c456ad026fe5712f7bcf036efc34bd5d107b3e669ef7ea01b3a9050c
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   deepspeed
     #   fastapi
@@ -2826,34 +2581,27 @@ pydantic-core==2.14.1 \
     --hash=sha256:fd80a2d383940eec3db6a5b59d1820f947317acc5c75482ff8d79bf700f8ad6a \
     --hash=sha256:fd937733bf2fe7d6a8bf208c12741f1f730b7bf5636033877767a75093c29b8a \
     --hash=sha256:ffba979801e3931a19cd30ed2049450820effe8f152aaa317e2fd93795d318d7
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   pydantic
+    # via pydantic
 pygments==2.13.0 \
     --hash=sha256:56a8508ae95f98e2b9bdf93a6be5ae3f7d8af858b43e02c5a2ff083726be40c1 \
     --hash=sha256:f643f331ab57ba3c9d89212ee4a2dabc6e94f117cf4eefde99a0574720d14c42
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   ipython
     #   rich
 pynvml==11.5.0 \
     --hash=sha256:5cce014ac01b098d08f06178f86c37be409b80b2e903a5a03ce15eed60f55e25 \
     --hash=sha256:d027b21b95b1088b9fc278117f9f61b7c67f8e33a787e9f83f735f0f71ac32d0
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   deepspeed
+    # via deepspeed
 pyopenssl==23.0.0 \
     --hash=sha256:c1cc5f86bcacefc84dada7d31175cae1b1518d5f60d3d0bb595a67822a868a6f \
     --hash=sha256:df5fc28af899e74e19fccb5510df423581047e10ab6f1f4ba1763ff5fde844c0
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
     #   gsutil
 pyparsing==3.1.1 \
     --hash=sha256:32c7c0b711493c72ff18a981d24f28aaf9c1fb7ed5e9667c9e84e3db623bdbfb \
     --hash=sha256:ede28a1a32462f5a9705e07aea48001a08f7cf81a021585011deba701581a0db
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   httplib2
     #   matplotlib
     #   packaging
@@ -2890,14 +2638,10 @@ pyrsistent==0.20.0 \
     --hash=sha256:f5ac696f02b3fc01a710427585c855f65cd9c640e14f52abe52020722bb4906b \
     --hash=sha256:f920385a11207dc372a028b3f1e1038bb244b3ec38d448e6d8e43c6b3ba20e98 \
     --hash=sha256:fed2c3216a605dc9a6ea50c7e84c82906e3684c4e80d2908208f662a6cbf9022
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   jsonschema
+    # via jsonschema
 pyspark==3.4.1 \
     --hash=sha256:72cd66ab8cf61a75854e5a753f75bea35ee075c3a96f9de4e2a66d02ec7fc652
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   petastorm
+    # via petastorm
 pytablewriter==1.0.0 \
     --hash=sha256:3c81496ad5c119741f8adc59218574a3be12ba5d3fb190a595cd301d1625d404 \
     --hash=sha256:d789a363a71de312e7c6f18ba57f15e14b1b73b910ab636ba7b943779b5024a5
@@ -2905,14 +2649,11 @@ pytablewriter==1.0.0 \
 pytest==7.0.1 \
     --hash=sha256:9ce3ff477af913ecf6321fe337b93a2c0dcf2a0a1439c43f5452112c1e4280db \
     --hash=sha256:e30905a0c131d3d94b89624a1cc5afec3e0ba2fbdb151867d8e0ebd49850f171
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 python-dateutil==2.8.2 \
     --hash=sha256:0123cacc1627ae19ddf3c27a5de5bd67ee4586fbdd6440d9748f8abb483d3e86 \
     --hash=sha256:961d03dc3453ebbc59dbdea9e4e11c5651520a876d0f4db161e8674aae935da9
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   botocore
     #   jupyter-client
     #   matplotlib
@@ -2921,21 +2662,16 @@ python-dateutil==2.8.2 \
 pytorch-lightning==1.8.6 \
     --hash=sha256:8b6b4126b85c56a9dd08a03f7096ce749bcb452a9a50f6201a7165dbd92d866d \
     --hash=sha256:c4af783579a1528e07f40dd9bd0128c162bbbcf74fe1ce4292fec63fa7e76ada
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 pytz==2022.7.1 \
     --hash=sha256:01a0681c4b9684a28304615eba55d1ab31ae00bf68ec157ec3708a8182dbbcd0 \
     --hash=sha256:78f4f37d8198e0627c5f1143240bb0206b8691d8d7ac6d78fee88b78733f8c4a
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   pandas
     #   typepy
 pyu2f==0.1.5 \
     --hash=sha256:a3caa3a11842fc7d5746376f37195e6af5f17c0a15737538bb1cebf656fb306b
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   google-reauth
+    # via google-reauth
 pyyaml==6.0.1 \
     --hash=sha256:04ac92ad1925b2cff1db0cfebffb6ffc43457495c9b3c39d3fcae417d7125dc5 \
     --hash=sha256:062582fca9fabdd2c8b54a3ef1c978d786e0f6b3a1510e0ac93ef59e0ddae2bc \
@@ -2988,7 +2724,6 @@ pyyaml==6.0.1 \
     --hash=sha256:fd1592b3fdf65fff2ad0004b5e363300ef59ced41c2e6b3a99d4089fa8c5435d \
     --hash=sha256:fd66fc5d0da6d9815ba2cebeb4205f95818ff4b79c3ebe268e75d961704af52f
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   accelerate
     #   datasets
     #   huggingface-hub
@@ -3072,7 +2807,6 @@ pyzmq==24.0.1 \
     --hash=sha256:f0d945a85b70da97ae86113faf9f1b9294efe66bd4a5d6f82f2676d567338b66 \
     --hash=sha256:fa0ae3275ef706c0309556061185dd0e4c4cd3b7d6f67ae617e4e677c7a41e2e
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   ipykernel
     #   jupyter-client
     #   locust
@@ -3080,9 +2814,7 @@ pyzmq==24.0.1 \
 qpd==0.4.4 \
     --hash=sha256:e0ed05b88e321ea9935874377bda11339c90f1469f34344e9b41d16b8088e136 \
     --hash=sha256:fc02b53d990f505353ec495682fbc107dfc06c59e66d2206b5d2db2b5700b629
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   fugue
+    # via fugue
 regex==2023.10.3 \
     --hash=sha256:00ba3c9818e33f1fa974693fb55d24cdc8ebafcb2e4207680669d8f8d7cca79a \
     --hash=sha256:00e871d83a45eee2f8688d7e6849609c2ca2a04a6d48fba3dff4deef35d14f07 \
@@ -3173,7 +2905,6 @@ regex==2023.10.3 \
     --hash=sha256:f4f2ca6df64cbdd27f27b34f35adb640b5d2d77264228554e68deda54456eb11 \
     --hash=sha256:fb02e4257376ae25c6dd95a5aec377f9b18c09be6ebdefa7ad209b9137b73d48
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   diffusers
     #   nltk
     #   tiktoken
@@ -3182,7 +2913,6 @@ requests==2.31.0 \
     --hash=sha256:58cd2187c01e70e6e26505bca751777aa9f2ee0b7f4300988b709f44e013003f \
     --hash=sha256:942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   datasets
     #   diffusers
     #   evaluate
@@ -3205,27 +2935,20 @@ requests==2.31.0 \
 requests-oauthlib==1.3.1 \
     --hash=sha256:2577c501a2fb8d05a304c09d090d6e47c306fef15809d102b327cf8364bddab5 \
     --hash=sha256:75beac4a47881eeb94d5ea5d6ad31ef88856affe2332b9aafb52c6452ccf0d7a
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   google-auth-oauthlib
+    # via google-auth-oauthlib
 responses==0.13.4 \
     --hash=sha256:9476775d856d3c24ae660bbebe29fb6d789d4ad16acd723efbfb6ee20990b899 \
     --hash=sha256:d8d0f655710c46fd3513b9202a7f0dcedd02ca0f8cf4976f27fa8ab5b81e656d
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   evaluate
+    # via evaluate
 retry-decorator==1.1.1 \
     --hash=sha256:e1e8ad02e518fe11073f2ea7d80b6b8be19daa27a60a1838aff7c731ddcf2ebe
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
     #   gsutil
 rich==12.6.0 \
     --hash=sha256:a4eb26484f2c82589bd9a17c73d32a010b1e29d89f1604cd9bf3a2097b81bb5e \
     --hash=sha256:ba3a3775974105c221d31141f2c116f4fd65c5ceb0698657a11e9f295ec93fd0
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   memray
+    # via memray
 rouge-score==0.1.2 \
     --hash=sha256:c7d4da2683e68c9abf0135ef915d63a46643666f848e558a1b9f7ead17ff0f04
     # via lm-eval
@@ -3236,16 +2959,13 @@ rsa==4.7.2 \
     --hash=sha256:78f9a9bf4e7be0c5ded4583326e7461e3a3c5aae24073648b4bdfa797d78c9d2 \
     --hash=sha256:9d689e6ca1b3038bc82bf8d23e944b6b6037bc02301a574935b2dd946e0353b9
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   gcs-oauth2-boto-plugin
     #   google-auth
     #   oauth2client
 s3transfer==0.6.2 \
     --hash=sha256:b014be3a8a2aab98cfe1abc7229cc5a9a0cf05eb9c1f2b86b230fd8df3f78084 \
     --hash=sha256:cab66d3380cca3e70939ef2255d01cd8aece6a4907a9528740f668c4b0611861
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   boto3
+    # via boto3
 sacrebleu==1.5.0 \
     --hash=sha256:7c978b7fc47f26592f8c3213bf1fd66044c57e36c22449f3ad04b983d35b6527 \
     --hash=sha256:c7465ad7f997130414f8f9b28e17759051607ee18bf2f85644d2e67dd6ccb8a6
@@ -3350,7 +3070,6 @@ safetensors==0.4.1 \
     --hash=sha256:fdb4adb76e21bad318210310590de61c9f4adcef77ee49b4a234f9dc48867869 \
     --hash=sha256:fdb58dee173ef33634c3016c459d671ca12d11e6acf9db008261cbe58107e579
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   accelerate
     #   transformers
 scikit-learn==1.3.2 \
@@ -3381,7 +3100,6 @@ scikit-learn==1.3.2 \
     --hash=sha256:ed932ea780517b00dae7431e031faae6b49b20eb6950918eb83bd043237950e0 \
     --hash=sha256:fc4144a5004a676d5022b798d9e573b05139e77f271253a4703eed295bde0433
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   lm-eval
 scipy==1.11.4 \
@@ -3411,7 +3129,6 @@ scipy==1.11.4 \
     --hash=sha256:f313b39a7e94f296025e3cffc2c567618174c0b1dde173960cf23808f9fae4be \
     --hash=sha256:f3cd9e7b3c2c1ec26364856f9fbe78695fe631150f94cd1c22228456404cf1ec
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   scikit-learn
     #   statsforecast
     #   statsmodels
@@ -3465,15 +3182,11 @@ sentencepiece==0.1.96 \
     --hash=sha256:f8cb24d8d0b2f8b7463815a59183eb81ec1d7a06e3217bed456063f3303eddfb \
     --hash=sha256:fd907a8f744e5337de7fc532dd800c4416b571ea47f8c3c66be10cd1bc67c925 \
     --hash=sha256:ff7d752a7f82d87711ec1a95c2262cb74f98be5b457f0300d81a1aefe5be2a95
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 sentry-sdk==1.37.1 \
     --hash=sha256:7cd324dd2877fdc861f75cba4242bce23a58272a6fea581fcb218bb718bd9cc5 \
     --hash=sha256:a249c7364827ee89daaa078bb8b56ece0b3d52d9130961bef2302b79bdf7fe70
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   wandb
+    # via wandb
 setproctitle==1.3.3 \
     --hash=sha256:00e6e7adff74796ef12753ff399491b8827f84f6c77659d71bd0b35870a17d8f \
     --hash=sha256:059f4ce86f8cc92e5860abfc43a1dceb21137b26a02373618d88f6b4b86ba9b2 \
@@ -3563,20 +3276,11 @@ setproctitle==1.3.3 \
     --hash=sha256:f5e7266498cd31a4572378c61920af9f6b4676a73c299fce8ba93afd694f8ae7 \
     --hash=sha256:fc74e84fdfa96821580fb5e9c0b0777c1c4779434ce16d3d62a9c4d8c710df39 \
     --hash=sha256:ff814dea1e5c492a4980e3e7d094286077054e7ea116cbeda138819db194b2cd
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   wandb
-shortuuid==1.0.1 \
-    --hash=sha256:3c11d2007b915c43bee3e10625f068d8a349e04f0d81f08f5fa08507427ebf1f \
-    --hash=sha256:492c7402ff91beb1342a5898bd61ea953985bf24a41cd9f247409aa2e03c8f77
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   wandb
+    # via wandb
 six==1.16.0 \
     --hash=sha256:1e61c37477a1626458e36f7b1d82aa5c9b094fa4802892072e49de9c60c4c926 \
     --hash=sha256:8abb2f1d86890a2dfb989f9a77cfcfd3e47c2a354b01111771326f8aa26e0254
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   asttokens
     #   docker-pycreds
     #   fs
@@ -3587,26 +3291,20 @@ six==1.16.0 \
     #   oauth2client
     #   patsy
     #   petastorm
-    #   promise
     #   python-dateutil
     #   pyu2f
     #   responses
     #   rouge-score
     #   triad
     #   trueskill
-    #   wandb
 smmap==5.0.1 \
     --hash=sha256:dceeb6c0028fdb6734471eb07c0cd2aae706ccaecab45965ee83f11c8d3b1f62 \
     --hash=sha256:e6d8668fa5f93e706934a62d7b4db19c8d9eb8cf2adbb75ef1b675aa332b69da
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   gitdb
+    # via gitdb
 sniffio==1.3.0 \
     --hash=sha256:e60305c5e5d314f5389259b7f22aaa33d8f7dee49763119234af3755c55b9101 \
     --hash=sha256:eecefdce1e5bbfb7ad2eeaabf7c1eeb404d7757c379bd1f7e5cce9d8bf425384
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   anyio
+    # via anyio
 sqlalchemy==1.4.17 \
     --hash=sha256:196fb6bb2733834e506c925d7532f8eabad9d2304deef738a40846e54c31e236 \
     --hash=sha256:1dd77acbc19bee9c0ba858ff5e4e5d5c60895495c83b4df9bcdf4ad5e9b74f21 \
@@ -3639,36 +3337,27 @@ sqlalchemy==1.4.17 \
     --hash=sha256:f63e1f531a8bf52184e2afb53648511f3f8534decb7575b483a583d3cd8d13ed \
     --hash=sha256:fdad4a33140b77df61d456922b7974c1f1bb2c35238f6809f078003a620c4734
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   alembic
     #   dataset
 sqlglot==20.4.0 \
     --hash=sha256:401a2933298cf66901704cf2029272d8243ee72ac47b9fd8784254401b43ee43 \
     --hash=sha256:9a42135d0530de8150a2c5106e0c52abd3396d92501ebe97df7b371d20de5dc9
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   fugue
+    # via fugue
 sqlitedict==2.1.0 \
     --hash=sha256:03d9cfb96d602996f1d4c2db2856f1224b96a9c431bdd16e78032a72940f9e8c
     # via lm-eval
 stack-data==0.6.3 \
     --hash=sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9 \
     --hash=sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipython
+    # via ipython
 starlette==0.36.3 \
     --hash=sha256:13d429aa93a61dc40bf503e8c801db1f1bca3dc706b10ef2434a36123568f044 \
     --hash=sha256:90a671733cfb35771d8cc605e0b679d23b992f8dcfad48cc60b38cb29aeb7080
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   fastapi
+    # via fastapi
 statsforecast==1.7.0 \
     --hash=sha256:0a4aae77988c23db25703eafacecb88a6fc981496be886e24c6144fab2310a0e \
     --hash=sha256:ac63de8095242eb0f362045a232174666f0fa24a43ee8c3d3cc0bb61f15b7316
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 statsmodels==0.14.0 \
     --hash=sha256:0ef7fa4813c7a73b0d8a0c830250f021c102c71c95e9fe0d6877bcfb56d38b8c \
     --hash=sha256:16bfe0c96a53b20fa19067e3b6bd2f1d39e30d4891ea0d7bc20734a0ae95942d \
@@ -3691,15 +3380,11 @@ statsmodels==0.14.0 \
     --hash=sha256:d7fda067837df94e0a614d93d3a38fb6868958d37f7f50afe2a534524f2660cb \
     --hash=sha256:de489e3ed315bdba55c9d1554a2e89faa65d212e365ab81bc323fa52681fc60e \
     --hash=sha256:fb471f757fc45102a87e5d86e87dc2c8c78b34ad4f203679a46520f1d863b9da
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   statsforecast
+    # via statsforecast
 sympy==1.12 \
     --hash=sha256:c3588cd4295d0c0f603d0f2ae780587e64e2efeedb3521e46b9bb1d08d184fa5 \
     --hash=sha256:ebf595c8dac3e0fdc4152c51878b498396ec7f30e7a914d6071e674d49420fb8
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   torch
+    # via torch
 tabledata==1.3.1 \
     --hash=sha256:6608f86171f3285f16251ed6649dcf6e953d4fe6a8e622d39b80d1954b9e7711 \
     --hash=sha256:73e610c378670a2b9bb80e56cece24427d18c8672a36c80fcdf2a3753b19642b
@@ -3707,9 +3392,7 @@ tabledata==1.3.1 \
 tblib==3.0.0 \
     --hash=sha256:80a6c77e59b55e83911e1e607c649836a69c103963c5f28a46cbeef44acf8129 \
     --hash=sha256:93622790a0a29e04f0346458face1e144dc4d32f493714c6c3dff82a4adb77e6
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 tcolorpy==0.1.3 \
     --hash=sha256:43c1afe908f9968ff5ce59f129b62e392049b8e7cd6a8d3f416bd3d372bb5c7a \
     --hash=sha256:4ba9e4d52696a36dc16a55c20317115fb46e4b8e02796e8e270132719bcefad4
@@ -3718,15 +3401,12 @@ tensorboardx==2.6.2.2 \
     --hash=sha256:160025acbf759ede23fd3526ae9d9bfbfd8b68eb16c38a010ebe326dc6395db8 \
     --hash=sha256:c6476d7cd0d529b0b72f4acadb1269f9ed8b22f441e87a84f2a3b940bb87b666
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   pytorch-lightning
 threadpoolctl==3.1.0 \
     --hash=sha256:8b99adda265feb6773280df41eece7b2e6561b772d21ffd52e372f999024907b \
     --hash=sha256:a335baacfaa4400ae1f0d8e3a58d6674d2f8828e3716bb2802c44955ad391380
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   scikit-learn
+    # via scikit-learn
 tiktoken==0.3.1 \
     --hash=sha256:064048f506e747b636e2d70b66658743de32645d53287290734eb2b6ec43e6b5 \
     --hash=sha256:0c0eb4fe2e583def3f9090a645fe21e52068f0fbccb05070abf2f376f399ce6d \
@@ -3871,21 +3551,15 @@ tokenizers==0.15.2 \
     --hash=sha256:f3f40604f5042ff210ba82743dda2b6aa3e55aa12df4e9f2378ee01a17e2855e \
     --hash=sha256:f86593c18d2e6248e72fb91c77d413a815153b8ea4e31f7cd443bdf28e467670 \
     --hash=sha256:fb16ba563d59003028b678d2361a27f7e4ae0ab29c7a80690efa20d829c81fdb
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   transformers
+    # via transformers
 toml==0.10.2 \
     --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b \
     --hash=sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   jupytext
+    # via jupytext
 tomli==2.0.1 \
     --hash=sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc \
     --hash=sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   pytest
+    # via pytest
 torch==2.0.1 \
     --hash=sha256:0882243755ff28895e8e6dc6bc26ebcf5aa0911ed81b2a12f241fc4b09075b13 \
     --hash=sha256:1adb60d369f2650cac8e9a95b1d5758e25d526a34808f7448d0bd599e4ae9072 \
@@ -3908,7 +3582,6 @@ torch==2.0.1 \
     --hash=sha256:ef654427d91600129864644e35deea761fb1fe131710180b952a6f2e2207075e \
     --hash=sha256:f66aa6b9580a22b04d0af54fcd042f52406a8479e2b6a550e3d9f95963e168c8
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   accelerate
     #   deepspeed
@@ -3962,14 +3635,11 @@ torchdata==0.6.1 \
     --hash=sha256:cae1b4a516124c00ef47db12bab0cc6898bd2d7e749ffb14b6ebf1fe610a6b46 \
     --hash=sha256:f2a8b0a388753502d49bd5bd186cd8d41dc2d91121246617804578371591b5e6 \
     --hash=sha256:ff46aa549c0da9aa2bcba95767034a81c950dc7ccc0e24f38cf6f7878ca1826d
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   torchtext
+    # via torchtext
 torchmetrics==0.10.3 \
     --hash=sha256:9e6ab66175f2dc13e246c37485b2c27c77931dfe47fc2b81c76217b8efdc1e57 \
     --hash=sha256:b12cf92897545e24a825b0d168888c0f3052700c2901e2d4f7d90b252bc4a343
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   pytorch-lightning
 torchtext==0.15.2 \
@@ -3993,9 +3663,7 @@ torchtext==0.15.2 \
     --hash=sha256:f8d8487945b0ea3df2fedf8a9cb3e7c2165bdc2107900e82c8725d96312addd3 \
     --hash=sha256:fa6f9115e71471cd6060abf4899663719d268d5662950a65357894234fad74a7 \
     --hash=sha256:fe1794f9b2a9f4923f87488783b06d6c683f332a1db60d17cf65ba3f7c724c56
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 torchvision==0.15.2 \
     --hash=sha256:012ad25cfd9019ff9b0714a168727e3845029be1af82296ff1e1482931fa4b80 \
     --hash=sha256:07c462524cc1bba5190c16a9d47eac1fca024d60595a310f23c00b4ffff18b30 \
@@ -4017,9 +3685,7 @@ torchvision==0.15.2 \
     --hash=sha256:b85f98d4cc2f72452f6792ab4463a3541bc5678a8cdd3da0e139ba2fe8b56d42 \
     --hash=sha256:c07071bc8d02aa8fcdfe139ab6a1ef57d3b64c9e30e84d12d45c9f4d89fb6536 \
     --hash=sha256:c55f9889e436f14b4f84a9c00ebad0d31f5b4626f10cf8018e6c676f92a6d199
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 tornado==6.1 \
     --hash=sha256:0a00ff4561e2929a2c37ce706cb8233b7907e0cdc22eab98888aca5dd3775feb \
     --hash=sha256:0d321a39c36e5f2c4ff12b4ed58d41390460f798422c4504e09eb5678e09998c \
@@ -4063,14 +3729,12 @@ tornado==6.1 \
     --hash=sha256:fa2ba70284fa42c2a5ecb35e322e68823288a4251f9ba9cc77be04ae15eada68 \
     --hash=sha256:fba85b6cd9c39be262fcd23865652920832b61583de2a2ca907dbd8e8a8c81e5
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   ipykernel
     #   jupyter-client
 tqdm==4.64.1 \
     --hash=sha256:5f4f682a004951c1b450bc753c710e9280c5746ce6ffedee253ddbcbf54cf1e4 \
     --hash=sha256:6fee160d6ffcd1b1c68c65f14c829c22832bc401726335ce92c52d395944a6a1
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   datasets
     #   deepspeed
@@ -4092,7 +3756,6 @@ traitlets==5.14.0 \
     --hash=sha256:f14949d23829023013c47df20b4a76ccd1a85effb786dc060f34de7948361b33 \
     --hash=sha256:fcdaa8ac49c04dfa0ed3ee3384ef6dfdb5d6f3741502be247279407679296772
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   comm
     #   ipykernel
     #   ipython
@@ -4105,14 +3768,12 @@ transformers==4.36.2 \
     --hash=sha256:462066c4f74ee52516f12890dcc9ec71d1a5e97998db621668455117a54330f6 \
     --hash=sha256:d8068e897e47793281501e547d2bbdfc5b8556409c2cb6c3d9e2ca77d4c0b4ec
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   lm-eval
 triad==0.9.3 \
     --hash=sha256:1862b5a78deb9d475c7747b605f2b32457e96c6719f8cbc4e7e95147f34f6f64 \
     --hash=sha256:e4dff41ffbb98bad4d9741c9dd632890cdfe0b873f23d76d2b5f9ca41d4440a7
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   adagio
     #   fugue
     #   fugue-sql-antlr
@@ -4153,14 +3814,11 @@ typepy[datetime]==1.3.2 \
 typer==0.9.0 \
     --hash=sha256:50922fd79aea2f4751a8e0408ff10d2662bd0c8bbfa84755a699f3bada2978b2 \
     --hash=sha256:5d96d986a21493606a358cae4461bd8cdf83cbf33a5aa950ae629ca3b51467ee
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 typing-extensions==4.8.0 \
     --hash=sha256:8f92fc8806f9a6b641eaa5318da32b44d401efaac0f6678c9bc448ba3605faa0 \
     --hash=sha256:df8e4339e9cb77357558cbdbceca33c303714cf861d1eef15e1070055ae8b7ef
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   alembic
     #   fastapi
@@ -4173,11 +3831,11 @@ typing-extensions==4.8.0 \
     #   starlette
     #   torch
     #   typer
+    #   wandb
 urllib3==1.26.18 \
     --hash=sha256:34b97092d7e0a3a8cf7cd10e386f401b3737364026c45e622aa02903dffe0f07 \
     --hash=sha256:f8ecc1bba5667413457c529ab955bf8c67b45db799d159066261719e328580a0
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
     #   botocore
     #   requests
@@ -4187,43 +3845,38 @@ urllib3==1.26.18 \
 utilsforecast==0.0.23 \
     --hash=sha256:188daa121c528965e26a3a38f409b66a15f9eef2b44684cc9426f3ddb1146841 \
     --hash=sha256:290882da47ebc7887663c05c46c67e19bc63898220be444ca6173d0a5fdeee4a
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   statsforecast
+    # via statsforecast
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \
     --hash=sha256:e9434d3bbf05f310e762147f769c9f21235ee118ba2d2bf1155a7196448bd996
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 validators==0.22.0 \
     --hash=sha256:61cf7d4a62bbae559f2e54aed3b000cea9ff3e2fdbe463f51179b92c58c9585a \
     --hash=sha256:77b2689b172eeeb600d9605ab86194641670cdb73b60afd577142a9397873370
     # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
-wandb==0.13.4 \
-    --hash=sha256:51e2672e12cca94680f6bcff0af80822d562e6b7846036050fc5bdd00240ea75 \
-    --hash=sha256:ce64648325a22c3166f23e00aaf373732d0450196242a0a93efd774f7e79f9c0
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+wandb==0.17.0 \
+    --hash=sha256:1f692d3063a0d50474022cfe6668e1828260436d1cd40827d1e136b7f730c74c \
+    --hash=sha256:56a1dd6e0e635cba3f6ed30b52c71739bdc2a3e57df155619d2d80ee952b4201 \
+    --hash=sha256:ab582ca0d54d52ef5b991de0717350b835400d9ac2d3adab210022b68338d694 \
+    --hash=sha256:b1b056b4cad83b00436cb76049fd29ecedc6045999dcaa5eba40db6680960ac2 \
+    --hash=sha256:b7bed8a3dd404a639e6bf5fea38c6efe2fb98d416ff1db4fb51be741278ed328 \
+    --hash=sha256:e1e6f04e093a6a027dcb100618ca23b122d032204b2ed4c62e4e991a48041a6b \
+    --hash=sha256:feeb60d4ff506d2a6bc67f953b310d70b004faa789479c03ccd1559c6f1a9633
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 wcwidth==0.2.12 \
     --hash=sha256:f01c104efdf57971bcb756f054dd58ddec5204dd15fa31d6503ea57947d97c02 \
     --hash=sha256:f26ec43d96c8cbfed76a5075dac87680124fa84e0855195a6184da9c187f133c
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   prompt-toolkit
+    # via prompt-toolkit
 werkzeug==2.3.8 \
     --hash=sha256:554b257c74bbeb7a0d254160a4f8ffe185243f52a52035060b761ca62d977f03 \
     --hash=sha256:bba1f19f8ec89d4d607a3bd62f1904bd2e609472d93cd85e9d4e178f472c3748
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   flask
     #   locust
 wheel==0.42.0 \
     --hash=sha256:177f9c9b0d45c47873b619f5b650346d632cdc35fb5e4d25058e09c9e581433d \
     --hash=sha256:c45be39f7882c9d34243236f2d63cbd58039e360f85d0913425fbd7ceea617a8
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   nvidia-cublas-cu11
     #   nvidia-cuda-cupti-cu11
     #   nvidia-cuda-runtime-cu11
@@ -4233,9 +3886,7 @@ wheel==0.42.0 \
 widgetsnbextension==4.0.11 \
     --hash=sha256:55d4d6949d100e0d08b94948a42efc3ed6dfdc0e9468b2c4b128c9a2ce3a7a36 \
     --hash=sha256:8b22a8f1910bfd188e596fe7fc05dcbd87e810c8a4ba010bdb3da86637398474
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   ipywidgets
+    # via ipywidgets
 xgboost==1.7.6 \
     --hash=sha256:127cf1f5e2ec25cd41429394c6719b87af1456ce583e89f0bffd35d02ad18bcb \
     --hash=sha256:1c527554a400445e0c38186039ba1a00425dcdb4e40b37eed0e74cb39a159c47 \
@@ -4243,9 +3894,7 @@ xgboost==1.7.6 \
     --hash=sha256:4c34675b4d2678c624ddde5d45361e7e16046923e362e4e609b88353e6b87124 \
     --hash=sha256:59b4b366d2cafc7f645e87d897983a5b59be02876194b1d213bd8d8b811d8ce8 \
     --hash=sha256:b1d5db49b199152d62bd9217c98760207d3de86d2b9d243260c573ffe638f80a
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   -r release/ray_release/byod/requirements_ml_byod_3.9.in
+    # via -r release/ray_release/byod/requirements_ml_byod_3.9.in
 xxhash==3.4.1 \
     --hash=sha256:00f2fdef6b41c9db3d2fc0e7f94cb3db86693e5c45d6de09625caad9a469635b \
     --hash=sha256:0379d6cf1ff987cd421609a264ce025e74f346e3e145dd106c0cc2e3ec3f99a9 \
@@ -4356,7 +4005,6 @@ xxhash==3.4.1 \
     --hash=sha256:fd7bddb3a5b86213cc3f2c61500c16945a1b80ecd572f3078ddbbe68f9dabdfb \
     --hash=sha256:fe0a98d990e433013f41827b62be9ab43e3cf18e08b1483fcc343bda0d691182
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   datasets
     #   evaluate
 yarl==1.9.3 \
@@ -4450,14 +4098,11 @@ yarl==1.9.3 \
     --hash=sha256:fe34befb8c765b8ce562f0200afda3578f8abb159c76de3ab354c80b72244c41 \
     --hash=sha256:fe8080b4f25dfc44a86bedd14bc4f9d469dfc6456e6f3c5d9077e81a5fedfba7 \
     --hash=sha256:ff34cb09a332832d1cf38acd0f604c068665192c6107a439a92abfd8acf90fe2
-    # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
-    #   aiohttp
+    # via aiohttp
 zipp==3.17.0 \
     --hash=sha256:0e923e726174922dce09c53c59ad483ff7bbb8e572e00c7f7c46b88556409f31 \
     --hash=sha256:84e64a1c28cf7e91ed2078bb8cc8c259cb19b76942096c8d7b84947690cabaf0
     # via
-    #   -c release/ray_release/byod/requirements_compiled.txt
     #   importlib-metadata
     #   importlib-resources
 zope-event==5.0 \
