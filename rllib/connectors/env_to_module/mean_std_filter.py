@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Collection, Dict, List, Optional, Union
 
 import gymnasium as gym
 from gymnasium.spaces import Discrete, MultiDiscrete
@@ -10,7 +10,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.filter import MeanStdFilter as _MeanStdFilter
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.typing import AgentID, EpisodeType
+from ray.rllib.utils.typing import AgentID, EpisodeType, StateDict
 from ray.util.annotations import PublicAPI
 from ray.rllib.utils.filter import RunningStat
 
@@ -131,13 +131,20 @@ class MeanStdFilter(ConnectorV2):
         # observations.
         return data
 
-    def get_state(self) -> Any:
+    @override(ConnectorV2)
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
         if self._filters is None:
             self._init_new_filters()
         return self._get_state_from_filters(self._filters)
 
     @override(ConnectorV2)
-    def set_state(self, state: Dict[AgentID, Dict[str, Any]]) -> None:
+    def set_state(self, state: StateDict) -> None:
         if self._filters is None:
             self._init_new_filters()
         for agent_id, agent_state in state.items():

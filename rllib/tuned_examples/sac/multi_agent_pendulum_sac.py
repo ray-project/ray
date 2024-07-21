@@ -25,16 +25,6 @@ register_env(
 config = (
     SACConfig()
     .environment(env="multi_agent_pendulum")
-    .rl_module(
-        model_config_dict={
-            "fcnet_hiddens": [256, 256],
-            "fcnet_activation": "relu",
-            "post_fcnet_hiddens": [],
-            "post_fcnet_activation": None,
-            "post_fcnet_weights_initializer": "orthogonal_",
-            "post_fcnet_weights_initializer_config": {"gain": 0.01},
-        }
-    )
     .training(
         initial_alpha=1.001,
         lr=3e-4,

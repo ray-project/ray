@@ -197,6 +197,44 @@ async def _main(output_path: Optional[str]):
     )
     perf_metrics.extend(convert_throughput_to_perf_metrics("handle", mean, std))
 
+    # Testing throughput using previous config `max_ongoing_requests` at 100
+    # Microbenchmark: HTTP throughput
+    serve.run(Noop.options(max_ongoing_requests=100).bind())
+    mean, std = await run_throughput_benchmark(
+        fn=partial(do_single_http_batch, batch_size=BATCH_SIZE),
+        multiplier=BATCH_SIZE,
+        num_trials=NUM_TRIALS,
+        trial_runtime=TRIAL_RUNTIME_S,
+    )
+    perf_metrics.extend(
+        convert_throughput_to_perf_metrics("http_100_max_ongoing_requests", mean, std)
+    )
+    # Microbenchmark: GRPC throughput
+    serve.run(GrpcDeployment.options(max_ongoing_requests=100).bind())
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
+    mean, std = await run_throughput_benchmark(
+        fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
+        multiplier=BATCH_SIZE,
+        num_trials=NUM_TRIALS,
+        trial_runtime=TRIAL_RUNTIME_S,
+    )
+    perf_metrics.extend(
+        convert_throughput_to_perf_metrics("grpc_100_max_ongoing_requests", mean, std)
+    )
+    # Microbenchmark: Handle throughput
+    h: DeploymentHandle = serve.run(
+        Benchmarker.options(max_ongoing_requests=100).bind(
+            Noop.options(max_ongoing_requests=100).bind()
+        )
+    )
+    mean, std = await h.run_throughput_benchmark.remote(
+        batch_size=BATCH_SIZE, num_trials=NUM_TRIALS, trial_runtime=TRIAL_RUNTIME_S
+    )
+    perf_metrics.extend(
+        convert_throughput_to_perf_metrics("handle_100_max_ongoing_requests", mean, std)
+    )
+
     logging.info(f"Perf metrics:\n {json.dumps(perf_metrics, indent=4)}")
     results = {"perf_metrics": perf_metrics}
     save_test_results(results, output_path=output_path)

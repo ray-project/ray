@@ -23,14 +23,7 @@ from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-    DataBatch,
-    _apply_batch_format,
-)
-from ray.types import ObjectRef
+from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -84,24 +77,21 @@ class DataIterator(abc.ABC):
     """
 
     @abc.abstractmethod
-    def _to_block_iterator(
+    def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-        Optional[DatasetStats],
-        bool,
-    ]:
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
         """Returns the iterator to use for `iter_batches`.
 
         Returns:
-            A tuple. The first item of the tuple is an iterator over pairs of Block
-            object references and their corresponding metadata. The second item of the
-            tuple is a DatasetStats object used for recording stats during iteration.
+            A tuple. The first item of the tuple is an iterator over RefBundles.
+            The second item of the tuple is a DatasetStats object used for recording
+            stats during iteration.
             The third item is a boolean indicating if the blocks can be safely cleared
             after use.
         """
         raise NotImplementedError
 
+    @PublicAPI(stability="beta")
     def iter_batches(
         self,
         *,
@@ -158,11 +148,15 @@ class DataIterator(abc.ABC):
             # _iterator_gen is called.
             # This allows multiple iterations of the dataset without
             # needing to explicitly call `iter_batches()` multiple times.
-            block_iterator, stats, blocks_owned_by_consumer = self._to_block_iterator()
+            (
+                ref_bundles_iterator,
+                stats,
+                blocks_owned_by_consumer,
+            ) = self._to_ref_bundle_iterator()
 
             iterator = iter(
                 iter_batches(
-                    block_iterator,
+                    ref_bundles_iterator,
                     stats=stats,
                     clear_block_after_read=blocks_owned_by_consumer,
                     batch_size=batch_size,
@@ -249,6 +243,7 @@ class DataIterator(abc.ABC):
         return _IterableFromIterator(_wrapped_iterator)
 
     @abc.abstractmethod
+    @PublicAPI(stability="beta")
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
         raise NotImplementedError
@@ -258,6 +253,7 @@ class DataIterator(abc.ABC):
         """Return the schema of the dataset iterated over."""
         raise NotImplementedError
 
+    @PublicAPI(stability="beta")
     def iter_torch_batches(
         self,
         *,
@@ -674,6 +670,7 @@ class DataIterator(abc.ABC):
 
         return TorchIterableDataset(make_generator)
 
+    @PublicAPI(stability="beta")
     def to_tf(
         self,
         feature_columns: Union[str, List[str]],
@@ -839,7 +836,7 @@ class DataIterator(abc.ABC):
 
         if feature_type_spec is None or label_type_spec is None:
             schema = self.schema()
-            valid_columns = schema.names
+            valid_columns = set(schema.names)
             validate_columns(feature_columns)
             validate_columns(label_columns)
             feature_type_spec = get_type_spec(schema, columns=feature_columns)
@@ -855,6 +852,7 @@ class DataIterator(abc.ABC):
         )
         return dataset.with_options(options)
 
+    @PublicAPI(stability="beta")
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this data iterator into object store memory.
 
@@ -866,19 +864,12 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        block_iter, stats, owned_by_consumer = self._to_block_iterator()
+        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
 
-        block_refs_and_metadata = list(block_iter)
-        ref_bundles = [
-            RefBundle([(block_ref, metadata)], owned_by_consumer)
-            for block_ref, metadata in block_refs_and_metadata
-        ]
+        ref_bundles = list(ref_bundles_iter)
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
         return MaterializedDataset(
-            ExecutionPlan(
-                stats,
-                run_by_consumer=owned_by_consumer,
-            ),
+            ExecutionPlan(stats),
             logical_plan,
         )
 
