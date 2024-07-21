@@ -27,7 +27,7 @@ How to run this script
 --lr=0.01`
 
 Use the `--regularizer-coeff` option to set the value of the coefficient with which
-the mean NN weight is being multilied (inside the total loss) and the `--lr` option
+the mean NN weight is being multiplied (inside the total loss) and the `--lr` option
 to set the learning rate. Experiments using a large learning rate and no regularization
 (`--regularizer-coeff=0.0`) should NOT learn a decently working policy.
 
@@ -81,7 +81,11 @@ from ray.rllib.utils.test_utils import (
 torch, _ = try_import_torch()
 
 
-parser = add_rllib_example_script_args(default_reward=250.0)
+parser = add_rllib_example_script_args(
+    default_reward=250.0,
+    default_timesteps=200000,
+)
+parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--regularizer-coeff",
     type=float,
@@ -107,6 +111,10 @@ if __name__ == "__main__":
 
     base_config = (
         PPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .environment("CartPole-v1")
         .training(
             # This is the most important setting in this script: We point our PPO

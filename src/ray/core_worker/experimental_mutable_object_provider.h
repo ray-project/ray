@@ -65,20 +65,6 @@ class MutableObjectProvider {
   void HandlePushMutableObject(const rpc::PushMutableObjectRequest &request,
                                rpc::PushMutableObjectReply *reply);
 
-  /// Checks if a reader channel is registered for an object.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a reader for object_id,
-  /// false otherwise.
-  bool ReaderChannelRegistered(const ObjectID &object_id);
-
-  /// Checks if a writer channel is registered for an object.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// The return status. True if the channel is registered as a writer for object_id,
-  /// false otherwise.
-  bool WriterChannelRegistered(const ObjectID &object_id);
-
   /// Acquires a write lock on the object that prevents readers from reading
   /// until we are done writing. This is safe for concurrent writers.
   ///
@@ -151,8 +137,9 @@ class MutableObjectProvider {
   ///    - No channel exists for this object.
   ///
   /// \param[in] object_id The ID of the object.
+  /// \param[in] is_reader Whether the channel is a reader channel.
   /// \return Current status of the channel.
-  Status GetChannelStatus(const ObjectID &object_id);
+  Status GetChannelStatus(const ObjectID &object_id, bool is_reader);
 
  private:
   struct LocalReaderInfo {
@@ -205,6 +192,14 @@ class MutableObjectProvider {
   // Threads that wait for local mutable object changes (one thread per mutable object)
   // and then send the changes to remote nodes via the network.
   std::vector<std::unique_ptr<std::thread>> io_threads_;
+
+  // Protects the `written_so_far_` map.
+  absl::Mutex written_so_far_lock_;
+  // For objects larger than the gRPC max payload size *that this node receives from a
+  // writer node*, this map tracks how many bytes have been received so far for a single
+  // object write.
+  std::unordered_map<ObjectID, uint64_t> written_so_far_
+      ABSL_GUARDED_BY(written_so_far_lock_);
 
   friend class MutableObjectProvider_MutableObjectBufferReadRelease_Test;
 };

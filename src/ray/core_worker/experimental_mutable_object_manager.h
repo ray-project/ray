@@ -107,31 +107,18 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   ///         otherwise.
   bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
 
-  /// Checks if a reader channel is registered for an object.
+  /// Gets the backing store for an object. WriteAcquire() must have already been called
+  /// before this method is called, and WriteRelease() must not yet have been called.
   ///
   /// \param[in] object_id The ID of the object.
-  /// \return The return status. True if the channel is registered as a reader for
-  ///         object_id, false otherwise.
-  bool ReaderChannelRegistered(const ObjectID &object_id) {
-    Channel *c = GetChannel(object_id);
-    if (!c) {
-      return false;
-    }
-    return c->reader_registered;
-  }
-
-  /// Checks if a writer channel is registered for an object.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// \return The return status. True if the channel is registered as a writer for
-  ///         object_id, false otherwise.
-  bool WriterChannelRegistered(const ObjectID &object_id) {
-    Channel *c = GetChannel(object_id);
-    if (!c) {
-      return false;
-    }
-    return c->writer_registered;
-  }
+  /// \param[in] data_size The size of the data in the object.
+  /// \param[in] metadata_size The size of the metadata in the object.
+  /// \param[out] data The mutable object buffer in plasma that can be written to.
+  /// \return The return status.
+  Status GetObjectBackingStore(const ObjectID &object_id,
+                               int64_t data_size,
+                               int64_t metadata_size,
+                               std::shared_ptr<Buffer> &data);
 
   /// Acquires a write lock on the object that prevents readers from reading
   /// until we are done writing. This is safe for concurrent writers.
@@ -200,19 +187,25 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// an error on acquire.
   Status SetErrorAll();
 
-  /// Checks if the channel is closed.
-  ///
-  /// \param[in] object_id The ID of the object.
-  /// \return Status indicating whether the object (if a channel for it exists) has its
-  ///         error bit set (i.e., the channel is closed).
-  Status IsChannelClosed(const ObjectID &object_id);
-
   /// Returns the channel for object_id. If no channel exists for object_id, returns
   /// nullptr.
   ///
   /// \param[in] object_id The ID of the object.
   /// \return The channel or nullptr.
   Channel *GetChannel(const ObjectID &object_id);
+
+  /// Returns the current status of the channel for the object. Possible statuses are:
+  /// 1. Status::OK()
+  //     - The channel is registered and open.
+  /// 2. Status::ChannelError()
+  ///    - The channel was registered and previously open, but is now closed.
+  /// 3. Status::NotFound()
+  ///    - No channel exists for this object.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] is_reader Whether the channel is a reader channel.
+  /// \return Current status of the channel.
+  Status GetChannelStatus(const ObjectID &object_id, bool is_reader);
 
  private:
   /// Converts a timeout in milliseconds to a timeout point.

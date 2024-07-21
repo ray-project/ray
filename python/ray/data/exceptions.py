@@ -52,7 +52,7 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
             # via DataContext, or when the Ray Debugger is enabled.
             # The full stack trace will always be emitted to the Ray Data log file.
             log_to_stdout = DataContext.get_current().log_internal_stack_trace_to_stdout
-            if _is_ray_debugger_enabled() or log_to_stdout:
+            if _is_ray_debugger_enabled():
                 logger.exception("Full stack trace:")
                 raise e
 
@@ -77,8 +77,11 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
                     "https://github.com/ray-project/ray/issues/new/choose"
                 )
 
+            should_hide_traceback = is_user_code_exception and not log_to_stdout
             logger.exception(
-                "Full stack trace:", exc_info=True, extra={"hide": not log_to_stdout}
+                "Full stack trace:",
+                exc_info=True,
+                extra={"hide": should_hide_traceback},
             )
             if is_user_code_exception:
                 raise e.with_traceback(None)

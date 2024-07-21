@@ -13,6 +13,9 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
@@ -944,7 +947,9 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
         .map_batches(lambda x: x, batch_size=None)
     )
 
-    block_refs = ds.get_internal_block_refs()
+    bundles = ds.iter_internal_ref_bundles()
+    block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
+
     assert len(block_refs) == 1
     assert type(ray.get(block_refs[0])) == pd.DataFrame
 

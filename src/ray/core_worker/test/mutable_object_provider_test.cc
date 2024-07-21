@@ -222,8 +222,8 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
 
   ray::rpc::PushMutableObjectRequest request;
   request.set_writer_object_id(object_id.Binary());
-  request.set_data_size(0);
-  request.set_metadata_size(0);
+  request.set_total_data_size(0);
+  request.set_total_metadata_size(0);
 
   ray::rpc::PushMutableObjectReply reply;
   provider.HandlePushMutableObject(request, &reply);
