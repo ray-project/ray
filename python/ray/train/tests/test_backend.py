@@ -178,6 +178,18 @@ def test_local_ranks(ray_start_2_cpus):
     assert set(e.finish_training()) == {0, 1}
 
 
+def test_local_ranks_with_same_ip_nodes(ray_2_node_2_cpu):
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=4)
+    e.start()
+
+    def train_func():
+        return train.get_context().get_local_rank()
+
+    _start_training(e, train_func)
+    assert list(e.finish_training()) == [0, 1, 0, 1]
+
+
 def test_local_world_size(ray_2_node_2_cpu):
     config = TestConfig()
     with patch.object(WorkerGroup, "add_workers", mock_add_workers):
