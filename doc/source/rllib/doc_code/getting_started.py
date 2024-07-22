@@ -134,15 +134,16 @@ algo = (
 # Get weights of the algo's RLModule.
 algo.get_module().get_state()
 
-# Same as above.
-algo.workers.local_worker().module.get_state()
+# Same as above
+algo.env_runner.module.get_state()
 
-# Get list of weights of each EnvRunner worker, including remote replicas.
-algo.workers.foreach_worker(lambda worker: worker.module.get_state())
+# Get list of weights of each EnvRunner, including remote replicas.
+algo.env_runner_group.foreach_worker(lambda env_runner: env_runner.module.get_state())
 
 # Same as above, but with index.
-algo.workers.foreach_worker_with_id(lambda _id, worker: worker.module.get_state())
-
+algo.env_runner_group.foreach_worker_with_id(
+    lambda _id, env_runner: env_runner.module.get_state()
+)
 # __rllib-get-state-end__
 
 algo.stop()

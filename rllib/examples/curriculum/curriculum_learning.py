@@ -173,7 +173,7 @@ class EnvTaskCallback(DefaultCallbacks):
                     f"Switching task/map on all EnvRunners to #{new_task} (0=easiest, "
                     f"2=hardest), b/c R={current_return} on current task."
                 )
-                algorithm.workers.foreach_worker(
+                algorithm.env_runner_group.foreach_worker(
                     func=partial(_remote_fn, new_task=new_task)
                 )
                 algorithm._counters["current_env_task"] = new_task
@@ -188,7 +188,9 @@ class EnvTaskCallback(DefaultCallbacks):
                 "Emergency brake: Our policy seemed to have collapsed -> Setting task "
                 "back to 0."
             )
-            algorithm.workers.foreach_worker(func=partial(_remote_fn, new_task=0))
+            algorithm.env_runner_group.foreach_worker(
+                func=partial(_remote_fn, new_task=0)
+            )
             algorithm._counters["current_env_task"] = 0
 
 

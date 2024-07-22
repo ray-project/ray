@@ -430,6 +430,10 @@ class AlgorithmConfig(_Config):
 
         # `self.offline_data()`
         self.input_ = "sampler"
+        self.input_read_method = "read_parquet"
+        self.input_read_method_kwargs = {}
+        self.prelearner_module_synch_period = 10
+        self.dataset_num_iters_per_learner = None
         self.input_config = {}
         self.actions_in_input_normalized = False
         self.postprocess_inputs = False
@@ -2365,6 +2369,10 @@ class AlgorithmConfig(_Config):
         self,
         *,
         input_=NotProvided,
+        input_read_method=NotProvided,
+        input_read_method_kwargs=NotProvided,
+        prelearner_module_synch_period=NotProvided,
+        dataset_num_iters_per_learner=NotProvided,
         input_config=NotProvided,
         actions_in_input_normalized=NotProvided,
         input_evaluation=NotProvided,
@@ -2389,7 +2397,24 @@ class AlgorithmConfig(_Config):
                 - A callable that takes an `IOContext` object as only arg and returns a
                 ray.rllib.offline.InputReader.
                 - A string key that indexes a callable with tune.registry.register_input
-            input_config: Arguments that describe the settings for reading the input.
+            input_read_method: Read method for the `ray.data.Dataset` to read in the
+                offline data from `input_`. The default is `read_json` for JSON files.
+                See https://docs.ray.io/en/latest/data/api/input_output.html for more
+                info about available read methods in `ray.data`.
+            input_read_method_kwargs: kwargs for the `input_read_method`. These will be
+                passed into the read method without checking.
+            prelearner_module_synch_period: The period (number of batches converted)
+                after which the `RLModule` held by the `PreLearner` should sync weights.
+                The `PreLearner` is used to preprocess batches for the learners. The
+                higher this value the more off-policy the `PreLearner`'s module will be.
+                Values too small will force the `PreLearner` to sync a ,lot with the
+                `Learner` and will slow down the data pipeline. The default value chosen
+                by the `OfflinePreLearner` is 10.
+            dataset_num_iters_per_learner: Number of iterations to run in each learner
+                during a single training iteration. If `None`, each learner runs a
+                complete epoch over its data block (the dataset is partitioned into
+                as many blocks as there are learners). The default is `None`.
+            input_config: Arguments that describe the settings for reading the inpu t.
                 If input is `sample`, this will be environment configuation, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
                 If the input is `dataset`, this will be e.g. `format`, `path`.
@@ -2427,6 +2452,14 @@ class AlgorithmConfig(_Config):
         """
         if input_ is not NotProvided:
             self.input_ = input_
+        if input_read_method is not NotProvided:
+            self.input_read_method = input_read_method
+        if input_read_method_kwargs is not NotProvided:
+            self.input_read_method_kwargs = input_read_method_kwargs
+        if prelearner_module_synch_period is not NotProvided:
+            self.prelearner_module_synch_period = prelearner_module_synch_period
+        if dataset_num_iters_per_learner is not NotProvided:
+            self.dataset_num_iters_per_learner = dataset_num_iters_per_learner
         if input_config is not NotProvided:
             if not isinstance(input_config, dict):
                 raise ValueError(

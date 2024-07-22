@@ -2,6 +2,7 @@ import logging
 from typing import Dict
 
 from ray.rllib.algorithms.bc.bc import BCConfig
+from ray.rllib.algorithms.bc.bc_learner import BCLearner
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -14,7 +15,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__file__)
 
 
-class BCTorchLearner(TorchLearner):
+class BCTorchLearner(TorchLearner, BCLearner):
     """Implements torch-specific BC loss logic."""
 
     @override(TorchLearner)

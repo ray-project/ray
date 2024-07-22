@@ -123,13 +123,13 @@ or get model weights.
 In RLlib algorithm state is replicated across multiple *rollout workers* (Ray actors)
 in the cluster.
 However, you can easily get and update this state between calls to ``train()``
-via ``Algorithm.workers.foreach_worker()``
-or ``Algorithm.workers.foreach_worker_with_index()``.
+via ``Algorithm.env_runner_group.foreach_worker()``
+or ``Algorithm.env_runner_group.foreach_worker_with_index()``.
 These functions take a lambda function that is applied with the worker as an argument.
 These functions return values for each worker as a list.
 
 You can also access just the "master" copy of the algorithm state through
-``Algorithm.get_policy()`` or ``Algorithm.workers.local_worker()``,
+``Algorithm.get_policy()`` or ``Algorithm.env_runner``,
 but note that updates here may not be immediately reflected in
 your rollout workers (if you have configured ``num_env_runners > 0``).
 Here's a quick example of how to access state of a model:
