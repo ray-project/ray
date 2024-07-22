@@ -2544,6 +2544,26 @@ py_test(
 #    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=5", "--num-cpus=6"]
 # )
 
+# subdirectory: curiosity/
+# ....................................
+py_test(
+    name = "examples/curiosity/count_based_curiosity",
+    main = "examples/curiosity/count_based_curiosity.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/curiosity/count_based_curiosity.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
+py_test(
+    name = "examples/curiosity/euclidian_distance_based_curiosity",
+    main = "examples/curiosity/euclidian_distance_based_curiosity.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/curiosity/euclidian_distance_based_curiosity.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
 # subdirectory: curriculum/
 # ....................................
 py_test(
