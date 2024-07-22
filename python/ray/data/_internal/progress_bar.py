@@ -1,5 +1,4 @@
 import threading
-import warnings
 from typing import Any, List, Optional
 
 import ray
@@ -32,28 +31,33 @@ def set_progress_bars(enabled: bool) -> bool:
     Returns:
         Whether progress bars were previously enabled.
     """
-    from ray.data import DataContext
-
-    warnings.warn(
+    raise DeprecationWarning(
         "`set_progress_bars` is deprecated. Set "
         "`ray.data.DataContext.get_current().enable_progress_bars` instead.",
-        DeprecationWarning,
     )
-
-    ctx = DataContext.get_current()
-    old_value = ctx.enable_progress_bars
-    ctx.enable_progress_bars = enabled
-    return old_value
 
 
 class ProgressBar:
-    """Thin wrapper around tqdm to handle soft imports."""
+    """Thin wrapper around tqdm to handle soft imports.
+
+    If `total` is `None` known (for example, it is unknown
+    because no tasks have finished yet), doesn't display the full
+    progress bar. Still displays basic progress stats from tqdm."""
 
     def __init__(
-        self, name: str, total: int, position: int = 0, enabled: Optional[bool] = None
+        self,
+        name: str,
+        total: Optional[int],
+        unit: str,
+        position: int = 0,
+        enabled: Optional[bool] = None,
     ):
         self._desc = name
         self._progress = 0
+        # Prepend a space to the unit for better formatting.
+        if unit[0] != " ":
+            unit = " " + unit
+
         if enabled is None:
             from ray.data import DataContext
 
@@ -63,12 +67,13 @@ class ProgressBar:
         elif tqdm:
             ctx = ray.data.context.DataContext.get_current()
             if ctx.use_ray_tqdm:
-                self._bar = tqdm_ray.tqdm(total=total, position=position)
+                self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
             else:
                 self._bar = tqdm.tqdm(
                     total=total,
                     position=position,
                     dynamic_ncols=True,
+                    unit=unit,
                 )
             self._bar.set_description(self._desc)
         else:

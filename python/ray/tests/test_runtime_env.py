@@ -130,7 +130,7 @@ def test_get_master_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/master/<test_commit>/`.
-    test_commit = "0910639b6eba1b77b9a36b9f3350c5aa274578dd"
+    test_commit = "593d04aba2726a0104280d1bdbc2779e3a8ba7d4"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             url = get_master_wheel_url(
@@ -144,7 +144,7 @@ def test_get_release_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/releases/2.2.0/<commit>/`.
-    test_commits = {"2.7.0": "904dbce085bc542b93fbe06d75f3b02a65d3a2b4"}
+    test_commits = {"2.31.0": "1240d3fc326517f9be28bb7897c1c88619f0d984"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             for version, commit in test_commits.items():
@@ -940,7 +940,6 @@ def test_runtime_env_interface():
     # Test the interface related to container
     container_init = {
         "image": "anyscale/ray-ml:nightly-py38-cpu",
-        "worker_path": "/root/python/ray/_private/workers/default_worker.py",
         "run_options": ["--cap-drop SYS_ADMIN", "--log-level=debug"],
     }
     update_container = {"image": "test_modify"}
@@ -948,7 +947,6 @@ def test_runtime_env_interface():
     runtime_env_dict = runtime_env.to_dict()
     assert runtime_env.has_py_container()
     assert runtime_env.py_container_image() == container_init["image"]
-    assert runtime_env.py_container_worker_path() == container_init["worker_path"]
     assert runtime_env.py_container_run_options() == container_init["run_options"]
     runtime_env["container"].update(update_container)
     runtime_env_dict["container"].update(update_container)
@@ -957,7 +955,6 @@ def test_runtime_env_interface():
     assert runtime_env_dict == runtime_env.to_dict()
     assert runtime_env.has_py_container()
     assert runtime_env.py_container_image() == container_copy["image"]
-    assert runtime_env.py_container_worker_path() == container_copy["worker_path"]
     assert runtime_env.py_container_run_options() == container_copy["run_options"]
 
     runtime_env.pop("container")
@@ -965,8 +962,6 @@ def test_runtime_env_interface():
 
 
 if __name__ == "__main__":
-    import sys
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

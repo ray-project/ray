@@ -1053,10 +1053,14 @@ class ActorCriticEncoderConfig(ModelConfig):
     Attributes:
         base_encoder_config: The configuration for the wrapped encoder(s).
         shared: Whether the base encoder is shared between the actor and critic.
+        inference_only: Whether the configured encoder will only ever be used as an
+            actor-encoder, never as a value-function encoder. Thus, if True and `shared`
+            is False, will only build the actor-related components.
     """
 
     base_encoder_config: ModelConfig = None
     shared: bool = True
+    inference_only: bool = False
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":

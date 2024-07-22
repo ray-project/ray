@@ -293,13 +293,22 @@ def _calc_mem_per_ray_node(
         )
 
     if object_store_bytes < OBJECT_STORE_MINIMUM_MEMORY_BYTES:
+        if object_store_bytes == available_shared_mem_per_node:
+            warning_msg = (
+                "Your operating system is configured with too small /dev/shm "
+                "size, so `object_store_memory_worker_node` value is configured "
+                f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes),"
+                f"Please increase system /dev/shm size."
+            )
+        else:
+            warning_msg = (
+                "You configured too small Ray node object store memory size, "
+                "so `object_store_memory_worker_node` value is configured "
+                f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes),"
+                "Please increase 'object_store_memory_worker_node' argument value."
+            )
+
         object_store_bytes = OBJECT_STORE_MINIMUM_MEMORY_BYTES
-        warning_msg = (
-            "Your operating system is configured with too small /dev/shm "
-            "size, so `object_store_memory_per_node` value is configured "
-            f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes),"
-            f"Please increase system /dev/shm size."
-        )
 
     object_store_bytes = int(object_store_bytes)
 

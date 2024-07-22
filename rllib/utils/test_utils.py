@@ -49,7 +49,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES_LIFETIME,
 )
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
 
@@ -275,7 +274,14 @@ def add_rllib_example_script_args(
     # Learner scaling options.
     # Old API stack: config.num_gpus.
     # New API stack: config.num_learners (w/ num_gpus_per_learner=1).
-    parser.add_argument("--num-gpus", type=int, default=0)
+    parser.add_argument(
+        "--num-gpus",
+        type=int,
+        default=0,
+        help="The number of GPUs/Learners to use. If none or not enough GPUs "
+        "are available, will still create `--num-gpus` Learners, but place them on one "
+        "CPU each, instead.",
+    )
 
     # Ray init options.
     parser.add_argument("--num-cpus", type=int, default=0)
@@ -308,10 +314,8 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         false: Whether to check that x and y are NOT the same.
     """
     # A dict type.
-    if isinstance(x, (dict, NestedDict)):
-        assert isinstance(
-            y, (dict, NestedDict)
-        ), "ERROR: If x is dict, y needs to be a dict as well!"
+    if isinstance(x, dict):
+        assert isinstance(y, dict), "ERROR: If x is dict, y needs to be a dict as well!"
         y_keys = set(x.keys())
         for key, value in x.items():
             assert key in y, f"ERROR: y does not have x's key='{key}'! y={y}"
@@ -1360,6 +1364,8 @@ def run_rllib_example_script_experiment(
     trainable: Optional[Type] = None,
     tune_callbacks: Optional[List] = None,
     keep_config: bool = False,
+    scheduler=None,
+    progress_reporter=None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1408,7 +1414,7 @@ def run_rllib_example_script_experiment(
         trainable: The Trainable sub-class to run in the tune.Tuner. If None (default),
             use the registered RLlib Algorithm class specified by args.algo.
         tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
-            In case `args.wandb_key` is provided, will append a WandB logger to this
+            In case `args.wandb_key` is provided, appends a WandB logger to this
             list.
         keep_config: Set this to True, if you don't want this utility to change the
             given `base_config` in any way and leave it as-is. This is helpful
@@ -1434,7 +1440,7 @@ def run_rllib_example_script_experiment(
     # Define one or more stopping criteria.
     if stop is None:
         stop = {
-            f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
             f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
             TRAINING_ITERATION: args.stop_iters,
         }
@@ -1465,16 +1471,19 @@ def run_rllib_example_script_experiment(
         # New stack.
         if config.enable_rl_module_and_learner:
             # Define compute resources used.
+            config.resources(num_gpus=0)
             config.learners(
                 num_learners=args.num_gpus,
-                num_gpus_per_learner=1 if torch.cuda.is_available() else 0,
+                num_gpus_per_learner=(
+                    1
+                    if torch and torch.cuda.is_available() and args.num_gpus > 0
+                    else 0
+                ),
             )
+            config.resources(num_gpus=0)
         # Old stack.
         else:
-            config.resources(
-                num_gpus=args.num_gpus,
-                num_cpus_for_main_process=1,
-            )
+            config.resources(num_gpus=args.num_gpus)
 
         # Evaluation setup.
         if args.evaluation_interval > 0:
@@ -1490,9 +1499,13 @@ def run_rllib_example_script_experiment(
     if args.no_tune:
         assert not args.as_test and not args.as_release_test
         algo = config.build()
-        for _ in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
+        for i in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
             results = algo.train()
-            print(f"R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}", end="")
+            if ENV_RUNNER_RESULTS in results:
+                print(
+                    f"iter={i} R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}",
+                    end="",
+                )
             if EVALUATION_RESULTS in results:
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN
@@ -1534,8 +1547,7 @@ def run_rllib_example_script_experiment(
 
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
-    progress_reporter = None
-    if args.num_agents > 0:
+    if progress_reporter is None and args.num_agents > 0:
         progress_reporter = CLIReporter(
             metric_columns={
                 **{
@@ -1572,7 +1584,10 @@ def run_rllib_example_script_experiment(
             ),
             progress_reporter=progress_reporter,
         ),
-        tune_config=tune.TuneConfig(num_samples=args.num_samples),
+        tune_config=tune.TuneConfig(
+            num_samples=args.num_samples,
+            scheduler=scheduler,
+        ),
     ).fit()
     time_taken = time.time() - start_time
 
@@ -1622,7 +1637,17 @@ def run_rllib_example_script_experiment(
                 os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json"),
                 "wt",
             ) as f:
-                json.dump(json_summary, f)
+                try:
+                    json.dump(json_summary, f)
+                # Something went wrong writing json. Try again w/ simplified stats.
+                except Exception:
+                    from ray.rllib.algorithms.algorithm import Algorithm
+
+                    simplified_stats = {
+                        k: stats[k] for k in Algorithm._progress_metrics if k in stats
+                    }
+                    json_summary["stats"] = simplified_stats
+                    json.dump(json_summary, f)
 
         if not test_passed:
             raise ValueError(
@@ -1869,18 +1894,26 @@ class ModelChecker:
         from ray.rllib.core.models.specs.specs_dict import SpecDict
 
         if isinstance(model.input_specs, SpecDict):
-            inputs = {}
-            for key, spec in model.input_specs.items():
-                dict_ = inputs
-                for i, sub_key in enumerate(key):
-                    if sub_key not in dict_:
-                        dict_[sub_key] = {}
-                    if i < len(key) - 1:
-                        dict_ = dict_[sub_key]
-                if spec is not None:
-                    dict_[sub_key] = spec.fill(self.random_fill_input_value)
+            # inputs = {}
+
+            def _fill(s):
+                if s is not None:
+                    return s.fill(self.random_fill_input_value)
                 else:
-                    dict_[sub_key] = None
+                    return None
+
+            inputs = tree.map_structure(_fill, dict(model.input_specs))
+            # for key, spec in model.input_specs.items():
+            #    dict_ = inputs
+            #    for i, sub_key in enumerate(key):
+            #        if sub_key not in dict_:
+            #            dict_[sub_key] = {}
+            #        if i < len(key) - 1:
+            #            dict_ = dict_[sub_key]
+            #    if spec is not None:
+            #        dict_[sub_key] = spec.fill(self.random_fill_input_value)
+            #    else:
+            #        dict_[sub_key] = None
         else:
             inputs = model.input_specs.fill(self.random_fill_input_value)
 

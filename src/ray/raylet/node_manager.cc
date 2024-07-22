@@ -683,6 +683,20 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
                            -1);
   }
 
+  // Cancel lease requests that are waiting for workers
+  // to free the acquired pg bundle resources
+  // so that pg bundle can be returned.
+  local_task_manager_->CancelTasks(
+      [&](const std::shared_ptr<internal::Work> &work) {
+        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
+        return !bundle_id.first.IsNil() && (0 == in_use_bundles.count(bundle_id)) &&
+               (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
+      },
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      "The lease request is cancelled because it uses placement group bundles that are "
+      "not "
+      "registered to GCS. It can happen upon GCS restart.");
+
   // Kill all workers that are currently associated with the unused bundles.
   // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
   // delete the element of `leased_workers_`. So we need to filter out
@@ -1889,6 +1903,20 @@ void NodeManager::HandleCancelResourceReserve(
   RAY_LOG(DEBUG) << "Request to cancel reserved resource is received, "
                  << bundle_spec.DebugString();
 
+  // Cancel lease requests that are waiting for workers
+  // to free the acquired pg bundle resources
+  // so that pg bundle can be returned.
+  local_task_manager_->CancelTasks(
+      [&](const std::shared_ptr<internal::Work> &work) {
+        const auto bundle_id = work->task.GetTaskSpecification().PlacementGroupBundleId();
+        return (bundle_id.first == bundle_spec.PlacementGroupId()) &&
+               (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER);
+      },
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED,
+      absl::StrCat("Required placement group ",
+                   bundle_spec.PlacementGroupId().Hex(),
+                   " is removed."));
+
   // Kill all workers that are currently associated with the placement group.
   // NOTE: We can't traverse directly with `leased_workers_`, because `DestroyWorker` will
   // delete the element of `leased_workers_`. So we need to filter out
@@ -1914,12 +1942,9 @@ void NodeManager::HandleCancelResourceReserve(
     DestroyWorker(worker, rpc::WorkerExitType::INTENDED_SYSTEM_EXIT, message);
   }
 
-  // Return bundle resources. If it fails to return a bundle,
-  // it will return none-ok status. They are transient state,
-  // and GCS should retry.
-  auto status = placement_group_resource_manager_->ReturnBundle(bundle_spec);
+  RAY_CHECK_OK(placement_group_resource_manager_->ReturnBundle(bundle_spec));
   cluster_task_manager_->ScheduleAndDispatchTasks();
-  send_reply_callback(status, nullptr, nullptr);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
@@ -2020,25 +2045,31 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
   send_reply_callback(Status::OK(), shutdown_after_reply, shutdown_after_reply);
 }
 
-void NodeManager::HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest request,
-                                             rpc::ReleaseUnusedWorkersReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleReleaseUnusedActorWorkers(
+    rpc::ReleaseUnusedActorWorkersRequest request,
+    rpc::ReleaseUnusedActorWorkersReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   std::unordered_set<WorkerID> in_use_worker_ids;
   for (int index = 0; index < request.worker_ids_in_use_size(); ++index) {
     auto worker_id = WorkerID::FromBinary(request.worker_ids_in_use(index));
     in_use_worker_ids.emplace(worker_id);
   }
 
-  std::vector<WorkerID> unused_worker_ids;
+  std::vector<std::shared_ptr<WorkerInterface>> unused_actor_workers;
   for (auto &iter : leased_workers_) {
-    // We need to exclude workers used by common tasks.
-    // Because they are not used by GCS.
+    // We only kill *actor* workers.
     if (!iter.second->GetActorId().IsNil() && !in_use_worker_ids.count(iter.first)) {
-      unused_worker_ids.emplace_back(iter.first);
+      unused_actor_workers.push_back(iter.second);
     }
   }
 
-  ReleaseWorkers(unused_worker_ids);
+  for (auto &worker : unused_actor_workers) {
+    RAY_LOG(DEBUG) << "GCS requested to release unused actor worker: "
+                   << worker->WorkerId();
+    DestroyWorker(worker,
+                  rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
+                  "Worker is no longer needed by the GCS.");
+  }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }

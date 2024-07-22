@@ -10,7 +10,7 @@ steps:
   - name: servebuild-multipy
     label: "wanda: servebuild-py{{matrix}}"
     wanda: ci/docker/serve.build.wanda.yaml
-    matrix: ["3.11"]
+    matrix: ["3.12"]
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_build-multipy
@@ -71,7 +71,7 @@ steps:
     depends_on: servebuild-multipy
     matrix:
       setup:
-        python: ["3.11"]
+        python: ["3.12"]
         worker_id: ["0", "1"]
 
   - label: ":ray-serve: serve: release tests"
@@ -178,6 +178,7 @@ steps:
     depends_on: docgpubuild
 
   - label: ":ray-serve: serve: flaky tests"
+    key: serve_flaky_tests
     tags: 
       - serve
       - skip-on-premerge
