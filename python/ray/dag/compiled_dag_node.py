@@ -522,7 +522,7 @@ class CompiledDAG:
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
-        self.actor_to_node_id: Dict["ray.actor.ActorHandle", List[str]] = {}
+        self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
         # Type hints specified by the user for DAG (intermediate) outputs.
         self._type_hints = []
@@ -863,12 +863,12 @@ class CompiledDAG:
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
                 reader_to_node: List[Tuple["ray.actor.ActorHandle", str]] = []
                 dag_nodes = [reader.dag_node for reader in readers]
-                read_by_driver = False
+                read_by_output_node = False
                 for dag_node in dag_nodes:
                     if isinstance(dag_node, MultiOutputNode):
-                        read_by_driver = True
+                        read_by_output_node = True
                         break
-                if read_by_driver:
+                if read_by_output_node:
                     if len(readers) != 1:
                         raise ValueError(
                             "DAG outputs currently can only be read by the driver--not "
@@ -934,7 +934,7 @@ class CompiledDAG:
                     reader_task = self.idx_to_task[idx]
                     assert isinstance(reader_task.dag_node, ClassMethodNode)
                     reader_handle = reader_task.dag_node._get_actor_handle()
-                    if reader_handle not in reader_to_node:
+                    if reader_handle not in reader_handles_set:
                         reader_to_node.append(
                             (reader_handle, self._get_node_id(reader_handle))
                         )
