@@ -188,7 +188,7 @@ def add_rllib_example_script_args(
         "--log-level",
         type=str,
         default=None,  # None -> use default
-        values=["INFO", "DEBUG", "WARN", "ERROR"],
+        choices=["INFO", "DEBUG", "WARN", "ERROR"],
         help="The log-level to be used by the RLlib logger.",
     )
 
