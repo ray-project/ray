@@ -326,7 +326,7 @@ py_test(
     name = "learning_tests_pendulum_cql_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
     data = [
@@ -839,6 +839,14 @@ py_test(
 )
 
 # BC
+py_test(
+    name = "test_bc_old_stack",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/large.json"],
+    srcs = ["algorithms/bc/tests/test_bc_old_stack.py"]
+)
 py_test(
     name = "test_bc",
     tags = ["team:rllib", "algorithms_dir"],
@@ -1572,6 +1580,16 @@ py_test(
     tags = ["team:rllib", "offline"],
     size = "large",
     srcs = ["offline/estimators/tests/test_dr_learning.py"],
+)
+
+py_test(
+    name = "test_offline_data",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_offline_data.py"],
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
 )
 
 # --------------------------------------------------------------------
