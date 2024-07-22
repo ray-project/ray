@@ -116,7 +116,7 @@ class TestAPPO(unittest.TestCase):
             """
             for _ in range(n):
                 results = algo.train()
-                print(algo.workers.local_worker().global_vars)
+                print(algo.env_runner.global_vars)
                 print(results)
             return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
                 "entropy_coeff"
@@ -167,7 +167,7 @@ class TestAPPO(unittest.TestCase):
             """
             for _ in range(n):
                 results = algo.train()
-                print(algo.workers.local_worker().global_vars)
+                print(algo.env_runner.global_vars)
                 print(results)
             return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
                 "cur_lr"

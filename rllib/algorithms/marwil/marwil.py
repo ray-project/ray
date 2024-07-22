@@ -250,7 +250,7 @@ class MARWIL(Algorithm):
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         with self._timers[SAMPLE_TIMER]:
-            train_batch = synchronous_parallel_sample(worker_set=self.workers)
+            train_batch = synchronous_parallel_sample(worker_set=self.env_runner_group)
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -271,13 +271,13 @@ class MARWIL(Algorithm):
 
         # Update weights - after learning on the local worker - on all remote
         # workers (only those policies that were actually trained).
-        if self.workers.remote_workers():
+        if self.env_runner_group.remote_workers():
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(
+                self.env_runner_group.sync_weights(
                     policies=list(train_results.keys()), global_vars=global_vars
                 )
 
         # Update global vars on local worker as well.
-        self.workers.local_worker().set_global_vars(global_vars)
+        self.env_runner.set_global_vars(global_vars)
 
         return train_results
