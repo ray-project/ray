@@ -77,9 +77,9 @@ parser.set_defaults(
 parser.add_argument(
     "--intrinsic-reward-coeff",
     type=float,
-    default=0.00001,
+    default=0.0001,
     help="The weight with which to multiply intrinsic rewards before adding them to "
-    "the extrinsic ones (default is 1.0).",
+    "the extrinsic ones (default is 0.0001).",
 )
 parser.add_argument(
     "--no-curiosity",
@@ -108,22 +108,16 @@ if __name__ == "__main__":
             # computes intrinsic rewards based on simple observation counts and add them
             # to the "main" (extrinsic) rewards.
             learner_connector=(
-                None if args.no_curiosity
+                None
+                if args.no_curiosity
                 else lambda *ags, **kw: EuclidianDistanceBasedCuriosity()
             ),
-            #train_batch_size_per_learner=512,
+            # train_batch_size_per_learner=512,
             gamma=0.99,
             lr=0.0002,
             lambda_=0.98,
-            #vf_clip_param=10.0,
-            #sgd_minibatch_size=64,
-
-            #lambda_=0.98,
-            #num_sgd_iter=16,
-            #vf_loss_coeff=0.01,
-            #lr=0.0003,
         )
-        #.rl_module(model_config_dict={"vf_share_layers": True})
+        # .rl_module(model_config_dict={"vf_share_layers": True})
     )
 
     run_rllib_example_script_experiment(base_config, args)
