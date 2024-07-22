@@ -370,7 +370,11 @@ class TestAlgorithm(unittest.TestCase):
                         )
 
                     self.assertTrue(
-                        all(test2.evaluation_env_runner_group.foreach_worker(_has_policies))
+                        all(
+                            test2.evaluation_env_runner_group.foreach_worker(
+                                _has_policies
+                            )
+                        )
                     )
 
                     # Make sure algorithm can continue training the restored policy.
@@ -676,8 +680,7 @@ class TestAlgorithm(unittest.TestCase):
         )
         # Make sure that EnvRunners have received the correct mapping fn.
         mapped_pols = [
-            algo.env_runner.config.policy_mapping_fn(0, None)
-            for _ in range(100)
+            algo.env_runner.config.policy_mapping_fn(0, None) for _ in range(100)
         ]
         self.assertTrue(all(f"p{i}" in mapped_pols for i in mapped))
         self.assertTrue(not any(f"p{i}" in mapped_pols for i in not_mapped))

@@ -834,7 +834,9 @@ class IMPALA(Algorithm):
 
         # Perform asynchronous sampling on all (healthy) remote rollout workers.
         if num_healthy_remote_workers > 0:
-            self.env_runner_group.foreach_worker_async(_remote_sample_get_state_and_metrics)
+            self.env_runner_group.foreach_worker_async(
+                _remote_sample_get_state_and_metrics
+            )
             async_results: List[
                 Tuple[int, ObjectRef]
             ] = self.env_runner_group.fetch_ready_async_reqs(
@@ -1107,7 +1109,9 @@ class IMPALA(Algorithm):
             # local worker. Otherwise just return an empty list.
             if self.env_runner_group.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
-                self.env_runner_group.foreach_worker_async(lambda worker: worker.sample())
+                self.env_runner_group.foreach_worker_async(
+                    lambda worker: worker.sample()
+                )
                 sample_batches: List[
                     Tuple[int, ObjectRef]
                 ] = self.env_runner_group.fetch_ready_async_reqs(
@@ -1115,8 +1119,7 @@ class IMPALA(Algorithm):
                     return_obj_refs=return_object_refs,
                 )
             elif self.config.num_env_runners == 0 or (
-                self.env_runner
-                and self.env_runner.async_env is not None
+                self.env_runner and self.env_runner.async_env is not None
             ):
                 # Sampling from the local worker
                 sample_batch = self.env_runner.sample()

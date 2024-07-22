@@ -749,7 +749,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             env = spaces = None
             # EnvRunners have a `module` property, which stores the RLModule
             # (or MARLModule, which is a subclass of RLModule, in the multi-agent case).
-            if hasattr(local_env_runner, "module") and local_env_runner.module is not None:
+            if (
+                hasattr(local_env_runner, "module")
+                and local_env_runner.module is not None
+            ):
                 marl_module_dict = dict(local_env_runner.module.as_multi_agent())
                 env = local_env_runner.env
                 spaces = {
@@ -1033,7 +1036,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 env_steps,
                 agent_steps,
                 batches,
-            ) = self._evaluate_on_local_env_runner(self.env_runner_group.local_env_runner)
+            ) = self._evaluate_on_local_env_runner(
+                self.env_runner_group.local_env_runner
+            )
         # There is only a local eval EnvRunner -> Run on that.
         elif self.evaluation_env_runner_group.num_healthy_remote_workers() == 0:
             (
@@ -1130,7 +1135,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 eval_results,
                 env_steps,
                 agent_steps,
-            ) = self.config.custom_evaluation_function(self, self.evaluation_env_runner_group)
+            ) = self.config.custom_evaluation_function(
+                self, self.evaluation_env_runner_group
+            )
             if not env_steps or not agent_steps:
                 raise ValueError(
                     "Custom eval function must return "
@@ -1221,7 +1228,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         all_batches = []
 
         # How many episodes have we run (across all eval workers)?
-        num_healthy_workers = self.evaluation_env_runner_group.num_healthy_remote_workers()
+        num_healthy_workers = (
+            self.evaluation_env_runner_group.num_healthy_remote_workers()
+        )
         # Do we have to force-reset the EnvRunners before the first round of `sample()`
         # calls.?
         force_reset = self.config.evaluation_force_reset_envs_before_iteration
@@ -1310,7 +1319,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                         all_batches.append(batch)
 
             # Update correct number of healthy remote workers.
-            num_healthy_workers = self.evaluation_env_runner_group.num_healthy_remote_workers()
+            num_healthy_workers = (
+                self.evaluation_env_runner_group.num_healthy_remote_workers()
+            )
 
         if num_healthy_workers == 0:
             logger.warning(
@@ -1393,7 +1404,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # How many episodes have we run (across all eval workers)?
         num_units_done = 0
-        num_healthy_workers = self.evaluation_env_runner_group.num_healthy_remote_workers()
+        num_healthy_workers = (
+            self.evaluation_env_runner_group.num_healthy_remote_workers()
+        )
 
         env_steps = agent_steps = 0
 
@@ -1498,7 +1511,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     )
 
             # Update correct number of healthy remote workers.
-            num_healthy_workers = self.evaluation_env_runner_group.num_healthy_remote_workers()
+            num_healthy_workers = (
+                self.evaluation_env_runner_group.num_healthy_remote_workers()
+            )
 
         if num_healthy_workers == 0:
             logger.warning(
@@ -1566,9 +1581,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """
         # If `workers` is None, or
         # 1. `workers` (EnvRunnerGroup) does not have a local worker, and
-        # 2. `self.env_runner_group` (EnvRunnerGroup used for training) does not have a local
-        # worker -> we don't have a local worker to get state from, so we can't recover
-        # remote worker in this case.
+        # 2. `self.env_runner_group` (EnvRunnerGroup used for training) does not have a
+        # local EnvRunner -> we don't have a local worker to get state from, so we can't
+        # recover remote EnvRunners in this case.
         if not workers or (
             not workers.local_env_runner and not self.env_runner_group.local_env_runner
         ):
@@ -1582,7 +1597,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # Count the restored workers.
             self._counters["total_num_restored_workers"] += len(restored)
 
-            from_worker = workers.local_env_runner or self.env_runner_group.local_env_runner
+            from_worker = (
+                workers.local_env_runner or self.env_runner_group.local_env_runner
+            )
             # Get the state of the correct (reference) worker. For example the local
             # worker of an EnvRunnerGroup.
             state_ref = ray.put(from_worker.get_state())
@@ -2612,7 +2629,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # Get (local) EnvRunner state (w/o RLModule).
         if self._check_component(COMPONENT_ENV_RUNNER, components, not_components):
-            state[COMPONENT_ENV_RUNNER] = self.env_runner_group.local_env_runner.get_state(
+            state[
+                COMPONENT_ENV_RUNNER
+            ] = self.env_runner_group.local_env_runner.get_state(
                 components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
                 not_components=force_list(
                     self._get_subcomponents(COMPONENT_RL_MODULE, not_components)
@@ -2627,9 +2646,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if self.evaluation_env_runner_group and self._check_component(
             COMPONENT_EVAL_ENV_RUNNER, components, not_components
         ):
-            state[
-                COMPONENT_EVAL_ENV_RUNNER
-            ] = self.eval_env_runner.get_state(
+            state[COMPONENT_EVAL_ENV_RUNNER] = self.eval_env_runner.get_state(
                 components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
                 not_components=force_list(
                     self._get_subcomponents(COMPONENT_RL_MODULE, not_components)
@@ -2663,14 +2680,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     def set_state(self, state: StateDict) -> None:
         # Set the (training) EnvRunners' states.
         if COMPONENT_ENV_RUNNER in state:
-            self.env_runner_group.local_env_runner.set_state(state[COMPONENT_ENV_RUNNER])
+            self.env_runner_group.local_env_runner.set_state(
+                state[COMPONENT_ENV_RUNNER]
+            )
             self.env_runner_group.sync_env_runner_states(config=self.config)
 
         # Set the (eval) EnvRunners' states.
         if self.evaluation_env_runner_group and COMPONENT_EVAL_ENV_RUNNER in state:
-            self.eval_env_runner.set_state(
-                state[COMPONENT_ENV_RUNNER]
-            )
+            self.eval_env_runner.set_state(state[COMPONENT_ENV_RUNNER])
             self.evaluation_env_runner_group.sync_env_runner_states(
                 config=self.evaluation_config
             )
@@ -2752,7 +2769,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Stop all workers.
         if hasattr(self, "workers") and self.env_runner_group is not None:
             self.env_runner_group.stop()
-        if hasattr(self, "evaluation_workers") and self.evaluation_env_runner_group is not None:
+        if (
+            hasattr(self, "evaluation_workers")
+            and self.evaluation_env_runner_group is not None
+        ):
             self.evaluation_env_runner_group.stop()
 
     @OverrideToImplementCustomLogic
@@ -3116,10 +3136,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # Also store eval `policy_mapping_fn` (in case it's different from main
         # one). Note, the new `EnvRunner API` has no policy mapping function.
-        if hasattr(self, "evaluation_workers") and self.evaluation_env_runner_group is not None:
-            state[
-                "eval_policy_mapping_fn"
-            ] = self.eval_env_runner.policy_mapping_fn
+        if (
+            hasattr(self, "evaluation_workers")
+            and self.evaluation_env_runner_group is not None
+        ):
+            state["eval_policy_mapping_fn"] = self.eval_env_runner.policy_mapping_fn
 
         # Save counters.
         state["counters"] = self._counters
@@ -3537,7 +3558,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Select proper number of evaluation workers for this round.
         selected_eval_worker_ids = [
             worker_id
-            for i, worker_id in enumerate(self.evaluation_env_runner_group.healthy_worker_ids())
+            for i, worker_id in enumerate(
+                self.evaluation_env_runner_group.healthy_worker_ids()
+            )
             if i * units_per_healthy_remote_worker < self.config.evaluation_duration
         ]
         self.evaluation_env_runner_group.foreach_worker_async(
@@ -3680,8 +3703,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Fault tolerance stats.
         results[FAULT_TOLERANCE_STATS] = {
             "num_healthy_workers": self.env_runner_group.num_healthy_remote_workers(),
-            "num_in_flight_async_reqs": self.env_runner_group.num_in_flight_async_reqs(),
-            "num_remote_worker_restarts": self.env_runner_group.num_remote_worker_restarts(),
+            "num_in_flight_async_reqs": (
+                self.env_runner_group.num_in_flight_async_reqs()
+            ),
+            "num_remote_worker_restarts": (
+                self.env_runner_group.num_remote_worker_restarts()
+            ),
         }
         # Resolve all `Stats` leafs by peeking (get their reduced values).
         return tree.map_structure(
@@ -3738,7 +3765,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             self.config.keep_per_episode_custom_metrics,
         )
 
-        results["num_healthy_workers"] = self.env_runner_group.num_healthy_remote_workers()
+        results[
+            "num_healthy_workers"
+        ] = self.env_runner_group.num_healthy_remote_workers()
         results[
             "num_in_flight_async_sample_reqs"
         ] = self.env_runner_group.num_in_flight_async_reqs()

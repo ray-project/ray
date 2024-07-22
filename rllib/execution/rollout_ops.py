@@ -103,7 +103,7 @@ def synchronous_parallel_sample(
                     if not _return_metrics
                     else (lambda w: (w.sample(**random_action_kwargs), w.get_metrics()))
                 ),
-                local_worker=False,
+                local_env_runner=False,
                 timeout_seconds=sample_timeout_s,
             )
             # Nothing was returned (maybe all workers are stalling) or no healthy

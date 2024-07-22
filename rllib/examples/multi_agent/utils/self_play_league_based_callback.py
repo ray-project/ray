@@ -192,7 +192,7 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                         # here for good measure).
                         policies_to_train=_trainable_policies,
                     ),
-                    local_worker=True,
+                    local_env_runner=True,
                 )
                 # Set all Learner workers' should_module_be_updated to the new
                 # value.

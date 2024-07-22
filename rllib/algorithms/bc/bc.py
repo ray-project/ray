@@ -215,9 +215,7 @@ class BC(MARWIL):
                     )
                 # Get weights from Learner to local worker.
                 else:
-                    self.env_runner.set_weights(
-                        self.learner_group.get_weights()
-                    )
+                    self.env_runner.set_weights(self.learner_group.get_weights())
 
             # TODO (sven): Use metrics API as soon as we moved to new API stack
             #  (from currently hybrid stack).

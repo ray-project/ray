@@ -90,7 +90,7 @@ class FilterManagerTest(unittest.TestCase):
         # running_stats.n should be 20 after this sample() step.
         mock_worker_set.foreach_worker(
             func=lambda w: w.sample(),
-            local_worker=False,
+            local_env_runner=False,
         )
 
         FilterManager.synchronize(
@@ -100,7 +100,7 @@ class FilterManagerTest(unittest.TestCase):
 
         filters = mock_worker_set.foreach_worker(
             lambda w: w.get_filters(),
-            local_worker=False,
+            local_env_runner=False,
         )[0]
         obs_f = filters["obs_filter"]
         self.assertEqual(filt1.running_stats.n, 20)

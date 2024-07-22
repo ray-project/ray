@@ -103,7 +103,6 @@ class TestRolloutWorker(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-
     @staticmethod
     def _from_existing_env_runner(local_env_runner, remote_workers=None):
         workers = EnvRunnerGroup(
