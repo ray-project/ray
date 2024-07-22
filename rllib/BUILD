@@ -326,7 +326,7 @@ py_test(
     name = "learning_tests_pendulum_cql_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
     data = [
@@ -413,7 +413,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala",
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=6"]
@@ -430,7 +430,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_impala_multi_cpu",
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-    size = "large",
+    size = "enormous",
     srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2", "--num-cpus=7"]
 )
@@ -839,6 +839,14 @@ py_test(
 )
 
 # BC
+py_test(
+    name = "test_bc_old_stack",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/large.json"],
+    srcs = ["algorithms/bc/tests/test_bc_old_stack.py"]
+)
 py_test(
     name = "test_bc",
     tags = ["team:rllib", "algorithms_dir"],
@@ -1574,6 +1582,16 @@ py_test(
     srcs = ["offline/estimators/tests/test_dr_learning.py"],
 )
 
+py_test(
+    name = "test_offline_data",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_offline_data.py"],
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+)
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/
@@ -1671,13 +1689,6 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/tests/test_minibatch_utils.py"]
-)
-
-py_test(
-    name = "test_nested_dict",
-    tags = ["team:rllib", "utils"],
-    size = "small",
-    srcs = ["utils/tests/test_nested_dict.py"]
 )
 
 py_test(
@@ -1960,14 +1971,6 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
     srcs = ["tests/test_lstm.py"]
-)
-
-py_test(
-    name = "tests/test_model_imports",
-    tags = ["team:rllib", "tests_dir", "model_imports"],
-    size = "medium",
-    data = glob(["tests/data/model_weights/**"]),
-    srcs = ["tests/test_model_imports.py"]
 )
 
 py_test(

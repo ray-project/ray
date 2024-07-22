@@ -720,6 +720,8 @@ class Node:
         else:
             gcs_process = None
 
+        # TODO(ryw) instead of create a new GcsClient, wrap the one from
+        # CoreWorkerProcess to save a grpc channel.
         for _ in range(ray_constants.NUM_REDIS_GET_RETRIES):
             gcs_address = None
             last_ex = None

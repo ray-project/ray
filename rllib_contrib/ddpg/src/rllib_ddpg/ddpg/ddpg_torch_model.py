@@ -67,7 +67,7 @@ class DDPGTorchModel(TorchModelV2, nn.Module):
         self.bounded = np.logical_and(
             self.action_space.bounded_above, self.action_space.bounded_below
         ).any()
-        self.action_dim = np.product(self.action_space.shape)
+        self.action_dim = np.prod(self.action_space.shape)
 
         # Build the policy network.
         self.policy_model = nn.Sequential()

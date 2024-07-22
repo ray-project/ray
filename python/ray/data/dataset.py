@@ -81,7 +81,6 @@ from ray.data.block import (
     VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
-    BlockMetadata,
     DataBatch,
     T,
     U,
@@ -4662,7 +4661,7 @@ class Dataset:
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
-        return self._plan.stats_summary()
+        return self._plan.stats().to_summary()
 
     @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI
@@ -4682,14 +4681,7 @@ class Dataset:
             An iterator over this Dataset's ``RefBundles``.
         """
 
-        def _build_ref_bundles(
-            iter_blocks: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-        ) -> Iterator[RefBundle]:
-            for block in iter_blocks:
-                yield RefBundle((block,), owns_blocks=True)
-
-        iter_block_refs_md, _, _ = self._plan.execute_to_iterator()
-        iter_ref_bundles = _build_ref_bundles(iter_block_refs_md)
+        iter_ref_bundles, _, _ = self._plan.execute_to_iterator()
         self._synchronize_progress_bar()
         return iter_ref_bundles
 

@@ -3,11 +3,12 @@ from typing import Any, Collection, Dict, Optional, Union
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR, CRITIC, ENCODER_OUT
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import StateDict
+from ray.rllib.utils.typing import StateDict, TensorType
 
 torch, nn = try_import_torch()
 
@@ -123,8 +124,8 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
     # TODO (sven): Try to move entire GAE computation into PPO's loss function (similar
     #  to IMPALA's v-trace architecture). This would also get rid of the second
     #  Connector pass currently necessary.
-    @override(PPORLModule)
-    def _compute_values(self, batch):
+    @override(ValueFunctionAPI)
+    def compute_values(self, batch: Dict[str, Any]) -> TensorType:
         # Separate vf-encoder.
         if hasattr(self.encoder, "critic_encoder"):
             if self.is_stateful():

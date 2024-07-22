@@ -286,14 +286,6 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
             "[DEPRECATED] Please use route_prefix under ServeApplicationSchema instead."
         ),
     )
-    max_concurrent_queries: int = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "[DEPRECATED] The max number of requests that will be executed at once in "
-            f"each replica. Defaults to {DEFAULT_MAX_ONGOING_REQUESTS}."
-        ),
-        gt=0,
-    )
     max_ongoing_requests: int = Field(
         default=DEFAULT.VALUE,
         description=(
@@ -478,7 +470,6 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
 
     schema = DeploymentSchema(
         name=name,
-        max_concurrent_queries=info.deployment_config.max_ongoing_requests,
         max_ongoing_requests=info.deployment_config.max_ongoing_requests,
         max_queued_requests=info.deployment_config.max_queued_requests,
         user_config=info.deployment_config.user_config,
