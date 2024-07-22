@@ -9,16 +9,12 @@ See the [GKE documentation](<https://cloud.google.com/kubernetes-engine/docs/how
 Run this command and all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install). The following command creates a Kubernetes cluster named `kuberay-tpu-cluster` with 1 CPU node in the `us-central2-b` zone. This example uses the `n2-standard-4` machine type, which has 4 vCPUs and 16 GB RAM.
 
 ```sh
-gcloud container clusters create CLUSTER_NAME \
-    --cluster-version=VERSION --addons=RayOperator \
+gcloud container clusters create kuberay-tpu-cluster \
     --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
     --region=us-central2-b --machine-type n2-standard-4
 ```
-Replace the following:
-- CLUSTER_NAME: the name of the new cluster.
-- VERSION: the GKE version, which must be 1.30.0-gke.1747000 or later. You can also use the --release-channel option to select a release channel. The release channel must have a default version of 1.30.0-gke.1747000 or later.
 
-You can also create a cluster from the [Google Cloud Console](https://console.cloud.google.com/kubernetes/list). To enable the Ray Operator Addon, ensure a GKE version of 1.30.0-gke.1747000 or later and select the "Enable Ray Operator" checkbox under Features -> AI and Machine Learning.
+You can also create a cluster from the [Google Cloud Console](https://console.cloud.google.com/kubernetes/list).
 
 ## Step 2: Create a TPU node pool
 
@@ -28,7 +24,7 @@ To create a node pool with a single-host TPU topology:
 ```sh
 gcloud container node-pools create tpu-node-pool \
   --zone us-central2-b \
-  --cluster CLUSTER_NAME \
+  --cluster kuberay-tpu-cluster \
   --num-nodes 1 \
   --min-nodes 0 \
   --max-nodes 1 \
@@ -41,7 +37,7 @@ Alternatively, create a multi-host node pool as follows:
 ```sh
 gcloud container node-pools create tpu-node-pool \
   --zone us-central2-b \
-  --cluster CLUSTER_NAME \
+  --cluster kuberay-tpu-cluster \
   --num-nodes 2 \
   --min-nodes 0 \
   --max-nodes 2 \
@@ -67,4 +63,4 @@ For more details, see [GKE documentation](https://cloud.google.com/kubernetes-en
 
 ## Step 4: Install the TPU initialization webhook
 
-As part of the Ray Operator Addon, GKE provides a [validating and mutating webhook](https://github.com/GoogleCloudPlatform/ai-on-gke/tree/main/ray-on-gke/tpu/kuberay-tpu-webhook) to handle TPU pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook is installed once per cluster and requires a Kuberay operator version of at least v1.1.0. The Ray TPU webhook is automatically installed through the Ray Addon in GKE with GKE versions 1.30.0-gke.1747000 or later. For clusters without the Ray Operator Addon enabled, instructions for manually installing the Ray TPU webhook can be found [here](https://github.com/GoogleCloudPlatform/ai-on-gke/tree/main/ray-on-gke/guides/tpu#manually-installing-the-tpu-initialization-webhook).
+GKE provides a [validating and mutating webhook](https://github.com/GoogleCloudPlatform/ai-on-gke/tree/main/ray-on-gke/tpu/kuberay-tpu-webhook) to handle TPU Pod scheduling and bootstrap certain environment variables used for [JAX](https://github.com/google/jax) initialization. The Ray TPU webhook is installed once per cluster and requires a Kuberay operator version of at least v1.1.0. The Ray TPU webhook is automatically installed through the [Ray Operator Addon](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/how-to/enable-ray-on-gke) with GKE versions 1.30.0-gke.1747000 or later.
