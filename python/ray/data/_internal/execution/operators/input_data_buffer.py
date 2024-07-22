@@ -29,6 +29,7 @@ class InputDataBuffer(PhysicalOperator):
             num_output_blocks: The number of output blocks. If not specified, progress
                 bars total will be set based on num output bundles instead.
         """
+        super().__init__("Input", [], target_max_block_size=None)
         if input_data is not None:
             assert input_data_factory is None
             # Copy the input data to avoid mutating the original list.
@@ -41,7 +42,6 @@ class InputDataBuffer(PhysicalOperator):
             self._input_data_factory = input_data_factory
             self._is_input_initialized = False
         self._input_data_index = 0
-        super().__init__("Input", [], target_max_block_size=None)
 
     def start(self, options: ExecutionOptions) -> None:
         if not self._is_input_initialized:
@@ -66,9 +66,6 @@ class InputDataBuffer(PhysicalOperator):
         self._input_data_index += 1
         return bundle
 
-    def num_outputs_total(self) -> int:
-        return self._num_output_bundles
-
     def get_stats(self) -> StatsDict:
         return {}
 
@@ -77,8 +74,8 @@ class InputDataBuffer(PhysicalOperator):
 
     def _initialize_metadata(self):
         assert self._input_data is not None and self._is_input_initialized
+        self._estimated_num_output_bundles = len(self._input_data)
 
-        self._num_output_bundles = len(self._input_data)
         block_metadata = []
         for bundle in self._input_data:
             block_metadata.extend(bundle.metadata)

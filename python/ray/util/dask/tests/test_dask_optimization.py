@@ -1,3 +1,5 @@
+import sys
+
 import dask
 import dask.dataframe as dd
 from dask.dataframe.shuffle import SimpleShuffleLayer
@@ -11,6 +13,10 @@ from ray.util.dask import dataframe_optimize
 from ray.util.dask.optimizations import (
     rewrite_simple_shuffle_layer,
     MultipleReturnSimpleShuffleLayer,
+)
+
+pytestmark = pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Skip dask tests for Python version 3.12+"
 )
 
 

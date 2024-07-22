@@ -114,13 +114,18 @@ def test_all_to_all_operator():
 
 
 def test_num_outputs_total():
+    # The number of outputs is always known for InputDataBuffer.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    assert input_op.num_outputs_total() == 100
+
+    # Prior to execution, the number of outputs is unknown
+    # for Map/AllToAllOperator operators.
     op1 = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
         name="TestMapper",
     )
-    assert op1.num_outputs_total() == 100
+    assert op1.num_outputs_total() is None
 
     def dummy_all_transform(bundles: List[RefBundle]):
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
@@ -131,7 +136,21 @@ def test_num_outputs_total():
         target_max_block_size=DataContext.get_current().target_max_block_size,
         name="TestAll",
     )
-    assert op2.num_outputs_total() == 100
+    assert op2.num_outputs_total() is None
+
+    # Feed data and implement streaming exec.
+    output = []
+    op1.start(ExecutionOptions(actor_locality_enabled=True))
+    while input_op.has_next():
+        op1.add_input(input_op.get_next(), 0)
+        while not op1.has_next():
+            run_one_op_task(op1)
+        while op1.has_next():
+            ref = op1.get_next()
+            assert ref.owns_blocks, ref
+            _get_blocks(ref, output)
+    # After op finishes, num_outputs_total is known.
+    assert op1.num_outputs_total() == 100
 
 
 @pytest.mark.parametrize("use_actors", [False, True])

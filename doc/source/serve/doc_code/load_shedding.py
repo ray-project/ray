@@ -8,7 +8,7 @@ from starlette.requests import Request
 
 @serve.deployment(
     # Each replica will be sent 2 requests at a time.
-    max_concurrent_queries=2,
+    max_ongoing_requests=2,
     # Each caller queues up to 2 requests at a time.
     # (beyond those that are sent to replicas).
     max_queued_requests=2,

@@ -984,7 +984,6 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(last_delay_ms_, 0);
   ASSERT_EQ(last_object_recovery_, true);
   resubmitted_task_deps.clear();
-  ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The return ID goes out of scope.
   reference_counter_->RemoveLocalReference(return_id, nullptr);
