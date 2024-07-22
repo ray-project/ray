@@ -44,13 +44,16 @@ cdef extern from * namespace "polyfill" nogil:
 
 
 cdef extern from "ray/common/status.h" namespace "ray" nogil:
-    cdef cppclass StatusCode:
+    # TODO(ryw) in Cython 3.x we can directly use `cdef enum class CStatusCode`
+    cdef cppclass CStatusCode "ray::StatusCode":
         pass
+    cdef CStatusCode CStatusCode_OK "ray::StatusCode::OK"
+    c_bool operator==(CStatusCode lhs, CStatusCode rhs)
 
     cdef cppclass CRayStatus "ray::Status":
         CRayStatus()
-        CRayStatus(StatusCode code, const c_string &msg)
-        CRayStatus(StatusCode code, const c_string &msg, int rpc_code)
+        CRayStatus(CStatusCode code, const c_string &msg)
+        CRayStatus(CStatusCode code, const c_string &msg, int rpc_code)
         CRayStatus(const CRayStatus &s)
 
         @staticmethod
@@ -135,7 +138,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
 
         c_string ToString()
         c_string CodeAsString()
-        StatusCode code()
+        CStatusCode code()
         c_string message()
         int rpc_code()
 
@@ -143,18 +146,6 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef CRayStatus RayStatus_OK "Status::OK"()
     cdef CRayStatus RayStatus_Invalid "Status::Invalid"()
     cdef CRayStatus RayStatus_NotImplemented "Status::NotImplemented"()
-
-
-cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:
-    cdef StatusCode StatusCode_OK "OK"
-    cdef StatusCode StatusCode_OutOfMemory "OutOfMemory"
-    cdef StatusCode StatusCode_KeyError "KeyError"
-    cdef StatusCode StatusCode_TypeError "TypeError"
-    cdef StatusCode StatusCode_Invalid "Invalid"
-    cdef StatusCode StatusCode_IOError "IOError"
-    cdef StatusCode StatusCode_UnknownError "UnknownError"
-    cdef StatusCode StatusCode_NotImplemented "NotImplemented"
-    cdef StatusCode StatusCode_RedisError "RedisError"
 
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
@@ -376,6 +367,17 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
         const c_bool GetDidSpill() const
 
+cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray" nogil:
+    # Each type needs default constructors asked by cython.
+    cdef cppclass PyDefaultCallback:
+        PyDefaultCallback()
+        PyDefaultCallback(object py_callback)
+    cdef cppclass PyMultiItemCallback[Item]:
+        PyMultiItemCallback()
+        PyMultiItemCallback(object py_callback)
+    cdef cppclass BoolConverter:
+        pass
+
 cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
         pass
@@ -385,11 +387,20 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_vector[CJobTableData] &result,
             int64_t timeout_ms)
 
+        CRayStatus AsyncGetAll(
+            const PyDefaultCallback &callback,
+            int64_t timeout_ms)
+
     cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
         CRayStatus CheckAlive(
             const c_vector[c_string] &raylet_addresses,
             int64_t timeout_ms,
             c_vector[c_bool] &result)
+
+        CRayStatus AsyncCheckAlive(
+            const c_vector[c_string] &raylet_addresses,
+            int64_t timeout_ms,
+            const PyMultiItemCallback[BoolConverter] &callback)
 
         CRayStatus DrainNodes(
             const c_vector[CNodeID] &node_ids,
@@ -444,6 +455,45 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_string &key,
             int64_t timeout_ms,
             c_bool &exists)
+
+        CRayStatus AsyncInternalKVKeys(
+            const c_string &ns,
+            const c_string &prefix,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+
+        CRayStatus AsyncInternalKVGet(
+            const c_string &ns,
+            const c_string &key,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+
+        CRayStatus AsyncInternalKVMultiGet(
+            const c_string &ns,
+            const c_vector[c_string] &keys,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+
+        CRayStatus AsyncInternalKVPut(
+            const c_string &ns,
+            const c_string &key,
+            const c_string &value,
+            c_bool overwrite,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+
+        CRayStatus AsyncInternalKVExists(
+            const c_string &ns,
+            const c_string &key,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
+
+        CRayStatus AsyncInternalKVDel(
+            const c_string &ns,
+            const c_string &key,
+            c_bool del_by_prefix,
+            int64_t timeout_ms,
+            const PyDefaultCallback &callback)
 
     cdef cppclass CRuntimeEnvAccessor "ray::gcs::RuntimeEnvAccessor":
         CRayStatus PinRuntimeEnvUri(

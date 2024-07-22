@@ -13,6 +13,30 @@ Binding of C++ ray::gcs::GcsClient.
 # out to a separate translation unit because we need to access the singleton thread.
 #
 # We need to best-effort import everything we need.
+#
+# Implementation Notes:
+#
+# Async API
+#
+# One challenge is that the C++ async API is callback-based, and the callbacks are
+# invoked in the C++ threads. In `make_future_and_callback` we create a future and a
+# callback, and the callback will fulfill the future in the event loop thread. The
+# future is returned to Python to await, and the callback is passed to the C++ async
+# API. Once C++ async API invokes the callback, the future is fulfilled in the Python
+# event loop thread.
+#
+# Marshalling
+#
+# The C++ API returns ints, strings, `ray::Status` and C++ protobuf types. We need to
+# convert them to Python types. In `python_callbacks.h` we define a series of converters
+# with Cpython APIs:
+#
+# - bools, ints and strings are converted using `PyBool_FromLong` and alike.
+# - `ray::Status` is marshalled to a 3-tuple and unmarshall it back to `CRayStatus` via
+#     `to_c_ray_status`.
+# - C++ protobuf types are serialized them to bytes, passed to Python and deserialized
+# in the Python `postprocess` functions. Later if we need performance for specific
+# methods we can add a custom Converter in `python_callbacks.h`.
 
 from asyncio import Future
 from typing import List
@@ -20,6 +44,11 @@ from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
     ConnectOnSingletonIoContext,
+    CStatusCode,
+    CStatusCode_OK,
+    PyDefaultCallback,
+    PyMultiItemCallback,
+    BoolConverter,
 )
 from ray.core.generated import gcs_pb2
 from cython.operator import dereference, postincrement
@@ -171,6 +200,101 @@ cdef class NewGcsClient:
         return exists
 
     #############################################################
+    # Internal KV async methods
+    #############################################################
+
+    def async_internal_kv_get(
+        self, c_string key, namespace=None, timeout=None
+    ) -> Future[Optional[bytes]]:
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        def postprocess(tup: Tuple[StatusParts, Any]):
+            status_parts, val = tup
+            cdef CRayStatus c_ray_status = to_c_ray_status(status_parts)
+            if c_ray_status.IsNotFound():
+                return None
+            check_status_timeout_as_rpc_error(c_ray_status)
+            return val
+        fut, cb = make_future_and_callback(postprocess=postprocess)
+        cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().InternalKV().AsyncInternalKVGet(
+                    ns, key, timeout_ms, cy_callback))
+        return fut
+
+    def async_internal_kv_multi_get(
+        self, keys: List[bytes], namespace=None, timeout=None
+    ) -> Future[Dict[bytes, bytes]]:
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] c_keys = [key for key in keys]
+        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
+        cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().InternalKV().AsyncInternalKVMultiGet(
+                    ns, c_keys, timeout_ms, cy_callback))
+        return fut
+
+    def async_internal_kv_put(
+        self, c_string key, c_string value, c_bool overwrite=False, namespace=None,
+        timeout=None
+    ) -> Future[int]:
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
+        cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().InternalKV().AsyncInternalKVPut(
+                    ns, key, value, overwrite, timeout_ms, cy_callback))
+        return fut
+
+    def async_internal_kv_del(self, c_string key, c_bool del_by_prefix,
+                              namespace=None, timeout=None) -> Future[int]:
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
+        cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().InternalKV().AsyncInternalKVDel(
+                    ns, key, del_by_prefix, timeout_ms, cy_callback))
+        return fut
+
+    def async_internal_kv_keys(self, c_string prefix, namespace=None, timeout=None
+                               ) -> Future[List[bytes]]:
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
+        cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().InternalKV().AsyncInternalKVKeys(
+                    ns, prefix, timeout_ms, cy_callback))
+        return fut
+
+    def async_internal_kv_exists(self, c_string key, namespace=None, timeout=None
+                                 ) -> Future[bool]:
+        cdef:
+            c_string ns = namespace or b""
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
+        cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().InternalKV().AsyncInternalKVExists(
+                    ns, key, timeout_ms, cy_callback))
+        return fut
+
+    #############################################################
     # NodeInfo methods
     #############################################################
     def check_alive(
@@ -185,6 +309,21 @@ cdef class NewGcsClient:
                 self.inner.get().Nodes().CheckAlive(c_node_ips, timeout_ms, results)
             )
         return [result for result in results]
+
+    def async_check_alive(
+        self, node_ips: List[bytes], timeout: Optional[float] = None
+    ) -> Future[List[bool]]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] c_node_ips = [ip for ip in node_ips]
+        fut, cb = make_future_and_callback(postprocess=check_status_or_return)
+        cdef PyMultiItemCallback[BoolConverter] cy_callback = \
+            PyMultiItemCallback[BoolConverter](cb)
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Nodes().AsyncCheckAlive(
+                    c_node_ips, timeout_ms, cy_callback))
+        return fut
 
     def drain_nodes(
         self, node_ids: List[bytes], timeout: Optional[float] = None
@@ -262,6 +401,26 @@ cdef class NewGcsClient:
             proto.ParseFromString(serialized)
             ret[JobID.from_binary(proto.job_id)] = proto
         return ret
+
+    def async_get_all_job_info(
+        self, timeout: Optional[float] = None
+    ) -> Future[Dict[str, gcs_pb2.JobTableData]]:
+        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        def postprocess(binary):
+            list_of_bytes: List[bytes] = check_status_or_return(binary)
+            job_table_data = {}
+            for b in list_of_bytes:
+                proto = gcs_pb2.JobTableData()
+                proto.ParseFromString(b)
+                job_table_data[proto.job_id] = proto
+            return job_table_data
+        fut, cb = make_future_and_callback(postprocess=postprocess)
+        cdef PyDefaultCallback cy_callback = PyDefaultCallback(cb)
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Jobs().AsyncGetAll(cy_callback, timeout_ms))
+        return fut
 
     #############################################################
     # Runtime Env methods
@@ -360,3 +519,69 @@ cdef class NewGcsClient:
                 rejection_reason_message))
 
         return (is_accepted, rejection_reason_message.decode())
+
+
+# Util functions for async handling
+
+# Ideally we want to pass CRayStatus around. However it's not easy to wrap a
+# `ray::Status` to a `PythonObject*` so we marshall it to a 3-tuple like this. It can be
+# unmarshalled to CRayStatus with `to_c_ray_status`.
+StatusParts = Tuple[int, str, int]
+
+cdef CRayStatus to_c_ray_status(tup: StatusParts):
+    cdef:
+        uint8_t code = <uint8_t>tup[0]
+        CStatusCode status_code = <CStatusCode>(code)
+        c_string msg = tup[1]
+        int rpc_code = tup[2]
+        CRayStatus s
+    if status_code == CStatusCode_OK:
+        return CRayStatus.OK()
+    s = CRayStatus(status_code, msg, rpc_code)
+    return s
+
+
+def check_status_parts(parts: StatusParts):
+    check_status_timeout_as_rpc_error(to_c_ray_status(parts))
+
+
+def check_status_or_return(tup: Tuple[StatusParts, Any]):
+    status_parts, val = tup
+    check_status_parts(status_parts)
+    return val
+
+
+cdef make_future_and_callback(postprocess=None):
+    """
+    Prepares a series of async call and returns (future, callback).
+    In runtime it's in this order:
+    - Async API invoked.
+        - if it returns non-OK, the async call raises.
+    - Async API invokes `callback`, in the C++ thread
+    - `callback` sends the result to the event loop thread and fulfill `fut`.
+    - `run_postprocess` awaits `fut`, invokes `postprocess` and fulfill `fut2`.
+    - `fut2` is what we return to the user.
+
+    Params:
+        `postprocess` is a sync function that returns transformed value, may raise.
+    """
+    loop = asyncio.get_event_loop()
+    fut = loop.create_future()
+
+    def callback(result, exc):
+        # May run in in C++ thread
+        if fut.cancelled():
+            return
+        if exc is not None:
+            loop.call_soon_threadsafe(fut.set_exception, exc)
+        else:
+            loop.call_soon_threadsafe(fut.set_result, result)
+
+    async def run_postprocess(fut, postprocess):
+        result = await fut
+        if postprocess is None:
+            return result
+        else:
+            return postprocess(result)
+
+    return run_postprocess(fut, postprocess), callback
