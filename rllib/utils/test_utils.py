@@ -2057,12 +2057,10 @@ def test_ckpt_restore(
         # Check, whether the eval EnvRunnerGroup has the same policies and
         # `policy_mapping_fn`.
         if eval_env_runner_group:
-            eval_mapping_src = inspect.getsource(
-                alg1.evaluation_env_runner.policy_mapping_fn
-            )
+            eval_mapping_src = inspect.getsource(alg1.eval_env_runner.policy_mapping_fn)
             check(
                 eval_mapping_src,
-                inspect.getsource(alg2.evaluation_env_runner.policy_mapping_fn),
+                inspect.getsource(alg2.eval_env_runner.policy_mapping_fn),
             )
             check(
                 eval_mapping_src,

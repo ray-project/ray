@@ -322,8 +322,8 @@ def rollout(
 
     # Normal case: Agent was setup correctly with an evaluation EnvRunnerGroup,
     # which we will now use to rollout.
-    if hasattr(agent, "evaluation_workers") and isinstance(
-        agent.evaluation_env_runner_group, EnvRunnerGroup
+    if hasattr(agent, "eval_env_runner_group") and isinstance(
+        agent.eval_env_runner_group, EnvRunnerGroup
     ):
         steps = 0
         episodes = 0

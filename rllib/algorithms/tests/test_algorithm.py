@@ -306,7 +306,7 @@ class TestAlgorithm(unittest.TestCase):
                 )
                 self.assertTrue(
                     all(
-                        algo.evaluation_env_runner_group.foreach_worker(
+                        algo.eval_env_runner_group.foreach_worker(
                             func=lambda w, pid=pid: pid in w.policy_map
                         )
                     )
@@ -333,7 +333,7 @@ class TestAlgorithm(unittest.TestCase):
                     )
 
                 self.assertTrue(
-                    all(test.evaluation_env_runner_group.foreach_worker(_has_policies))
+                    all(test.eval_env_runner_group.foreach_worker(_has_policies))
                 )
 
                 # Make sure algorithm can continue training the restored policy.
@@ -370,11 +370,7 @@ class TestAlgorithm(unittest.TestCase):
                         )
 
                     self.assertTrue(
-                        all(
-                            test2.evaluation_env_runner_group.foreach_worker(
-                                _has_policies
-                            )
-                        )
+                        all(test2.eval_env_runner_group.foreach_worker(_has_policies))
                     )
 
                     # Make sure algorithm can continue training the restored policy.
@@ -408,7 +404,7 @@ class TestAlgorithm(unittest.TestCase):
                     )[0]
                 )
                 self.assertTrue(
-                    algo.evaluation_env_runner_group.foreach_worker(
+                    algo.eval_env_runner_group.foreach_worker(
                         func=lambda w, pid=pid: pid not in w.policy_map
                     )[0]
                 )
@@ -673,7 +669,7 @@ class TestAlgorithm(unittest.TestCase):
         )
         self.assertTrue(
             all(
-                algo.evaluation_env_runner_group.foreach_worker(
+                algo.eval_env_runner_group.foreach_worker(
                     lambda w, mids=mids: all(f"p{i}" in w.module for i in mids)
                 )
             )

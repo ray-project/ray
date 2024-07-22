@@ -565,7 +565,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # (or None if evaluation not setup).
         self.evaluation_config: Optional[AlgorithmConfig] = None
         # Evaluation EnvRunnerGroup and metrics last returned by `self.evaluate()`.
-        self.evaluation_env_runner_group: Optional[EnvRunnerGroup] = None
+        self.eval_env_runner_group: Optional[EnvRunnerGroup] = None
 
         super().__init__(
             config=config,
@@ -719,7 +719,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # If evaluation_num_env_runners=0, use the evaluation set's local
             # worker for evaluation, otherwise, use its remote workers
             # (parallelized evaluation).
-            self.evaluation_env_runner_group: EnvRunnerGroup = EnvRunnerGroup(
+            self.eval_env_runner_group: EnvRunnerGroup = EnvRunnerGroup(
                 env_creator=env_creator,
                 validate_env=None,
                 default_policy_class=self.get_default_policy_class(self.config),
@@ -1051,8 +1051,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             return self._run_offline_evaluation()
 
         # Sync weights to the evaluation EnvRunners.
-        if self.evaluation_env_runner_group is not None:
-            self.evaluation_env_runner_group.sync_weights(
+        if self.eval_env_runner_group is not None:
+            self.eval_env_runner_group.sync_weights(
                 from_worker_or_learner_group=self.env_runner_group.local_env_runner,
                 inference_only=True,
             )
@@ -1061,7 +1061,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
                 # new states back to all eval EnvRunners.
                 with self._timers[SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER]:
-                    self.evaluation_env_runner_group.sync_env_runner_states(
+                    self.eval_env_runner_group.sync_env_runner_states(
                         config=self.evaluation_config,
                         from_worker=self.env_runner_group.local_env_runner,
                         env_steps_sampled=self.metrics.peek(
@@ -1071,7 +1071,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             else:
                 self._sync_filters_if_needed(
                     central_worker=self.env_runner_group.local_env_runner,
-                    workers=self.evaluation_env_runner_group,
+                    workers=self.eval_env_runner_group,
                     config=self.evaluation_config,
                 )
 
@@ -1091,7 +1091,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             else:
                 eval_results = self.config.custom_evaluation_function()
         # There is no eval EnvRunnerGroup -> Run on local EnvRunner.
-        elif self.evaluation_env_runner_group is None:
+        elif self.eval_env_runner_group is None:
             (
                 eval_results,
                 env_steps,
@@ -1101,7 +1101,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 self.env_runner_group.local_env_runner
             )
         # There is only a local eval EnvRunner -> Run on that.
-        elif self.evaluation_env_runner_group.num_healthy_remote_workers() == 0:
+        elif self.eval_env_runner_group.num_healthy_remote_workers() == 0:
             (
                 eval_results,
                 env_steps,
@@ -1109,7 +1109,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 batches,
             ) = self._evaluate_on_local_env_runner(self.eval_env_runner)
         # There are healthy remote evaluation workers -> Run on these.
-        elif self.evaluation_env_runner_group.num_healthy_remote_workers() > 0:
+        elif self.eval_env_runner_group.num_healthy_remote_workers() > 0:
             # Running in automatic duration mode (parallel with training step).
             if self.config.evaluation_duration == "auto":
                 assert parallel_train_future is not None
@@ -1196,9 +1196,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 eval_results,
                 env_steps,
                 agent_steps,
-            ) = self.config.custom_evaluation_function(
-                self, self.evaluation_env_runner_group
-            )
+            ) = self.config.custom_evaluation_function(self, self.eval_env_runner_group)
             if not env_steps or not agent_steps:
                 raise ValueError(
                     "Custom eval function must return "
@@ -1289,9 +1287,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         all_batches = []
 
         # How many episodes have we run (across all eval workers)?
-        num_healthy_workers = (
-            self.evaluation_env_runner_group.num_healthy_remote_workers()
-        )
+        num_healthy_workers = self.eval_env_runner_group.num_healthy_remote_workers()
         # Do we have to force-reset the EnvRunners before the first round of `sample()`
         # calls.?
         force_reset = self.config.evaluation_force_reset_envs_before_iteration
@@ -1346,12 +1342,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     ),
                 )
 
-                self.evaluation_env_runner_group.foreach_worker_async(
+                self.eval_env_runner_group.foreach_worker_async(
                     func=functools.partial(
                         _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
                 )
-                results = self.evaluation_env_runner_group.fetch_ready_async_reqs(
+                results = self.eval_env_runner_group.fetch_ready_async_reqs(
                     return_obj_refs=False, timeout_seconds=0.01
                 )
                 for wid, (env_s, ag_s, metrics, iter) in results:
@@ -1362,10 +1358,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     all_metrics.append(metrics)
             # Old API stack -> RolloutWorkers return batches.
             else:
-                self.evaluation_env_runner_group.foreach_worker_async(
+                self.eval_env_runner_group.foreach_worker_async(
                     func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
                 )
-                results = self.evaluation_env_runner_group.fetch_ready_async_reqs(
+                results = self.eval_env_runner_group.fetch_ready_async_reqs(
                     return_obj_refs=False, timeout_seconds=0.01
                 )
                 for wid, (batch, metrics, iter) in results:
@@ -1381,7 +1377,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             # Update correct number of healthy remote workers.
             num_healthy_workers = (
-                self.evaluation_env_runner_group.num_healthy_remote_workers()
+                self.eval_env_runner_group.num_healthy_remote_workers()
             )
 
         if num_healthy_workers == 0:
@@ -1465,9 +1461,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # How many episodes have we run (across all eval workers)?
         num_units_done = 0
-        num_healthy_workers = (
-            self.evaluation_env_runner_group.num_healthy_remote_workers()
-        )
+        num_healthy_workers = self.eval_env_runner_group.num_healthy_remote_workers()
 
         env_steps = agent_steps = 0
 
@@ -1491,12 +1485,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     + bool(i <= (units_left_to_do % num_healthy_workers))
                     for i in range(1, num_workers + 1)
                 ]
-                self.evaluation_env_runner_group.foreach_worker_async(
+                self.eval_env_runner_group.foreach_worker_async(
                     func=functools.partial(
                         _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
                 )
-                results = self.evaluation_env_runner_group.fetch_ready_async_reqs(
+                results = self.eval_env_runner_group.fetch_ready_async_reqs(
                     return_obj_refs=False, timeout_seconds=0.01
                 )
                 # Make sure we properly time out if we have not received any results
@@ -1531,15 +1525,15 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 selected_eval_worker_ids = [
                     worker_id
                     for i, worker_id in enumerate(
-                        self.evaluation_env_runner_group.healthy_worker_ids()
+                        self.eval_env_runner_group.healthy_worker_ids()
                     )
                     if i * units_per_healthy_remote_worker < units_left_to_do
                 ]
-                self.evaluation_env_runner_group.foreach_worker_async(
+                self.eval_env_runner_group.foreach_worker_async(
                     func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
                     remote_worker_ids=selected_eval_worker_ids,
                 )
-                results = self.evaluation_env_runner_group.fetch_ready_async_reqs(
+                results = self.eval_env_runner_group.fetch_ready_async_reqs(
                     return_obj_refs=False, timeout_seconds=0.01
                 )
                 # Make sure we properly time out if we have not received any results
@@ -1573,7 +1567,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             # Update correct number of healthy remote workers.
             num_healthy_workers = (
-                self.evaluation_env_runner_group.num_healthy_remote_workers()
+                self.eval_env_runner_group.num_healthy_remote_workers()
             )
 
         if num_healthy_workers == 0:
@@ -2241,8 +2235,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             self.learner_group.set_weights({policy_id: weights})
 
         # Add to evaluation workers, if necessary.
-        if evaluation_workers is True and self.evaluation_env_runner_group is not None:
-            self.evaluation_env_runner_group.add_policy(
+        if evaluation_workers is True and self.eval_env_runner_group is not None:
+            self.eval_env_runner_group.add_policy(
                 policy_id,
                 policy_cls,
                 policy,
@@ -2348,9 +2342,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             inference_only=True,
         )
         # Also on the eval EnvRunners?
-        if evaluation_workers is True and self.evaluation_env_runner_group is not None:
-            self.evaluation_env_runner_group.foreach_worker(_add)
-            self.evaluation_env_runner_group.sync_weights(
+        if evaluation_workers is True and self.eval_env_runner_group is not None:
+            self.eval_env_runner_group.foreach_worker(_add)
+            self.eval_env_runner_group.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
                 inference_only=True,
             )
@@ -2424,9 +2418,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             inference_only=True,
         )
         # Also on the eval EnvRunners?
-        if evaluation_workers is True and self.evaluation_env_runner_group is not None:
-            self.evaluation_env_runner_group.foreach_worker(_remove)
-            self.evaluation_env_runner_group.sync_weights(
+        if evaluation_workers is True and self.eval_env_runner_group is not None:
+            self.eval_env_runner_group.foreach_worker(_remove)
+            self.eval_env_runner_group.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
                 inference_only=True,
             )
@@ -2486,8 +2480,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
 
         # Update the evaluation worker set's workers, if required.
-        if evaluation_workers and self.evaluation_env_runner_group is not None:
-            self.evaluation_env_runner_group.foreach_worker(fn, local_env_runner=True)
+        if evaluation_workers and self.eval_env_runner_group is not None:
+            self.eval_env_runner_group.foreach_worker(fn, local_env_runner=True)
 
     @OldAPIStack
     def export_policy_model(
@@ -2704,7 +2698,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
 
         # Get (local) evaluation EnvRunner state (w/o RLModule).
-        if self.evaluation_env_runner_group and self._check_component(
+        if self.eval_env_runner_group and self._check_component(
             COMPONENT_EVAL_ENV_RUNNER, components, not_components
         ):
             state[COMPONENT_EVAL_ENV_RUNNER] = self.eval_env_runner.get_state(
@@ -2747,9 +2741,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             self.env_runner_group.sync_env_runner_states(config=self.config)
 
         # Set the (eval) EnvRunners' states.
-        if self.evaluation_env_runner_group and COMPONENT_EVAL_ENV_RUNNER in state:
+        if self.eval_env_runner_group and COMPONENT_EVAL_ENV_RUNNER in state:
             self.eval_env_runner.set_state(state[COMPONENT_ENV_RUNNER])
-            self.evaluation_env_runner_group.sync_env_runner_states(
+            self.eval_env_runner_group.sync_env_runner_states(
                 config=self.evaluation_config
             )
 
@@ -2761,8 +2755,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 from_worker_or_learner_group=self.learner_group,
                 inference_only=True,
             )
-            if self.evaluation_env_runner_group:
-                self.evaluation_env_runner_group.sync_weights(
+            if self.eval_env_runner_group:
+                self.eval_env_runner_group.sync_weights(
                     from_worker_or_learner_group=self.learner_group,
                     inference_only=True,
                 )
@@ -2780,7 +2774,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             (COMPONENT_ENV_RUNNER, self.env_runner_group.local_env_runner),
             (COMPONENT_LEARNER_GROUP, self.learner_group),
         ]
-        if self.evaluation_env_runner_group:
+        if self.eval_env_runner_group:
             components.append(
                 (
                     COMPONENT_EVAL_ENV_RUNNER,
@@ -2831,10 +2825,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if hasattr(self, "env_runner_group") and self.env_runner_group is not None:
             self.env_runner_group.stop()
         if (
-            hasattr(self, "evaluation_workers")
-            and self.evaluation_env_runner_group is not None
+            hasattr(self, "eval_env_runner_group")
+            and self.eval_env_runner_group is not None
         ):
-            self.evaluation_env_runner_group.stop()
+            self.eval_env_runner_group.stop()
 
     @OverrideToImplementCustomLogic
     @classmethod
@@ -3198,8 +3192,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Also store eval `policy_mapping_fn` (in case it's different from main
         # one). Note, the new `EnvRunner API` has no policy mapping function.
         if (
-            hasattr(self, "evaluation_workers")
-            and self.evaluation_env_runner_group is not None
+            hasattr(self, "eval_env_runner_group")
+            and self.eval_env_runner_group is not None
         ):
             state["eval_policy_mapping_fn"] = self.eval_env_runner.policy_mapping_fn
 
@@ -3241,7 +3235,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 lambda w: w.set_state(ray.get(remote_state_ref)),
                 local_env_runner=False,
             )
-            if self.evaluation_env_runner_group:
+            if self.eval_env_runner_group:
                 # Avoid `state` being pickled into the remote function below.
                 _eval_policy_mapping_fn = state.get("eval_policy_mapping_fn")
 
@@ -3253,7 +3247,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
                 # If evaluation workers are used, also restore the policies
                 # there in case they are used for evaluation purpose.
-                self.evaluation_env_runner_group.foreach_worker(_setup_eval_worker)
+                self.eval_env_runner_group.foreach_worker(_setup_eval_worker)
 
         # Restore replay buffer data.
         if self.local_replay_buffer is not None:
@@ -3511,9 +3505,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         Returns:
             The results dict from the evaluation call.
         """
-        if self.evaluation_env_runner_group is not None:
+        if self.eval_env_runner_group is not None:
             with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
-                self.restore_workers(self.evaluation_env_runner_group)
+                self.restore_workers(self.eval_env_runner_group)
 
         # Run `self.evaluate()` only once per training iteration.
         # TODO (sven): Move this timer into new metrics-logger API.
@@ -3525,17 +3519,17 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # After evaluation, do a round of health check on remote eval workers to see if
         # any of the failed workers are back.
-        if self.evaluation_env_runner_group is not None:
+        if self.eval_env_runner_group is not None:
             # Add number of healthy evaluation workers after this iteration.
             eval_results[
                 "num_healthy_workers"
-            ] = self.evaluation_env_runner_group.num_healthy_remote_workers()
+            ] = self.eval_env_runner_group.num_healthy_remote_workers()
             eval_results[
                 "num_in_flight_async_reqs"
-            ] = self.evaluation_env_runner_group.num_in_flight_async_reqs()
+            ] = self.eval_env_runner_group.num_in_flight_async_reqs()
             eval_results[
                 "num_remote_worker_restarts"
-            ] = self.evaluation_env_runner_group.num_remote_worker_restarts()
+            ] = self.eval_env_runner_group.num_remote_worker_restarts()
 
         return {EVALUATION_RESULTS: eval_results}
 
@@ -3580,22 +3574,22 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         assert self.config.evaluation_duration != "auto"
         assert self.config.evaluation_duration_unit == "timesteps"
-        assert self.evaluation_env_runner_group is not None
+        assert self.eval_env_runner_group is not None
 
         with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
-            self.restore_workers(self.evaluation_env_runner_group)
+            self.restore_workers(self.eval_env_runner_group)
 
         # Call the `_before_evaluate` hook.
         self._before_evaluate()
 
         # Sync weights to the evaluation EnvRunners.
-        if self.evaluation_env_runner_group is not None:
-            self.evaluation_env_runner_group.sync_weights(
+        if self.eval_env_runner_group is not None:
+            self.eval_env_runner_group.sync_weights(
                 from_worker_or_learner_group=self.env_runner_group.local_env_runner
             )
             self._sync_filters_if_needed(
                 central_worker=self.env_runner_group.local_env_runner,
-                workers=self.evaluation_env_runner_group,
+                workers=self.eval_env_runner_group,
                 config=self.evaluation_config,
             )
 
@@ -3620,11 +3614,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         selected_eval_worker_ids = [
             worker_id
             for i, worker_id in enumerate(
-                self.evaluation_env_runner_group.healthy_worker_ids()
+                self.eval_env_runner_group.healthy_worker_ids()
             )
             if i * units_per_healthy_remote_worker < self.config.evaluation_duration
         ]
-        self.evaluation_env_runner_group.foreach_worker_async(
+        self.eval_env_runner_group.foreach_worker_async(
             func=lambda w: (w.sample(), w.get_metrics(), algo_iteration),
             remote_worker_ids=selected_eval_worker_ids,
         )
@@ -3632,7 +3626,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         train_results, train_iter_ctx = self._run_one_training_iteration()
 
         # Collect the evaluation results.
-        eval_results = self.evaluation_env_runner_group.fetch_ready_async_reqs(
+        eval_results = self.eval_env_runner_group.fetch_ready_async_reqs(
             return_obj_refs=False, timeout_seconds=time_out
         )
         for wid, (batch, metrics, iter) in eval_results:
@@ -3688,13 +3682,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Add number of healthy evaluation workers after this iteration.
         eval_results[
             "num_healthy_workers"
-        ] = self.evaluation_env_runner_group.num_healthy_remote_workers()
+        ] = self.eval_env_runner_group.num_healthy_remote_workers()
         eval_results[
             "num_in_flight_async_reqs"
-        ] = self.evaluation_env_runner_group.num_in_flight_async_reqs()
+        ] = self.eval_env_runner_group.num_in_flight_async_reqs()
         eval_results[
             "num_remote_worker_restarts"
-        ] = self.evaluation_env_runner_group.num_remote_worker_restarts()
+        ] = self.eval_env_runner_group.num_remote_worker_restarts()
 
         return train_results, {"evaluation": eval_results}, train_iter_ctx
 
@@ -3905,7 +3899,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
     @property
     def eval_env_runner(self):
-        return self.evaluation_env_runner_group.local_env_runner
+        return self.eval_env_runner_group.local_env_runner
 
     def _record_usage(self, config):
         """Record the framework and algorithm used.
@@ -3938,12 +3932,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         return self.env_runner_group
 
     @Deprecated(
-        new="Algorithm.evaluation_env_runner_group",
+        new="Algorithm.eval_env_runner_group",
         error=False,
     )
     @property
     def evaluation_workers(self):
-        return self.evaluation_env_runner_group
+        return self.eval_env_runner_group
 
 
 class TrainIterCtx:
