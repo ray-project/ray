@@ -8,7 +8,11 @@ import tree  # pip install dm_tree
 
 from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.typing import TensorShape, TensorStructType, TensorType
+from ray.rllib.utils.typing import (
+    TensorShape,
+    TensorStructType,
+    TensorType,
+)
 
 logger = logging.getLogger(__name__)
 

@@ -1,6 +1,6 @@
 import os
 import sys
-import mock
+from unittest import mock
 import pytest
 import requests
 from unittest.mock import patch
@@ -18,6 +18,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
         "/dev/accel2",
         "/dev/accel3",
     ]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
@@ -26,6 +27,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
 def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
     mock_glob.return_value = []
     mock_list.return_value = [f"{i}" for i in range(4)]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
@@ -34,6 +36,7 @@ def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
 def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
     mock_list.side_effect = FileNotFoundError
     mock_glob.return_value = []
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
 
 
@@ -198,6 +201,7 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
     num_devices, tpu_chips = test_case
     mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
     with patch.dict("os.environ", {}, clear=True):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
         if len(tpu_chips) == 1:
             assert (

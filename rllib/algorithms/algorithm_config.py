@@ -7,7 +7,7 @@ import sys
 from typing import (
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Optional,
@@ -23,7 +23,6 @@ from packaging import version
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.rl_module import INFERENCE_ONLY
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
@@ -394,6 +393,7 @@ class AlgorithmConfig(_Config):
 
         self._learner_connector = None
         self.add_default_connectors_to_learner_pipeline = True
+        self.learner_config_dict = {}
         self.optimizer = {}
         self.max_requests_in_flight_per_sampler_worker = 2
         self._learner_class = None
@@ -430,6 +430,10 @@ class AlgorithmConfig(_Config):
 
         # `self.offline_data()`
         self.input_ = "sampler"
+        self.input_read_method = "read_parquet"
+        self.input_read_method_kwargs = {}
+        self.prelearner_module_synch_period = 10
+        self.dataset_num_iters_per_learner = None
         self.input_config = {}
         self.actions_in_input_normalized = False
         self.postprocess_inputs = False
@@ -452,7 +456,6 @@ class AlgorithmConfig(_Config):
         self.ope_split_batch_by_episode = True
         self.evaluation_num_env_runners = 0
         self.custom_evaluation_function = None
-        self.always_attach_evaluation_results = True
         # TODO: Set this flag still in the config or - much better - in the
         #  RolloutWorker as a property.
         self.in_evaluation = False
@@ -520,6 +523,7 @@ class AlgorithmConfig(_Config):
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
         self._disable_initialize_loss_from_dummy_batch = False
+        self._dont_auto_sync_env_runner_states = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -546,6 +550,7 @@ class AlgorithmConfig(_Config):
         self._enable_rl_module_api = DEPRECATED_VALUE
         self.auto_wrap_old_gym_envs = DEPRECATED_VALUE
         self.disable_env_checking = DEPRECATED_VALUE
+        self.always_attach_evaluation_results = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -928,7 +933,7 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems())
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
             # Convert to Tensors.
             pipeline.append(NumpyToTensor())
 
@@ -1011,7 +1016,12 @@ class AlgorithmConfig(_Config):
 
         return pipeline
 
-    def build_learner_connector(self, input_observation_space, input_action_space):
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
         from ray.rllib.connectors.learner import (
             AddColumnsFromEpisodesToTrainBatch,
             AddObservationsFromEpisodesToBatch,
@@ -1019,13 +1029,18 @@ class AlgorithmConfig(_Config):
             AgentToModuleMapping,
             BatchIndividualItems,
             LearnerConnectorPipeline,
+            NumpyToTensor,
         )
 
         custom_connectors = []
         # Create a learner connector pipeline (including RLlib's default
         # learner connector piece) and return it.
         if self._learner_connector is not None:
-            val_ = self._learner_connector(input_observation_space, input_action_space)
+            val_ = self._learner_connector(
+                input_observation_space,
+                input_action_space,
+                # device,  # TODO (sven): Also pass device into custom builder.
+            )
 
             from ray.rllib.connectors.connector_v2 import ConnectorV2
 
@@ -1074,7 +1089,9 @@ class AlgorithmConfig(_Config):
                     )
                 )
             # Batch all data.
-            pipeline.append(BatchIndividualItems())
+            pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
+            # Convert to Tensors.
+            pipeline.append(NumpyToTensor(as_learner_connector=True, device=device))
         return pipeline
 
     def build_learner_group(
@@ -1114,7 +1131,7 @@ class AlgorithmConfig(_Config):
             rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
 
         # Construct the actual LearnerGroup.
-        learner_group = LearnerGroup(config=self, module_spec=rl_module_spec)
+        learner_group = LearnerGroup(config=self.copy(), module_spec=rl_module_spec)
 
         return learner_group
 
@@ -2017,6 +2034,7 @@ class AlgorithmConfig(_Config):
             Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
+        learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2103,6 +2121,11 @@ class AlgorithmConfig(_Config):
                 should set this setting to False.
                 Note that this setting is only relevant if the new API stack is used
                 (including the new EnvRunner classes).
+            learner_config_dict: A dict to insert any settings accessible from within
+                the Learner instance. This should only be used in connection with custom
+                Learner subclasses and in case the user doesn't want to write an extra
+                `AlgorithmConfig` subclass just to add a few settings to the base Algo's
+                own config class.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2154,6 +2177,8 @@ class AlgorithmConfig(_Config):
             self.add_default_connectors_to_learner_pipeline = (
                 add_default_connectors_to_learner_pipeline
             )
+        if learner_config_dict is not NotProvided:
+            self.learner_config_dict.update(learner_config_dict)
 
         return self
 
@@ -2199,9 +2224,8 @@ class AlgorithmConfig(_Config):
         ope_split_batch_by_episode: Optional[bool] = NotProvided,
         evaluation_num_env_runners: Optional[int] = NotProvided,
         custom_evaluation_function: Optional[Callable] = NotProvided,
-        always_attach_evaluation_results: Optional[bool] = NotProvided,
         # Deprecated args.
-        evaluation_num_episodes=DEPRECATED_VALUE,
+        always_attach_evaluation_results=DEPRECATED_VALUE,
         evaluation_num_workers=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's evaluation settings.
@@ -2284,22 +2308,22 @@ class AlgorithmConfig(_Config):
                 for training.
             custom_evaluation_function: Customize the evaluation method. This must be a
                 function of signature (algo: Algorithm, eval_workers: EnvRunnerGroup) ->
-                metrics: dict. See the Algorithm.evaluate() method to see the default
+                (metrics: dict, env_steps: int, agent_steps: int) (metrics: dict if
+                `enable_env_runner_and_connector_v2=True`), where `env_steps` and
+                `agent_steps` define the number of sampled steps during the evaluation
+                iteration. See the Algorithm.evaluate() method to see the default
                 implementation. The Algorithm guarantees all eval workers have the
                 latest policy state before this function is called.
-            always_attach_evaluation_results: Make sure the latest available evaluation
-                results are always attached to a step result dict. This may be useful
-                if Tune or some other meta controller needs access to evaluation metrics
-                all the time.
 
         Returns:
             This updated AlgorithmConfig object.
         """
-        if evaluation_num_episodes != DEPRECATED_VALUE:
+        if always_attach_evaluation_results != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.evaluation(evaluation_num_episodes=..)",
-                new="AlgorithmConfig.evaluation(evaluation_duration=.., "
-                "evaluation_duration_unit='episodes')",
+                old="AlgorithmConfig.evaluation(always_attach_evaluation_results=..)",
+                help="This setting is no longer needed, b/c Tune does not error "
+                "anymore (only warns) when a metrics key can't be found in the "
+                "results.",
                 error=True,
             )
         if evaluation_num_workers != DEPRECATED_VALUE:
@@ -2347,8 +2371,6 @@ class AlgorithmConfig(_Config):
             self.evaluation_num_env_runners = evaluation_num_env_runners
         if custom_evaluation_function is not NotProvided:
             self.custom_evaluation_function = custom_evaluation_function
-        if always_attach_evaluation_results is not NotProvided:
-            self.always_attach_evaluation_results = always_attach_evaluation_results
         if ope_split_batch_by_episode is not NotProvided:
             self.ope_split_batch_by_episode = ope_split_batch_by_episode
 
@@ -2358,6 +2380,10 @@ class AlgorithmConfig(_Config):
         self,
         *,
         input_=NotProvided,
+        input_read_method=NotProvided,
+        input_read_method_kwargs=NotProvided,
+        prelearner_module_synch_period=NotProvided,
+        dataset_num_iters_per_learner=NotProvided,
         input_config=NotProvided,
         actions_in_input_normalized=NotProvided,
         input_evaluation=NotProvided,
@@ -2382,7 +2408,24 @@ class AlgorithmConfig(_Config):
                 - A callable that takes an `IOContext` object as only arg and returns a
                 ray.rllib.offline.InputReader.
                 - A string key that indexes a callable with tune.registry.register_input
-            input_config: Arguments that describe the settings for reading the input.
+            input_read_method: Read method for the `ray.data.Dataset` to read in the
+                offline data from `input_`. The default is `read_json` for JSON files.
+                See https://docs.ray.io/en/latest/data/api/input_output.html for more
+                info about available read methods in `ray.data`.
+            input_read_method_kwargs: kwargs for the `input_read_method`. These will be
+                passed into the read method without checking.
+            prelearner_module_synch_period: The period (number of batches converted)
+                after which the `RLModule` held by the `PreLearner` should sync weights.
+                The `PreLearner` is used to preprocess batches for the learners. The
+                higher this value the more off-policy the `PreLearner`'s module will be.
+                Values too small will force the `PreLearner` to sync a ,lot with the
+                `Learner` and will slow down the data pipeline. The default value chosen
+                by the `OfflinePreLearner` is 10.
+            dataset_num_iters_per_learner: Number of iterations to run in each learner
+                during a single training iteration. If `None`, each learner runs a
+                complete epoch over its data block (the dataset is partitioned into
+                as many blocks as there are learners). The default is `None`.
+            input_config: Arguments that describe the settings for reading the inpu t.
                 If input is `sample`, this will be environment configuation, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
                 If the input is `dataset`, this will be e.g. `format`, `path`.
@@ -2420,6 +2463,14 @@ class AlgorithmConfig(_Config):
         """
         if input_ is not NotProvided:
             self.input_ = input_
+        if input_read_method is not NotProvided:
+            self.input_read_method = input_read_method
+        if input_read_method_kwargs is not NotProvided:
+            self.input_read_method_kwargs = input_read_method_kwargs
+        if prelearner_module_synch_period is not NotProvided:
+            self.prelearner_module_synch_period = prelearner_module_synch_period
+        if dataset_num_iters_per_learner is not NotProvided:
+            self.dataset_num_iters_per_learner = dataset_num_iters_per_learner
         if input_config is not NotProvided:
             if not isinstance(input_config, dict):
                 raise ValueError(
@@ -2482,7 +2533,9 @@ class AlgorithmConfig(_Config):
     def multi_agent(
         self,
         *,
-        policies=NotProvided,
+        policies: Optional[
+            Union[MultiAgentPolicyConfigDict, Collection[PolicyID]]
+        ] = NotProvided,
         algorithm_config_overrides_per_module: Optional[
             Dict[ModuleID, PartialAlgorithmConfigDict]
         ] = NotProvided,
@@ -2491,7 +2544,7 @@ class AlgorithmConfig(_Config):
             Callable[[AgentID, "OldEpisode"], PolicyID]
         ] = NotProvided,
         policies_to_train: Optional[
-            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+            Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = NotProvided,
         policy_states_are_swappable: Optional[bool] = NotProvided,
         observation_fn: Optional[Callable] = NotProvided,
@@ -2570,6 +2623,9 @@ class AlgorithmConfig(_Config):
             for pid in policies:
                 validate_policy_id(pid, error=True)
 
+            # Collection: Convert to dict.
+            if isinstance(policies, (set, tuple, list)):
+                policies = {p: PolicySpec() for p in policies}
             # Validate each policy spec in a given dict.
             if isinstance(policies, dict):
                 for pid, spec in policies.items():
@@ -2591,7 +2647,12 @@ class AlgorithmConfig(_Config):
                             f"Multi-agent policy config for {pid} must be a dict or "
                             f"AlgorithmConfig object, but got {type(spec.config)}!"
                         )
-            self.policies = policies
+                self.policies = policies
+            else:
+                raise ValueError(
+                    "`policies` must be dict mapping PolicyID to PolicySpec OR a "
+                    "set/tuple/list of PolicyIDs!"
+                )
 
         if algorithm_config_overrides_per_module is not NotProvided:
             if not isinstance(algorithm_config_overrides_per_module, dict):
@@ -2600,7 +2661,7 @@ class AlgorithmConfig(_Config):
                     "module IDs to config override dicts! You provided "
                     f"{algorithm_config_overrides_per_module}."
                 )
-            self.algorithm_config_overrides_per_module = (
+            self.algorithm_config_overrides_per_module.update(
                 algorithm_config_overrides_per_module
             )
 
@@ -2997,7 +3058,7 @@ class AlgorithmConfig(_Config):
         if rl_module_spec is not NotProvided:
             self._rl_module_spec = rl_module_spec
 
-        if _enable_rl_module_api is not NotProvided:
+        if _enable_rl_module_api != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
                 new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
@@ -3130,7 +3191,10 @@ class AlgorithmConfig(_Config):
 
     @property
     def total_train_batch_size(self):
-        if self.train_batch_size_per_learner is not None:
+        if (
+            self.train_batch_size_per_learner is not None
+            and self.enable_rl_module_and_learner
+        ):
             return self.train_batch_size_per_learner * (self.num_learners or 1)
         else:
             return self.train_batch_size
@@ -3486,7 +3550,7 @@ class AlgorithmConfig(_Config):
                     policies[pid].config or {}
                 )
 
-        # If container given, construct a simple default callable returning True
+        # If collection given, construct a simple default callable returning True
         # if the PolicyID is found in the list/set of IDs.
         if self.policies_to_train is not None and not callable(self.policies_to_train):
             pols = set(self.policies_to_train)
@@ -3653,6 +3717,7 @@ class AlgorithmConfig(_Config):
             single_agent_rl_module_spec = (
                 single_agent_rl_module_spec or current_rl_module_spec
             )
+            single_agent_rl_module_spec.inference_only = inference_only
             # Now construct the proper MultiAgentRLModuleSpec.
             marl_module_spec = MultiAgentRLModuleSpec(
                 module_specs={
@@ -3679,6 +3744,7 @@ class AlgorithmConfig(_Config):
                     single_agent_spec = single_agent_rl_module_spec or (
                         current_rl_module_spec.module_specs
                     )
+                    single_agent_spec.inference_only = inference_only
                     module_specs = {
                         k: copy.deepcopy(single_agent_spec) for k in policy_dict.keys()
                     }
@@ -3691,6 +3757,7 @@ class AlgorithmConfig(_Config):
                     single_agent_spec = (
                         single_agent_rl_module_spec or default_rl_module_spec
                     )
+                    single_agent_spec.inference_only = inference_only
                     module_specs = {
                         k: copy.deepcopy(
                             current_rl_module_spec.module_specs.get(
@@ -3742,6 +3809,8 @@ class AlgorithmConfig(_Config):
                             "`AlgorithmConfig.get_marl_module_spec("
                             "policy_dict=.., single_agent_rl_module_spec=..)`."
                         )
+
+                single_agent_rl_module_spec.inference_only = inference_only
 
                 # Now construct the proper MultiAgentRLModuleSpec.
                 marl_module_spec = current_rl_module_spec.__class__(
@@ -3830,8 +3899,6 @@ class AlgorithmConfig(_Config):
                 module_spec.model_config_dict = (
                     self.model_config | module_spec.model_config_dict
                 )
-            # Set the `inference_only` flag for the module spec.
-            module_spec.model_config_dict[INFERENCE_ONLY] = inference_only
 
         return marl_module_spec
 
@@ -3955,7 +4022,7 @@ class AlgorithmConfig(_Config):
             A dictionary with the automatically included properties/settings of this
             `AlgorithmConfig` object into `self.model_config`.
         """
-        return MODEL_DEFAULTS | {"_inference_only": False}
+        return MODEL_DEFAULTS
 
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.

@@ -48,7 +48,7 @@ scikit-image==0.21.0
 prometheus_client>=0.7.1
 pandas
 tensorboardX
-aiohttp>=3.7,<3.9
+aiohttp>=3.7,!=3.9.0
 starlette
 typer
 fsspec

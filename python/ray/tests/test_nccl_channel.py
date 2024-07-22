@@ -52,9 +52,8 @@ class Worker:
         self.chan.write(t)
 
     def receive(self):
-        t = self.chan.begin_read()
+        t = self.chan.read()
         data = (t[0].clone(), t.shape, t.dtype)
-        self.chan.end_read()
         return data
 
 

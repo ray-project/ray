@@ -29,6 +29,10 @@ LOGRECORD_STANDARD_ATTRS = {
     "taskName",
 }
 
+LOGGER_FLATTEN_KEYS = {
+    "ray_serve_extra_fields",
+}
+
 
 class LogKey(str, Enum):
     # Core context
@@ -45,3 +49,6 @@ class LogKey(str, Enum):
     FILENAME = "filename"
     LINENO = "lineno"
     EXC_TEXT = "exc_text"
+
+    # Ray logging context
+    TIMESTAMP_NS = "timestamp_ns"
