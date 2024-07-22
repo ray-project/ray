@@ -539,21 +539,15 @@ class CompiledDAG:
         self._max_execution_index: int = -1
         self._result_buffer: Dict[int, Any] = {}
 
-        # Creates the driver actor on the same node as the driver.
-        #
-        # To support the driver as a reader, the output writer needs to be able to
-        # invoke remote functions on the driver (e.g., to create the reader ref, to
-        # create a reader ref for a larger object when the channel backing store is
-        # resized, etc.). The `_driver_actor` serves as a way for the output writer to
-        # invoke remote functions on the driver node.
-
-        def _get_actor_handle():
+        def _get_or_create_local_actor_handle():
             """
-            Get the actor handle of the current process.
+            Get the actor handle of the current process. If the current process is
+            the driver process, create a new actor handle DAGDriverProxyActor.
 
             Returns:
               Return the actor handle if the current task is an actor method.
-              Return None if the current process is the driver process.
+              Create a DAGDriverProxyActor actor if the current process is the
+              driver process.
 
             Raises:
                 NotImplementedError: If the current process is a Ray task.
@@ -567,17 +561,20 @@ class CompiledDAG:
                         "Compiled DAGs currently require the InputNode() to be the "
                         "driver process or an actor method. Ray task is not supported."
                     )
-            return None
-
-        self._actor_handle = _get_actor_handle()
-        self._driver_actor = None
-
-        if self._actor_handle is None:
-            self._driver_actor = CompiledDAG.DAGDriverProxyActor.options(
+            # Creates the driver actor on the same node as the driver.
+            #
+            # To support the driver as a reader, the output writer needs to be able to
+            # invoke remote functions on the driver (e.g., to create the reader ref, to
+            # create a reader ref for a larger object when the channel backing store is
+            # resized, etc.). The driver actor serves as a way for the output writer
+            # to invoke remote functions on the driver node.
+            return CompiledDAG.DAGDriverProxyActor.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(
                     ray.get_runtime_context().get_node_id(), soft=False
                 )
             ).remote()
+
+        self._actor_handle = _get_or_create_local_actor_handle()
 
     @property
     def has_single_output(self):
@@ -875,9 +872,8 @@ class CompiledDAG:
                             "DAG outputs currently can only be read by the driver--not "
                             "the driver and actors."
                         )
-                    # This node is a multi-output node, which means that it will only be
-                    # read by the driver, not an actor. Thus, we handle this case by
-                    # setting `reader_handles` to `[self._driver_actor]`.
+                    # This node is a multi-output node, which means it will only be
+                    # read by the driver or the actor that is also the InputNode.
 
                     # TODO(jhumphri): Handle case where there is an actor, other than
                     # just the driver actor, also reading the output from the `task`
@@ -897,17 +893,10 @@ class CompiledDAG:
                     #     print(result)
 
                     #     compiled_dag.teardown()
-                    assert (self._driver_actor is not None) ^ (
-                        self._actor_handle is not None
+                    assert self._actor_handle is not None
+                    reader_to_node.append(
+                        (self._actor_handle, self._get_node_id(self._actor_handle))
                     )
-                    if self._driver_actor is not None:
-                        reader_to_node.append(
-                            (self._driver_actor, self._get_node_id(self._driver_actor))
-                        )
-                    else:
-                        reader_to_node.append(
-                            (self._actor_handle, self._get_node_id(self._actor_handle))
-                        )
                 else:
                     for reader in readers:
                         reader_handle = reader.dag_node._get_actor_handle()
