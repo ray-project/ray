@@ -69,6 +69,13 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
+    "--intrinsic-reward-coeff",
+    type=float,
+    default=1.0,
+    help="The weight with which to multiply intrinsic rewards before adding them to "
+    "the extrinsic ones (default is 1.0).",
+)
+parser.add_argument(
     "--no-curiosity",
     action="store_true",
     help="Whether to NOT use count-based curiosity.",

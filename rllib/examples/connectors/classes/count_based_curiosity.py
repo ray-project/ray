@@ -9,7 +9,7 @@ from ray.rllib.utils.typing import EpisodeType
 
 
 class CountBasedCuriosity(ConnectorV2):
-    """Learning ConnectorV2 piece to compute intrinsic rewards based on obs counts.
+    """Learner ConnectorV2 piece to compute intrinsic rewards based on obs counts.
 
     Add this connector piece to your Learner pipeline, through your algo config:
     ```
@@ -25,7 +25,7 @@ class CountBasedCuriosity(ConnectorV2):
     r(i) = intrinsic_reward_coeff * (1 / C(obs(i)))
     where C is the total (lifetime) count of the obs at timestep i.
 
-    The instrinsic reward is added to the extrinsic reward and saved back into the
+    The intrinsic reward is added to the extrinsic reward and saved back into the
     episode (under the main "rewards" key).
 
     Note that the computation and saving back to the episode all happens before the
@@ -79,8 +79,8 @@ class CountBasedCuriosity(ConnectorV2):
             rewards = sa_episode.get_rewards()
 
             for i, (obs, rew) in enumerate(zip(observations, rewards)):
-                # Add 1 to obs counter.
                 obs = tuple(obs)
+                # Add 1 to obs counter.
                 self._counts[obs] += 1
                 # Compute our count-based intrinsic reward and add it to the main
                 # (extrinsic) reward.
