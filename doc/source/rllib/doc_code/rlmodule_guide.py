@@ -179,7 +179,6 @@ class DiscreteBCTorchModule(TorchRLModule):
 from typing import Mapping, Any
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
-from ray.rllib.utils.nested_dict import NestedDict
 
 import tensorflow as tf
 
@@ -286,7 +285,6 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleConfig,
     MultiAgentRLModule,
 )
-from ray.rllib.utils.nested_dict import NestedDict
 
 import torch
 import torch.nn as nn

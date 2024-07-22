@@ -1,12 +1,12 @@
 import functools
 import logging
 from collections import abc
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict
 
 from ray.rllib.core.models.specs.specs_base import Spec, TypeSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ class SpecCheckingError(Exception):
 
 
 @DeveloperAPI
-def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
+def convert_to_canonical_format(spec: SpecType):
     """Converts a spec type input to the canonical format.
 
     The canonical format is either
@@ -34,42 +34,11 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
         - a list of nested_keys. nested_keys are either strings or tuples of strings
         specifying the path to a leaf in the tree.
         - a tree of constraints. The tree structure can be specified as any nested
-        hash-map structure (e.g. dict, SpecDict, NestedDict, etc.) The leaves of the
+        hash-map structure (e.g. dict, SpecDict, etc.) The leaves of the
         tree can be either a Spec object, a type, or None. If the leaf is a type, it is
         converted to a TypeSpec. If the leaf is None, only the existance of the key is
         checked and the value will be None in the canonical format.
         - a single constraint. The constraint can be a Spec object, a type, or None.
-
-
-        Examples of canoncial format #1:
-
-        >>> spec = {'foo': int, 'bar': {'baz': None}}
-        >>> convert_to_canonical_format(spec)
-        SpecDict({'foo': TypeSpec(<class 'int'>), 'bar': SpecDict({'baz': None})})
-
-        >>> spec = ['foo', ('bar', 'baz')]
-        >>> convert_to_canonical_format(spec)
-        SpecDict({'foo': None, 'bar': SpecDict({'baz': None})})
-
-        >>> from ray.rllib.core.models.specs.specs_base import TensorSpec
-        >>> spec = {'bar': {'baz': TensorSpec('b,h', framework='torch')}}
-        >>> convert_to_canonical_format(spec)
-        SpecDict({'bar': SpecDict({'baz': TensorSpec(shape=('b', 'h'), dtype=None)})})
-
-        Example of canoncial format #2:
-
-        >>> from ray.rllib.core.models.specs.specs_base import TensorSpec
-
-        >>> spec = int
-        >>> convert_to_canonical_format(spec)
-        TypeSpec(<class 'int'>)
-
-        >>> spec = None
-        >>> convert_to_canonical_format(spec) # Returns None
-
-        >>> spec = TensorSpec('b,h', framework='torch')
-        >>> convert_to_canonical_format(spec)
-        TensorSpec(shape=('b', 'h'), dtype=None)
 
     Args:
         spec: The spec to convert to canonical format.
@@ -79,18 +48,37 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
     """
     # convert spec of form list of nested_keys to model_spec with None leaves
     if isinstance(spec, list):
-        spec = [(k,) if isinstance(k, str) else k for k in spec]
-        return SpecDict({k: None for k in spec})
+
+        def _to_nested(tup):
+            nested_dict = current = {}
+            last_dict = {}
+            key = None
+            for key in tup:
+                current[key] = {}
+                last_dict = current
+                current = current[key]
+            last_dict[key] = None  # Set the innermost value to None
+            return nested_dict
+
+        spec_dict = {}
+        for k in spec:
+            if not isinstance(k, tuple):
+                spec_dict[k] = None
+            elif len(k) == 1:
+                spec_dict[k[0]] = None
+            else:
+                spec_dict[k[0]] = _to_nested(k[1:])
+        return SpecDict(spec_dict)
 
     # convert spec of form tree of constraints to model_spec
     if isinstance(spec, abc.Mapping):
         spec = SpecDict(spec)
         for key in spec:
-            # if values are types or tuple of types, convert to TypeSpec
+            # If values are types or tuple of types, convert to TypeSpec.
             if isinstance(spec[key], (type, tuple)):
                 spec[key] = TypeSpec(spec[key])
             elif isinstance(spec[key], list):
-                # this enables nested conversion of none-canonical formats
+                # This enables nested conversion of none-canonical formats.
                 spec[key] = convert_to_canonical_format(spec[key])
         return spec
 
@@ -129,9 +117,9 @@ def _validate(
     method: Callable,
     data: Dict[str, Any],
     spec: Spec,
-    filter: bool = False,
     tag: str = "input",
-) -> NestedDict:
+    filter=DEPRECATED_VALUE,
+) -> Dict:
     """Validate the data against the spec.
 
     Args:
@@ -139,21 +127,20 @@ def _validate(
         method: The method to apply the spec checking to.
         data: The data to validate.
         spec: The spec to validate against.
-        filter: If True, the data will be filtered to only include the keys that are
-            specified in the spec.
         tag: The tag of the spec to check. Either "input" or "output". This is used
             internally to defined an internal cache storage attribute based on the tag.
 
     Returns:
         The data, filtered if filter is True.
     """
+    if filter != DEPRECATED_VALUE:
+        deprecation_warning(old="_validate(filter=...)", error=True)
+
     cache_miss = _should_validate(cls_instance, method, tag=tag)
 
     if isinstance(spec, SpecDict):
         if not isinstance(data, abc.Mapping):
             raise ValueError(f"{tag} must be a Mapping, got {type(data).__name__}")
-        if cache_miss or filter:
-            data = NestedDict(data)
 
     if cache_miss:
         try:
@@ -172,8 +159,8 @@ def check_input_specs(
     input_specs: str,
     *,
     only_check_on_retry: bool = True,
-    filter: bool = False,
     cache: bool = True,
+    filter=DEPRECATED_VALUE,
 ):
     """A general-purpose spec checker decorator for neural network base classes.
 
@@ -181,10 +168,6 @@ def check_input_specs(
     (https://realpython.com/primer-on-python-decorators/#stateful-decorators) to
     enforce input specs for any instance method that has an argument named
     `input_data` in its args.
-
-    It also allows you to filter the input data dictionary to only include those keys
-    that are specified in the model specs. It also allows you to cache the validation
-    to make sure the spec is only validated once in the entire lifetime of the instance.
 
     See more examples in ../tests/test_specs_dict.py)
 
@@ -220,10 +203,6 @@ def check_input_specs(
         only_check_on_retry: If True, the spec will not be checked. Only if the
             decorated method raises an Exception, we check the spec to provide a more
             informative error message.
-        filter: If True, and `input_data` is a nested dict the `input_data` will be
-            filtered by its corresponding spec tree structure and then passed into the
-            implemented function to make sure user is not confounded with unnecessary
-            data.
         cache: If True, only checks the data validation for the first time the
             instance method is called.
 
@@ -235,6 +214,9 @@ def check_input_specs(
         method also has a special attribute `__checked_input_specs__` that marks the
         method as decorated.
     """
+
+    if filter != DEPRECATED_VALUE:
+        deprecation_warning(old="check_input_specs(filter=...)", error=True)
 
     def decorator(func):
         @functools.wraps(func)
@@ -282,13 +264,8 @@ def check_input_specs(
                         method=func,
                         data=input_data,
                         spec=spec,
-                        filter=filter,
                         tag="input",
                     )
-
-                    if filter and isinstance(checked_data, NestedDict):
-                        # filtering should happen regardless of cache
-                        checked_data = checked_data.filter(spec)
 
             # If we have encountered an exception from calling `func` already,
             # we raise it again here and don't need to call func again.

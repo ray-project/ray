@@ -32,7 +32,6 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
@@ -632,7 +631,7 @@ class RLModule(Checkpointable, abc.ABC):
         return self._forward_inference(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_inference(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Forward-pass during evaluation. See forward_inference for details."""
 
     @check_input_specs("_input_specs_exploration")
@@ -655,7 +654,7 @@ class RLModule(Checkpointable, abc.ABC):
         return self._forward_exploration(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
     @check_input_specs("_input_specs_train")
@@ -682,7 +681,7 @@ class RLModule(Checkpointable, abc.ABC):
         return self._forward_train(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_train(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Forward-pass during training. See forward_train for details."""
 
     @OverrideToImplementCustomLogic

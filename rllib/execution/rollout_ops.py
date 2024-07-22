@@ -66,7 +66,7 @@ def synchronous_parallel_sample(
         config = PPOConfig().environment("CartPole-v1")
         algorithm = PPO(config=config)
         # 2 remote workers (num_workers=2):
-        batches = synchronous_parallel_sample(worker_set=algorithm.workers,
+        batches = synchronous_parallel_sample(worker_set=algorithm.env_runner_group,
             concat=False)
         print(len(batches))
 
@@ -92,9 +92,9 @@ def synchronous_parallel_sample(
         # No remote workers in the set -> Use local worker for collecting
         # samples.
         if worker_set.num_remote_workers() <= 0:
-            sampled_data = [worker_set.local_worker().sample(**random_action_kwargs)]
+            sampled_data = [worker_set.local_env_runner.sample(**random_action_kwargs)]
             if _return_metrics:
-                stats_dicts = [worker_set.local_worker().get_metrics()]
+                stats_dicts = [worker_set.local_env_runner.get_metrics()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
             sampled_data = worker_set.foreach_worker(
@@ -103,7 +103,7 @@ def synchronous_parallel_sample(
                     if not _return_metrics
                     else (lambda w: (w.sample(**random_action_kwargs), w.get_metrics()))
                 ),
-                local_worker=False,
+                local_env_runner=False,
                 timeout_seconds=sample_timeout_s,
             )
             # Nothing was returned (maybe all workers are stalling) or no healthy

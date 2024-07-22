@@ -362,16 +362,6 @@ class SACConfig(AlgorithmConfig):
                 "`EpisodeReplayBuffer`."
             )
 
-        # TODO (simon, sven): This is a problem with the `TorchDDPRLModule` that does
-        # not allow for a dynamic graph when parameters are changed multiple times,
-        # which is the case for SAC. DQN, in contrast, has only a single backward pass
-        # and runs in multi-learner mode.
-        if self.num_learners > 1:
-            raise ValueError(
-                "Due to multiple dynamic graphs in the model, SAC can not run "
-                "with multiple learners. Set `num_learners`  to 0 or 1."
-            )
-
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
