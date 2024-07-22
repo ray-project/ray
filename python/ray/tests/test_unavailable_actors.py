@@ -106,11 +106,12 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 def test_retryable_tasks_conn_broken(ray_start_regular, caller):
     """
-    Number of retries = 2
+    Number of retries = 1
     1. The task is sent to the actor.
     2. The connection is broken, causing the task to fail (ACTOR_UNAVAILABLE). Comsumes
         a retry.
-    3. The task is retried, this time the actor rejects (STALE_TASK). Consumes a retry.
+    3. The task is retried, this time the actor rejects (STALE_TASK). Does not comsume
+        a retry, because the task is not executed.
     4. The task is retried with a new seqno. (now: number of retries left = 0). The task
         succeeds.
 
@@ -123,7 +124,7 @@ def test_retryable_tasks_conn_broken(ray_start_regular, caller):
 
     Caller's perspective: The caller received 3 task:
     1. (seqno=1) ACTOR_UNAVAILABLE. Retries.
-    2. (seqno=1) STALE_TASK. Retries.
+    2. (seqno=1) STALE_TASK. Retries, not comsuming a retry.
     3. (seqno=2) OK. No retry.
     """
 
@@ -131,7 +132,7 @@ def test_retryable_tasks_conn_broken(ray_start_regular, caller):
         a = Counter.remote()
         assert ray.get(a.slow_increment.remote(1, 0.1)) == 1
         pid = ray.get(a.getpid.remote())
-        task = a.slow_increment.options(max_task_retries=2).remote(2, secs=5)
+        task = a.slow_increment.options(max_task_retries=1).remote(2, secs=5)
         close_common_connections(pid)
         assert ray.get(task) == 5
 
@@ -143,23 +144,21 @@ def test_retryable_tasks_conn_broken(ray_start_regular, caller):
     ["actor", "task", "driver"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-def test_retryable_tasks_conn_broken_out_of_retries(ray_start_regular, caller):
+def test_non_retryable_tasks_conn_broken(ray_start_regular, caller):
     """
-    Just like `test_retryable_tasks_conn_broken` but with only 1 retry. The task should
-    raise ActorUnavailableError because it's out of retries.
+    Just like `test_retryable_tasks_conn_broken` but not retryable. The task should
+    raise ActorUnavailableError.
     """
 
     def body():
         a = Counter.remote()
         assert ray.get(a.slow_increment.remote(1, 0.1)) == 1
         pid = ray.get(a.getpid.remote())
-        task = a.slow_increment.options(max_task_retries=1).remote(2, secs=5)
+        task = a.slow_increment.remote(2, secs=5)
         close_common_connections(pid)
         with pytest.raises(
             ActorUnavailableError,
-            match="The task is rejected by the actor becuase it already "
-            "executed the task but was not able to reply because of a "
-            "connection break. Consider increase max_task_retries.",
+            match="The task may or maynot have been executed on the actor",
         ):
             ray.get(task)
 

@@ -195,13 +195,13 @@ If a retryable method call fails because of ...
 - ... an actor crash, *the task order is preserved* when Ray sends retry calls to a newly started actor.
 - ... a temporal actor unavailability (e.g. a connection break; which would have produced an ``ActorUnavailableError`` without ``max_task_retries``), Ray reconnects to the actor and retries the call.
     - If the actor never received the previous attempt, *the task order is preserved*.
-    - If the actor received the previous attempt, e.g. the connection break happens during execution or reply, *the task order is not preserved* and retry calls are out of order. Due to implementation details this can consume one more retry count.
+    - If the actor received the previous attempt, e.g. the connection break happens during execution or reply, *the task order is not preserved* and retry calls are out of order.
 
 For example, if a caller sends infinitely retryable tasks `0`, `1`, `2`, `3` to an actor. The actor replies for `0` and `1` and is working on `2` and at this time the connection breaks. The callers sends `4`, `5`. Ray guarantees:
 
 - `0`, `1` are executed in order.
 - `4`, `5` are executed in order.
-- `2`, `3` may be executed 1 time or 2 times, consuming 2 retries, out of order.
+- `2`, `3` may be executed 1 time or 2 times, consuming 1 retry, out of order.
 
 A possible execution order from actor's perspective:
 

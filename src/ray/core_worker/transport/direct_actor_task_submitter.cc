@@ -616,12 +616,6 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     // submission.
     bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
                         error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
-    if (error_info.error_type() == rpc::ErrorType::STALE_TASK) {
-      // If it's STALE_TASK and we ran out of retries, we should fail the task with
-      // ACTOR_UNAVAILABLE.
-      error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
-      error_info.mutable_actor_unavailable_error()->set_actor_id(actor_id.Binary());
-    }
 
     // This task may have been waiting for dependency resolution, so cancel
     // this first.

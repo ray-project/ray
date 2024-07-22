@@ -959,7 +959,10 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   bool will_retry = false;
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
-  bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
+  const bool task_failed_due_to_oom =
+      error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
+  const bool task_failed_due_to_stale_task =
+      error_info.error_type() == rpc::ErrorType::STALE_TASK;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -970,7 +973,17 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
     num_oom_retries_left = it->second.num_oom_retries_left;
-    if (task_failed_due_to_oom) {
+    if (task_failed_due_to_stale_task) {
+      // Task failed due to stale task. This can only happen during actor unavailable
+      // and when you reconnect and retry, the actor already executed the last attempt
+      // which we consider as "ActorUnavailable" (attempt #1), and then the caller
+      // retries the task with the same seqno and got "StaleTask" (attempt #2). This
+      // attempt #2 does not consume a retry, though it does occupy an attempt number.
+      RAY_CHECK_NE(spec.MaxRetries(), 0);
+      RAY_LOG(INFO).WithField(spec.TaskId())
+          << "Task failed due to stale task, will retry without consuming a retry.";
+      will_retry = true;
+    } else if (task_failed_due_to_oom) {
       if (num_oom_retries_left > 0) {
         will_retry = true;
         it->second.num_oom_retries_left--;
@@ -980,11 +993,6 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         RAY_CHECK(num_oom_retries_left == 0);
       }
     } else {
-      // IDEA(ryw): if the task failure was not visible to user
-      // (error_info.error_type() == rpc::ErrorType::STALE_TASK), we can blindly retry
-      // regardless of num_retries_left, and don't consume it. This still holds our
-      // gurantee of at-most-N-times execution. If we do that, revert the error_info
-      // change (STALE_TASK -> ACTOR_UNAVAILABLE) in HandlePushTaskReply.
       if (num_retries_left > 0) {
         will_retry = true;
         it->second.num_retries_left--;
