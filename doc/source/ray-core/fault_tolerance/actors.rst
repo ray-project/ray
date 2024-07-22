@@ -184,3 +184,37 @@ Retry behavior depends on the value you set ``retry_exceptions`` to:
 
 For example, if a method sets `max_task_retries=5` and `retry_exceptions=True`, and the actor sets `max_restarts=2`, Ray executes the method up to 6 times: once for the initial invocation, and 5 additional retries. The 6 invocations may include 2 actor crashes. After the 6th invocation, a `ray.get` call to the result Ray ObjectRef raises the exception raised in the last invocation, or `ray.exceptions.RayActorError` if the actor crashed in the last invocation.
 
+Actor method retries and execution order
+----------------------------------------
+
+For synchronous, single-threaded actors, Ray guarantees that the actor method calls are executed :ref:`in the order they are submitted <actor-task-order>`. In method retries, Ray tries to keep the task order as much as possible. In principle, if a task is never executed on the actor, a retry can keep the order. Otherwise, Ray has to put the task to the end of the queue. More concretely:
+
+If a retryable method call fails because of ...
+
+- ... a user exception: *the task order is not preserved* and retry calls are out of order.
+- ... an actor crash, *the task order is preserved* when Ray sends retry calls to a newly started actor.
+- ... a temporal actor unavailability (e.g. a connection break; which would have produced an ``ActorUnavailableError`` without ``max_task_retries``), Ray reconnects to the actor and retries the call.
+    - If the actor never received the previous attempt, *the task order is preserved*.
+    - If the actor received the previous attempt, e.g. the connection break happens during execution or reply, *the task order is not preserved* and retry calls are out of order. Due to implementation details this can consume one more retry count.
+
+For example, if a caller sends infinitely retryable tasks `0`, `1`, `2`, `3` to an actor. The actor replies for `0` and `1` and is working on `2` and at this time the connection breaks. The callers sends `4`, `5`. Ray guarantees:
+
+- `0`, `1` are executed in order.
+- `4`, `5` are executed in order.
+- `2`, `3` may be executed 1 time or 2 times, consuming 2 retries, out of order.
+
+A possible execution order from actor's perspective:
+
+```
+0 1 2 3 4 3 5 2
+^ ^ executed and replied in order
+    ^ ^ executed but can't reply due to connection break
+        ^   ^ received after connection break
+          ^   ^ retries out of order
+```
+
+And from the caller's perspective:
+
+```
+0 1     4 3 5 2
+```

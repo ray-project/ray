@@ -980,6 +980,11 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
         RAY_CHECK(num_oom_retries_left == 0);
       }
     } else {
+      // IDEA(ryw): if the task failure was not visible to user
+      // (error_info.error_type() == rpc::ErrorType::STALE_TASK), we can blindly retry
+      // regardless of num_retries_left, and don't consume it. This still holds our
+      // gurantee of at-most-N-times execution. If we do that, revert the error_info
+      // change (STALE_TASK -> ACTOR_UNAVAILABLE) in HandlePushTaskReply.
       if (num_retries_left > 0) {
         will_retry = true;
         it->second.num_retries_left--;
@@ -999,12 +1004,13 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   std::ostringstream stream;
   std::string num_retries_left_str =
       num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-  RAY_LOG(INFO) << "task " << spec.TaskId() << " retries left: " << num_retries_left_str
-                << ", oom retries left: " << num_oom_retries_left
-                << ", task failed due to oom: " << task_failed_due_to_oom;
+  RAY_LOG(INFO).WithField(spec.TaskId())
+      << "task retries left: " << num_retries_left_str
+      << ", oom retries left: " << num_oom_retries_left
+      << ", task failed due to oom: " << task_failed_due_to_oom;
   if (will_retry) {
-    RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
-                  << " for attempt number: " << spec.AttemptNumber();
+    RAY_LOG(INFO).WithField(spec.TaskId())
+        << "Attempting to resubmit task for attempt number: " << spec.AttemptNumber();
     // TODO(clarng): clean up and remove task_retry_delay_ms that is relied
     // on by some tests.
     int32_t delay_ms = task_failed_due_to_oom
@@ -1027,10 +1033,10 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                                   const rpc::RayErrorInfo *ray_error_info) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
-                 << rpc::ErrorType_Name(error_type) << ", ray_error_info: "
-                 << ((ray_error_info == nullptr) ? "nullptr"
-                                                 : ray_error_info->DebugString());
+  RAY_LOG(DEBUG).WithField(task_id)
+      << "Task failed with error " << rpc::ErrorType_Name(error_type)
+      << ", ray_error_info: "
+      << ((ray_error_info == nullptr) ? "nullptr" : ray_error_info->DebugString());
 
   TaskSpecification spec;
   // Check whether the error should be stored in plasma or not.
@@ -1103,12 +1109,12 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
                                          bool fail_immediately) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(WARNING) << "Task attempt " << task_id << " failed with error "
-                   << rpc::ErrorType_Name(error_type) << " Update seqno? " << update_seqno
-                   << " Fail immediately? " << fail_immediately << ", status "
-                   << (status == nullptr ? "null" : status->ToString()) << ", error info "
-                   << (ray_error_info == nullptr ? "null"
-                                                 : ray_error_info->DebugString());
+  RAY_LOG(WARNING).WithField(task_id)
+      << "Task attempt failed with error " << rpc::ErrorType_Name(error_type)
+      << " Update seqno? " << update_seqno << " Fail immediately? " << fail_immediately
+      << ", status " << (status == nullptr ? "null" : status->ToString())
+      << ", error info "
+      << (ray_error_info == nullptr ? "null" : ray_error_info->DebugString());
 
   bool will_retry = false;
   if (!fail_immediately) {

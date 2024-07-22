@@ -572,7 +572,11 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
       // a task, and the connection broke, and the caller resubmits the task with the
       // same seqno. This task may be retried out of order as if it's retryable user
       // exception.
-      error_info.set_error_message("The task is considered stale by the actor.");
+      error_info.set_error_message(
+          "The task is rejected by the actor becuase it already executed the task but "
+          "was not able to reply because of a connection break. Consider increase "
+          "max_task_retries. " +
+          status.ToString());
       error_info.set_error_type(rpc::ErrorType::STALE_TASK);
     } else {
       // push task failed due to network error. For example, actor is dead
@@ -612,6 +616,12 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     // submission.
     bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
                         error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
+    if (error_info.error_type() == rpc::ErrorType::STALE_TASK) {
+      // If it's STALE_TASK and we ran out of retries, we should fail the task with
+      // ACTOR_UNAVAILABLE.
+      error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
+      error_info.mutable_actor_unavailable_error()->set_actor_id(actor_id.Binary());
+    }
 
     // This task may have been waiting for dependency resolution, so cancel
     // this first.
@@ -673,23 +683,9 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
     auto queue_pair = client_queues_.find(actor_id);
     RAY_CHECK(queue_pair != client_queues_.end());
     auto &queue = queue_pair->second;
-    // Every seqno for the actor_submit_queue must be MarkSeqnoCompleted, or the actor
-    // will hang and don't execute the next tasks.
-    // Cases that need MarkSeqnoCompleted:
-    // - the task won't be retried
-    // - the task is retried, but the seqno is updated.
 
     if (mark_seqno_completed) {
-      RAY_LOG(ERROR).WithField(task_spec.TaskId())
-          << "HandlePushTaskReply: MarkSeqnoCompleted for actor_id=" << actor_id
-          << ", actor_counter=" << actor_counter << " will_retry = " << will_retry
-          << " is_retryable_exception = " << is_retryable_exception;
       queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, task_spec);
-    } else {
-      RAY_LOG(ERROR) << "HandlePushTaskReply: NOT MarkSeqnoCompleted for actor_id="
-                     << actor_id << ", actor_counter=" << actor_counter
-                     << " will_retry = " << will_retry
-                     << " is_retryable_exception = " << is_retryable_exception;
     }
     queue.cur_pending_calls--;
   }
