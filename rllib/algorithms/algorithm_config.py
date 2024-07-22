@@ -607,17 +607,6 @@ class AlgorithmConfig(_Config):
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
-        # config["num_cpus_for_driver"] = config.pop(
-        #    "num_cpus_for_local_worker", config.pop("num_cpus_for_main_process", 1)
-        # )
-        # config["num_workers"] = config.pop(
-        #    "num_env_runners", config.pop("num_rollout_workers", 0)
-        # )
-        # config["num_cpus_per_worker"] = config.pop("num_cpus_per_env_runner", 1)
-        # config["num_gpus_per_worker"] = config.pop("num_gpus_per_env_runner", 0)
-        # config["num_learner_workers"] = config.pop("num_learners", 0)
-        # config["num_cpus_per_learner_worker"] = config.pop("num_cpus_per_learner", 1)
-        # config["num_gpus_per_learner_worker"] = config.pop("num_gpus_per_learner", 0)
 
         # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
         # These would be useless in the returned dict anyways.
