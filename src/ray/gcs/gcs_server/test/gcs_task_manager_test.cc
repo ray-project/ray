@@ -673,22 +673,23 @@ TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
   {
     auto reply = SyncGetTaskEvents({tasks_running});
     auto task_event = *(reply.events_by_task().begin());
-    EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FAILED), 4);
+    EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED), 4);
   }
 
   // Check task attempt failed event is not overriding failed tasks.
   {
     auto reply = SyncGetTaskEvents({tasks_failed});
     auto task_event = *(reply.events_by_task().begin());
-    EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FAILED), 3);
+    EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED), 3);
   }
 
   // Check task attempt failed event is not overriding finished tasks.
   {
     auto reply = SyncGetTaskEvents({tasks_finished});
     auto task_event = *(reply.events_by_task().begin());
-    EXPECT_FALSE(task_event.state_updates().state_ts().contains(rpc::TaskStatus::FAILED));
-    EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FINISHED), 2);
+    EXPECT_FALSE(
+        task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
+    EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FINISHED), 2);
   }
 }
 
@@ -740,7 +741,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     auto reply = SyncGetTaskEvents(tasks);
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FAILED),
+      EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED),
                 /* 5 ms to ns */ 5 * 1000 * 1000);
       EXPECT_TRUE(task_event.state_updates().has_error_info());
       EXPECT_TRUE(task_event.state_updates().error_info().error_type() ==
@@ -757,9 +758,10 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     auto reply = SyncGetTaskEvents(tasks);
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FINISHED), 2);
+      EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FINISHED),
+                2);
       EXPECT_FALSE(
-          task_event.state_updates().state_ts().contains(rpc::TaskStatus::FAILED));
+          task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
     }
   }
 
@@ -769,7 +771,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     auto reply = SyncGetTaskEvents(tasks);
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FAILED), 3);
+      EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED), 3);
     }
   }
 
@@ -781,9 +783,9 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     EXPECT_EQ(reply.events_by_task_size(), 5);
     for (const auto &task_event : reply.events_by_task()) {
       EXPECT_FALSE(
-          task_event.state_updates().state_ts().contains(rpc::TaskStatus::FAILED));
+          task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
       EXPECT_FALSE(
-          task_event.state_updates().state_ts().contains(rpc::TaskStatus::FINISHED));
+          task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FINISHED));
     }
   }
 }

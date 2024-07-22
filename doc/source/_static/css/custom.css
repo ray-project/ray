@@ -25,6 +25,7 @@ html[data-theme='dark'] {
   --pst-color-text-base: #f1f2f4;
   --pst-color-text-muted: #b3b9c4;
   --pst-color-border: #2c333a;
+  --bs-body-color: #f1f2f4;
   --heading-color: #ffffff;
   --base-pygments-code-color: #cccccc;
   --pst-color-link-hover: #cce0ff;
@@ -65,8 +66,8 @@ h6 {
   background-color: transparent;
 }
 .bd-content:after {
-/*   Commenting the code below to make more modifications after 2.10 release */
-/*   background: linear-gradient(
+  /*   Commenting the code below to make more modifications after 2.10 release */
+  /*   background: linear-gradient(
     60deg,
     rgba(0, 85, 204, 0.18) 14%,
     rgba(110, 93, 198, 0.18) 49.2%,
@@ -228,24 +229,6 @@ li.active-link {
 }
 .navbar-brand.logo > svg path#ray-logo {
   fill: var(--ray-blue);
-}
-
-/* Search button styling */
-.search-button-field {
-  border-radius: 4px;
-  min-width: 12em;
-  background-color: unset;
-}
-/* Disable `ctrl+k` label inside search button */
-.search-button-field > .search-button__kbd-shortcut {
-  display: none;
-}
-/* Disable "search" text inside search button */
-.search-button-field > .search-button__default-text {
-  visibility: hidden;
-}
-.search-button-field svg.fa-magnifying-glass {
-  color: var(--pst-color-border);
 }
 
 /* Anyscale branding */

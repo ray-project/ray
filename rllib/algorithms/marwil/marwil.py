@@ -207,6 +207,12 @@ class MARWILConfig(AlgorithmConfig):
                 "`config.offline_data(postprocess_inputs=True)`."
             )
 
+        # Assert that for a local learner the number of iterations is 1. Note,
+        # this is needed because we have no iterators, but instead a single
+        # batch returned directly from the `OfflineData.sample` method.
+        if self.num_learners == 0 and not self.dataset_num_iters_per_learner:
+            self.dataset_num_iters_per_learner = 1
+
     @property
     def _model_auto_keys(self):
         return super()._model_auto_keys | {"beta": self.beta}

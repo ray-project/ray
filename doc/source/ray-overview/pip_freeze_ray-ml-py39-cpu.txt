@@ -238,7 +238,7 @@ lightgbm==3.3.5
 lightning-utilities==0.11.2
 linear-operator==0.4.0
 linkify-it-py==2.0.3
-lit==18.1.7
+lit==18.1.8
 llvmlite==0.41.1
 locket==1.0.0
 lxml==4.9.4
@@ -383,7 +383,7 @@ PyYAML==6.0.1
 pyzmq==24.0.1
 qpd==0.4.4
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=2d7c022c1796166fcd34a01db84f0f3f84fe81d498579291202eda031fb416d7
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=acd88af71f758cbc32cd9c9daf55687c4e7e290c16006f31db1c765fcddc1fe1
 recsim==0.2.4
 redis==3.5.3
 referencing==0.35.1
@@ -448,7 +448,7 @@ tensorflow-probability==0.23.0
 tensorstore==0.1.45
 termcolor==2.3.0
 terminado==0.18.0
-textual==0.70.0
+textual==0.71.0
 tf-slim==1.1.0
 tf2onnx==1.15.1
 threadpoolctl==3.1.0
