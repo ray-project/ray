@@ -57,7 +57,7 @@ tuner.fit()
 # __rllib-tune-config-end__
 
 # __rllib-tuner-begin__
-# ``Tuner.fit()`` allows setting a custom log directory (other than ``~/ray-results``)
+# Tuner.fit() allows setting a custom log directory (other than ~/ray-results).
 tuner = tune.Tuner(
     "PPO",
     param_space=config,
