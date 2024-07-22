@@ -251,7 +251,7 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
-@pytest.mark.skipif(sys.version_info >= (3, 12))
+@pytest.mark.failif(sys.version_info >= (3, 12), reason="HEBO doesn't support py312")
 class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         if Version(pandas.__version__) >= Version("2.0.0"):

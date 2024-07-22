@@ -770,7 +770,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
-    @pytest.mark.skipif(sys.version_info >= (3, 12))
+    @pytest.mark.failif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testConvertHEBO(self):
         import torch
         from hebo.design_space.design_space import DesignSpace
@@ -827,7 +829,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         # Mixed configs are not supported
 
-    @pytest.mark.skipif(sys.version_info >= (3, 12))
+    @pytest.mark.failif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testSampleBoundsHEBO(self):
         from ray.tune.search.hebo import HEBOSearch
 
