@@ -18,25 +18,23 @@ from ray.rllib.utils.typing import EpisodeType, ModuleID
 
 logger = logging.getLogger(__name__)
 
-# TODO (simon): Implement schema mapping for users, i.e. user define
-# which row name to map to which default schema name below.
-SCHEMA = [
-    Columns.EPS_ID,
-    Columns.AGENT_ID,
-    Columns.MODULE_ID,
-    Columns.OBS,
-    Columns.ACTIONS,
-    Columns.REWARDS,
-    Columns.INFOS,
-    Columns.NEXT_OBS,
-    Columns.TERMINATEDS,
-    Columns.TRUNCATEDS,
-    Columns.T,
+SCHEMA = {
+    Columns.EPS_ID: Columns.EPS_ID,
+    Columns.AGENT_ID: Columns.AGENT_ID,
+    Columns.MODULE_ID: Columns.MODULE_ID,
+    Columns.OBS: Columns.OBS,
+    Columns.ACTIONS: Columns.ACTIONS,
+    Columns.REWARDS: Columns.REWARDS,
+    Columns.INFOS: Columns.INFOS,
+    Columns.NEXT_OBS: Columns.NEXT_OBS,
+    Columns.TERMINATEDS: Columns.TERMINATEDS,
+    Columns.TRUNCATEDS: Columns.TRUNCATEDS,
+    Columns.T: Columns.T,
     # TODO (simon): Add remove as soon as we are new stack only.
-    "agent_index",
-    "dones",
-    "unroll_id",
-]
+    "agent_index": "agent_index",
+    "dones": "dones",
+    "unroll_id": "unroll_id",
+}
 
 
 class OfflineData:
@@ -203,12 +201,12 @@ class OfflinePreLearner:
 
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
         # Map the batch to episodes.
-        episodes = self._map_to_episodes(self._is_multi_agent, batch)
+        episodes = self._map_to_episodes(
+            self._is_multi_agent, batch, schema=SCHEMA | self.config.input_read_schema
+        )
         # TODO (simon): Make synching work. Right now this becomes blocking or never
         # receives weights. Learners appear to be non accessable via other actors.
         # Increase the counter for updating the module.
-        # IDEA: put the module state into the object store. From there any actor has
-        # access.
         # self.iter_since_last_module_update += 1
 
         # if self._future:
@@ -275,23 +273,29 @@ class OfflinePreLearner:
 
     @staticmethod
     def _map_to_episodes(
-        is_multi_agent: bool, batch: Dict[str, np.ndarray]
+        is_multi_agent: bool,
+        batch: Dict[str, np.ndarray],
+        schema: Dict[str, str] = SCHEMA,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 
         episodes = []
         # TODO (simon): Give users possibility to provide a custom schema.
-        for i, obs in enumerate(batch["obs"]):
+        for i, obs in enumerate(batch[schema[Columns.OBS]]):
 
             # If multi-agent we need to extract the agent ID.
             # TODO (simon): Check, what happens with the module ID.
             if is_multi_agent:
                 agent_id = (
-                    batch[Columns.AGENT_ID][i]
+                    batch[schema[Columns.AGENT_ID]][i]
                     if Columns.AGENT_ID in batch
                     # The old stack uses "agent_index" instead of "agent_id".
                     # TODO (simon): Remove this as soon as we are new stack only.
-                    else (batch["agent_index"][i] if "agent_index" in batch else None)
+                    else (
+                        batch[schema["agent_index"]][i]
+                        if schema["agent_index"] in batch
+                        else None
+                    )
                 )
             else:
                 agent_id = None
@@ -302,30 +306,36 @@ class OfflinePreLearner:
             else:
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
-                    id_=batch[Columns.EPS_ID][i],
+                    id_=batch[schema[Columns.EPS_ID]][i],
                     agent_id=agent_id,
                     observations=[
                         unpack_if_needed(obs),
-                        unpack_if_needed(batch[Columns.NEXT_OBS][i]),
+                        unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
                     ],
                     infos=[
                         {},
-                        batch[Columns.INFOS][i] if Columns.INFOS in batch else {},
+                        batch[schema[Columns.INFOS]][i]
+                        if schema[Columns.INFOS] in batch
+                        else {},
                     ],
-                    actions=[batch[Columns.ACTIONS][i]],
-                    rewards=[batch[Columns.REWARDS][i]],
+                    actions=[batch[schema[Columns.ACTIONS]][i]],
+                    rewards=[batch[schema[Columns.REWARDS]][i]],
                     terminated=batch[
-                        Columns.TERMINATEDS if Columns.TERMINATEDS in batch else "dones"
+                        schema[Columns.TERMINATEDS]
+                        if schema[Columns.TERMINATEDS] in batch
+                        else "dones"
                     ][i],
-                    truncated=batch[Columns.TRUNCATEDS][i]
-                    if Columns.TRUNCATEDS in batch
+                    truncated=batch[schema[Columns.TRUNCATEDS]][i]
+                    if schema[Columns.TRUNCATEDS] in batch
                     else False,
                     # TODO (simon): Results in zero-length episodes in connector.
                     # t_started=batch[Columns.T if Columns.T in batch else
                     # "unroll_id"][i][0],
                     # TODO (simon): Single-dimensional columns are not supported.
                     extra_model_outputs={
-                        k: [v[i]] for k, v in batch.items() if k not in SCHEMA
+                        k: [v[i]]
+                        for k, v in batch.items()
+                        if (k not in schema and k not in schema.values())
                     },
                     len_lookback_buffer=0,
                 )
