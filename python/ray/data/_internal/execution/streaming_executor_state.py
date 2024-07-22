@@ -323,6 +323,7 @@ class OpState:
         time_for_pipeline_to_process_one_data = 0
         next_op = self.op
         output_input_multipler = 1
+        time_for_op = 0
 
         while len(next_op.output_dependencies) > 0:
             assert len(next_op.output_dependencies) == 1
@@ -337,13 +338,17 @@ class OpState:
             ):
                 continue
                             
-            time_for_op = output_input_multipler * next_op._metrics.average_task_duration / next_op._metrics.average_bytes_inputs_per_task
-            
-            if next_op.incremental_resource_usage().cpu:
-                # @MaoZiming: if it is on GPU, it doesn't take CPU time. 
-                time_for_pipeline_to_process_one_data += time_for_op
-            
+            time_for_op += output_input_multipler * next_op._metrics.average_task_duration / next_op._metrics.average_bytes_inputs_per_task
+
             output_input_multipler *= (next_op._metrics.average_bytes_outputs_per_task / next_op._metrics.average_bytes_inputs_per_task)
+            
+            if next_op.incremental_resource_usage().cpu == 0:
+                # @MaoZiming: if it is on GPU.
+                # However, time_for_op still accumulates. 
+                # If the last stage is on GPU, then you don't have to care. 
+                continue
+            time_for_pipeline_to_process_one_data += time_for_op
+            time_for_op = 0
         
         num_executors_not_running_op = (
                     resource_manager.get_global_limits().cpu
