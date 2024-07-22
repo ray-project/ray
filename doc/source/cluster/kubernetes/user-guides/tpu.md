@@ -24,9 +24,9 @@ Using any TPU accelerator requires specifying `google.com/tpu` resource `limits`
 `workerGroupSpecs`. This resource specifies the number of TPU chips for GKE to allocate each Pod. KubeRay v1.1.0 adds a `numOfHosts`
 field to the RayCluster custom resource, specifying the number of TPU hosts to create per worker group replica. For multi-host worker groups,
 replicas are treated as Pod slices rather than individual workers, with `numOfHosts` worker nodes being created per replica.
-Additionally, GKE uses `gke-tpu` node selectors to schedule TPU pods on the node matching the desired TPU accelerator and topology.
+Additionally, GKE uses `gke-tpu` node selectors to schedule TPU Pods on the node matching the desired TPU accelerator and topology.
 
-Below is a config snippet for a RayCluster worker group with 2 Ray TPU worker pods, each scheduled on its own GKE v4 TPU node belonging to the same TPU PodSlice.
+Below is a config snippet for a RayCluster worker group with 2 Ray TPU worker Pods, each scheduled on its own GKE v4 TPU node belonging to the same TPU Pod slice.
 
 ```
    groupName: tpu-group
@@ -60,6 +60,9 @@ After a Ray pod with with TPU pod resources is deployed, it will be able to exec
 TPUs are supported on Ray as a [custom resource](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#custom-resources),
 and are requested by tasks or actors using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
 
+## Multi-Host TPU Autoscaling
+
+Multi-host TPU autoscaling is supported in Kuberay versions 1.1.0 or later and Ray versions 2.32.0 or later. Ray multi-host TPU worker groups are worker groups which specify "google.com/tpu" Kubernetes container limits/requests and have `NumOfHosts` greater than 1. Each replica of a Ray multi-host TPU worker group is treated as a TPU Pod slice and scaled atomically. When scaling up, multi-host worker groups create `NumOfHosts` Ray workers per replica. Likewise, multi-host worker group replicas are scaled down by `NumOfHosts` workers. When a single Ray worker in a multi-host TPU worker group is scheduled to be deleted, the entire replica to which it belongs is terminated. When scheduling TPU workloads on multi-host worker groups, it's important to ensure Ray tasks or actors run on every TPU VM host in a worker group replica to avoid idle TPU workers being scaled down.
 
 Further reference and discussion
 --------------------------------
