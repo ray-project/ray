@@ -2006,7 +2006,7 @@ send2trash==1.8.2
     #   notebook
 sentencepiece==0.1.96
     # via -r /home/ubuntu/ray/ci/../python/requirements/ml/train-test-requirements.txt
-sentry-sdk==1.37.1
+sentry-sdk==2.8.0
     # via
     #   comet-ml
     #   wandb
