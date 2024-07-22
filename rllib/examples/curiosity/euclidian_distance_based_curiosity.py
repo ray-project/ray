@@ -114,7 +114,7 @@ if __name__ == "__main__":
             #train_batch_size_per_learner=512,
             gamma=0.99,
             lr=0.0002,
-            #lambda_=0.1,
+            lambda_=0.98,
             #vf_clip_param=10.0,
             #sgd_minibatch_size=64,
 
