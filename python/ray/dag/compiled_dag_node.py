@@ -522,6 +522,7 @@ class CompiledDAG:
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
+        # Mapping from the actor handle to the node ID that the actor is on.
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
         # Type hints specified by the user for DAG (intermediate) outputs.
