@@ -67,6 +67,8 @@ class EuclidianDistanceBasedCuriosity(ConnectorV2):
         self.obs_buffer = deque(maxlen=max_buffer_size)
         self.intrinsic_reward_coeff = intrinsic_reward_coeff
 
+        self._test = 0
+
     def __call__(
         self,
         *,
@@ -77,6 +79,9 @@ class EuclidianDistanceBasedCuriosity(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
+        if self._test > 10:
+            return data
+        self._test += 1
         # Loop through all episodes and change the reward to
         # [reward + intrinsic reward]
         for sa_episode in self.single_agent_episode_iterator(

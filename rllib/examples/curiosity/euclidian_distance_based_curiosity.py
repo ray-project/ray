@@ -113,11 +113,13 @@ if __name__ == "__main__":
                 else lambda *ags, **kw: EuclidianDistanceBasedCuriosity()
             ),
             # train_batch_size_per_learner=512,
+            grad_clip=20.0,
+            entropy_coeff=0.003,
             gamma=0.99,
             lr=0.0002,
             lambda_=0.98,
         )
-        # .rl_module(model_config_dict={"vf_share_layers": True})
+        #.rl_module(model_config_dict={"fcnet_activation": "relu"})
     )
 
     run_rllib_example_script_experiment(base_config, args)
