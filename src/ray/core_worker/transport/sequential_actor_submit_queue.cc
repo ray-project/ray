@@ -120,10 +120,10 @@ void SequentialActorSubmitQueue::MarkSeqnoCompleted(uint64_t sequence_no,
     }
   }
 
-  RAY_LOG(DEBUG).WithField(actor_id) << "Got PushTaskReply for actor with actor_counter "
-                 << sequence_no << " new queue.next_task_reply_position is "
-                 << next_task_reply_position << " and size of out_of_order_tasks set is "
-                 << out_of_order_completed_tasks.size();
+  RAY_LOG(DEBUG).WithField(actor_id)
+      << "Got PushTaskReply for actor with actor_counter " << sequence_no
+      << " new queue.next_task_reply_position is " << next_task_reply_position
+      << " and size of out_of_order_tasks set is " << out_of_order_completed_tasks.size();
 }
 
 }  // namespace core

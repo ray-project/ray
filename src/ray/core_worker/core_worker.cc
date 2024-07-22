@@ -428,7 +428,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       [this](const RayObject &object, const ObjectID &object_id) {
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
       },
-      /* retry_task_callback= */
+      /*retry_task_callback=*/
       [this](TaskSpecification &spec,
              bool object_recovery,
              bool update_seqno,
@@ -2023,7 +2023,6 @@ void CoreWorker::RetryTask(TaskToRetry &task_to_retry) {
     }
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
   } else {
-    RAY_CHECK(!task_to_retry.update_seqno);
     RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
   }
 }
