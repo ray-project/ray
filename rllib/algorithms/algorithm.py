@@ -658,11 +658,49 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             validate_env=self.validate_env,
             default_policy_class=self.get_default_policy_class(self.config),
             config=self.config,
-            num_env_runners=self.config.num_env_runners,
+            num_env_runners=(
+                0
+                if (
+                    self.config.input_
+                    and (
+                        isinstance(self.config.input_, str)
+                        or (
+                            isinstance(self.config.input_, list)
+                            and isinstance(self.config.input_[0], str)
+                        )
+                    )
+                    and self.config.input_ != "sampler"
+                    and self.config.enable_rl_module_and_learner
+                    and self.config.enable_env_runner_and_connector_v2
+                )
+                else self.config.num_env_runners
+            ),
             local_env_runner=True,
             logdir=self.logdir,
             tune_trial_id=self.trial_id,
         )
+
+        # If an input path is available and we are on the new API stack generate
+        # an `OfflineData` instance.
+        if (
+            self.config.input_
+            and (
+                isinstance(self.config.input_, str)
+                or (
+                    isinstance(self.config.input_, list)
+                    and isinstance(self.config.input_[0], str)
+                )
+            )
+            and self.config.input_ != "sampler"
+            and self.config.enable_rl_module_and_learner
+            and self.config.enable_env_runner_and_connector_v2
+        ):
+            from ray.rllib.offline.offline_data import OfflineData
+
+            self.offline_data = OfflineData(self.config)
+        # Otherwise set the attribute to `None`.
+        else:
+            self.offline_data = None
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -743,7 +781,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # TODO (Rohan138): Refactor this and remove deprecated methods
             # Need to add back method_type in case Algorithm is restored from checkpoint
             method_config["type"] = method_type
-
+        self.learner_group = None
         if self.config.enable_rl_module_and_learner:
             local_worker = self.workers.local_worker()
             env = spaces = None
@@ -818,6 +856,29 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                         NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                     ),
                 )
+
+            if self.offline_data:
+                # If the learners are remote we need to provide specific
+                # information and the learner's actor handles.
+                if self.learner_group.is_remote:
+                    # If learners run on different nodes, locality hints help
+                    # to use the nearest learner in the workers that do the
+                    # data preprocessing.
+                    learner_node_ids = self.learner_group.foreach_learner(
+                        lambda l: ray.get_runtime_context().get_node_id()
+                    )
+                    self.offline_data.locality_hints = [
+                        node_id.get() for node_id in learner_node_ids
+                    ]
+                    # Provide the actor handles for the learners for module
+                    # updating during preprocessing.
+                    self.offline_data.learner_handles = self.learner_group._workers
+                    # Provide the module_spec. Note, in the remote case this is needed
+                    # because the learner module cannot be copied, but must be built.
+                    self.offline_data.module_spec = module_spec
+                # Otherwise we can simply pass in the local learner.
+                else:
+                    self.offline_data.learner_handles = [self.learner_group._learner]
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)

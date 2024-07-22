@@ -646,6 +646,7 @@ class TestRolloutWorker(unittest.TestCase):
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
+
         result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 0)
         for _ in range(8):
