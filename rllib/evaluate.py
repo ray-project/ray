@@ -344,7 +344,7 @@ def rollout(
         return
 
     # Agent has no evaluation workers, but RolloutWorkers.
-    elif hasattr(agent, "workers") and isinstance(
+    elif hasattr(agent, "env_runner_group") and isinstance(
         agent.env_runner_group, EnvRunnerGroup
     ):
         env = agent.env_runner.env

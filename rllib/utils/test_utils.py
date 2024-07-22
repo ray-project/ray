@@ -584,7 +584,7 @@ def check_compute_single_action(
         if what is algorithm:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(algorithm, "workers", None)
+            worker_set = getattr(algorithm, "env_runner_group", None)
             assert worker_set
             if not worker_set.local_env_runner:
                 obs_space = algorithm.get_policy(pid).observation_space

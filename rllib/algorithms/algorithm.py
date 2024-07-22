@@ -2828,7 +2828,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     @override(Trainable)
     def cleanup(self) -> None:
         # Stop all workers.
-        if hasattr(self, "workers") and self.env_runner_group is not None:
+        if hasattr(self, "env_runner_group") and self.env_runner_group is not None:
             self.env_runner_group.stop()
         if (
             hasattr(self, "evaluation_workers")
@@ -3192,7 +3192,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             "config": self.config,
         }
 
-        if hasattr(self, "workers"):
+        if hasattr(self, "env_runner_group"):
             state["worker"] = self.env_runner_group.local_env_runner.get_state()
 
         # Also store eval `policy_mapping_fn` (in case it's different from main
@@ -3234,8 +3234,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # Old API stack: The local worker stores its state (together with all the
         # Module information) in state['worker'].
-        if hasattr(self, "workers") and "worker" in state and state["worker"]:
-            self.env_runner_group.local_env_runner.set_state(state["worker"])
+        if hasattr(self, "env_runner_group") and "worker" in state and state["worker"]:
+            self.env_runner.set_state(state["worker"])
             remote_state_ref = ray.put(state["worker"])
             self.env_runner_group.foreach_worker(
                 lambda w: w.set_state(ray.get(remote_state_ref)),
