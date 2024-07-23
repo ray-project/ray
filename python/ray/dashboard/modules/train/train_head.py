@@ -120,13 +120,19 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                         if worker_info.pid
                         in [process["pid"] for process in gpu["processesPids"]]
                     ]
+                    # Need to convert processesPids into a proper list.
+                    # It's some weird ImmutableList structureo
+                    formatted_gpus = [{
+                        **gpu,
+                        "processesPids": list(gpu["processesPids"]),
+                    } for gpu in gpus]
 
                     worker_info_with_details = TrainWorkerInfoWithDetails.parse_obj(
                         {
                             **worker_info.dict(),
                             "status": actor["state"],
                             "processStats": actor["processStats"],
-                            "gpus": gpus,
+                            "gpus": formatted_gpus,
                         }
                     )
                 else:
