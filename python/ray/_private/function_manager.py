@@ -13,6 +13,7 @@ from collections import defaultdict, namedtuple
 from typing import Optional, Callable
 
 import ray
+from ray.remote_function import RemoteFunction
 import ray._private.profiling as profiling
 from ray import cloudpickle as pickle
 from ray._private import ray_constants
@@ -382,7 +383,10 @@ class FunctionActorManager:
 
         object = self.load_function_or_class_from_local(module_name, function_name)
         if object is not None:
-            function = object._function
+            if isinstance(object, RemoteFunction):
+                function = object._function
+            else:
+                function = object
             self._function_execution_info[function_id] = FunctionExecutionInfo(
                 function=function,
                 function_name=function_name,
