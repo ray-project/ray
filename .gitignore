@@ -214,8 +214,10 @@ workflow_data/
 # vscode java extention generated
 .factorypath
 
-# Jupyter Notebooks
+# Jupyter notebook autosave checkpoints
 **/.ipynb_checkpoints/
+
+# Jupyter notebook temporary documents used by LSP
 .virtual_documents/
 
 ### Added by Hedron's Bazel Compile Commands Extractor: https://github.com/hedronvision/bazel-compile-commands-extractor
