@@ -32,7 +32,7 @@ READ_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 def cleaned_metadata(read_task: ReadTask):
     block_meta = read_task.get_metadata()
     task_size = len(cloudpickle.dumps(read_task))
-    if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
+    if block_meta.size_bytes is not None and task_size > block_meta.size_bytes:
         if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
             print(
                 f"WARNING: the read task size ({task_size} bytes) is larger "
