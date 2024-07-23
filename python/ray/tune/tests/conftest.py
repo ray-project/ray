@@ -29,11 +29,3 @@ def mock_s3_bucket_uri():
         logging.getLogger("werkzeug").setLevel(logging.WARNING)
         yield s3_uri
         logging.getLogger("werkzeug").setLevel(logging.INFO)
-
-
-# Register the custom mark
-def pytest_configure(config):
-    config.addinivalue_line(
-        "markers",
-        "failif(condition, *, reason=...): Fail the test if the condition is true",
-    )
