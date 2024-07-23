@@ -191,8 +191,8 @@ def test_set_error_before_read(ray_start_regular):
         def __init__(self):
             self.arr = None
 
-        def create_channel(self, writer, reader_to_node):
-            self._channel = ray_channel.Channel(writer, reader_to_node, 1000)
+        def create_channel(self, writer, reader_to_node_id):
+            self._channel = ray_channel.Channel(writer, reader_to_node_id, 1000)
             return self._channel
 
         def pass_channel(self, channel):
@@ -503,16 +503,16 @@ def test_put_remote_get(ray_start_regular, num_readers):
                 assert chan.read() == val
 
     num_writes = 1000
-    reader_to_node = []
+    reader_to_node_id = []
     for _ in range(num_readers):
         handle = Reader.remote()
         node = get_actor_node_id(handle)
-        reader_to_node.append((handle, node))
+        reader_to_node_id.append((handle, node))
 
-    chan = ray_channel.Channel(None, reader_to_node, 1000)
+    chan = ray_channel.Channel(None, reader_to_node_id, 1000)
     chan.ensure_registered_as_writer()
 
-    done = [reader.read.remote(chan, num_writes) for reader, _ in reader_to_node]
+    done = [reader.read.remote(chan, num_writes) for reader, _ in reader_to_node_id]
     for i in range(num_writes):
         val = i.to_bytes(8, "little")
         chan.write(val)
@@ -575,19 +575,19 @@ def test_remote_reader(ray_start_cluster, remote):
             for i in range(num_reads):
                 self._reader_chan.read()
 
-    reader_to_node = []
+    reader_to_node_id = []
     for _ in range(num_readers):
         handle = Reader.remote()
         node = get_actor_node_id(handle)
-        reader_to_node.append((handle, node))
+        reader_to_node_id.append((handle, node))
 
-    channel = ray_channel.Channel(None, reader_to_node, 1000)
+    channel = ray_channel.Channel(None, reader_to_node_id, 1000)
 
     # All readers have received the channel.
-    ray.get([reader.pass_channel.remote(channel) for reader, _ in reader_to_node])
+    ray.get([reader.pass_channel.remote(channel) for reader, _ in reader_to_node_id])
 
     for _ in range(num_iterations):
-        work = [reader.read.remote(num_writes) for reader, _ in reader_to_node]
+        work = [reader.read.remote(num_writes) for reader, _ in reader_to_node_id]
         start = time.perf_counter()
         for i in range(num_writes):
             channel.write(b"x")
@@ -646,24 +646,24 @@ def test_remote_reader_close(ray_start_cluster, remote):
         def close(self):
             self._reader_chan.close()
 
-    reader_to_node = []
+    reader_to_node_id = []
     for _ in range(num_readers):
         handle = Reader.remote()
         node = get_actor_node_id(handle)
-        reader_to_node.append((handle, node))
-    channel = ray_channel.Channel(None, reader_to_node, 1000)
+        reader_to_node_id.append((handle, node))
+    channel = ray_channel.Channel(None, reader_to_node_id, 1000)
 
     # All readers have received the channel.
-    ray.get([reader.pass_channel.remote(channel) for reader, _ in reader_to_node])
+    ray.get([reader.pass_channel.remote(channel) for reader, _ in reader_to_node_id])
 
     reads = [
         reader.read.options(concurrency_group="_ray_system").remote()
-        for reader, _ in reader_to_node
+        for reader, _ in reader_to_node_id
     ]
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(reads, timeout=1.0)
 
-    ray.get([reader.close.remote() for reader, _ in reader_to_node])
+    ray.get([reader.close.remote() for reader, _ in reader_to_node_id])
     ray.get(reads)
 
 
@@ -809,8 +809,8 @@ def test_composite_channel_single_reader(ray_start_cluster):
         def pass_channel(self, channel):
             self._chan = channel
 
-        def create_composite_channel(self, writer, reader_to_node):
-            self._chan = ray_channel.CompositeChannel(writer, reader_to_node)
+        def create_composite_channel(self, writer, reader_to_node_id):
+            self._chan = ray_channel.CompositeChannel(writer, reader_to_node_id)
             return self._chan
 
         def read(self):
@@ -881,8 +881,8 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
         def pass_channel(self, channel):
             self._chan = channel
 
-        def create_composite_channel(self, writer, reader_to_node):
-            self._chan = ray_channel.CompositeChannel(writer, reader_to_node)
+        def create_composite_channel(self, writer, reader_to_node_id):
+            self._chan = ray_channel.CompositeChannel(writer, reader_to_node_id)
             return self._chan
 
         def read(self):
@@ -961,10 +961,10 @@ def test_put_error(ray_start_cluster):
 
     @ray.remote(num_cpus=1)
     class Actor:
-        def setup(self, reader_to_node):
+        def setup(self, reader_to_node_id):
             self._channel = ray_channel.Channel(
                 ray.get_runtime_context().current_actor,
-                reader_to_node,
+                reader_to_node_id,
                 1000,
             )
 

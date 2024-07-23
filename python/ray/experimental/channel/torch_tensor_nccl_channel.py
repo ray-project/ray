@@ -35,7 +35,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
     def __init__(
         self,
         writer: ray.actor.ActorHandle,
-        reader_to_node: List[Tuple["ray.actor.ActorHandle", str]],
+        reader_to_node_id: List[Tuple["ray.actor.ActorHandle", str]],
         gpu_data_typ: "TorchTensorType",
         cpu_data_typ: Optional["SharedMemoryType"] = None,
         _gpu_data_channel: Optional["TorchTensorNcclChannel"] = None,
@@ -53,20 +53,20 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            reader_to_node: A list of tuples, where each tuple contains a reader
+            reader_to_node_id: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the handle is located.
             gpu_data_typ: Type information about the GPU tensors
             cpu_data_typ: Type information about the CPU data
         """
         self._writer = writer
-        self._reader_to_node = reader_to_node
+        self._reader_to_node_id = reader_to_node_id
 
         if _gpu_data_channel is not None or _cpu_data_channel is not None:
             # This path is used when the NestedTorchTensorNcclChannel is being
             # deserialized.
             assert (
                 writer is None
-                and reader_to_node is None
+                and reader_to_node_id is None
                 and gpu_data_typ is None
                 and cpu_data_typ is None
             )
@@ -77,12 +77,12 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             # This path is used when the NestedTorchTensorNcclChannel is first
             # being created, by the writer of the channel.
             self._gpu_data_channel: TorchTensorNcclChannel = (
-                gpu_data_typ.create_channel(writer, reader_to_node)
+                gpu_data_typ.create_channel(writer, reader_to_node_id)
             )
             self._cpu_data_channel: Optional["Channel"] = None
             if cpu_data_typ is not None:
                 self._cpu_data_channel = cpu_data_typ.create_channel(
-                    writer, reader_to_node
+                    writer, reader_to_node_id
                 )
 
         # Used for serialization.
@@ -101,7 +101,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
     ):
         return cls(
             writer=None,
-            reader_to_node=None,
+            reader_to_node_id=None,
             gpu_data_typ=None,
             cpu_data_typ=None,
             _gpu_data_channel=gpu_data_channel,
@@ -192,7 +192,7 @@ class TorchTensorNcclChannel(ChannelInterface):
     def __init__(
         self,
         writer: ray.actor.ActorHandle,
-        reader_to_node: List[Tuple["ray.actor.ActorHandle", str]],
+        reader_to_node_id: List[Tuple["ray.actor.ActorHandle", str]],
         typ: "TorchTensorType",
         _meta_channel: Optional["Channel"] = None,
         _torch_tensor_allocator: Optional[TorchTensorAllocator] = None,
@@ -202,7 +202,7 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            reader_to_node: A list of tuples, where each tuple contains a reader
+            reader_to_node_id: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the handle is located.
             typ: Type information about the values passed through the channel.
             _meta_channel: A channel used to send metadata for the tensors,
@@ -221,7 +221,7 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         self._writer = writer
         self._writer_rank: Optional[int] = None
-        self._reader_to_node = reader_to_node
+        self._reader_to_node_id = reader_to_node_id
         self._reader_ranks: Optional[List[int]] = None
         self._writer_registered: bool = False
         self._reader_registered: bool = False
@@ -243,7 +243,7 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         self._writer_rank = self._nccl_group.get_rank(self._writer)
         self._reader_ranks = [
-            self._nccl_group.get_rank(reader) for reader, _ in self._reader_to_node
+            self._nccl_group.get_rank(reader) for reader, _ in self._reader_to_node_id
         ]
 
         if (
@@ -273,7 +273,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             )
             self._meta_channel = metadata_type.create_channel(
                 self._writer,
-                self._reader_to_node,
+                self._reader_to_node_id,
             )
 
         if self._meta_channel is None:
@@ -298,7 +298,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             self.__class__,
             (
                 self._writer,
-                self._reader_to_node,
+                self._reader_to_node_id,
                 self._typ,
                 self._meta_channel,
                 self._torch_tensor_allocator,

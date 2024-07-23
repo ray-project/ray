@@ -53,13 +53,13 @@ logger = logging.getLogger(__name__)
 @DeveloperAPI
 def do_allocate_channel(
     self,
-    reader_to_node: List[Tuple["ray.actor.ActorHandle", str]],
+    reader_to_node_id: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
 ) -> ChannelInterface:
     """Generic actor method to allocate an output channel.
 
     Args:
-        reader_to_node: A list of tuples, where each tuple contains a reader
+        reader_to_node_id: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the handle is located.
         typ: The output type hint for the channel.
 
@@ -75,7 +75,7 @@ def do_allocate_channel(
 
     output_channel = typ.create_channel(
         self_actor,
-        reader_to_node,
+        reader_to_node_id,
     )
     return output_channel
 
@@ -859,7 +859,7 @@ class CompiledDAG:
                 # `readers` is the nodes that are ordered after the current one (`task`)
                 # in the DAG.
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
-                reader_to_node: List[Tuple["ray.actor.ActorHandle", str]] = []
+                reader_to_node_id: List[Tuple["ray.actor.ActorHandle", str]] = []
                 dag_nodes = [reader.dag_node for reader in readers]
                 read_by_output_node = False
                 for dag_node in dag_nodes:
@@ -894,13 +894,13 @@ class CompiledDAG:
 
                     #     compiled_dag.teardown()
                     assert self._actor_handle is not None
-                    reader_to_node.append(
+                    reader_to_node_id.append(
                         (self._actor_handle, self._get_node_id(self._actor_handle))
                     )
                 else:
                     for reader in readers:
                         reader_handle = reader.dag_node._get_actor_handle()
-                        reader_to_node.append(
+                        reader_to_node_id.append(
                             (reader_handle, self._get_node_id(reader_handle))
                         )
 
@@ -908,7 +908,7 @@ class CompiledDAG:
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
-                        reader_to_node,
+                        reader_to_node_id,
                         typ=type_hint,
                     )
                 )
@@ -916,7 +916,7 @@ class CompiledDAG:
                 self.actor_refs.add(actor_handle)
                 self.actor_to_tasks[actor_handle].append(task)
             elif isinstance(task.dag_node, InputNode):
-                reader_to_node: List[Tuple["ray.actor.ActorHandle", str]] = []
+                reader_to_node_id: List[Tuple["ray.actor.ActorHandle", str]] = []
                 # TODO (kevin85421): We need to remove reader_handles_set because
                 # readers can be on the same actor.
                 reader_handles_set = set()
@@ -925,13 +925,13 @@ class CompiledDAG:
                     assert isinstance(reader_task.dag_node, ClassMethodNode)
                     reader_handle = reader_task.dag_node._get_actor_handle()
                     if reader_handle not in reader_handles_set:
-                        reader_to_node.append(
+                        reader_to_node_id.append(
                             (reader_handle, self._get_node_id(reader_handle))
                         )
                     reader_handles_set.add(reader_handle)
                 task.output_channel = do_allocate_channel(
                     self,
-                    reader_to_node,
+                    reader_to_node_id,
                     typ=type_hint,
                 )
             else:

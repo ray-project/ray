@@ -116,7 +116,7 @@ class TorchTensorType(ChannelOutputType):
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
-        reader_to_node: List[Tuple["ray.actor.ActorHandle", str]],
+        reader_to_node_id: List[Tuple["ray.actor.ActorHandle", str]],
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
         if self.requires_nccl():
@@ -126,7 +126,7 @@ class TorchTensorType(ChannelOutputType):
 
             return TorchTensorNcclChannel(
                 writer,
-                reader_to_node,
+                reader_to_node_id,
                 self,
                 _torch_tensor_allocator=_torch_tensor_allocator,
             )
@@ -165,7 +165,7 @@ class TorchTensorType(ChannelOutputType):
         buffer_size_bytes = int(num_elements * element_size_bytes)
         buffer_size_bytes += TENSOR_METADATA_SIZE_BYTES
 
-        return Channel(writer, reader_to_node, buffer_size_bytes)
+        return Channel(writer, reader_to_node_id, buffer_size_bytes)
 
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL
