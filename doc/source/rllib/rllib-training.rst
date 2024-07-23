@@ -43,7 +43,7 @@ For example, the following code performs a simple hyper-parameter sweep of PPO.
 
 
 .. literalinclude:: ./doc_code/getting_started.py
-    :dedent: 4
+    :dedent: 0
     :language: python
     :start-after: rllib-tune-config-begin
     :end-before: rllib-tune-config-end
@@ -66,7 +66,7 @@ Tune will schedule the trials to run in parallel on your Ray cluster:
 of the training results and retrieving the checkpoint(s) of the trained agent.
 
 .. literalinclude:: ./doc_code/getting_started.py
-    :dedent: 4
+    :dedent: 0
     :language: python
     :start-after: rllib-tuner-begin
     :end-before: rllib-tuner-end

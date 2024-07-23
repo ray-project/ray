@@ -136,7 +136,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
                     "type": "EpsilonGreedy",
                     "action_space": Discrete(2),
                     "framework": fw,
-                    "num_env_runners": 0,
+                    "num_workers": 0,
                     "worker_index": 0,
                     "policy_config": {},
                     "model": None,
