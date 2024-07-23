@@ -1,4 +1,14 @@
-class InverseDynamicsModelBasedCuriosity:
+from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
+
+
+class PPOTorchLearnerWithCuriosity(PPOTorchLearner):
+    def build(self):
+        super().build()
+
+        # Add
+
+
+class InverseDynamicsBasedCuriosity:
     """Implementation of:
     [1] Curiosity-driven Exploration by Self-supervised Prediction
     Pathak, Agrawal, Efros, and Darrell - UC Berkeley - ICML 2017.
