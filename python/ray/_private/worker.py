@@ -60,6 +60,7 @@ import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
 from ray._raylet import raise_sys_exit_with_custom_error_message
 from ray._raylet import ObjectRefGenerator, TaskID
+from ray.job_config import _merge_code_search_path
 from ray.runtime_env.runtime_env import _merge_runtime_env
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
@@ -1548,6 +1549,10 @@ def init(
         injected_job_config: ray.job_config.JobConfig = (
             ray.job_config.JobConfig.from_json(injected_job_config_json)
         )
+
+        code_search_path = _merge_code_search_path(injected_job_config.code_search_path, job_config.code_search_path)
+        job_config.set_code_search_path(code_search_path)
+
         driver_runtime_env = runtime_env
         runtime_env = _merge_runtime_env(
             injected_job_config.runtime_env,

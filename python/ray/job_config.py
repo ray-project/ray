@@ -99,6 +99,17 @@ class JobConfig:
         """Serialize the struct into protobuf string"""
         return self._get_proto_job_config().SerializeToString()
 
+    def set_code_search_path(self, code_search_path: Optional[List[str]]):
+        """
+        Modify the code_search_path of the JobConfig.
+
+        Args:
+            code_search_path: A list of directories or jar files that
+                specify the search path for user code.
+        """
+        self.code_search_path = code_search_path or []
+        self._cached_pb = None
+
     def set_runtime_env(
         self,
         runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]],
@@ -247,3 +258,23 @@ class JobConfig:
             _client_job=job_config_json.get("client_job", False),
             _py_driver_sys_path=job_config_json.get("py_driver_sys_path", None),
         )
+
+
+def _merge_code_search_path(
+    parent: Optional[List[str]],
+    child: Optional[List[str]]
+):
+    """Merge the parent and child code search paths.
+
+    Args:
+        parent: Parent code search path.
+        child: Child code search path.
+    Returns:
+        The merged code search path.
+    """
+    if parent is None:
+        parent = []
+    if child is None:
+        child = []
+    #  merge two list and deduplicate
+    return list(set(parent + child))
