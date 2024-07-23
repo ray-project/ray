@@ -1,7 +1,2 @@
-doc/commit.py
-doc/source/data/api/ray.data.DataIterator.rst
-doc/source/data/api/ray.data.Dataset.rst
-doc/source/data/api/ray.data.Schema.rst
-doc/upload.py
 files.txt
 pending_files.txt

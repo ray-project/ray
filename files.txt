@@ -1,5 +1,4 @@
 .DS_Store
-.vscode/launch.json
 doc/_build/doctrees/_includes/_help.doctree
 doc/_build/doctrees/_includes/_latest_contribution_doc.doctree
 doc/_build/doctrees/_includes/rllib/new_api_stack.doctree
@@ -12722,7 +12721,6 @@ doc/source/workflows/api/doc/ray.workflow.resume_all.rst
 doc/source/workflows/api/doc/ray.workflow.resume_async.rst
 doc/source/workflows/api/doc/ray.workflow.run.rst
 doc/source/workflows/api/doc/ray.workflow.run_async.rst
-extract.py
 python/__pycache__/setup.cpython-312.pyc
 python/ray/__pycache__/__init__.cpython-312.pyc
 python/ray/__pycache__/_version.cpython-312.pyc
@@ -13642,7 +13640,6 @@ rllib/utils/__pycache__/framework.cpython-312.pyc
 rllib/utils/__pycache__/from_config.cpython-312.pyc
 rllib/utils/__pycache__/images.cpython-312.pyc
 rllib/utils/__pycache__/minibatch_utils.cpython-312.pyc
-rllib/utils/__pycache__/nested_dict.cpython-312.pyc
 rllib/utils/__pycache__/numpy.cpython-312.pyc
 rllib/utils/__pycache__/policy.cpython-312.pyc
 rllib/utils/__pycache__/serialization.cpython-312.pyc
