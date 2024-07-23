@@ -391,8 +391,10 @@ def test_redis_full(ray_start_cluster_head):
 
     gcs_cli = ray._raylet.GcsClient(address=gcs_address)
     # GCS should fail
+    # GcsClient assumes GCS is HA so it keeps retrying, although GCS is down. We must
+    # set timeout for this.
     with pytest.raises(ray.exceptions.RpcError):
-        gcs_cli.internal_kv_put(b"A", b"A" * 6 * 1024 * 1024, True, None)
+        gcs_cli.internal_kv_put(b"A", b"A" * 6 * 1024 * 1024, True, timeout=5)
     logs_dir = ray_start_cluster_head.head_node._logs_dir
 
     with open(os.path.join(logs_dir, "gcs_server.err")) as err:

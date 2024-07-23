@@ -90,6 +90,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
+    // Create GCS client.
     ReconnectClient();
   }
 
@@ -110,6 +111,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     rpc::ResetServerCallExecutor();
   }
 
+  // Each GcsClient has its own const cluster_id, so to reconnect we re-create the client.
   void ReconnectClient() {
     // Reconnecting a client happens when the server restarts with a different cluster
     // id. So we nede to re-create the client with the new cluster id.
