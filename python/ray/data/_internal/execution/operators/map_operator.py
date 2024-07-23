@@ -433,10 +433,6 @@ class MapOperator(OneToOneOperator, ABC):
         #   to reflect the actual data processing tasks.
         return len(self._data_tasks)
 
-    @property
-    def estimated_output_num_rows(self) -> Optional[int]:
-        return getattr(self, "_estimated_output_num_rows", 0)
-
 
 def _map_task(
     map_transformer: MapTransformer,

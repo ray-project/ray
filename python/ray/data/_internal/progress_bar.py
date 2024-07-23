@@ -18,7 +18,6 @@ except ImportError:
 _canceled_threads = set()
 _canceled_threads_lock = threading.Lock()
 
-
 @Deprecated
 def set_progress_bars(enabled: bool) -> bool:
     """Set whether progress bars are enabled.
