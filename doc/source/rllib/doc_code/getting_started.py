@@ -29,54 +29,54 @@ for i in range(10):
 
 algo.stop()
 
+if False:
+    # __rllib-tune-config-begin__
+    from ray import train, tune
 
-# __rllib-tune-config-begin__
-from ray import train, tune
-
-config = (
-    PPOConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
+    config = (
+        PPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        .environment("CartPole-v1")
+        .training(
+            lr=tune.grid_search([0.01, 0.001, 0.0001]),
+        )
     )
-    .environment("CartPole-v1")
-    .training(
-        lr=tune.grid_search([0.01, 0.001, 0.0001]),
+
+    tuner = tune.Tuner(
+        "PPO",
+        param_space=config,
+        run_config=train.RunConfig(
+            stop={"env_runners/episode_return_mean": 150.0},
+        ),
     )
-)
 
-tuner = tune.Tuner(
-    "PPO",
-    param_space=config,
-    run_config=train.RunConfig(
-        stop={"env_runners/episode_return_mean": 150.0},
-    ),
-)
+    tuner.fit()
+    # __rllib-tune-config-end__
 
-tuner.fit()
-# __rllib-tune-config-end__
+    # __rllib-tuner-begin__
+    # Tuner.fit() allows setting a custom log directory (other than ~/ray-results).
+    tuner = tune.Tuner(
+        "PPO",
+        param_space=config,
+        run_config=train.RunConfig(
+            stop={"env_runners/episode_return_mean": 150.0},
+            checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
+        ),
+    )
 
-# __rllib-tuner-begin__
-# Tuner.fit() allows setting a custom log directory (other than ~/ray-results).
-tuner = tune.Tuner(
-    "PPO",
-    param_space=config,
-    run_config=train.RunConfig(
-        stop={"env_runners/episode_return_mean": 150.0},
-        checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
-    ),
-)
+    results = tuner.fit()
 
-results = tuner.fit()
+    # Get the best result based on a particular metric.
+    best_result = results.get_best_result(
+        metric="env_runners/episode_return_mean", mode="max"
+    )
 
-# Get the best result based on a particular metric.
-best_result = results.get_best_result(
-    metric="env_runners/episode_return_mean", mode="max"
-)
-
-# Get the best checkpoint corresponding to the best result.
-best_checkpoint = best_result.checkpoint
-# __rllib-tuner-end__
+    # Get the best checkpoint corresponding to the best result.
+    best_checkpoint = best_result.checkpoint
+    # __rllib-tuner-end__
 
 
 # __rllib-compute-action-begin__
