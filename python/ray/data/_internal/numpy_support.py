@@ -1,4 +1,5 @@
 import collections
+from datetime import datetime
 from typing import Any, Dict, List, Union
 
 import numpy as np
@@ -38,6 +39,28 @@ def validate_numpy_batch(batch: Union[Dict[str, np.ndarray], Dict[str, list]]) -
             f"a numpy batch to a block, got: {type(batch)} "
             f"({_truncated_repr(batch)})"
         )
+ 
+def _detect_highest_datetime_precision_dtype(datetime_list: List[datetime]) -> str:
+    highest_precision = 'datetime64[D]'  # Start with day precision
+    
+    for dt in datetime_list:
+        if dt.microsecond != 0:
+            highest_precision = 'datetime64[ns]'
+            break
+        elif dt.second != 0:
+            highest_precision = 'datetime64[s]'
+        elif dt.minute != 0:
+            highest_precision = 'datetime64[m]'
+        elif dt.hour != 0:
+            highest_precision = 'datetime64[h]'
+    
+    return highest_precision
+
+def _convert_datetime_list_to_array(datetime_list: List[datetime]) -> np.ndarray:
+    # Detect highest precision
+    dtype_with_precision = _detect_highest_datetime_precision_dtype(datetime_list)
+        
+    return np.array([np.datetime64(dt) for dt in datetime_list], dtype=dtype_with_precision)
 
 
 def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
@@ -63,6 +86,9 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
             # Optimization to avoid conversion overhead from list to np.array.
             udf_return_col = np.expand_dims(udf_return_col[0], axis=0)
             return udf_return_col
+
+        if all(isinstance(elem, datetime) for elem in udf_return_col):
+            return _convert_datetime_list_to_array(udf_return_col)
 
         # Try to convert list values into an numpy array via
         # np.array(), so users don't need to manually cast.
