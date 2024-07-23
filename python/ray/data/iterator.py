@@ -676,6 +676,7 @@ class DataIterator(abc.ABC):
         feature_columns: Union[str, List[str]],
         label_columns: Union[str, List[str]],
         *,
+        additional_columns: Union[str, List[str]] = None,
         prefetch_batches: int = 1,
         batch_size: int = 1,
         drop_last: bool = False,
@@ -683,6 +684,7 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        additional_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -746,6 +748,9 @@ class DataIterator(abc.ABC):
             label_column: Columns that correspond to model targets. If this is a
                 string, the target data is a tensor. If this is a list, the target data
                 is a ``dict`` that maps column names to their tensor representation.
+            additional_columns: Columns that correspond to sample weights or other metadata.
+                If this is a string, the weight data is a tensor. If this is a list, the
+                weight data is a ``dict`` that maps column names to their tensor representation.
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
@@ -772,6 +777,10 @@ class DataIterator(abc.ABC):
                 only one column, specify a `tf.TypeSpec`. If there are multiple columns,
                 specify a ``dict`` that maps column names to their `tf.TypeSpec`.
                 Default is `None` to automatically infer the type of each column.
+            additional_type_spec: The `tf.TypeSpec` of `additional_columns`. If there
+                is only one column, specify a `tf.TypeSpec`. If there are multiple
+                columns, specify a ``dict`` that maps column names to their `tf.TypeSpec`.
+                Default is `None` to automatically infer the type of each column. 
 
         Returns:
             A ``tf.data.Dataset`` that yields inputs and targets.
@@ -832,7 +841,14 @@ class DataIterator(abc.ABC):
                 labels = convert_batch_to_tensors(
                     batch, columns=label_columns, type_spec=label_type_spec
                 )
-                yield features, labels
+
+                if additional_columns is None:
+                    yield features, labels
+                else:
+                    additional_metadata = convert_batch_to_tensors(
+                        batch, columns=additional_columns, type_spec=additional_type_spec
+                    )
+                    yield features, labels, additional_metadata
 
         if feature_type_spec is None or label_type_spec is None:
             schema = self.schema()
@@ -842,9 +858,20 @@ class DataIterator(abc.ABC):
             feature_type_spec = get_type_spec(schema, columns=feature_columns)
             label_type_spec = get_type_spec(schema, columns=label_columns)
 
-        dataset = tf.data.Dataset.from_generator(
-            generator, output_signature=(feature_type_spec, label_type_spec)
-        )
+        if additional_columns is not None and additional_type_spec is None:
+            schema = self.schema()
+            valid_columns = set(schema.names)
+            validate_columns(additional_columns)
+            additional_type_spec = get_type_spec(schema, columns=additional_columns)
+
+        if additional_columns is None:
+            dataset = tf.data.Dataset.from_generator(
+                generator, output_signature=(feature_type_spec, label_type_spec)
+            )
+        else:
+            dataset = tf.data.Dataset.from_generator(
+                generator, output_signature=(feature_type_spec, label_type_spec, additional_type_spec)
+            )
 
         options = tf.data.Options()
         options.experimental_distribute.auto_shard_policy = (
