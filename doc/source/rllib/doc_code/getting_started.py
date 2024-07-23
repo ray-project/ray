@@ -56,27 +56,30 @@ if False:
     tuner.fit()
     # __rllib-tune-config-end__
 
-    # __rllib-tuner-begin__
-    # Tuner.fit() allows setting a custom log directory (other than ~/ray-results).
-    tuner = tune.Tuner(
-        "PPO",
-        param_space=config,
-        run_config=train.RunConfig(
-            stop={"env_runners/episode_return_mean": 150.0},
-            checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
-        ),
-    )
 
-    results = tuner.fit()
+# __rllib-tuner-begin__
+from ray import train, tune
 
-    # Get the best result based on a particular metric.
-    best_result = results.get_best_result(
-        metric="env_runners/episode_return_mean", mode="max"
-    )
+# Tuner.fit() allows setting a custom log directory (other than ~/ray-results).
+tuner = tune.Tuner(
+    "PPO",
+    param_space=config,
+    run_config=train.RunConfig(
+        stop={"num_env_steps_sampled_lifetime": 20000},
+        checkpoint_config=train.CheckpointConfig(checkpoint_at_end=True),
+    ),
+)
 
-    # Get the best checkpoint corresponding to the best result.
-    best_checkpoint = best_result.checkpoint
-    # __rllib-tuner-end__
+results = tuner.fit()
+
+# Get the best result based on a particular metric.
+best_result = results.get_best_result(
+    metric="env_runners/episode_return_mean", mode="max"
+)
+
+# Get the best checkpoint corresponding to the best result.
+best_checkpoint = best_result.checkpoint
+# __rllib-tuner-end__
 
 
 # __rllib-compute-action-begin__
