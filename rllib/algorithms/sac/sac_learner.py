@@ -4,7 +4,6 @@ from typing import Dict
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_learner import DQNRainbowLearner
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.typing import ModuleID, TensorType
@@ -41,16 +40,6 @@ class SACLearner(DQNRainbowLearner):
         # for the alpha already defined.
         super().build()
 
-        # Make target networks.
-        # TODO (sven): Move to DQN, once DQN implements the TargetNetworkAPI.
-        self.module.foreach_module(
-            lambda mid, mod: (
-                mod.make_target_networks()
-                if isinstance(mod, TargetNetworkAPI)
-                else None
-            )
-        )
-
         def get_target_entropy(module_id):
             """Returns the target entropy to use for the loss.
 
@@ -63,7 +52,6 @@ class SACLearner(DQNRainbowLearner):
             """
             target_entropy = self.config.get_config_for_module(module_id).target_entropy
             if target_entropy is None or target_entropy == "auto":
-                # TODO (sven): Do we always have the `config.action_space` here?
                 target_entropy = -np.prod(
                     self._module_spec.module_specs[module_id].action_space.shape
                 )
