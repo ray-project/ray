@@ -613,6 +613,54 @@ cdef c_vector[CObjectID] ObjectRefsToVector(object_refs):
     return result
 
 
+cdef c_vector[CNodeID] NodeIDsToVector(node_ids):
+    """A helper function that converts a Python list of node ids to a vector.
+
+    Args:
+        node_ids (list): The Python list of node ids.
+
+    Returns:
+        The output vector.
+    """
+    cdef:
+        c_vector[CNodeID] result
+    for node_id in node_ids:
+        result.push_back(CNodeID.FromHex(node_id))
+    return result
+
+
+cdef c_vector[CActorID] ActorIDsToVector(actor_ids):
+    """A helper function that converts a Python list of actor ids to a vector.
+
+    Args:
+        actor_ids (list): The Python list of actor ids.
+
+    Returns:
+        The output vector.
+    """
+    cdef:
+        c_vector[CActorID] result
+    for actor_id in actor_ids:
+        result.push_back((<ActorID>actor_id).native())
+    return result
+
+
+cdef c_vector[int64_t] IntListToVector(int_list):
+    """A helper function that converts a Python list of integers to a vector.
+
+    Args:
+        int_list (list): The Python list of integers.
+
+    Returns:
+        The output vector.
+    """
+    cdef:
+        c_vector[int64_t] result
+    for i in int_list:
+        result.push_back(i)
+    return result
+
+
 def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes):
     cdef:
         CActorTableData data
@@ -3689,36 +3737,57 @@ cdef class CoreWorker:
 
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,
-                                             ObjectRef reader_ref,
-                                             writer_node,
-                                             reader_node,
-                                             ActorID reader,
-                                             int64_t num_readers):
+                                             reader_refs,
+                                             remote_reader_nodes,
+                                             reader_actors,
+                                             num_readers):
+
+        """
+        Args:
+            writer_ref: The object reference of the writer.
+            reader_refs: A list of object references, each corresponding to a remote
+                reader node.
+            remote_reader_nodes: The node IDs of the remote reader nodes. There are
+                no duplicate node IDs in the list.
+            reader_actors: A list of actor IDs, each corresponding to a reader actor
+                for a remote reader node.
+            num_readers: The number of readers for each remote reader node.
+
+        Note:
+            The lengths of `reader_refs`, `remote_reader_nodes`, `reader_actors`, and
+            `num_readers` should be the same. For a given index i, `reader_refs[i]` is
+            the object reference of the remote reader node `remote_reader_nodes[i]`,
+            with a reader actor ID `reader_actors[i]` and `num_readers[i]` as the number
+            of readers on the node.
+        """
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
-            CObjectID c_reader_ref = reader_ref.native()
-            CNodeID c_reader_node = CNodeID.FromHex(reader_node)
-            CNodeID *c_reader_node_id = NULL
-            CActorID c_reader_actor = reader.native()
+            c_vector[CNodeID] c_remote_reader_nodes = NodeIDsToVector(
+                remote_reader_nodes
+            )
+            c_vector[CObjectID] c_reader_refs = ObjectRefsToVector(reader_refs)
+            c_vector[CActorID] c_reader_actors = ActorIDsToVector(reader_actors)
+            c_vector[int64_t] c_num_readers = IntListToVector(num_readers)
 
-        if num_readers == 0:
-            return
-        if writer_node != reader_node:
-            c_reader_node_id = &c_reader_node
+        for num_reader in num_readers:
+            if num_reader == 0:
+                # TODO (kevin85421): Maybe we should raise a ValueError instead?
+                return
 
+        # TODO (kevin85421): how to support readers on both local and remote?
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .ExperimentalRegisterMutableObjectWriter(c_writer_ref,
-                                                                  c_reader_node_id,
+                                                                  c_remote_reader_nodes,
                                                                   ))
-        if writer_node != reader_node:
+        if len(remote_reader_nodes) != 0:
             with nogil:
                 check_status(
                         CCoreWorkerProcess.GetCoreWorker()
                         .ExperimentalRegisterMutableObjectReaderRemote(c_writer_ref,
-                                                                       c_reader_actor,
-                                                                       num_readers,
-                                                                       c_reader_ref
+                                                                       c_reader_actors,
+                                                                       c_num_readers,
+                                                                       c_reader_refs
                                                                        ))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
@@ -3729,22 +3798,6 @@ cdef class CoreWorker:
             check_status(
                 CCoreWorkerProcess.GetCoreWorker()
                 .ExperimentalRegisterMutableObjectReader(c_object_id))
-
-    def experimental_channel_read_release(self, object_refs):
-        """
-        For experimental.channel.Channel.
-
-        Signal to the writer that the channel is ready to write again. The read
-        began when the caller calls ray.get and a written value is available. If
-        ray.get is not called first, then this call will block until a value is
-        written, then drop the value.
-        """
-        cdef:
-            c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
-        with nogil:
-            op_status = (CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelReadRelease(c_object_ids))
-        check_status(op_status)
 
     def put_serialized_object_and_increment_local_ref(
             self, serialized_object,

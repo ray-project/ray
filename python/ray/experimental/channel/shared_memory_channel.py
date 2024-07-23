@@ -210,11 +210,6 @@ class Channel(ChannelInterface):
             typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE)
         elif isinstance(typ, int):
             typ = SharedMemoryType(typ)
-        elif not isinstance(typ, SharedMemoryType):
-            raise ValueError(
-                "`typ` must be an `int` representing the max buffer size in "
-                "bytes or a SharedMemoryType"
-            )
 
         if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
             raise ValueError(
@@ -273,14 +268,7 @@ class Channel(ChannelInterface):
                 ray.runtime_context.get_runtime_context().get_node_id()
             )
             self._writer_ref = _create_channel_ref(self, typ.buffer_size_bytes)
-
             self._reader_node_id = _get_reader_node_id(self, readers[0])
-            for reader in readers:
-                reader_node_id = _get_reader_node_id(self, reader)
-                if reader_node_id != self._reader_node_id:
-                    raise NotImplementedError(
-                        "All readers must be on the same node for now."
-                    )
             self._create_reader_ref(readers, typ.buffer_size_bytes)
 
             assert self._reader_ref is not None
@@ -345,13 +333,28 @@ class Channel(ChannelInterface):
             self._reader_ref
         ), "`self._reader_ref` must be not be None when registering a writer, because "
         "it should have been initialized in the constructor."
+
+        # TODO (kevin85421): When we support multiple readers, we need to make sure
+        # there is no duplicate node id in remote_reader_nodes. In addition, we also
+        # need to make sure the order of ref_on_remote_reader_nodes,
+        # remote_reader_nodes, actor_on_remote_reader_nodes, and
+        # num_readers_on_remote_reader_nodesare consistent.
+        remote_reader_nodes = []
+        ref_on_remote_reader_nodes = []
+        actor_on_remote_reader_nodes = []
+        num_readers_on_remote_reader_nodes = []
+        if self._reader_node_id != self._writer_node_id:
+            remote_reader_nodes.append(self._reader_node_id)
+            ref_on_remote_reader_nodes.append(self._reader_ref)
+            actor_on_remote_reader_nodes.append(self._readers[0]._actor_id)
+            num_readers_on_remote_reader_nodes.append(len(self._readers))
+
         self._worker.core_worker.experimental_channel_register_writer(
             self._writer_ref,
-            self._reader_ref,
-            self._writer_node_id,
-            self._reader_node_id,
-            self._readers[0]._actor_id,
-            len(self._readers),
+            ref_on_remote_reader_nodes,
+            remote_reader_nodes,
+            actor_on_remote_reader_nodes,
+            num_readers_on_remote_reader_nodes,
         )
         self._writer_registered = True
 

@@ -1487,58 +1487,56 @@ Status CoreWorker::ExperimentalChannelReadRelease(
   return experimental_mutable_object_provider_->ReadRelease(object_ids[0]);
 }
 
-Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
-                                                           const NodeID *node_id) {
-  experimental_mutable_object_provider_->RegisterWriterChannel(object_id, node_id);
+Status CoreWorker::ExperimentalRegisterMutableObjectWriter(
+    const ObjectID &object_id, const std::vector<NodeID> &node_ids) {
+  experimental_mutable_object_provider_->RegisterWriterChannel(object_id, node_ids);
   return Status::OK();
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     const ObjectID &writer_object_id,
-    const ActorID &reader_actor,
-    int64_t num_readers,
-    const ObjectID &reader_object_id) {
-  rpc::Address addr;
-  {
-    std::promise<void> promise;
-    RAY_CHECK(gcs_client_->Actors()
-                  .AsyncGet(reader_actor,
-                            [&addr, &promise](
-                                Status status,
-                                const boost::optional<rpc::ActorTableData> &result) {
-                              RAY_CHECK(result);
-                              if (result) {
+    const std::vector<ActorID> &reader_actors,
+    std::vector<int64_t> num_readers,
+    const std::vector<ObjectID> &reader_object_ids) {
+  for (size_t i = 0; i < reader_object_ids.size(); i++) {
+    rpc::Address addr;
+    {
+      std::promise<void> promise;
+      RAY_CHECK(gcs_client_->Actors()
+                    .AsyncGet(reader_actors[i],
+                              [&addr, &promise](
+                                  Status status,
+                                  const boost::optional<rpc::ActorTableData> &result) {
+                                RAY_CHECK(result);
                                 addr.set_ip_address(result->address().ip_address());
                                 addr.set_port(result->address().port());
                                 addr.set_worker_id(result->address().worker_id());
-                              }
-                              promise.set_value();
-                            })
-                  .ok());
-    promise.get_future().wait();
-  }
+                                promise.set_value();
+                              })
+                    .ok());
+      promise.get_future().wait();
+    }
 
-  // TODO(jhumphri): Support case where there are readers on multiple different nodes.
-  // Currently, this code only supports the case where all readers are on a single node.
-  {
-    std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
-        core_worker_client_pool_->GetOrConnect(addr);
+    {
+      std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
+          core_worker_client_pool_->GetOrConnect(addr);
 
-    rpc::RegisterMutableObjectReaderRequest req;
-    req.set_writer_object_id(writer_object_id.Binary());
-    req.set_num_readers(num_readers);
-    req.set_reader_object_id(reader_object_id.Binary());
-    rpc::RegisterMutableObjectReaderReply reply;
+      rpc::RegisterMutableObjectReaderRequest req;
+      req.set_writer_object_id(writer_object_id.Binary());
+      req.set_num_readers(num_readers[i]);
+      req.set_reader_object_id(reader_object_ids[i].Binary());
+      rpc::RegisterMutableObjectReaderReply reply;
 
-    std::promise<void> promise;
-    conn->RegisterMutableObjectReader(
-        req,
-        [&promise](const Status &status,
-                   const rpc::RegisterMutableObjectReaderReply &reply) {
-          RAY_CHECK(status.ok());
-          promise.set_value();
-        });
-    promise.get_future().wait();
+      std::promise<void> promise;
+      conn->RegisterMutableObjectReader(
+          req,
+          [&promise](const Status &status,
+                     const rpc::RegisterMutableObjectReaderReply &reply) {
+            RAY_CHECK(status.ok());
+            promise.set_value();
+          });
+      promise.get_future().wait();
+    }
   }
 
   return Status::OK();
