@@ -469,6 +469,8 @@ TEST_F(EventTest, TestWithField) {
 }
 
 TEST_F(EventTest, TestEventJSON) {
+  // TODO: The source_type should be updated to an export event type when
+  // those events are added to pass validation checks.
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_RAYLET);
 

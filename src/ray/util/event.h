@@ -78,6 +78,8 @@ namespace ray {
                   __FILE__,                                                     \
                   __LINE__)
 
+// RAY_EXPORT_EVENT is intended to be used with WithField to specify "event_data"
+// and "is_delta_event"
 #define RAY_EXPORT_EVENT() ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_INFO,            \
                   ray::RayEvent::EventLevelToLogLevel(                                               \
                       ::ray::rpc::Event_Severity::Event_Severity_INFO),                              \

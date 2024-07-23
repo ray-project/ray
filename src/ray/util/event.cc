@@ -121,7 +121,14 @@ std::string LogEventReporter::ExportEventToString(const rpc::Event &event,
 
 bool LogEventReporter::IsExportEvent(const rpc::Event &event,
                                             const json &custom_fields) {
-  /* Returns True if the given event is an export event, and False otherwise.*/
+  /* Determine if the given event is an export event based on the source_type
+    field. For export events, validate if event_data and is_delta_event are
+    populated in the custom_fields.
+    Raises an error if the given event is an invalid export event. Otherwise, 
+    returns True if event is a valid export event and false if not. */
+
+  // TODO: Validate export event per the source_type field once export event
+  // sources are added to the Event_SourceType_Name enum
   return (custom_fields.contains("event_data") && custom_fields.contains("is_delta_event"));
 }
 
