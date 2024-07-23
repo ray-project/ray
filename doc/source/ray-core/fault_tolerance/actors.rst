@@ -205,16 +205,19 @@ For example, if a caller sends infinitely retryable tasks `0`, `1`, `2`, `3` to 
 
 A possible execution order from actor's perspective:
 
-```
-0 1 2 3 4 3 5 2
-^ ^ executed and replied in order
-    ^ ^ executed but can't reply due to connection break
-        ^   ^ received after connection break
-          ^   ^ retries out of order
-```
+.. code-block:: text
+
+  0 1 2 3 4 3 5 2
+  ^ ^ executed and replied in order
+      ^ ^ executed but can't reply due to connection break
+          ^   ^ received after connection break
+            ^   ^ retries out of order
+
 
 And from the caller's perspective:
 
-```
-0 1     4 3 5 2
-```
+.. code-block:: text
+
+  0 1     4 3 5 2
+  ^ ^     ^   ^ executed in order
+            ^   ^ retries out of order

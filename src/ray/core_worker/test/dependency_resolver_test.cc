@@ -72,6 +72,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
   }
 
   bool RetryTaskIfPossible(const TaskID &task_id,
+                           bool update_seqno,
                            const rpc::RayErrorInfo &error_info) override {
     num_task_retries_attempted++;
     return false;
@@ -89,6 +90,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
                               const Status *status,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
                               bool mark_task_object_failed = true,
+                              bool update_seqno = true,
                               bool fail_immediately = false) override {
     num_tasks_failed++;
     return true;
