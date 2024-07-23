@@ -32,50 +32,47 @@ message AutoscalingConfig {
   // to min_replicas.
   uint32 max_replicas = 2;
 
-  // [DEPRECATED] Use `target_ongoing_requests` instead.
-  double target_num_ongoing_requests_per_replica = 3;
-
   // The frequency of how long does each replica sending metrics to autoscaler.
-  double metrics_interval_s = 4;
+  double metrics_interval_s = 3;
 
   // The window (in seconds) for autoscaler to calculate rolling average of metrics on.
-  double look_back_period_s = 5;
+  double look_back_period_s = 4;
 
   // [DEPRECATED] Use `upscaling_factor` and/or `downscaling_factor` instead.
-  double smoothing_factor = 6;
+  double smoothing_factor = 5;
 
   // How long to wait before scaling down replicas.
-  double downscale_delay_s = 7;
+  double downscale_delay_s = 6;
 
   // How long to wait before scaling up replicas.
-  double upscale_delay_s = 8;
+  double upscale_delay_s = 7;
 
   // Initial number of replicas deployment should start with. Must be non-negative.
-  optional uint32 initial_replicas = 9;
+  optional uint32 initial_replicas = 8;
 
   // [DEPRECATED] Use `upscaling_factor` instead.
-  optional double upscale_smoothing_factor = 10;
+  optional double upscale_smoothing_factor = 9;
 
   // [DEPRECATED] Use `downscaling_factor` instead.
-  optional double downscale_smoothing_factor = 11;
+  optional double downscale_smoothing_factor = 10;
 
   // The cloudpickled policy definition.
-  bytes _serialized_policy_def = 12;
+  bytes _serialized_policy_def = 11;
 
   // The import path of the policy if user passed a string. Will be the concatenation
   // of the policy module and the policy name if user passed a callable.
-  string _policy = 13;
+  string _policy = 12;
 
   // Target number of in flight requests per replica. This is the primary configuration
   // knob for replica autoscaler. Lower the number, the more rapidly the replicas
   // scales up. Must be a non-negative integer.
-  double target_ongoing_requests = 14;
+  double target_ongoing_requests = 13;
 
   // The multiplicative "gain" factor to limit upscale.
-  optional double upscaling_factor = 15;
+  optional double upscaling_factor = 14;
 
   // The multiplicative "gain" factor to limit downscale.
-  optional double downscaling_factor = 16;
+  optional double downscaling_factor = 15;
 }
 
 //[Begin] LOGGING CONFIG

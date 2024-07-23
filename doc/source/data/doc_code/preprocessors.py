@@ -99,7 +99,7 @@ import ray
 from pandas import DataFrame
 from ray.data.preprocessor import Preprocessor
 from ray.data import Dataset
-from ray.data.aggregate import Max
+from ray.data._internal.aggregate import Max
 
 
 class CustomPreprocessor(Preprocessor):

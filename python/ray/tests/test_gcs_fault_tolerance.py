@@ -436,6 +436,9 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
 
 @pytest.mark.parametrize("auto_reconnect", [True, False])
 def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconnect):
+    if os.environ.get("RAY_USE_OLD_GCS_CLIENT") != "1" and not auto_reconnect:
+        pytest.skip("New GCS client always reconnects.")
+
     gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = ray._raylet.GcsClient(
         address=gcs_address, nums_reconnect_retry=20 if auto_reconnect else 0
@@ -467,6 +470,9 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconn
 def test_gcs_aio_client_reconnect(
     ray_start_regular_with_external_redis, auto_reconnect
 ):
+    if os.environ.get("RAY_USE_OLD_GCS_CLIENT") != "1" and not auto_reconnect:
+        pytest.skip("New GCS client always reconnects.")
+
     gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = ray._raylet.GcsClient(address=gcs_address)
 

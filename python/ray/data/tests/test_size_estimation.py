@@ -1,10 +1,12 @@
 import os
 import uuid
+from typing import Iterable
 
 import pytest
 
 import ray
 from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.tests.conftest import *  # noqa
 
 SMALL_VALUE = "a" * 100
@@ -187,17 +189,24 @@ def test_split_map(shutdown_only, use_actors):
     ctx.target_max_block_size = 20_000_000
     ctx.target_max_block_size = 20_000_000
     ds2 = ray.data.range(1000, override_num_blocks=1).map(arrow_fn, **kwargs)
-    nblocks = len(ds2.map(identity_fn, **kwargs).get_internal_block_refs())
+    bundles: Iterable[RefBundle] = ds2.map(
+        identity_fn, **kwargs
+    ).iter_internal_ref_bundles()
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds2.map(identity_fn, **kwargs).get_internal_block_refs())
+    bundles: Iterable[RefBundle] = ds2.map(
+        identity_fn, **kwargs
+    ).iter_internal_ref_bundles()
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert 4 < nblocks < 7 or use_actors, nblocks
 
     # Disabled.
     # Setting a huge block size effectively disables block splitting.
     ctx.target_max_block_size = 2**64
     ds3 = ray.data.range(1000, override_num_blocks=1).map(arrow_fn, **kwargs)
-    nblocks = len(ds3.map(identity_fn, **kwargs).get_internal_block_refs())
+    bundles = ds3.map(identity_fn, **kwargs).iter_internal_ref_bundles()
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert nblocks == 1, nblocks
 
 
@@ -207,10 +216,12 @@ def test_split_flat_map(ray_start_regular_shared):
     # Arrow block
     ctx.target_max_block_size = 20_000_000
     ds2 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
-    nblocks = len(ds2.flat_map(lambda x: [x]).get_internal_block_refs())
+    bundles = ds2.flat_map(lambda x: [x]).iter_internal_ref_bundles()
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds2.flat_map(lambda x: [x]).get_internal_block_refs())
+    bundles = ds2.flat_map(lambda x: [x]).iter_internal_ref_bundles()
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert 4 < nblocks < 7, nblocks
 
 
@@ -220,10 +231,12 @@ def test_split_map_batches(ray_start_regular_shared):
     # Arrow block
     ctx.target_max_block_size = 20_000_000
     ds2 = ray.data.range(1000, override_num_blocks=1).map(lambda _: ARROW_LARGE_VALUE)
-    nblocks = len(ds2.map_batches(lambda x: x, batch_size=1).get_internal_block_refs())
+    bundles = ds2.map_batches(lambda x: x, batch_size=1).iter_internal_ref_bundles()
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert nblocks == 1, nblocks
     ctx.target_max_block_size = 2_000_000
-    nblocks = len(ds2.map_batches(lambda x: x, batch_size=16).get_internal_block_refs())
+    bundles = ds2.map_batches(lambda x: x, batch_size=16).iter_internal_ref_bundles()
+    nblocks = sum(len(b.block_refs) for b in bundles)
     assert 4 < nblocks < 7, nblocks
 
 

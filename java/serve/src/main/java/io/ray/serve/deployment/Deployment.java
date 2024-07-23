@@ -100,7 +100,7 @@ public class Deployment {
         .setRoutePrefix(this.routePrefix)
         .setRayActorOptions(this.replicaConfig.getRayActorOptions())
         .setUserConfig(this.deploymentConfig.getUserConfig())
-        .setMaxConcurrentQueries(this.deploymentConfig.getMaxConcurrentQueries())
+        .setMaxOngoingRequests(this.deploymentConfig.getMaxOngoingRequests())
         .setAutoscalingConfig(this.deploymentConfig.getAutoscalingConfig())
         .setGracefulShutdownWaitLoopS(this.deploymentConfig.getGracefulShutdownWaitLoopS())
         .setGracefulShutdownTimeoutS(this.deploymentConfig.getGracefulShutdownTimeoutS())

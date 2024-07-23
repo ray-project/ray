@@ -544,7 +544,7 @@ def format_pg(pg):
 
 def parse_placement_group_resource_str(
     placement_group_resource_str: str,
-) -> Tuple[str, Optional[str]]:
+) -> Tuple[str, Optional[str], bool]:
     """Parse placement group resource in the form of following 3 cases:
     {resource_name}_group_{bundle_id}_{group_name};
     -> This case is ignored as it is duplicated to the case below.

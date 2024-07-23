@@ -271,6 +271,7 @@ class ClientCallManager {
 
   /// Get the cluster ID.
   const ClusterID &GetClusterId() const { return cluster_id_; }
+  void SetClusterId(const ClusterID &cluster_id) { cluster_id_ = cluster_id; }
 
   /// Get the main service of this rpc.
   instrumented_io_context &GetMainService() { return main_service_; }

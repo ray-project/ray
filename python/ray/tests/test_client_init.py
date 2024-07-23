@@ -43,8 +43,8 @@ class C:
 
 @pytest.mark.xfail(cluster_not_supported, reason="cluster not supported")
 @pytest.fixture
-def init_and_serve_lazy():
-    cluster = ray.cluster_utils.Cluster()
+def init_and_serve_lazy(ray_start_cluster):
+    cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, num_gpus=0)
     cluster.wait_for_nodes(1)
     address = cluster.address
@@ -55,7 +55,6 @@ def init_and_serve_lazy():
     server_handle = ray_client_server.serve("localhost:50051", connect)
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
-    time.sleep(2)
 
 
 def test_validate_port():

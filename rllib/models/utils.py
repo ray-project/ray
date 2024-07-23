@@ -1,6 +1,7 @@
 from typing import Callable, Optional, Union
 
 from ray.rllib.core.models.specs.specs_base import TensorSpec
+
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
@@ -8,11 +9,11 @@ from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_
 
 @DeveloperAPI
 def input_to_output_specs(
-    input_specs: SpecDict,
+    input_specs,
     num_input_feature_dims: int,
     output_key: str,
     output_feature_spec: TensorSpec,
-) -> SpecDict:
+):
     """Convert an input spec to an output spec, based on a module.
 
     Drops the feature dimension(s) from an input_specs, replacing them with

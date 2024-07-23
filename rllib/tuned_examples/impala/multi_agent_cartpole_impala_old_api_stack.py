@@ -1,5 +1,5 @@
 # @OldAPIStack
-from ray.rllib.algorithms.impala import ImpalaConfig
+from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -12,7 +12,7 @@ tune.registry.register_env("env", lambda cfg: MultiAgentCartPole(config=cfg))
 
 
 config = (
-    ImpalaConfig()
+    IMPALAConfig()
     .environment("env", env_config={"num_agents": 4})
     .env_runners(
         num_envs_per_env_runner=5,

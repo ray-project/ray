@@ -69,7 +69,8 @@ def test_zip_different_num_blocks_split_smallest(
         override_num_blocks=num_blocks2,
     )
     ds = ds1.zip(ds2).materialize()
-    num_blocks = len(ds.get_internal_block_refs())
+    bundles = ds.iter_internal_ref_bundles()
+    num_blocks = sum(len(b.block_refs) for b in bundles)
     assert ds.take() == [{str(i): i for i in range(num_cols1 + num_cols2)}] * n
     if should_invert:
         assert num_blocks == num_blocks2

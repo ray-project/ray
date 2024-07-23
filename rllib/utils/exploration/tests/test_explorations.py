@@ -90,7 +90,7 @@ class TestExplorations(unittest.TestCase):
 
     def test_impala(self):
         config = (
-            impala.ImpalaConfig()
+            impala.IMPALAConfig()
             .environment("CartPole-v1")
             .env_runners(num_env_runners=0)
             .resources(num_gpus=0)

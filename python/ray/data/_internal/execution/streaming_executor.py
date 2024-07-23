@@ -30,7 +30,7 @@ from ray.data._internal.execution.streaming_executor_state import (
 from ray.data._internal.logging import get_log_directory
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
-from ray.data.context import DataContext
+from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +124,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
-            self._global_info = ProgressBar("Running", dag.num_outputs_total())
+            self._global_info = ProgressBar(
+                "Running", dag.num_outputs_total(), unit="bundle"
+            )
 
         self._output_node: OpState = self._topology[dag]
         StatsManager.register_dataset_to_stats_actor(
@@ -191,6 +193,16 @@ class StreamingExecutor(Executor, threading.Thread):
             # Close the progress bars from top to bottom to avoid them jumping
             # around in the console after completion.
             if self._global_info:
+                # Set the appropriate description that summarizes
+                # the result of dataset execution.
+                if execution_completed:
+                    prog_bar_msg = (
+                        f"{OK_PREFIX} Dataset execution finished in "
+                        f"{self._final_stats.time_total_s:.2f} seconds"
+                    )
+                else:
+                    prog_bar_msg = f"{WARN_PREFIX} Dataset execution failed"
+                self._global_info.set_description(prog_bar_msg)
                 self._global_info.close()
             for op, state in self._topology.items():
                 op.shutdown()

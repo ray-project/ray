@@ -96,7 +96,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
                 twin_q=self.config["twin_q"],
             )
         )
-        num_outputs = int(np.product(self.observation_space.shape))
+        num_outputs = int(np.prod(self.observation_space.shape))
 
         # TODO: why do we even have to go through this get_model_v2 function?
         self.model = ModelCatalog.get_model_v2(

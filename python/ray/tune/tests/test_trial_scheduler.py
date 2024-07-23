@@ -1372,9 +1372,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 seen.add(fn()["v"])
             self.assertEqual(seen, values)
 
-        def explore_fn(
-            config, mutations, resample_probability, custom_explore_fn=lambda x: x
-        ):
+        def explore_fn(config, mutations, resample_probability, custom_explore_fn=None):
+            if custom_explore_fn is None:
+                custom_explore_fn = lambda x: x  # noqa: E731
+
             new_config, _ = _explore(
                 config,
                 mutations,

@@ -115,7 +115,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.ensure_registered_as_reader()
 
-    def write(self, value: Any):
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
         self.serialization_ctx.reset_tensors([])
         # All tensors found in `value` will be transferred via NCCL.
         self.serialization_ctx.set_use_external_transport(True)
@@ -149,7 +149,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         # tensors, through a CPU-specific channel.
         self._cpu_data_channel.write(serialized_cpu_data)
 
-    def read(self) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         tensors = self._gpu_data_channel.read()
 
         if self._gpu_data_channel.has_static_type():
@@ -312,14 +312,14 @@ class TorchTensorNcclChannel(ChannelInterface):
         if not self.has_static_type():
             # User did not declare a static type, so we must send the metadata
             # for this tensor.
-            meta = TorchTensorType(shape=tensor.shape, dtype=tensor.dtype)
-        elif tensor.shape != self._typ.shape:
+            meta = TorchTensorType(_shape=tensor.shape, _dtype=tensor.dtype)
+        elif tensor.shape != self._typ._shape:
             raise ValueError(
-                f"torch.Tensor has shape {tensor.shape}, expected {self._typ.shape}"
+                f"torch.Tensor has shape {tensor.shape}, expected {self._typ._shape}"
             )
-        elif tensor.dtype != self._typ.dtype:
+        elif tensor.dtype != self._typ._dtype:
             raise ValueError(
-                f"torch.Tensor has dtype {tensor.dtype}, expected {self._typ.dtype}"
+                f"torch.Tensor has dtype {tensor.dtype}, expected {self._typ._dtype}"
             )
 
         return meta
@@ -327,6 +327,7 @@ class TorchTensorNcclChannel(ChannelInterface):
     def write(
         self,
         tensors: Union["torch.Tensor", List["torch.Tensor"], Exception],
+        timeout: Optional[float] = None,
     ):
         if isinstance(tensors, ray.exceptions.RayTaskError):
             # TODO(swang): Write exceptions to the meta channel if it is
@@ -343,8 +344,8 @@ class TorchTensorNcclChannel(ChannelInterface):
                 if meta_list != [None]:
                     raise ValueError(
                         "DAGNode annotated with "
-                        "TorchTensorType(shape=shape, dtype=dtype))` can return at "
-                        "most one tensor with the declared `shape` and `dtype`. "
+                        "TorchTensorType(_shape=shape, _dtype=dtype))` can return at "
+                        "most one tensor with the declared `_shape` and `_dtype`. "
                         "Use TorchTensorType() if value contains more than one "
                         "tensor or tensor of dynamic size."
                     )
@@ -369,11 +370,13 @@ class TorchTensorNcclChannel(ChannelInterface):
                 self._nccl_group.send(tensor, rank)
 
     def _read_single_tensor(self, typ: "TorchTensorType") -> "torch.Tensor":
-        buf = self._torch_tensor_allocator(typ.shape, typ.dtype)
+        buf = self._torch_tensor_allocator(typ._shape, typ._dtype)
         self._nccl_group.recv(buf, self._writer_rank)
         return buf
 
-    def read(self) -> Union["torch.Tensor", List["torch.Tensor"]]:
+    def read(
+        self, timeout: Optional[float] = None
+    ) -> Union["torch.Tensor", List["torch.Tensor"]]:
         if self._meta_channel is not None:
             meta = self._meta_channel.read()
         else:
@@ -402,8 +405,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
         return (
-            self._typ.shape != TorchTensorType.AUTO
-            and self._typ.dtype != TorchTensorType.AUTO
+            self._typ._shape != TorchTensorType.AUTO
+            and self._typ._dtype != TorchTensorType.AUTO
         )
 
 

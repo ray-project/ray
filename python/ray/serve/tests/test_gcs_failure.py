@@ -1,7 +1,7 @@
+import importlib
 import os
 import sys
 
-import grpc
 import pytest
 import requests
 
@@ -17,6 +17,7 @@ from ray.tests.conftest import external_redis  # noqa: F401
 @pytest.fixture(scope="function")
 def serve_ha(external_redis, monkeypatch):  # noqa: F811
     monkeypatch.setenv("RAY_SERVE_KV_TIMEOUT_S", "1")
+    importlib.reload(ray.serve._private.constants)  # to reload the constants set above
     address_info = ray.init(
         num_cpus=36,
         namespace="default_test_namespace",
@@ -44,8 +45,8 @@ def test_ray_internal_kv_timeout(serve_ha):  # noqa: F811
     with pytest.raises(KVStoreError) as e:
         kv1.put("2", b"2")
     assert e.value.rpc_code in (
-        grpc.StatusCode.UNAVAILABLE.value[0],
-        grpc.StatusCode.DEADLINE_EXCEEDED.value[0],
+        ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+        ray._raylet.GRPC_STATUS_CODE_DEADLINE_EXCEEDED,
     )
 
 

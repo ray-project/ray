@@ -134,8 +134,8 @@ def main(results=None):
 
     async def exec_async(tag):
         async def _exec_async():
-            output_ref = await compiled_dag.execute_async(b"x")
-            await output_ref.get()
+            fut = await compiled_dag.execute_async(b"x")
+            await fut
 
         return await asyncio_timeit(
             tag,

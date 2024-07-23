@@ -16,8 +16,10 @@ from typing import (
 
 import numpy as np
 
+import ray
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import call_with_retry
 from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning
 from ray.util.annotations import DeveloperAPI
@@ -398,7 +400,9 @@ def _fetch_metadata_parallel(
     # dominates the Ray task overhead while ensuring good parallelism.
     # Always launch at least 2 parallel fetch tasks.
     parallelism = max(len(uris) // desired_uris_per_task, 2)
-    metadata_fetch_bar = ProgressBar("Metadata Fetch Progress", total=parallelism)
+    metadata_fetch_bar = ProgressBar(
+        "Metadata Fetch Progress", total=parallelism, unit="task"
+    )
     fetch_tasks = []
     for uri_chunk in np.array_split(uris, parallelism):
         if len(uri_chunk) == 0:
@@ -416,11 +420,16 @@ def _get_file_infos(
 
     file_infos = []
     try:
-        file_info = filesystem.get_file_info(path)
+        ctx = ray.data.DataContext.get_current()
+        file_info = call_with_retry(
+            lambda: filesystem.get_file_info(path),
+            description="get file info",
+            match=ctx.retried_io_errors,
+        )
     except OSError as e:
         _handle_read_os_error(e, path)
     if file_info.type == FileType.Directory:
-        for (file_path, file_size) in _expand_directory(path, filesystem):
+        for file_path, file_size in _expand_directory(path, filesystem):
             file_infos.append((file_path, file_size))
     elif file_info.type == FileType.File:
         file_infos.append((path, file_info.size))

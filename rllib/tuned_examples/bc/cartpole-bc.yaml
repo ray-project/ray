@@ -11,6 +11,8 @@ cartpole-bc:
     config:
         # Works for both torch and tf.
         framework: torch
+        enable_rl_module_and_learner: false
+        enable_env_runner_and_connector_v2: false
         # In order to evaluate on an actual environment, use these following
         # settings:
         evaluation_num_env_runners: 1

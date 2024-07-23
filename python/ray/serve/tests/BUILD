@@ -28,10 +28,7 @@ py_test_module_list(
         "test_deployment_node.py",
         "test_deployment_scheduler.py",
         "test_deployment_version.py",
-        "test_enable_task_events.py",
         "test_expected_versions.py",
-        "test_kv_store.py",
-        "test_long_poll.py",
         "test_max_queued_requests.py",
         "test_persistence.py",
         "test_proxy.py",
@@ -73,7 +70,6 @@ py_test_module_list(
         "test_proxy_response_generator.py",
         "test_proxy_state.py",
         "test_ray_client.py",
-        "test_regression.py",
         "test_replica_placement_group.py",
         "test_request_timeout.py",
         "test_streaming_response.py",
@@ -135,8 +131,6 @@ py_test_module_list(
         "test_autoscaling_policy.py",
         "test_deploy.py",
         "test_deploy_2.py",
-        "test_deploy_app.py",
-        "test_metrics.py",
         "test_standalone.py",
         "test_standalone_3.py",
         "test_telemetry.py",
@@ -145,6 +139,28 @@ py_test_module_list(
     tags = [
         "exclusive",
         "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "enormous",
+    files = [
+        "test_deploy_app.py",
+        "test_metrics.py",
+        "test_enable_task_events.py",
+        "test_kv_store.py",
+        "test_long_poll.py",
+        "test_regression.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+        "use_all_core_windows",
     ],
     deps = [
         ":common",

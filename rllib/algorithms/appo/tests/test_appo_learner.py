@@ -81,9 +81,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         algo_config.learners(num_learners=0)
         algo_config.validate()
 
-        learner_group = algo_config.build_learner_group(
-            env=algo.workers.local_worker().env
-        )
+        learner_group = algo_config.build_learner_group(env=algo.env_runner.env)
         learner_group.update_from_batch(batch=train_batch.as_multi_agent())
 
         algo.stop()

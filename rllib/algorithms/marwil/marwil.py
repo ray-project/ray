@@ -207,6 +207,12 @@ class MARWILConfig(AlgorithmConfig):
                 "`config.offline_data(postprocess_inputs=True)`."
             )
 
+        # Assert that for a local learner the number of iterations is 1. Note,
+        # this is needed because we have no iterators, but instead a single
+        # batch returned directly from the `OfflineData.sample` method.
+        if self.num_learners == 0 and not self.dataset_num_iters_per_learner:
+            self.dataset_num_iters_per_learner = 1
+
     @property
     def _model_auto_keys(self):
         return super()._model_auto_keys | {"beta": self.beta}
@@ -244,7 +250,7 @@ class MARWIL(Algorithm):
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         with self._timers[SAMPLE_TIMER]:
-            train_batch = synchronous_parallel_sample(worker_set=self.workers)
+            train_batch = synchronous_parallel_sample(worker_set=self.env_runner_group)
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -265,13 +271,13 @@ class MARWIL(Algorithm):
 
         # Update weights - after learning on the local worker - on all remote
         # workers (only those policies that were actually trained).
-        if self.workers.remote_workers():
+        if self.env_runner_group.remote_workers():
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(
+                self.env_runner_group.sync_weights(
                     policies=list(train_results.keys()), global_vars=global_vars
                 )
 
         # Update global vars on local worker as well.
-        self.workers.local_worker().set_global_vars(global_vars)
+        self.env_runner.set_global_vars(global_vars)
 
         return train_results

@@ -70,7 +70,7 @@ def get_name() -> str:
 
 def get_task_status_info(status: WorkflowStatus) -> str:
     assert _context is not None
-    return f"Task status [{status}]\t[{get_name()}]"
+    return f"Task status [{status.value}]\t[{get_name()}]"
 
 
 _in_workflow_execution = False

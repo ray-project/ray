@@ -71,6 +71,53 @@ def test_invalid_graph_1_actor(ray_start_regular, tensor_transport):
             dag.experimental_compile()
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
+def test_invalid_graph_1_actor_log(ray_start_regular):
+    """
+    This test is similar to test_invalid_graph_1_actor, but it checks if the error
+    message is correctly logged.
+    """
+    import logging
+
+    class LogCaptureHandler(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.records = []
+
+        def emit(self, record):
+            self.records.append(record)
+
+    logger = logging.getLogger("ray.dag.compiled_dag_node")
+    handler = LogCaptureHandler()
+    logger.addHandler(handler)
+
+    a = MockedWorker.remote()
+
+    ray.get(a.start_mock.remote())
+
+    with InputNode() as inp:
+        dag = a.no_op.bind(inp)
+        dag.with_type_hint(TorchTensorType(transport=TorchTensorType.NCCL))
+        dag = a.no_op.bind(dag)
+
+    with pytest.raises(ValueError, match=INVALID_GRAPH):
+        dag.experimental_compile()
+
+    error_msg = (
+        "Detected a deadlock caused by using NCCL channels to transfer "
+        f"data between the task `no_op` and its downstream method `no_op` on "
+        f"the same actor {str(a)}. Please remove "
+        '`TorchTensorType(transport="nccl")` between DAG '
+        "nodes on the same actor."
+    )
+    error_msg_exist = False
+    for record in handler.records:
+        if error_msg in record.getMessage():
+            error_msg_exist = True
+    assert error_msg_exist, "Error message not found in log."
+    logger.removeHandler(handler)
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 @pytest.mark.parametrize(
     "tensor_transport", [TorchTensorType.AUTO, TorchTensorType.NCCL]

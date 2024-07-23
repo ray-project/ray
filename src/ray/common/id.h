@@ -550,6 +550,36 @@ std::string BaseID<T>::Hex() const {
   return result;
 }
 
+template <>
+struct DefaultLogKey<JobID> {
+  constexpr static std::string_view key = kLogKeyJobID;
+};
+
+template <>
+struct DefaultLogKey<WorkerID> {
+  constexpr static std::string_view key = kLogKeyWorkerID;
+};
+
+template <>
+struct DefaultLogKey<NodeID> {
+  constexpr static std::string_view key = kLogKeyNodeID;
+};
+
+template <>
+struct DefaultLogKey<ActorID> {
+  constexpr static std::string_view key = kLogKeyActorID;
+};
+
+template <>
+struct DefaultLogKey<TaskID> {
+  constexpr static std::string_view key = kLogKeyTaskID;
+};
+
+template <>
+struct DefaultLogKey<ObjectID> {
+  constexpr static std::string_view key = kLogKeyObjectID;
+};
+
 }  // namespace ray
 
 namespace std {

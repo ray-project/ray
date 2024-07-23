@@ -149,7 +149,7 @@ class LSTMWrapper(RecurrentNetwork):
         # is the input size for the LSTM layer.
         # If None, set it to the observation space.
         if self.num_outputs is None:
-            self.num_outputs = int(np.product(self.obs_space.shape))
+            self.num_outputs = int(np.prod(self.obs_space.shape))
 
         self.cell_size = model_config["lstm_cell_size"]
         self.use_prev_action = model_config["lstm_use_prev_action"]
@@ -164,7 +164,7 @@ class LSTMWrapper(RecurrentNetwork):
             elif isinstance(space, MultiDiscrete):
                 self.action_dim += np.sum(space.nvec)
             elif space.shape is not None:
-                self.action_dim += int(np.product(space.shape))
+                self.action_dim += int(np.prod(space.shape))
             else:
                 self.action_dim += int(len(space))
 

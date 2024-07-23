@@ -111,9 +111,8 @@ Saving and Loading
 
     ~RLModule.get_state
     ~RLModule.set_state
-    ~RLModule.save_state
-    ~RLModule.load_state
-    ~RLModule.save_to_checkpoint
+    ~RLModule.save_to_path
+    ~RLModule.restore_from_path
     ~RLModule.from_checkpoint
 
 

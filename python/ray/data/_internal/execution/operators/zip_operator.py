@@ -1,5 +1,5 @@
 import itertools
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -43,7 +43,7 @@ class ZipOperator(PhysicalOperator):
             "Zip", [left_input_op, right_input_op], target_max_block_size=None
         )
 
-    def num_outputs_total(self) -> int:
+    def num_outputs_total(self) -> Optional[int]:
         left_num_outputs = self.input_dependencies[0].num_outputs_total()
         right_num_outputs = self.input_dependencies[1].num_outputs_total()
         if left_num_outputs is not None and right_num_outputs is not None:

@@ -142,14 +142,6 @@ steps:
         --except-tags gpu_only
     depends_on: [ "mlbuild", "forge" ]
 
-  - label: ":train: ml: library integration tests"
-    tags: tune
-    instance_type: small
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/horovod/... ml 
-        --parallelism-per-worker 2
-    depends_on: [ "mlbuild", "forge" ]
-
   - label: ":train: ml: release tests"
     tags:
       - ml

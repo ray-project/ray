@@ -31,7 +31,6 @@ from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
-    LEARNER_ADDITIONAL_UPDATE_TIMER,
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
@@ -48,7 +47,6 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ResultDict
 from ray.util.debug import log_once
@@ -433,7 +431,7 @@ class PPO(Algorithm):
             # Sample in parallel from the workers.
             if self.config.count_steps_by == "agent_steps":
                 episodes, env_runner_results = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     max_agent_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=(
@@ -443,7 +441,7 @@ class PPO(Algorithm):
                 )
             else:
                 episodes, env_runner_results = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     max_env_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=(
@@ -515,47 +513,16 @@ class PPO(Algorithm):
             #  as it might be a very large set (100s of Modules) vs a smaller Modules
             #  set that's present in the current train batch.
             modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-            if self.workers.num_remote_workers() > 0:
-                self.workers.sync_weights(
-                    # Sync weights from learner_group to all rollout workers.
-                    from_worker_or_learner_group=self.learner_group,
-                    policies=modules_to_update,
-                    inference_only=True,
-                )
-            else:
-                weights = self.learner_group.get_weights(inference_only=True)
-                self.workers.local_worker().set_weights(weights)
-
-        with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
-            kl_dict = {}
-            if self.config.use_kl_loss:
-                for mid in modules_to_update:
-                    kl = convert_to_numpy(
-                        self.metrics.peek(
-                            (LEARNER_RESULTS, mid, LEARNER_RESULTS_KL_KEY)
-                        )
-                    )
-                    if np.isnan(kl):
-                        logger.warning(
-                            f"KL divergence for Module {mid} is non-finite, this "
-                            "will likely destabilize your model and the training "
-                            "process. Action(s) in a specific state have near-zero "
-                            "probability. This can happen naturally in deterministic "
-                            "environments where the optimal policy has zero mass for a "
-                            "specific action. To fix this issue, consider setting "
-                            "`kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
-                            "config."
-                        )
-                    kl_dict[mid] = kl
-
-            # TODO (sven): Move to Learner._after_gradient_based_update().
-            # Triggers a special update method on RLOptimizer to update the KL values.
-            additional_results = self.learner_group.additional_update(
-                module_ids_to_update=modules_to_update,
-                sampled_kl_values=kl_dict,
-                timestep=self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME),
+            # if self.env_runner_group.num_remote_workers() > 0:
+            self.env_runner_group.sync_weights(
+                # Sync weights from learner_group to all EnvRunners.
+                from_worker_or_learner_group=self.learner_group,
+                policies=modules_to_update,
+                inference_only=True,
             )
-            self.metrics.merge_and_log_n_dicts(additional_results, key=LEARNER_RESULTS)
+            # else:
+            #    weights = self.learner_group.get_weights(inference_only=True)
+            #    self.env_runner.set_weights(weights)
 
         return self.metrics.reduce()
 
@@ -564,14 +531,19 @@ class PPO(Algorithm):
         with self._timers[SAMPLE_TIMER]:
             if self.config.count_steps_by == "agent_steps":
                 train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     max_agent_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
                 )
             else:
                 train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     max_env_steps=self.config.total_train_batch_size,
+                    sample_timeout_s=self.config.sample_timeout_s,
                 )
+            # Return early if all our workers failed.
+            if not train_batch:
+                return {}
             train_batch = train_batch.as_multi_agent()
             self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
             self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
@@ -611,7 +583,7 @@ class PPO(Algorithm):
             # TODO (sven): num_grad_updates per each policy should be
             #  accessible via `train_results` (and get rid of global_vars).
             "num_grad_updates_per_policy": {
-                pid: self.workers.local_worker().policy_map[pid].num_grad_updates
+                pid: self.env_runner.policy_map[pid].num_grad_updates
                 for pid in policies_to_update
             },
         }
@@ -619,19 +591,19 @@ class PPO(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if self.workers.num_remote_workers() > 0:
+            if self.env_runner_group.num_remote_workers() > 0:
                 from_worker_or_learner_group = None
                 if self.config.enable_rl_module_and_learner:
                     # sync weights from learner_group to all rollout workers
                     from_worker_or_learner_group = self.learner_group
-                self.workers.sync_weights(
+                self.env_runner_group.sync_weights(
                     from_worker_or_learner_group=from_worker_or_learner_group,
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
             elif self.config.enable_rl_module_and_learner:
                 weights = self.learner_group.get_weights()
-                self.workers.local_worker().set_weights(weights)
+                self.env_runner.set_weights(weights)
 
         if self.config.enable_rl_module_and_learner:
             kl_dict = {}
@@ -649,15 +621,6 @@ class PPO(Algorithm):
                             "action. To fix this issue, consider setting `kl_coeff` to "
                             "0.0 or increasing `entropy_coeff` in your config."
                         )
-
-            # triggers a special update method on RLOptimizer to update the KL values.
-            additional_results = self.learner_group.additional_update(
-                module_ids_to_update=policies_to_update,
-                sampled_kl_values=kl_dict,
-                timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
-            )
-            for pid, res in additional_results.items():
-                train_results[pid].update(res)
 
             return train_results
 
@@ -704,6 +667,6 @@ class PPO(Algorithm):
         # TODO (simon): At least in RolloutWorker obsolete I guess as called in
         #  `sync_weights()` called above if remote workers. Can we call this
         #  where `set_weights()` is called on the local_worker?
-        self.workers.local_worker().set_global_vars(global_vars)
+        self.env_runner.set_global_vars(global_vars)
 
         return train_results

@@ -204,6 +204,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         job_data_key_to_indices[job_data_key].push_back(i);
       }
 
+      JobID job_id = data.first;
       WorkerID worker_id = WorkerID::FromBinary(data.second.driver_address().worker_id());
 
       // If job is not dead, get is_running_tasks from the core worker for the driver.
@@ -217,23 +218,29 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         // Get is_running_tasks from the core worker for the driver.
         auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
         auto request = std::make_unique<rpc::NumPendingTasksRequest>();
-        RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id;
+        constexpr int64_t kNumPendingTasksRequestTimeoutMs = 1000;
+        RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id
+                       << ", timeout " << kNumPendingTasksRequestTimeoutMs << " ms.";
         client->NumPendingTasks(
             std::move(request),
-            [worker_id, reply, i, num_processed_jobs, try_send_reply](
+            [job_id, worker_id, reply, i, num_processed_jobs, try_send_reply](
                 const Status &status,
                 const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
-              RAY_LOG(DEBUG) << "Received NumPendingTasksReply from worker " << worker_id;
+              RAY_LOG(DEBUG).WithField(worker_id)
+                  << "Received NumPendingTasksReply from worker.";
               if (!status.ok()) {
-                RAY_LOG(WARNING) << "Failed to get is_running_tasks from core worker: "
-                                 << status.ToString();
+                RAY_LOG(WARNING).WithField(job_id).WithField(worker_id)
+                    << "Failed to get num_pending_tasks from core worker: " << status
+                    << ", is_running_tasks is unset.";
+                reply->mutable_job_info_list(i)->clear_is_running_tasks();
+              } else {
+                bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
+                reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
               }
-              bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
-              reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
               (*num_processed_jobs)++;
-              ;
               try_send_reply();
-            });
+            },
+            kNumPendingTasksRequestTimeoutMs);
       }
       i++;
     }

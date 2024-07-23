@@ -40,18 +40,18 @@ This tutorial explains how to package and serve this code inside a custom Docker
 
 ## Extending the Ray Docker image
 
-The [rayproject](https://hub.docker.com/u/rayproject) organization maintains Docker images with dependencies needed to run Ray. In fact, the [rayproject/ray](https://hub.docker.com/r/rayproject/ray) and [rayproject/ray-ml](https://hub.docker.com/r/rayproject/ray-ml) repos host Docker images for this doc. For instance, [this RayService config](https://github.com/ray-project/kuberay/blob/release-0.6/ray-operator/config/samples/ray_v1alpha1_rayservice.yaml) uses the [rayproject/ray:2.5.0](https://hub.docker.com/layers/rayproject/ray/2.5.0/images/sha256-cb53dcc21af8f913978fd2a3fc57c812f87d99e0b40db6a42ccd6f43eca11281) image hosted by `rayproject/ray`.
+The [rayproject](https://hub.docker.com/u/rayproject) organization maintains Docker images with dependencies needed to run Ray. In fact, the [rayproject/ray](https://hub.docker.com/r/rayproject/ray) repo hosts Docker images for this doc. For instance, [this RayService config](https://github.com/ray-project/kuberay/blob/release-1.1.0/ray-operator/config/samples/ray-service.sample.yaml) uses the [rayproject/ray:2.9.0](https://hub.docker.com/layers/rayproject/ray/2.9.0/images/sha256-e64546fb5c3233bb0f33608e186e285c52cdd7440cae1af18f7fcde1c04e49f2?context=explore) image hosted by `rayproject/ray`.
 
-You can extend these images and add your own dependencies to them by using them as a base layer in a Dockerfile. For instance, the working example application uses Ray 2.5.0 and Faker 18.13.0. You can create a Dockerfile that extends the `rayproject/ray:2.5.0` by adding the Faker package:
+You can extend these images and add your own dependencies to them by using them as a base layer in a Dockerfile. For instance, the working example application uses Ray 2.9.0 and Faker 18.13.0. You can create a Dockerfile that extends the `rayproject/ray:2.9.0` by adding the Faker package:
 
 ```dockerfile
 # File name: Dockerfile
-FROM rayproject/ray:2.5.0
+FROM rayproject/ray:2.9.0
 
 RUN pip install Faker==18.13.0
 ```
 
-In general, the `rayproject/ray` images contain only the dependencies needed to import Ray and the Ray libraries. The `rayproject/ray-ml` images contain additional dependencies (e.g., PyTorch, HuggingFace, etc.) that are useful for machine learning. You can extend images from either of these repos to build your custom images.
+In general, the `rayproject/ray` images contain only the dependencies needed to import Ray and the Ray libraries. You can extend images from either of these repos to build your custom images.
 
 Then, you can build this image and push it to your Dockerhub account, so it can be pulled in the future:
 
@@ -75,7 +75,7 @@ Use the [WORKDIR](https://docs.docker.com/engine/reference/builder/#workdir) and
 
 ```dockerfile
 # File name: Dockerfile
-FROM rayproject/ray:2.5.0
+FROM rayproject/ray:2.9.0
 
 RUN pip install Faker==18.13.0
 

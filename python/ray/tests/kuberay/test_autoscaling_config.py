@@ -181,26 +181,6 @@ def _get_autoscaling_config_with_overrides() -> dict:
     return config
 
 
-def _get_ray_cr_missing_gpu_arg() -> dict:
-    """CR with gpu present in K8s limits but not in Ray start params.
-    Should result in a warning that Ray doesn't see the GPUs.
-    """
-    cr = get_basic_ray_cr()
-    cr["spec"]["workerGroupSpecs"][0]["template"]["spec"]["containers"][0]["resources"][
-        "limits"
-    ]["nvidia.com/gpu"] = 1
-    return cr
-
-
-def _get_gpu_complaint() -> str:
-    """The logger warning generated when processing the above CR."""
-    return (
-        "Detected GPUs in container resources for group small-group."
-        "To ensure Ray and the autoscaler are aware of the GPUs,"
-        " set the `--num-gpus` rayStartParam."
-    )
-
-
 def _get_ray_cr_with_autoscaler_options() -> dict:
     cr = get_basic_ray_cr()
     cr["spec"]["autoscalerOptions"] = {
@@ -429,26 +409,30 @@ TPU_PARAM_ARGS = ",".join(
     ]
 )
 TPU_TEST_DATA = (
-    pytest.param(
-        get_basic_ray_cr(),
-        4,
-        id="tpu-k8s-resource-limits",
-    ),
-    pytest.param(
-        _get_ray_cr_with_tpu_custom_resource(),
-        4,
-        id="tpu-custom-resource",
-    ),
-    pytest.param(
-        _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource(),
-        4,
-        id="tpu--k8s-resource-limits-and-custom-resource",
-    ),
-    pytest.param(
-        _get_ray_cr_with_no_tpus(),
-        0,
-        id="no-tpus-requested",
-    ),
+    []
+    if platform.system() == "Windows"
+    else [
+        pytest.param(
+            get_basic_ray_cr(),
+            4,
+            id="tpu-k8s-resource-limits",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_custom_resource(),
+            4,
+            id="tpu-custom-resource",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_k8s_resource_limit_and_custom_resource(),
+            4,
+            id="tpu--k8s-resource-limits-and-custom-resource",
+        ),
+        pytest.param(
+            _get_ray_cr_with_no_tpus(),
+            0,
+            id="no-tpus-requested",
+        ),
+    ]
 )
 
 
@@ -474,7 +458,6 @@ def test_get_num_tpus(ray_cr_in: Dict[str, Any], expected_num_tpus: int):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))

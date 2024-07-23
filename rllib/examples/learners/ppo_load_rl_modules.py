@@ -46,7 +46,7 @@ if __name__ == "__main__":
     ).build()
 
     CHECKPOINT_DIR = tempfile.mkdtemp()
-    module_to_load.save_to_checkpoint(CHECKPOINT_DIR)
+    module_to_load.save_to_path(CHECKPOINT_DIR)
 
     # Create a module spec to load the checkpoint
     module_to_load_spec = SingleAgentRLModuleSpec(

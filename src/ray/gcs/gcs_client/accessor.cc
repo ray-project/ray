@@ -83,7 +83,7 @@ Status JobInfoAccessor::AsyncSubscribeAll(
         done(status);
       }
     };
-    RAY_CHECK_OK(AsyncGetAll(callback));
+    RAY_CHECK_OK(AsyncGetAll(callback, /*timeout_ms=*/-1));
   };
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     return client_impl_->GetGcsSubscriber().SubscribeAllJobs(subscribe, done);
@@ -106,16 +106,28 @@ void JobInfoAccessor::AsyncResubscribe() {
   }
 }
 
-Status JobInfoAccessor::AsyncGetAll(
-    const MultiItemCallback<rpc::JobTableData> &callback) {
+Status JobInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback,
+                                    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting all job info.";
   RAY_CHECK(callback);
   rpc::GetAllJobInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllJobInfo(
-      request, [callback](const Status &status, const rpc::GetAllJobInfoReply &reply) {
+      request,
+      [callback](const Status &status, const rpc::GetAllJobInfoReply &reply) {
         callback(status, VectorFromProtobuf(reply.job_info_list()));
         RAY_LOG(DEBUG) << "Finished getting all job info.";
-      });
+      },
+      timeout_ms);
+  return Status::OK();
+}
+
+Status JobInfoAccessor::GetAll(std::vector<rpc::JobTableData> &job_data_list,
+                               int64_t timeout_ms) {
+  rpc::GetAllJobInfoRequest request;
+  rpc::GetAllJobInfoReply reply;
+  RAY_RETURN_NOT_OK(
+      client_impl_->GetGcsRpcClient().SyncGetAllJobInfo(request, &reply, timeout_ms));
+  job_data_list = VectorFromProtobuf(reply.job_info_list());
   return Status::OK();
 }
 
@@ -552,11 +564,32 @@ Status NodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
   return Status::OK();
 }
 
-Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback) {
+Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
+                                    int64_t timeout_ms,
+                                    std::vector<std::string> &drained_node_ids) {
+  RAY_LOG(DEBUG) << "Draining nodes, node id = " << debug_string(node_ids);
+  rpc::DrainNodeRequest request;
+  rpc::DrainNodeReply reply;
+  for (const auto &node_id : node_ids) {
+    auto draining_request = request.add_drain_node_data();
+    draining_request->set_node_id(node_id.Binary());
+  }
+  RAY_RETURN_NOT_OK(
+      client_impl_->GetGcsRpcClient().SyncDrainNode(request, &reply, timeout_ms));
+  drained_node_ids.clear();
+  for (const auto &s : reply.drain_node_status()) {
+    drained_node_ids.push_back(s.node_id());
+  }
+  return Status::OK();
+}
+
+Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback,
+                                     int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
-      request, [callback](const Status &status, const rpc::GetAllNodeInfoReply &reply) {
+      request,
+      [callback](const Status &status, const rpc::GetAllNodeInfoReply &reply) {
         std::vector<GcsNodeInfo> result;
         result.reserve((reply.node_info_list_size()));
         for (int index = 0; index < reply.node_info_list_size(); ++index) {
@@ -565,7 +598,8 @@ Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callb
         callback(status, std::move(result));
         RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "
                        << status;
-      });
+      },
+      timeout_ms);
   return Status::OK();
 }
 
@@ -585,7 +619,7 @@ Status NodeInfoAccessor::AsyncSubscribeToNodeChange(
         done(status);
       }
     };
-    RAY_CHECK_OK(AsyncGetAll(callback));
+    RAY_CHECK_OK(AsyncGetAll(callback, /*timeout_ms=*/-1));
   };
 
   subscribe_node_operation_ = [this](const StatusCallback &done) {
@@ -613,6 +647,18 @@ const GcsNodeInfo *NodeInfoAccessor::Get(const NodeID &node_id,
 
 const absl::flat_hash_map<NodeID, GcsNodeInfo> &NodeInfoAccessor::GetAll() const {
   return node_cache_;
+}
+
+Status NodeInfoAccessor::GetAllNoCache(int64_t timeout_ms,
+                                       std::vector<rpc::GcsNodeInfo> &nodes) {
+  RAY_LOG(DEBUG) << "Getting information of all nodes.";
+  rpc::GetAllNodeInfoRequest request;
+  rpc::GetAllNodeInfoReply reply;
+  RAY_RETURN_NOT_OK(
+      client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(request, &reply, timeout_ms));
+
+  nodes = VectorFromProtobuf(reply.node_info_list());
+  return Status::OK();
 }
 
 Status NodeInfoAccessor::CheckAlive(const std::vector<std::string> &raylet_addresses,
@@ -787,6 +833,13 @@ Status NodeResourceInfoAccessor::AsyncGetAllResourceUsage(
                        << status;
       });
   return Status::OK();
+}
+
+Status NodeResourceInfoAccessor::GetAllResourceUsage(
+    int64_t timeout_ms, rpc::GetAllResourceUsageReply &reply) {
+  rpc::GetAllResourceUsageRequest request;
+  return client_impl_->GetGcsRpcClient().SyncGetAllResourceUsage(
+      request, &reply, timeout_ms);
 }
 
 Status TaskInfoAccessor::AsyncAddTaskEventData(
@@ -1093,7 +1146,7 @@ Status InternalKVAccessor::AsyncInternalKVMultiGet(
     const std::string &ns,
     const std::vector<std::string> &keys,
     const int64_t timeout_ms,
-    const OptionalItemCallback<absl::flat_hash_map<std::string, std::string>> &callback) {
+    const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback) {
   rpc::InternalKVMultiGetRequest req;
   for (const auto &key : keys) {
     req.add_keys(key);
@@ -1102,7 +1155,7 @@ Status InternalKVAccessor::AsyncInternalKVMultiGet(
   client_impl_->GetGcsRpcClient().InternalKVMultiGet(
       req,
       [callback](const Status &status, const rpc::InternalKVMultiGetReply &reply) {
-        absl::flat_hash_map<std::string, std::string> map;
+        std::unordered_map<std::string, std::string> map;
         if (!status.ok()) {
           callback(status, map);
         } else {
@@ -1247,7 +1300,7 @@ Status InternalKVAccessor::MultiGet(
     const std::string &ns,
     const std::vector<std::string> &keys,
     const int64_t timeout_ms,
-    absl::flat_hash_map<std::string, std::string> &values) {
+    std::unordered_map<std::string, std::string> &values) {
   std::promise<Status> ret_promise;
   RAY_CHECK_OK(AsyncInternalKVMultiGet(
       ns, keys, timeout_ms, [&ret_promise, &values](Status status, auto &vs) {

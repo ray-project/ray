@@ -222,3 +222,11 @@ class ClassMethodNode(DAGNode):
         if not isinstance(self._parent_class_node, ray.actor.ActorHandle):
             return None
         return self._parent_class_node
+
+    @property
+    def num_returns(self) -> int:
+        num_returns = self._bound_options.get("num_returns", None)
+        if num_returns is None:
+            method = self._get_remote_method(self._method_name)
+            num_returns = method.__getstate__()["num_returns"]
+        return num_returns

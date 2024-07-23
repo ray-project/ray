@@ -104,7 +104,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         config = AlgorithmConfig.from_dict(config_dict)
         self.assertFalse(config.in_evaluation)
         self.assertTrue(config.lr == 0.2)
-        self.assertTrue(config.policies == {"pol1", "pol2"})
+        self.assertTrue(set(config.policies.keys()) == {"pol1", "pol2"})
         self.assertTrue(config.policy_mapping_fn(1, 2, 3) == "pol1")
         eval_config = config.get_evaluation_config_object()
         self.assertTrue(eval_config.in_evaluation)

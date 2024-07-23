@@ -27,7 +27,7 @@ class TestPolicies(unittest.TestCase):
         for class_name in ALGORITHMS_CLASS_TO_NAME.keys():
             registered_name = ALGORITHMS_CLASS_TO_NAME[class_name]
             algo_class, _ = ALGORITHMS[registered_name]()
-            self.assertEqual(class_name, algo_class.__name__)
+            self.assertEqual(class_name.upper(), algo_class.__name__.upper())
 
 
 if __name__ == "__main__":

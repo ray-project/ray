@@ -393,7 +393,7 @@ def _zip_directory(
         directory inside the zip file.
     """
     pkg_file = Path(output_path).absolute()
-    with ZipFile(pkg_file, "w") as zip_handler:
+    with ZipFile(pkg_file, "w", strict_timestamps=False) as zip_handler:
         # Put all files in the directory into the zip file.
         dir_path = Path(directory).absolute()
 

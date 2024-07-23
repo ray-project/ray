@@ -466,8 +466,8 @@ def test(
         ]
 
     if "TEST_OUTPUT_JSON" in os.environ:
-        out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-        json.dump(results, out_file)
+        with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
+            json.dump(results, out_file)
 
     results.update(state_perf_result)
     print(json.dumps(results, indent=2))

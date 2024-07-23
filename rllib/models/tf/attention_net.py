@@ -409,7 +409,7 @@ class AttentionWrapper(TFModelV2):
             elif isinstance(space, MultiDiscrete):
                 self.action_dim += np.sum(space.nvec)
             elif space.shape is not None:
-                self.action_dim += int(np.product(space.shape))
+                self.action_dim += int(np.prod(space.shape))
             else:
                 self.action_dim += int(len(space))
 

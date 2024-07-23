@@ -249,11 +249,11 @@ the same pre-loaded batch:
         # Collect SampleBatches from sample workers until we have a full batch.
         if self._by_agent_steps:
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
+                worker_set=self.env_runner_group, max_agent_steps=self.config["train_batch_size"]
             )
         else:
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
+                worker_set=self.env_runner_group, max_env_steps=self.config["train_batch_size"]
             )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
@@ -273,9 +273,9 @@ the same pre-loaded batch:
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
-        if self.workers.remote_workers():
+        if self.env_runner_group.remote_workers():
             with self._timers[WORKER_UPDATE_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+                self.env_runner_group.sync_weights(global_vars=global_vars)
 
         # For each policy: update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():
@@ -285,7 +285,7 @@ the same pre-loaded batch:
             self.get_policy(policy_id).update_kl(kl_divergence)
 
         # Update global vars on local worker as well.
-        self.workers.local_worker().set_global_vars(global_vars)
+        self.env_runner.set_global_vars(global_vars)
 
         return train_results
 

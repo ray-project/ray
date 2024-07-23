@@ -49,9 +49,3 @@ Aggregate Function
    :toctree: doc/
 
    aggregate.AggregateFn
-   aggregate.Count
-   aggregate.Sum
-   aggregate.Max
-   aggregate.Mean
-   aggregate.Std
-   aggregate.AbsMax

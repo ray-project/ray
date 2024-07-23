@@ -255,6 +255,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const shared_ptr[CBuffer] &metadata,
                                   uint64_t data_size,
                                   int64_t num_readers,
+                                  int64_t timeout_ms,
                                   shared_ptr[CBuffer] *data)
         CRayStatus ExperimentalChannelWriteRelease(
                                   const CObjectID &object_id)

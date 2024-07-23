@@ -84,9 +84,9 @@ class TestDreamerV3(unittest.TestCase):
 
             config.environment(env)
             algo = config.build()
-            obs_space = algo.workers.local_worker().env.single_observation_space
-            act_space = algo.workers.local_worker().env.single_action_space
-            rl_module = algo.workers.local_worker().module
+            obs_space = algo.env_runner.env.single_observation_space
+            act_space = algo.env_runner.env.single_action_space
+            rl_module = algo.env_runner.module
 
             for i in range(num_iterations):
                 results = algo.train()

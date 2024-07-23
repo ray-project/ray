@@ -14,7 +14,7 @@ from typing import Optional, Type
 import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.impala.impala import Impala, ImpalaConfig
+from ray.rllib.algorithms.impala.impala import IMPALA, IMPALAConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
@@ -38,7 +38,7 @@ OLD_ACTION_DIST_KEY = "old_action_dist"
 OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 
 
-class APPOConfig(ImpalaConfig):
+class APPOConfig(IMPALAConfig):
     """Defines a configuration class from which an APPO Algorithm can be built.
 
     .. testcode::
@@ -98,10 +98,8 @@ class APPOConfig(ImpalaConfig):
         self.kl_coeff = 1.0
         self.kl_target = 0.01
 
-        # Override some of ImpalaConfig's default values with APPO-specific values.
+        # Override some of IMPALAConfig's default values with APPO-specific values.
         self.num_env_runners = 2
-        self.rollout_fragment_length = 50
-        self.train_batch_size = 500
         self.min_time_s_per_iteration = 10
         self.num_gpus = 0
         self.num_multi_gpu_tower_stacks = 1
@@ -144,7 +142,7 @@ class APPOConfig(ImpalaConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-    @override(ImpalaConfig)
+    @override(IMPALAConfig)
     def training(
         self,
         *,
@@ -219,7 +217,7 @@ class APPOConfig(ImpalaConfig):
 
         return self
 
-    @override(ImpalaConfig)
+    @override(IMPALAConfig)
     def get_default_learner_class(self):
         if self.framework_str == "torch":
             from ray.rllib.algorithms.appo.torch.appo_torch_learner import (
@@ -237,7 +235,7 @@ class APPOConfig(ImpalaConfig):
                 "Use either 'torch' or 'tf2'."
             )
 
-    @override(ImpalaConfig)
+    @override(IMPALAConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.appo.torch.appo_torch_rl_module import (
@@ -263,7 +261,7 @@ class APPOConfig(ImpalaConfig):
         return super()._model_config_auto_includes | {"vf_share_layers": False}
 
 
-class APPO(Impala):
+class APPO(IMPALA):
     def __init__(self, config, *args, **kwargs):
         """Initializes an APPO instance."""
         super().__init__(config, *args, **kwargs)
@@ -273,11 +271,9 @@ class APPO(Impala):
         # TODO(avnishn): Does this need to happen in __init__? I think we can move it
         #  to setup()
         if not self.config.enable_rl_module_and_learner:
-            self.workers.local_worker().foreach_policy_to_train(
-                lambda p, _: p.update_target()
-            )
+            self.env_runner.foreach_policy_to_train(lambda p, _: p.update_target())
 
-    @override(Impala)
+    @override(IMPALA)
     def training_step(self) -> ResultDict:
         train_results = super().training_step()
 
@@ -307,9 +303,7 @@ class APPO(Impala):
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
                 # Update our target network.
-                self.workers.local_worker().foreach_policy_to_train(
-                    lambda p, _: p.update_target()
-                )
+                self.env_runner.foreach_policy_to_train(lambda p, _: p.update_target())
 
                 # Also update the KL-coefficient for the APPO loss, if necessary.
                 if self.config.use_kl_loss:
@@ -333,17 +327,17 @@ class APPO(Impala):
 
                     # Update KL on all trainable policies within the local (trainer)
                     # Worker.
-                    self.workers.local_worker().foreach_policy_to_train(update)
+                    self.env_runner.foreach_policy_to_train(update)
 
         return train_results
 
     @classmethod
-    @override(Impala)
+    @override(IMPALA)
     def get_default_config(cls) -> AlgorithmConfig:
         return APPOConfig()
 
     @classmethod
-    @override(Impala)
+    @override(IMPALA)
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:

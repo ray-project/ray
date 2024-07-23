@@ -61,7 +61,7 @@ class TestMARLModule(unittest.TestCase):
         marl_module2 = marl_module.as_multi_agent()
         self.assertEqual(id(marl_module), id(marl_module2))
 
-    def test_get_set_state(self):
+    def test_get_state_and_set_state(self):
 
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
@@ -151,7 +151,7 @@ class TestMARLModule(unittest.TestCase):
             override=True,
         )
 
-    def test_save_to_from_checkpoint(self):
+    def test_save_to_path_and_from_checkpoint(self):
         """Test saving and loading from checkpoint after adding / removing modules."""
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
@@ -185,7 +185,7 @@ class TestMARLModule(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            module.save_to_checkpoint(tmpdir)
+            module.save_to_path(tmpdir)
             module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
@@ -194,16 +194,16 @@ class TestMARLModule(unittest.TestCase):
 
         module.remove_module("test")
 
-        # check that after removing a module, the checkpoint is correct
+        # Check that - after removing a module - the checkpoint is correct.
         with tempfile.TemporaryDirectory() as tmpdir:
-            module.save_to_checkpoint(tmpdir)
+            module.save_to_path(tmpdir)
             module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
             self.assertEqual(module.keys(), {"test2", DEFAULT_MODULE_ID})
             self.assertNotEqual(id(module), id(module2))
 
-        # check that after adding a new module, the checkpoint is correct
+        # Check that - after adding a new module - the checkpoint is correct.
         module.add_module(
             "test3",
             DiscreteBCTorchModule(
@@ -214,10 +214,10 @@ class TestMARLModule(unittest.TestCase):
                 )
             ),
         )
-        # check that after adding a module, the checkpoint is correct
+        # Check that - after adding a module - the checkpoint is correct.
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = "/tmp/test_marl_module"
-            module.save_to_checkpoint(tmpdir)
+            module.save_to_path(tmpdir)
             module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())

@@ -10,6 +10,8 @@ export LC_ALL="en_US.UTF-8"
 export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
+export TORCH_VERSION=2.0.1
+export TORCHVISION_VERSION=0.15.2
 
 
 build_x86_64() {
