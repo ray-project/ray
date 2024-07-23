@@ -450,6 +450,4 @@ class MARWIL(Algorithm):
 
         # TODO (sven): Use metrics API as soon as we moved to new API stack
         #  (from currently hybrid stack).
-        return train_results     
-
-    
+        return train_results
