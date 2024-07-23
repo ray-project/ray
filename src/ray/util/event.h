@@ -78,7 +78,7 @@ namespace ray {
                   __FILE__,                                                     \
                   __LINE__)
 
-#define RAY_EXPORT_EVENT() ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_INFO,              \
+#define RAY_EXPORT_EVENT() ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_INFO,            \
                   ray::RayEvent::EventLevelToLogLevel(                                               \
                       ::ray::rpc::Event_Severity::Event_Severity_INFO),                              \
                   "",                                                                                \

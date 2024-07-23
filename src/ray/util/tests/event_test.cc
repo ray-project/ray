@@ -508,21 +508,6 @@ TEST_F(EventTest, TestEventJSON) {
 
   json event_data = export_event_as_json["event_data"].get<json>();
   EXPECT_EQ(event_data, export_event_data);
-
-  // EXPECT_EQ(rpc::Event_Severity_Name(ele.severity()), "");
-
-  // CheckEventDetail(
-  //     ele, "job 1", "node 1", "task 1", "RAYLET", "", "", "");
-  // auto string_value = custom_fields["string"].get<std::string>();
-  // EXPECT_EQ(string_value, "test string");
-  // auto int_value = custom_fields["int"].get<int>();
-  // EXPECT_EQ(int_value, 123);
-  // auto double_value = custom_fields["double"].get<double>();
-  // EXPECT_EQ(double_value, 0.123);
-  // auto bool_value = custom_fields["bool"].get<bool>();
-  // EXPECT_EQ(bool_value, true);
-  // auto json_value = custom_fields["jsonval"].get<json>();
-  // EXPECT_EQ(json_value, j2);
 }
 
 TEST_F(EventTest, TestRayCheckAbort) {
