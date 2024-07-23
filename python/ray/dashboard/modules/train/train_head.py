@@ -120,14 +120,14 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                         gpu
                         for gpu in actor["gpus"]
                         if worker_info.pid
-                        in [process["pid"] for process in gpu["processes_pids"]]
+                        in [process["pid"] for process in gpu["processesPids"]]
                     ]
 
                     worker_info_with_details = TrainWorkerInfoWithDetails(
                         **{
                             **worker_info.dict(),
                             "status": actor["state"],
-                            "process_stats": actor["processStats"],
+                            "processStats": actor["processStats"],
                             "gpus": gpus,
                         }
                     )

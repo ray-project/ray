@@ -225,11 +225,9 @@ class DataOrganizer:
                     break
 
             for gpu_stats in node_physical_stats.get("gpus", []):
-                # TODO(aguo): Delete this before merging
-                logger.warn(f"GPUS: {str(gpu_stats)}" )
                 # gpu_stats.get("processes") can be None, an empty list or a
                 # list of dictionaries.
-                for process in gpu_stats.get("processes_pids") or []:
+                for process in gpu_stats.get("processesPids") or []:
                     if process["pid"] == pid:
                         actor_process_gpu_stats.append(gpu_stats)
                         break
