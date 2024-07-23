@@ -113,8 +113,6 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             for worker_info in train_run.workers:
                 actor = actors.get(worker_info.actor_id, None)
                 # Add hardware metrics to API response
-                # TODO(aguo): Delete before merging.
-                logger.warn("Got actor: %s", actor)
                 if actor:
                     gpus = [
                         gpu
@@ -123,8 +121,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                         in [process["pid"] for process in gpu["processesPids"]]
                     ]
 
-                    worker_info_with_details = TrainWorkerInfoWithDetails(
-                        **{
+                    worker_info_with_details = TrainWorkerInfoWithDetails.parse_obj(
+                        {
                             **worker_info.dict(),
                             "status": actor["state"],
                             "processStats": actor["processStats"],
@@ -132,14 +130,14 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                         }
                     )
                 else:
-                    worker_info_with_details = TrainWorkerInfoWithDetails(
-                        **worker_info.dict()
+                    worker_info_with_details = TrainWorkerInfoWithDetails.parse_obj(
+                        worker_info.dict()
                     )
 
                 worker_infos_with_details.append(worker_info_with_details)
 
-            train_run_with_details = TrainRunInfoWithDetails(
-                **{**train_run.dict(), "workers": worker_infos_with_details}
+            train_run_with_details = TrainRunInfoWithDetails.parse_obj(
+                {**train_run.dict(), "workers": worker_infos_with_details}
             )
 
             # The train run can be unexpectedly terminated before the final run
