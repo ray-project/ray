@@ -3,9 +3,9 @@ import time
 from datetime import datetime, timezone
 
 # Specify the directory
-# directory = '/Users/kevin/miniconda3/envs/docs/lib/python3.12/site-packages/sphinx'
+#directory = '/Users/kevin/miniconda3/envs/docs/lib/python3.12/site-packages/sphinx'
 #directory = '/Users/kevin/miniconda3/envs/docs/lib/python3.12/site-packages/pydata_sphinx_theme'
-directory = "/Users/kevin/test/ray/doc/source/_templates"
+directory = "/Users/kevin/test2/ray/doc/source/_templates"
 # Get the current year
 current_year = datetime.now().year
 
@@ -28,6 +28,6 @@ for root, dirs, files in os.walk(directory):
 
 print("Timestamp change operation completed.")
 
-# new_time = datetime(2024, 7, 22, 0, 0, tzinfo=timezone.utc)
-# new_timestamp = new_time.timestamp()
-# os.utime("/Users/kevin/test/ray/doc/source/_templates/main-sidebar.html", (new_timestamp, new_timestamp))
+new_time = datetime(2024, 7, 22, 0, 0, tzinfo=timezone.utc)
+new_timestamp = new_time.timestamp()
+os.utime("/Users/kevin/test2/ray/doc/Makefile", (new_timestamp, new_timestamp))

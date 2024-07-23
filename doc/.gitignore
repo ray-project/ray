@@ -13,7 +13,6 @@ package-lock.json
 # Ignore generated API files
 source/data/api/doc/
 source/cluster/running-applications/job-submission/doc/
-source/serve/api/doc/
 source/workflows/api/doc/
 source/data/api/ray.data.*.rst
 
