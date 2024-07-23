@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.marwil.marwil import MARWILConfig
 from ray.rllib.algorithms.marwil.marwil_learner import (
@@ -10,7 +10,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import TensorType
 
@@ -23,17 +22,21 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         *,
         module_id: str,
         config: Optional[MARWILConfig] = None,
-        batch: NestedDict,
+        batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType]
     ) -> TensorType:
 
-        if "loss_mask" in batch:
-            num_valid = torch.sum(batch["loss_mask"])
+        if self.module[module_id].is_stateful():
+            maxlen = torch.max(batch[Columns.SEQ_LENS])
+            mask = sequence_mask(batch[Columns.SEQ_LENS], maxlen=maxlen)
+            num_valid = torch.sum(mask)
 
-            def possibly_masked_mean(data_):
-                return torch.sum(data_[batch["loss_mask"]]) / num_valid
+            def possibly_masked_mean(t):
+                return torch.sum(t[mask]) / num_valid
 
+        # non-RNN case: use simple mean.
         else:
+            mask = None
             possibly_masked_mean = torch.mean
 
         action_dist_class_train = (

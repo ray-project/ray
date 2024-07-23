@@ -23,21 +23,21 @@ class MARWILCatalog(Catalog):
     def __init__(
         self,
         observation_space: gym.Space,
-        action_sapce: gym.Space,
+        action_space: gym.Space,
         model_config_dict: dict,
     ):
         """Initializes the MARWILCatalog."""
 
         super().__init__(
             observation_space=observation_space,
-            action_space=action_sapce,
+            action_space=action_space,
             model_config_dict=model_config_dict,
         )
 
         # Replace EncoderConfig by ActorCriticEncodserConfig.
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
             base_encoder_config=self._encoder_config,
-            shared=self._model_config_dict["vf_shared_layers"],
+            shared=self._model_config_dict["vf_share_layers"],
         )
 
         self.pi_and_vf_hiddens = self._model_config_dict["post_fcnet_hiddens"]

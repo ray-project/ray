@@ -3,6 +3,7 @@ from typing import Dict
 
 from ray.rllib.algorithms.bc.bc import BCConfig
 from ray.rllib.algorithms.bc.bc_learner import BCLearner
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -37,8 +38,8 @@ class BCTorchLearner(TorchLearner, BCLearner):
         #  which positions to insert these initial states.
         # This removes special reduction and only needs torch.mean().
         if self.module[module_id].is_stateful():
-            maxlen = torch.max(batch[SampleBatch.SEQ_LENS])
-            mask = sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen=maxlen)
+            maxlen = torch.max(batch[Columns.SEQ_LENS])
+            mask = sequence_mask(batch[Columns.SEQ_LENS], maxlen=maxlen)
             num_valid = torch.sum(mask)
 
             def possibly_masked_mean(t):
@@ -49,11 +50,11 @@ class BCTorchLearner(TorchLearner, BCLearner):
             mask = None
             possibly_masked_mean = torch.mean
 
-        action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
+        action_dist_class_train = self.module[module_id].unwrapped().get_train_action_dist_cls()
         action_dist = action_dist_class_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )
-        log_probs = action_dist.logp(batch[SampleBatch.ACTIONS])
+        log_probs = action_dist.logp(batch[Columns.ACTIONS])
 
         policy_loss = -possibly_masked_mean(log_probs)
 

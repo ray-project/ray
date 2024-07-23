@@ -2,6 +2,8 @@ from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -31,6 +33,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.typing import (
     EnvType,
     ResultDict,
+    RLModuleSpec,
 )
 from ray.tune.logger import Logger
 
@@ -87,6 +90,7 @@ class MARWILConfig(AlgorithmConfig):
         self.moving_average_sqd_adv_norm_update_rate = 1e-8
         self.moving_average_sqd_adv_norm_start = 100.0
         self.vf_coeff = 1.0
+        self.model["vf_share_layers"] = False
         self.grad_clip = None
 
         # Override some of AlgorithmConfig's default values with MARWIL-specific values.
@@ -168,6 +172,35 @@ class MARWILConfig(AlgorithmConfig):
         return self
 
     @override(AlgorithmConfig)
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.marwil.torch.marwil_torch_rl_module import MARWILTorchRLModule
+
+            return SingleAgentRLModuleSpec(
+                module_class=MARWILTorchRLModule,
+                catalog_class=MARWILCatalog,
+            )
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
+
+    @override(AlgorithmConfig)
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.marwil.torch.marwil_torch_learner import (
+                MARWILTorchLearner,
+            )
+
+            return MARWILTorchLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use 'torch'."
+            )
+
+    @override(AlgorithmConfig)
     def evaluation(
         self,
         **kwargs,
@@ -225,7 +258,7 @@ class MARWILConfig(AlgorithmConfig):
 
     @property
     def _model_auto_keys(self):
-        return super()._model_auto_keys | {"beta": self.beta}
+        return super()._model_auto_keys | {"beta": self.beta, "vf_share_layers": False}
 
 
 class MARWIL(Algorithm):

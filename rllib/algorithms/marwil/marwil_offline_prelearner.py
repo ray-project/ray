@@ -1,77 +1,43 @@
-from typing import Any, Dict, List, Optional, Tuple, Union
+import numpy as np
+from typing import Dict, List
 
-from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
-    AddObservationsFromEpisodesToBatch,
-)
-from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
-    AddNextObservationsFromEpisodesToTrainBatch,
-)
-from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner.learner import Learner
-from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.offline.offline_data import OfflinePreLearner
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
-from ray.rllib.utils.annotations import (
-    override,
-    OverrideToImplementCustomLogic,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
-)
-from ray.rllib.utils.typing import EpisodeType, ModuleID, TensorType
+from ray.rllib.utils.typing import EpisodeType, TensorType
 
-LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY = "moving_avg_sqd_adv_norm"
-LEARNER_RESULTS_VF_EXPLAINED_VARIANCE_KEY = "vf_explained_variance"
+class MARWILOfflinePreLearner(OfflinePreLearner):
 
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, MultiAgentBatch]:
 
-# TODO (simon): Check, if the norm update should be done inside
-# the Learner.
-class MARWILLearner(Learner):
-    @override(Learner)
-    def build(self) -> None:
-        super().build()
+        # Map the batch to episodes.
+        episodes = self._map_to_episodes(self._is_multi_agent, batch)
 
-        # Dict mapping module IDs to the respective moving averages of squared
-        # advantages.
-        self.moving_avg_sqd_adv_norms_per_module: Dict[
-            ModuleID, TensorType
-        ] = LambdaDefaultDict(
-            lambda module_id: self._get_tensor_variable(
-                self.config.get_config_for_module(
-                    module_id
-                ).moving_average_sqd_adv_norm_start
-            )
+        # Compute the GAE via the Learner's method.
+        batch, episodes = self._compute_gae_from_episodes(episodes)
+
+        # Convert to `MultiAgentBatch`.
+        batch = MultiAgentBatch(
+            {
+                module_id: SampleBatch(module_data)
+                for module_id, module_data in batch.items()
+            },
+            # TODO (simon): This can be run once for the batch and the
+            # metrics, but we run it twice: here and later in the learner.
+            env_steps=sum(e.env_steps() for e in episodes["episodes"]),
         )
+        # Remove all data from modules that should not be trained. We do
+        # not want to pass around more data than necessaty.
+        for module_id in list(batch.policy_batches.keys()):
+            if not self._should_module_be_updated(module_id, batch):
+                del batch.policy_batches[module_id]
 
-        # Prepend a NEXT_OBS from episodes to train batch connector piece (right
-        # after the observation default piece).
-        if (
-            self.config.add_default_connectors_to_learner_pipeline
-            and self.config.enable_env_runner_and_connector_v2
-        ):
-            self._learner_connector.insert_after(
-                AddObservationsFromEpisodesToBatch,
-                AddNextObservationsFromEpisodesToTrainBatch(),
-            )
+        # TODO (simon): Log steps trained for metrics (how?). At best in learner
+        # and not here. But we could precompute metrics here and pass it to the learner
+        # for logging. Like this we do not have to pass around episode lists.
 
-    @override(Learner)
-    def _update_from_batch_or_episodes(
-        self,
-        *,
-        batch=None,
-        episodes=None,
-        **kwargs,
-    ):
-        # First perform GAE computation on the entirety of the given train data (all
-        # episodes).
-        if self.config.enable_env_runner_and_connector_v2:
-            batch, episodes = self._compute_gae_from_episodes(episodes=episodes)
+        # TODO (simon): episodes are only needed for logging here.
+        return {"batch": [batch]}
 
-        # Now that GAE (advantages and value targets) have been added to the train
-        # batch, we can proceed normally (calling super method) with the update step.
-        return super()._update_from_batch_or_episodes(
-            batch=batch,
-            episodes=episodes,
-            **kwargs,
-        )
 
     def _compute_gae_from_episodes(
         self,
@@ -100,7 +66,7 @@ class MARWILLearner(Learner):
         batch = {}
 
         sa_episodes_list = list(
-            self._learner_connector.single_agent_episode_iterator(
+            self.learner_connector.single_agent_episode_iterator(
                 episodes, agents_that_stepped_only=False
             )
         )
@@ -114,7 +80,7 @@ class MARWILLearner(Learner):
         # Call the learner connector (on the artificially elongated episodes)
         # in order to get the batch to pass through the module for vf (and
         # bootstrapped vf) computations.
-        batch_for_vf = self._learner_connector(
+        batch_for_vf = self.learner_connector(
             rl_module=self.module,
             data={},
             episodes=episodes,
@@ -203,7 +169,26 @@ class MARWILLearner(Learner):
 
         return batch, episodes
 
-    @override(Learner)
-    def remove_module(self, module_id: ModuleID) -> None:
-        super().remove_module(module_id)
-        self.moving_avg_sqd_adv_norms_per_module.pop(module_id)
+    def _compute_values(
+        self,
+        batch_for_vf: Dict[str, Any],
+    ) -> Union[TensorType, Dict[str, Any]]:
+        """Computes the value function predictions for the module being optimized.
+
+        This method must be overridden by multiagent-specific algorithm learners to
+        specify the specific value computation logic. If the algorithm is single agent
+        (or independent multi-agent), there should be no need to override this method.
+
+        Args:
+            batch_for_vf: The multi-agent batch (mapping ModuleIDs to module data) to
+                be used for value function predictions.
+
+        Returns:
+            A dictionary mapping module IDs to individual value function prediction
+            tensors.
+        """
+        return {
+            module_id: self.module[module_id].unwrapped().compute_values(module_batch)
+            for module_id, module_batch in batch_for_vf.items()
+            if self.should_module_be_updated(module_id, batch_for_vf)
+        }

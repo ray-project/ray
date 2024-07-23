@@ -201,7 +201,7 @@ class OfflinePreLearner:
         self.iter_since_last_module_update = 0
         # self._future = None
 
-    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
+    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[MultiAgentBatch]]:
         # Map the batch to episodes.
         episodes = self._map_to_episodes(self._is_multi_agent, batch)
         # TODO (simon): Make synching work. Right now this becomes blocking or never
