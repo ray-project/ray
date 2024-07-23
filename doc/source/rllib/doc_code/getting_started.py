@@ -3,11 +3,9 @@
 # __rllib-first-config-begin__
 from pprint import pprint
 
-import torch
 from ray.rllib.algorithms.ppo import PPOConfig
 
-
-algo = (
+config = (
     PPOConfig()
     .api_stack(
         enable_rl_module_and_learner=True,
@@ -15,8 +13,9 @@ algo = (
     )
     .environment("CartPole-v1")
     .env_runners(num_env_runners=1)
-    .build()
 )
+
+algo = config.build()
 
 for i in range(10):
     result = algo.train()
@@ -34,7 +33,6 @@ algo.stop()
 # __rllib-tune-config-begin__
 from ray import train, tune
 
-
 config = (
     PPOConfig()
     .api_stack(
@@ -42,7 +40,9 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .environment("CartPole-v1")
-    .training(lr=tune.grid_search([0.01, 0.001, 0.0001]))
+    .training(
+        lr=tune.grid_search([0.01, 0.001, 0.0001]),
+    )
 )
 
 tuner = tune.Tuner(
@@ -86,7 +86,6 @@ import numpy as np
 import torch
 from ray.rllib.core.rl_module import RLModule
 
-
 env = gym.make("CartPole-v1")
 
 # Create only the neural network (RLModule) from our checkpoint.
@@ -119,7 +118,7 @@ del rl_module
 
 
 # __rllib-get-state-begin__
-from ray.rllib.algorithms.dqn import DQNConfig
+from ray.rllib.algorithms.ppo import PPOConfig
 
 algo = (
     PPOConfig()

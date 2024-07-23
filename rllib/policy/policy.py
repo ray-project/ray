@@ -1296,7 +1296,7 @@ class Policy(metaclass=ABCMeta):
             action_space=self.action_space,
             policy_config=self.config,
             model=getattr(self, "model", None),
-            num_workers=self.config.get("num_workers", 0),
+            num_workers=self.config.get("num_env_runners", 0),
             worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", self.config.get("framework", "tf")),
         )

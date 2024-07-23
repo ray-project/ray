@@ -21,7 +21,7 @@ In this guide, we will explain in detail RLlib's Python API for running learning
 Using the Python API
 --------------------
 
-The Python API provides the all the flexibility required for applying RLlib to any type of problem.
+The Python API provides all the flexibility required for applying RLlib to any type of problem.
 
 Let's start with an example of the API's basic usage.
 We first create a `PPOConfig` instance and set some properties through the config class' various methods.
