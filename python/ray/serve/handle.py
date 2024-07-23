@@ -145,7 +145,7 @@ class _DeploymentHandleBase:
             _request_protocol=request_protocol
         )
 
-    def _get_or_create_router(self) -> Union[Router, asyncio.AbstractEventLoop]:
+    def _get_or_create_router(self) -> Tuple[Router, asyncio.AbstractEventLoop]:
 
         if self._router is None:
             node_id = ray.get_runtime_context().get_node_id()
@@ -249,10 +249,13 @@ class _DeploymentHandleBase:
         self._record_telemetry_if_needed()
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
-            _request_context.request_id
+            request_id=_request_context.request_id
             if _request_context.request_id
             else generate_request_id(),
-            self.deployment_name,
+            internal_request_id=_request_context._internal_request_id
+            if _request_context._internal_request_id
+            else generate_request_id(),
+            endpoint=self.deployment_name,
             call_method=self.handle_options.method_name,
             route=_request_context.route,
             app_name=self.app_name,

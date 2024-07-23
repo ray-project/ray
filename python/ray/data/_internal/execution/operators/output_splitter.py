@@ -69,6 +69,11 @@ class OutputSplitter(PhysicalOperator):
         self._locality_hits = 0
         self._locality_misses = 0
 
+    def num_outputs_total(self) -> Optional[int]:
+        # OutputSplitter does not change the number of blocks,
+        # so we can return the number of blocks from the input op.
+        return self.input_dependencies[0].num_outputs_total()
+
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
         # Force disable locality optimization.
@@ -240,6 +245,9 @@ class OutputSplitter(PhysicalOperator):
             A node id associated with the bundle, or None if unknown.
         """
         return bundle.get_cached_location()
+
+    def implements_accurate_memory_accounting(self) -> bool:
+        return True
 
 
 def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:

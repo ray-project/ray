@@ -204,7 +204,8 @@ ray.get(x)
         verify_failed_task,
         name="node-killed",
         error_type="NODE_DIED",
-        error_message="Task failed due to the node dying",
+        error_message="Task failed due to the node (where this task was running) "
+        " was dead or unavailable",
     )
 
 

@@ -22,7 +22,7 @@ class TestTimeSteps(unittest.TestCase):
             ppo.PPOConfig()
             .experimental(_disable_preprocessor_api=True)
             .environment(RandomEnv)
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .training(
                 model={
                     "fcnet_hiddens": [1],

@@ -178,7 +178,7 @@ class PyModulesPlugin(RuntimeEnvPlugin):
 
         return local_dir_size
 
-    def get_uris(self, runtime_env: dict) -> List[str]:
+    def get_uris(self, runtime_env) -> List[str]:
         return runtime_env.py_modules()
 
     async def create(

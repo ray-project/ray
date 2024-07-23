@@ -14,7 +14,7 @@
     .. container::
 
         **Highly distributed learning**: Our RLlib algorithms (such as our "PPO" or "IMPALA")
-        allow you to set the ``num_workers`` config parameter, such that your workloads can run
+        allow you to set the ``num_env_runners`` config parameter, such that your workloads can run
         on 100s of CPUs/nodes thus parallelizing and speeding up learning.
 
 

@@ -1,0 +1,75 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+
+py_binary(
+    name = "cmd_check_api_discrepancy",
+    srcs = ["cmd_check_api_discrepancy.py"],
+    deps = [":doc"],
+)
+
+py_binary(
+    name = "cmd_build",
+    srcs = ["cmd_build.py"],
+    deps = [":doc"],
+    exec_compatible_with = ["//:hermetic_python"],
+)
+
+py_library(
+    name = "doc",
+    srcs = glob(
+        ["*.py"],
+        exclude = [
+            "test_*.py",
+            "cmd_*.py",
+        ],
+    ),
+    visibility = ["//ci/ray_ci/doc:__subpackages__"],
+    deps = [
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_test(
+    name = "test_module",
+    size = "small",
+    srcs = ["test_module.py", "mock/__init__.py", "mock/mock_module.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_api",
+    size = "small",
+    srcs = ["test_api.py", "mock/__init__.py", "mock/mock_module.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_autodoc",
+    size = "small",
+    srcs = ["test_autodoc.py", "mock/__init__.py", "mock/mock_module.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("pytest"),
+    ],
+)

@@ -116,7 +116,7 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
         .evaluation(
             evaluation_interval=1,
             evaluation_duration=10,
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             evaluation_duration_unit="episodes",
             evaluation_config={"input": "/tmp/cartpole-eval"},
             off_policy_estimation_methods={
@@ -218,7 +218,7 @@ RLlib supports multiplexing inputs from multiple input sources, including simula
 Scaling I/O throughput
 -----------------------
 
-Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_workers`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput. Within each read worker, files are chosen in random order for reads, but file contents are read sequentially.
+Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_env_runners`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput. Within each read worker, files are chosen in random order for reads, but file contents are read sequentially.
 
 Ray Data Integration
 --------------------
@@ -228,7 +228,7 @@ RLlib has experimental support for reading/writing training samples from/to larg
 We support JSON and Parquet files today. Other file formats supported by Ray Data can also be easily added.
 
 Unlike JSON input, a single dataset can be automatically sharded and replayed by multiple rollout workers
-by simply specifying the desired num_workers config.
+by simply specifying the desired ``num_env_runners`` config.
 
 To load sample data using Dataset, specify input and input_config keys like the following:
 
@@ -241,7 +241,7 @@ To load sample data using Dataset, specify input and input_config keys like the 
             "format": "json",  # json or parquet
 	    # Path to data file or directory.
             "path": "/path/to/json_dir/",
-	    # Num of tasks reading dataset in parallel, default is num_workers.
+	    # Num of tasks reading dataset in parallel, default is num_env_runners.
             "parallelism": 3,
 	    # Dataset allocates 0.5 CPU for each reader by default.
 	    # Adjust this value based on the size of your offline dataset.

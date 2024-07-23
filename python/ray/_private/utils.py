@@ -240,7 +240,7 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
     if isinstance(s, str):
         return s
     else:
-        assert isinstance(s, bytes)
+        assert isinstance(s, bytes), f"Expected str or bytes, got {type(s)}"
         return s.decode(encoding, errors)
 
 
@@ -1706,7 +1706,7 @@ def split_address(address: str) -> Tuple[str, str]:
     return (module_string, inner_address)
 
 
-def get_or_create_event_loop() -> asyncio.BaseEventLoop:
+def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
     """Get a running async event loop if one exists, otherwise create one.
 
     This function serves as a proxy for the deprecating get_event_loop().
@@ -1726,7 +1726,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
         # This follows the implementation of the deprecating `get_event_loop`
         # in python3.10's asyncio. See python3.10/asyncio/events.py
         # _get_event_loop()
-        loop = None
         try:
             loop = asyncio.get_running_loop()
             assert loop is not None
@@ -2007,7 +2006,7 @@ def validate_node_labels(labels: Dict[str, str]):
             )
 
 
-def pasre_pg_formatted_resources_to_original(
+def parse_pg_formatted_resources_to_original(
     pg_formatted_resources: Dict[str, float]
 ) -> Dict[str, float]:
     original_resources = {}

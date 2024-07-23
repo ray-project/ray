@@ -1,3 +1,4 @@
+# @OldAPIStack
 """Example of using a custom ModelV2 Keras-style model."""
 
 import argparse
@@ -14,6 +15,10 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.tf.visionnet import VisionNetwork as MyVisionNetwork
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.tune.registry import get_trainable_cls
 
@@ -142,7 +147,7 @@ if __name__ == "__main__":
         )
 
     stop = {
-        "episode_reward_mean": args.stop,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop,
     }
 
     tuner = tune.Tuner(

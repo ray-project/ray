@@ -1,5 +1,5 @@
 import itertools
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -43,7 +43,7 @@ class ZipOperator(PhysicalOperator):
             "Zip", [left_input_op, right_input_op], target_max_block_size=None
         )
 
-    def num_outputs_total(self) -> int:
+    def num_outputs_total(self) -> Optional[int]:
         left_num_outputs = self.input_dependencies[0].num_outputs_total()
         right_num_outputs = self.input_dependencies[1].num_outputs_total()
         if left_num_outputs is not None and right_num_outputs is not None:
@@ -240,7 +240,7 @@ def _zip_one_block(
     # Zip block and other blocks.
     result = BlockAccessor.for_block(block).zip(other_block)
     br = BlockAccessor.for_block(result)
-    return result, br.get_metadata(input_files=[], exec_stats=stats.build())
+    return result, br.get_metadata(exec_stats=stats.build())
 
 
 def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:

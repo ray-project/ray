@@ -2,21 +2,26 @@
 This example shows how to pretrain an RLModule using behavioral cloning from offline
 data and, thereafter, continue training it online with PPO (fine-tuning).
 """
+from typing import Dict
 
 import gymnasium as gym
 import shutil
 import tempfile
 import torch
-from typing import Mapping
 
 import ray
 from ray import tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.train import RunConfig, FailureConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.models.base import ACTOR, ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.utils.metrics import (
+    EPISODE_RETURN_MEAN,
+    ENV_RUNNER_RESULTS,
+)
 
 GYM_ENV_NAME = "CartPole-v1"
 GYM_ENV = gym.make(GYM_ENV_NAME)
@@ -44,7 +49,7 @@ class BCActor(torch.nn.Module):
         self.distribution_cls = distribution_cls
 
     def forward(
-        self, batch: Mapping[str, torch.Tensor]
+        self, batch: Dict[str, torch.Tensor]
     ) -> torch.distributions.Distribution:
         """Return an action distribution output by the policy network.
 
@@ -97,7 +102,7 @@ def train_ppo_module_with_bc_finetune(
         print(f"Epoch {epoch} loss: {loss.detach().item()}")
 
     checkpoint_dir = tempfile.mkdtemp()
-    module.save_to_checkpoint(checkpoint_dir)
+    module.save_to_path(checkpoint_dir)
     return checkpoint_dir
 
 
@@ -114,7 +119,7 @@ def train_ppo_agent_from_checkpointed_module(
     """
     config = (
         PPOConfig()
-        .experimental(_enable_new_api_stack=True)
+        .api_stack(enable_rl_module_and_learner=True)
         .rl_module(rl_module_spec=module_spec_from_ckpt)
         .environment(GYM_ENV_NAME)
         .training(
@@ -129,13 +134,15 @@ def train_ppo_agent_from_checkpointed_module(
         "PPO",
         param_space=config.to_dict(),
         run_config=RunConfig(
-            stop={"training_iteration": 20},
+            stop={TRAINING_ITERATION: 20},
             failure_config=FailureConfig(fail_fast="raise"),
             verbose=2,
         ),
     )
     results = tuner.fit()
-    best_reward_mean = results.get_best_result().metrics["episode_reward_mean"]
+    best_reward_mean = results.get_best_result().metrics[ENV_RUNNER_RESULTS][
+        EPISODE_RETURN_MEAN
+    ]
     return best_reward_mean
 
 

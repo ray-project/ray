@@ -10,6 +10,8 @@ export LC_ALL="en_US.UTF-8"
 export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
+export TORCH_VERSION=2.0.1
+export TORCHVISION_VERSION=0.15.2
 
 
 build_x86_64() {
@@ -22,7 +24,7 @@ build_x86_64() {
   # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
   # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
   diskutil list external physical
-  export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
+  export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
   java -version
   # Build wheels
   export UPLOAD_WHEELS_AS_ARTIFACTS=1
@@ -60,7 +62,7 @@ build_aarch64() {
   # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
   # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
   diskutil list external physical
-  export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
+  export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
   java -version
   # Build wheels
   export UPLOAD_WHEELS_AS_ARTIFACTS=1

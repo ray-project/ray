@@ -26,6 +26,7 @@ from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
     from_arrow,
     from_arrow_refs,
+    from_blocks,
     from_dask,
     from_huggingface,
     from_items,
@@ -46,8 +47,10 @@ from ray.data.read_api import (  # noqa: F401
     read_csv,
     read_databricks_tables,
     read_datasource,
+    read_delta_sharing_tables,
     read_images,
     read_json,
+    read_lance,
     read_mongo,
     read_numpy,
     read_parquet,
@@ -60,8 +63,7 @@ from ray.data.read_api import (  # noqa: F401
 
 # Module-level cached global functions for callable classes. It needs to be defined here
 # since it has to be process-global across cloudpickled funcs.
-_cached_fn = None
-_cached_cls = None
+_map_actor_context = None
 
 configure_logging()
 
@@ -78,7 +80,16 @@ try:
         # anything.
         pass
     else:
-        if parse_version(pyarrow_version) >= parse_version("14.0.1"):
+        from ray._private.ray_constants import env_bool
+
+        RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE = env_bool(
+            "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE", False
+        )
+
+        if (
+            parse_version(pyarrow_version) >= parse_version("14.0.1")
+            and RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE
+        ):
             pa.PyExtensionType.set_auto_load(True)
         # Import these arrow extension types to ensure that they are registered.
         from ray.air.util.tensor_extensions.arrow import (  # noqa
@@ -126,8 +137,10 @@ __all__ = [
     "read_binary_files",
     "read_csv",
     "read_datasource",
+    "read_delta_sharing_tables",
     "read_images",
     "read_json",
+    "read_lance",
     "read_numpy",
     "read_mongo",
     "read_parquet",

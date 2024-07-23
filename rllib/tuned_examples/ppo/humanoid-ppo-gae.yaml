@@ -1,8 +1,9 @@
+# @OldAPIStack
 humanoid-ppo-gae:
     env: Humanoid-v1
     run: PPO
     stop:
-        sampler_results/episode_reward_mean: 6000
+        env_runners/episode_return_mean: 6000
     config:
         # Works for both torch and tf.
         framework: torch
@@ -17,7 +18,7 @@ humanoid-ppo-gae:
         train_batch_size: 320000
         model:
             free_log_std: true
-        num_workers: 64
+        num_env_runners: 64
         num_gpus: 4
         batch_mode: complete_episodes
         observation_filter: MeanStdFilter

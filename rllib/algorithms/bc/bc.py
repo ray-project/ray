@@ -6,13 +6,6 @@ from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import (
-    ALL_MODULES,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED,
-    SAMPLE_TIMER,
-    SYNCH_WORKER_WEIGHTS_TIMER,
-)
 from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 
 if TYPE_CHECKING:
@@ -72,8 +65,10 @@ class BCConfig(MARWILConfig):
         # Advantages (calculated during postprocessing)
         # not important for behavioral cloning.
         self.postprocess_inputs = False
-        # Set RLModule as default.
-        self.experimental(_enable_new_api_stack=True)
+        # Set RLModule as default if the `EnvRUnner`'s are used.
+        if self.enable_env_runner_and_connector_v2:
+            self.api_stack(enable_rl_module_and_learner=True)
+
         # __sphinx_doc_end__
         # fmt: on
 
@@ -137,63 +132,5 @@ class BC(MARWIL):
 
     @override(MARWIL)
     def training_step(self) -> ResultDict:
-        if not self.config._enable_new_api_stack:
-            # Using ModelV2.
-            return super().training_step()
-        else:
-            # Implement logic using RLModule and Learner API.
-            # TODO (sven): Remove RolloutWorkers/EnvRunners for
-            # datasets. Use RolloutWorker/EnvRunner only for
-            # env stepping.
-            # TODO (simon): Take care of sampler metrics: right
-            # now all rewards are `nan`, which possibly confuses
-            # the user that sth. is not right, although it is as
-            # we do not step the env.
-            with self._timers[SAMPLE_TIMER]:
-                # Sampling from offline data.
-                # TODO (simon): We have to remove the `RolloutWorker`
-                # here and just use the already distributed `dataset`
-                # for sampling. Only in online evaluation
-                # `RolloutWorker/EnvRunner` should be used.
-                if self.config.count_steps_by == "agent_steps":
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_agent_steps=self.config.train_batch_size,
-                    )
-                else:
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_env_steps=self.config.train_batch_size,
-                    )
-
-                train_batch = train_batch.as_multi_agent()
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-                self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
-
-            # Updating the policy.
-            train_results = self.learner_group.update_from_batch(batch=train_batch)
-
-            # Synchronize weights.
-            # As the results contain for each policy the loss and in addition the
-            # total loss over all policies is returned, this total loss has to be
-            # removed.
-            policies_to_update = set(train_results.keys()) - {ALL_MODULES}
-
-            global_vars = {
-                "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
-            }
-
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                if self.workers.num_remote_workers() > 0:
-                    self.workers.sync_weights(
-                        from_worker_or_learner_group=self.learner_group,
-                        policies=policies_to_update,
-                        global_vars=global_vars,
-                    )
-                # Get weights from Learner to local worker.
-                else:
-                    self.workers.local_worker().set_weights(
-                        self.learner_group.get_weights()
-                    )
-
-            return train_results
+        # Call MARWIL's training step.
+        return super().training_step()

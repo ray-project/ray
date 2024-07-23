@@ -1,13 +1,14 @@
 import logging
 import psutil
-from typing import Any, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional
 
 import numpy as np
 
 from ray.rllib.utils import deprecation_warning
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.from_config import from_config
+from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.replay_buffers import (
     EpisodeReplayBuffer,
@@ -17,35 +18,36 @@ from ray.rllib.utils.replay_buffers import (
     MultiAgentReplayBuffer,
 )
 from ray.rllib.policy.sample_batch import concat_samples, MultiAgentBatch, SampleBatch
-from ray.rllib.utils.typing import ResultDict, SampleBatchType, AlgorithmConfigDict
+from ray.rllib.utils.typing import (
+    AlgorithmConfigDict,
+    ModuleID,
+    ResultDict,
+    SampleBatchType,
+    TensorType,
+)
 from ray.util import log_once
-
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
+@DeveloperAPI
 def update_priorities_in_episode_replay_buffer(
+    *,
     replay_buffer: EpisodeReplayBuffer,
-    config: "AlgorithmConfig",
-    train_batch: SampleBatchType,
-    train_results: ResultDict,
+    td_errors: Dict[ModuleID, TensorType],
 ) -> None:
     # Only update priorities, if the buffer supports them.
     if isinstance(replay_buffer, PrioritizedEpisodeReplayBuffer):
 
         # The `ResultDict` will be multi-agent.
-        for module_id, result_dict in train_results.items():
-            # Skip the `"__all__"` key.
-            if module_id == "__all__":
+        for module_id, td_error in td_errors.items():
+            # Skip the `"__all__"` keys.
+            if module_id in ["__all__", ALL_MODULES]:
                 continue
 
-            # Get the TD-error from the results.
-            td_error = result_dict.get("td_error", None)
-
             # Warn once, if we have no TD-errors to update priorities.
-            if td_error is None:
+            if TD_ERROR_KEY not in td_error or td_error[TD_ERROR_KEY] is None:
                 if log_once(
                     "no_td_error_in_train_results_from_module_{}".format(module_id)
                 ):
@@ -57,13 +59,15 @@ def update_priorities_in_episode_replay_buffer(
                     )
                 continue
             # TODO (simon): Implement multi-agent version. Remove, happens in buffer.
-            assert len(td_error) == len(replay_buffer._last_sampled_indices)
+            # assert len(td_error[TD_ERROR_KEY]) == len(
+            #     replay_buffer._last_sampled_indices
+            # )
             # TODO (simon): Implement for stateful modules.
 
-            replay_buffer.update_priorities(td_error)
+            replay_buffer.update_priorities(td_error[TD_ERROR_KEY], module_id)
 
 
-@DeveloperAPI
+@OldAPIStack
 def update_priorities_in_replay_buffer(
     replay_buffer: ReplayBuffer,
     config: AlgorithmConfigDict,

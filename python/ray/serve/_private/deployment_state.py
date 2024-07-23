@@ -1301,7 +1301,9 @@ class DeploymentState:
         )
         if self._target_state.info.deployment_config.autoscaling_config:
             self._autoscaling_state_manager.register_deployment(
-                self._id, self._target_state.info
+                self._id,
+                self._target_state.info,
+                self._target_state.target_num_replicas,
             )
 
     def recover_current_state_from_replica_actor_names(
@@ -2562,13 +2564,25 @@ class DeploymentStateManager:
             )
 
     def get_deployment_statuses(
-        self, ids: List[DeploymentID] = None
+        self, ids: Optional[List[DeploymentID]] = None
     ) -> List[DeploymentStatusInfo]:
-        statuses = []
-        for id, state in self._deployment_states.items():
-            if not ids or id in ids:
-                statuses.append(state.curr_status_info)
-        return statuses
+        """
+        Return the statuses of the deployments with the given `ids`.
+        If `ids` is `None`, returns the status of all deployments.
+        """
+        if ids is None:
+            # fast path for returning all deployments,
+            # avoids checking `if ids is None` in a loop
+            return [
+                state.curr_status_info for state in self._deployment_states.values()
+            ]
+        else:
+            statuses = []
+            for id in ids:
+                state = self._deployment_states.get(id)
+                if state is not None:
+                    statuses.append(state.curr_status_info)
+            return statuses
 
     def get_alive_replica_actor_ids(self) -> Set[str]:
         alive_replica_actor_ids = set()

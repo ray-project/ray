@@ -1,0 +1,32 @@
+{
+    "_dashboard_memory_usage_mb": 189.5424,
+    "_dashboard_test_success": true,
+    "_peak_memory": 2.2,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n1249\t9.21GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n3551\t0.98GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n4583\t0.42GiB\tpython distributed/test_many_pgs.py\n2390\t0.25GiB\t/usr/bin/vector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n3683\t0.11GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n3849\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/runti\n2628\t0.07GiB\t/usr/bin/python3 /app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/product/\n4372\t0.07GiB\tray::JobSupervisor\n4039\t0.07GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/bin/jupyter-lab --allow-root --ip=127.0.0.1 --no-\n3847\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/agen",
+    "num_pgs": 1000,
+    "perf_metrics": [
+        {
+            "perf_metric_name": "pgs_per_second",
+            "perf_metric_type": "THROUGHPUT",
+            "perf_metric_value": 22.687659485012095
+        },
+        {
+            "perf_metric_name": "dashboard_p50_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 3.39
+        },
+        {
+            "perf_metric_name": "dashboard_p95_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 10.334
+        },
+        {
+            "perf_metric_name": "dashboard_p99_latency_ms",
+            "perf_metric_type": "LATENCY",
+            "perf_metric_value": 332.736
+        }
+    ],
+    "pgs_per_second": 22.687659485012095,
+    "success": "1",
+    "time": 44.07682514190674
+}

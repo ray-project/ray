@@ -53,7 +53,7 @@ running with a fixed number of 100k training timesteps
 |          71.7485 | 100000 |   476.51 |             476.51 |
 +------------------+--------+----------+--------------------+
 
-When running without parallel evaluation (`--evaluation-not-parallel-to-training` flag),
+When running without parallel evaluation (no `--evaluation-parallel-to-training` flag),
 the experiment takes considerably longer (~70sec vs ~80sec):
 +-----------------------------+------------+-----------------+--------+
 | Trial name                  | status     | loc             |   iter |
@@ -66,47 +66,33 @@ the experiment takes considerably longer (~70sec vs ~80sec):
 |          81.7371 | 100000 |   494.68 |             494.68 |
 +------------------+--------+----------+--------------------+
 """
+from typing import Optional
+
+from ray.air.constants import TRAINING_ITERATION
+from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+    NUM_EPISODES,
+    NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray.rllib.utils.typing import ResultDict
 from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_reward=500.0)
-parser.add_argument(
-    "--evaluation-duration",
-    type=lambda v: v if v == "auto" else int(v),
-    default="auto",
-    help="Number of evaluation episodes/timesteps to run each iteration. "
-    "If 'auto', will run as many as possible during train pass.",
-)
-parser.add_argument(
-    "--evaluation-duration-unit",
-    type=str,
-    default="timesteps",
-    choices=["episodes", "timesteps"],
-    help="The unit in which to measure the duration (`episodes` or `timesteps`).",
-)
-parser.add_argument(
-    "--evaluation-not-parallel-to-training",
-    action="store_true",
-    help="Whether to  NOT run evaluation parallel to training, but in sequence.",
-)
-parser.add_argument(
-    "--evaluation-num-workers",
-    type=int,
-    default=2,
-    help="The number of evaluation workers to setup. "
-    "0 for a single local evaluation worker. Note that for values >0, no"
-    "local evaluation worker will be created (b/c not needed).",
-)
-parser.add_argument(
-    "--evaluation-interval",
-    type=int,
-    default=1,
-    help="Every how many train iterations should we run an evaluation loop?",
+parser.set_defaults(
+    evaluation_num_env_runners=2,
+    evaluation_interval=1,
+    evaluation_duration_unit="timesteps",
 )
 parser.add_argument(
     "--evaluation-parallel-to-training-wo-thread",
@@ -117,18 +103,28 @@ parser.add_argument(
 
 
 class AssertEvalCallback(DefaultCallbacks):
-    def on_train_result(self, *, algorithm, result, **kwargs):
+    def on_train_result(
+        self,
+        *,
+        algorithm: Algorithm,
+        metrics_logger: Optional[MetricsLogger] = None,
+        result: ResultDict,
+        **kwargs,
+    ):
+        # The eval results can be found inside the main `result` dict
+        # (old API stack: "evaluation").
+        eval_results = result.get(EVALUATION_RESULTS, {})
+        # In there, there is a sub-key: ENV_RUNNER_RESULTS.
+        eval_env_runner_results = eval_results.get(ENV_RUNNER_RESULTS)
         # Make sure we always run exactly the given evaluation duration,
         # no matter what the other settings are (such as
-        # `evaluation_num_workers` or `evaluation_parallel_to_training`).
-        if (
-            "evaluation" in result
-            and "hist_stats" in result["evaluation"]["sampler_results"]
-        ):
-            eval_sampler_res = result["evaluation"]["sampler_results"]
-            hist_stats = eval_sampler_res["hist_stats"]
-            num_episodes_done = len(hist_stats["episode_lengths"])
-            num_timesteps_reported = result["evaluation"]["timesteps_this_iter"]
+        # `evaluation_num_env_runners` or `evaluation_parallel_to_training`).
+        if eval_env_runner_results and NUM_EPISODES in eval_env_runner_results:
+            num_episodes_done = eval_env_runner_results[NUM_EPISODES]
+            if algorithm.config.enable_env_runner_and_connector_v2:
+                num_timesteps_reported = eval_env_runner_results[NUM_ENV_STEPS_SAMPLED]
+            else:
+                num_timesteps_reported = eval_results["timesteps_this_iter"]
 
             # We run for automatic duration (as long as training takes).
             if algorithm.config.evaluation_duration == "auto":
@@ -139,7 +135,8 @@ class AssertEvalCallback(DefaultCallbacks):
                 # fetch.
                 assert (
                     num_timesteps_reported == 0
-                    or num_timesteps_reported >= algorithm.config.evaluation_num_workers
+                    or num_timesteps_reported
+                    >= algorithm.config.evaluation_num_env_runners
                 )
             # We count in episodes.
             elif algorithm.config.evaluation_duration_unit == "episodes":
@@ -167,13 +164,6 @@ class AssertEvalCallback(DefaultCallbacks):
                     "Number of run evaluation timesteps: "
                     f"{num_timesteps_reported} (ok)!"
                 )
-        # Expect at least evaluation/sampler_results to be always available.
-        elif algorithm.config.always_attach_evaluation_results and (
-            "evaluation" not in result or "sampler_results" not in result["evaluation"]
-        ):
-            raise KeyError(
-                "`evaluation->sampler_results->hist_stats` not found in result dict!"
-            )
 
 
 if __name__ == "__main__":
@@ -197,12 +187,10 @@ if __name__ == "__main__":
         .evaluation(
             # Parallel evaluation+training config.
             # Switch on evaluation in parallel with training.
-            evaluation_parallel_to_training=(
-                not args.evaluation_not_parallel_to_training
-            ),
+            evaluation_parallel_to_training=args.evaluation_parallel_to_training,
             # Use two evaluation workers. Must be >0, otherwise,
             # evaluation will run on a local worker and block (no parallelism).
-            evaluation_num_workers=args.evaluation_num_workers,
+            evaluation_num_env_runners=args.evaluation_num_env_runners,
             # Evaluate every other training iteration (together
             # with every other call to Algorithm.train()).
             evaluation_interval=args.evaluation_interval,
@@ -215,7 +203,14 @@ if __name__ == "__main__":
             # "episodes" or "timesteps".
             evaluation_duration_unit=args.evaluation_duration_unit,
             # Switch off exploratory behavior for better (greedy) results.
-            evaluation_config={"explore": False},
+            evaluation_config={
+                "explore": False,
+                # TODO (sven): Add support for window=float(inf) and reduce=mean for
+                #  evaluation episode_return_mean reductions (identical to old stack
+                #  behavior, which does NOT use a window (100 by default) to reduce
+                #  eval episode returns.
+                "metrics_num_episodes_for_smoothing": 5,
+            },
         )
         .debugging(
             _evaluation_parallel_to_training_wo_thread=(
@@ -232,9 +227,11 @@ if __name__ == "__main__":
         )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
+            args.stop_reward
+        ),
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }
 
     run_rllib_example_script_experiment(
@@ -242,6 +239,8 @@ if __name__ == "__main__":
         args,
         stop=stop,
         success_metric={
-            "evaluation/sampler_results/episode_reward_mean": args.stop_reward,
+            f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
+                args.stop_reward
+            ),
         },
     )

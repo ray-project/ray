@@ -21,7 +21,7 @@ By consolidating these transformations under the framework of connectors, users 
 - Allow policies to be adapted to work with different versions of an environment.
 - Run inference with RLlib policies without worrying about the exact trajectory view requirements or state inputs.
 
-Connectors can be enabled by setting the ``enable_connectors`` parameter to ``True`` with ``AlgorithmConfig.rollouts()`` API.
+Connectors can be enabled by setting the ``enable_connectors`` parameter to ``True`` with ``AlgorithmConfig.env_runners()`` API.
 
 Key Concepts
 ------------

@@ -1,5 +1,6 @@
+# @OldAPIStack
 """
-This script demonstrates how to specify custom env APIs in
+This script specifies custom env APIs in
 combination with RLlib's `remote_worker_envs` setting, which
 parallelizes individual sub-envs within a vector env by making each
 one a Ray Actor.
@@ -12,8 +13,14 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls
 
@@ -30,7 +37,7 @@ parser.add_argument(
 parser.add_argument("--num-workers", type=int, default=1)
 
 # This should be >1, otherwise, remote envs make no sense.
-parser.add_argument("--num-envs-per-worker", type=int, default=4)
+parser.add_argument("--num-envs-per-env-runner", type=int, default=4)
 
 parser.add_argument(
     "--as-test",
@@ -91,14 +98,14 @@ class TaskSettingCallback(DefaultCallbacks):
 
     def on_train_result(self, *, algorithm, result: dict, **kwargs) -> None:
         """Curriculum learning as seen in Ray docs"""
-        if result["episode_reward_mean"] > 0.0:
+        if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] > 0.0:
             phase = 0
         else:
             phase = 1
 
         # Sub-envs are now ray.actor.ActorHandles, so we have to add
         # `remote()` here.
-        algorithm.workers.foreach_env(lambda env: env.set_task.remote(phase))
+        algorithm.env_runner_group.foreach_env(lambda env: env.set_task.remote(phase))
 
 
 if __name__ == "__main__":
@@ -115,25 +122,25 @@ if __name__ == "__main__":
         .framework(args.framework)
         # Set up our own callbacks.
         .callbacks(TaskSettingCallback)
-        .rollouts(
+        .env_runners(
             # Force sub-envs to be ray.actor.ActorHandles, so we can step
             # through them in parallel.
             remote_worker_envs=True,
             # How many RolloutWorkers (each with n environment copies:
-            # `num_envs_per_worker`)?
-            num_rollout_workers=args.num_workers,
+            # `num_envs_per_env_runner`)?
+            num_env_runners=args.num_workers,
             # This setting should not really matter as it does not affect the
             # number of GPUs reserved for each worker.
-            num_envs_per_worker=args.num_envs_per_worker,
+            num_envs_per_env_runner=args.num_envs_per_env_runner,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     results = tune.Tuner(

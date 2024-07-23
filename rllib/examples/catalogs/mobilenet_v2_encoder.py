@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 """
 This example shows two modifications:
@@ -44,13 +44,16 @@ class MobileNetEnhancedPPOCatalog(PPOCatalog):
 # Create a generic config with our enhanced Catalog
 ppo_config = (
     PPOConfig()
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .rl_module(
         rl_module_spec=SingleAgentRLModuleSpec(
             catalog_class=MobileNetEnhancedPPOCatalog
         )
     )
-    .rollouts(num_rollout_workers=0)
+    .env_runners(num_env_runners=0)
     # The following training settings make it so that a training iteration is very
     # quick. This is just for the sake of this example. PPO will not learn properly
     # with these settings!

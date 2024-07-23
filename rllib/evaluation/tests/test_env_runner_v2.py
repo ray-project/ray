@@ -58,9 +58,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -68,7 +68,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         sample_batch = rollout_worker.sample()
         sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
 
@@ -85,9 +85,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -95,7 +95,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         sample_batch = rollout_worker.sample()
 
         # 2 agents. So the multi-agent SampleBatch should have
@@ -150,9 +150,9 @@ class TestEnvRunnerV2(unittest.TestCase):
             PPOConfig()
             .framework("torch")
             .environment("env_under_test")
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
                 rollout_fragment_length=100,
@@ -182,7 +182,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         sample_batch = rollout_worker.sample()
         pol1_batch = sample_batch.policy_batches["pol1"]
 
@@ -217,9 +217,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -247,7 +247,7 @@ class TestEnvRunnerV2(unittest.TestCase):
         )
 
         algo = PPO(config)
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
         env = local_worker.env
 
         obs, rewards, terminateds, truncateds, infos = local_worker.env.step(
@@ -291,9 +291,9 @@ class TestEnvRunnerV2(unittest.TestCase):
             .callbacks(
                 callbacks_class=AddActionConnectorCallbacks,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -301,7 +301,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         # As long as we can successfully sample(), things should be good.
         _ = rollout_worker.sample()
 
@@ -314,9 +314,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -345,7 +345,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
 
         env_runner = local_worker.sampler._env_runner_obj
 
@@ -370,9 +370,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -401,7 +401,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
 
         env_runner = local_worker.sampler._env_runner_obj
 
@@ -429,9 +429,9 @@ class TestEnvRunnerV2(unittest.TestCase):
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 # Enable EnvRunnerV2.
                 enable_connectors=True,
             )
@@ -463,7 +463,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
 
         env_runner = local_worker.sampler._env_runner_obj
 

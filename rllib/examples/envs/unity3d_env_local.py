@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 """
 Example of running an RLlib Algorithm against a locally running Unity3D editor
@@ -28,8 +28,14 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
@@ -131,8 +137,8 @@ if __name__ == "__main__":
         .framework("tf" if args.env != "Pyramids" else "torch")
         # For running in editor, force to use just one Worker (we only have
         # one Unity running)!
-        .rollouts(
-            num_rollout_workers=args.num_workers if args.file_name else 0,
+        .env_runners(
+            num_env_runners=args.num_workers if args.file_name else 0,
             rollout_fragment_length=200,
         )
         .training(
@@ -153,7 +159,7 @@ if __name__ == "__main__":
     # Switch on Curiosity based exploration for Pyramids env
     # (not solvable otherwise).
     if args.env == "Pyramids":
-        config.exploration(
+        config.env_runners(
             exploration_config={
                 "type": "Curiosity",
                 "eta": 0.1,
@@ -181,9 +187,9 @@ if __name__ == "__main__":
         config.training(model={"use_attention": True})
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     # Run the experiment.

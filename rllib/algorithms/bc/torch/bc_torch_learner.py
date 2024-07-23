@@ -2,12 +2,12 @@ import logging
 from typing import Dict
 
 from ray.rllib.algorithms.bc.bc import BCConfig
+from ray.rllib.algorithms.bc.bc_learner import BCLearner
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import sequence_mask
 from ray.rllib.utils.typing import ModuleID, TensorType
 
@@ -15,7 +15,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__file__)
 
 
-class BCTorchLearner(TorchLearner):
+class BCTorchLearner(TorchLearner, BCLearner):
     """Implements torch-specific BC loss logic."""
 
     @override(TorchLearner)
@@ -24,7 +24,7 @@ class BCTorchLearner(TorchLearner):
         *,
         module_id: ModuleID,
         config: BCConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # In the RNN case, we expect incoming tensors to be padded to the maximum
@@ -57,7 +57,12 @@ class BCTorchLearner(TorchLearner):
 
         policy_loss = -possibly_masked_mean(log_probs)
 
-        self.register_metrics(module_id, {POLICY_LOSS_KEY: policy_loss})
+        # Log important loss stats.
+        self.metrics.log_dict(
+            {POLICY_LOSS_KEY: policy_loss},
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
+        )
 
         # Return the total loss which is for BC simply the policy loss.
         return policy_loss

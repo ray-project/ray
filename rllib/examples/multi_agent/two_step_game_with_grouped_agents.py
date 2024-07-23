@@ -40,11 +40,7 @@ being achieved by a simple PPO policy (no tuning, just using RLlib's default set
 +------------------+-------+-------------------+-------------+
 """
 
-from ray.rllib.connectors.env_to_module import (
-    AddObservationsFromEpisodesToBatch,
-    FlattenObservations,
-    WriteObservationsToEpisodes,
-)
+from ray.rllib.connectors.env_to_module import FlattenObservations
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.envs.classes.two_step_game import TwoStepGameWithGroupedAgents
@@ -75,12 +71,8 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("grouped_twostep")
-        .rollouts(
-            env_to_module_connector=lambda env: (
-                AddObservationsFromEpisodesToBatch(),
-                FlattenObservations(multi_agent=True),
-                WriteObservationsToEpisodes(),
-            ),
+        .env_runners(
+            env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
         )
         .multi_agent(
             policies={"p0"},

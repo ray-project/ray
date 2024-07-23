@@ -7,7 +7,6 @@ from ray.rllib.core.learner.learner import POLICY_LOSS_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
@@ -26,7 +25,7 @@ class BCTfLearner(TfLearner):
         *,
         module_id: ModuleID,
         config: BCConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # In the RNN case, we expect incoming tensors to be padded to the maximum
@@ -57,11 +56,13 @@ class BCTfLearner(TfLearner):
 
         policy_loss = -possibly_masked_mean(log_probs)
 
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: policy_loss,
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
 
         # Return total loss which is for BC simply the policy loss.

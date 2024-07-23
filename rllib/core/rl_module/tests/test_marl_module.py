@@ -1,13 +1,13 @@
 import tempfile
 import unittest
 
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec, RLModuleConfig
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleConfig,
 )
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-from ray.rllib.core.testing.utils import DEFAULT_POLICY_ID
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.utils.test_utils import check
 
@@ -55,13 +55,13 @@ class TestMARLModule(unittest.TestCase):
 
         self.assertNotIsInstance(marl_module, DiscreteBCTorchModule)
         self.assertIsInstance(marl_module, MultiAgentRLModule)
-        self.assertEqual({DEFAULT_POLICY_ID}, set(marl_module.keys()))
+        self.assertEqual({DEFAULT_MODULE_ID}, set(marl_module.keys()))
 
         # check as_multi_agent() for the second time
         marl_module2 = marl_module.as_multi_agent()
         self.assertEqual(id(marl_module), id(marl_module2))
 
-    def test_get_set_state(self):
+    def test_get_state_and_set_state(self):
 
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
@@ -78,8 +78,8 @@ class TestMARLModule(unittest.TestCase):
         self.assertIsInstance(state, dict)
         self.assertEqual(set(state.keys()), set(module.keys()))
         self.assertEqual(
-            set(state[DEFAULT_POLICY_ID].keys()),
-            set(module[DEFAULT_POLICY_ID].get_state().keys()),
+            set(state[DEFAULT_MODULE_ID].keys()),
+            set(module[DEFAULT_MODULE_ID].get_state().keys()),
         )
 
         module2 = DiscreteBCTorchModule(
@@ -120,15 +120,15 @@ class TestMARLModule(unittest.TestCase):
                 )
             ),
         )
-        self.assertEqual(set(module.keys()), {DEFAULT_POLICY_ID, "test"})
+        self.assertEqual(set(module.keys()), {DEFAULT_MODULE_ID, "test"})
         module.remove_module("test")
-        self.assertEqual(set(module.keys()), {DEFAULT_POLICY_ID})
+        self.assertEqual(set(module.keys()), {DEFAULT_MODULE_ID})
 
         # test if add works with a conflicting name
         self.assertRaises(
             ValueError,
             lambda: module.add_module(
-                DEFAULT_POLICY_ID,
+                DEFAULT_MODULE_ID,
                 DiscreteBCTorchModule(
                     config=RLModuleConfig(
                         env.observation_space[0],
@@ -140,7 +140,7 @@ class TestMARLModule(unittest.TestCase):
         )
 
         module.add_module(
-            DEFAULT_POLICY_ID,
+            DEFAULT_MODULE_ID,
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
                     env.observation_space[0],
@@ -151,7 +151,7 @@ class TestMARLModule(unittest.TestCase):
             override=True,
         )
 
-    def test_save_to_from_checkpoint(self):
+    def test_save_to_path_and_from_checkpoint(self):
         """Test saving and loading from checkpoint after adding / removing modules."""
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
@@ -185,25 +185,25 @@ class TestMARLModule(unittest.TestCase):
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            module.save_to_checkpoint(tmpdir)
+            module.save_to_path(tmpdir)
             module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
-            self.assertEqual(module.keys(), {"test", "test2", DEFAULT_POLICY_ID})
+            self.assertEqual(module.keys(), {"test", "test2", DEFAULT_MODULE_ID})
             self.assertNotEqual(id(module), id(module2))
 
         module.remove_module("test")
 
-        # check that after removing a module, the checkpoint is correct
+        # Check that - after removing a module - the checkpoint is correct.
         with tempfile.TemporaryDirectory() as tmpdir:
-            module.save_to_checkpoint(tmpdir)
+            module.save_to_path(tmpdir)
             module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
-            self.assertEqual(module.keys(), {"test2", DEFAULT_POLICY_ID})
+            self.assertEqual(module.keys(), {"test2", DEFAULT_MODULE_ID})
             self.assertNotEqual(id(module), id(module2))
 
-        # check that after adding a new module, the checkpoint is correct
+        # Check that - after adding a new module - the checkpoint is correct.
         module.add_module(
             "test3",
             DiscreteBCTorchModule(
@@ -214,14 +214,14 @@ class TestMARLModule(unittest.TestCase):
                 )
             ),
         )
-        # check that after adding a module, the checkpoint is correct
+        # Check that - after adding a module - the checkpoint is correct.
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = "/tmp/test_marl_module"
-            module.save_to_checkpoint(tmpdir)
+            module.save_to_path(tmpdir)
             module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
-            self.assertEqual(module.keys(), {"test2", "test3", DEFAULT_POLICY_ID})
+            self.assertEqual(module.keys(), {"test2", "test3", DEFAULT_MODULE_ID})
             self.assertNotEqual(id(module), id(module2))
 
 

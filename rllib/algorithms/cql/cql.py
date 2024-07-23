@@ -49,7 +49,7 @@ class CQLConfig(SACConfig):
         from ray.rllib.algorithms.cql import CQLConfig
         config = CQLConfig().training(gamma=0.9, lr=0.01)
         config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=4)
+        config = config.env_runners(num_env_runners=4)
         print(config.to_dict())
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build(env="CartPole-v1")
@@ -173,14 +173,14 @@ class CQL(SAC):
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         with self._timers[SAMPLE_TIMER]:
-            train_batch = synchronous_parallel_sample(worker_set=self.workers)
+            train_batch = synchronous_parallel_sample(worker_set=self.env_runner_group)
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
 
         # Postprocess batch before we learn on it.
         post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
-        train_batch = post_fn(train_batch, self.workers, self.config)
+        train_batch = post_fn(train_batch, self.env_runner_group, self.config)
 
         # Learn on training batch.
         # Use simple optimizer (only for multi-agent or tf-eager; all other
@@ -199,8 +199,8 @@ class CQL(SAC):
         last_update = self._counters[LAST_TARGET_UPDATE_TS]
         if cur_ts - last_update >= self.config.target_network_update_freq:
             with self._timers[TARGET_NET_UPDATE_TIMER]:
-                to_update = self.workers.local_worker().get_policies_to_train()
-                self.workers.local_worker().foreach_policy_to_train(
+                to_update = self.env_runner.get_policies_to_train()
+                self.env_runner.foreach_policy_to_train(
                     lambda p, pid: pid in to_update and p.update_target()
                 )
             self._counters[NUM_TARGET_UPDATES] += 1
@@ -208,9 +208,9 @@ class CQL(SAC):
 
         # Update remote workers's weights after learning on local worker
         # (only those policies that were actually trained).
-        if self.workers.num_remote_workers() > 0:
+        if self.env_runner_group.num_remote_workers() > 0:
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(policies=list(train_results.keys()))
+                self.env_runner_group.sync_weights(policies=list(train_results.keys()))
 
         # Return all collected metrics for the iteration.
         return train_results

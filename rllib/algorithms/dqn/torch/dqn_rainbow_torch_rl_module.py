@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Collection, Dict, Optional, Union
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     DQNRainbowRLModule,
@@ -17,12 +17,9 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface,
-)
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import NetworkType, TensorType, TensorStructType
+from ray.rllib.utils.typing import StateDict, TensorType, TensorStructType
 
 torch, nn = try_import_torch()
 
@@ -37,35 +34,41 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # If we use a noisy encoder. Note, only if the observation
         # space is a flat space we can use a noisy encoder.
         self.uses_noisy_encoder = isinstance(self.encoder, TorchNoisyMLPEncoder)
-        # If we have target networks we need to sync them.
-        if not self.inference_only:
-            # We do not want to train the target networks.
-            # AND sync all target nets with the actual (trained) ones.
+
+        # If not an inference-only module (e.g., for evaluation), set up the
+        # parameter names to be removed or renamed when syncing from the state dict
+        # when syncing.
+        if not self.config.inference_only:
+            # If we have target networks ,we need to make them not trainable.
             self.target_encoder.requires_grad_(False)
-            self.target_encoder.load_state_dict(self.encoder.state_dict())
-
             self.af_target.requires_grad_(False)
-            self.af_target.load_state_dict(self.af.state_dict())
-
             if self.uses_dueling:
                 self.vf_target.requires_grad_(False)
-                self.vf_target.load_state_dict(self.vf.state_dict())
-
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
 
     # TODO (simon): Refactor to parent method.
     @override(TorchRLModule)
-    def get_state(self, inference_only: bool = False) -> Dict[str, Any]:
-        state_dict = self.state_dict()
+    @override(TorchRLModule)
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        inference_only: bool = False,
+        **kwargs,
+    ) -> StateDict:
+        state = super(DQNRainbowTorchRLModule, self).get_state(
+            components=components, not_components=not_components, **kwargs
+        )
         # If this module is not for inference, but the state dict is.
-        if not self.inference_only and inference_only:
+        if not self.config.inference_only and inference_only:
             # Call the local hook to remove or rename the parameters.
-            return self._inference_only_get_state_hook(state_dict)
+            return self._inference_only_get_state_hook(state)
         # Otherwise, the state dict is for checkpointing or saving the model.
         else:
             # Return the state dict as is.
-            return state_dict
+            return state
 
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
@@ -149,7 +152,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
     def _forward_train(
         self, batch: Dict[str, TensorType]
     ) -> Dict[str, TensorStructType]:
-        if self.inference_only:
+        if self.config.inference_only:
             raise RuntimeError(
                 "Trying to train a module that is not a learner module. Set the "
                 "flag `inference_only=False` when building the module."
@@ -294,19 +297,6 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         output["probs"] = prob_per_action_per_atom
 
         return output
-
-    @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
-        """Returns target Q and Q network(s) to update the target network(s)."""
-        return [(self.target_encoder, self.encoder), (self.af_target, self.af)] + (
-            # If we have a dueling architecture we need to update the value stream
-            # target, too.
-            [
-                (self.vf_target, self.vf),
-            ]
-            if self.uses_dueling
-            else []
-        )
 
     # TODO (simon): Test, if providing the function with a `return_probs`
     # improves performance significantly.

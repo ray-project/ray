@@ -25,7 +25,31 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
             "scheduling_strategy": "DEFAULT",
             "max_retries": -1,
         }
-        CACHED_FUNCTIONS[fn] = ray.remote(
-            **{**default_ray_remote_args, **ray_remote_args}
-        )(fn)
+        ray_remote_args = {**default_ray_remote_args, **ray_remote_args}
+        _add_system_error_to_retry_exceptions(ray_remote_args)
+        CACHED_FUNCTIONS[fn] = ray.remote(**ray_remote_args)(fn)
     return CACHED_FUNCTIONS[fn]
+
+
+def _add_system_error_to_retry_exceptions(ray_remote_args) -> None:
+    """Modify the remote args so that Ray retries `RaySystemError`s.
+
+    Ray typically automatically retries system errors. However, in some cases, Ray won't
+    retry system errors if they're raised from task code. To ensure that Ray Data is
+    fault tolerant to those errors, we need to add `RaySystemError` to the
+    `retry_exceptions` list.
+
+    TODO: Fix this in Ray Core. See https://github.com/ray-project/ray/pull/45079.
+    """
+    retry_exceptions = ray_remote_args.get("retry_exceptions", False)
+    assert isinstance(retry_exceptions, (list, bool))
+
+    if (
+        isinstance(retry_exceptions, list)
+        and ray.exceptions.RaySystemError not in retry_exceptions
+    ):
+        retry_exceptions.append(ray.exceptions.RaySystemError)
+    elif not retry_exceptions:
+        retry_exceptions = [ray.exceptions.RaySystemError]
+
+    ray_remote_args["retry_exceptions"] = retry_exceptions

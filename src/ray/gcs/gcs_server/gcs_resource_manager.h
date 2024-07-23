@@ -79,6 +79,12 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get total resources of all nodes.
+  /// Autoscaler-specific RPC called from Python.
+  void HandleGetAllTotalResources(rpc::GetAllTotalResourcesRequest request,
+                                  rpc::GetAllTotalResourcesReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle get ids of draining nodes.
   /// Autoscaler-specific RPC called from Python.
   void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
@@ -185,7 +191,8 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
     GET_ALL_AVAILABLE_RESOURCES_REQUEST = 1,
     REPORT_RESOURCE_USAGE_REQUEST = 2,
     GET_ALL_RESOURCE_USAGE_REQUEST = 3,
-    CountType_MAX = 4,
+    GET_All_TOTAL_RESOURCES_REQUEST = 4,
+    CountType_MAX = 5,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 

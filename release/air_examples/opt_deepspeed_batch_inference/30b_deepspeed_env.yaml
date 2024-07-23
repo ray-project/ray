@@ -8,8 +8,8 @@ python:
     # Install boto3 to workaround a temporary issue with python and urllib3.
     # TODO(jungong) : remove this.
     - boto3
-    - myst-parser==0.15.2
-    - myst-nb==0.13.1
+    - myst-parser==1.0.0
+    - myst-nb==1.0.0
     - jupytext==1.13.6
   conda_packages: []
 

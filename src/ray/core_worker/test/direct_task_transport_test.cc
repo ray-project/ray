@@ -233,9 +233,10 @@ class MockRayletClient : public WorkerLeaseInterface {
     callbacks.push_back(callback);
   }
 
-  void ReleaseUnusedWorkers(
+  void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override {}
+      const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) override {
+  }
 
   void CancelWorkerLease(
       const TaskID &task_id,
@@ -286,7 +287,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       return false;
     } else {
       auto callback = callbacks.front();
-      callback(Status::GrpcUnavailable("unavailable"), reply);
+      callback(Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE), reply);
       callbacks.pop_front();
       return true;
     }
