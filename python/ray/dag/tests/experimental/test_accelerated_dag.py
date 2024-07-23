@@ -1258,8 +1258,9 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
 
     with pytest.raises(
         ValueError,
-        match="DAG outputs currently can only be read by the driver--not the driver "
-        "and actors.",
+        match="DAG outputs currently can only be read by the driver or "
+        "the same actor that is also the InputNode, not by both "
+        "the driver and actors.",
     ):
         dag.experimental_compile()
 

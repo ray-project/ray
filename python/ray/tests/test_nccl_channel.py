@@ -37,12 +37,12 @@ class Worker:
     def create_nccl_channel(
         self,
         typ: TorchTensorType,
-        reader_to_node_id: List[Tuple[ray.actor.ActorHandle, str]],
+        reader_and_node_list: List[Tuple[ray.actor.ActorHandle, str]],
     ):
         typ.register_custom_serializer()
         self.chan = typ.create_channel(
             ray.get_runtime_context().current_actor,
-            reader_to_node_id,
+            reader_and_node_list,
             _torch_tensor_allocator=lambda shape, dtype: torch.zeros(
                 shape, dtype=dtype
             ),

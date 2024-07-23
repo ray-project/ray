@@ -96,20 +96,20 @@ def main(results=None):
     n_cpu = multiprocessing.cpu_count() // 2
     print(f"Testing multiple readers/channels, n={n_cpu}")
 
-    reader_to_node_id = []
+    reader_and_node_list = []
     for _ in range(n_cpu):
         reader = ChannelReader.remote()
         reader_node = get_actor_node_id(reader)
-        reader_to_node_id.append((reader, reader_node))
-    chans = [ray_channel.Channel(None, reader_to_node_id, 1000)]
-    ray.get([reader.ready.remote() for reader, _ in reader_to_node_id])
-    for reader, _ in reader_to_node_id:
+        reader_and_node_list.append((reader, reader_node))
+    chans = [ray_channel.Channel(None, reader_and_node_list, 1000)]
+    ray.get([reader.ready.remote() for reader, _ in reader_and_node_list])
+    for reader, _ in reader_and_node_list:
         reader.read.remote(chans)
     results += timeit(
         "[unstable] local put:n remote get, single channel calls",
         lambda: put_channel_small(chans),
     )
-    for reader, _ in reader_to_node_id:
+    for reader, _ in reader_and_node_list:
         ray.kill(reader)
 
     reader = ChannelReader.remote()
@@ -125,23 +125,23 @@ def main(results=None):
     )
     ray.kill(reader)
 
-    reader_to_node_id = []
+    reader_and_node_list = []
     for _ in range(n_cpu):
         reader = ChannelReader.remote()
         reader_node = get_actor_node_id(reader)
-        reader_to_node_id.append((reader, reader_node))
+        reader_and_node_list.append((reader, reader_node))
     chans = [
-        ray_channel.Channel(None, [reader_to_node_id[i]], 1000) for i in range(n_cpu)
+        ray_channel.Channel(None, [reader_and_node_list[i]], 1000) for i in range(n_cpu)
     ]
-    ray.get([reader.ready.remote() for reader, _ in reader_to_node_id])
-    for chan, reader_node_tuple in zip(chans, reader_to_node_id):
+    ray.get([reader.ready.remote() for reader, _ in reader_and_node_list])
+    for chan, reader_node_tuple in zip(chans, reader_and_node_list):
         reader = reader_node_tuple[0]
         reader.read.remote([chan])
     results += timeit(
         "[unstable] local put:n remote get, n channels calls",
         lambda: put_channel_small(chans),
     )
-    for reader, _ in reader_to_node_id:
+    for reader, _ in reader_and_node_list:
         ray.kill(reader)
 
     # Tests for compiled DAGs.

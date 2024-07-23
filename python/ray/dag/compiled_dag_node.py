@@ -53,14 +53,14 @@ logger = logging.getLogger(__name__)
 @DeveloperAPI
 def do_allocate_channel(
     self,
-    reader_to_node_id: List[Tuple["ray.actor.ActorHandle", str]],
+    reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
 ) -> ChannelInterface:
     """Generic actor method to allocate an output channel.
 
     Args:
-        reader_to_node_id: A list of tuples, where each tuple contains a reader
-            actor handle and the node ID where the handle is located.
+        reader_and_node_list: A list of tuples, where each tuple contains a reader
+            actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
 
     Returns:
@@ -75,7 +75,7 @@ def do_allocate_channel(
 
     output_channel = typ.create_channel(
         self_actor,
-        reader_to_node_id,
+        reader_and_node_list,
     )
     return output_channel
 
@@ -574,7 +574,7 @@ class CompiledDAG:
                 )
             ).remote()
 
-        self._actor_handle = _get_or_create_local_actor_handle()
+        self._dag_creator_actor = _get_or_create_local_actor_handle()
 
     @property
     def has_single_output(self):
@@ -798,7 +798,7 @@ class CompiledDAG:
         if actor_handle in self.actor_to_node_id:
             return self.actor_to_node_id[actor_handle]
         node_id = None
-        if actor_handle == self._actor_handle:
+        if actor_handle == self._dag_creator_actor:
             node_id = ray.get_runtime_context().get_node_id()
         else:
             node_id = ray.get(
@@ -859,17 +859,18 @@ class CompiledDAG:
                 # `readers` is the nodes that are ordered after the current one (`task`)
                 # in the DAG.
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
-                reader_to_node_id: List[Tuple["ray.actor.ActorHandle", str]] = []
+                reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                 dag_nodes = [reader.dag_node for reader in readers]
-                read_by_output_node = False
+                read_by_multi_output_node = False
                 for dag_node in dag_nodes:
                     if isinstance(dag_node, MultiOutputNode):
-                        read_by_output_node = True
+                        read_by_multi_output_node = True
                         break
-                if read_by_output_node:
+                if read_by_multi_output_node:
                     if len(readers) != 1:
                         raise ValueError(
-                            "DAG outputs currently can only be read by the driver--not "
+                            "DAG outputs currently can only be read by the driver or "
+                            "the same actor that is also the InputNode, not by both "
                             "the driver and actors."
                         )
                     # This node is a multi-output node, which means it will only be
@@ -893,14 +894,17 @@ class CompiledDAG:
                     #     print(result)
 
                     #     compiled_dag.teardown()
-                    assert self._actor_handle is not None
-                    reader_to_node_id.append(
-                        (self._actor_handle, self._get_node_id(self._actor_handle))
+                    assert self._dag_creator_actor is not None
+                    reader_and_node_list.append(
+                        (
+                            self._dag_creator_actor,
+                            self._get_node_id(self._dag_creator_actor),
+                        )
                     )
                 else:
                     for reader in readers:
                         reader_handle = reader.dag_node._get_actor_handle()
-                        reader_to_node_id.append(
+                        reader_and_node_list.append(
                             (reader_handle, self._get_node_id(reader_handle))
                         )
 
@@ -908,7 +912,7 @@ class CompiledDAG:
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
-                        reader_to_node_id,
+                        reader_and_node_list,
                         typ=type_hint,
                     )
                 )
@@ -916,22 +920,28 @@ class CompiledDAG:
                 self.actor_refs.add(actor_handle)
                 self.actor_to_tasks[actor_handle].append(task)
             elif isinstance(task.dag_node, InputNode):
-                reader_to_node_id: List[Tuple["ray.actor.ActorHandle", str]] = []
-                # TODO (kevin85421): We need to remove reader_handles_set because
-                # readers can be on the same actor.
+                reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
+                # TODO (kevin85421): Currently, the shared memory channel doesn't
+                # support multiple readers on the same actor. However, if the
+                # InputNode is an actor instead of the driver process, we can support
+                # multiple readers on the same actor if the readers are on the same
+                # actor using IntraProcessChannel, which supports multiple readers
+                # on the same actor. We need to remove reader_handles_set in the future
+                # when we support multiple readers for both shared memory channel
+                # and IntraProcessChannel.
                 reader_handles_set = set()
                 for idx in task.downstream_node_idxs:
                     reader_task = self.idx_to_task[idx]
                     assert isinstance(reader_task.dag_node, ClassMethodNode)
                     reader_handle = reader_task.dag_node._get_actor_handle()
                     if reader_handle not in reader_handles_set:
-                        reader_to_node_id.append(
+                        reader_and_node_list.append(
                             (reader_handle, self._get_node_id(reader_handle))
                         )
                     reader_handles_set.add(reader_handle)
                 task.output_channel = do_allocate_channel(
                     self,
-                    reader_to_node_id,
+                    reader_and_node_list,
                     typ=type_hint,
                 )
             else:

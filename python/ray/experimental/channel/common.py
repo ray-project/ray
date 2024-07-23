@@ -76,7 +76,7 @@ class ChannelOutputType:
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
-        reader_to_node_id: List[Tuple["ray.actor.ActorHandle", str]],
+        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     ) -> "ChannelInterface":
         """
         Instantiate a ChannelInterface class that can be used
@@ -84,8 +84,8 @@ class ChannelOutputType:
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            reader_to_node_id: A list of tuples, where each tuple contains a reader
-                actor handle and the node ID where the handle is located.
+            reader_and_node_list: A list of tuples, where each tuple contains a reader
+                actor handle and the node ID where the actor is located.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
