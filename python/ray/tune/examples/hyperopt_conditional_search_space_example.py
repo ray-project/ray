@@ -8,15 +8,20 @@ For an example of using a Tune search space, see
 :doc:`/tune/examples/hyperopt_example`.
 """
 
+import sys
 import time
-
-from hyperopt import hp
 
 import ray
 from ray import train, tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
+
+if sys.version_info >= (3, 12):
+    # HyperOpt is not compatible with Python 3.12
+    sys.exit(0)
+else:
+    from hyperopt import hp
 
 
 def f_unpack_dict(dct):

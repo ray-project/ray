@@ -1,15 +1,23 @@
 import os
+import sys
 import unittest
+
+import pytest
 
 import ray
 import ray.train
-from ray.rllib import _register_all
 from ray.train import CheckpointConfig
 from ray.tune import Trainable, TuneError, register_trainable, run_experiments
 from ray.tune.experiment import Experiment
 from ray.tune.experiment.trial import ExportFormat, Trial
 from ray.tune.logger import LegacyLoggerCallback, Logger
 from ray.tune.result import TIMESTEPS_TOTAL
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not compatible with Python 3.12
+    sys.exit(0)
+else:
+    from ray.rllib import _register_all
 
 
 def train_fn(config):
@@ -240,7 +248,5 @@ class RunExperimentTest(unittest.TestCase):
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

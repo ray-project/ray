@@ -122,6 +122,10 @@ class TesterContainer(Container):
         branch = os.environ.get("BUILDKITE_BRANCH")
         branch_pipelines = get_global_config()["ci_pipeline_postmerge"]
         pr_pipelines = get_global_config()["ci_pipeline_premerge"]
+
+        for test, result in self.get_test_and_results(team, bazel_log_dir):
+            logger.info(f"Test {test.get_name()} run status is {result.status}")
+
         if is_bisect_run:
             logger.info(
                 "Skip upload test results. We do not upload results on bisect runs."

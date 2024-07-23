@@ -40,6 +40,9 @@ def ray_start_4_cpus_2_gpus_extra():
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow not yet supported for python 3.12+"
+)
 def test_search_alg_notification(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     """Check that the searchers gets notified of trial results + completions.
 
@@ -89,6 +92,9 @@ def test_search_alg_notification(ray_start_4_cpus_2_gpus_extra, resource_manager
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow not yet supported for python 3.12+"
+)
 def test_search_alg_scheduler_stop(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     """Check that a scheduler-issued stop also notifies the search algorithm.
 
@@ -126,6 +132,9 @@ def test_search_alg_scheduler_stop(ray_start_4_cpus_2_gpus_extra, resource_manag
 
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow not yet supported for python 3.12+"
 )
 def test_search_alg_stalled(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     """Checks that runner and searcher state is maintained when stalled.
@@ -207,6 +216,9 @@ def test_search_alg_stalled(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
 
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow not yet supported for python 3.12+"
 )
 def test_search_alg_finishes(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     """Empty SearchAlg changing state in `next_trials` does not crash.

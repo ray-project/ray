@@ -223,4 +223,8 @@ if __name__ == "__main__":
 
     import pytest
 
+    if sys.version_info >= (3, 12):
+        # Tensorflow is not compatible with Python 3.12
+        sys.exit(0)
+
     sys.exit(pytest.main(["-v", "-x", __file__]))

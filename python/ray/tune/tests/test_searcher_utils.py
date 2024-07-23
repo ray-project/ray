@@ -1,3 +1,5 @@
+import sys
+
 import pytest
 
 from ray.tune.search import BasicVariantGenerator, ConcurrencyLimiter, Searcher
@@ -5,6 +7,9 @@ from ray.tune.search.repeater import Repeater
 from ray.tune.search.search_generator import SearchGenerator
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_nested_suggestion():
     class TestSuggestion(Searcher):
         def suggest(self, trial_id):
@@ -50,6 +55,9 @@ def _repeat_trials(num_samples: int, repeat: int):
     return trials
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_repeat_1():
     trials = _repeat_trials(num_samples=2, repeat=1)
     assert len(trials) == 2
@@ -57,6 +65,9 @@ def test_repeat_1():
     assert len(parameter_set) == 2
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_repeat_4():
     trials = _repeat_trials(num_samples=12, repeat=4)
     assert len(trials) == 12
@@ -64,6 +75,9 @@ def test_repeat_4():
     assert len(parameter_set) == 3
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_odd_repeat():
     trials = _repeat_trials(num_samples=11, repeat=5)
     assert len(trials) == 11
@@ -153,6 +167,9 @@ def test_set_get_limiter():
     assert limiter2.suggest("test_3")["score"] == 3
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_basic_variant_limiter():
     search_alg = BasicVariantGenerator(max_concurrent=2)
 

@@ -38,6 +38,9 @@ def ray_start_4_cpus_2_gpus_extra():
         [{"CPU": 1, "GPU": 1}],
     ],
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_resource_parallelism_single(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls, bundles
 ):
@@ -80,6 +83,9 @@ def test_resource_parallelism_single(
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_fractional_gpus(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     """Test that fractional GPUs lead to more parallelism.
 
@@ -115,6 +121,9 @@ def test_fractional_gpus(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
 
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
 )
 def test_multi_step(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     """Test that trials can run for more than one iteration.
@@ -153,6 +162,9 @@ def test_multi_step(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
 
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
 )
 def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     """Checks that resource requirements can be changed on fly.

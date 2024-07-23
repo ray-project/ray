@@ -466,6 +466,9 @@ def test_multi_trial_reuse_heterogeneous(ray_start_4_cpus_extra):
     assert sorted([t.last_result["num_resets"] for t in trials]) == [0, 0, 0, 1, 1, 1]
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_detect_reuse_mixins():
     class DummyMixin:
         pass

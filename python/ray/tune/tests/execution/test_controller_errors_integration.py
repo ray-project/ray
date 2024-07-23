@@ -48,6 +48,9 @@ def create_mock_components():
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_invalid_trainable(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     """An invalid trainable should make the trial fail on startup.
 
@@ -93,6 +96,9 @@ def test_overstep(ray_start_4_cpus_2_gpus_extra):
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 @pytest.mark.parametrize("max_failures_persistent", [(0, False), (1, False), (2, True)])
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_failure_recovery(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls, max_failures_persistent
 ):
@@ -149,6 +155,9 @@ def test_failure_recovery(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 @pytest.mark.parametrize("fail_fast", [True, TuneController.RAISE])
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_fail_fast(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, fail_fast):
     """Test fail_fast feature.
 

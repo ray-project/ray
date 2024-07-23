@@ -4,11 +4,12 @@ import sys
 import tempfile
 import unittest
 
+import pytest
+
 import ray
 import ray.train
 from ray import tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib import _register_all
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train.tests.util import mock_storage_context
 from ray.tune.execution.placement_groups import PlacementGroupFactory
@@ -16,6 +17,12 @@ from ray.tune.logger import NoopLogger
 from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers import ResourceChangingScheduler
 from ray.tune.trainable import with_parameters, wrap_function
+
+if sys.version_info >= (3, 12):
+    # ray.rllib tensorflow is not compatible with Python 3.12
+    sys.exit(0)
+else:
+    from ray.rllib import _register_all
 
 
 def creator_generator(logdir):
@@ -286,6 +293,4 @@ class FunctionApiTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__]))

@@ -8,7 +8,6 @@ import unittest
 import numpy as np
 import pandas
 import pytest
-from hyperopt import hp
 from nevergrad.optimization import optimizerlib
 from packaging.version import Version
 from zoopt import ValueType
@@ -26,6 +25,12 @@ from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.nevergrad import NevergradSearch
 from ray.tune.search.optuna import OptunaSearch
 from ray.tune.search.zoopt import ZOOptSearch
+
+if sys.version_info >= (3, 12):
+    # hyperopt does not support Python 3.12
+    sys.exit(0)
+else:
+    from hyperopt import hp
 
 
 class AbstractWarmStartTest:

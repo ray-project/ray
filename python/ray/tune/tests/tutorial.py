@@ -4,7 +4,9 @@
 
 # fmt: off
 # __tutorial_imports_begin__
+import sys
 import numpy as np
+import pytest
 import torch
 import torch.optim as optim
 import torch.nn as nn
@@ -14,6 +16,11 @@ import torch.nn.functional as F
 
 from ray import train, tune
 from ray.tune.schedulers import ASHAScheduler
+
+if sys.version_info >= (3, 12):
+    # hyperopt is not compatible with Python 3.12
+    sys.exit(0)
+
 # __tutorial_imports_end__
 # fmt: on
 

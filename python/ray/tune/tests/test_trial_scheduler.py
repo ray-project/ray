@@ -15,7 +15,6 @@ import pytest
 import ray
 from ray import train, tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib import _register_all
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
@@ -36,6 +35,12 @@ from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _explore
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search._mock import _MockSearcher
 from ray.tune.trainable.metadata import _TrainingRunMetadata
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not compatible with Python 3.12
+    sys.exit(0)
+else:
+    from ray.rllib import _register_all
 
 _register_all()
 

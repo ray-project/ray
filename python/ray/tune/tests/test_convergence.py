@@ -93,6 +93,10 @@ class ConvergenceTest(unittest.TestCase):
         assert len(analysis.trials) < 100
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="hyperopt is not compatible with Python 3.12",
+    )
     def testConvergenceHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 

@@ -37,6 +37,9 @@ class StatefulCallback(Callback):
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_callback_save_restore(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmpdir
 ):

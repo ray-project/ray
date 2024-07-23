@@ -548,6 +548,10 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             stop={"training_iteration": 3},
         )
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="Tensorflow not yet supported for python 3.12+",
+    )
     def testBurnInPeriod(self):
         runner, *_ = create_execution_test_objects()
         storage_context = runner._storage

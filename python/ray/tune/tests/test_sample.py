@@ -689,6 +689,10 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="BOHB not yet supported for python 3.12+",
+    )
     def testConvertBOHB(self):
         import ConfigSpace
 
@@ -750,6 +754,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB doesn't support py312"
+    )
     def testSampleBoundsBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -859,6 +866,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="hyperopt doesn't support py312"
+    )
     def testConvertHyperOpt(self):
         from hyperopt import hp
 
@@ -916,6 +926,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="hyperopt doesn't support py312"
+    )
     def testConvertHyperOptChooseFromListOfList(self):
         from hyperopt import hp
 
@@ -949,6 +962,9 @@ class SearchSpaceTest(unittest.TestCase):
         # ```
         self.assertTrue(config1.get("a") in [(1, 2), (3, 4)])
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="hyperopt doesn't support py312"
+    )
     def testConvertHyperOptNested(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
@@ -1004,6 +1020,9 @@ class SearchSpaceTest(unittest.TestCase):
 
             self.assertIn(config["domain_nested"], ["M", "N", "O", "P"])
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="hyperopt doesn't support py312"
+    )
     def testConvertHyperOptConstant(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
@@ -1015,6 +1034,9 @@ class SearchSpaceTest(unittest.TestCase):
         ):
             searcher.set_search_properties(metric="a", mode="max", config=config)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="hyperopt doesn't support py312"
+    )
     def testSampleBoundsHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
@@ -1529,6 +1551,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         return self._testPointsToEvaluate(BayesOptSearch, config)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB not yet supported for python 3.12+"
+    )
     def testPointsToEvaluateBOHB(self):
         config = {
             "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
@@ -1541,6 +1566,10 @@ class SearchSpaceTest(unittest.TestCase):
 
         return self._testPointsToEvaluate(TuneBOHB, config)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="hyperoprt not yet supported for python 3.12+",
+    )
     def testPointsToEvaluateHyperOpt(self):
         config = {
             "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
@@ -1571,6 +1600,10 @@ class SearchSpaceTest(unittest.TestCase):
 
         return self._testPointsToEvaluate(HyperOptSearch, config)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="hyperoprt not yet supported for python 3.12+",
+    )
     def testPointsToEvaluateHyperOptNested(self):
         space = {
             "nested": [
@@ -1846,6 +1879,10 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
 
     @patch.object(logger, "warning")
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="TODO(justinvyu): not working for python 3.12 yet",
+    )
     def testSetSearchPropertiesBackwardsCompatibility(self, mocked_warning_method):
         from ray.tune.search import Searcher
 

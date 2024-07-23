@@ -148,6 +148,10 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="BOHB not yet supported for python 3.12+",
+    )
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -185,6 +189,10 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="hyperopt not yet supported for python 3.12+",
+    )
     def testHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 
@@ -536,6 +544,10 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = BayesOptSearch()
         self._restore(searcher)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="BOHB not yet supported for python 3.12+",
+    )
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -569,6 +581,10 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = HEBOSearch()
         self._restore(searcher)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="hyperopt not yet supported for python 3.12+",
+    )
     def testHyperopt(self):
         from ray.tune.search.hyperopt import HyperOptSearch
 

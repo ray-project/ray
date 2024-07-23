@@ -11,10 +11,16 @@ import pytest
 import ray
 import ray.train
 from ray import tune
-from ray.rllib import _register_all
 from ray.train.tests.util import create_dict_checkpoint
 from ray.tune.cli import commands
 from ray.tune.result import CONFIG_PREFIX
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not compatible with Python 3.12
+    sys.exit(0)
+else:
+    from ray.rllib import _register_all
+
 
 try:
     from cStringIO import StringIO

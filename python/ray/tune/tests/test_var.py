@@ -1,18 +1,24 @@
 import os
 import random
+import sys
 import unittest
 
 import numpy as np
 
 import ray
 from ray import tune
-from ray.rllib import _register_all
 from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.search import BasicVariantGenerator, grid_search
 from ray.tune.search.variant_generator import (
     RecursiveDependencyError,
     _resolve_nested_dict,
 )
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not compatible with Python 3.12
+    sys.exit(0)
+else:
+    from ray.rllib import _register_all
 
 
 class VariantGeneratorTest(unittest.TestCase):

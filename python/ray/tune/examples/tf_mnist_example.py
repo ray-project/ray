@@ -11,6 +11,7 @@
 
 import argparse
 import os
+import sys
 
 from filelock import FileLock
 from tensorflow.keras import Model
@@ -123,6 +124,10 @@ class MNISTTrainable(tune.Trainable):
 
 
 if __name__ == "__main__":
+    if sys.version_info >= (3, 12):
+        # Tensorflow is not compatible with Python 3.12
+        sys.exit(0)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"

@@ -26,12 +26,10 @@ pip install -U --ignore-installed \
   -r python/requirements.txt \
   -r python/requirements/test-requirements.txt
 
-# TODO(can): upgrade tensorflow for python 3.12
-if [[ "${PYTHON-}" != "3.12" ]]; then
-  pip install -U -c python/requirements_compiled.txt \
-    tensorflow tensorflow-probability torch torchvision \
-    transformers aioboto3
-fi
+pip install -U -c python/requirements_compiled.txt \
+  tensorflow tensorflow-probability torch torchvision \
+  transformers aioboto3
+
 git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd
 
 # Install custom Pydantic version if requested.

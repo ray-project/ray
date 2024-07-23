@@ -1,6 +1,9 @@
 import inspect
+import sys
 import unittest
 from unittest.mock import patch
+
+import pytest
 
 import ray
 import ray.train
@@ -60,6 +63,10 @@ class RemoteTest(unittest.TestCase):
 
         self.assertDictEqual(kwargs, default_kwargs)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="hyperopt is not compatible with Python 3.12",
+    )
     def testRemoteRunWithSearcher(self):
         analysis = run(
             train_fn,

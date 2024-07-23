@@ -23,6 +23,9 @@ def ray_start_4_cpus_2_gpus_extra():
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_stop_trial(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     """Stopping a trial while RUNNING or PENDING should work.
 

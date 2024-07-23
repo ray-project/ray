@@ -62,6 +62,9 @@ def num_checkpoints(trial):
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_checkpoint_save_restore(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmpdir
 ):
@@ -130,6 +133,9 @@ def test_checkpoint_save_restore(
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_checkpoint_at_end(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmpdir):
     """Test that a checkpoint is saved at end for class trainables with that config.
 
@@ -158,6 +164,9 @@ def test_checkpoint_at_end(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, 
 
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
 )
 def test_pause_resume_trial(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmpdir
@@ -212,6 +221,9 @@ def test_pause_resume_trial(
 
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
 )
 def test_checkpoint_num_to_keep(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
@@ -307,6 +319,9 @@ def test_checkpoint_num_to_keep(
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_checkpoint_freq_buffered(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
 ):
@@ -351,6 +366,9 @@ def test_checkpoint_freq_buffered(
 
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
 )
 def test_checkpoint_at_end_not_buffered(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
@@ -412,6 +430,9 @@ def test_checkpoint_at_end_not_buffered(
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_checkpoint_user_checkpoint(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
 ):
@@ -462,6 +483,9 @@ def test_checkpoint_user_checkpoint(
 
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
 )
 def test_checkpoint_user_checkpoint_buffered(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
@@ -524,6 +548,9 @@ def test_checkpoint_user_checkpoint_buffered(
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_checkpoint_auto_period(
     ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
 ):
@@ -554,6 +581,9 @@ def test_checkpoint_auto_period(
         assert runner._checkpoint_manager._checkpoint_period > 38.0
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="Tensorflow is not compatible with Python 3.12"
+)
 def test_checkpoint_force_with_num_to_keep(ray_start_4_cpus_2_gpus_extra, tmp_path):
     """Test that cloud syncing is forced if one of the trials has made more
     than num_to_keep checkpoints since last sync.
