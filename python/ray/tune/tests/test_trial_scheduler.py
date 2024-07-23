@@ -932,7 +932,7 @@ class BOHBSuite(unittest.TestCase):
             [t.status for t in trials], [Trial.PAUSED, Trial.PAUSED, Trial.PAUSED]
         )
 
-    @pytest.mark.failif(
+    @pytest.mark.skipif(
         sys.version_info >= (3, 12), reason="BOHB doesn't support py312"
     )
     def testNonstopBOHB(self):
@@ -2554,7 +2554,9 @@ class AsyncHyperBandSuite(unittest.TestCase):
     def testAnonymousMetricEndToEndASHA(self):
         self._testAnonymousMetricEndToEnd(AsyncHyperBandScheduler)
 
-    @pytest.mark.failif(sys.version_info >= (3, 12), reason="BOHB doesn't support py312")
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB doesn't support py312"
+    )
     def testAnonymousMetricEndToEndBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 

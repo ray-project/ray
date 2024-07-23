@@ -770,7 +770,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
-    @pytest.mark.failif(
+    @pytest.mark.skipif(
         sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
     )
     def testConvertHEBO(self):
@@ -829,7 +829,7 @@ class SearchSpaceTest(unittest.TestCase):
 
         # Mixed configs are not supported
 
-    @pytest.mark.failif(
+    @pytest.mark.skipif(
         sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
     )
     def testSampleBoundsHEBO(self):
