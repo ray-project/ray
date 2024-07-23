@@ -113,13 +113,14 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             for worker_info in train_run.workers:
                 actor = actors.get(worker_info.actor_id, None)
                 # Add hardware metrics to API response
+                # TODO(aguo): Delete before merging.
                 logger.warn("Got actor: %s", actor)
                 if actor:
                     gpus = [
                         gpu
                         for gpu in actor["gpus"]
                         if worker_info.pid
-                        in [process["pid"] for process in gpu["processesPids"]]
+                        in [process["pid"] for process in gpu["processes_pids"]]
                     ]
 
                     worker_info_with_details = TrainWorkerInfoWithDetails(
