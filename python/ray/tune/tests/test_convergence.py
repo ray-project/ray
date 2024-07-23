@@ -80,7 +80,7 @@ class ConvergenceTest(unittest.TestCase):
         assert len(analysis.trials) < 50
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
 
-    @pytest.mark.failif(
+    @pytest.mark.skipif(
         sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
     )
     def testConvergenceHEBO(self):

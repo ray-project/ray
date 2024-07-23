@@ -163,7 +163,7 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
-    @pytest.mark.failif(
+    @pytest.mark.skipif(
         sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
     )
     def testHEBO(self):
@@ -419,7 +419,7 @@ class AddEvaluatedPointTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             dbr_searcher.add_evaluated_point(point, 1.0)
 
-    @pytest.mark.failif(
+    @pytest.mark.skipif(
         sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
     )
     def testHEBO(self):
@@ -548,7 +548,7 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         assert "not_completed" in searcher.trial_to_params
 
-    @pytest.mark.failif(
+    @pytest.mark.skipif(
         sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
     )
     def testHEBO(self):
