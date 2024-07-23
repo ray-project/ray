@@ -248,7 +248,7 @@ cachetools==5.3.2
     # via
     #   aim
     #   google-auth
-certifi==2023.11.17
+certifi==2024.7.4
     # via
     #   httpcore
     #   httpx
