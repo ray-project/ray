@@ -37,18 +37,3 @@ def pytest_configure(config):
         "markers",
         "failif(condition, *, reason=...): Fail the test if the condition is true",
     )
-
-
-# Define the custom mark behavior
-@pytest.hookimpl(tryfirst=True)
-def pytest_runtest_setup(item):
-    fail_marker = item.get_closest_marker("failif")
-    if not fail_marker:
-        return
-
-    condition = fail_marker.args[0]
-    reason = fail_marker.kwargs.get(
-        "reason", "Test failed due to failif condition being True."
-    )
-    if condition:
-        pytest.fail(reason, pytrace=False)
