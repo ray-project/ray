@@ -46,13 +46,15 @@ config = (
             "fcnet_hiddens": [256, 256],
             "fcnet_activation": "tanh",
             "fcnet_weights_initializer": nn.init.xavier_uniform_,
+            # "post_fcnet_hiddens": [],
+            # "post_fcnet_activation": None,
+            # "post_fcnet_weights_initializer": nn.init.orthogonal_,
+            # "post_fcnet_weights_initializer_config": {"gain": 0.01},
         }
-    )
-    .resources(
-        num_cpus_for_main_process=2,
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
+        min_sample_timesteps_per_iteration=1000,
     )
 )
 

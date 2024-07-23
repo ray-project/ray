@@ -10,7 +10,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModuleID, TensorType
 
@@ -26,7 +25,7 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
         *,
         module_id: ModuleID,
         config: IMPALAConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         # TODO (sven): Now that we do the +1ts trick to be less vulnerable about
