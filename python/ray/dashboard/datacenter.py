@@ -224,6 +224,8 @@ class DataOrganizer:
                     actor_process_stats = process_stats
                     break
 
+            # TODO(aguo): Delete this before merging
+            logger.warn(f"GPUS: {str(gpu_stats)}" )
             for gpu_stats in node_physical_stats.get("gpus", []):
                 # gpu_stats.get("processes") can be None, an empty list or a
                 # list of dictionaries.
