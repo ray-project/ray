@@ -1,12 +1,13 @@
 from typing import Any, Collection, Dict, Optional, Union
 
-from ray.rllib.algorithms.sac.sac_rl_module import (
+from ray.rllib.algorithms.sac.sac_learner import (
     ACTION_DIST_INPUTS_NEXT,
     QF_PREDS,
     QF_TWIN_PREDS,
 )
 from ray.rllib.algorithms.sac.sac_rl_module import SACRLModule
 from ray.rllib.core.models.base import ENCODER_OUT, Encoder, Model
+from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -28,50 +29,8 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         # parameter names to be removed or renamed when syncing from the state dict
         # when syncing.
         if not self.config.inference_only:
-            # We do not want to train the target networks. Instead, we sync them
-            # with the actual (trained) ones.
-            self.qf_target_encoder.requires_grad_(False)
-            self.qf_target_encoder.load_state_dict(self.qf_encoder.state_dict())
-            self.qf_target.requires_grad_(False)
-            self.qf_target.load_state_dict(self.qf.state_dict())
-
-            # If necessary, also synchronize the twin networks.
-            if self.twin_q:
-                self.qf_target_twin_encoder.requires_grad_(False)
-                self.qf_target_twin_encoder.load_state_dict(
-                    self.qf_twin_encoder.state_dict()
-                )
-                self.qf_target_twin.requires_grad_(False)
-                self.qf_target_twin.load_state_dict(self.qf_twin.state_dict())
-
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
-
-    # @override(RLModuleWithTargetNetworksInterface)
-    # def sync_target_networks(self, tau: float) -> None:
-    #    pairs = [
-    #        (self.qf_target_encoder, self.qf_encoder),
-    #        (self.qf_target, self.qf),
-    #    ] + (
-    #        # If we have twin networks we need to update them, too.
-    #        [
-    #            (self.qf_target_twin_encoder, self.qf_twin_encoder),
-    #            (self.qf_target_twin, self.qf_twin),
-    #        ]
-    #        if self.twin_q
-    #        else []
-    #    )
-    #    # Loop through all individual networks that have a corresponding target net.
-    #    for target_net, main_net in pairs:
-    #        # Get the current parameters from the main network.
-    #        state_dict = main_net.state_dict()
-    #        # Use here Polyak averaging.
-    #        new_target_state_dict = {
-    #            k: tau * state_dict[k] + (1 - tau) * v
-    #            for k, v in target_net.state_dict().items()
-    #        }
-    #        # Apply the new parameters to the target Q network.
-    #        target_net.load_state_dict(new_target_state_dict)
 
     @override(TorchRLModule)
     def get_state(
@@ -129,15 +88,16 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         # Also encode the next observations (and next actions for the Q net).
         pi_encoder_next_outs = self.pi_encoder(batch_next)
 
-        # Q-network forward pass.
-        # TODO (simon): Use here `_qf_forward_train` instead of the helper.
+        # Q-network(s) forward passes.
         batch_curr.update({SampleBatch.ACTIONS: batch[SampleBatch.ACTIONS]})
-        output[QF_PREDS] = self._qf_forward_train(batch_curr)[QF_PREDS]
+        output[QF_PREDS] = self._qf_forward_train_helper(
+            batch_curr, self.qf_encoder, self.qf
+        )  # self._qf_forward_train(batch_curr)[QF_PREDS]
         # If necessary make a forward pass through the twin Q network.
         if self.twin_q:
             output[QF_TWIN_PREDS] = self._qf_forward_train_helper(
                 batch_curr, self.qf_twin_encoder, self.qf_twin
-            )[QF_PREDS]
+            )
 
         # Policy head.
         action_logits = self.pi(pi_encoder_outs[ENCODER_OUT])
@@ -149,67 +109,53 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         # Return the network outputs.
         return output
 
-    @override(SACRLModule)
-    def _qf_forward_train(self, batch: Dict) -> Dict[str, Any]:
-        """Forward pass through Q network.
-
-        Note, this is only used in training.
-        """
-        return self._qf_forward_train_helper(batch, self.qf_encoder, self.qf)
-
-    @override(SACRLModule)
-    def _qf_target_forward_train(self, batch: Dict) -> Dict[str, Any]:
-        """Forward pass through Q target network.
-
-        Note, this is only used in training.
-        """
-        return self._qf_forward_train_helper(
-            batch, self.qf_target_encoder, self.qf_target
+    @override(TargetNetworkAPI)
+    def forward_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        target_qvs = self._qf_forward_train_helper(
+            batch, self.target_qf_encoder, self.target_qf
         )
 
-    @override(SACRLModule)
-    def _qf_twin_forward_train(self, batch: Dict) -> Dict[str, Any]:
-        """Forward pass through twin Q network.
-
-        Note, this is only used in training if `twin_q=True`.
-        """
-        return (
-            self._qf_forward_train_helper(batch, self.qf_twin_encoder, self.qf_twin)
-            if self.twin_q
-            else {}
-        )
-
-    @override(SACRLModule)
-    def _qf_target_twin_forward_train(self, batch: Dict) -> Dict[str, Any]:
-        """Forward pass through twin Q target network.
-
-        Note, this is only used in training if `twin_q=True`.
-        """
-        return (
-            self._qf_forward_train_helper(
-                batch, self.qf_target_twin_encoder, self.qf_target_twin
+        # If a twin Q network should be used, calculate twin Q-values and use the
+        # minimum.
+        if self.twin_q:
+            target_qvs = torch.min(
+                target_qvs,
+                self._qf_forward_train_helper(
+                    batch, self.target_qf_twin_encoder, self.target_qf_twin
+                ),
             )
-            if self.twin_q
-            else {}
-        )
+
+        return target_qvs
+
+    # TODO (sven): Create `ValueFunctionAPI` and subclass from this.
+    def compute_q_values(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        qvs = self._qf_forward_train_helper(batch, self.qf_encoder, self.qf)
+        # If a twin Q network should be used, calculate twin Q-values and use the
+        # minimum.
+        if self.twin_q:
+            qvs = torch.min(
+                qvs,
+                self._qf_forward_train_helper(
+                    batch, self.qf_twin_encoder, self.qf_twin
+                ),
+            )
+        return qvs
 
     @override(SACRLModule)
     def _qf_forward_train_helper(
-        self, batch: Dict, encoder: Encoder, head: Model
+        self, batch: Dict[str, Any], encoder: Encoder, head: Model
     ) -> Dict[str, Any]:
         """Executes the forward pass for Q networks.
 
         Args:
-            batch: Dict containing a concatencated tensor with observations
+            batch: Dict containing a concatenated tensor with observations
                 and actions under the key `SampleBatch.OBS`.
             encoder: An `Encoder` model for the Q state-action encoder.
             head: A `Model` for the Q head.
 
         Returns:
-            A `dict` cotnaining the estimated Q-values in the key `QF_PREDS`.
+            The estimated (single) Q-value.
         """
-        output = {}
-
         # Construct batch. Note, we need to feed observations and actions.
         qf_batch = {
             SampleBatch.OBS: torch.concat(
@@ -221,11 +167,9 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
 
         # Q head forward pass.
         qf_out = head(qf_encoder_outs[ENCODER_OUT])
-        # Squeeze out the last dimension (Q function node).
-        output[QF_PREDS] = qf_out.squeeze(dim=-1)
 
-        # Return Q values.
-        return output
+        # Squeeze out the last dimension (Q function node).
+        return qf_out.squeeze(dim=-1)
 
     @override(TorchRLModule)
     def _set_inference_only_state_dict_keys(self) -> None:

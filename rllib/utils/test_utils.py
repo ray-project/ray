@@ -445,7 +445,7 @@ def check_compute_single_action(
     try:
         # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(algorithm.workers.local_worker().get_policies_to_train()))
+        pid = next(iter(algorithm.env_runner.get_policies_to_train()))
         pol = algorithm.get_policy(pid)
     except AttributeError:
         pol = algorithm.policy
@@ -584,12 +584,12 @@ def check_compute_single_action(
         if what is algorithm:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(algorithm, "workers", None)
+            worker_set = getattr(algorithm, "env_runner_group", None)
             assert worker_set
-            if not worker_set.local_worker():
+            if not worker_set.local_env_runner:
                 obs_space = algorithm.get_policy(pid).observation_space
             else:
-                obs_space = worker_set.local_worker().for_policy(
+                obs_space = worker_set.local_env_runner.for_policy(
                     lambda p: p.observation_space, policy_id=pid
                 )
             obs_space = getattr(obs_space, "original_space", obs_space)
@@ -2057,18 +2057,14 @@ def test_ckpt_restore(
         # Check, whether the eval EnvRunnerGroup has the same policies and
         # `policy_mapping_fn`.
         if eval_env_runner_group:
-            eval_mapping_src = inspect.getsource(
-                alg1.evaluation_workers.local_worker().policy_mapping_fn
+            eval_mapping_src = inspect.getsource(alg1.eval_env_runner.policy_mapping_fn)
+            check(
+                eval_mapping_src,
+                inspect.getsource(alg2.eval_env_runner.policy_mapping_fn),
             )
             check(
                 eval_mapping_src,
-                inspect.getsource(
-                    alg2.evaluation_workers.local_worker().policy_mapping_fn
-                ),
-            )
-            check(
-                eval_mapping_src,
-                inspect.getsource(alg2.workers.local_worker().policy_mapping_fn),
+                inspect.getsource(alg2.env_runner.policy_mapping_fn),
                 false=True,
             )
 
