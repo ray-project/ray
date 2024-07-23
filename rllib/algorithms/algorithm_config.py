@@ -432,6 +432,7 @@ class AlgorithmConfig(_Config):
         self.input_ = "sampler"
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
+        self.input_read_schema = {}
         self.prelearner_module_synch_period = 10
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
@@ -2382,6 +2383,7 @@ class AlgorithmConfig(_Config):
         input_=NotProvided,
         input_read_method=NotProvided,
         input_read_method_kwargs=NotProvided,
+        input_read_schema=NotProvided,
         prelearner_module_synch_period=NotProvided,
         dataset_num_iters_per_learner=NotProvided,
         input_config=NotProvided,
@@ -2413,7 +2415,17 @@ class AlgorithmConfig(_Config):
                 See https://docs.ray.io/en/latest/data/api/input_output.html for more
                 info about available read methods in `ray.data`.
             input_read_method_kwargs: kwargs for the `input_read_method`. These will be
-                passed into the read method without checking.
+                passed into the read method without checking. If no arguments are passed
+                in the default argument `{'override_num_blocks': max(num_learners * 2,
+                2)}` is used.
+            input_read_schema: Table schema for converting offline data to episodes.
+                This schema maps the offline data columns to `ray.rllib.core.columns.
+                Columns`: {Columns.OBS: 'o_t', Columns.ACTIONS: 'a_t', ...}. Columns in
+                the data set that are not mapped via this schema are sorted into
+                episodes' `extra_model_outputs`. If no schema is passed in the default
+                schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
+                contains already the names in this schema, no `input_read_schema` is
+                needed.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
@@ -2467,6 +2479,8 @@ class AlgorithmConfig(_Config):
             self.input_read_method = input_read_method
         if input_read_method_kwargs is not NotProvided:
             self.input_read_method_kwargs = input_read_method_kwargs
+        if input_read_schema is not NotProvided:
+            self.input_read_schema = input_read_schema
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
         if dataset_num_iters_per_learner is not NotProvided:
