@@ -1,13 +1,17 @@
+import sys
 import threading
 from typing import Dict
 from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
-import tensorflow as tf
 import torch
 
 import ray
+
+if sys.version_info <= (3, 12):
+    # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+    import tensorflow as tf
 
 
 def build_model():
@@ -219,5 +223,9 @@ def test_iterator_to_materialized_dataset(ray_start_regular_shared):
 
 if __name__ == "__main__":
     import sys
+
+    if sys.version_info >= (3, 12):
+        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+        sys.exit(0)
 
     sys.exit(pytest.main(["-v", __file__]))
