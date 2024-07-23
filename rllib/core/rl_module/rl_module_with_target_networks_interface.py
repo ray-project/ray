@@ -1,9 +1,12 @@
 import abc
 from typing import List, Tuple
 
+from ray.rllib.core.learner.utils import update_target_network
 from ray.rllib.utils.typing import NetworkType
 
 
+# TODO (sven): Deprecate this API in favor of `TargetNetworkAPI`. This API here is only
+#  still used by DQN.
 class RLModuleWithTargetNetworksInterface(abc.ABC):
     """An RLModule Mixin for adding an interface for target networks.
 
@@ -21,3 +24,20 @@ class RLModuleWithTargetNetworksInterface(abc.ABC):
         Returns:
             A list of (target, current) networks.
         """
+
+    def sync_target_networks(self, tau: float = 1.0) -> None:
+        """Update the target network(s) from their corresponding "main" networks.
+
+        The update is made via Polyak averaging (if tau=1.0, the target network(s)
+        are completely overridden by the main network(s)' weights, if tau=0.0, the
+        target network(s) are left as-is).
+
+        Args:
+            tau: The tau value to use for polyak averaging.
+        """
+        for target_net, main_net in self.get_target_network_pairs():
+            update_target_network(
+                main_net=main_net,
+                target_net=target_net,
+                tau=tau,
+            )

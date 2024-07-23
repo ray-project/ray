@@ -8,6 +8,8 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.aggregate import Count
+from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces import ExecutionOptions
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -55,9 +57,7 @@ from ray.data._internal.logical.util import (
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.planner.planner import Planner
 from ray.data._internal.stats import DatasetStats
-from ray.data.aggregate import Count
 from ray.data.context import DataContext
-from ray.data.datasource.parquet_datasink import _ParquetDatasink
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
@@ -972,7 +972,7 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
 def test_write_operator(ray_start_regular_shared, tmp_path):
     concurrency = 2
     planner = Planner()
-    datasink = _ParquetDatasink(tmp_path)
+    datasink = ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
         read_op,
@@ -1355,6 +1355,10 @@ def test_from_huggingface_e2e(ray_start_regular_shared):
     _check_usage_record(["FromArrow"])
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Skip due to incompatibility tensorflow with Python 3.12+",
+)
 def test_from_tf_e2e(ray_start_regular_shared):
     import tensorflow as tf
     import tensorflow_datasets as tfds
@@ -1492,19 +1496,6 @@ def test_execute_to_legacy_block_list(
 
     for i, row in enumerate(ds.iter_rows()):
         assert row["id"] == i
-
-    assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.metadata
-    assert ds._plan._snapshot_stats.time_total_s > 0
-
-
-def test_execute_to_legacy_block_iterator(
-    ray_start_regular_shared,
-):
-    ds = ray.data.range(10)
-    assert ds._plan._snapshot_stats is None
-    for batch in ds.iter_batches():
-        assert batch is not None
 
     assert ds._plan._snapshot_stats is not None
     assert "ReadRange" in ds._plan._snapshot_stats.metadata

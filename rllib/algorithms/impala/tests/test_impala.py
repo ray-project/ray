@@ -25,9 +25,9 @@ class TestIMPALA(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_compilation(self):
-        """Test whether Impala can be built with both frameworks."""
+        """Test whether IMPALA can be built with both frameworks."""
         config = (
-            impala.ImpalaConfig()
+            impala.IMPALAConfig()
             .environment("CartPole-v1")
             .resources(num_gpus=0)
             .env_runners(num_env_runners=2)
@@ -68,7 +68,7 @@ class TestIMPALA(unittest.TestCase):
         # Test whether we correctly ignore the "lr" setting.
         # The first lr should be 0.05.
         config = (
-            impala.ImpalaConfig()
+            impala.IMPALAConfig()
             .resources(num_gpus=0)
             .training(
                 lr=0.1,

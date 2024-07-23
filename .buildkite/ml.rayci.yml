@@ -17,16 +17,6 @@ steps:
       IMAGE_TO: mlbuild
       RAYCI_IS_GPU_BUILD: "false"
 
-  - name: mlbuild-multipy
-    wanda: ci/docker/ml.build.wanda.yaml
-    depends_on: oss-ci-base_ml-multipy
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml-py{{matrix}}
-      IMAGE_TO: mlbuild-py{{matrix}}
-      RAYCI_IS_GPU_BUILD: "false"
-    matrix:
-      - "3.10"
-
   - name: mllightning2gpubuild
     wanda: ci/docker/mllightning2gpu.build.wanda.yaml
     depends_on: oss-ci-base_gpu
@@ -38,16 +28,6 @@ steps:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
       IMAGE_TO: mlgpubuild
       RAYCI_IS_GPU_BUILD: "true"
-
-  - name: mlgpubuild-multipy
-    wanda: ci/docker/ml.build.wanda.yaml
-    depends_on: oss-ci-base_gpu-multipy
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py{{matrix}}
-      IMAGE_TO: mlgpubuild-py{{matrix}}
-      RAYCI_IS_GPU_BUILD: "true"
-    matrix:
-      - "3.10"
 
   # tests
   - label: ":train: ml: train tests"
@@ -142,14 +122,6 @@ steps:
         --except-tags gpu_only
     depends_on: [ "mlbuild", "forge" ]
 
-  - label: ":train: ml: library integration tests"
-    tags: tune
-    instance_type: small
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/horovod/... ml 
-        --parallelism-per-worker 2
-    depends_on: [ "mlbuild", "forge" ]
-
   - label: ":train: ml: release tests"
     tags:
       - ml
@@ -223,6 +195,7 @@ steps:
     depends_on: [ "mllightning2gpubuild", "forge" ]
 
   - label: ":train: ml: flaky tests"
+    key: ml_flaky_tests
     tags: 
       - train
       - skip-on-premerge
@@ -252,6 +225,7 @@ steps:
     soft_fail: true
 
   - label: ":train: ml: train gpu flaky tests"
+    key: ml_flaky_gpu_tests
     tags: 
       - train
       - skip-on-premerge

@@ -278,13 +278,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   gcs_client_ = std::make_shared<gcs::GcsClient>(options_.gcs_options, GetWorkerID());
 
-  RAY_CHECK_OK(gcs_client_->Connect(io_service_, options_.cluster_id));
+  RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
   // Initialize the task state event buffer.
-  auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
-  task_event_buffer_ =
-      std::make_unique<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
+  task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
+      std::make_shared<gcs::GcsClient>(options_.gcs_options));
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
     if (!task_event_buffer_->Start().ok()) {
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
@@ -447,7 +446,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
           if (spec.IsActorTask()) {
             if (update_seqno) {
               auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-              actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+              actor_handle->SetResubmittedActorTaskSpec(spec);
             }
             RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
           } else {
@@ -1075,7 +1074,7 @@ void CoreWorker::InternalHeartbeat() {
     if (spec.IsActorTask()) {
       if (task_to_retry.update_seqno) {
         auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-        actor_handle->SetResubmittedActorTaskSpec(spec, spec.ActorDummyObject());
+        actor_handle->SetResubmittedActorTaskSpec(spec);
       }
       RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
     } else {
@@ -1415,9 +1414,20 @@ Status CoreWorker::ExperimentalChannelWriteAcquire(
     const std::shared_ptr<Buffer> &metadata,
     uint64_t data_size,
     int64_t num_readers,
+    int64_t timeout_ms,
     std::shared_ptr<Buffer> *data) {
-  return experimental_mutable_object_provider_->WriteAcquire(
-      object_id, data_size, metadata->Data(), metadata->Size(), num_readers, *data);
+  Status status = experimental_mutable_object_provider_->GetChannelStatus(
+      object_id, /*is_reader*/ false);
+  if (!status.ok()) {
+    return status;
+  }
+  return experimental_mutable_object_provider_->WriteAcquire(object_id,
+                                                             data_size,
+                                                             metadata->Data(),
+                                                             metadata->Size(),
+                                                             num_readers,
+                                                             *data,
+                                                             timeout_ms);
 }
 
 Status CoreWorker::ExperimentalChannelWriteRelease(const ObjectID &object_id) {
@@ -1554,8 +1564,17 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
   // Check whether these are experimental.Channel objects.
   bool is_experimental_channel = false;
   for (const ObjectID &id : ids) {
-    if (experimental_mutable_object_provider_->ReaderChannelRegistered(id)) {
+    Status status =
+        experimental_mutable_object_provider_->GetChannelStatus(id, /*is_reader*/ true);
+    if (status.ok()) {
       is_experimental_channel = true;
+      // We continue rather than break because we want to check that *all* of the
+      // objects are either experimental or not experimental. We cannot have a mix of
+      // the two.
+      continue;
+    } else if (status.IsChannelError()) {
+      // The channel has been closed.
+      return status;
     } else if (is_experimental_channel) {
       return Status::NotImplemented(
           "ray.get can only be called on all normal objects, or all "
@@ -1565,11 +1584,7 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
 
   // ray.get path for experimental.Channel objects.
   if (is_experimental_channel) {
-    if (timeout_ms >= 0) {
-      return Status::NotImplemented(
-          "non-infinity timeout_ms not supported for experimental channels");
-    }
-    return GetExperimentalMutableObjects(ids, results);
+    return GetExperimentalMutableObjects(ids, timeout_ms, results);
   }
 #endif
 
@@ -1577,10 +1592,12 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
 }
 
 Status CoreWorker::GetExperimentalMutableObjects(
-    const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> &results) {
+    const std::vector<ObjectID> &ids,
+    int64_t timeout_ms,
+    std::vector<std::shared_ptr<RayObject>> &results) {
   for (size_t i = 0; i < ids.size(); i++) {
-    RAY_RETURN_NOT_OK(
-        experimental_mutable_object_provider_->ReadAcquire(ids[i], results[i]));
+    RAY_RETURN_NOT_OK(experimental_mutable_object_provider_->ReadAcquire(
+        ids[i], results[i], timeout_ms));
   }
   return Status::OK();
 }
