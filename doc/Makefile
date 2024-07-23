@@ -4,7 +4,7 @@
 # You can set these variables from the command line.
 # Allow linkcheck to run without treating warnings as errors; -W will
 # fast-fail if enabled; it's better to gather the whole list of bad links at once.
-SPHINXOPTS    = -a -E -W -j auto
+SPHINXOPTS    = -W -P -j auto
 LINKCHECKOPTS = -a -E -j auto
 SPHINXBUILD   = sphinx-build
 PAPER         =

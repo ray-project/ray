@@ -266,7 +266,7 @@ def preload_sidebar_nav(
     bs4.BeautifulSoup
         Soup to display in the side navbar
     """
-    if hasattr(preload_sidebar_nav, "cached_toctree"):
+    if hasattr(preload_sidebar_nav, "cached_toctrees"):
         # Need to retrieve a copy of the cached toctree HTML so as not to modify
         # the cached version when we set the "checked" state of the inputs
         soup = copy.copy(preload_sidebar_nav.cached_toctree)
@@ -325,16 +325,20 @@ def preload_sidebar_nav(
     # we reuse the same sidebar (with different relative URIs for various pages) on
     # different pages. Replace the leading "../" sequences in the hrefs with the correct
     # number of "../" for the given rootdoc
+
     if pagename == root_doc:
         to_root_prefix = "./"
     else:
         to_root_prefix = re.sub(f"{root_doc}.html", "", pathto(root_doc))
 
     for a in soup.select("a"):
+        # ahref_copy = a["href"]
+        # absolute_href = re.sub(r"^(\.\.\/)*", "", ahref_copy)
+        # ahref = to_root_prefix + absolute_href
         absolute_href = re.sub(r"^(\.\.\/)*", "", a["href"])
         a["href"] = to_root_prefix + absolute_href
 
-        if absolute_href == f"{pagename}.html":
+        if f"{pagename}.html" in ahref:
 
             # Add a current-page class to the parent li element for styling
             parent_li = a.find_parent("li")
@@ -1069,12 +1073,12 @@ def setup_context(app, pagename, templatename, context, doctree):
     def render_contributor_dropdown() -> bs4.BeautifulSoup:
         return render_example_gallery_dropdown(Contributor)
 
-    context["cached_toctree"] = preload_sidebar_nav(
-        context["toctree"],
-        context["pathto"],
-        context["root_doc"],
-        pagename,
-    )
+    # context["cached_toctree"] = preload_sidebar_nav(
+    #     context["toctree"],
+    #     context["pathto"],
+    #     context["root_doc"],
+    #     pagename,
+    # )
     context["render_header_nav_links"] = render_header_nav_links
     context["render_library_examples"] = render_library_examples
     context["render_example_gallery"] = render_example_gallery

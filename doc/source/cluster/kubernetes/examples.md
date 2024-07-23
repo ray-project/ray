@@ -6,6 +6,7 @@
 :hidden:
 
 examples/ml-example
+examples/a-example
 examples/gpu-training-example
 examples/mnist-training-example
 examples/stable-diffusion-rayservice
@@ -22,6 +23,7 @@ examples/modin-example
 This section presents example Ray workloads to try out on your Kubernetes cluster.
 
 - {ref}`kuberay-ml-example` (CPU-only)
+- {ref}`kuberay-a-example`
 - {ref}`kuberay-gpu-training-example`
 - {ref}`kuberay-mnist-training-example` (CPU-only)
 - {ref}`kuberay-mobilenet-rayservice-example` (CPU-only)
