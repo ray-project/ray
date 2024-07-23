@@ -104,7 +104,7 @@ std::string LogEventReporter::EventToString(const rpc::Event &event,
 }
 
 std::string LogEventReporter::ExportEventToString(const rpc::Event &event,
-                                            const json &custom_fields) {
+                                                  const json &custom_fields) {
   json j;
 
   auto timestamp = event.timestamp();
@@ -119,8 +119,8 @@ std::string LogEventReporter::ExportEventToString(const rpc::Event &event,
   return j.dump();
 }
 
-bool LogEventReporter::IsExportEvent(const rpc::Event &event,
-                                            const json &custom_fields) {
+bool LogEventReporter::IsExportEvent( const rpc::Event &event,
+                                      const json &custom_fields) {
   /* Determine if the given event is an export event based on the source_type
     field. For export events, validate if event_data and is_delta_event are
     populated in the custom_fields.
