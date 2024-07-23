@@ -468,6 +468,63 @@ TEST_F(EventTest, TestWithField) {
   EXPECT_EQ(bool_value, true);
 }
 
+TEST_F(EventTest, TestEventJSON) {
+  RayEventContext::Instance().SetEventContext(
+      rpc::Event_SourceType::Event_SourceType_RAYLET);
+
+  EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
+      rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir));
+
+  json export_event_data = {
+    {"task_id", "task0"},
+    {"attempt_number", 0},
+    {"state_updates", {
+      {"node_id", "node0"},
+      {"worker_id", "worker0"},
+      {"state_ts", {
+        {0, 123},
+      }},
+    }}
+  };
+
+  RAY_EXPORT_EVENT().WithField("event_data", export_event_data).WithField("is_delta_event", true);
+
+  std::vector<std::string> vc;
+  ReadContentFromFile(vc, log_dir + "/event_RAYLET.log");
+
+  EXPECT_EQ((int)vc.size(), 1);
+
+  std::cout << vc[0];
+  json export_event_as_json = json::parse(vc[0]);
+  EXPECT_EQ(export_event_as_json["source_type"].get<std::string>(), "RAYLET");
+  EXPECT_EQ(export_event_as_json.contains("event_id"), true);
+  EXPECT_EQ(export_event_as_json.contains("timestamp"), true);
+  EXPECT_EQ(export_event_as_json.contains("event_data"), true);
+  EXPECT_EQ(export_event_as_json["is_delta_event"].get<bool>(), true);
+  // Fields that shouldn't exist for export events but do exist for standard events
+  EXPECT_EQ(export_event_as_json.contains("severity"), false);
+  EXPECT_EQ(export_event_as_json.contains("label"), false);
+  EXPECT_EQ(export_event_as_json.contains("message"), false);
+
+  json event_data = export_event_as_json["event_data"].get<json>();
+  EXPECT_EQ(event_data, export_event_data);
+
+  // EXPECT_EQ(rpc::Event_Severity_Name(ele.severity()), "");
+
+  // CheckEventDetail(
+  //     ele, "job 1", "node 1", "task 1", "RAYLET", "", "", "");
+  // auto string_value = custom_fields["string"].get<std::string>();
+  // EXPECT_EQ(string_value, "test string");
+  // auto int_value = custom_fields["int"].get<int>();
+  // EXPECT_EQ(int_value, 123);
+  // auto double_value = custom_fields["double"].get<double>();
+  // EXPECT_EQ(double_value, 0.123);
+  // auto bool_value = custom_fields["bool"].get<bool>();
+  // EXPECT_EQ(bool_value, true);
+  // auto json_value = custom_fields["jsonval"].get<json>();
+  // EXPECT_EQ(json_value, j2);
+}
+
 TEST_F(EventTest, TestRayCheckAbort) {
   auto custom_fields = absl::flat_hash_map<std::string, std::string>();
   custom_fields.emplace("node_id", "node 1");

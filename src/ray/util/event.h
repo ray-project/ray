@@ -78,6 +78,13 @@ namespace ray {
                   __FILE__,                                                     \
                   __LINE__)
 
+#define RAY_EXPORT_EVENT() ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_INFO,              \
+                  ray::RayEvent::EventLevelToLogLevel(                                               \
+                      ::ray::rpc::Event_Severity::Event_Severity_INFO),                              \
+                  "",                                                                                \
+                  __FILE__,                                                                          \
+                  __LINE__)
+
 // interface of event reporter
 class BaseEventReporter {
  public:
@@ -104,6 +111,10 @@ class LogEventReporter : public BaseEventReporter {
   virtual std::string replaceLineFeed(std::string message);
 
   virtual std::string EventToString(const rpc::Event &event, const json &custom_fields);
+
+  virtual std::string ExportEventToString(const rpc::Event &event, const json &custom_fields);
+
+  virtual bool IsExportEvent(const rpc::Event &event, const json &custom_fields);
 
   virtual void Init() override {}
 

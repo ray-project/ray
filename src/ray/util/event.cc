@@ -103,10 +103,37 @@ std::string LogEventReporter::EventToString(const rpc::Event &event,
   return j.dump();
 }
 
+std::string LogEventReporter::ExportEventToString(const rpc::Event &event,
+                                            const json &custom_fields) {
+  json j;
+
+  auto timestamp = event.timestamp();
+
+  j["timestamp"] = timestamp;
+  j["event_id"] = event.event_id();
+  j["source_type"] = Event_SourceType_Name(event.source_type());
+  j["host_name"] = event.source_hostname();
+  j["pid"] = std::to_string(event.source_pid());
+  j["event_data"] = custom_fields["event_data"].get<json>();
+  j["is_delta_event"] = custom_fields["is_delta_event"].get<bool>();
+  return j.dump();
+}
+
+bool LogEventReporter::IsExportEvent(const rpc::Event &event,
+                                            const json &custom_fields) {
+  /* Returns True if the given event is an export event, and False otherwise.*/
+  return (custom_fields.contains("event_data") && custom_fields.contains("is_delta_event"));
+}
+
 void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields) {
   RAY_CHECK(Event_SourceType_IsValid(event.source_type()));
   RAY_CHECK(Event_Severity_IsValid(event.severity()));
-  std::string result = EventToString(event, custom_fields);
+  std::string result;
+  if (IsExportEvent(event, custom_fields)) {
+    result = ExportEventToString(event, custom_fields);
+  } else {
+    result = EventToString(event, custom_fields);
+  }
 
   log_sink_->info(result);
   if (force_flush_) {
