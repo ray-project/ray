@@ -35,13 +35,15 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # space is a flat space we can use a noisy encoder.
         self.uses_noisy_encoder = isinstance(self.encoder, TorchNoisyMLPEncoder)
 
-        # If we have target networks ,we need to make them not trainable.
+        # If not an inference-only module (e.g., for evaluation), set up the
+        # parameter names to be removed or renamed when syncing from the state dict
+        # when syncing.
         if not self.config.inference_only:
+            # If we have target networks ,we need to make them not trainable.
             self.target_encoder.requires_grad_(False)
             self.af_target.requires_grad_(False)
             if self.uses_dueling:
                 self.vf_target.requires_grad_(False)
-
             # Set the expected and unexpected keys for the inference-only module.
             self._set_inference_only_state_dict_keys()
 

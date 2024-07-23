@@ -252,9 +252,7 @@ if __name__ == "__main__":
                 else:
                     obs = np.array(time_step.observations["info_state"][player_id])
                     if config.enable_env_runner_and_connector_v2:
-                        action = algo.workers.local_worker().module.forward_inference(
-                            {"obs": obs}
-                        )
+                        action = algo.env_runner.module.forward_inference({"obs": obs})
                     else:
                         action = algo.compute_single_action(obs, policy_id="main")
                     # In case computer chooses an invalid action, pick a

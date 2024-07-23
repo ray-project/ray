@@ -271,9 +271,7 @@ class APPO(IMPALA):
         # TODO(avnishn): Does this need to happen in __init__? I think we can move it
         #  to setup()
         if not self.config.enable_rl_module_and_learner:
-            self.workers.local_worker().foreach_policy_to_train(
-                lambda p, _: p.update_target()
-            )
+            self.env_runner.foreach_policy_to_train(lambda p, _: p.update_target())
 
     @override(IMPALA)
     def training_step(self) -> ResultDict:
@@ -305,9 +303,7 @@ class APPO(IMPALA):
                 self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
                 # Update our target network.
-                self.workers.local_worker().foreach_policy_to_train(
-                    lambda p, _: p.update_target()
-                )
+                self.env_runner.foreach_policy_to_train(lambda p, _: p.update_target())
 
                 # Also update the KL-coefficient for the APPO loss, if necessary.
                 if self.config.use_kl_loss:
@@ -331,7 +327,7 @@ class APPO(IMPALA):
 
                     # Update KL on all trainable policies within the local (trainer)
                     # Worker.
-                    self.workers.local_worker().foreach_policy_to_train(update)
+                    self.env_runner.foreach_policy_to_train(update)
 
         return train_results
 

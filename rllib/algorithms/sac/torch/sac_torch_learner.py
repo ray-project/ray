@@ -115,9 +115,11 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # Receive the current alpha hyperparameter.
         alpha = torch.exp(self.curr_log_alpha[module_id])
 
+        module = self.module[module_id].unwrapped()
+
         # Get the train action distribution for the current policy and current state.
         # This is needed for the policy (actor) loss in SAC.
-        action_dist_class = self.module[module_id].get_train_action_dist_cls()
+        action_dist_class = module.get_train_action_dist_cls()
         action_dist_curr = action_dist_class.from_logits(
             fwd_out[Columns.ACTION_DIST_INPUTS]
         )
@@ -161,14 +163,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             Columns.OBS: batch[Columns.OBS],
             Columns.ACTIONS: actions_curr,
         }
-        q_curr = self.module[module_id]._qf_forward_train(q_batch_curr)[QF_PREDS]
-        # If a twin Q network should be used, calculate twin Q-values and use the
-        # minimum.
-        if config.twin_q:
-            q_twin_curr = self.module[module_id]._qf_twin_forward_train(q_batch_curr)[
-                QF_PREDS
-            ]
-            q_curr = torch.min(q_curr, q_twin_curr)
+        q_curr = module.compute_q_values(q_batch_curr)
 
         # Compute Q-values from the target Q network for the next state with the
         # sampled actions for the next state.
@@ -176,16 +171,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             Columns.OBS: batch[Columns.NEXT_OBS],
             Columns.ACTIONS: actions_next,
         }
-        q_target_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[
-            QF_PREDS
-        ]
-        # If a twin Q network should be used, calculate twin Q-values and use the
-        # minimum.
-        if config.twin_q:
-            q_target_twin_next = self.module[module_id]._qf_target_twin_forward_train(
-                q_batch_next
-            )[QF_PREDS]
-            q_target_next = torch.min(q_target_next, q_target_twin_next)
+        q_target_next = module.forward_target(q_batch_next)
 
         # Compute value function for next state (see eq. (3) in Haarnoja et al. (2018)).
         # Note, we use here the sampled actions in the log probabilities.

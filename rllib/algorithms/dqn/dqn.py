@@ -615,7 +615,7 @@ class DQN(Algorithm):
             with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
                 # Sample in parallel from workers.
                 episodes, env_runner_results = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     concat=True,
                     sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=True,
@@ -747,7 +747,7 @@ class DQN(Algorithm):
             with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
                 modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
                 # NOTE: the new API stack does not use global vars.
-                self.workers.sync_weights(
+                self.env_runner_group.sync_weights(
                     from_worker_or_learner_group=self.learner_group,
                     policies=modules_to_update,
                     global_vars=None,
@@ -770,7 +770,7 @@ class DQN(Algorithm):
             # Sample (MultiAgentBatch) from workers.
             with self._timers[SAMPLE_TIMER]:
                 new_sample_batch: SampleBatchType = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     concat=True,
                     sample_timeout_s=self.config.sample_timeout_s,
                 )
@@ -810,7 +810,7 @@ class DQN(Algorithm):
 
                 # Postprocess batch before we learn on it
                 post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
-                train_batch = post_fn(train_batch, self.workers, self.config)
+                train_batch = post_fn(train_batch, self.env_runner_group, self.config)
 
                 # Learn on training batch.
                 # Use simple optimizer (only for multi-agent or tf-eager; all other
@@ -830,8 +830,8 @@ class DQN(Algorithm):
 
                 last_update = self._counters[LAST_TARGET_UPDATE_TS]
                 if cur_ts - last_update >= self.config.target_network_update_freq:
-                    to_update = self.workers.local_worker().get_policies_to_train()
-                    self.workers.local_worker().foreach_policy_to_train(
+                    to_update = self.env_runner.get_policies_to_train()
+                    self.env_runner.foreach_policy_to_train(
                         lambda p, pid, to_update=to_update: (
                             pid in to_update and p.update_target()
                         )
@@ -842,7 +842,7 @@ class DQN(Algorithm):
                 # Update weights and global_vars - after learning on the local worker -
                 # on all remote workers.
                 with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                    self.workers.sync_weights(global_vars=global_vars)
+                    self.env_runner_group.sync_weights(global_vars=global_vars)
 
         # Return all collected metrics for the iteration.
         return train_results
