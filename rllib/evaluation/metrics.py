@@ -112,7 +112,7 @@ def collect_episodes(
     # out to be a problem.
     metric_lists = workers.foreach_worker(
         lambda w: w.get_metrics(),
-        local_worker=True,
+        local_env_runner=True,
         remote_worker_ids=remote_worker_ids,
         timeout_seconds=timeout_seconds,
     )

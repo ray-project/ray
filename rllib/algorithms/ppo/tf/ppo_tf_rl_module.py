@@ -11,7 +11,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 tf1, tf, _ = try_import_tf()
@@ -21,7 +20,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
     framework: str = "tf2"
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict) -> Dict[str, Any]:
         output = {}
 
         # Encoder forward pass.
@@ -35,7 +34,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict, **kwargs) -> Dict[str, Any]:
         """PPO forward pass during exploration.
 
         Besides the action distribution, this method also returns the parameters of
@@ -67,7 +66,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         return output
 
     @override(TfRLModule)
-    def _forward_train(self, batch: NestedDict):
+    def _forward_train(self, batch: Dict):
         output = {}
 
         # Shared encoder.

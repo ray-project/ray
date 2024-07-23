@@ -111,7 +111,7 @@ class TestAlgorithm(unittest.TestCase):
 
             # Assert new policy is part of local worker (eval worker set does NOT
             # have a local worker, only the main EnvRunnerGroup does).
-            marl_module = algo.workers.local_worker().module
+            marl_module = algo.env_runner.module
             self.assertTrue(new_module is not mod0)
             for j in range(i + 1):
                 self.assertTrue(f"p{j}" in marl_module)
@@ -299,14 +299,14 @@ class TestAlgorithm(unittest.TestCase):
                 # worker set and the eval worker set.
                 self.assertTrue(
                     all(
-                        algo.workers.foreach_worker(
+                        algo.env_runner_group.foreach_worker(
                             func=lambda w, pid=pid: pid in w.policy_map
                         )
                     )
                 )
                 self.assertTrue(
                     all(
-                        algo.evaluation_workers.foreach_worker(
+                        algo.eval_env_runner_group.foreach_worker(
                             func=lambda w, pid=pid: pid in w.policy_map
                         )
                     )
@@ -314,7 +314,7 @@ class TestAlgorithm(unittest.TestCase):
 
                 # Assert new policy is part of local worker (eval worker set does NOT
                 # have a local worker, only the main EnvRunnerGroup does).
-                pol_map = algo.workers.local_worker().policy_map
+                pol_map = algo.env_runner.policy_map
                 self.assertTrue(new_pol is not pol0)
                 for j in range(i + 1):
                     self.assertTrue(f"p{j}" in pol_map)
@@ -333,7 +333,7 @@ class TestAlgorithm(unittest.TestCase):
                     )
 
                 self.assertTrue(
-                    all(test.evaluation_workers.foreach_worker(_has_policies))
+                    all(test.eval_env_runner_group.foreach_worker(_has_policies))
                 )
 
                 # Make sure algorithm can continue training the restored policy.
@@ -370,7 +370,7 @@ class TestAlgorithm(unittest.TestCase):
                         )
 
                     self.assertTrue(
-                        all(test2.evaluation_workers.foreach_worker(_has_policies))
+                        all(test2.eval_env_runner_group.foreach_worker(_has_policies))
                     )
 
                     # Make sure algorithm can continue training the restored policy.
@@ -399,19 +399,19 @@ class TestAlgorithm(unittest.TestCase):
                 # Make sure removed policy is no longer part of remote workers in the
                 # worker set and the eval worker set.
                 self.assertTrue(
-                    algo.workers.foreach_worker(
+                    algo.env_runner_group.foreach_worker(
                         func=lambda w, pid=pid: pid not in w.policy_map
                     )[0]
                 )
                 self.assertTrue(
-                    algo.evaluation_workers.foreach_worker(
+                    algo.eval_env_runner_group.foreach_worker(
                         func=lambda w, pid=pid: pid not in w.policy_map
                     )[0]
                 )
                 # Assert removed policy is no longer part of local worker
                 # (eval worker set does NOT have a local worker, only the main
                 # EnvRunnerGroup does).
-                pol_map = algo.workers.local_worker().policy_map
+                pol_map = algo.env_runner.policy_map
                 self.assertTrue(pid not in pol_map)
                 self.assertTrue(len(pol_map) == i)
 
@@ -662,22 +662,21 @@ class TestAlgorithm(unittest.TestCase):
         # EnvRunnerGroup and the eval EnvRunnerGroup.
         self.assertTrue(
             all(
-                algo.workers.foreach_worker(
+                algo.env_runner_group.foreach_worker(
                     lambda w, mids=mids: all(f"p{i}" in w.module for i in mids)
                 )
             )
         )
         self.assertTrue(
             all(
-                algo.evaluation_workers.foreach_worker(
+                algo.eval_env_runner_group.foreach_worker(
                     lambda w, mids=mids: all(f"p{i}" in w.module for i in mids)
                 )
             )
         )
         # Make sure that EnvRunners have received the correct mapping fn.
         mapped_pols = [
-            algo.workers.local_worker().config.policy_mapping_fn(0, None)
-            for _ in range(100)
+            algo.env_runner.config.policy_mapping_fn(0, None) for _ in range(100)
         ]
         self.assertTrue(all(f"p{i}" in mapped_pols for i in mapped))
         self.assertTrue(not any(f"p{i}" in mapped_pols for i in not_mapped))

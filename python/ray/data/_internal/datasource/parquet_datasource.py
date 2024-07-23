@@ -24,6 +24,7 @@ from ray.data._internal.util import (
     _check_pyarrow_version,
     _is_local_scheme,
     call_with_retry,
+    iterate_with_retry,
 )
 from ray.data.block import Block
 from ray.data.context import DataContext
@@ -496,14 +497,22 @@ def _read_fragments(
     use_threads = to_batches_kwargs.pop("use_threads", False)
     batch_size = to_batches_kwargs.pop("batch_size", default_read_batch_size_rows)
     for fragment in fragments:
-        batches = fragment.to_batches(
-            use_threads=use_threads,
-            columns=columns,
-            schema=schema,
-            batch_size=batch_size,
-            **to_batches_kwargs,
-        )
-        for batch in batches:
+
+        def get_batch_iterable():
+            return fragment.to_batches(
+                use_threads=use_threads,
+                columns=columns,
+                schema=schema,
+                batch_size=batch_size,
+                **to_batches_kwargs,
+            )
+
+        # S3 can raise transient errors during iteration, and PyArrow doesn't expose a
+        # way to retry specific batches.
+        ctx = ray.data.DataContext.get_current()
+        for batch in iterate_with_retry(
+            get_batch_iterable, "load batch", match=ctx.retried_io_errors
+        ):
             table = pa.Table.from_batches([batch], schema=schema)
             if include_paths:
                 table = table.append_column("path", [[fragment.path]] * len(table))
