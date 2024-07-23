@@ -21,20 +21,20 @@ WAIT_TIMEOUT = 20
 
 
 def get_all_ray_worker_processes():
-    processes = [
-        p.info["cmdline"] for p in psutil.process_iter(attrs=["pid", "name", "cmdline"])
-    ]
-
+    processes = psutil.process_iter(attrs=["pid", "name", "cmdline", "status"])
     result = []
     for p in processes:
-        if p is not None and len(p) > 0 and "ray::" in p[0]:
-            result.append(p[0])
+        cmdline = p.info["cmdline"]
+        if cmdline is not None and len(cmdline) > 0 and "ray::" in cmdline[0]:
+            result.append(p)
+    print(f"all ray worker processes: {result}")
     return result
 
 
 @pytest.fixture
 def short_gcs_publish_timeout(monkeypatch):
     monkeypatch.setenv("RAY_MAX_GCS_PUBLISH_RETRIES", "3")
+    monkeypatch.setenv("RAY_gcs_rpc_server_reconnect_timeout_s", "1")
     yield
 
 
