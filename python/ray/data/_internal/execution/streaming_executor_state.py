@@ -318,6 +318,32 @@ class OpState:
     def _get_average_ouput_size(self) -> float:
         return self.op._metrics.average_bytes_outputs_per_task
     
+    def _get_pipeline_output(self) -> float:
+        # Spilling is significantly reduced. 
+        
+        output_size = 0
+        next_op = self.op
+        previous_output_size = 1
+        
+        while len(next_op.output_dependencies) > 0:
+            assert len(next_op.output_dependencies) == 1
+            
+            next_op_size = next_op._metrics.average_bytes_outputs_per_task or 0
+            
+            if next_op == self.op:
+                current_output_size = next_op_size
+            else:
+                current_output_size = next_op_size * (previous_output_size / (next_op._metrics.average_bytes_inputs_per_task or 1))
+            
+            output_size += current_output_size
+            previous_output_size = next_op_size
+
+            # print(next_op.name, current_output_size, (next_op._metrics.average_bytes_inputs_per_task, next_op._metrics.average_bytes_outputs_per_task))
+            next_op = next_op.output_dependencies[0]
+            
+        return output_size
+        
+    
     def _get_grow_rate(self, resource_manager: ResourceManager) -> float:
 
         time_for_pipeline_to_process_one_data = 0
@@ -395,7 +421,7 @@ class OpState:
         INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
 
         self._replenish_output_budget(resource_manager)
-        output_size = self._get_average_ouput_size() or INITIAL_BUDGET
+        output_size = self._get_pipeline_output() or INITIAL_BUDGET
 
         logger.debug(
             f"@mzm output_budget: {self.output_budget}, output_size: {output_size}"

@@ -60,7 +60,11 @@ def main(is_flink: bool):
     def consume(batch):
         logger.log({"name": "consume", "id": int(batch["id"].item())})
         time.sleep(TIME_UNIT)
-        return {"id": batch["id"], "result": [0 for _ in batch["id"]]}
+        return {
+            "id": batch["id"],
+            # "result": [0 for _ in batch["id"]]
+            "image": [np.ones(BLOCK_SIZE, dtype=np.uint8)]
+        }
 
     def inference(batch):
         logger.log({"name": "inference", "id": int(batch["id"].item())})
@@ -104,5 +108,5 @@ def main(is_flink: bool):
     ray.shutdown()
 
 if __name__ == "__main__": 
-    # main(is_flink=True) 
-    main(is_flink=False)
+    main(is_flink=True) 
+    # main(is_flink=False)
