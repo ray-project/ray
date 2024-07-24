@@ -241,7 +241,7 @@ class Client {
 
   bool IsValid(const std::pair<bool, std::string> r) { return r.first; }
 
-  std::optional<ray::ActorHandle<MainServer>> main_actor_;
+  boost::optional<ray::ActorHandle<MainServer>> main_actor_;
 };
 
 int main(int argc, char **argv) {

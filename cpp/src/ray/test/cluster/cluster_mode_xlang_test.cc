@@ -44,7 +44,7 @@ TEST(RayClusterModeXLangTest, JavaInvocationTest) {
   EXPECT_EQ(0, *ref2.Get());
 
   // Test get java actor by actor name.
-  std::optional<ray::ActorHandleXlang> named_actor_handle_optional =
+  boost::optional<ray::ActorHandleXlang> named_actor_handle_optional =
       ray::GetActor(actor_name);
   EXPECT_TRUE(named_actor_handle_optional);
   ray::ActorHandleXlang named_actor_handle = *named_actor_handle_optional;
@@ -68,7 +68,7 @@ TEST(RayClusterModeXLangTest, JavaInvocationTest) {
       java_class_actor_handle.Task(ray::JavaActorMethod<std::string>{"createChildActor"})
           .Remote("child_actor");
   EXPECT_EQ(*ref_1.Get(), "OK");
-  std::optional<ray::ActorHandleXlang> child_actor_optional =
+  boost::optional<ray::ActorHandleXlang> child_actor_optional =
       ray::GetActor("child_actor");
   EXPECT_TRUE(child_actor_optional);
   ray::ActorHandleXlang &child_actor = *child_actor_optional;
@@ -96,7 +96,7 @@ TEST(RayClusterModeXLangTest, GetXLangActorByNameTest) {
   EXPECT_EQ(0, *ref.Get());
 
   // It is invisible to job default namespace.
-  std::optional<ray::ActorHandleXlang> actor_optional =
+  boost::optional<ray::ActorHandleXlang> actor_optional =
       ray::GetActor(actor_name_in_isolated_ns);
   EXPECT_TRUE(!actor_optional);
   // It is invisible to any other namespaces.
