@@ -101,8 +101,7 @@ class MockGcsClient : public gcs::GcsClient {
     return *node_accessor_;
   }
 
-  MOCK_METHOD2(Connect,
-               Status(instrumented_io_context &io_service, const ClusterID &cluster_id));
+  MOCK_METHOD2(Connect, Status(instrumented_io_context &io_service, int64_t timeout_ms));
 
   MOCK_METHOD0(Disconnect, void());
 };
@@ -110,7 +109,11 @@ class MockGcsClient : public gcs::GcsClient {
 class OwnershipBasedObjectDirectoryTest : public ::testing::Test {
  public:
   OwnershipBasedObjectDirectoryTest()
-      : options_("localhost:6973"),
+      : options_("localhost",
+                 6973,
+                 ClusterID::Nil(),
+                 /*allow_cluster_id_nil=*/true,
+                 /*fetch_cluster_id_if_nil=*/false),
         node_info_accessor_(new gcs::MockNodeInfoAccessor()),
         gcs_client_mock_(new MockGcsClient(options_, node_info_accessor_)),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),

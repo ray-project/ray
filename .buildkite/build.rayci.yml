@@ -45,7 +45,7 @@ steps:
     key: doc_build
     instance_type: medium
     commands:
-      - make -C doc/ html
+      - bazel run //ci/ray_ci/doc:cmd_build
     depends_on: docbuild
     job_env: docbuild
 

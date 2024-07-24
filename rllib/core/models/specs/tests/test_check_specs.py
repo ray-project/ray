@@ -15,7 +15,6 @@ from ray.rllib.core.models.specs.checker import (
 from ray.rllib.core.models.specs.specs_base import TensorSpec, TypeSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
 
 ONLY_ONE_KEY_ALLOWED = "Only one key is allowed in the data dict."
 
@@ -34,9 +33,7 @@ class AbstractInterfaceClass(abc.ABC):
     def output_specs(self) -> SpecDict:
         pass
 
-    @check_input_specs(
-        "input_specs", filter=True, cache=False, only_check_on_retry=False
-    )
+    @check_input_specs("input_specs", cache=False, only_check_on_retry=False)
     @check_output_specs("output_specs", cache=False)
     def check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         return self._check_input_and_output(input_dict)
@@ -45,9 +42,7 @@ class AbstractInterfaceClass(abc.ABC):
     def _check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
-    @check_input_specs(
-        "input_specs", filter=True, cache=False, only_check_on_retry=False
-    )
+    @check_input_specs("input_specs", cache=False, only_check_on_retry=False)
     def check_only_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         """should not override this method"""
         return self._check_only_input(input_dict)
@@ -65,9 +60,7 @@ class AbstractInterfaceClass(abc.ABC):
     def _check_only_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         pass
 
-    @check_input_specs(
-        "input_specs", filter=True, cache=True, only_check_on_retry=False
-    )
+    @check_input_specs("input_specs", cache=True, only_check_on_retry=False)
     @check_output_specs("output_specs", cache=True)
     def check_input_and_output_with_cache(
         self, input_dict: Dict[str, Any]
@@ -75,9 +68,7 @@ class AbstractInterfaceClass(abc.ABC):
         """should not override this method"""
         return self._check_input_and_output(input_dict)
 
-    @check_input_specs(
-        "input_specs", filter=False, cache=False, only_check_on_retry=False
-    )
+    @check_input_specs("input_specs", cache=False, only_check_on_retry=False)
     @check_output_specs("output_specs", cache=False)
     def check_input_and_output_wo_filter(self, input_dict) -> Dict[str, Any]:
         """should not override this method"""
@@ -104,14 +95,14 @@ class CorrectImplementation(InputNumberOutputFloat):
     @override(AbstractInterfaceClass)
     def _check_input_and_output(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         # check if there is any key other than input in the input_dict
-        if len(input_dict) > 1 or "input" not in input_dict:
+        if "input" not in input_dict:
             raise ValueError(ONLY_ONE_KEY_ALLOWED)
         return self.run(input_dict)
 
     @override(AbstractInterfaceClass)
     def _check_only_input(self, input_dict: Dict[str, Any]) -> Dict[str, Any]:
         # check if there is any key other than input in the input_dict
-        if len(input_dict) > 1 or "input" not in input_dict:
+        if "input" not in input_dict:
             raise ValueError(ONLY_ONE_KEY_ALLOWED)
 
         out = self.run(input_dict)
@@ -144,7 +135,7 @@ class TestCheckSpecs(unittest.TestCase):
 
         output = correct_module.check_input_and_output({"input": 2})
         # Output should also match the `output_specs`.
-        correct_module.output_specs.validate(NestedDict(output))
+        correct_module.output_specs.validate(output)
 
         # This should raise an error saying that the `input` key is missing.
         self.assertRaises(
@@ -159,7 +150,7 @@ class TestCheckSpecs(unittest.TestCase):
         # Output can be anything since ther is no `output_specs`.
         self.assertRaises(
             ValueError,
-            lambda: correct_module.output_specs.validate(NestedDict(output)),
+            lambda: correct_module.output_specs.validate(output),
         )
 
     def test_check_only_output(self):
@@ -168,7 +159,7 @@ class TestCheckSpecs(unittest.TestCase):
         # `input_specs`.
         output = correct_module.check_only_output({"not_input": 2})
         # Output should match the `output_specs`.
-        correct_module.output_specs.validate(NestedDict(output))
+        correct_module.output_specs.validate(output)
 
     def test_incorrect_implementation(self):
         incorrect_module = IncorrectImplementation()
@@ -191,7 +182,7 @@ class TestCheckSpecs(unittest.TestCase):
     def test_filter(self):
         # create an arbitrary large input dict and test the behavior with and without a
         # filter
-        input_dict = NestedDict({"input": 2})
+        input_dict = {"input": 2}
         for i in range(100):
             inds = (str(i),) + tuple(str(j) for j in range(i + 1, i + 11))
             input_dict[inds] = i
@@ -200,13 +191,6 @@ class TestCheckSpecs(unittest.TestCase):
 
         # should run without errors
         correct_module.check_input_and_output(input_dict)
-
-        # should raise an error (read the implementation of
-        # check_input_and_output_wo_filter)
-        self.assertRaises(
-            ValueError,
-            lambda: correct_module.check_input_and_output_wo_filter(input_dict),
-        )
 
     def test_cache(self):
         # warning: this could be a flakey test
@@ -217,7 +201,7 @@ class TestCheckSpecs(unittest.TestCase):
         # we also check if cache is not working the second run is as slow as the first
         # run.
 
-        input_dict = NestedDict({"input": 2})
+        input_dict = {"input": 2}
         for i in range(100):
             inds = (str(i),) + tuple(str(j) for j in range(i + 1, i + 11))
             input_dict[inds] = i
@@ -292,32 +276,32 @@ class TestCheckSpecs(unittest.TestCase):
 
         # Case: input is a list of strs
         self.assertDictEqual(
-            convert_to_canonical_format(["foo", "bar"]).asdict(),
-            SpecDict({"foo": None, "bar": None}).asdict(),
+            convert_to_canonical_format(["foo", "bar"]),
+            SpecDict({"foo": None, "bar": None}),
         )
 
         # Case: input is a list of strs and nested strs
         self.assertDictEqual(
-            convert_to_canonical_format(["foo", ("bar", "jar")]).asdict(),
-            SpecDict({"foo": None, "bar": {"jar": None}}).asdict(),
+            convert_to_canonical_format(["foo", ("bar", "jar")]),
+            SpecDict({"foo": None, "bar": {"jar": None}}),
         )
 
         # Case: input is a Nested Mapping
         returned = convert_to_canonical_format(
             {
                 "foo": {"bar": TensorSpec("b", framework="torch")},
-                "jar": {"tar": int, "car": None},
+                "jar": {"tar": TypeSpec(int), "car": None},
             }
         )
         self.assertIsInstance(returned, SpecDict)
         self.assertDictEqual(
-            returned.asdict(),
+            returned,
             SpecDict(
                 {
                     "foo": {"bar": TensorSpec("b", framework="torch")},
                     "jar": {"tar": TypeSpec(int), "car": None},
                 }
-            ).asdict(),
+            ),
         )
 
         # Case: input is a SpecDict already
@@ -325,19 +309,19 @@ class TestCheckSpecs(unittest.TestCase):
             SpecDict(
                 {
                     "foo": {"bar": TensorSpec("b", framework="torch")},
-                    "jar": {"tar": int},
+                    "jar": {"tar": TypeSpec(int)},
                 }
             )
         )
         self.assertIsInstance(returned, SpecDict)
         self.assertDictEqual(
-            returned.asdict(),
+            returned,
             SpecDict(
                 {
                     "foo": {"bar": TensorSpec("b", framework="torch")},
                     "jar": {"tar": TypeSpec(int)},
                 }
-            ).asdict(),
+            ),
         )
 
 

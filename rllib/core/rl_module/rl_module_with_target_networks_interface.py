@@ -1,10 +1,12 @@
 import abc
 from typing import List, Tuple
 
-from ray.rllib.utils.framework import update_target_network
+from ray.rllib.core.learner.utils import update_target_network
 from ray.rllib.utils.typing import NetworkType
 
 
+# TODO (sven): Deprecate this API in favor of `TargetNetworkAPI`. This API here is only
+#  still used by DQN.
 class RLModuleWithTargetNetworksInterface(abc.ABC):
     """An RLModule Mixin for adding an interface for target networks.
 
@@ -38,5 +40,4 @@ class RLModuleWithTargetNetworksInterface(abc.ABC):
                 main_net=main_net,
                 target_net=target_net,
                 tau=tau,
-                framework=self.framework,
             )

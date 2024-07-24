@@ -1,6 +1,5 @@
 import collections
 import logging
-import math
 import os
 import warnings
 from typing import (
@@ -48,7 +47,6 @@ from ray.data._internal.logical.operators.from_operators import (
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
-from ray.data._internal.pandas_block import _estimate_dataframe_size
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
@@ -66,6 +64,7 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     Connection,
     Datasource,
+    DeltaSharingDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
 )
@@ -1289,7 +1288,7 @@ def read_csv(
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
         By default, :meth:`~ray.data.read_csv` reads all files from file paths. If you want to filter
-        files by file extensions, set the ``partition_filter`` parameter.
+        files by file extensions, set the ``file_extensions`` parameter.
 
         Read only ``*.csv`` files from a directory.
 
@@ -1709,13 +1708,14 @@ def read_tfrecords(
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
     messages.
 
-    .. info:
-        Using tfx-bsl for reading tfrecord files is prefered, When reading large
-        datasets in production use cases. To use this implementation you should
-        install tfx-bsl with:
-            1. `pip install tfx_bsl --no-dependencies`
-            2. Pass tfx_read_options to read_tfrecords, for example:
-                `ds = read_tfrecords(path, ..., tfx_read_options=TFXReadOptions())`
+    .. tip::
+        Using the ``tfx-bsl`` library is more performant when reading large
+        datasets (for example, in production use cases). To use this
+        implementation, you must first install ``tfx-bsl``:
+
+        1. `pip install tfx_bsl --no-dependencies`
+        2. Pass tfx_read_options to read_tfrecords, for example:
+           `ds = read_tfrecords(path, ..., tfx_read_options=TFXReadOptions())`
 
     .. warning::
         This function exclusively supports ``tf.train.Example`` messages. If a file
@@ -2388,7 +2388,7 @@ def from_pandas(
        Create a Ray Dataset from a list of Pandas DataFrames.
 
         >>> ray.data.from_pandas([df, df])
-        MaterializedDataset(num_blocks=1, num_rows=6, schema={a: int64, b: int64})
+        MaterializedDataset(num_blocks=2, num_rows=6, schema={a: int64, b: int64})
 
     Args:
         dfs: A pandas dataframe or a list of pandas dataframes.
@@ -2405,24 +2405,20 @@ def from_pandas(
     if isinstance(dfs, pd.DataFrame):
         dfs = [dfs]
 
-    context = DataContext.get_current()
-    num_blocks = override_num_blocks
-    if num_blocks is None:
-        total_size = sum(_estimate_dataframe_size(df) for df in dfs)
-        num_blocks = max(math.ceil(total_size / context.target_max_block_size), 1)
-
-    if len(dfs) > 1:
-        # I assume most users pass a single DataFrame as input. For simplicity, I'm
-        # concatenating DataFrames, even though it's not efficient.
-        ary = pd.concat(dfs, axis=0)
-    else:
-        ary = dfs[0]
-    dfs = np.array_split(ary, num_blocks)
+    if override_num_blocks is not None:
+        if len(dfs) > 1:
+            # I assume most users pass a single DataFrame as input. For simplicity, I'm
+            # concatenating DataFrames, even though it's not efficient.
+            ary = pd.concat(dfs, axis=0)
+        else:
+            ary = dfs[0]
+        dfs = np.array_split(ary, override_num_blocks)
 
     from ray.air.util.data_batch_conversion import (
         _cast_ndarray_columns_to_tensor_extension,
     )
 
+    context = DataContext.get_current()
     if context.enable_tensor_extension_casting:
         dfs = [_cast_ndarray_columns_to_tensor_extension(df.copy()) for df in dfs]
 
@@ -2647,6 +2643,92 @@ def from_arrow_refs(
     return MaterializedDataset(
         ExecutionPlan(DatasetStats(metadata={"FromArrow": metadata}, parent=None)),
         logical_plan,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_delta_sharing_tables(
+    url: str,
+    *,
+    limit: Optional[int] = None,
+    version: Optional[int] = None,
+    timestamp: Optional[str] = None,
+    json_predicate_hints: Optional[str] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """
+    Read data from a Delta Sharing table.
+    Delta Sharing projct https://github.com/delta-io/delta-sharing/tree/main
+
+    This function reads data from a Delta Sharing table specified by the URL.
+    It supports various options such as limiting the number of rows, specifying
+    a version or timestamp, and configuring concurrency.
+
+    Before calling this function, ensure that the URL is correctly formatted
+    to point to the Delta Sharing table you want to access. Make sure you have
+    a valid delta_share profile in the working directory.
+
+    Examples:
+
+        .. testcode::
+            :skipif: True
+
+            import ray
+
+            ds = ray.data.read_delta_sharing_tables(
+                url=f"your-profile.json#your-share-name.your-schema-name.your-table-name",
+                limit=100000,
+                version=1,
+            )
+
+    Args:
+        url: A URL under the format
+            "<profile-file-path>#<share-name>.<schema-name>.<table-name>".
+            Example can be found at
+            https://github.com/delta-io/delta-sharing/blob/main/README.md#quick-start
+        limit: A non-negative integer. Load only the ``limit`` rows if the
+            parameter is specified. Use this optional parameter to explore the
+            shared table without loading the entire table into memory.
+        version: A non-negative integer. Load the snapshot of the table at
+            the specified version.
+        timestamp: A timestamp to specify the version of the table to read.
+        json_predicate_hints: Predicate hints to be applied to the table. For more
+            details, see:
+            https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md#json-predicates-for-filtering.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control the number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`Dataset` containing the queried data.
+
+    Raises:
+        ValueError: If the URL is not properly formatted or if there is an issue
+            with the Delta Sharing table connection.
+    """
+
+    datasource = DeltaSharingDatasource(
+        url=url,
+        json_predicate_hints=json_predicate_hints,
+        limit=limit,
+        version=version,
+        timestamp=timestamp,
+    )
+    # DeltaSharing limit is at the add_files level, it will not return
+    # exactly the limit number of rows but it will return less files and rows.
+    return ray.data.read_datasource(
+        datasource=datasource,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
     )
 
 

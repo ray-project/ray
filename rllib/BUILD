@@ -235,7 +235,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi_agent_cartpole_appo_old_api_stack.py"],
     args = ["--dir=tuned_examples/appo"]
@@ -257,7 +257,7 @@ py_test(
     name = "learning_tests_cartpole_appo_fake_gpus_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo-fake-gpus.yaml"],
     args = ["--dir=tuned_examples/appo"]
@@ -326,7 +326,7 @@ py_test(
     name = "learning_tests_pendulum_cql_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_pendulum", "learning_tests_continuous", "learning_tests_with_ray_data"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
     data = [
@@ -413,7 +413,7 @@ py_test(
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala",
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "torch_only"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=6"]
@@ -430,7 +430,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_impala_multi_cpu",
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-    size = "large",
+    size = "enormous",
     srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2", "--num-cpus=7"]
 )
@@ -718,6 +718,63 @@ py_test(
 )
 
 py_test(
+    name ="test_algorithm_save_load_checkpoint_learner",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "medium",
+    srcs = ["algorithms/tests/test_algorithm_save_load_checkpoint_learner.py"]
+)
+
+py_test(
+    name="test_algorithm_rl_module_restore",
+    tags=["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size="large",
+    srcs=["algorithms/tests/test_algorithm_rl_module_restore.py"]
+)
+
+py_test(
+    name = "test_algorithm_imports",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "small",
+    srcs = ["algorithms/tests/test_algorithm_imports.py"]
+)
+
+py_test(
+    name = "test_algorithm_checkpoint_restore_ppo",
+    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "large",
+    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestorePPO"]
+)
+
+py_test(
+    name = "test_algorithm_checkpoint_restore_ppo_gpu",
+    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "gpu"],
+    size = "large",
+    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestorePPO"]
+)
+
+py_test(
+    name = "test_algorithm_checkpoint_restore_off_policy",
+    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
+    size = "large",
+    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreOffPolicy"]
+)
+
+py_test(
+    name = "test_algorithm_checkpoint_restore_off_policy_gpu",
+    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
+    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "gpu"],
+    size = "large",
+    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
+    args = ["TestCheckpointRestoreOffPolicy"]
+)
+
+py_test(
     name = "test_callbacks_on_algorithm",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "large",
@@ -782,6 +839,14 @@ py_test(
 )
 
 # BC
+py_test(
+    name = "test_bc_old_stack",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/large.json"],
+    srcs = ["algorithms/bc/tests/test_bc_old_stack.py"]
+)
 py_test(
     name = "test_bc",
     tags = ["team:rllib", "algorithms_dir"],
@@ -1384,20 +1449,6 @@ py_test(
 )
 
 py_test(
-    name ="tests/test_algorithm_save_load_checkpoint_learner",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["tests/test_algorithm_save_load_checkpoint_learner.py"]
-)
-
-py_test(
-    name="test_algorithm_rl_module_restore",
-    tags=["team:rllib", "core"],
-    size="large",
-    srcs=["tests/test_algorithm_rl_module_restore.py"]
-)
-
-py_test(
     name = "test_bc_algorithm",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -1531,6 +1582,16 @@ py_test(
     srcs = ["offline/estimators/tests/test_dr_learning.py"],
 )
 
+py_test(
+    name = "test_offline_data",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_offline_data.py"],
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+)
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/
@@ -1628,13 +1689,6 @@ py_test(
     tags = ["team:rllib", "utils"],
     size = "small",
     srcs = ["utils/tests/test_minibatch_utils.py"]
-)
-
-py_test(
-    name = "test_nested_dict",
-    tags = ["team:rllib", "utils"],
-    size = "small",
-    srcs = ["utils/tests/test_nested_dict.py"]
 )
 
 py_test(
@@ -1828,53 +1882,10 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_algorithm_imports",
-    tags = ["team:rllib", "tests_dir"],
-    size = "small",
-    srcs = ["tests/test_algorithm_imports.py"]
-)
-
-py_test(
     name = "tests/test_catalog",
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
     srcs = ["tests/test_catalog.py"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_ppo",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePPO"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_ppo_gpu",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir", "gpu"],
-    size = "large",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePPO"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_off_policy",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreOffPolicy"]
-)
-
-py_test(
-    name = "tests/test_checkpoint_restore_off_policy_gpu",
-    main = "tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "tests_dir", "gpu"],
-    size = "large",
-    srcs = ["tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreOffPolicy"]
 )
 
 py_test(
@@ -1960,14 +1971,6 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
     srcs = ["tests/test_lstm.py"]
-)
-
-py_test(
-    name = "tests/test_model_imports",
-    tags = ["team:rllib", "tests_dir", "model_imports"],
-    size = "medium",
-    data = glob(["tests/data/model_weights/**"]),
-    srcs = ["tests/test_model_imports.py"]
 )
 
 py_test(
@@ -2799,6 +2802,24 @@ py_test(
 
 # subdirectory: learners/
 # ....................................
+py_test(
+    name = "examples/learners/custom_loss_fn_simple",
+    main = "examples/learners/custom_loss_fn_simple.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/custom_loss_fn_simple.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
+py_test(
+    name = "examples/learners/separate_vf_lr_and_optimizer",
+    main = "examples/learners/separate_vf_lr_and_optimizer.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/separate_vf_lr_and_optimizer.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
 #@OldAPIStack @HybridAPIStack
 py_test(
     name = "examples/learners/ppo_tuner_local_cpu_torch",
