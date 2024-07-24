@@ -106,6 +106,7 @@ class MARWILConfig(AlgorithmConfig):
         self.input_ = "sampler"
         self.postprocess_inputs = True
         self.lr = 1e-4
+        self.lambda_ = 1.0
         self.train_batch_size = 2000
         # TODO (Artur): MARWIL should not need an exploration config as an offline
         #  algorithm. However, the current implementation of the CRR algorithm
@@ -174,7 +175,9 @@ class MARWILConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.marwil.torch.marwil_torch_rl_module import MARWILTorchRLModule
+            from ray.rllib.algorithms.marwil.torch.marwil_torch_rl_module import (
+                MARWILTorchRLModule,
+            )
 
             return SingleAgentRLModuleSpec(
                 module_class=MARWILTorchRLModule,
@@ -196,8 +199,7 @@ class MARWILConfig(AlgorithmConfig):
             return MARWILTorchLearner
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. "
-                "Use 'torch'."
+                f"The framework {self.framework_str} is not supported. " "Use 'torch'."
             )
 
     @override(AlgorithmConfig)

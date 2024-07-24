@@ -432,6 +432,7 @@ class AlgorithmConfig(_Config):
         self.input_ = "sampler"
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
+        self.prelearner_class = None
         self.prelearner_module_synch_period = 10
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
@@ -2382,6 +2383,7 @@ class AlgorithmConfig(_Config):
         input_=NotProvided,
         input_read_method=NotProvided,
         input_read_method_kwargs=NotProvided,
+        prelearner_class=NotProvided,
         prelearner_module_synch_period=NotProvided,
         dataset_num_iters_per_learner=NotProvided,
         input_config=NotProvided,
@@ -2467,6 +2469,8 @@ class AlgorithmConfig(_Config):
             self.input_read_method = input_read_method
         if input_read_method_kwargs is not NotProvided:
             self.input_read_method_kwargs = input_read_method_kwargs
+        if prelearner_class is not NotProvided:
+            self.prelearner_class = prelearner_class
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
         if dataset_num_iters_per_learner is not NotProvided:

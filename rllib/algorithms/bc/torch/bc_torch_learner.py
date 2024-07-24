@@ -50,7 +50,9 @@ class BCTorchLearner(TorchLearner, BCLearner):
             mask = None
             possibly_masked_mean = torch.mean
 
-        action_dist_class_train = self.module[module_id].unwrapped().get_train_action_dist_cls()
+        action_dist_class_train = (
+            self.module[module_id].unwrapped().get_train_action_dist_cls()
+        )
         action_dist = action_dist_class_train.from_logits(
             fwd_out[SampleBatch.ACTION_DIST_INPUTS]
         )

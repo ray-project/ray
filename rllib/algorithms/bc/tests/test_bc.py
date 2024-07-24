@@ -3,7 +3,11 @@ import unittest
 import ray
 
 from ray.rllib.algorithms.bc import BCConfig
-from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EPISODE_RETURN_MEAN, EVALUATION_RESULTS
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 
 
 class TestBC(unittest.TestCase):

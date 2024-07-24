@@ -3,12 +3,13 @@ from typing import Any, Dict, Optional
 from ray.rllib.algorithms.marwil.marwil import MARWILConfig
 from ray.rllib.algorithms.marwil.marwil_learner import (
     LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY,
-    LEARNER_RESULTS_VF_EXPLAINED_VARIANCE_KEY,
+    LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY,
     MARWILLearner,
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import TensorType
@@ -51,7 +52,7 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         # If beta is zero, we fall back to BC.
         if config.beta == 0.0:
             # Value function's loss term.
-            vf_loss = 0.0
+            mean_vf_loss = 0.0
             # Policy's loss term.
             exp_weighted_advantages = 1.0
         # Otherwise, compute advantages.
@@ -62,7 +63,7 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
             advantages_squared_mean = possibly_masked_mean(torch.pow(advantages, 2.0))
 
             # Compute the value loss.
-            vf_loss = 0.5 * advantages_squared_mean
+            mean_vf_loss = 0.5 * advantages_squared_mean
 
             # Compute the policy loss.
             self.moving_avg_sqd_adv_norms_per_module[module_id] = (
@@ -104,28 +105,25 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         )
 
         # Compute the total loss.
-        total_loss = policy_loss + config.vf_coeff * vf_loss
+        total_loss = policy_loss + config.vf_coeff * mean_vf_loss
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
-            {
-                POLICY_LOSS_KEY: policy_loss,
-            },
-        )
-        # Register further metrics, if we the MARWIL loss.
-        if config.beta != 0.0:
-            self.register_metrics(
-                module_id,
+        # Log import loss stats.
+        
+        # Log further stats if we use the MARWIL loss.
+        if config.beta == 0.0:
+            self.metrics.log_dict({POLICY_LOSS_KEY, policy_loss}, key=module_id, window=1)
+        else:
+            self.metrics.log_dict(
                 {
-                    VF_LOSS_KEY: vf_loss,
-                    LEARNER_RESULTS_VF_EXPLAINED_VARIANCE_KEY: explained_variance(
-                        cumulative_rewards, value_fn_out
+                    POLICY_LOSS_KEY: policy_loss,
+                    VF_LOSS_KEY: mean_vf_loss,
+                    LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
+                        batch[Postprocessing.VALUE_TARGETS], value_fn_out
                     ),
-                    LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY: (
-                        self.moving_avg_sqd_adv_norms_per_module[module_id]
-                    ),
+                    LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY: self.moving_avg_sqd_adv_norms_per_module[module_id]
                 },
+                key=module_id,
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
         # Return the total loss.

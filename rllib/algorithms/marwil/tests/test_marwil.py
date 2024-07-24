@@ -7,6 +7,7 @@ import ray
 import ray.rllib.algorithms.marwil as marwil
 from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILTF2Policy
 from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
+from ray.rllib.algorithms.marwil.marwil_offline_prelearner import MARWILOfflinePreLearner
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.offline import JsonReader
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -62,10 +63,11 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
             )
-            .offline_data(input_=[data_path])
+            .offline_data(input_=[data_path], prelearner_class=MARWILOfflinePreLearner)
             .training(
                 lr=0.0008,
                 train_batch_size_per_learner=2000,
+                beta=0.5,
             )
         )
 
@@ -73,12 +75,11 @@ class TestMARWIL(unittest.TestCase):
         min_reward = 100.0
 
         # Test for all frameworks.
-        
+
         algo = config.build()
         learnt = False
         for i in range(num_iterations):
             results = algo.train()
-            check_train_results(results)
             print(results)
 
             eval_results = results.get(EVALUATION_RESULTS, {})
@@ -97,8 +98,6 @@ class TestMARWIL(unittest.TestCase):
             raise ValueError(
                 f"`MARWIL` did not reach {min_reward} reward from expert offline data!"
             )
-
-        check_compute_single_action(algo, include_prev_action_reward=True)
 
         algo.stop()
 

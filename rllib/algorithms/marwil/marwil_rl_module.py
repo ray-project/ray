@@ -10,6 +10,7 @@ from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 
+
 @ExperimentalAPI
 class MARWILRLModule(RLModule, ValueFunctionAPI, abc.ABC):
     def setup(self):

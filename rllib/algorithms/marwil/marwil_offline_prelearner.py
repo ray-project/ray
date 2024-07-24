@@ -1,19 +1,38 @@
 import numpy as np
-from typing import Dict, List
+from typing import Any, Dict, List, Optional, Tuple, Union
 
+from ray.rllib.core.columns import Columns
+from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.offline.offline_data import OfflinePreLearner
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
+from ray.rllib.utils.postprocessing.episodes import (
+    add_one_ts_to_episodes_and_truncate,
+    remove_last_ts_from_data,
+    remove_last_ts_from_episodes_and_restore_truncateds,
+)
+from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
 from ray.rllib.utils.typing import EpisodeType, TensorType
 
-class MARWILOfflinePreLearner(OfflinePreLearner):
 
+class MARWILOfflinePreLearner(OfflinePreLearner):
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, MultiAgentBatch]:
 
         # Map the batch to episodes.
-        episodes = self._map_to_episodes(self._is_multi_agent, batch)
+        episodes = self._map_to_episodes(self._is_multi_agent, batch, finalize=True)
 
         # Compute the GAE via the Learner's method.
-        batch, episodes = self._compute_gae_from_episodes(episodes)
+        batch, episodes = self._compute_gae_from_episodes(episodes=episodes["episodes"])
+
+        # Run the `Learner`'s connector pipeline.
+        batch = self._learner_connector(
+            rl_module=self._module,
+            data=batch,
+            episodes=episodes,
+            shared_data={},
+        )
 
         # Convert to `MultiAgentBatch`.
         batch = MultiAgentBatch(
@@ -23,7 +42,7 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
             },
             # TODO (simon): This can be run once for the batch and the
             # metrics, but we run it twice: here and later in the learner.
-            env_steps=sum(e.env_steps() for e in episodes["episodes"]),
+            env_steps=sum(e.env_steps() for e in episodes),
         )
         # Remove all data from modules that should not be trained. We do
         # not want to pass around more data than necessaty.
@@ -37,7 +56,6 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
 
         # TODO (simon): episodes are only needed for logging here.
         return {"batch": [batch]}
-
 
     def _compute_gae_from_episodes(
         self,
@@ -66,7 +84,7 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
         batch = {}
 
         sa_episodes_list = list(
-            self.learner_connector.single_agent_episode_iterator(
+            self._learner_connector.single_agent_episode_iterator(
                 episodes, agents_that_stepped_only=False
             )
         )
@@ -80,8 +98,8 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
         # Call the learner connector (on the artificially elongated episodes)
         # in order to get the batch to pass through the module for vf (and
         # bootstrapped vf) computations.
-        batch_for_vf = self.learner_connector(
-            rl_module=self.module,
+        batch_for_vf = self._learner_connector(
+            rl_module=self._module,
             data={},
             episodes=episodes,
             shared_data={},
@@ -188,7 +206,7 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
             tensors.
         """
         return {
-            module_id: self.module[module_id].unwrapped().compute_values(module_batch)
+            module_id: self._module[module_id].unwrapped().compute_values(module_batch)
             for module_id, module_batch in batch_for_vf.items()
-            if self.should_module_be_updated(module_id, batch_for_vf)
+            if self._should_module_be_updated(module_id, batch_for_vf)
         }

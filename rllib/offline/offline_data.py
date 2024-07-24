@@ -66,6 +66,8 @@ class OfflineData:
             logger.error(e)
         # Avoids reinstantiating the batch iterator each time we sample.
         self.batch_iterator = None
+        # Defines the prelearner class. Note, this could be user-defined.
+        self.prelearner_class = self.config.get("prelearner_class", OfflinePreLearner)
         # For remote learner setups.
         self.locality_hints = None
         self.learner_handles = None
@@ -89,7 +91,7 @@ class OfflineData:
             # sampling later with a different batch size would need a
             # reinstantiation of the iterator.
             self.batch_iterator = self.data.map_batches(
-                OfflinePreLearner,
+                self.prelearner_class,
                 fn_constructor_kwargs={
                     "config": self.config,
                     "learner": self.learner_handles[0],
@@ -119,7 +121,7 @@ class OfflineData:
                     # TODO (cheng su): At best the learner handle passed in here should
                     # be the one from the learner that is nearest, but here we cannot
                     # provide locality hints.
-                    OfflinePreLearner,
+                    self.prelearner_class,
                     fn_constructor_kwargs={
                         "config": self.config,
                         "learner": self.learner_handles,
@@ -201,7 +203,9 @@ class OfflinePreLearner:
         self.iter_since_last_module_update = 0
         # self._future = None
 
-    def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[MultiAgentBatch]]:
+    def __call__(
+        self, batch: Dict[str, np.ndarray]
+    ) -> Dict[str, List[MultiAgentBatch]]:
         # Map the batch to episodes.
         episodes = self._map_to_episodes(self._is_multi_agent, batch)
         # TODO (simon): Make synching work. Right now this becomes blocking or never
@@ -275,7 +279,7 @@ class OfflinePreLearner:
 
     @staticmethod
     def _map_to_episodes(
-        is_multi_agent: bool, batch: Dict[str, np.ndarray]
+        is_multi_agent: bool, batch: Dict[str, np.ndarray], finalize: bool = False,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 
@@ -329,6 +333,8 @@ class OfflinePreLearner:
                     },
                     len_lookback_buffer=0,
                 )
+                if finalize:
+                    episode.finalize()
             episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
