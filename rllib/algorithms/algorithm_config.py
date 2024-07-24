@@ -433,6 +433,7 @@ class AlgorithmConfig(_Config):
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
+        self.prelearner_class = None
         self.prelearner_module_synch_period = 10
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
@@ -2373,6 +2374,7 @@ class AlgorithmConfig(_Config):
         input_read_method=NotProvided,
         input_read_method_kwargs=NotProvided,
         input_read_schema=NotProvided,
+        prelearner_class=NotProvided,
         prelearner_module_synch_period=NotProvided,
         dataset_num_iters_per_learner=NotProvided,
         input_config=NotProvided,
@@ -2415,6 +2417,14 @@ class AlgorithmConfig(_Config):
                 schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
                 contains already the names in this schema, no `input_read_schema` is
                 needed.
+            prelearner_class: An optional `OfflinePreLearner` class that is used to
+                transform data batches in `ray.data.map_batches` used in the
+                `OfflineData` class to transform data from columns to batches that can
+                be used in the `Learner`'s `update` methods. Override the
+                `OfflinePreLearner` class and pass your dervied class in here, if you
+                need to make some further transformations specific for your data or
+                loss. The default is `None` which uses the base `OfflinePreLearner`
+                defined in `ray.rllib.offline.offline_prelearner`.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
@@ -2470,6 +2480,8 @@ class AlgorithmConfig(_Config):
             self.input_read_method_kwargs = input_read_method_kwargs
         if input_read_schema is not NotProvided:
             self.input_read_schema = input_read_schema
+        if prelearner_class is not NotProvided:
+            self.prelearner_class = prelearner_class
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
         if dataset_num_iters_per_learner is not NotProvided:
