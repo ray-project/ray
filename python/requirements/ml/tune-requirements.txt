@@ -11,4 +11,4 @@ hyperopt==0.2.7
 nevergrad==0.4.3.post7
 optuna==3.2.0
 
-tune-sklearn==0.4.6
+tune-sklearn==0.4.6; python_version < "3.12"
