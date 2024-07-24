@@ -745,7 +745,7 @@ class DataIterator(abc.ABC):
             feature_columns: Columns that correspond to model inputs. If this is a
                 string, the input data is a tensor. If this is a list, the input data
                 is a ``dict`` that maps column names to their tensor representation.
-            label_column: Columns that correspond to model targets. If this is a
+            label_columns: Columns that correspond to model targets. If this is a
                 string, the target data is a tensor. If this is a list, the target data
                 is a ``dict`` that maps column names to their tensor representation.
             additional_columns: Columns that correspond to sample weights or other metadata.
@@ -780,7 +780,7 @@ class DataIterator(abc.ABC):
             additional_type_spec: The `tf.TypeSpec` of `additional_columns`. If there
                 is only one column, specify a `tf.TypeSpec`. If there are multiple
                 columns, specify a ``dict`` that maps column names to their `tf.TypeSpec`.
-                Default is `None` to automatically infer the type of each column. 
+                Default is `None` to automatically infer the type of each column.
 
         Returns:
             A ``tf.data.Dataset`` that yields inputs and targets.
@@ -799,9 +799,10 @@ class DataIterator(abc.ABC):
         def validate_column(column: str) -> None:
             if column not in valid_columns:
                 raise ValueError(
-                    f"You specified '{column}' in `feature_columns` or "
-                    f"`label_columns`, but there's no column named '{column}' in the "
-                    f"dataset. Valid column names are: {valid_columns}."
+                    f"You specified '{column}' in `feature_columns`, "
+                    f"`label_columns`, or `additional_columns`, but there's no "
+                    f"column named '{column}' in the dataset. "
+                    f"Valid column names are: {valid_columns}."
                 )
 
         def validate_columns(columns: Union[str, List]) -> None:
@@ -846,7 +847,9 @@ class DataIterator(abc.ABC):
                     yield features, labels
                 else:
                     additional_metadata = convert_batch_to_tensors(
-                        batch, columns=additional_columns, type_spec=additional_type_spec
+                        batch,
+                        columns=additional_columns,
+                        type_spec=additional_type_spec,
                     )
                     yield features, labels, additional_metadata
 
@@ -870,7 +873,12 @@ class DataIterator(abc.ABC):
             )
         else:
             dataset = tf.data.Dataset.from_generator(
-                generator, output_signature=(feature_type_spec, label_type_spec, additional_type_spec)
+                generator,
+                output_signature=(
+                    feature_type_spec,
+                    label_type_spec,
+                    additional_type_spec,
+                ),
             )
 
         options = tf.data.Options()
