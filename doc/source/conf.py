@@ -1,16 +1,17 @@
-from typing import Set, Dict, Any
+import logging
+import os
+import pathlib
+import sys
 from datetime import datetime
 from importlib import import_module
-import os
-import sys
-from jinja2.filters import FILTERS
+from typing import Any, Dict
+
 import sphinx
+from docutils import nodes
+from jinja2.filters import FILTERS
 from sphinx.ext import autodoc
 from sphinx.ext.autosummary import generate
 from sphinx.util.inspect import safe_getattr
-from docutils import nodes
-import pathlib
-import logging
 
 DEFAULT_API_GROUP = "Others"
 
@@ -303,7 +304,7 @@ html_theme_options = {
     ],
     "secondary_sidebar_items": [
         "page-toc",
-        "edit-this-page",
+        "edit-on-github",
     ],
     "content_footer_items": [
         "csat",
