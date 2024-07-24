@@ -79,7 +79,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu11.8.0-cudnn8 --platform cpu --image-type ray-ml
+        --platform cu12.1.1-cudnn8 --platform cpu --image-type ray-ml
         --upload
     depends_on:
       - manylinux
