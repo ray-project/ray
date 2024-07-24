@@ -6,6 +6,7 @@ import click
 
 from ci.ray_ci.utils import logger, ci_init
 from ray_release.util import get_write_state_machine_aws_bucket
+from ray_release.configs.global_config import get_global_config
 
 
 AWS_CACHE_KEY = "doc_build"
@@ -25,9 +26,18 @@ def main(ray_checkout_dir: str) -> None:
     logger.info("Building ray doc.")
     _build(ray_checkout_dir)
 
+    if (
+        os.environ.get("BUILDKITE_PIPELINE_ID")
+        not in get_global_config()["ci_pipeline_postmerge"]
+    ):
+        logger.info(
+            "Not uploading build artifacts because this is not a postmerge pipeline."
+        )
+        return
+
     if os.environ.get("BUILDKITE_BRANCH") != "master":
         logger.info(
-            "Not uploading build artifacts to S3 because this is not the master branch."
+            "Not uploading build artifacts because this is not the master branch."
         )
         return
 
@@ -38,14 +48,14 @@ def main(ray_checkout_dir: str) -> None:
 
 
 def _build(ray_checkout_dir):
+    env = os.environ.copy()
+    # We need to unset PYTHONPATH to use the Python from the environment instead of
+    # from the Bazel runfiles.
+    env.update({"PYTHONPATH": ""})
     subprocess.run(
-        [
-            "make",
-            "-C",
-            "doc/",
-            "html",
-        ],
-        cwd=ray_checkout_dir,
+        ["make", "html"],
+        cwd=os.path.join(ray_checkout_dir, "doc"),
+        env=env,
         check=True,
     )
 
