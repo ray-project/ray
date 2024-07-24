@@ -122,10 +122,13 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                     ]
                     # Need to convert processesPids into a proper list.
                     # It's some weird ImmutableList structureo
-                    formatted_gpus = [{
-                        **gpu,
-                        "processesPids": list(gpu["processesPids"]),
-                    } for gpu in gpus]
+                    formatted_gpus = [
+                        {
+                            **gpu,
+                            "processesPids": list(gpu["processesPids"]),
+                        }
+                        for gpu in gpus
+                    ]
 
                     worker_info_with_details = TrainWorkerInfoWithDetails.parse_obj(
                         {
