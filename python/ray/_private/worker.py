@@ -1550,7 +1550,9 @@ def init(
             ray.job_config.JobConfig.from_json(injected_job_config_json)
         )
 
-        code_search_path = _merge_code_search_path(injected_job_config.code_search_path, job_config.code_search_path)
+        code_search_path = _merge_code_search_path(
+            injected_job_config.code_search_path, job_config.code_search_path
+        )
         job_config.set_code_search_path(code_search_path)
 
         driver_runtime_env = runtime_env

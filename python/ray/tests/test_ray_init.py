@@ -300,8 +300,14 @@ def test_merge_code_search_path(ray_start_cluster):
     cluster = ray_start_cluster
     import json
     import sys
+
     with unittest.mock.patch.dict(
-        os.environ, {"RAY_JOB_CONFIG_JSON_ENV_VAR": json.dumps({"code_search_path": ["injected_path"]})}
+        os.environ,
+        {
+            "RAY_JOB_CONFIG_JSON_ENV_VAR": json.dumps(
+                {"code_search_path": ["injected_path"]}
+            )
+        },
     ):
         ray.init(address=cluster.address)
         ray._raylet.maybe_initialize_job_config()

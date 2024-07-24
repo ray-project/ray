@@ -260,10 +260,7 @@ class JobConfig:
         )
 
 
-def _merge_code_search_path(
-    parent: Optional[List[str]],
-    child: Optional[List[str]]
-):
+def _merge_code_search_path(parent: Optional[List[str]], child: Optional[List[str]]):
     """Merge the parent and child code search paths.
 
     Args:
