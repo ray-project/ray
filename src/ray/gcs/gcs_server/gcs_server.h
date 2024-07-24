@@ -202,6 +202,8 @@ class GcsServer {
 
   /// Get or connect to a redis server
   std::shared_ptr<RedisClient> GetOrConnectRedis();
+  /// Get redis store client
+  std::shared_ptr<StoreClient> GetRedisStoreClient();
 
   void TryGlobalGC();
 
@@ -285,6 +287,7 @@ class GcsServer {
   std::unique_ptr<rpc::autoscaler::AutoscalerStateGrpcService> autoscaler_state_service_;
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
+  std::shared_ptr<StoreClient> redis_store_client_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.

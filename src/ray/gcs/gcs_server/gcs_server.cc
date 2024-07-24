@@ -30,6 +30,7 @@
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
+#include "ray/gcs/store_client/cache_key_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/util/util.h"
@@ -77,7 +78,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
     break;
   case StorageType::REDIS_PERSIST:
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
+    gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(GetRedisStoreClient());
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
@@ -567,8 +568,7 @@ void GcsServer::InitKVManager() {
   std::unique_ptr<InternalKVInterface> instance;
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
-    instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(GetOrConnectRedis()));
+    instance = std::make_unique<StoreClientInternalKV>(GetRedisStoreClient());
     break;
   case (StorageType::IN_MEMORY):
     instance =
@@ -836,6 +836,19 @@ std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
     gcs_redis_failure_detector_->Start();
   }
   return redis_client_;
+}
+
+std::shared_ptr<StoreClient> GcsServer::GetRedisStoreClient() {
+  if (redis_store_client_ == nullptr) {
+    auto redis_store_client = std::make_shared<RedisStoreClient>(GetOrConnectRedis());
+    if (RayConfig::instance().use_redis_keys_cache()) {
+      RAY_LOG(INFO) << "Using Redis keys cache.";
+      redis_store_client_ = std::make_shared<CacheKeyStoreClient>(redis_store_client);
+    } else {
+      redis_store_client_ = redis_store_client;
+    }
+  }
+  return redis_store_client_;
 }
 
 void GcsServer::PrintAsioStats() {
