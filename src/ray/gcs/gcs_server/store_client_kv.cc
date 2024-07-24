@@ -47,7 +47,7 @@ std::string ExtractKey(const std::string &key) {
 
 }  // namespace
 
-StoreClientInternalKV::StoreClientInternalKV(std::unique_ptr<StoreClient> store_client)
+StoreClientInternalKV::StoreClientInternalKV(std::shared_ptr<StoreClient> store_client)
     : delegate_(std::move(store_client)),
       table_name_(TablePrefix_Name(TablePrefix::KV)) {}
 

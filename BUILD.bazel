@@ -1804,6 +1804,7 @@ ray_cc_library(
         ":pubsub_lib",
         ":ray_common",
         ":redis_store_client",
+        ":cache_key_store_client",
     ],
 )
 
@@ -2193,6 +2194,24 @@ ray_cc_library(
     deps = [
         ":ray_common",
         "//src/ray/util",
+    ],
+)
+
+ray_cc_library(
+    name = "cache_key_store_client",
+    srcs = [
+        "src/ray/gcs/store_client/cache_key_store_client.cc",
+    ],
+    hdrs = [
+        "src/ray/gcs/callback.h",
+        "src/ray/gcs/store_client/redis_store_client.h",
+        "src/ray/gcs/store_client/cache_key_store_client.h",
+        "src/ray/gcs/store_client/store_client.h",
+    ],
+    deps = [
+        "redis_client",
+        "@com_google_absl//absl/strings:str_format",
+        "@com_google_absl//absl/synchronization",
     ],
 )
 

@@ -810,6 +810,9 @@ RAY_CONFIG(bool, runtime_env_skip_local_gc, false)
 /// This fields is used to isolate data stored in DB.
 RAY_CONFIG(std::string, external_storage_namespace, "default")
 
+/// This field is used to set whether to use Redis Keys caching.
+RAY_CONFIG(bool, use_redis_keys_cache, false)
+
 /// Whether or not use TLS.
 RAY_CONFIG(bool, USE_TLS, false)
 
