@@ -1,6 +1,5 @@
 group: others
 depends_on:
-  - oss-ci-base_build
   - forge
 steps:
   #build
