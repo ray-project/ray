@@ -289,7 +289,6 @@ class FunctionActorManager:
             try:
                 function = pickle.loads(serialized_function)
             except Exception:
-
                 # If an exception was thrown when the remote function was
                 # imported, we record the traceback and notify the scheduler
                 # of the failure.

@@ -25,7 +25,12 @@ def test_load_remote_function(shutdown_only):
     )
     function_manager._load_function_from_local(python_descriptor)
 
-    assert wrapped_func._function == function_manager._function_execution_info[python_descriptor.function_id].function
+    assert (
+        wrapped_func._function
+        == function_manager._function_execution_info[
+            python_descriptor.function_id
+        ].function
+    )
 
 
 def test_load_local_function(shutdown_only):
@@ -38,7 +43,13 @@ def test_load_local_function(shutdown_only):
     )
     function_manager._load_function_from_local(python_descriptor)
 
-    assert normal_func == function_manager._function_execution_info[python_descriptor.function_id].function
+    assert (
+        normal_func
+        == function_manager._function_execution_info[
+            python_descriptor.function_id
+        ].function
+    )
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
