@@ -1355,6 +1355,10 @@ def test_from_huggingface_e2e(ray_start_regular_shared):
     _check_usage_record(["FromArrow"])
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Skip due to incompatibility tensorflow with Python 3.12+",
+)
 def test_from_tf_e2e(ray_start_regular_shared):
     import tensorflow as tf
     import tensorflow_datasets as tfds
