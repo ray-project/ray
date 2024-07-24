@@ -1710,6 +1710,14 @@ def get_and_run_resource_killer(
     return resource_killer
 
 
+def get_actor_node_id(actor_handle: "ray.actor.ActorHandle") -> str:
+    return ray.get(
+        actor_handle.__ray_call__.remote(
+            lambda self: ray.get_runtime_context().get_node_id()
+        )
+    )
+
+
 @contextmanager
 def chdir(d: str):
     old_dir = os.getcwd()

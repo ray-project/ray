@@ -90,6 +90,13 @@ class ConnectorPipelineV2(ConnectorV2):
                     shared_data=shared_data,
                     **kwargs,
                 )
+                if not isinstance(data, dict):
+                    raise ValueError(
+                        f"`data` returned by ConnectorV2 {connector} must be a dict! "
+                        f"You returned {data}. Check your (custom) connectors' "
+                        f"`__call__()` method's return value and make sure you return "
+                        f"the `data` arg passed in (either altered or unchanged)."
+                    )
         return data
 
     def remove(self, name_or_class: Union[str, Type]):

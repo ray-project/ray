@@ -319,7 +319,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", category=FutureWarning)
                     warnings.simplefilter("ignore", category=SettingWithCopyWarning)
-                    df.loc[:, col_name] = TensorArray(col)
+                    df[col_name] = TensorArray(col)
             except Exception as e:
                 raise ValueError(
                     f"Tried to cast column {col_name} to the TensorArray tensor "
@@ -354,5 +354,5 @@ def _cast_tensor_columns_to_ndarrays(df: "pd.DataFrame") -> "pd.DataFrame":
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore", category=FutureWarning)
                 warnings.simplefilter("ignore", category=SettingWithCopyWarning)
-                df.loc[:, col_name] = pd.Series(list(col.to_numpy()))
+                df[col_name] = list(col.to_numpy())
     return df

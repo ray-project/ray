@@ -95,11 +95,10 @@ class APPOLearner(IMPALALearner):
             #  of the train_batch_size * some target update frequency * num_sgd_iter.
 
             last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
-            # TODO (Sven): DQN uses `config.target_network_update_freq`. Can we
-            #  choose a standard here?
-            if (
-                timestep - self.metrics.peek(last_update_ts_key, default=0)
-                >= config.target_update_frequency
+            if timestep - self.metrics.peek(
+                last_update_ts_key, default=0
+            ) >= config.target_network_update_freq and isinstance(
+                module.unwrapped(), TargetNetworkAPI
             ):
                 for (
                     main_net,

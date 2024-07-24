@@ -51,7 +51,10 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
@@ -2096,7 +2099,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             The SingleAgentRLModule sitting under the ModuleID key inside the
             local worker's (EnvRunner's) MARLModule.
         """
-        return self.env_runner_group.local_env_runner.module[module_id]
+        module = self.env_runner.module
+        if isinstance(module, MultiAgentRLModule):
+            return module[module_id]
+        else:
+            return module
 
     @OldAPIStack
     def get_policy(self, policy_id: PolicyID = DEFAULT_POLICY_ID) -> Policy:
@@ -3908,7 +3915,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             config: Algorithm config dict.
         """
         record_extra_usage_tag(TagKey.RLLIB_FRAMEWORK, config["framework"])
-        record_extra_usage_tag(TagKey.RLLIB_NUM_WORKERS, str(config["num_workers"]))
+        record_extra_usage_tag(TagKey.RLLIB_NUM_WORKERS, str(config["num_env_runners"]))
         alg = self.__class__.__name__
         # We do not want to collect user defined algorithm names.
         if alg not in ALL_ALGORITHMS:

@@ -367,8 +367,7 @@ Building Policies in TensorFlow Eager
 
 Policies built with ``build_tf_policy`` (most of the reference algorithms are)
 can be run in eager mode by setting
-the ``"framework": "tf2"`` / ``"eager_tracing": true`` config options or
-using ``rllib train '{"framework": "tf2", "eager_tracing": true}'``.
+the ``"framework": "tf2"`` / ``"eager_tracing": true`` config options.
 This will tell RLlib to execute the model forward pass, action distribution,
 loss, and stats functions in eager mode.
 

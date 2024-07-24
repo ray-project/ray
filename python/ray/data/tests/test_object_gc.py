@@ -1,3 +1,4 @@
+import sys
 import threading
 
 import pytest
@@ -97,6 +98,9 @@ def test_torch_iteration(shutdown_only):
     check_iter_torch_batches_no_spill(ctx, ds)
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_tf_iteration(shutdown_only):
     # The object store is about 800MB.
     ctx = ray.init(num_cpus=1, object_store_memory=800e6)

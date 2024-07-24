@@ -1,13 +1,19 @@
+import sys
+
 import numpy as np
 import pandas as pd
 import pytest
-import tensorflow as tf
 
 import ray
 from ray import train
 from ray.data.preprocessors import Concatenator
 from ray.train import ScalingConfig
-from ray.train.tensorflow import TensorflowTrainer
+
+if sys.version_info <= (3, 12):
+    # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+    import tensorflow as tf
+
+    from ray.train.tensorflow import TensorflowTrainer
 
 
 class TestToTF:
@@ -95,13 +101,16 @@ class TestToTF:
 
     @pytest.mark.parametrize(
         "data, expected_dtype",
+        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
         [
             (0, tf.int64),
             (0.0, tf.double),
             (False, tf.bool),
             ("eggs", tf.string),
             (np.zeros([2, 2], dtype=np.float32), tf.float32),
-        ],
+        ]
+        if sys.version_info <= (3, 12)
+        else [],
     )
     def test_element_spec_dtype(self, data, expected_dtype):
         ds = ray.data.from_items([{"spam": data, "ham": data}])
@@ -194,5 +203,9 @@ class TestToTF:
 
 if __name__ == "__main__":
     import sys
+
+    if sys.version_info >= (3, 12):
+        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+        sys.exit(0)
 
     sys.exit(pytest.main(["-v", __file__]))

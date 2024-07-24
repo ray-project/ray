@@ -25,7 +25,6 @@ User Guides
     rllib-torch2x
     rllib-fault-tolerance
     rllib-dev
-    rllib-cli
 
 
 .. _rllib-feature-guide:
@@ -100,14 +99,6 @@ RLlib Feature Guides
         .. button-ref:: rllib-dev
 
             How To Contribute To RLlib?
-
-    .. grid-item-card::
-        :img-top: /rllib/images/rllib-logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: rllib-cli
-
-            How To Work With the RLlib CLI?
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg

@@ -1,10 +1,10 @@
 import json
 import os
+import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
-import tensorflow as tf
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
@@ -13,6 +13,10 @@ from ray.tests.conftest import *  # noqa: F401,F403
 
 if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
+
+if sys.version_info <= (3, 12):
+    # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+    import tensorflow as tf
 
 
 def tf_records_partial():
@@ -763,5 +767,9 @@ def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
 
 if __name__ == "__main__":
     import sys
+
+    if sys.version_info >= (3, 12):
+        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+        sys.exit(0)
 
     sys.exit(pytest.main(["-v", __file__]))
