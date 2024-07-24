@@ -61,7 +61,7 @@ class ConfigInternal {
 
   std::vector<std::string> head_args = {};
 
-  boost::optional<RuntimeEnv> runtime_env;
+  std::optional<RuntimeEnv> runtime_env;
 
   int runtime_env_hash = 0;
 
