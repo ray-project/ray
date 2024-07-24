@@ -1844,7 +1844,6 @@ qpd==0.4.4
     # via fugue
 querystring-parser==1.2.4
     # via mlflow
-ray==2.32.0
     # via raydp
 raydp==1.7.0b20231020.dev0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
