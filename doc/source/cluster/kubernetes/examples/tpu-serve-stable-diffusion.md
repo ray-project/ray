@@ -38,9 +38,9 @@ Port-forward the Ray dashboard from the Ray head service. To view the dashboard,
 kubectl port-forward svc/stable-diffusion-tpu-head-svc 8265:8265 &
 ```
 
-You may now monitor the status of the RayService in the Ray dashboard from the the 'Serve' tab. The installed RayService
-should create a running application with the name 'stable_diffusion'. The Ray Serve application will have two Ray Serve deployments, the
-API ingress which will receive input prompts and the Stable Diffusion model server.
+You may now monitor the status of the RayService in the Ray dashboard from the the 'Serve' tab. The installed RayService should create a running application with the name 'stable_diffusion'. The application will have two deployments, the API ingress which will receive input prompts and the Stable Diffusion model server.
+
+![serve_dashboard](../images/serve_dashboard.png)
 
 
 ## Step 5: Send text-to-image prompts to the model server
@@ -50,14 +50,34 @@ Port forward the Ray Serve service:
 kubectl port-forward svc/stable-diffusion-tpu-serve-svc 8000
 ```
 
-In a separate terminal, download and run the python prompt script:
+In a separate terminal, download the python prompt script:
 
 ```sh
 curl -LO https://raw.githubusercontent.com/ray-project/serve_config_examples/master/stable_diffusion/stable_diffusion_tpu_req.py
+```
 
+Install the required dependencies to run the python script locally:
+
+```sh
+# Create a python virtual environment
+python3 -m venv myenv
+source myenv/bin/activate
+
+# create a file requirements.txt with the following:
+numpy
+pillow
+requests
+tqdm
+
+pip install -r requirements.txt
+```
+
+
+Submit a text-to-image prompt to the Stable Diffusion model server:
+```sh
 python stable_diffusion_tpu_req.py  --save_pictures
 ```
 
-* The results of the stable diffusion inference will be saved to a file named "diffusion_results.png".
+* The results of the stable diffusion inference will be saved to a file named diffusion_results.png.
 
 ![diffusion_results](../images/diffusion_results.png)
