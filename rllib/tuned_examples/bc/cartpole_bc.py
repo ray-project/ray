@@ -49,8 +49,15 @@ config = (
     # as remote learners.
     .offline_data(
         input_=[data_path],
+        # Define the number of reading blocks, these should be larger than 1
+        # and aligned with the data size.
         input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 2)},
+        # Concurrency defines the number of processes that run the
+        # `map_batches` transformations. This should be aligned with the
+        # 'prefetch_batches' argument in 'iter_batches_kwargs'.
         map_batches_kwargs={"concurrency": max(2, args.num_gpus * 2)},
+        # This data set is small so do not prefetch too many batches and use no
+        # local shuffle.
         iter_batches_kwargs={
             "prefetch_batches": max(1, args.num_gpus * 2),
             "local_shuffle_buffer_size": None,
