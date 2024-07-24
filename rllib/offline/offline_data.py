@@ -285,6 +285,7 @@ class OfflinePreLearner:
     def _map_to_episodes(
         is_multi_agent: bool,
         batch: Dict[str, np.ndarray],
+        schema: Dict[str, Any] = SCHEMA,
         finalize: bool = False,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
