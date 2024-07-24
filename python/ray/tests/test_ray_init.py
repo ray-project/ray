@@ -15,6 +15,7 @@ from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
 from ray._private.test_utils import wait_for_condition, enable_external_redis
+from ray._private.test_utils import client_test_enabled
 
 
 @pytest.mark.skipif(
@@ -290,6 +291,21 @@ os.kill(os.getpid(), signal.SIGTERM)
     # test if sigterm handler is overwritten by ray.init
     test_child = subprocess.run(["python", "-c", sigterm_handler_cmd(ray_init=True)])
     assert test_child.returncode == signal.SIGTERM and not os.path.exists(TEST_FILENAME)
+
+
+@pytest.mark.skipif(
+    client_test_enabled(), reason="JobConfig doesn't work in client mode"
+)
+def test_merge_code_search_path(ray_start_cluster):
+    cluster = ray_start_cluster
+    import json
+    import sys
+    with unittest.mock.patch.dict(
+        os.environ, {"RAY_JOB_CONFIG_JSON_ENV_VAR": json.dumps({"code_search_path": ["injected_path"]})}
+    ):
+        ray.init(address=cluster.address)
+        ray._raylet.maybe_initialize_job_config()
+        assert "injected_path" in sys.path
 
 
 if __name__ == "__main__":
