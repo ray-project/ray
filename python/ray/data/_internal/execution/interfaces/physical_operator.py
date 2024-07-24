@@ -276,7 +276,7 @@ class PhysicalOperator(Operator):
         ``self._estimated_num_output_bundles`` appropriately.
         """
         return self._estimated_num_output_bundles
-        
+
     def num_output_rows_total(self) -> Optional[int]:
         """Returns the total number of output rows of this operator,
         or ``None`` if unable to provide a reasonable estimate (for example,

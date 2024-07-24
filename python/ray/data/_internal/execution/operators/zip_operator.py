@@ -52,7 +52,7 @@ class ZipOperator(PhysicalOperator):
             return left_num_outputs
         else:
             return right_num_outputs
-    
+
     def num_output_rows_total(self) -> Optional[int]:
         left_num_rows = self.input_dependencies[0].num_output_rows_total()
         right_num_rows = self.input_dependencies[1].num_output_rows_total()
@@ -62,7 +62,6 @@ class ZipOperator(PhysicalOperator):
             return left_num_rows
         else:
             return right_num_rows
-
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
