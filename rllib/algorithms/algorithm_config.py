@@ -2431,7 +2431,7 @@ class AlgorithmConfig(_Config):
                 and `iter_batches_kwargs` to tune the performance of the data pipeline.
             iter_batches_kwargs: `kwargs` for the `iter_batches` method. These will be
                 passed into the `ray.data.Dataset.iter_batches` method when sampling
-                without checking. If no arguments passed in the default arguments `{
+                without checking. If no arguments are passed in, the default argument `{
                 'prefetch_batches': 2, 'local_buffer_shuffle_size':
                 train_batch_size_per_learner * 4}` is used. Use these `kwargs``
                 together with the `input_read_method_kwargs` and `map_batches_kwargs`
