@@ -6,6 +6,7 @@ from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t, uint32_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
+from libcpp.functional cimport function
 from ray.includes.optional cimport (
     optional,
 )
@@ -367,16 +368,42 @@ cdef extern from "ray/core_worker/common.h" nogil:
         const CNodeID &GetSpilledNodeID() const
         const c_bool GetDidSpill() const
 
-cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray" nogil:
-    # Each type needs default constructors asked by cython.
-    cdef cppclass PyDefaultCallback:
-        PyDefaultCallback()
-        PyDefaultCallback(object py_callback)
-    cdef cppclass PyMultiItemCallback[Item]:
-        PyMultiItemCallback()
-        PyMultiItemCallback(object py_callback)
-    cdef cppclass BoolConverter:
-        pass
+cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
+    # Facility for async bindings. C++ APIs need a callback (`std::function<void(T)>`),
+    # and in the callback we want to do type conversion and complete the Python future.
+    # However, Cython can't wrap a Python callable to a stateful C++ std::function.
+
+    # Fortunately, Cython can convert *pure* Cython functions to C++ function pointers.
+    # Hence we make this C++ Functor `CpsHandler` to wrap Python calls to C++ callbacks.
+
+    # Different APIs have different type signatures, but the code of completing the future
+    # is the same. So we ask 2 Cython function pointers: `Handler` and `Continuation`.
+    # `Handler` is unique for each API, converting C++ types to Python types. `Continuation`
+    # is shared by all APIs, completing the Python future.
+
+    # One issue is the `Continuation` have to be stateless, so we need to keep the Future
+    # in the functor. But we don't want to expose the Future to C++ too much, so we keep
+    # it as a void*. For that, we Py_INCREF the Future in the functor and Py_DECREF it
+    # after the completion.
+
+    # On C++ async API calling:
+    # 1. Create a Future.
+    # 2. Creates a `CpsHandler` functor with `Handler` and `Continuation` and the Future.
+    # 3. Invokes the async API with the functor.
+
+    # On C++ async API completion:
+    # 1. The CpsHandler functor is called. It acquires GIL and:
+    # 2. The functor calls the Cython function `Handler` with C++ types. It returns
+    #     # `Tuple[result, exception]`.
+    # 3. The functor calls the Cython function `Continuation` with the tuple and the
+    #     # Future (as void*). It completes the Python future with the result or with the
+    #     # exception.
+
+    cdef cppclass MultiItemCpsHandler[T]:
+        MultiItemCpsHandler(object (*)(CRayStatus, c_vector[T] &&) , void (object, void*), void*) nogil
+
+    cdef cppclass OptionalItemCpsHandler[T]:
+        OptionalItemCpsHandler(object (*)(CRayStatus, const optional[T]&) , void (object, void*), void*) nogil
 
 cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
@@ -388,7 +415,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             int64_t timeout_ms)
 
         CRayStatus AsyncGetAll(
-            const PyDefaultCallback &callback,
+            const MultiItemCpsHandler[CJobTableData] &callback,
             int64_t timeout_ms)
 
     cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
@@ -400,7 +427,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
         CRayStatus AsyncCheckAlive(
             const c_vector[c_string] &raylet_addresses,
             int64_t timeout_ms,
-            const PyMultiItemCallback[BoolConverter] &callback)
+            const MultiItemCpsHandler[c_bool] &callback)
 
         CRayStatus DrainNodes(
             const c_vector[CNodeID] &node_ids,
@@ -460,19 +487,19 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_string &ns,
             const c_string &prefix,
             int64_t timeout_ms,
-            const PyDefaultCallback &callback)
+            const OptionalItemCpsHandler[c_vector[c_string]] &callback)
 
         CRayStatus AsyncInternalKVGet(
             const c_string &ns,
             const c_string &key,
             int64_t timeout_ms,
-            const PyDefaultCallback &callback)
+            const OptionalItemCpsHandler[c_string] &callback)
 
         CRayStatus AsyncInternalKVMultiGet(
             const c_string &ns,
             const c_vector[c_string] &keys,
             int64_t timeout_ms,
-            const PyDefaultCallback &callback)
+            const OptionalItemCpsHandler[unordered_map[c_string, c_string]] &callback)
 
         CRayStatus AsyncInternalKVPut(
             const c_string &ns,
@@ -480,20 +507,20 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const c_string &value,
             c_bool overwrite,
             int64_t timeout_ms,
-            const PyDefaultCallback &callback)
+            const OptionalItemCpsHandler[int] &callback)
 
         CRayStatus AsyncInternalKVExists(
             const c_string &ns,
             const c_string &key,
             int64_t timeout_ms,
-            const PyDefaultCallback &callback)
+            const OptionalItemCpsHandler[c_bool] &callback)
 
         CRayStatus AsyncInternalKVDel(
             const c_string &ns,
             const c_string &key,
             c_bool del_by_prefix,
             int64_t timeout_ms,
-            const PyDefaultCallback &callback)
+            const OptionalItemCpsHandler[int] &callback)
 
     cdef cppclass CRuntimeEnvAccessor "ray::gcs::RuntimeEnvAccessor":
         CRayStatus PinRuntimeEnvUri(

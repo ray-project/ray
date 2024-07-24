@@ -7,14 +7,14 @@
 # If you would like to help with the move in your PR, please use `git mv` so that the history of the file is retained.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
-load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
-load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
+load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -2363,7 +2363,10 @@ flatbuffer_cc_library(
 
 ray_cc_library(
     name = "python_callbacks",
-    hdrs = ["src/ray/gcs/gcs_client/python_callbacks.h"],
+    hdrs = [
+        "src/ray/gcs/callback.h",
+        "src/ray/gcs/gcs_client/python_callbacks.h",
+    ],
 )
 
 pyx_library(
