@@ -27,17 +27,18 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         fwd_out: Dict[str, TensorType]
     ) -> TensorType:
 
-        if self.module[module_id].is_stateful():
-            maxlen = torch.max(batch[Columns.SEQ_LENS])
-            mask = sequence_mask(batch[Columns.SEQ_LENS], maxlen=maxlen)
-            num_valid = torch.sum(mask)
+        # Possibly apply masking to some sub loss terms and to the total loss term
+        # at the end. Masking could be used for RNN-based model (zero padded `batch`)
+        # and for PPO's batched value function (and bootstrap value) computations,
+        # for which we add an additional (artificial) timestep to each episode to
+        # simplify the actual computation.
+        if Columns.LOSS_MASK in batch:
+            num_valid = torch.sum(batch[Columns.LOSS_MASK])
 
-            def possibly_masked_mean(t):
-                return torch.sum(t[mask]) / num_valid
+            def possibly_masked_mean(data_):
+                return torch.sum(data_[batch[Columns.LOSS_MASK]]) / num_valid
 
-        # non-RNN case: use simple mean.
         else:
-            mask = None
             possibly_masked_mean = torch.mean
 
         action_dist_class_train = (
@@ -107,12 +108,15 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         # Compute the total loss.
         total_loss = policy_loss + config.vf_coeff * mean_vf_loss
 
-        # Log import loss stats.
-        
-        # Log further stats if we use the MARWIL loss.
+        # Log import loss stats. In case of the BC loss this is simply
+        # the policy loss.
         if config.beta == 0.0:
-            self.metrics.log_dict({POLICY_LOSS_KEY, policy_loss}, key=module_id, window=1)
+            self.metrics.log_dict(
+                {POLICY_LOSS_KEY, policy_loss}, key=module_id, window=1
+            )
+        # Log more stats, if using the MARWIL loss.
         else:
+            ma_sqd_adv_norms = self.moving_avg_sqd_adv_norms_per_module[module_id]
             self.metrics.log_dict(
                 {
                     POLICY_LOSS_KEY: policy_loss,
@@ -120,7 +124,7 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
                     LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY: explained_variance(
                         batch[Postprocessing.VALUE_TARGETS], value_fn_out
                     ),
-                    LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY: self.moving_avg_sqd_adv_norms_per_module[module_id]
+                    LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY: ma_sqd_adv_norms,
                 },
                 key=module_id,
                 window=1,  # <- single items (should not be mean/ema-reduced over time).

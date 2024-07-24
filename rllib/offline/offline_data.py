@@ -279,7 +279,9 @@ class OfflinePreLearner:
 
     @staticmethod
     def _map_to_episodes(
-        is_multi_agent: bool, batch: Dict[str, np.ndarray], finalize: bool = False,
+        is_multi_agent: bool,
+        batch: Dict[str, np.ndarray],
+        finalize: bool = False,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 

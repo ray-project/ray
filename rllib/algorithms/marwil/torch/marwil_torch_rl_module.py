@@ -1,4 +1,4 @@
-from typing import Any, Collection, Dict, Optional, Union
+from typing import Any, Dict
 
 from ray.rllib.algorithms.marwil.marwil_rl_module import MARWILRLModule
 from ray.rllib.core.columns import Columns
@@ -8,7 +8,7 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import StateDict, TensorType
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -85,9 +85,9 @@ class MARWILTorchRLModule(TorchRLModule, MARWILRLModule):
 
         return output
 
-    # TODO (simon): Try to move entire GAE computation into MARWIL's loss function (similar
-    #  to IMPALA's v-trace architecture). This would also get rid of the second
-    #  Connector pass currently necessary.
+    # TODO (simon): Try to move entire GAE computation into MARWIL's loss function
+    # (similar to IMPALA's v-trace architecture). This would also get rid of the
+    # second Connector pass currently necessary.
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any]) -> TensorType:
         # Separate vf-encoder.

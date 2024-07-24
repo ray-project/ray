@@ -3,6 +3,7 @@ from typing import Callable, Optional, Type, Union
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,

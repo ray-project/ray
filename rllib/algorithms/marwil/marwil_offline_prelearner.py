@@ -5,7 +5,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.offline.offline_data import OfflinePreLearner
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.episodes import (
@@ -18,6 +18,8 @@ from ray.rllib.utils.typing import EpisodeType, TensorType
 
 
 class MARWILOfflinePreLearner(OfflinePreLearner):
+    @OverrideToImplementCustomLogic
+    @override(OfflinePreLearner)
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, MultiAgentBatch]:
 
         # Map the batch to episodes.

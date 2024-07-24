@@ -1,9 +1,7 @@
 import abc
-from typing import Any, Dict, List, Type, Union
+from typing import Type
 
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.models.base import ENCODER_OUT
-from ray.rllib.core.models.configs import RecurrentEncoderConfig
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
@@ -15,15 +13,6 @@ from ray.rllib.utils.annotations import ExperimentalAPI, override
 class MARWILRLModule(RLModule, ValueFunctionAPI, abc.ABC):
     def setup(self):
         catalog = self.config.get_catalog()
-
-        # If we have a stateful model, states for the critic need to be collected
-        # during sampling and `inference-only` needs to be `False`. Note, at this
-        # point the encoder is not built, yet and therefore `is_stateful()` does
-        # not work.
-        is_stateful = isinstance(
-            catalog.actor_critic_encoder_config.base_encoder_config,
-            RecurrentEncoderConfig,
-        )
 
         # Build models from catalog
         self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)
