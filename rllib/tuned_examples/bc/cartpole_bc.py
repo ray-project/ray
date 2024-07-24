@@ -49,7 +49,12 @@ config = (
     # as remote learners.
     .offline_data(
         input_=[data_path],
-        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1)},
+        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 2)},
+        map_batches_kwargs={"concurrency": max(2, args.num_gpus * 2)},
+        iter_batches_kwargs={
+            "prefetch_batches": max(1, args.num_gpus * 2),
+            "local_shuffle_buffer_size": None,
+        },
         prelearner_module_synch_period=20,
     )
     .training(

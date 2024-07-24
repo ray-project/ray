@@ -433,6 +433,8 @@ class AlgorithmConfig(_Config):
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
+        self.map_batches_kwargs = {}
+        self.iter_batches_kwargs = {}
         self.prelearner_class = None
         self.prelearner_module_synch_period = 10
         self.dataset_num_iters_per_learner = None
@@ -2374,6 +2376,8 @@ class AlgorithmConfig(_Config):
         input_read_method=NotProvided,
         input_read_method_kwargs=NotProvided,
         input_read_schema=NotProvided,
+        map_batches_kwargs=NotProvided,
+        iter_batches_kwargs=NotProvided,
         prelearner_class=NotProvided,
         prelearner_module_synch_period=NotProvided,
         dataset_num_iters_per_learner=NotProvided,
@@ -2405,10 +2409,12 @@ class AlgorithmConfig(_Config):
                 offline data from `input_`. The default is `read_json` for JSON files.
                 See https://docs.ray.io/en/latest/data/api/input_output.html for more
                 info about available read methods in `ray.data`.
-            input_read_method_kwargs: kwargs for the `input_read_method`. These will be
-                passed into the read method without checking. If no arguments are passed
-                in the default argument `{'override_num_blocks': max(num_learners * 2,
-                2)}` is used.
+            input_read_method_kwargs: `kwargs` for the `input_read_method`. These will
+                be passed into the read method without checking. If no arguments are
+                passed in the default argument `{'override_num_blocks':
+                max(num_learners * 2, 2)}` is used. Use these `kwargs`` together with
+                the `map_batches_kwargs` and `iter_batches_kwargs` to tune the
+                performance of the data pipeline.
             input_read_schema: Table schema for converting offline data to episodes.
                 This schema maps the offline data columns to `ray.rllib.core.columns.
                 Columns`: {Columns.OBS: 'o_t', Columns.ACTIONS: 'a_t', ...}. Columns in
@@ -2417,6 +2423,19 @@ class AlgorithmConfig(_Config):
                 schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
                 contains already the names in this schema, no `input_read_schema` is
                 needed.
+            map_batches_kwargs: `kwargs` for the `map_batches` method. These will be
+                passed into the `ray.data.Dataset.map_batches` method when sampling
+                without checking. If no arguments passed in the default arguments `{
+                'concurrency': max(2, num_learners), 'zero_copy_batch': True}` is
+                used. Use these `kwargs`` together with the `input_read_method_kwargs`
+                and `iter_batches_kwargs` to tune the performance of the data pipeline.
+            iter_batches_kwargs: `kwargs` for the `iter_batches` method. These will be
+                passed into the `ray.data.Dataset.iter_batches` method when sampling
+                without checking. If no arguments passed in the default arguments `{
+                'prefetch_batches': 2, 'local_buffer_shuffle_size':
+                train_batch_size_per_learner * 4}` is used. Use these `kwargs``
+                together with the `input_read_method_kwargs` and `map_batches_kwargs`
+                to tune the performance of the data pipeline.
             prelearner_class: An optional `OfflinePreLearner` class that is used to
                 transform data batches in `ray.data.map_batches` used in the
                 `OfflineData` class to transform data from columns to batches that can

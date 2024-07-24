@@ -9,7 +9,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.offline.offline_data import SCHEMA
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
@@ -18,6 +17,30 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
+
+# This is the default schema used if no `input_read_schema` is set in
+# the config. If a user passes in a schema into `input_read_schema`
+# this user-defined schema has to comply with the keys of `SCHEMA`,
+# while values correspond to the columns in the user's dataset. Note
+# that only the user-defined values will be overridden while all
+# other values from SCHEMA remain as defined here.
+SCHEMA = {
+    Columns.EPS_ID: Columns.EPS_ID,
+    Columns.AGENT_ID: Columns.AGENT_ID,
+    Columns.MODULE_ID: Columns.MODULE_ID,
+    Columns.OBS: Columns.OBS,
+    Columns.ACTIONS: Columns.ACTIONS,
+    Columns.REWARDS: Columns.REWARDS,
+    Columns.INFOS: Columns.INFOS,
+    Columns.NEXT_OBS: Columns.NEXT_OBS,
+    Columns.TERMINATEDS: Columns.TERMINATEDS,
+    Columns.TRUNCATEDS: Columns.TRUNCATEDS,
+    Columns.T: Columns.T,
+    # TODO (simon): Add remove as soon as we are new stack only.
+    "agent_index": "agent_index",
+    "dones": "dones",
+    "unroll_id": "unroll_id",
+}
 
 
 @ExperimentalAPI
