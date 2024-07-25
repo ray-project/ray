@@ -108,20 +108,12 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         train_runs_with_details: List[TrainRunInfoWithDetails] = []
 
         for train_run in train_runs.values():
-            # The train run can be unexpectedly terminated before the final run
-            # status was updated. This could be due to errors outside of the training
-            # function (e.g., system failure or user interruption) that crashed the
-            # train controller.
-            # We need to detect this case and mark the train run as ABORTED.
-            controller_actor_status = actors.get(
-                train_run.controller_actor_id, None
-            ).get("state")
             worker_infos_with_details: List[TrainWorkerInfoWithDetails] = []
 
             for worker_info in train_run.workers:
                 actor = actors.get(worker_info.actor_id, None)
                 # Add hardware metrics to API response
-                if actor and controller_actor_status != ActorStatusEnum.DEAD:
+                if actor:
                     gpus = [
                         gpu
                         for gpu in actor["gpus"]
@@ -131,8 +123,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                     # Need to convert processesPids into a proper list.
                     # It's some weird ImmutableList structureo
                     # We also convert the list of processes into a single item since
-                    # an actor is only a single process and cannot match multiple
-                    # processes.
+                    # an actor is only a single process and cannot match multiple processes.
                     formatted_gpus = [
                         {
                             **gpu,
@@ -164,6 +155,14 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                 {**train_run.dict(), "workers": worker_infos_with_details}
             )
 
+            # The train run can be unexpectedly terminated before the final run
+            # status was updated. This could be due to errors outside of the training
+            # function (e.g., system failure or user interruption) that crashed the
+            # train controller.
+            # We need to detect this case and mark the train run as ABORTED.
+            controller_actor_status = actors.get(
+                train_run.controller_actor_id, None
+            ).get("state")
             if (
                 controller_actor_status == ActorStatusEnum.DEAD
                 and train_run.run_status == RunStatusEnum.STARTED
