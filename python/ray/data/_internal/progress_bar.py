@@ -71,7 +71,7 @@ class ProgressBar:
                 self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
             else:
                 self._bar = tqdm.tqdm(
-                    total=total,
+                    total=total or 0,  # Fix currupt if use default
                     position=position,
                     dynamic_ncols=True,
                     unit=unit,
