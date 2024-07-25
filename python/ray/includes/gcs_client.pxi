@@ -291,7 +291,6 @@ cdef class NewGcsClient:
                         fut_ptr)))
         return asyncio.wrap_future(fut)
 
-
     #############################################################
     # NodeInfo methods
     #############################################################
@@ -413,8 +412,12 @@ cdef class NewGcsClient:
 
         with nogil:
             check_status_timeout_as_rpc_error(
-                self.inner.get().Jobs().AsyncGetAll(MultiItemPyCallback[CJobTableData](postprocess_async_get_all_job_info, assign_and_decrement,
-                        fut_ptr), timeout_ms))
+                self.inner.get().Jobs().AsyncGetAll(
+                    MultiItemPyCallback[CJobTableData](
+                        postprocess_async_get_all_job_info,
+                        assign_and_decrement,
+                        fut_ptr),
+                    timeout_ms))
         return asyncio.wrap_future(fut)
 
     #############################################################
@@ -538,7 +541,8 @@ cdef void assign_and_decrement(result, void* fut_ptr):
         cpython.Py_DECREF(fut)
 
 # Returns a Python object, or raises an exception.
-cdef postprocess_async_get_all_job_info(CRayStatus status, c_vector[CJobTableData]&& c_data):
+cdef postprocess_async_get_all_job_info(
+        CRayStatus status, c_vector[CJobTableData]&& c_data):
     # -> Dict[JobID, gcs_pb2.JobTableData]
     cdef c_string b
     try:
@@ -553,7 +557,8 @@ cdef postprocess_async_get_all_job_info(CRayStatus status, c_vector[CJobTableDat
     except Exception as e:
         return None, e
 
-cdef postprocess_optional_str_none_for_not_found(CRayStatus status, const optional[c_string]& c_str):
+cdef postprocess_optional_str_none_for_not_found(
+        CRayStatus status, const optional[c_string]& c_str):
     # -> Optional[bytes]
     try:
         if status.IsNotFound():
@@ -563,7 +568,8 @@ cdef postprocess_optional_str_none_for_not_found(CRayStatus status, const option
     except Exception as e:
         return None, e
 
-cdef postprocess_optional_multi_get(CRayStatus status, const optional[unordered_map[c_string, c_string]]& c_map):
+cdef postprocess_optional_multi_get(
+        CRayStatus status, const optional[unordered_map[c_string, c_string]]& c_map):
     # -> Dict[str, str]
     cdef unordered_map[c_string, c_string].const_iterator it
     try:
@@ -587,7 +593,8 @@ cdef postprocess_optional_int(CRayStatus status, const optional[int]& c_int):
     except Exception as e:
         return None, e
 
-cdef postprocess_optional_vector_str(CRayStatus status, const optional[c_vector[c_string]]& c_vec):
+cdef postprocess_optional_vector_str(
+        CRayStatus status, const optional[c_vector[c_string]]& c_vec):
     # -> Dict[str, str]
     try:
         check_status_timeout_as_rpc_error(status)

@@ -369,10 +369,14 @@ cdef extern from "ray/core_worker/common.h" nogil:
 
 cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
     cdef cppclass MultiItemPyCallback[T]:
-        MultiItemPyCallback(object (*)(CRayStatus, c_vector[T] &&) , void (object, void*), void*) nogil
+        MultiItemPyCallback(
+            object (*)(CRayStatus, c_vector[T] &&),
+            void (object, void*), void*) nogil
 
     cdef cppclass OptionalItemPyCallback[T]:
-        OptionalItemPyCallback(object (*)(CRayStatus, const optional[T]&) , void (object, void*), void*) nogil
+        OptionalItemPyCallback(
+            object (*)(CRayStatus, const optional[T]&),
+            void (object, void*), void*) nogil
 
 cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
