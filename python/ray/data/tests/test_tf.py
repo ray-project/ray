@@ -333,7 +333,8 @@ class TestToTF:
         assert tuple(features.shape) == (batch_size, None, None, None)
         assert tuple(labels.shape) == (batch_size,)
 
-    def test_training(self):
+    @pytest.mark.parametrize("include_additional_columns", [False, True])
+    def test_training(self, include_additional_columns):
         def build_model() -> tf.keras.Model:
             return tf.keras.Sequential([tf.keras.layers.Dense(1)])
 
@@ -347,11 +348,16 @@ class TestToTF:
                     metrics=[tf.keras.metrics.mean_squared_error],
                 )
 
-            dataset = train.get_dataset_shard("train").to_tf("X", "Y", batch_size=4)
+            if include_additional_columns:
+                dataset = train.get_dataset_shard("train").to_tf(
+                    "X", "Y", additional_columns="W", batch_size=4
+                )
+            else:
+                dataset = train.get_dataset_shard("train").to_tf("X", "Y", batch_size=4)
             multi_worker_model.fit(dataset)
 
-        dataset = ray.data.from_items(8 * [{"X0": 0, "X1": 0, "Y": 0}])
-        concatenator = Concatenator(exclude=["Y"], output_column_name="X")
+        dataset = ray.data.from_items(8 * [{"X0": 0, "X1": 0, "Y": 0, "W": 0}])
+        concatenator = Concatenator(exclude=["Y", "W"], output_column_name="X")
         dataset = concatenator.transform(dataset)
 
         trainer = TensorflowTrainer(
@@ -361,10 +367,18 @@ class TestToTF:
         )
         trainer.fit()
 
-    def test_invalid_column_raises_error(self):
-        ds = ray.data.from_items([{"spam": 0, "ham": 0}])
+    @pytest.mark.parametrize("include_additional_columns", [False, True])
+    def test_invalid_column_raises_error(self, include_additional_columns):
+        ds = ray.data.from_items([{"spam": 0, "ham": 0, "weight": 0}])
         with pytest.raises(ValueError):
-            ds.to_tf(feature_columns="foo", label_columns="bar")
+            if include_additional_columns:
+                ds.to_tf(
+                    feature_columns="spam",
+                    label_columns="ham",
+                    additional_columns="baz",
+                )
+            else:
+                ds.to_tf(feature_columns="foo", label_columns="bar")
 
 
 if __name__ == "__main__":
