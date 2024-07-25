@@ -142,5 +142,6 @@ class OfflineData:
     def default_iter_batches_kwargs(self):
         return {
             "prefetch_batches": 2,
-            "local_shuffle_buffer_size": self.config.train_batch_size_per_learner * 4,
+            "local_shuffle_buffer_size": self.config.train_batch_size_per_learner
+            or (self.config.train_batch_size // max(1, self.config.num_learners)) * 4,
         }
