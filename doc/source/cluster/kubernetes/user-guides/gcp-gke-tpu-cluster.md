@@ -19,7 +19,7 @@ gcloud container clusters create-auto kuberay-tpu-cluster \
     --location=us-central2
 ```
 
-Replace CLUSTER_VERSION with the GKE version for the cluster, which must be version 1.30.1 or later. Alternatively, create a cluster using the [Google Cloud Console](https://console.cloud.google.com/kubernetes/list).
+Replace `CLUSTER_VERSION` with the GKE version for the cluster, which must be version 1.30.1 or later. Alternatively, create a cluster using the [Google Cloud Console](https://console.cloud.google.com/kubernetes/list).
 
 To use TPUs with Autopilot mode, you must select a compute location with capacity for TPU accelerators. v4 TPUs are available in us-central2-b. For more information on TPU availability by region/zone, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus#availability).
 
