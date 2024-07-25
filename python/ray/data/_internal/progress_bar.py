@@ -44,6 +44,10 @@ class ProgressBar:
     because no tasks have finished yet), doesn't display the full
     progress bar. Still displays basic progress stats from tqdm."""
 
+    # If the name/description of the progress bar exceeds this length,
+    # it will be truncated.
+    MAX_NAME_LENGTH = 100
+
     def __init__(
         self,
         name: str,
@@ -51,8 +55,11 @@ class ProgressBar:
         unit: str,
         position: int = 0,
         enabled: Optional[bool] = None,
+        display_full_name: bool = False,
     ):
-        self._desc = name
+        # If True, disables name trunctating.
+        self._display_full_name = display_full_name
+        self._desc = self._truncate_name(name)
         self._progress = 0
         # Prepend a space to the unit for better formatting.
         if unit[0] != " ":
@@ -82,6 +89,11 @@ class ProgressBar:
                 print("[dataset]: Run `pip install tqdm` to enable progress reporting.")
                 needs_warning = False
             self._bar = None
+
+    def _truncate_name(self, name: str) -> str:
+        if not self._display_full_name and len(name) > self.MAX_NAME_LENGTH:
+            return name[: self.MAX_NAME_LENGTH - 3] + "..."
+        return name
 
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
         t = threading.current_thread()
@@ -117,6 +129,7 @@ class ProgressBar:
         return [ref_to_result[ref] for ref in refs]
 
     def set_description(self, name: str) -> None:
+        name = self._truncate_name(name)
         if self._bar and name != self._desc:
             self._desc = name
             self._bar.set_description(self._desc)
