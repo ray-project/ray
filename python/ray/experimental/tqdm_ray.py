@@ -51,13 +51,6 @@ def safe_print(*args, **kwargs):
         instance().unhide_bars()
 
 
-def format_num(n):
-    """Intelligent scientific notation (.3g)."""
-    f = f"{n:.3g}".replace("e+0", "e+").replace("e-0", "e-")
-    n = str(n)
-    return f if len(f) < len(n) else n
-
-
 class tqdm:
     """Experimental: Ray distributed tqdm implementation.
 
@@ -106,8 +99,7 @@ class tqdm:
 
     def set_description(self, desc):
         """Implements tqdm.tqdm.set_description."""
-        self._desc = f"{desc} ({format_num(self._x)}\
-            /{format_num(self._total) if self._total else '??'})"
+        self._desc = desc
         self._dump_state()
 
     def update(self, n=1):
@@ -147,13 +139,11 @@ class tqdm:
             instance().process_state_update(copy.deepcopy(self._get_state()))
 
     def _get_state(self) -> ProgressBarState:
-        """Get the formatted state of the progress bar."""
         return {
             "__magic_token__": RAY_TQDM_MAGIC,
             "x": self._x,
             "pos": self._pos,
-            "desc": f"{self._desc} {format_num(self._x)}\
-                /{format_num(self._total) if self._total else '??'}",
+            "desc": self._desc,
             "total": self._total,
             "unit": self._unit,
             "ip": self._ip,

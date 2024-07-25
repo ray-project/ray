@@ -3,7 +3,6 @@ from typing import Any, List, Optional
 
 import ray
 from ray.experimental import tqdm_ray
-from ray.experimental.tqdm_ray import format_num
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated
 
@@ -71,7 +70,7 @@ class ProgressBar:
                 self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
             else:
                 self._bar = tqdm.tqdm(
-                    total=total or 0,  # Fix currupt if use default
+                    total=total,
                     position=position,
                     dynamic_ncols=True,
                     unit=unit,
@@ -120,25 +119,16 @@ class ProgressBar:
     def set_description(self, name: str) -> None:
         if self._bar and name != self._desc:
             self._desc = name
-            formatted_progress = format_num(self._progress)
-            formatted_total = (
-                format_num(self._bar.total) if self._bar.total is not None else "??"
-            )
-            self._bar.set_description(
-                f"{self._desc} {formatted_progress}/{formatted_total}"
-            )
+            self._bar.set_description(self._desc)
 
     def update(self, i: int = 0, total: Optional[int] = None) -> None:
         if self._bar and (i != 0 or self._bar.total != total):
             self._progress += i
             if total is not None:
                 self._bar.total = total
-                formatted_total = format_num(self._bar.total)
-            formatted_progress = format_num(self._progress)
-            self._bar.set_description(
-                f"{self._desc} {formatted_progress} \
-                    /{formatted_total if total is not None else '??'}"
-            )
+            if self._bar.total is not None and self._progress > self._bar.total:
+                # If the progress goes over 100%, update the total.
+                self._bar.total = self._progress
             self._bar.update(i)
 
     def close(self):
