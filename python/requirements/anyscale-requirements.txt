@@ -1,4 +1,4 @@
-jupyterlab
+jupyterlab==3.6.1
 ipywidgets
 opentelemetry-api
 opentelemetry-sdk

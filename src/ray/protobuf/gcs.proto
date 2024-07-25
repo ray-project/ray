@@ -230,7 +230,7 @@ message TaskStateUpdate {
   optional bool is_debugger_paused = 13;
   // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
   // Value is the timestamp when status changes to the target status indicated by the key.
-  map<int32, int64> state_ts = 14;
+  map<int32, int64> state_ts_ns = 14;
 }
 
 // Represents events and state changes from a single task run.
@@ -703,7 +703,8 @@ message JobTableData {
   // The optional JobInfo from the Ray Job API.
   optional JobsAPIInfo job_info = 10;
   // Whether this job has running tasks.
-  bool is_running_tasks = 11;
+  // In GetAllJobInfo, if GCS can't reach the driver, it will be unset.
+  optional bool is_running_tasks = 11;
   // Address of the driver that started this job.
   Address driver_address = 12;
 }

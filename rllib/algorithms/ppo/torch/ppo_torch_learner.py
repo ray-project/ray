@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+from typing import Any, Dict
 
 import numpy as np
 
@@ -17,7 +17,6 @@ from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import ModuleID, TensorType
@@ -39,11 +38,9 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         *,
         module_id: ModuleID,
         config: PPOConfig,
-        batch: NestedDict,
+        batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        # TODO (Kourosh): batch type is NestedDict.
-
         # Possibly apply masking to some sub loss terms and to the total loss term
         # at the end. Masking could be used for RNN-based model (zero padded `batch`)
         # and for PPO's batched value function (and bootstrap value) computations,

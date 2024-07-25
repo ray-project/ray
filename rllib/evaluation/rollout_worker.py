@@ -10,7 +10,7 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Optional,
@@ -1071,7 +1071,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         policy_state: Optional[PolicyState] = None,
         policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
         policies_to_train: Optional[
-            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+            Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = None,
         module_spec: Optional[SingleAgentRLModuleSpec] = None,
     ) -> Policy:
@@ -1092,7 +1092,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
                 the end of the episode.
-            policies_to_train: An optional container of policy IDs to be
+            policies_to_train: An optional collection of policy IDs to be
                 trained or a callable taking PolicyID and - optionally -
                 SampleBatchType and returning a bool (trainable or not?).
                 If None, will keep the existing setup in place.
@@ -1172,7 +1172,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         policy_id: PolicyID = DEFAULT_POLICY_ID,
         policy_mapping_fn: Optional[Callable[[AgentID], PolicyID]] = None,
         policies_to_train: Optional[
-            Union[Container[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
+            Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = None,
     ) -> None:
         """Removes a policy from this RolloutWorker.
@@ -1184,7 +1184,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 to use from here on. Note that already ongoing episodes will
                 not change their mapping but will use the old mapping till
                 the end of the episode.
-            policies_to_train: An optional container of policy IDs to be
+            policies_to_train: An optional collection of policy IDs to be
                 trained or a callable taking PolicyID and - optionally -
                 SampleBatchType and returning a bool (trainable or not?).
                 If None, will keep the existing setup in place.
@@ -1217,20 +1217,20 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
     def set_is_policy_to_train(
         self,
         is_policy_to_train: Union[
-            Container[PolicyID], Callable[[PolicyID, Optional[SampleBatchType]], bool]
+            Collection[PolicyID], Callable[[PolicyID, Optional[SampleBatchType]], bool]
         ],
     ) -> None:
         """Sets `self.is_policy_to_train()` to a new callable.
 
         Args:
-            is_policy_to_train: A container of policy IDs to be
+            is_policy_to_train: A collection of policy IDs to be
                 trained or a callable taking PolicyID and - optionally -
                 SampleBatchType and returning a bool (trainable or not?).
                 If None, will keep the existing setup in place.
                 Policies, whose IDs are not in the list (or for which the
                 callable returns False) will not be updated.
         """
-        # If container given, construct a simple default callable returning True
+        # If collection given, construct a simple default callable returning True
         # if the PolicyID is found in the list/set of IDs.
         if not callable(is_policy_to_train):
             assert isinstance(is_policy_to_train, (list, set, tuple)), (
@@ -1365,7 +1365,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 f.reset_buffer()
         return return_filters
 
-    @override(EnvRunner)
     def get_state(self) -> dict:
         filters = self.get_filters(flush_after=True)
         policy_states = {}
@@ -1396,7 +1395,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             "filters": filters,
         }
 
-    @override(EnvRunner)
     def set_state(self, state: dict) -> None:
         # Backward compatibility (old checkpoints' states would have the local
         # worker state as a bytes object, not a dict).
@@ -1452,7 +1450,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
     def get_weights(
         self,
-        policies: Optional[Container[PolicyID]] = None,
+        policies: Optional[Collection[PolicyID]] = None,
         inference_only: bool = False,
     ) -> Dict[PolicyID, ModelWeights]:
         """Returns each policies' model weights of this worker.

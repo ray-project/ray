@@ -306,7 +306,7 @@ TEST_F(RedisStoreClientTest, Random) {
 
   auto m_get = [&, counter, this](size_t idx) {
     auto k = std::to_string(std::rand() % 1000);
-    boost::optional<std::string> v;
+    std::optional<std::string> v;
     if (dict.count(k)) {
       v = dict[k];
     }
