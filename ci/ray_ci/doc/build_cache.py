@@ -62,8 +62,9 @@ class BuildCache:
         with tempfile.NamedTemporaryFile(mode="w+t") as temp_file:
             temp_file.write("\n".join(cache_files))
             doc_tarball = f'{os.environ["BUILDKITE_COMMIT"]}.tgz'
+            doc_tarball_path = os.path.join(self._cache_dir, doc_tarball)
             subprocess.run(
-                ["tar", "-cvzf", doc_tarball, "-T", temp_file.name],
+                ["tar", "-cvzf", doc_tarball_path, "-T", temp_file.name],
                 cwd=self._cache_dir,
             )
 
