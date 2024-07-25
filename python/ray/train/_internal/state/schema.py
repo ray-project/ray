@@ -77,7 +77,7 @@ class GPUStats(BaseModel):
     utilizationGpu: Optional[float]
     memoryUsed: float
     memoryTotal: float
-    processesPids: Optional[List[ProcessGPUUsage]]
+    processInfo: ProcessGPUUsage
 
 
 @DeveloperAPI
@@ -85,7 +85,7 @@ class TrainWorkerInfoWithDetails(TrainWorkerInfo):
     """Metadata of a Ray Train worker."""
 
     processStats: Optional[ProcessStats] = Field(
-        ..., description="Process stats of the worker."
+        None, description="Process stats of the worker."
     )
     gpus: List[GPUStats] = Field(
         default_factory=list,
