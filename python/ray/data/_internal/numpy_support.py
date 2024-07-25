@@ -40,27 +40,25 @@ def validate_numpy_batch(batch: Union[Dict[str, np.ndarray], Dict[str, list]]) -
             f"({_truncated_repr(batch)})"
         )
  
-def _detect_highest_datetime_precision_dtype(datetime_list: List[datetime]) -> str:
-    highest_precision = 'datetime64[D]'  # Start with day precision
+def _detect_highest_datetime_precision(datetime_list: List[datetime]) -> str:
+    highest_precision = 'D' 
     
     for dt in datetime_list:
-        if dt.microsecond != 0:
-            highest_precision = 'datetime64[ns]'
+        if dt.microsecond != 0 and dt.microsecond % 1000 != 0:
+            highest_precision = 'us'
             break
-        elif dt.second != 0:
-            highest_precision = 'datetime64[s]'
-        elif dt.minute != 0:
-            highest_precision = 'datetime64[m]'
-        elif dt.hour != 0:
-            highest_precision = 'datetime64[h]'
+        elif dt.microsecond != 0 and dt.microsecond % 1000 == 0:
+            highest_precision = 'ms'
+        elif dt.hour != 0 or dt.minute != 0 or dt.second != 0:
+            # pyarrow does not support h or m, use s for those cases too
+            highest_precision = 's'
     
     return highest_precision
 
 def _convert_datetime_list_to_array(datetime_list: List[datetime]) -> np.ndarray:
-    # Detect highest precision
-    dtype_with_precision = _detect_highest_datetime_precision_dtype(datetime_list)
+    precision = _detect_highest_datetime_precision(datetime_list)
         
-    return np.array([np.datetime64(dt) for dt in datetime_list], dtype=dtype_with_precision)
+    return np.array([np.datetime64(dt, precision) for dt in datetime_list], dtype=f"datetime64[{precision}]")
 
 
 def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
