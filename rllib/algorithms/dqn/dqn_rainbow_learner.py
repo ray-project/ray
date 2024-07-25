@@ -55,8 +55,8 @@ class DQNRainbowLearner(Learner):
             )
         )
 
-        # Prepend a NEXT_OBS from episodes to train batch connector piece (right
-        # after the observation default piece).
+        # Prepend a "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # after the corresponding "add-OBS-..." default piece).
         if self.config.add_default_connectors_to_learner_pipeline:
             self._learner_connector.insert_after(
                 AddObservationsFromEpisodesToBatch,

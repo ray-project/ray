@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
 import numpy as np
 
@@ -6,9 +6,15 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
+from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.torch_utils import one_hot
+from ray.rllib.utils.typing import ModuleID
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 
 torch, nn = try_import_torch()
 
@@ -79,70 +85,156 @@ class InverseDynamicsModel(TorchRLModule):
 
     @override(TorchRLModule)
     def setup(self):
-        # Assume a simple Box(1D) tensor as input shape.
-        in_size = self.config.observation_space.shape[0]
-
         # Get the IDM achitecture settings from the our RLModuleConfig's (self.config)
         # `model_config_dict` property:
         cfg = self.config.model_config_dict
-        self._feature_dim = cfg.get("feature_dim", 288)
-        feature_net_config: Optional[ModelConfigDict] = None,
-        self._inverse_net_hiddens = cfg.get("inverse_net_hiddens", (256,))
-        self._inverse_net_activation = cfg.get("inverse_net_activation", "relu")
-        self._forward_net_hiddens = cfg.get("forward_net_hiddens", (256,))
-        self._forward_net_activation = cfg.get("forward_net_activation", "relu")
 
+        feature_dim = cfg.get("feature_dim", 288)
 
-        # Build the inverse model (predicting .
+        # Build the feature model (encoder of observations to feature space).
         layers = []
-        # Get the dense layer pre-stack configuration from the same config dict.
-        dense_layers = self.config.model_config_dict.get("dense_layers", [128, 128])
+        dense_layers = cfg.get("feature_net_hiddens", (256, 256))
+        # `in_size` is the observation space (assume a simple Box(1D)).
+        in_size = self.config.observation_space.shape[0]
         for out_size in dense_layers:
-            # Dense layer.
             layers.append(nn.Linear(in_size, out_size))
-            # ReLU activation.
-            layers.append(nn.ReLU())
+            if cfg.get("feature_net_activation"):
+                layers.append(
+                    get_activation_fn(cfg["feature_net_activation"], "torch")()
+                )
             in_size = out_size
+        # Last feature layer of n nodes (feature dimension).
+        layers.append(nn.Linear(in_size, feature_dim))
+        self._feature_net = nn.Sequential(*layers)
 
-        self._fc_net = nn.Sequential(*layers)
+        # Build the inverse model (predicting the action between two observations).
+        layers = []
+        dense_layers = cfg.get("inverse_net_hiddens", (256,))
+        # `in_size` is 2x the feature dim.
+        in_size = feature_dim * 2
+        for out_size in dense_layers:
+            layers.append(nn.Linear(in_size, out_size))
+            if cfg.get("inverse_net_activation"):
+                layers.append(
+                    get_activation_fn(cfg["inverse_net_activation"], "torch")()
+                )
+            in_size = out_size
+        # Last feature layer of n nodes (action space).
+        layers.append(nn.Linear(in_size, self.config.action_space.n))
+        self._inverse_net = nn.Sequential(*layers)
 
-        # Logits layer (no bias, no activation).
-        self._logits = nn.Linear(in_size, self.config.action_space.n)
-        # Single-node value layer.
-        self._values = nn.Linear(in_size, 1)
+        # Build the forward model (predicting the next observation from current one and
+        # action).
+        layers = []
+        dense_layers = cfg.get("forward_net_hiddens", (256,))
+        # `in_size` is the feature dim + action space (one-hot).
+        in_size = feature_dim + self.config.action_space.n
+        for out_size in dense_layers:
+            layers.append(nn.Linear(in_size, out_size))
+            if cfg.get("forward_net_activation"):
+                layers.append(
+                    get_activation_fn(cfg["forward_net_activation"], "torch")()
+                )
+            in_size = out_size
+        # Last feature layer of n nodes (feature dimension).
+        layers.append(nn.Linear(in_size, feature_dim))
+        self._forward_net = nn.Sequential(*layers)
 
     @override(TorchRLModule)
     def _forward_train(self, batch, **kwargs):
-        # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
-        features, state_out, logits = self._compute_features_state_out_and_logits(batch)
-        # Besides the action logits, we also have to return value predictions here
-        # (to be used inside the loss function).
-        values = self._values(features).squeeze(-1)
-        return {
-            Columns.STATE_OUT: state_out,
-            Columns.ACTION_DIST_INPUTS: logits,
-            Columns.VF_PREDS: values,
+        # Push both observations through feature net to get feature vectors (phis).
+        # We cat/batch them here for efficiency reasons (save one forward pass).
+        phis = self._feature_net(
+            torch.cat(
+                [
+                    batch[Columns.OBS],
+                    batch[Columns.NEXT_OBS],
+                ],
+                dim=0,
+            )
+        )
+        # Split again to yield 2 individual phi tensors.
+        phi, next_phi = torch.chunk(phis, 2)
+
+        # Predict next feature vector (next_phi) with forward model (using obs and
+        # actions).
+        predicted_next_phi = self._forward_net(
+            torch.cat(
+                [
+                    phi,
+                    one_hot(batch[Columns.ACTIONS].long(), self.config.action_space).float(),
+                ],
+                dim=-1,
+            )
+        )
+
+        # Forward loss term: Predicted phi - given phi and action - vs actually observed
+        # phi (square-root of L2 norm). Note that this is the intrinsic reward that
+        # will be used and the mean of this is the forward net loss.
+        forward_l2_norm_sqrt = 0.5 * torch.sum(
+            torch.pow(predicted_next_phi - next_phi, 2.0), dim=-1
+        )
+
+        output = {
+            Columns.INTRINSIC_REWARDS: forward_l2_norm_sqrt,
+            # Computed feature vectors (used to compute the losses later).
+            "phi": phi,
+            "next_phi": next_phi,
         }
+
+        return output
 
     @override(TorchRLModule)
     def get_train_action_dist_cls(self):
+        ##    TorchCategorical
+        ##    if isinstance(self.action_space, Discrete)
+        ##    else TorchMultiCategorical(dist_inputs, self.model, self.action_space.nvec)
+        ##)
         return TorchCategorical
 
-    def _compute_features_state_out_and_logits(self, batch):
-        obs = batch[Columns.OBS]
-        state_in = batch[Columns.STATE_IN]
-        h, c = state_in["h"], state_in["c"]
-        # Unsqueeze the layer dim (we only have 1 LSTM layer.
-        features, (h, c) = self._lstm(
-            obs.permute(1, 0, 2),  # we have to permute, b/c our LSTM is time-major
-            (h.unsqueeze(0), c.unsqueeze(0)),
+    @staticmethod
+    def compute_loss_for_module(
+        *,
+        learner: "TorchLearner",
+        module_id: ModuleID,
+        config: "AlgorithmConfig",
+        batch: Dict[str, Any],
+        fwd_out: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        module = learner.module[module_id]
+
+        # Forward net loss.
+        forward_loss = torch.mean(fwd_out[Columns.INTRINSIC_REWARDS])
+
+        # Inverse loss term (predicted action that led from phi to phi' vs
+        # actual action taken).
+        dist_inputs = module._inverse_net(
+            torch.cat([fwd_out["phi"], fwd_out["next_phi"]], dim=-1)
         )
-        # Make batch-major again.
-        features = features.permute(1, 0, 2)
-        # Push through our FC net.
-        features = self._fc_net(features)
-        logits = self._logits(features)
-        return features, {"h": h.squeeze(0), "c": c.squeeze(0)}, logits
+        action_dist = module.get_train_action_dist_cls().from_logits(dist_inputs)
+
+        # Neg log(p); p=probability of observed action given the inverse-NN
+        # predicted action distribution.
+        inverse_loss = -action_dist.logp(batch[Columns.ACTIONS])
+        inverse_loss = torch.mean(inverse_loss)
+
+        # Calculate the ICM loss.
+        total_loss = (
+            (1.0 - config.curiosity_beta) * inverse_loss
+            + config.curiosity_beta * forward_loss
+        )
+
+        learner.metrics.log_dict(
+            {
+                "mean_intrinsic_rewards": forward_loss,
+                "forward_loss": forward_loss,
+                "inverse_loss": inverse_loss,
+            },
+            key=module_id,
+            window=1,
+        )
+
+        return total_loss
 
     # Inference and exploration not supported (this is a world-model that should only
     # be used for training).

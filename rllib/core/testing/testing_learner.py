@@ -63,7 +63,7 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
 
 class BaseTestingLearner(Learner):
     @override(Learner)
-    def compute_loss_for_module(self, *, module_id, config=None, batch, fwd_out):
+    def compute_loss_for_module(self, *, module_id, config, batch, fwd_out):
         # This is to check if in the multi-gpu case, the weights across workers are
         # the same. It is really only needed during testing.
         if config.report_mean_weights:

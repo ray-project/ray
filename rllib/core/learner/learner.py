@@ -835,11 +835,8 @@ class Learner(Checkpointable):
 
     @OverrideToImplementCustomLogic
     def compute_loss(
-        self,
-        *,
-        fwd_out: Dict[str, Any],
-        batch: Dict[str, Any],
-    ) -> Union[TensorType, Dict[str, Any]]:
+        self, *, fwd_out: Dict[str, Any], batch: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Computes the loss for the module being optimized.
 
         This method must be overridden by multiagent-specific algorithm learners to
@@ -892,7 +889,7 @@ class Learner(Checkpointable):
         self,
         *,
         module_id: ModuleID,
-        config: Optional["AlgorithmConfig"] = None,
+        config: "AlgorithmConfig",
         batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:

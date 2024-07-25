@@ -1,96 +1,153 @@
-from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
+"""Implementation of:
+[1] Curiosity-driven Exploration by Self-supervised Prediction
+Pathak, Agrawal, Efros, and Darrell - UC Berkeley - ICML 2017.
+https://arxiv.org/pdf/1705.05363.pdf
+
+Learns a simplified model of the environment based on three networks:
+1) Embedding observations into latent space ("feature" network).
+2) Predicting the action, given two consecutive embedded observations
+("inverse" network).
+3) Predicting the next embedded obs, given an obs and action
+("forward" network).
+
+The less the agent is able to predict the actually observed next feature
+vector, given obs and action (through the forwards network), the larger the
+"intrinsic reward", which will be added to the extrinsic reward.
+Therefore, if a state transition was unexpected, the agent becomes
+"curious" and will further explore this transition leading to better
+exploration in sparse rewards environments.
+"""
+from collections import defaultdict
+
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.examples.learners.classes.curiosity_ppo_torch_learner import (
+    PPOConfigWithCuriosity, PPOTorchLearnerWithCuriosity
+)
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
+
+parser = add_rllib_example_script_args(
+    default_iters=20000,
+    default_timesteps=100000000,
+    default_reward=1.0,
+)
+parser.set_defaults(enable_new_api_stack=True)
 
 
-class PPOTorchLearnerWithCuriosity(PPOTorchLearner):
-    def build(self):
-        super().build()
 
-        # Add
-
-
-class InverseDynamicsBasedCuriosity:
-    """Implementation of:
-    [1] Curiosity-driven Exploration by Self-supervised Prediction
-    Pathak, Agrawal, Efros, and Darrell - UC Berkeley - ICML 2017.
-    https://arxiv.org/pdf/1705.05363.pdf
-
-    Learns a simplified model of the environment based on three networks:
-    1) Embedding observations into latent space ("feature" network).
-    2) Predicting the action, given two consecutive embedded observations
-    ("inverse" network).
-    3) Predicting the next embedded obs, given an obs and action
-    ("forward" network).
-
-    The less the agent is able to predict the actually observed next feature
-    vector, given obs and action (through the forwards network), the larger the
-    "intrinsic reward", which will be added to the extrinsic reward.
-    Therefore, if a state transition was unexpected, the agent becomes
-    "curious" and will further explore this transition leading to better
-    exploration in sparse rewards environments.
-    """
-
+class PrintMaxDistanceFrozenLakeCallback(DefaultCallbacks):
     def __init__(self):
+        super().__init__()
+        self.max_dists = defaultdict(float)
+        self.max_dists_lifetime = 0.0
 
+    def on_episode_step(
+        self,
+        *,
+        episode,
+        env_runner,
+        metrics_logger,
+        env,
+        env_index,
+        rl_module,
+        **kwargs,
+    ):
+        obs = episode.get_observations(-1)
+        num_rows = env.envs[0].unwrapped.nrow
+        num_cols = env.envs[0].unwrapped.ncol
+        row = obs // num_cols
+        col = obs % num_rows
+        curr_dist = (row ** 2 + col ** 2) ** 0.5
+        if curr_dist > self.max_dists[episode.id_]:
+            self.max_dists[episode.id_] = curr_dist
 
-    def forward(self, batch: Dict[str, Any]) -> Dict[str, Any]:
-        # Push both observations through feature net to get both phis.
-        phis, _ = self.model._curiosity_feature_net(
-            {
-                SampleBatch.OBS: torch.cat(
-                    [
-                        torch.from_numpy(sample_batch[SampleBatch.OBS]).to(
-                            policy.device
-                        ),
-                        torch.from_numpy(sample_batch[SampleBatch.NEXT_OBS]).to(
-                            policy.device
-                        ),
-                    ]
-                )
-            }
+    def on_episode_end(
+        self,
+        *,
+        episode,
+        env_runner,
+        metrics_logger,
+        env,
+        env_index,
+        rl_module,
+        **kwargs,
+    ):
+        # Compute current maximum distance across all running episodes
+        # (including the just ended one).
+        max_dist = max(self.max_dists.values())
+        metrics_logger.log_value(
+            key="max_dist_travelled_across_running_episodes",
+            value=max_dist,
+            window=10,
         )
-        phi, next_phi = torch.chunk(phis, 2)
-        actions_tensor = (
-            torch.from_numpy(sample_batch[SampleBatch.ACTIONS]).long().to(policy.device)
+        if max_dist > self.max_dists_lifetime:
+            self.max_dists_lifetime = max_dist
+        del self.max_dists[episode.id_]
+
+    def on_sample_end(
+        self,
+        *,
+        env_runner,
+        metrics_logger,
+        samples,
+        **kwargs,
+    ):
+        metrics_logger.log_value(
+            key="max_dist_travelled_lifetime",
+            value=self.max_dists_lifetime,
+            window=1,
         )
 
-        # Predict next phi with forward model.
-        predicted_next_phi = self.model._curiosity_forward_fcnet(
-            torch.cat([phi, one_hot(actions_tensor, self.action_space).float()], dim=-1)
+
+if __name__ == "__main__":
+    args = parser.parse_args()
+
+    base_config = (
+        PPOConfigWithCuriosity()
+        .environment(
+            "FrozenLake-v1",
+            env_config={
+                "desc": [
+                    "SFFFFFFFFFFF",
+                    "FFFFFFFFFFFF",
+                    "FFFFFFFFFFFF",
+                    "FFFFFFFFFFFF",
+                    "FFFFFFFFFFFF",
+                    "FFFFFFFFFFFF",
+                    "FFFFFFFFFFFF",
+                    "FFFFFFFFFFFF",
+                    "FFFFFFFFFFFF",
+                    "FFFFFFFFFFFF",
+                    "FFFFFFFFFFFF",
+                    "FFFFFFFFFFFG",
+                ],
+                "is_slippery": False,
+                # Limit the number of steps the agent is allowed to make in the env to
+                # make it almost impossible to learn without the curriculum.
+                "max_episode_steps": 22,
+            },
         )
-
-        # Forward loss term (predicted phi', given phi and action vs actually
-        # observed phi').
-        forward_l2_norm_sqared = 0.5 * torch.sum(
-            torch.pow(predicted_next_phi - next_phi, 2.0), dim=-1
+        # Use our custom `curiosity` method to set up the ICM and our PPO/ICM-Learner.
+        .curiosity(
+            #curiosity_feature_net_hiddens=[256, 256],
+            #curiosity_inverse_net_activation="relu"
         )
-        forward_loss = torch.mean(forward_l2_norm_sqared)
-
-        # Scale intrinsic reward by eta hyper-parameter.
-        sample_batch[SampleBatch.REWARDS] = (
-            sample_batch[SampleBatch.REWARDS]
-            + self.eta * forward_l2_norm_sqared.detach().cpu().numpy()
+        .callbacks(PrintMaxDistanceFrozenLakeCallback)
+        .env_runners(
+            num_envs_per_env_runner=5,
+            env_to_module_connector=lambda env: FlattenObservations(),
         )
-
-        # Inverse loss term (prediced action that led from phi to phi' vs
-        # actual action taken).
-        phi_cat_next_phi = torch.cat([phi, next_phi], dim=-1)
-        dist_inputs = self.model._curiosity_inverse_fcnet(phi_cat_next_phi)
-        action_dist = (
-            TorchCategorical(dist_inputs, self.model)
-            if isinstance(self.action_space, Discrete)
-            else TorchMultiCategorical(dist_inputs, self.model, self.action_space.nvec)
+        .training(
+            learner_class=PPOTorchLearnerWithCuriosity,
+            train_batch_size_per_learner=2000,
+            num_sgd_iter=6,
+            #vf_loss_coeff=0.01,
+            lr=0.0003,
         )
-        # Neg log(p); p=probability of observed action given the inverse-NN
-        # predicted action distribution.
-        inverse_loss = -action_dist.logp(actions_tensor)
-        inverse_loss = torch.mean(inverse_loss)
+        .rl_module(model_config_dict={"vf_share_layers": True})
+    )
 
-        # Calculate the ICM loss.
-        loss = (1.0 - self.beta) * inverse_loss + self.beta * forward_loss
-        # Perform an optimizer step.
-        self._optimizer.zero_grad()
-        loss.backward()
-        self._optimizer.step()
-
-        # Return the postprocessed sample batch (with the corrected rewards).
-        return sample_batch
+    run_rllib_example_script_experiment(base_config, args)
