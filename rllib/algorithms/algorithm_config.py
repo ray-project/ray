@@ -443,6 +443,11 @@ class AlgorithmConfig(_Config):
         self.output_config = {}
         self.output_compress_columns = ["obs", "new_obs"]
         self.output_max_file_size = 64 * 1024 * 1024
+        self.output_data_write_method = "write_parquet"
+        self.output_data_write_method_kwargs = {}
+        self.output_filesystem = None
+        self.output_filesystem_kwargs = {}
+        self.output_write_episodes = True
         self.offline_sampling = False
 
         # `self.evaluation()`
@@ -2384,6 +2389,11 @@ class AlgorithmConfig(_Config):
         output_config=NotProvided,
         output_compress_columns=NotProvided,
         output_max_file_size=NotProvided,
+        output_data_write_method=NotProvided,
+        output_data_write_method_kwargs=NotProvided,
+        output_filesystem=NotProvided,
+        output_filesystem_kwargs=NotProvided,
+        output_write_episodes=NotProvided,
         offline_sampling=NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
@@ -2528,6 +2538,16 @@ class AlgorithmConfig(_Config):
             self.output_compress_columns = output_compress_columns
         if output_max_file_size is not NotProvided:
             self.output_max_file_size = output_max_file_size
+        if output_data_write_method is not NotProvided:
+            self.output_data_write_method = output_data_write_method
+        if output_data_write_method_kwargs is not NotProvided:
+            self.output_data_write_method_kwargs = output_data_write_method_kwargs
+        if output_filesystem is not NotProvided:
+            self.output_filesystem = output_filesystem
+        if output_filesystem_kwargs is not NotProvided:
+            self.output_filesystem_kwargs = output_filesystem_kwargs
+        if output_write_episodes is not NotProvided:
+            self.output_write_episodes = output_write_episodes
         if offline_sampling is not NotProvided:
             self.offline_sampling = offline_sampling
 

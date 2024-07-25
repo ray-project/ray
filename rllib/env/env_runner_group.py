@@ -141,16 +141,23 @@ class EnvRunnerGroup:
         self.env_runner_cls = config.env_runner_cls
         if self.env_runner_cls is None:
             if config.enable_env_runner_and_connector_v2:
-                if config.is_multi_agent():
-                    from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+                # If experiences should be recorded, use the `OfflineSingleAgentEnvRunner`.
+                if config.output:
+                    if not config.is_multi_agent():
+                        from ray.rllib.offline.offline_env_runner import OfflineSingleAgentEnvRunner
 
-                    self.env_runner_cls = MultiAgentEnvRunner
+                        self.env_runner_cls = OfflineSingleAgentEnvRunner
                 else:
-                    from ray.rllib.env.single_agent_env_runner import (
-                        SingleAgentEnvRunner,
-                    )
+                    if config.is_multi_agent():
+                        from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 
-                    self.env_runner_cls = SingleAgentEnvRunner
+                        self.env_runner_cls = MultiAgentEnvRunner
+                    else:
+                        from ray.rllib.env.single_agent_env_runner import (
+                            SingleAgentEnvRunner,
+                        )
+
+                        self.env_runner_cls = SingleAgentEnvRunner
             else:
                 self.env_runner_cls = RolloutWorker
         self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
