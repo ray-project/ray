@@ -25,8 +25,8 @@ from ray.includes.common cimport (
     ConnectOnSingletonIoContext,
     CStatusCode,
     CStatusCode_OK,
-    MultiItemCpsHandler,
-    OptionalItemCpsHandler,
+    MultiItemPyCallback,
+    OptionalItemPyCallback,
 )
 from ray.includes.optional cimport optional
 from ray.core.generated import gcs_pb2
@@ -190,16 +190,17 @@ cdef class NewGcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            void* fut_ptr = make_fut_ptr()
+            fut = incremented_fut()
+            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVGet(
                     ns, key, timeout_ms,
-                    OptionalItemCpsHandler[c_string](
+                    OptionalItemPyCallback[c_string](
                         postprocess_optional_str_none_for_not_found,
-                        complete_fut_ptr,
+                        assign_and_decrement,
                         fut_ptr)))
-        return asyncio.wrap_future(<object>fut_ptr)
+        return asyncio.wrap_future(fut)
 
     def async_internal_kv_multi_get(
         self, keys: List[bytes], namespace=None, timeout=None
@@ -208,16 +209,17 @@ cdef class NewGcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] c_keys = [key for key in keys]
-            void* fut_ptr = make_fut_ptr()
+            fut = incremented_fut()
+            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVMultiGet(
                     ns, c_keys, timeout_ms,
-                    OptionalItemCpsHandler[unordered_map[c_string, c_string]](
+                    OptionalItemPyCallback[unordered_map[c_string, c_string]](
                         postprocess_optional_multi_get,
-                        complete_fut_ptr,
+                        assign_and_decrement,
                         fut_ptr)))
-        return asyncio.wrap_future(<object>fut_ptr)
+        return asyncio.wrap_future(fut)
 
     def async_internal_kv_put(
         self, c_string key, c_string value, c_bool overwrite=False, namespace=None,
@@ -226,64 +228,68 @@ cdef class NewGcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            void* fut_ptr = make_fut_ptr()
+            fut = incremented_fut()
+            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVPut(
                     ns, key, value, overwrite, timeout_ms,
-                    OptionalItemCpsHandler[int](
+                    OptionalItemPyCallback[int](
                         postprocess_optional_int,
-                        complete_fut_ptr,
+                        assign_and_decrement,
                         fut_ptr)))
-        return asyncio.wrap_future(<object>fut_ptr)
+        return asyncio.wrap_future(fut)
 
     def async_internal_kv_del(self, c_string key, c_bool del_by_prefix,
                               namespace=None, timeout=None) -> Future[int]:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            void* fut_ptr = make_fut_ptr()
+            fut = incremented_fut()
+            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVDel(
                     ns, key, del_by_prefix, timeout_ms,
-                    OptionalItemCpsHandler[int](
+                    OptionalItemPyCallback[int](
                         postprocess_optional_int,
-                        complete_fut_ptr,
+                        assign_and_decrement,
                         fut_ptr)))
-        return asyncio.wrap_future(<object>fut_ptr)
+        return asyncio.wrap_future(fut)
 
     def async_internal_kv_keys(self, c_string prefix, namespace=None, timeout=None
                                ) -> Future[List[bytes]]:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            void* fut_ptr = make_fut_ptr()
+            fut = incremented_fut()
+            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVKeys(
                     ns, prefix, timeout_ms,
-                    OptionalItemCpsHandler[c_vector[c_string]](
+                    OptionalItemPyCallback[c_vector[c_string]](
                         postprocess_optional_vector_str,
-                        complete_fut_ptr,
+                        assign_and_decrement,
                         fut_ptr)))
-        return asyncio.wrap_future(<object>fut_ptr)
+        return asyncio.wrap_future(fut)
 
     def async_internal_kv_exists(self, c_string key, namespace=None, timeout=None
                                  ) -> Future[bool]:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            void* fut_ptr = make_fut_ptr()
+            fut = incremented_fut()
+            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVExists(
                     ns, key, timeout_ms,
-                    OptionalItemCpsHandler[c_bool](
+                    OptionalItemPyCallback[c_bool](
                         postprocess_optional_bool,
-                        complete_fut_ptr,
+                        assign_and_decrement,
                         fut_ptr)))
-        return asyncio.wrap_future(<object>fut_ptr)
+        return asyncio.wrap_future(fut)
 
 
     #############################################################
@@ -308,16 +314,17 @@ cdef class NewGcsClient:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] c_node_ips = [ip for ip in node_ips]
-            void* fut_ptr = make_fut_ptr()
+            fut = incremented_fut()
+            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Nodes().AsyncCheckAlive(
                     c_node_ips, timeout_ms,
-                    MultiItemCpsHandler[c_bool](
+                    MultiItemPyCallback[c_bool](
                         &postprocess_multi_bool,
-                        complete_fut_ptr,
+                        assign_and_decrement,
                         fut_ptr)))
-        return asyncio.wrap_future(<object>fut_ptr)
+        return asyncio.wrap_future(fut)
 
     def drain_nodes(
         self, node_ids: List[bytes], timeout: Optional[float] = None
@@ -399,14 +406,16 @@ cdef class NewGcsClient:
     def async_get_all_job_info(
         self, timeout: Optional[float] = None
     ) -> Future[Dict[str, gcs_pb2.JobTableData]]:
-        cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        cdef void* fut_ptr = make_fut_ptr()
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            fut = incremented_fut()
+            void* fut_ptr = <void*>fut
 
         with nogil:
             check_status_timeout_as_rpc_error(
-                self.inner.get().Jobs().AsyncGetAll(MultiItemCpsHandler[CJobTableData](postprocess_async_get_all_job_info, complete_fut_ptr,
+                self.inner.get().Jobs().AsyncGetAll(MultiItemPyCallback[CJobTableData](postprocess_async_get_all_job_info, assign_and_decrement,
                         fut_ptr), timeout_ms))
-        return asyncio.wrap_future(<object>fut_ptr)
+        return asyncio.wrap_future(fut)
 
     #############################################################
     # Runtime Env methods
@@ -509,15 +518,14 @@ cdef class NewGcsClient:
 
 # Util functions for async handling
 
-cdef void* make_fut_ptr():
+cdef incremented_fut():
     fut = concurrent.futures.Future()
     cpython.Py_INCREF(fut)
-    cdef void* fut_ptr = <void*>fut
-    return fut_ptr
+    return fut
 
-cdef void complete_fut_ptr(result, void* fut_ptr):
-    # concurrent.futures.Future
+cdef void assign_and_decrement(result, void* fut_ptr):
     cdef fut = <object>fut_ptr
+    assert isinstance(fut, concurrent.futures.Future)
 
     assert not fut.done()
     try:
@@ -551,7 +559,7 @@ cdef postprocess_optional_str_none_for_not_found(CRayStatus status, const option
         if status.IsNotFound():
             return None, None
         check_status_timeout_as_rpc_error(status)
-        return dereference(c_str), None
+        return c_str.value(), None
     except Exception as e:
         return None, e
 
@@ -561,8 +569,8 @@ cdef postprocess_optional_multi_get(CRayStatus status, const optional[unordered_
     try:
         check_status_timeout_as_rpc_error(status)
         result = {}
-        it = dereference(c_map).const_begin()
-        while it != dereference(c_map).const_end():
+        it = c_map.value().const_begin()
+        while it != c_map.value().const_end():
             key = dereference(it).first
             value = dereference(it).second
             result[key] = value

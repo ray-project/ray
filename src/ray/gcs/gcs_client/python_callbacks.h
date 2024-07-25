@@ -38,60 +38,70 @@ class PythonGilHolder {
 // However, Cython can't wrap a Python callable to a stateful C++ std::function.
 //
 // Fortunately, Cython can convert *pure* Cython functions to C++ function pointers.
-// Hence we make this C++ Functor `CpsHandler` to wrap Python calls to C++ callbacks.
+// Hence we make this C++ Functor `PyCallback` to wrap Python calls to C++ callbacks.
 //
 // Different APIs have different type signatures, but the code of completing the future
-// is the same. So we ask 2 Cython function pointers: `Handler` and `Continuation`.
-// `Handler` is unique for each API, converting C++ types to Python types. `Continuation`
-// is shared by all APIs, completing the Python future.
+// is the same. So we ask 2 Cython function pointers: `Converter` and `Assigner`.
+// `Converter` is unique for each API, converting C++ types to Python types.
+// `Assigner` is shared by all APIs, completing the Python future.
 //
-// One issue is the `Continuation` have to be stateless, so we need to keep the Future
+// One issue is the `Assigner` have to be stateless, so we need to keep the Future
 // in the functor. But we don't want to expose the Future to C++ too much, so we keep
 // it as a void*. For that, we Py_INCREF the Future in the functor and Py_DECREF it
 // after the completion.
 //
 // On C++ async API calling:
 // 1. Create a Future.
-// 2. Creates a `CpsHandler` functor with `Handler` and `Continuation` and the Future.
+// 2. Creates a `PyCallback` functor with `Converter` and `Assigner` and the Future.
 // 3. Invokes the async API with the functor.
 //
 // On C++ async API completion:
-// 1. The CpsHandler functor is called. It acquires GIL and:
-// 2. The functor calls the Cython function `Handler` with C++ types. It returns
+// 1. The PyCallback functor is called. It acquires GIL and:
+// 2. The functor calls the Cython function `Converter` with C++ types. It returns
 //  `Tuple[result, exception]`.
-// 3. The functor calls the Cython function `Continuation` with the tuple and the
-//  Future (as void*). It completes the Python future with the result or with the
-//  exception.
+// 3. The functor calls the Cython function `Assigner` with the tuple and the
+//  Future (as void*). It assign the result or the exception to the Python future.
 template <typename... Args>
-class CpsHandler {
+class PyCallback {
  public:
-  // The Handler is a Cython function that takes Args... and returns a PyObject*.
+  // The Converter is a Cython function that takes Args... and returns a PyObject*.
   // It must not raise exceptions.
-  // The return PyObject* is passed to the Continuation.
-  using Handler = PyObject *(*)(Args...);
+  // The return PyObject* is passed to the Assigner.
+  using Converter = PyObject *(*)(Args...);
   // It must not raise exceptions.
-  using Continuation = void (*)(PyObject *, void *);
+  using Assigner = void (*)(PyObject *, void *);
 
-  CpsHandler(Handler handler, Continuation continuation, void *context)
-      : handler(handler), continuation(continuation), context(context) {}
+  PyCallback(Converter converter, Assigner assigner, void *context)
+      : converter(converter), assigner(assigner), context(context) {}
 
   void operator()(Args &&...args) {
     PythonGilHolder gil;
-    PyObject *result = handler(std::forward<Args>(args)...);
-    continuation(result, context);
+    PyObject *result = converter(std::forward<Args>(args)...);
+    CheckNoException();
+
+    assigner(result, context);
+    CheckNoException();
+  }
+
+  void CheckNoException() {
+    if (PyErr_Occurred() != nullptr) {
+      PyErr_Print();
+      PyErr_Clear();
+      RAY_LOG(FATAL) << "Python exception occurred in async binding code, exiting!";
+    }
   }
 
  private:
-  Handler handler = nullptr;
-  Continuation continuation = nullptr;
+  Converter converter = nullptr;
+  Assigner assigner = nullptr;
   void *context = nullptr;
 };
 
 template <typename T>
-using MultiItemCpsHandler = CpsHandler<Status, std::vector<T> &&>;
+using MultiItemPyCallback = PyCallback<Status, std::vector<T> &&>;
 
 template <typename Data>
-using OptionalItemCpsHandler = CpsHandler<Status, const std::optional<Data> &>;
+using OptionalItemPyCallback = PyCallback<Status, const std::optional<Data> &>;
 
 }  // namespace gcs
 
