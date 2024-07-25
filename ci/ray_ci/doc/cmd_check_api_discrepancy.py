@@ -23,6 +23,11 @@ TEAM_API_CONFIGS = {
         "head_doc_file": "doc/source/ray-core/api/index.rst",
         "white_list_apis": {},
     },
+    "serve": {
+        "head_modules": {"ray.serve"},
+        "head_doc_file": "doc/source/serve/api/index.md",
+        "white_list_apis": {},
+    },
 }
 
 

@@ -6,7 +6,7 @@
 (core-apis)=
 
 ```{eval-rst}
-.. module:: ray
+.. currentmodule:: ray
 ```
 
 ### Writing Applications
