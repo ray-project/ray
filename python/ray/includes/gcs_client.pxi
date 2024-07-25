@@ -14,32 +14,9 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # We need to best-effort import everything we need.
 #
-# Implementation Notes:
-#
-# Async API
-#
-# One challenge is that the C++ async API is callback-based, and the callbacks are
-# invoked in the C++ threads. In `make_future_and_callback` we create a future and a
-# callback, and the callback will fulfill the future in the event loop thread. The
-# future is returned to Python to await, and the callback is passed to the C++ async
-# API. Once C++ async API invokes the callback, the future is fulfilled in the Python
-# event loop thread.
-#
-# Marshalling
-#
-# The C++ API returns ints, strings, `ray::Status` and C++ protobuf types. We need to
-# convert them to Python types. In `python_callbacks.h` we define a series of converters
-# with Cpython APIs:
-#
-# - bools, ints and strings are converted using `PyBool_FromLong` and alike.
-# - `ray::Status` is marshalled to a 3-tuple and unmarshall it back to `CRayStatus` via
-#     `to_c_ray_status`.
-# - C++ protobuf types are serialized them to bytes, passed to Python and deserialized
-# in the Python `postprocess` functions. Later if we need performance for specific
-# methods we can add a custom Converter in `python_callbacks.h`.
-
+# For how async API are implemented, see src/ray/gcs/gcs_client/python_callbacks.h
 from asyncio import Future
-from typing import List, Dict, Any, Tuple, Optional, Callable
+from typing import List
 from libcpp.utility cimport move
 import concurrent.futures
 from ray.includes.common cimport (

@@ -6,7 +6,6 @@ from libc.stdint cimport uint8_t, int32_t, uint64_t, int64_t, uint32_t
 from libcpp.unordered_map cimport unordered_map
 from libcpp.vector cimport vector as c_vector
 from libcpp.pair cimport pair as c_pair
-from libcpp.functional cimport function
 from ray.includes.optional cimport (
     optional,
 )
