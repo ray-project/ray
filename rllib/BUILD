@@ -147,7 +147,7 @@ py_test(
 #
 # Tag: learning_tests
 #
-# This will test all yaml files (via `rllib train`)
+# This will test python/yaml config files
 # inside rllib/tuned_examples/[algo-name] for actual learning success.
 # --------------------------------------------------------------------
 
@@ -2014,49 +2014,6 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
     srcs = ["tests/test_reproducibility.py"]
-)
-
-# Test [train|evaluate].py scripts (w/o confirming evaluation performance).
-py_test(
-    name = "test_rllib_evaluate_1",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestEvaluate1"]
-)
-
-py_test(
-    name = "test_rllib_evaluate_2",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestEvaluate2"]
-)
-
-py_test(
-    name = "test_rllib_evaluate_3",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestEvaluate3"]
-)
-
-# Test [train|evaluate].py scripts (and confirm `rllib evaluate` performance is same
-# as the final one from the `rllib train` run).
-py_test(
-    name = "test_rllib_train_and_evaluate",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestTrainAndEvaluate"]
 )
 
 py_test(

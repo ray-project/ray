@@ -1,5 +1,5 @@
 # ML tracking integrations
-comet-ml==3.31.9
+comet-ml==3.44.1
 mlflow==2.9.2
 wandb==0.17.0
 
