@@ -202,9 +202,9 @@ void GcsNodeManager::HandleGetInternalConfig(rpc::GetInternalConfigRequest reque
                                              rpc::SendReplyCallback send_reply_callback) {
   auto get_system_config = [reply, send_reply_callback](
                                const ray::Status &status,
-                               const boost::optional<rpc::StoredConfig> &config) {
+                               const std::optional<rpc::StoredConfig> &config) {
     if (config.has_value()) {
-      reply->set_config(config.get().config());
+      reply->set_config(config->config());
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };

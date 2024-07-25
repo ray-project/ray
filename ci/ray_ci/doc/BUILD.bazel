@@ -73,3 +73,18 @@ py_test(
         ci_require("pytest"),
     ],
 )
+
+py_test(
+    name = "test_build_cache",
+    size = "small",
+    srcs = ["test_build_cache.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ci_require("pytest"),
+    ],
+)
