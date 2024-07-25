@@ -4,11 +4,13 @@ https://gist.github.com/xwjiang2010/13e6df091e5938aff5b44769bec8ffb8,
 change your pytest running directory to ray/python/ray/tune/tests/
 """
 
+import sys
 import unittest
 from collections import defaultdict
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 import ray
 import ray.tune.search.sample
@@ -768,6 +770,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testConvertHEBO(self):
         import torch
         from hebo.design_space.design_space import DesignSpace
@@ -824,6 +829,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         # Mixed configs are not supported
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testSampleBoundsHEBO(self):
         from ray.tune.search.hebo import HEBOSearch
 
@@ -1864,8 +1872,4 @@ class SearchSpaceTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

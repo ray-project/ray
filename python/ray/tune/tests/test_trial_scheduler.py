@@ -932,6 +932,9 @@ class BOHBSuite(unittest.TestCase):
             [t.status for t in trials], [Trial.PAUSED, Trial.PAUSED, Trial.PAUSED]
         )
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB doesn't support py312"
+    )
     def testNonstopBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -1372,9 +1375,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 seen.add(fn()["v"])
             self.assertEqual(seen, values)
 
-        def explore_fn(
-            config, mutations, resample_probability, custom_explore_fn=lambda x: x
-        ):
+        def explore_fn(config, mutations, resample_probability, custom_explore_fn=None):
+            if custom_explore_fn is None:
+                custom_explore_fn = lambda x: x  # noqa: E731
+
             new_config, _ = _explore(
                 config,
                 mutations,
@@ -2550,6 +2554,9 @@ class AsyncHyperBandSuite(unittest.TestCase):
     def testAnonymousMetricEndToEndASHA(self):
         self._testAnonymousMetricEndToEnd(AsyncHyperBandScheduler)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB doesn't support py312"
+    )
     def testAnonymousMetricEndToEndBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 

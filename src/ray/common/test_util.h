@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <boost/optional.hpp>
 #include <functional>
 #include <future>
 #include <string>

@@ -250,7 +250,7 @@ def generate_task_event(
     )
     state_updates = TaskStateUpdate(
         node_id=node_id,
-        state_ts={state: 1},
+        state_ts_ns={state: 1},
     )
     return TaskEvents(
         task_id=id,
@@ -1007,7 +1007,7 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     second = int(1e9)
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        state_ts={
+        state_ts_ns={
             TaskStatus.PENDING_ARGS_AVAIL: current,
             TaskStatus.SUBMITTED_TO_WORKER: current + second,
             TaskStatus.RUNNING: current + (2 * second),
@@ -1058,7 +1058,7 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     """
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        state_ts={
+        state_ts_ns={
             TaskStatus.PENDING_ARGS_AVAIL: current,
             TaskStatus.SUBMITTED_TO_WORKER: current + second,
             TaskStatus.RUNNING: current + (2 * second),
@@ -1081,7 +1081,7 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     Test None of start & end time is updated.
     """
     state_updates = TaskStateUpdate(
-        state_ts={
+        state_ts_ns={
             TaskStatus.PENDING_ARGS_AVAIL: current,
             TaskStatus.SUBMITTED_TO_WORKER: current + second,
         },
@@ -3598,12 +3598,34 @@ def test_job_info_is_running_task(shutdown_only):
     all_job_info = client.get_all_job_info()
     assert len(all_job_info) == 1
     assert job_id in all_job_info
-    assert client.get_all_job_info()[job_id].is_running_tasks is True
+    assert all_job_info[job_id].is_running_tasks is True
+
+
+def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
+    """
+    When there's a call to JobInfoGcsService.GetAllJobInfo, GCS sends RPC
+    CoreWorkerService.NumPendingTasks to all drivers for "is_running_task". Our driver
+    however has trouble serving such RPC, and GCS should timeout that RPC and unsest the
+    field.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=10)
+    address = cluster.address
+
+    monkeypatch.setenv(
+        "RAY_testing_asio_delay_us",
+        "CoreWorkerService.grpc_server.NumPendingTasks=2000000:2000000",
+    )
+    ray.init(address=address)
+
+    client = ray.worker.global_worker.gcs_client
+    my_job_id = ray.worker.global_worker.current_job_id
+    all_job_info = client.get_all_job_info()
+    assert list(all_job_info.keys()) == [my_job_id]
+    assert not all_job_info[my_job_id].HasField("is_running_tasks")
 
 
 if __name__ == "__main__":
-    import sys
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

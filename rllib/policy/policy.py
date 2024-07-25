@@ -10,7 +10,6 @@ from typing import (
     Collection,
     Dict,
     List,
-    Mapping,
     Optional,
     Tuple,
     Type,
@@ -1256,13 +1255,13 @@ class Policy(metaclass=ABCMeta):
             # so use `num_gpus_per_env_runner` for policy sampling
             # we need this .get() syntax here to ensure backwards compatibility.
             if self.config.get("enable_rl_module_and_learner", False):
-                num_gpus = self.config["num_gpus_per_worker"]
+                num_gpus = self.config["num_gpus_per_env_runner"]
             else:
                 # If head node, take num_gpus.
                 num_gpus = self.config["num_gpus"]
         else:
             # If worker node, take `num_gpus_per_env_runner`.
-            num_gpus = self.config["num_gpus_per_worker"]
+            num_gpus = self.config["num_gpus_per_env_runner"]
 
         if num_gpus == 0:
             dev = "CPU"
@@ -1283,7 +1282,6 @@ class Policy(metaclass=ABCMeta):
         This method only exists b/c some Algorithms do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTFPolicy.
-        TODO(sven): unify these cases.
 
         Returns:
             Exploration: The Exploration object to be used by this Policy.
@@ -1297,7 +1295,7 @@ class Policy(metaclass=ABCMeta):
             action_space=self.action_space,
             policy_config=self.config,
             model=getattr(self, "model", None),
-            num_workers=self.config.get("num_workers", 0),
+            num_workers=self.config.get("num_env_runners", 0),
             worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", self.config.get("framework", "tf")),
         )
@@ -1811,7 +1809,7 @@ class Policy(metaclass=ABCMeta):
 
 @OldAPIStack
 def get_gym_space_from_struct_of_tensors(
-    value: Union[Mapping, Tuple, List, TensorType],
+    value: Union[Dict, Tuple, List, TensorType],
     batched_input=True,
 ) -> gym.Space:
     start_idx = 1 if batched_input else 0
@@ -1827,7 +1825,7 @@ def get_gym_space_from_struct_of_tensors(
 
 @OldAPIStack
 def get_gym_space_from_struct_of_spaces(value: Union[Dict, Tuple]) -> gym.spaces.Dict:
-    if isinstance(value, Mapping):
+    if isinstance(value, dict):
         return gym.spaces.Dict(
             {k: get_gym_space_from_struct_of_spaces(v) for k, v in value.items()}
         )

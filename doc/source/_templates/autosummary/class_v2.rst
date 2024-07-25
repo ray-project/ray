@@ -1,4 +1,5 @@
-{{ name | escape | underline}}
+{{ name }}
+{{ '-' * name | length }}
 
 .. currentmodule:: {{ module }}
 
@@ -10,7 +11,8 @@
 {% for api_group in api_groups %}
 
 {% if api_groups | length > 1 %}
-.. rubric:: {{ api_group | capitalize }}
+{{ api_group }}
+{{ '-' * api_group | length }}
 {% endif %}
 
 .. autosummary::

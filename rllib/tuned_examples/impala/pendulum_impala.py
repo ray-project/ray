@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.impala import ImpalaConfig
+from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -10,7 +10,7 @@ parser = add_rllib_example_script_args()
 args = parser.parse_args()
 
 config = (
-    ImpalaConfig()
+    IMPALAConfig()
     # Enable new API stack and use EnvRunner.
     .api_stack(
         enable_rl_module_and_learner=True,
