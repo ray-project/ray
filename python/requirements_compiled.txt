@@ -144,7 +144,6 @@ attrs==21.4.0
     #   jschema-to-python
     #   jsonschema
     #   jupyter-cache
-    #   markdown-it-py
     #   open-spiel
     #   sarif-om
     #   semgrep
@@ -329,17 +328,15 @@ colorful==0.5.5
     # via -r /ray/ci/../python/requirements.txt
 colorlog==6.7.0
     # via optuna
-comet-ml==3.31.9
+comet-ml==3.44.1
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 comm==0.2.0
     # via
     #   ipykernel
     #   ipywidgets
-commonmark==0.9.1
-    # via rich
 configobj==5.0.8
     # via everett
-configspace==0.7.1
+configspace==0.7.1 ; python_version < "3.12"
     # via
     #   -r /ray/ci/../python/requirements/ml/tune-requirements.txt
     #   hpbandster
@@ -477,7 +474,7 @@ etils==1.5.2 ; python_version < "3.12"
     #   tensorflow-datasets
 evaluate==0.4.0
     # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
-everett==3.3.0
+everett==3.1.0
     # via comet-ml
 execnet==2.1.1
     # via pytest-shutil
@@ -574,7 +571,6 @@ fsspec==2023.5.0
     #   huggingface-hub
     #   modin
     #   pytorch-lightning
-    #   ray
     #   s3fs
     #   torch
     #   torch-geometric
@@ -731,7 +727,7 @@ holidays==0.39
     # via
     #   -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
     #   prophet
-hpbandster==0.7.4
+hpbandster==0.7.4 ; python_version < "3.12"
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 httpcore==0.15.0
     # via
@@ -969,7 +965,7 @@ jupyterlab-server==2.24.0
     # via jupyterlab
 jupyterlab-widgets==3.0.11
     # via ipywidgets
-jupytext==1.13.6
+jupytext==1.16.3
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 kaggle-environments==1.7.11
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
@@ -1019,12 +1015,13 @@ markdown==3.5.1
     # via
     #   mlflow
     #   tensorboard
-markdown-it-py==1.1.0
+markdown-it-py==2.2.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   jupytext
     #   mdit-py-plugins
     #   myst-parser
+    #   rich
 markupsafe==2.1.3
     # via
     #   gradio
@@ -1049,6 +1046,8 @@ mdit-py-plugins==0.3.5
     # via
     #   jupytext
     #   myst-parser
+mdurl==0.1.2
+    # via markdown-it-py
 medpy==0.4.0
     # via mosaicml
 memray==1.10.0 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != "aarch64"
@@ -1305,7 +1304,6 @@ numpy==1.26.4
     #   torchvision
     #   transformers
     #   triad
-    #   tune-sklearn
     #   utilsforecast
     #   webdataset
     #   xgboost
@@ -1406,6 +1404,7 @@ packaging==23.0
     #   jupyter-server
     #   jupyterlab
     #   jupyterlab-server
+    #   jupytext
     #   knack
     #   lightning-utilities
     #   matplotlib
@@ -1448,7 +1447,6 @@ pandas==1.5.3 ; python_version < "3.12"
     #   prophet
     #   pymars
     #   qpd
-    #   ray
     #   raydp
     #   statsforecast
     #   statsmodels
@@ -1568,6 +1566,7 @@ psutil==5.9.6
     #   accelerate
     #   aim
     #   azure-cli-core
+    #   comet-ml
     #   deepspeed
     #   distributed
     #   ipykernel
@@ -1605,7 +1604,6 @@ pyarrow==14.0.2
     #   feather-format
     #   mlflow
     #   pylance
-    #   ray
     #   raydp
     #   triad
 pyasn1==0.5.1
@@ -1755,6 +1753,8 @@ pytest-timeout==2.1.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 pytest-virtualenv==1.7.0 ; python_version < "3.12"
     # via -r /ray/ci/../python/requirements/test-requirements.txt
+python-box==6.1.0
+    # via comet-ml
 python-dateutil==2.8.2
     # via
     #   adal
@@ -1846,9 +1846,7 @@ qpd==0.4.4
     # via fugue
 querystring-parser==1.2.4
     # via mlflow
-    # via
-    #   raydp
-    #   tune-sklearn
+    # via raydp
 raydp==1.7.0b20231020.dev0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 recsim==0.2.4 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version < "3.12"
@@ -1933,10 +1931,11 @@ rfc3986-validator==0.1.1
     # via
     #   jsonschema
     #   jupyter-events
-rich==12.6.0
+rich==13.3.2
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
+    #   comet-ml
     #   flax
     #   memray
     #   semgrep
@@ -1977,7 +1976,6 @@ scikit-learn==1.3.2
     #   mosaicml
     #   pymars
     #   torch-geometric
-    #   tune-sklearn
 scipy==1.11.4
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -2006,7 +2004,6 @@ scipy==1.11.4
     #   torch-cluster
     #   torch-geometric
     #   torch-sparse
-    #   tune-sklearn
     #   xgboost
 segment-analytics-python==2.2.0
     # via
@@ -2045,13 +2042,14 @@ shortuuid==1.0.1
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
 simpleitk==2.3.1
     # via medpy
+simplejson==3.19.2
+    # via comet-ml
 six==1.16.0
     # via
     #   asttokens
     #   astunparse
     #   azure-core
     #   bleach
-    #   comet-ml
     #   configobj
     #   databricks-cli
     #   docker-pycreds
@@ -2187,7 +2185,6 @@ tensorboardx==2.6.2.2
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   pytorch-lightning
-    #   ray
 tensorflow==2.15.1 ; python_version < "3.12" and (sys_platform != "darwin" or platform_machine != "arm64")
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
@@ -2249,9 +2246,7 @@ tinyscaler==1.2.6 ; python_version < "3.12"
 tokenizers==0.15.2
     # via transformers
 toml==0.10.2
-    # via
-    #   jupytext
-    #   tensorflow-datasets
+    # via tensorflow-datasets
 tomli==2.0.1
     # via semgrep
 tomlkit==0.13.0
@@ -2372,7 +2367,6 @@ triad==0.9.8
     #   qpd
 trustme==0.9.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 typeguard==2.13.3
     # via ax-platform
 typer==0.12.3
@@ -2419,6 +2413,7 @@ uritemplate==4.1.1
 urllib3==1.26.19
     # via
     #   botocore
+    #   comet-ml
     #   databricks-cli
     #   distributed
     #   docker
@@ -2486,7 +2481,6 @@ webencodings==0.5.1
     #   tinycss2
 websocket-client==1.8.0
     # via
-    #   comet-ml
     #   docker
     #   jupyter-server
     #   kubernetes
