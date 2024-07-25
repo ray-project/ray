@@ -320,6 +320,20 @@ py_test(
     args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
 )
 
+# BC
+py_test(
+    name = "learning_tests_cartpole_bc",
+    main = "tuned_examples/bc/cartpole_bc.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "medium",
+    srcs = ["tuned_examples/bc/cartpole_bc.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tests/data/cartpole//cartpole-v1_large",
+    ],
+    args = ["--as-test", "--enable-new-api-stack"]
+)
+
 # CQL
 #@OldAPIStack
 py_test(
@@ -474,6 +488,20 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/impala/cartpole-impala-fake-gpus.yaml"],
     args = ["--dir=tuned_examples/impala"]
+)
+
+# MARWIL
+py_test(
+    name = "learning_tests_cartpole_marwil",
+    main = "tuned_examples/marwil/cartpole_marwil.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "medium",
+    srcs = ["tuned_examples/bc/cartpole_bc.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tests/data/cartpole//cartpole-v1_large",
+    ],
+    args = ["--as-test", "--enable-new-api-stack"]
 )
 
 # PPO
@@ -937,6 +965,7 @@ py_test(
     # Include the parquet data folder.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
+        "tests/data/pendulum/pendulum-v1_large",
     ],
     srcs = ["algorithms/marwil/tests/test_marwil.py"]
 )
