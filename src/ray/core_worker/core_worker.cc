@@ -2351,7 +2351,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   // actor handle must be in scope by the time the GCS sends the
   // WaitForActorOutOfScopeRequest.
   RAY_CHECK(actor_manager_->AddNewActorHandle(
-      std::move(actor_handle), CurrentCallSite(), rpc_address_, is_detached))
+      std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached))
       << "Actor " << actor_id << " already exists";
   *return_actor_id = actor_id;
   TaskSpecification task_spec = builder.Build();
@@ -2726,10 +2726,14 @@ void CoreWorker::RemoveActorHandleReference(const ActorID &actor_id) {
 }
 
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized,
-                                                      const ObjectID &outer_object_id) {
+                                                      const ObjectID &outer_object_id,
+                                                      bool add_local_ref) {
   std::unique_ptr<ActorHandle> actor_handle(new ActorHandle(serialized));
-  return actor_manager_->RegisterActorHandle(
-      std::move(actor_handle), outer_object_id, CurrentCallSite(), rpc_address_);
+  return actor_manager_->RegisterActorHandle(std::move(actor_handle),
+                                             outer_object_id,
+                                             CurrentCallSite(),
+                                             rpc_address_,
+                                             add_local_ref);
 }
 
 Status CoreWorker::SerializeActorHandle(const ActorID &actor_id,
@@ -3005,6 +3009,7 @@ Status CoreWorker::ExecuteTask(
                                           ObjectID::Nil(),
                                           CurrentCallSite(),
                                           rpc_address_,
+                                          /*add_local_ref=*/false,
                                           /*is_self=*/true);
     }
     RAY_LOG(INFO) << "Creating actor: " << task_spec.ActorCreationId();

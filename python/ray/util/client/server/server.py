@@ -687,7 +687,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         # Convert empty string back to None.
         actor = ray.get_actor(task.name, task.namespace or None)
         bin_actor_id = actor._actor_id.binary()
-        self.actor_refs[bin_actor_id] = actor
+        if bin_actor_id not in self.actor_refs:
+            self.actor_refs[bin_actor_id] = actor
         self.actor_owners[task.client_id].add(bin_actor_id)
         self.named_actors.add(bin_actor_id)
         return ray_client_pb2.ClientTaskTicket(return_ids=[actor._actor_id.binary()])

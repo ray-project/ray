@@ -200,7 +200,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes, const
-                                                   CObjectID &outer_object_id)
+                                                   CObjectID &outer_object_id,
+                                                   c_bool add_local_ref)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes,
                                         CObjectID *c_actor_handle_id)
