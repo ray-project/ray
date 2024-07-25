@@ -278,8 +278,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     rpc::ActorTableData actor_table_data;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
         actor_id,
-        [&actor_table_data, &promise](
-            Status status, const boost::optional<rpc::ActorTableData> &result) {
+        [&actor_table_data, &promise](Status status,
+                                      const std::optional<rpc::ActorTableData> &result) {
           assert(result);
           actor_table_data.CopyFrom(*result);
           promise.set_value(true);
