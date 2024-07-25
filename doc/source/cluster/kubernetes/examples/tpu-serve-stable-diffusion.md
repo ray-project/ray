@@ -10,7 +10,7 @@ Follow [Creating a GKE Cluster with TPUs for KubeRay](kuberay-gke-tpu-cluster-se
 
 ## Step 2: Install the KubeRay operator
 
-Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository. Multi-host TPU support is provided in KubeRay v1.1.0+. Please note that the YAML file in this example uses `serveConfigV2`, which is supported starting from KubeRay v0.6.0.
+Skip this step if the [Ray Operator Addon](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/concepts/overview) is enabled in your GKE cluster. Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository. Multi-host TPU support is provided in KubeRay v1.1.0+. Please note that the YAML file in this example uses `serveConfigV2`, which is supported starting from KubeRay v0.6.0.
 
 ## Step 3: Install the RayService
 
@@ -63,13 +63,7 @@ Install the required dependencies to run the python script locally:
 python3 -m venv myenv
 source myenv/bin/activate
 
-# create a file requirements.txt with the following:
-numpy
-pillow
-requests
-tqdm
-
-pip install -r requirements.txt
+pip install numpy pillow requests tqdm
 ```
 
 
