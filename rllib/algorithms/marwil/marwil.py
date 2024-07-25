@@ -222,6 +222,33 @@ class MARWILConfig(AlgorithmConfig):
         return self
 
     @override(AlgorithmConfig)
+    def offline_data(self, **kwargs) -> "MARWILConfig":
+
+        super().offline_data(**kwargs)
+
+        # If no `OfflinePreLearner` is given, use MAWRIL's default.
+        if "prelearner_class" not in kwargs:
+            from ray.rllib.algorithms.marwil.marwil_offline_prelearner import (
+                MARWILOfflinePreLearner,
+            )
+
+            self.prelearner_class = MARWILOfflinePreLearner
+        # Otherwise check, if the passed in class incorporates the `OfflinePreLearner`
+        # interface.
+        else:
+            from ray.rllib.offline.offline_data import OfflinePreLearner
+
+            if not issubclass(kwargs.get("prelearner_class"), OfflinePreLearner):
+                raise ValueError(
+                    f"`prelearner_class` {kwargs.get('prelearner_class')} is not a "
+                    "subclass of `OfflinePreLearner`. Any class passed to "
+                    "`prelearner_class` needs to implement the interface given by "
+                    "`OfflinePreLearner`."
+                )
+
+        return self
+
+    @override(AlgorithmConfig)
     def build(
         self,
         env: Optional[Union[str, EnvType]] = None,
