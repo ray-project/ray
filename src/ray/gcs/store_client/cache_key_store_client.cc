@@ -74,6 +74,7 @@ void CacheKeyStoreClient::InitializeCache(void) {
   auto cmd = std::vector<std::string>{"HKEYS", external_storage_namespace_};
   auto redis_reply = ctx->RunArgvSync(cmd);
   auto all_redis_keys = redis_reply->ReadAsStringArray();
+  absl::MutexLock lock(&cache_mu_);
   for (const auto &redis_key : all_redis_keys) {
     if (redis_key.has_value()) {
       for (int i = 0; i < TABLE_COUNT; i++) {
