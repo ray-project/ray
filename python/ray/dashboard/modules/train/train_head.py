@@ -113,9 +113,9 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             # function (e.g., system failure or user interruption) that crashed the
             # train controller.
             # We need to detect this case and mark the train run as ABORTED.
-            controller_actor_status = actors.get(worker_info.actor_id, None).get(
-                "state"
-            )
+            controller_actor_status = actors.get(
+                train_run.controller_actor_id, None
+            ).get("state")
             worker_infos_with_details: List[TrainWorkerInfoWithDetails] = []
 
             for worker_info in train_run.workers:
@@ -131,11 +131,16 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                     # Need to convert processesPids into a proper list.
                     # It's some weird ImmutableList structureo
                     # We also convert the list of processes into a single item since
-                    # an actor is only a single process and cannot match multiple processes.
+                    # an actor is only a single process and cannot match multiple
+                    # processes.
                     formatted_gpus = [
                         {
                             **gpu,
-                            "processInfo": [process for process in gpu["processesPids"] if process["pid"] == worker_info.pid][0],
+                            "processInfo": [
+                                process
+                                for process in gpu["processesPids"]
+                                if process["pid"] == worker_info.pid
+                            ][0],
                         }
                         for gpu in gpus
                     ]
