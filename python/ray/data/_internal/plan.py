@@ -94,6 +94,7 @@ class ExecutionPlan:
             f"ExecutionPlan("
             f"dataset_uuid={self._dataset_uuid}, "
             f"snapshot_operator={self._snapshot_operator}"
+            f")"
         )
 
     def get_plan_as_string(self, dataset_cls: Type["Dataset"]) -> str:
