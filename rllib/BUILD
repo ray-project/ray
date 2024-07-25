@@ -909,7 +909,7 @@ py_test(
 
 # MARWIL
 py_test(
-    name = "test_marwil",
+    name = "test_marwil_old",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     # Include the json data file.
@@ -917,6 +917,26 @@ py_test(
         "tests/data/cartpole/large.json",
         "tests/data/pendulum/large.json",
         "tests/data/cartpole/small.json",
+    ],
+    srcs = ["algorithms/marwil/tests/test_marwil_old.py"]
+)
+py_test(
+    name = "test_marwil_rl_module",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    # Include the json data file.
+    data = [
+        "tests/data/cartpole/large.json",
+    ],
+    srcs = ["algorithms/marwil/tests/test_marwil_rl_module.py"]
+)
+py_test(
+    name = "test_marwil",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    # Include the parquet data folder.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
     ],
     srcs = ["algorithms/marwil/tests/test_marwil.py"]
 )
