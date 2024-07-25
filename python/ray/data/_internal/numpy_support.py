@@ -39,26 +39,31 @@ def validate_numpy_batch(batch: Union[Dict[str, np.ndarray], Dict[str, list]]) -
             f"a numpy batch to a block, got: {type(batch)} "
             f"({_truncated_repr(batch)})"
         )
- 
+
+
 def _detect_highest_datetime_precision(datetime_list: List[datetime]) -> str:
-    highest_precision = 'D' 
-    
+    highest_precision = "D"
+
     for dt in datetime_list:
         if dt.microsecond != 0 and dt.microsecond % 1000 != 0:
-            highest_precision = 'us'
+            highest_precision = "us"
             break
         elif dt.microsecond != 0 and dt.microsecond % 1000 == 0:
-            highest_precision = 'ms'
+            highest_precision = "ms"
         elif dt.hour != 0 or dt.minute != 0 or dt.second != 0:
             # pyarrow does not support h or m, use s for those cases too
-            highest_precision = 's'
-    
+            highest_precision = "s"
+
     return highest_precision
+
 
 def _convert_datetime_list_to_array(datetime_list: List[datetime]) -> np.ndarray:
     precision = _detect_highest_datetime_precision(datetime_list)
-        
-    return np.array([np.datetime64(dt, precision) for dt in datetime_list], dtype=f"datetime64[{precision}]")
+
+    return np.array(
+        [np.datetime64(dt, precision) for dt in datetime_list],
+        dtype=f"datetime64[{precision}]",
+    )
 
 
 def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
