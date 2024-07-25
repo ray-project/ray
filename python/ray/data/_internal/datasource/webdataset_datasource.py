@@ -8,6 +8,8 @@ import tarfile
 from functools import partial
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
+import pandas as pd
+
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 
@@ -340,7 +342,6 @@ class WebDatasetDatasource(FileBasedDatasource):
         Yields:
             List[Dict[str, Any]]: List of sample (list of length 1).
         """
-        import pandas as pd
 
         files = _tar_file_iterator(
             stream,
