@@ -7,12 +7,13 @@ from typing import List
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils.annotations import PublicAPI, override
+from ray.rllib.utils.annotations import override
 
 logger = logging.Logger(__file__)
 
 # TODO (simon): This class can be agnostic to the episode type as it
 # calls only get_state.
+
 
 class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
     """The environment runner to record the single agent case."""
@@ -25,7 +26,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # Set the output write method.
         self.data_write_method = self.config.output_data_write_method
         self.data_write_method_kwargs = self.config.output_data_write_method_kwargs
-        
+
         # Set the filesystem.
         self.filesystem = self.config.output_filesystem
         self.filesystem_kwargs = self.config.output_filesystem_kwargs
@@ -43,16 +44,22 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         if self.filesystem:
             if self.filesystem == "gcs":
                 import gcsfs
+
                 self.filesystem_object = gcsfs.GCSFileSystem(**self.filesystem_kwargs)
-            elif self.filesystem =="s3":
+            elif self.filesystem == "s3":
                 from pyarrow import fs
+
                 self.filesystem_object = fs.S3FileSystem(**self.filesystem_kwargs)
             elif self.filesystem == "abs":
                 import adlfs
-                self.filesystem_object = adlfs.AzureBlobFileSystem(**self.filesystem_kwargs)
+
+                self.filesystem_object = adlfs.AzureBlobFileSystem(
+                    **self.filesystem_kwargs
+                )
             else:
                 raise ValueError(
-                    f"Unknown filesystem: {self.filesystem}. Filesystems can be 'gcs' for GCS, "
+                    f"Unknown filesystem: {self.filesystem}. Filesystems can be "
+                    "'gcs' for GCS, "
                     "'s3' for S3, or 'abs'"
                 )
 
@@ -73,11 +80,11 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         random_actions: bool = False,
         force_reset: bool = False,
     ) -> List[SingleAgentEpisode]:
-        
+
         # Call the super sample method.
         self.sample_counter += 1
         samples = super().sample()
-        
+
         # TODO (simon): Implement a num_rows_per_file.
         # Write episodes as objects.
         if self.output_write_episodes:
@@ -101,6 +108,3 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         # Finally return the samples as usual.
         return samples
-
-        
-

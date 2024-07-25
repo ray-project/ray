@@ -141,15 +141,20 @@ class EnvRunnerGroup:
         self.env_runner_cls = config.env_runner_cls
         if self.env_runner_cls is None:
             if config.enable_env_runner_and_connector_v2:
-                # If experiences should be recorded, use the `OfflineSingleAgentEnvRunner`.
+                # If experiences should be recorded, use the `
+                # OfflineSingleAgentEnvRunner`.
                 if config.output:
                     if not config.is_multi_agent():
-                        from ray.rllib.offline.offline_env_runner import OfflineSingleAgentEnvRunner
+                        from ray.rllib.offline.offline_env_runner import (
+                            OfflineSingleAgentEnvRunner,
+                        )
 
                         self.env_runner_cls = OfflineSingleAgentEnvRunner
                 else:
                     if config.is_multi_agent():
-                        from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+                        from ray.rllib.env.multi_agent_env_runner import (
+                            MultiAgentEnvRunner,
+                        )
 
                         self.env_runner_cls = MultiAgentEnvRunner
                     else:
