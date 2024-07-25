@@ -449,6 +449,12 @@ class Router:
                     )
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
+                    logger.warning(
+                        "Passing deployment handle results to downstream handle calls "
+                        "is deprecated. Use `DepoymentResponse._to_object_ref` instead "
+                        "to pass the corresponding object reference to downstream "
+                        "handle calls."
+                    )
 
                 # This is no-op replacing the object with itself. The purpose is to make
                 # sure both object refs and object ref generator are not getting pinned
