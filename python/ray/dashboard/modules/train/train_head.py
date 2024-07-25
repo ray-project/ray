@@ -123,7 +123,8 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
                     # Need to convert processesPids into a proper list.
                     # It's some weird ImmutableList structureo
                     # We also convert the list of processes into a single item since
-                    # an actor is only a single process and cannot match multiple processes.
+                    # an actor is only a single process and cannot match multiple
+                    # processes.
                     formatted_gpus = [
                         {
                             **gpu,
