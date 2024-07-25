@@ -18,7 +18,6 @@ from ray.train._internal.storage import StorageContext
 from ray.tune.callback import Callback
 from ray.tune.experiment.experiment import Experiment
 from ray.tune.logger import LoggerCallback
-from ray.tune.logger.aim import AimLoggerCallback
 from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
 
 
@@ -113,7 +112,6 @@ _TEST_CALLBACKS = [
     wandb.WandbLoggerCallback,
     mlflow.MLflowLoggerCallback,
     comet.CometLoggerCallback,
-    AimLoggerCallback,
     _CustomLoggerCallback,
     _CustomLoggerCallback,
     _CustomCallback,
@@ -152,7 +150,6 @@ def test_tag_setup_mlflow(mock_record, monkeypatch):
                 "WandbLoggerCallback": 1,
                 "MLflowLoggerCallback": 1,
                 "CometLoggerCallback": 1,
-                "AimLoggerCallback": 1,
                 "CustomLoggerCallback": 2,
                 "CustomCallback": 1,
             },
