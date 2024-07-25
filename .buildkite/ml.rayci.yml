@@ -17,16 +17,6 @@ steps:
       IMAGE_TO: mlbuild
       RAYCI_IS_GPU_BUILD: "false"
 
-  - name: mlbuild-multipy
-    wanda: ci/docker/ml.build.wanda.yaml
-    depends_on: oss-ci-base_ml-multipy
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_ml-py{{matrix}}
-      IMAGE_TO: mlbuild-py{{matrix}}
-      RAYCI_IS_GPU_BUILD: "false"
-    matrix:
-      - "3.10"
-
   - name: mllightning2gpubuild
     wanda: ci/docker/mllightning2gpu.build.wanda.yaml
     depends_on: oss-ci-base_gpu
@@ -38,16 +28,6 @@ steps:
       IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu
       IMAGE_TO: mlgpubuild
       RAYCI_IS_GPU_BUILD: "true"
-
-  - name: mlgpubuild-multipy
-    wanda: ci/docker/ml.build.wanda.yaml
-    depends_on: oss-ci-base_gpu-multipy
-    env:
-      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py{{matrix}}
-      IMAGE_TO: mlgpubuild-py{{matrix}}
-      RAYCI_IS_GPU_BUILD: "true"
-    matrix:
-      - "3.10"
 
   # tests
   - label: ":train: ml: train tests"
