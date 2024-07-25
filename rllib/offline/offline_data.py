@@ -49,9 +49,7 @@ class OfflineData:
         self.config = config
         self.is_multi_agent = config.is_multi_agent()
         self.path = (
-            config.get("input_")
-            if isinstance(config.get("input_"), list)
-            else Path(config.get("input_"))
+            config.input_ if isinstance(config.input_, list) else Path(config.input_)
         )
         # Use `read_json` as default data read method.
         self.data_read_method = config.input_read_method
@@ -71,7 +69,7 @@ class OfflineData:
         # Avoids reinstantiating the batch iterator each time we sample.
         self.batch_iterator = None
         # Defines the prelearner class. Note, this could be user-defined.
-        self.prelearner_class = self.config.get("prelearner_class", OfflinePreLearner)
+        self.prelearner_class = self.config.prelearner_class or OfflinePreLearner
         # For remote learner setups.
         self.locality_hints = None
         self.learner_handles = None

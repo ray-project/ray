@@ -15,7 +15,7 @@ class TestMARWIL(unittest.TestCase):
         ray.shutdown()
 
     def test_rollouts(self):
-        frameworks = ["tf2"]
+        frameworks = ["torch"]
         envs = ["CartPole-v1"]
         fwd_fns = ["forward_exploration", "forward_inference"]
         config_combinations = [frameworks, envs, fwd_fns]

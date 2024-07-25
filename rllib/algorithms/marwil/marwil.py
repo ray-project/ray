@@ -3,6 +3,9 @@ from typing import Callable, Optional, Type, Union
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
+from ray.rllib.algorithms.marwil.marwil_offline_prelearner import (
+    MARWILOfflinePreLearner,
+)
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
@@ -95,6 +98,9 @@ class MARWILConfig(AlgorithmConfig):
         self.grad_clip = None
 
         # Override some of AlgorithmConfig's default values with MARWIL-specific values.
+
+        # Define the `OfflinePreLearner` class for `MARWIL`.
+        self.prelearner_class = MARWILOfflinePreLearner
 
         # You should override input_ to point to an offline dataset
         # (see algorithm.py and algorithm_config.py).
@@ -226,16 +232,9 @@ class MARWILConfig(AlgorithmConfig):
 
         super().offline_data(**kwargs)
 
-        # If no `OfflinePreLearner` is given, use MAWRIL's default.
-        if "prelearner_class" not in kwargs:
-            from ray.rllib.algorithms.marwil.marwil_offline_prelearner import (
-                MARWILOfflinePreLearner,
-            )
-
-            self.prelearner_class = MARWILOfflinePreLearner
-        # Otherwise check, if the passed in class incorporates the `OfflinePreLearner`
+        # Check, if the passed in class incorporates the `OfflinePreLearner`
         # interface.
-        else:
+        if "prelearner_class" in kwargs:
             from ray.rllib.offline.offline_data import OfflinePreLearner
 
             if not issubclass(kwargs.get("prelearner_class"), OfflinePreLearner):
