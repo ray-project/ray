@@ -18,6 +18,7 @@ type ServeEntityLogsProps = {
   controller?: ServeSystemActor;
   proxies?: ServeSystemActor[];
   deployments: ServeDeployment[];
+  showDeploymentName?: boolean;
 };
 
 /**
@@ -28,6 +29,7 @@ export const ServeEntityLogViewer = ({
   controller,
   proxies,
   deployments,
+  showDeploymentName = false,
 }: ServeEntityLogsProps) => {
   const [params, setParams] = useSearchParams();
 

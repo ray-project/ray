@@ -67,9 +67,12 @@ export const useServeDeployments = () => {
   const serveDeploymentsList = data?.serveDeploymentsList ?? [];
   const serveApplicationsList = data?.serveApplicationsList ?? [];
 
+  const publicUrl = data?.public_url;
+
   return {
     serveDetails,
     serveDeployments: serveDeploymentsList,
+    publicUrl,
     proxies,
     error,
     page,
@@ -122,12 +125,14 @@ export const useServeApplicationDetails = (
         a.name.localeCompare(b.name),
       )
     : [];
+  const publicUrl = data?.public_url;
 
   // Need to expose loading because it's not clear if undefined values
   // for application means loading or missing data.
   return {
     loading: !data && !error,
     application,
+    publicUrl,
     filteredDeployments: deployments.filter((deployment) =>
       filter.every((f) =>
         f.val

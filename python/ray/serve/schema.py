@@ -1051,6 +1051,13 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         description="Details about all live applications running on the cluster."
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
+    public_url: Optional[str] = Field(
+        None,
+        description="The public URL where Serve is accessible. "
+        "This is only set if configured using the RAY_SERVE_PUBLIC_URL "
+        "environment variable. This is used by the Ray Dashboard to provide "
+        "clickable links to the docs page.",
+    )
 
     @staticmethod
     def get_empty_schema_dict() -> Dict:

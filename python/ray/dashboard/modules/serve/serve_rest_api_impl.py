@@ -13,6 +13,7 @@ import asyncio
 import dataclasses
 import json
 import logging
+import os
 from functools import wraps
 from typing import Union
 
@@ -119,6 +120,7 @@ def create_serve_rest_api(
             else:
                 try:
                     details = await controller.get_serve_instance_details.remote()
+                    details["public_url"] = os.environ.get("RAY_SERVE_PUBLIC_URL")
                 except ray.exceptions.RayTaskError as e:
                     # Task failure sometimes are due to GCS
                     # failure. When GCS failed, we expect a longer time
