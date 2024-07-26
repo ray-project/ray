@@ -196,6 +196,7 @@ class OpState:
         self.start_time = time.time()
         self.output_budget = -1
         self._scheduling_status = OpSchedulingStatus()
+        self.run_times = 0
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -318,32 +319,6 @@ class OpState:
     def _get_average_ouput_size(self) -> float:
         return self.op._metrics.average_bytes_outputs_per_task
     
-    def _get_pipeline_output(self) -> float:
-        # Spilling is significantly reduced. 
-        
-        output_size = 0
-        next_op = self.op
-        previous_output_size = 1
-        
-        while len(next_op.output_dependencies) > 0:
-            assert len(next_op.output_dependencies) == 1
-            
-            next_op_size = next_op._metrics.average_bytes_outputs_per_task or 0
-            
-            if next_op == self.op:
-                current_output_size = next_op_size
-            else:
-                current_output_size = next_op_size * (previous_output_size / (next_op._metrics.average_bytes_inputs_per_task or 1))
-            
-            output_size += current_output_size
-            previous_output_size = next_op_size
-
-            # print(next_op.name, current_output_size, (next_op._metrics.average_bytes_inputs_per_task, next_op._metrics.average_bytes_outputs_per_task))
-            next_op = next_op.output_dependencies[0]
-            
-        return output_size
-        
-    
     def _get_grow_rate(self, resource_manager: ResourceManager) -> float:
 
         time_for_pipeline_to_process_one_data = 0
@@ -415,13 +390,16 @@ class OpState:
         if not ray.data.DataContext.get_current().is_budget_policy:
             return True
                 
+        if ray.data.DataContext.get_current().is_conservative_policy:
+            return True
+                
         if not (len(self.op.input_dependencies) == 1 and isinstance(self.op.input_dependencies[0], InputDataBuffer)): 
             return True
 
         INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
 
         self._replenish_output_budget(resource_manager)
-        output_size = self._get_pipeline_output() or INITIAL_BUDGET
+        output_size = self._get_average_ouput_size() or INITIAL_BUDGET
 
         logger.debug(
             f"@mzm output_budget: {self.output_budget}, output_size: {output_size}"
@@ -642,7 +620,12 @@ def select_operator_to_run(
     """
     # Filter to ops that are eligible for execution.
     ops = []
+    total_outputs = []
+    min_count = float('inf')
     for op, state in topology.items():
+        total_outputs.append(op)
+        if len(op.input_dependencies) == 1:
+            min_count = min(min_count, state.run_times)
         if False and resource_manager.op_resource_allocator_enabled():  # @lsf
             under_resource_limits = (
                 resource_manager.op_resource_allocator.can_submit_new_task(op)
@@ -687,27 +670,57 @@ def select_operator_to_run(
             and state.budget_policy_admission_control(resource_manager)
         ]
 
+    if ray.data.DataContext.get_current().is_conservative_policy:
+        # max_buffered_output adds up the expected output sizes in the future over all operators.
+        total_max_buffered_outputs = sum([op._metrics.max_buffered_output for op in total_outputs])
+        # Run a single-threaded pipeline first.
+        # To collect the output size for each operator. 
+        if min_count == 0:
+            ops = [
+                op for op, state in topology.items() if state.run_times == 0 and op in ops
+            ]
+            
+            if not ops:
+                ops = [
+                    op
+                    for op, state in topology.items()
+                    if state.num_queued() > 0 and not op.completed()
+                    and state.run_times == 0
+                ]
+        else:
+            ops = [
+                op 
+                for op in ops
+                if op._metrics.average_bytes_outputs_per_task is not None 
+                and total_max_buffered_outputs
+                + op._metrics.average_bytes_outputs_per_task < resource_manager.get_global_limits().object_store_memory
+            ]
+            
     # Nothing to run.
     if not ops:
         return None
 
-    if ray.data.DataContext.get_current().is_budget_policy:
-        op = ops[0]  # @lsf prefer the producer 
-        return op
-    
     selected_op = None
-    if ops:
-        # Run metadata-only operators first. After that, choose the operator with the
-        # least memory usage.
-        selected_op = min(
-            ops,
-            key=lambda op: (
-                not op.throttling_disabled(),
-                resource_manager.get_op_usage(op).object_store_memory,
-            ),
-        )
-        topology[selected_op]._scheduling_status.selected = True
-    autoscaler.try_trigger_scaling()
+    if ray.data.DataContext.get_current().is_budget_policy:
+        selected_op = ops[0]  # @lsf prefer the producer 
+    else:
+        if ops:
+            # Run metadata-only operators first. After that, choose the operator with the
+            # least memory usage.
+            selected_op = min(
+                ops,
+                key=lambda op: (
+                    not op.throttling_disabled(),
+                    resource_manager.get_op_usage(op).object_store_memory,
+                ),
+            )
+            topology[selected_op]._scheduling_status.selected = True
+        autoscaler.try_trigger_scaling()
+
+    for op, state in topology.items():
+        if op == selected_op:
+            state.run_times += 1
+            break
     return selected_op
 
 

@@ -82,9 +82,12 @@ def main(is_flink: bool):
     ds = ray.data.range(NUM_ROWS_TOTAL, override_num_blocks=NUM_TASKS)
     
     if is_flink:
-        ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK, concurrency=2)
-        ds = ds.map_batches(transform, batch_size=1, num_cpus=0.99, concurrency=3)
-        ds = ds.map_batches(consume, batch_size=1, num_cpus=1, concurrency=3) 
+        # ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK, concurrency=2)
+        # ds = ds.map_batches(transform, batch_size=1, num_cpus=0.99, concurrency=3)
+        # ds = ds.map_batches(consume, batch_size=1, num_cpus=1, concurrency=3) 
+        ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)
+        ds = ds.map_batches(transform, batch_size=1, num_cpus=0.99)
+        ds = ds.map_batches(consume, batch_size=1, num_cpus=1) 
     else:
         ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)
         ds = ds.map_batches(transform, batch_size=1, num_cpus=0.99)

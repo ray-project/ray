@@ -288,6 +288,7 @@ class OpRuntimeMetrics:
         self._extra_metrics: Dict[str, Any] = {}
         # Start time of current pause due to task submission backpressure
         self._task_submission_backpressure_start_time = -1
+        self.max_buffered_output: float = 0
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -482,6 +483,9 @@ class OpRuntimeMetrics:
         self.obj_store_mem_pending_task_inputs += inputs.size_bytes()
         self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
         self._running_tasks_start_time[task_index] = time.time()
+        
+        if self.average_bytes_outputs_per_task:
+            self.max_buffered_output += self.average_bytes_outputs_per_task
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
         """Callback when a new task generates an output."""
@@ -540,3 +544,9 @@ class OpRuntimeMetrics:
         inputs.destroy_if_owned()
         self._running_tasks_end_time[task_index] = time.time()
         del self._running_tasks[task_index]
+
+        if self.average_bytes_outputs_per_task:
+            self.max_buffered_output -= self.average_bytes_outputs_per_task
+            # Possible that average_bytes_outputs_per_task was None
+            # When the task was first launched. 
+            self.max_buffered_output = max(0, self.max_buffered_output)
