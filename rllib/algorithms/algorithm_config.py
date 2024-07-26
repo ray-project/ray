@@ -2499,6 +2499,10 @@ class AlgorithmConfig(_Config):
             self.input_read_method_kwargs = input_read_method_kwargs
         if input_read_schema is not NotProvided:
             self.input_read_schema = input_read_schema
+        if map_batches_kwargs is not NotProvided:
+            self.map_batches_kwargs = map_batches_kwargs
+        if iter_batches_kwargs is not NotProvided:
+            self.iter_batches_kwargs = iter_batches_kwargs
         if prelearner_class is not NotProvided:
             self.prelearner_class = prelearner_class
         if prelearner_module_synch_period is not NotProvided:
