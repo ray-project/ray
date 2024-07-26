@@ -91,8 +91,10 @@ cdef class NewGcsClient:
             optional[c_string] opt_value = c_string()
             CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Get(ns, key, timeout_ms, opt_value.value())
-        return raise_or_return(convert_optional_str_none_for_not_found(status, opt_value))
+            status = self.inner.get().InternalKV().Get(
+                ns, key, timeout_ms, opt_value.value())
+        return raise_or_return(
+            convert_optional_str_none_for_not_found(status, opt_value))
 
     def internal_kv_multi_get(
         self, keys: List[bytes], namespace=None, timeout=None
@@ -101,10 +103,12 @@ cdef class NewGcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] c_keys = [key for key in keys]
-            optional[unordered_map[c_string, c_string]] opt_values = unordered_map[c_string, c_string]()
+            optional[unordered_map[c_string, c_string]] opt_values = \
+                unordered_map[c_string, c_string]()
             CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().MultiGet(ns, c_keys, timeout_ms, opt_values.value())
+            status = self.inner.get().InternalKV().MultiGet(
+                ns, c_keys, timeout_ms, opt_values.value())
         return raise_or_return(convert_optional_multi_get(status, opt_values))
 
     def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
@@ -118,7 +122,8 @@ cdef class NewGcsClient:
             optional[c_bool] opt_added = 0
             CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Put(ns, key, value, overwrite, timeout_ms, opt_added.value())
+            status = self.inner.get().InternalKV().Put(
+                ns, key, value, overwrite, timeout_ms, opt_added.value())
         added = raise_or_return(convert_optional_bool(status, opt_added))
         return 1 if added else 0
 
@@ -133,7 +138,8 @@ cdef class NewGcsClient:
             optional[int] opt_num_deleted = 0
             CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Del(ns, key, del_by_prefix, timeout_ms, opt_num_deleted.value())
+            status = self.inner.get().InternalKV().Del(
+                ns, key, del_by_prefix, timeout_ms, opt_num_deleted.value())
         return raise_or_return(convert_optional_int(status, opt_num_deleted))
 
     def internal_kv_keys(
@@ -145,7 +151,8 @@ cdef class NewGcsClient:
             optional[c_vector[c_string]] opt_keys = c_vector[c_string]()
             CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Keys(ns, prefix, timeout_ms, opt_keys.value())
+            status = self.inner.get().InternalKV().Keys(
+                ns, prefix, timeout_ms, opt_keys.value())
         return raise_or_return(convert_optional_vector_str(status, opt_keys))
 
     def internal_kv_exists(self, c_string key, namespace=None, timeout=None) -> bool:
@@ -155,7 +162,8 @@ cdef class NewGcsClient:
             optional[c_bool] opt_exists = 0
             CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Exists(ns, key, timeout_ms, opt_exists.value())
+            status = self.inner.get().InternalKV().Exists(
+                ns, key, timeout_ms, opt_exists.value())
         return raise_or_return(convert_optional_bool(status, opt_exists))
 
     #############################################################
@@ -283,7 +291,8 @@ cdef class NewGcsClient:
             c_vector[c_bool] results
             CRayStatus status
         with nogil:
-            status = self.inner.get().Nodes().CheckAlive(c_node_ips, timeout_ms, results)
+            status = self.inner.get().Nodes().CheckAlive(
+                c_node_ips, timeout_ms, results)
         return raise_or_return(convert_multi_bool(status, move(results)))
 
     def async_check_alive(
@@ -316,7 +325,8 @@ cdef class NewGcsClient:
         for node_id in node_ids:
             c_node_ids.push_back(CNodeID.FromBinary(node_id))
         with nogil:
-            status = self.inner.get().Nodes().DrainNodes(c_node_ids, timeout_ms, results)
+            status = self.inner.get().Nodes().DrainNodes(
+                c_node_ids, timeout_ms, results)
         return raise_or_return(convert_multi_str(status, move(results)))
 
     def get_all_node_info(
