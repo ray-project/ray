@@ -75,9 +75,7 @@ html:
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 	@echo "View the documentation by opening a browser and going to $(BUILDDIR)/html/index.html."
 
-develop: 
-	python download_cache
-	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
+develop: html 
 
 dirhtml:
 	$(SPHINXBUILD) -b dirhtml $(ALLSPHINXOPTS) $(BUILDDIR)/dirhtml
