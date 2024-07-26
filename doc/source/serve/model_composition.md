@@ -131,7 +131,8 @@ Example:
 ## Advanced: Pass a DeploymentResponse "by reference" [DEPRECATED]
 
 :::{warning}
-Passing a `DeploymentResponse` to downstream handle calls by reference is deprecated and will be removed in the next release. Please use `DeploymentResponse._to_object_ref()` instead to pass the corresponding object reference to another handle call.
+Passing a `DeploymentResponse` to downstream handle calls by reference, i.e. in nested objects, is deprecated and will be removed in the next release.
+Please use `DeploymentResponse._to_object_ref()` instead to pass the corresponding object reference in nested objects.
 :::
 
 By default, when you pass a `DeploymentResponse` to another `DeploymentHandle` call, Ray Serve passes the result of the `DeploymentResponse` directly to the downstream method once it's ready.
