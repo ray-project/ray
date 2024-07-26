@@ -2715,6 +2715,8 @@ class MultiAgentEpisode:
         )
         if what == "extra_model_outputs":
             if extra_model_outputs_key is not None:
+                # TODO (simon, sven): This needs to be returned, but instead
+                # inf_lookback_buffer_or_dict is.
                 inf_lookback_buffer = inf_lookback_buffer_or_dict[
                     extra_model_outputs_key
                 ]
@@ -2739,6 +2741,6 @@ class MultiAgentEpisode:
                 ]
             elif ignore_last_ts and filter_for_skip_indices == inf_lookback_buffer_len:
                 filter_for_skip_indices = "S"
-            return inf_lookback_buffer_or_dict, filter_for_skip_indices
+            return inf_lookback_buffer, filter_for_skip_indices
         else:
-            return inf_lookback_buffer_or_dict
+            return inf_lookback_buffer
