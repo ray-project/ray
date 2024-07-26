@@ -44,7 +44,7 @@ def main(is_flink: bool):
     BUFFER_SIZE_LIMIT = 30
     NUM_TASKS = 16 * 5
     NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS  
-    BLOCK_SIZE = 10 * 1024 * 1024 * 20 # Changed from 10 to 20
+    BLOCK_SIZE = 10 * 1024 * 1024 * 10
 
     def produce(batch):
         logger.log({
@@ -104,5 +104,5 @@ def main(is_flink: bool):
     ray.shutdown()
 
 if __name__ == "__main__": 
-    main(is_flink=True)  # 572s
-    main(is_flink=False) # 282s
+    main(is_flink=True) 
+    main(is_flink=False)
