@@ -676,7 +676,7 @@ class DataIterator(abc.ABC):
         feature_columns: Union[str, List[str]],
         label_columns: Union[str, List[str]],
         *,
-        additional_columns: Union[str, List[str]] = None,
+        additional_columns: Union[Optional[str], Optional[List[str]]] = None,
         prefetch_batches: int = 1,
         batch_size: int = 1,
         drop_last: bool = False,
@@ -684,7 +684,9 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
-        additional_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        additional_type_spec: Union[
+            Optional["tf.TypeSpec"], Optional[Dict[str, "tf.TypeSpec"]]
+        ] = None,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -867,11 +869,7 @@ class DataIterator(abc.ABC):
             validate_columns(additional_columns)
             additional_type_spec = get_type_spec(schema, columns=additional_columns)
 
-        if additional_columns is None:
-            dataset = tf.data.Dataset.from_generator(
-                generator, output_signature=(feature_type_spec, label_type_spec)
-            )
-        else:
+        if additional_columns is not None:
             dataset = tf.data.Dataset.from_generator(
                 generator,
                 output_signature=(
@@ -879,6 +877,10 @@ class DataIterator(abc.ABC):
                     label_type_spec,
                     additional_type_spec,
                 ),
+            )
+        else:
+            dataset = tf.data.Dataset.from_generator(
+                generator, output_signature=(feature_type_spec, label_type_spec)
             )
 
         options = tf.data.Options()
