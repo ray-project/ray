@@ -2,14 +2,8 @@
 
 tensorflow==2.15.1; python_version < '3.12' and (sys_platform != 'darwin' or platform_machine != 'arm64')
 tensorflow-macos==2.15.1; python_version < '3.12' and sys_platform == 'darwin' and platform_machine == 'arm64'
-tensorflow-datasets==4.9.3; python_version < '3.12'
-etils==1.5.2; python_version < '3.12'
-
-tensorflow-datasets==4.9.6; python_version >= '3.12'
-tensorflow==2.17.0; python_version >= '3.12'
-etils==1.9.1; python_version >= '3.12'
-
-tensorflow-probability==0.23.0
+tensorflow-probability==0.23.0; python_version < '3.12'
+tensorflow-datasets; python_version < '3.12'
 
 --extra-index-url https://download.pytorch.org/whl/cu121  # for GPU versions of torch, torchvision
 --find-links https://data.pyg.org/whl/torch-2.3.0+cu121.html  # for GPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv

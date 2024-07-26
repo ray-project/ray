@@ -14,7 +14,6 @@ from zoopt import ValueType
 
 import ray
 from ray import train, tune
-from ray.rllib import _register_all
 from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.ax import AxSearch
@@ -27,10 +26,12 @@ from ray.tune.search.optuna import OptunaSearch
 from ray.tune.search.zoopt import ZOOptSearch
 
 if sys.version_info >= (3, 12):
-    # hyperopt does not support Python 3.12
+    # hyperopt and tensorflow does not support Python 3.12
     sys.exit(0)
 else:
     from hyperopt import hp
+
+    from ray.rllib import _register_all
 
 
 class AbstractWarmStartTest:
