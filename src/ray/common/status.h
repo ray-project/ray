@@ -118,6 +118,7 @@ enum class StatusCode : char {
   ChannelError = 35,
   // Indicates that a read or write on a channel (a mutable plasma object) timed out.
   ChannelTimeoutError = 36,
+  // If you add to this list, please also update kCodeToStr in status.cc.
 };
 
 #if defined(__clang__)
