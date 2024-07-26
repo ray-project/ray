@@ -19,7 +19,7 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .env_runners(num_env_runners=0)
+    .env_runners(num_env_runners=0, batch_mode="complete_episodes")
     .environment("CartPole-v1")
     .rl_module(
         model_config_dict={
