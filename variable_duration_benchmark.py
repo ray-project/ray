@@ -48,9 +48,9 @@ def main(is_flink: bool):
     def produce(batch):
         logger.log({"name": "producer_start", "id": [int(x) for x in batch["id"]]})
         if int(batch["id"][0].item()) < NUM_ROWS_TOTAL / 2:
-            time.sleep(TIME_UNIT)
+            time.sleep(TIME_UNIT * 10)
         else:
-            time.sleep(TIME_UNIT * 5)
+            time.sleep(TIME_UNIT)
         for id in batch["id"]:
             # logger.log({"name": "produce", "id": int(id)})
             yield {
@@ -65,7 +65,7 @@ def main(is_flink: bool):
         if int(batch["id"].item()) < NUM_ROWS_TOTAL / 2:
             time.sleep(TIME_UNIT)
         else:
-            time.sleep(TIME_UNIT)
+            time.sleep(TIME_UNIT * 2)
         return {"id": batch["id"], "result": [0 for _ in batch["id"]]}
 
     data_context = ray.data.DataContext.get_current()
