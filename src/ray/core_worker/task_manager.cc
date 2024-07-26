@@ -366,10 +366,8 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
 
     RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
                   << spec.AttemptNumber() << ": " << spec.DebugString();
-    // We should actually detect if the actor for this task is dead, but let's just assume
-    // it's not for now.
     retry_task_callback_(
-        spec, /*object_recovery*/ true, /*update_seqno=*/true, /*delay_ms*/ 0);
+        spec, /*object_recovery=*/true, /*update_seqno=*/true, /*delay_ms=*/0);
   }
 
   return true;
@@ -947,17 +945,16 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
 }
 
 bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
+                                      bool update_seqno,
                                       const rpc::RayErrorInfo &error_info) {
   TaskSpecification spec;
   bool will_retry = false;
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
-  bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
-  // If the actor isn't dead and it's a user exception, we should update the seq no. If an
-  // actor is dead and restarted, the seqno is reset, and we don't need to update it when
-  // resubmitting a task.
-  bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
-                      error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
+  const bool task_failed_due_to_oom =
+      error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
+  const bool task_failed_due_to_stale_task =
+      error_info.error_type() == rpc::ErrorType::STALE_TASK;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -968,7 +965,17 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
     num_oom_retries_left = it->second.num_oom_retries_left;
-    if (task_failed_due_to_oom) {
+    if (task_failed_due_to_stale_task) {
+      // Task failed due to stale task. This can only happen during actor unavailable
+      // and when you reconnect and retry, the actor already executed the last attempt
+      // which we consider as "ActorUnavailable" (attempt #1), and then the caller
+      // retries the task with the same seqno and got "StaleTask" (attempt #2). This
+      // attempt #2 does not consume a retry, though it does occupy an attempt number.
+      RAY_CHECK_NE(spec.MaxRetries(), 0);
+      RAY_LOG(INFO).WithField(spec.TaskId())
+          << "Task failed due to stale task, will retry without consuming a retry.";
+      will_retry = true;
+    } else if (task_failed_due_to_oom) {
       if (num_oom_retries_left > 0) {
         will_retry = true;
         it->second.num_oom_retries_left--;
@@ -997,12 +1004,13 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   std::ostringstream stream;
   std::string num_retries_left_str =
       num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-  RAY_LOG(INFO) << "task " << spec.TaskId() << " retries left: " << num_retries_left_str
-                << ", oom retries left: " << num_oom_retries_left
-                << ", task failed due to oom: " << task_failed_due_to_oom;
+  RAY_LOG(INFO).WithField(spec.TaskId())
+      << "task retries left: " << num_retries_left_str
+      << ", oom retries left: " << num_oom_retries_left
+      << ", task failed due to oom: " << task_failed_due_to_oom;
   if (will_retry) {
-    RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
-                  << " for attempt number: " << spec.AttemptNumber();
+    RAY_LOG(INFO).WithField(spec.TaskId())
+        << "Attempting to resubmit task for attempt number: " << spec.AttemptNumber();
     // TODO(clarng): clean up and remove task_retry_delay_ms that is relied
     // on by some tests.
     int32_t delay_ms = task_failed_due_to_oom
@@ -1010,7 +1018,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    retry_task_callback_(spec, /*object_recovery*/ false, update_seqno, delay_ms);
+    retry_task_callback_(spec, /*object_recovery=*/false, update_seqno, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
@@ -1025,10 +1033,10 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                                   const rpc::RayErrorInfo *ray_error_info) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(DEBUG) << "Task " << task_id << " failed with error "
-                 << rpc::ErrorType_Name(error_type) << ", ray_error_info: "
-                 << ((ray_error_info == nullptr) ? "nullptr"
-                                                 : ray_error_info->DebugString());
+  RAY_LOG(DEBUG).WithField(task_id)
+      << "Task failed with error " << rpc::ErrorType_Name(error_type)
+      << ", ray_error_info: "
+      << ((ray_error_info == nullptr) ? "nullptr" : ray_error_info->DebugString());
 
   TaskSpecification spec;
   // Check whether the error should be stored in plasma or not.
@@ -1097,20 +1105,22 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
                                          const Status *status,
                                          const rpc::RayErrorInfo *ray_error_info,
                                          bool mark_task_object_failed,
+                                         bool update_seqno,
                                          bool fail_immediately) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(WARNING) << "Task attempt " << task_id << " failed with error "
-                   << rpc::ErrorType_Name(error_type) << " Fail immediately? "
-                   << fail_immediately << ", status "
-                   << (status == nullptr ? "null" : status->ToString()) << ", error info "
-                   << (ray_error_info == nullptr ? "null"
-                                                 : ray_error_info->DebugString());
+  RAY_LOG(WARNING).WithField(task_id)
+      << "Task attempt failed with error " << rpc::ErrorType_Name(error_type)
+      << " Update seqno? " << update_seqno << " Fail immediately? " << fail_immediately
+      << ", status " << (status == nullptr ? "null" : status->ToString())
+      << ", error info "
+      << (ray_error_info == nullptr ? "null" : ray_error_info->DebugString());
 
   bool will_retry = false;
   if (!fail_immediately) {
     will_retry = RetryTaskIfPossible(
         task_id,
+        update_seqno,
         ray_error_info == nullptr ? gcs::GetRayErrorInfo(error_type) : *ray_error_info);
   }
 

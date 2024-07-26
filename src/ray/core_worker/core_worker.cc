@@ -428,30 +428,21 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       [this](const RayObject &object, const ObjectID &object_id) {
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
       },
-      /* retry_task_callback= */
+      /*retry_task_callback=*/
       [this](TaskSpecification &spec,
              bool object_recovery,
              bool update_seqno,
              uint32_t delay_ms) {
-        spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
+        TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec, update_seqno};
         if (!object_recovery) {
           // Retry after a delay to emulate the existing Raylet reconstruction
           // behaviour. TODO(ekl) backoff exponentially.
           RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                         << "ms delay: " << spec.DebugString();
           absl::MutexLock lock(&mutex_);
-          TaskToRetry task_to_retry{current_time_ms() + delay_ms, spec, update_seqno};
           to_resubmit_.push(std::move(task_to_retry));
         } else {
-          if (spec.IsActorTask()) {
-            if (update_seqno) {
-              auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-              actor_handle->SetResubmittedActorTaskSpec(spec);
-            }
-            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
-          } else {
-            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
-          }
+          RetryTask(task_to_retry);
         }
       },
       push_error_callback,
@@ -1070,16 +1061,7 @@ void CoreWorker::InternalHeartbeat() {
   }
 
   for (auto &task_to_retry : tasks_to_resubmit) {
-    auto &spec = task_to_retry.task_spec;
-    if (spec.IsActorTask()) {
-      if (task_to_retry.update_seqno) {
-        auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
-        actor_handle->SetResubmittedActorTaskSpec(spec);
-      }
-      RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
-    } else {
-      RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
-    }
+    RetryTask(task_to_retry);
   }
 
   // Check timeout tasks that are waiting for death info.
@@ -2029,6 +2011,20 @@ json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> par
     }
   }
   return result_runtime_env;
+}
+
+void CoreWorker::RetryTask(TaskToRetry &task_to_retry) {
+  auto &spec = task_to_retry.task_spec;
+  spec.GetMutableMessage().set_attempt_number(spec.AttemptNumber() + 1);
+  if (spec.IsActorTask()) {
+    if (task_to_retry.update_seqno) {
+      auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
+      actor_handle->SetResubmittedActorTaskSpec(spec);
+    }
+    RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
+  } else {
+    RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+  }
 }
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
@@ -3044,11 +3040,10 @@ Status CoreWorker::ExecuteTask(
       application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
-      /*is_reattempt=*/task_spec.AttemptNumber() > 0,
-      /*is_streaming_generator*/ task_spec.IsStreamingGenerator(),
-      /*retry_exception*/ task_spec.ShouldRetryExceptions(),
-      /*generator_backpressure_num_objects*/
-      task_spec.GeneratorBackpressureNumObjects());
+      /*is_reattempt=*/task_spec.IsRetry(),
+      /*is_streaming_generator=*/task_spec.IsStreamingGenerator(),
+      /*retry_exception=*/task_spec.ShouldRetryExceptions(),
+      /*generator_backpressure_num_objects=*/task_spec.GeneratorBackpressureNumObjects());
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
