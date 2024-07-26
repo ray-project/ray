@@ -47,7 +47,6 @@ except ImportError as e:
     TRANSFORMERS_IMPORT_ERROR = e
 
 
-@DeveloperAPI
 class HuggingFaceDatasource(Datasource):
     """Hugging Face Dataset datasource, for reading from a
     `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_.
