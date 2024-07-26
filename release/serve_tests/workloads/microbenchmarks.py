@@ -301,6 +301,10 @@ def main(
     run_latency: bool,
     run_throughput: bool,
 ):
+    # If none of the flags are set, default to run all
+    if not (run_http or run_grpc or run_handle or run_latency or run_throughput):
+        run_all = True
+
     if run_all:
         run_http = True
         run_grpc = True
