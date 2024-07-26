@@ -171,7 +171,7 @@ steps:
           - "3.11"
         base:
           - "cpu"
-          - "cu11.8.0-cudnn8"
+          - "cu12.1.1-cudnn8"
 
   - wait: ~
     tags: docker
