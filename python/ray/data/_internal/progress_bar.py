@@ -55,10 +55,7 @@ class ProgressBar:
         unit: str,
         position: int = 0,
         enabled: Optional[bool] = None,
-        display_full_name: bool = False,
     ):
-        # If True, disables name trunctating.
-        self._display_full_name = display_full_name
         self._desc = self._truncate_name(name)
         self._progress = 0
         # Prepend a space to the unit for better formatting.
@@ -91,7 +88,8 @@ class ProgressBar:
             self._bar = None
 
     def _truncate_name(self, name: str) -> str:
-        if not self._display_full_name and len(name) > self.MAX_NAME_LENGTH:
+        ctx = ray.data.context.DataContext.get_current()
+        if ctx.enable_progress_bar_name_truncation and len(name) > self.MAX_NAME_LENGTH:
             return name[: self.MAX_NAME_LENGTH - 3] + "..."
         return name
 
