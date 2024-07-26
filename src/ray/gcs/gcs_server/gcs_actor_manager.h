@@ -108,7 +108,6 @@ class GcsActor {
                                                    .placement_group_scheduling_strategy()
                                                    .placement_group_id());
     }
-
     // Set required resources.
     auto resource_map =
         GetCreationTaskSpecification().GetRequiredResources().GetResourceMap();
@@ -133,6 +132,10 @@ class GcsActor {
 
     actor_table_data_.set_serialized_runtime_env(
         task_spec.runtime_env_info().serialized_runtime_env());
+
+    actor_table_data_.mutable_scheduling_strategy()->CopyFrom(
+        task_spec.scheduling_strategy());
+
     RefreshMetrics();
   }
 

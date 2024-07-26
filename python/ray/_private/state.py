@@ -14,6 +14,7 @@ from ray._private.utils import (
     hex_to_binary,
     validate_actor_state_name,
 )
+from ray._private.scheduling_strategies_util import covert_pb_to_scheduling_strategy
 from ray._raylet import GlobalStateAccessor
 from ray.core.generated import common_pb2
 from ray.core.generated import gcs_pb2
@@ -154,6 +155,9 @@ class GlobalState:
             "EndTime": actor_table_data.end_time,
             "DeathCause": actor_table_data.death_cause,
             "Pid": actor_table_data.pid,
+            "SchedulingStrategy": covert_pb_to_scheduling_strategy(
+                actor_table_data.scheduling_strategy
+            ),
         }
         return actor_info
 
