@@ -135,6 +135,7 @@ const LogLineDetailDialog = ({
                   bgcolor: "#EEEEEE",
                   borderRadius: 1,
                   border: `1px solid ${theme.palette.divider}`,
+                  marginBottom: 2,
                 })}
               >
                 <Typography
@@ -155,7 +156,6 @@ const LogLineDetailDialog = ({
           <Typography
             variant="h5"
             sx={{
-              marginTop: 2,
               marginBottom: 2,
             }}
           >
