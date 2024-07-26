@@ -81,7 +81,6 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
 )
 from ray.data.datasource.partitioning import Partitioning
-from ray.data.datasource.tfrecords_datasource import TFXReadOptions
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -1685,7 +1684,6 @@ def read_numpy(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
-
 
 
 @PublicAPI(stability="alpha")
