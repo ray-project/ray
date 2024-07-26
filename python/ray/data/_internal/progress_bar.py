@@ -74,7 +74,7 @@ class ProgressBar:
                     position=position,
                     dynamic_ncols=True,
                     unit=unit,
-                    unit_scale =True,
+                    unit_scale=True,
                 )
             self._bar.set_description(self._desc)
         else:
