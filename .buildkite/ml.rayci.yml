@@ -41,6 +41,18 @@ steps:
       IMAGE_TO: mlgpubuild
       RAYCI_IS_GPU_BUILD: "true"
 
+  - name: mlgpubuild-multipy
+    label: "wanda: mlgpubuild-py{{matrix}}"
+    wanda: ci/docker/ml.build.wanda.yaml
+    depends_on: oss-ci-base_gpu-multipy
+    env:
+      IMAGE_FROM: cr.ray.io/rayproject/oss-ci-base_gpu-py{{matrix}}
+      IMAGE_TO: mlgpubuild-py{{matrix}}
+      PYTHON: "{{matrix}}"
+      RAYCI_IS_GPU_BUILD: "true"
+    matrix:
+      - "3.12"
+
   # tests
   - label: ":train: ml: train tests"
     tags: train
