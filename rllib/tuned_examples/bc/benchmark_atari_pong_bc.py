@@ -184,6 +184,10 @@ config = (
         evaluation_duration=5,
         evaluation_parallel_to_training=True,
     )
+    .learners(
+        num_learners=args.num_gpus if args.num_gpus > 1 else 0,
+        num_gpus_per_learner=1,
+    )
     # Note, the `input_` argument is the major argument for the
     # new offline API. Via the `input_read_method_kwargs` the
     # arguments for the `ray.data.Dataset` read method can be
