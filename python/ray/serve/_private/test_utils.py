@@ -1,7 +1,9 @@
 import asyncio
+import re
 import threading
 import time
 from copy import copy, deepcopy
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
@@ -599,3 +601,67 @@ def check_num_alive_nodes(target: int):
     alive_nodes = [node for node in ray.nodes() if node["Alive"]]
     assert len(alive_nodes) == target
     return True
+
+
+@dataclass
+class PerfMetric:
+    perf_metric_name: str
+    perf_metric_value: float
+    perf_metric_type: str
+
+
+def convert_metrics_to_perf_metrics(
+    metrics: Dict[str, float], metric_type: str
+) -> List[PerfMetric]:
+    """Converts a dictionary of metrics to the perf metrics format.
+
+    E.g:
+    {
+        "average_qps": 50.32,
+    }
+    ->
+    {
+        "perf_metric_name": "average_qps",
+        "perf_metric_value": "50.32",
+        "perf_metric_type": "THROUGHPUT",
+    }
+    """
+
+    return [
+        PerfMetric(
+            perf_metric_name=name,
+            perf_metric_value=value,
+            perf_metric_type=metric_type,
+        )
+        for name, value in metrics.values()
+    ]
+
+
+def parse_size_to_KB(size_string: str) -> float:
+    """Given a size string with various unit, convert
+    to KB in float:
+
+    wrk binary unit reference
+    https://github.com/wg/wrk/blob/master/src/units.c#L29-L33
+
+        Example:
+            "200.56KB" -> 200.56
+            "50MB" -> 51200
+            "0.5GB" -> 524288
+    """
+    # Group 1 - (one or more digits + optional dot + one or more digits)
+    # 200.56 / 50 / 0.5
+    # Group 2 - (All words)
+    # KB / MB / GB
+    parsed = re.split(r"(\d+.?\d+)(\w*)", size_string)
+    values = [val for val in parsed if val]
+
+    if values[1] == "KB":
+        return float(values[0])
+    elif values[1] == "MB":
+        return float(values[0]) * 1024
+    elif values[1] == "GB":
+        return float(values[0]) * 1024 * 1024
+
+    # Bytes
+    return float(values[0]) / 1000
