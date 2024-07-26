@@ -15,6 +15,7 @@ from ray.tune.registry import TRAINABLE_CLASS, _global_registry
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.tests.execution.utils import BudgetResourceManager
+from ray.tune.utils.mock_trainable import MyTrainableClass
 
 STORAGE = mock_storage_context()
 
@@ -64,7 +65,7 @@ def test_invalid_trainable(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
         "storage": STORAGE,
     }
     _global_registry.register(TRAINABLE_CLASS, "asdf", None)
-    trials = [Trial("asdf", **kwargs), Trial("__fake", **kwargs)]
+    trials = [Trial("asdf", **kwargs), Trial(MyTrainableClass, **kwargs)]
     for t in trials:
         runner.add_trial(t)
 
@@ -121,7 +122,7 @@ def test_failure_recovery(
         "config": {"mock_error": True, "persistent_error": persistent_error},
         "storage": STORAGE,
     }
-    runner.add_trial(Trial("__fake", **kwargs))
+    runner.add_trial(Trial(MyTrainableClass, **kwargs))
     trials = runner.get_trials()
 
     while not runner.is_finished():
@@ -176,8 +177,8 @@ def test_fail_fast(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, fail_fas
         },
         "storage": STORAGE,
     }
-    runner.add_trial(Trial("__fake", **kwargs))
-    runner.add_trial(Trial("__fake", **kwargs))
+    runner.add_trial(Trial(MyTrainableClass, **kwargs))
+    runner.add_trial(Trial(MyTrainableClass, **kwargs))
     trials = runner.get_trials()
 
     if fail_fast == TuneController.RAISE:

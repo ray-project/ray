@@ -9,6 +9,7 @@ from ray.train.tests.util import mock_storage_context
 from ray.tune import Callback, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
+from ray.tune.utils.mock_trainable import MyTrainableClass
 
 
 @pytest.fixture(scope="function")
@@ -46,7 +47,7 @@ def test_callback_save_restore(
     """
     storage = mock_storage_context()
     runner = TuneController(callbacks=[StatefulCallback()], storage=storage)
-    runner.add_trial(Trial("__fake", stub=True, storage=storage))
+    runner.add_trial(Trial(MyTrainableClass, stub=True, storage=storage))
     for i in range(3):
         runner._callbacks.on_trial_result(
             iteration=i, trials=None, trial=None, result=None
