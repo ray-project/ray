@@ -2,15 +2,13 @@ import logging
 from functools import partial
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional
 
-import pyarrow
-
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
-    pass
+    import pyarrow
 
 
 logger = logging.getLogger(__name__)
@@ -63,11 +61,14 @@ class HudiDatasource(Datasource):
         return read_tasks
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
+        # TODO(xushiyan) add APIs to provide estimated in-memory size
         return None
 
 
 def _read_file_slices(
     hudi_table, file_slice_paths: List[str]
 ) -> Iterator["pyarrow.Table"]:
+    import pyarrow
+
     for p in file_slice_paths:
         yield pyarrow.Table.from_batches(hudi_table.read_file_slice(p))
