@@ -108,5 +108,5 @@ def main(is_flink: bool, is_conservative_policy: bool):
 
 if __name__ == "__main__": 
     # main(is_flink=True, is_conservative_policy=False) 
-    main(is_flink=False, is_conservative_policy=False)
+    # main(is_flink=False, is_conservative_policy=False)
     main(is_flink=False, is_conservative_policy=True)

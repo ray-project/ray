@@ -288,6 +288,7 @@ class OpRuntimeMetrics:
         self._extra_metrics: Dict[str, Any] = {}
         # Start time of current pause due to task submission backpressure
         self._task_submission_backpressure_start_time = -1
+        # This accounts for all the expected outputs.
         self.max_buffered_output: float = 0
 
     @property
