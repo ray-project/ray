@@ -18,4 +18,4 @@ delta-sharing
 pytest-mock
 decord
 snowflake-connector-python
-hudi==0.1.0rc2
+hudi==0.1.0
