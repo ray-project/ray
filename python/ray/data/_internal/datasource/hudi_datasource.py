@@ -37,9 +37,15 @@ class HudiDatasource(Datasource):
         for file_slices in self.hudi_table.split_latest_file_slices(parallelism):
             if len(file_slices) <= 0:
                 continue
-            num_rows = sum(f.num_records for f in file_slices)
-            input_files = [f.base_file_path for f in file_slices]
-            size_bytes = sum(f.base_file_size for f in file_slices)
+
+            num_rows = 0
+            input_files = []
+            size_bytes = 0
+            for f in file_slices:
+                num_rows += f.num_records
+                input_files.append(f.base_file_path)
+                size_bytes += f.base_file_size
+
             metadata = BlockMetadata(
                 num_rows=num_rows,
                 schema=schema,
@@ -48,10 +54,8 @@ class HudiDatasource(Datasource):
                 exec_stats=None,
             )
 
-            paths = [f.base_file_path for f in file_slices]
-
             read_task = ReadTask(
-                partial(_read_file_slices, self.hudi_table, paths),
+                partial(_read_file_slices, self.hudi_table, input_files),
                 metadata,
             )
             read_tasks.append(read_task)
