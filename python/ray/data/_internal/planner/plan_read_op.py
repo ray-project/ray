@@ -1,3 +1,4 @@
+import logging
 from typing import Iterable, List
 
 import ray
@@ -25,22 +26,30 @@ READ_FILE_RETRY_ON_ERRORS = ["AWS Error NETWORK_CONNECTION", "AWS Error ACCESS_D
 READ_FILE_MAX_ATTEMPTS = 10
 READ_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
+logger = logging.getLogger(__name__)
 
-# Defensively compute the size of the block as the max size reported by the
-# datasource and the actual read task size. This is to guard against issues
-# with bad metadata reporting.
+
 def cleaned_metadata(read_task: ReadTask):
     block_meta = read_task.get_metadata()
     task_size = len(cloudpickle.dumps(read_task))
+    if (
+        block_meta.size_bytes is not None
+        and task_size > block_meta.size_bytes
+        and task_size > TASK_SIZE_WARN_THRESHOLD_BYTES
+    ):
+        logger.warning(
+            f"The read task size ({task_size} bytes) is larger "
+            "than the reported output size of the task "
+            f"({block_meta.size_bytes} bytes). This may be a size "
+            "reporting bug in the datasource being read from."
+        )
+
+    # Defensively compute the size of the block as the max size reported by the
+    # datasource and the actual read task size. This is to guard against issues
+    # with bad metadata reporting.
     if block_meta.size_bytes is None or task_size > block_meta.size_bytes:
-        if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES:
-            print(
-                f"WARNING: the read task size ({task_size} bytes) is larger "
-                "than the reported output size of the task "
-                f"({block_meta.size_bytes} bytes). This may be a size "
-                "reporting bug in the datasource being read from."
-            )
         block_meta.size_bytes = task_size
+
     return block_meta
 
 

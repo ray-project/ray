@@ -81,10 +81,6 @@ class BCConfig(MARWILConfig):
         # Advantages (calculated during postprocessing)
         # not important for behavioral cloning.
         self.postprocess_inputs = False
-        # Set RLModule as default if the `EnvRUnner`'s are used.
-        if self.enable_env_runner_and_connector_v2:
-            self.api_stack(enable_rl_module_and_learner=True)
-
         # __sphinx_doc_end__
         # fmt: on
 
