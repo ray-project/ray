@@ -274,8 +274,6 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             req.task, arglist, kwargs, context
                         )
                         resp = ray_client_pb2.DataResponse(task_ticket=resp_ticket)
-                        del arglist
-                        del kwargs
                 elif req_type == "terminate":
                     with self.clients_lock:
                         response = self.basic_service.Terminate(req.terminate, context)

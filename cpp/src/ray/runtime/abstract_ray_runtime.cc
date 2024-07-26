@@ -389,9 +389,7 @@ std::string AbstractRayRuntime::DeserializeAndRegisterActorHandle(
     const std::string &serialized_actor_handle) {
   auto &core_worker = CoreWorkerProcess::GetCoreWorker();
   return core_worker
-      .DeserializeAndRegisterActorHandle(serialized_actor_handle,
-                                         ObjectID::Nil(),
-                                         /*add_local_ref=*/true)
+      .DeserializeAndRegisterActorHandle(serialized_actor_handle, ObjectID::Nil())
       .Binary();
 }
 
