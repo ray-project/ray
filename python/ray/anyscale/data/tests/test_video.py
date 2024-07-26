@@ -2,12 +2,11 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.anyscale.data import VideoDatasource
 
 
-def test_video_datasource():
+def test_read_videos():
     uri = "s3://anonymous@ray-example-data/basketball.mp4"
-    ds = ray.data.read_datasource(VideoDatasource(uri))
+    ds = ray.data.read_videos(uri)
 
     assert ds.count() == 333
     assert ds.schema().names == ["frame", "frame_index"]

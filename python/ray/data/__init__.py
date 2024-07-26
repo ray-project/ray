@@ -158,6 +158,7 @@ from ray.anyscale.data.apply_anyscale_patches import (  # noqa: E402, isort:skip
     apply_anyscale_patches,
 )
 from ray.anyscale.data.api.read_api import (  # noqa: E402, F811, isort:skip
+    read_audio,
     read_binary_files,
     read_csv,
     read_images,
@@ -165,10 +166,11 @@ from ray.anyscale.data.api.read_api import (  # noqa: E402, F811, isort:skip
     read_numpy,
     read_snowflake,
     read_text,
+    read_videos,
     read_webdataset,
 )
 
 
-__all__ += ["StreamingAggFn", "read_snowflake"]
+__all__ += ["StreamingAggFn", "read_snowflake", "read_audio", "read_videos"]
 
 apply_anyscale_patches()

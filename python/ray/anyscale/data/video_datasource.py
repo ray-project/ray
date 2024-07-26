@@ -1,17 +1,19 @@
 # Copyright (2023 and onwards) Anyscale, Inc.
-
+import logging
 from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.util import PublicAPI
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     import pyarrow
 
+logger = logging.getLogger(__name__)
 
-@PublicAPI(stability="alpha")
+
+@Deprecated
 class VideoDatasource(FileBasedDatasource):
     def __init__(
         self,
@@ -22,6 +24,8 @@ class VideoDatasource(FileBasedDatasource):
         super().__init__(paths, **file_based_datasource_kwargs)
 
         _check_import(self, module="decord", package="decord")
+
+        logger.warning("`VideoDatasource` is deprecated. Call `read_audio` instead.")
 
         self.include_paths = include_paths
 

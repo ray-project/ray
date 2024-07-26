@@ -1,18 +1,20 @@
 # Copyright (2023 and onwards) Anyscale, Inc.
-
 import io
+import logging
 from typing import TYPE_CHECKING, Iterator, List, Union
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-from ray.util import PublicAPI
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     import pyarrow
 
+logger = logging.getLogger(__name__)
 
-@PublicAPI(stability="alpha")
+
+@Deprecated
 class AudioDatasource(FileBasedDatasource):
     DEFAULT_SAMPLE_RATE = 44100
 
@@ -23,6 +25,8 @@ class AudioDatasource(FileBasedDatasource):
         **file_based_datasource_kwargs
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
+
+        logger.warning("`AudioDatasource` is deprecated. Call `read_audio` instead.")
 
         self.include_paths = include_paths
 
