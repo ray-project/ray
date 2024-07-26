@@ -35,20 +35,21 @@ class PythonGilHolder {
 
 // Facility for async bindings. C++ APIs need a callback (`std::function<void(T)>`),
 // and in the callback we want to do type conversion and complete the Python future.
-// However, Cython can't wrap a Python callable to a stateful C++ std::function.
 //
-// Fortunately, Cython can convert *pure* Cython functions to C++ function pointers.
-// Hence we make this C++ Functor `PyCallback` to wrap Python calls to C++ callbacks.
+// An ideal API would be a `std::function<void(T)>` that wraps a Python callable, which
+// holds references to a Python `Future`. However, Cython can't wrap a Python callable
+// into a stateful C++ std::function. Instead we have to define Cython `cdef` functions
+// who are translated to C++ functions, and use their function pointers.
+//
+// Because we can only work with stateless Cython functions, we need to keep the Future
+// as a void* in this functor. This functor does not manage its lifetime: it assumes the
+// void* is always valid. We Py_INCREF the Future in `incremented_fut` before passing it
+// to PyCallback, and Py_DECREF it in `assign_and_decrement_fut` after the completion.
 //
 // Different APIs have different type signatures, but the code of completing the future
 // is the same. So we ask 2 Cython function pointers: `Converter` and `Assigner`.
 // `Converter` is unique for each API, converting C++ types to Python types.
 // `Assigner` is shared by all APIs, completing the Python future.
-//
-// One issue is the `Assigner` have to be stateless, so we need to keep the Future
-// in the functor. But we don't want to expose the Future to C++ too much, so we keep
-// it as a void*. For that, we Py_INCREF the Future in the functor and Py_DECREF it
-// after the completion.
 //
 // On C++ async API calling:
 // 1. Create a Future.

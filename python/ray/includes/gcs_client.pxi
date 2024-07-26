@@ -88,15 +88,11 @@ cdef class NewGcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_string value
+            optional[c_string] opt_value = c_string()
             CRayStatus status
         with nogil:
-            status = self.inner.get().InternalKV().Get(ns, key, timeout_ms, value)
-        if status.IsNotFound():
-            return None
-        else:
-            check_status_timeout_as_rpc_error(status)
-            return value
+            status = self.inner.get().InternalKV().Get(ns, key, timeout_ms, opt_value.value())
+        return raise_or_return(convert_optional_str_none_for_not_found(status, opt_value))
 
     def internal_kv_multi_get(
         self, keys: List[bytes], namespace=None, timeout=None
@@ -105,20 +101,11 @@ cdef class NewGcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] c_keys = [key for key in keys]
-            unordered_map[c_string, c_string] values
+            optional[unordered_map[c_string, c_string]] opt_values = unordered_map[c_string, c_string]()
+            CRayStatus status
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().MultiGet(ns, c_keys, timeout_ms, values)
-            )
-
-        result = {}
-        it = values.begin()
-        while it != values.end():
-            key = dereference(it).first
-            value = dereference(it).second
-            result[key] = value
-            postincrement(it)
-        return result
+            status = self.inner.get().InternalKV().MultiGet(ns, c_keys, timeout_ms, opt_values.value())
+        return raise_or_return(convert_optional_multi_get(status, opt_values))
 
     def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
                         namespace=None, timeout=None) -> int:
@@ -128,13 +115,11 @@ cdef class NewGcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool added = False
+            optional[c_bool] opt_added = 0
+            CRayStatus status
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get()
-                .InternalKV()
-                .Put(ns, key, value, overwrite, timeout_ms, added)
-            )
+            status = self.inner.get().InternalKV().Put(ns, key, value, overwrite, timeout_ms, opt_added.value())
+        added = raise_or_return(convert_optional_bool(status, opt_added))
         return 1 if added else 0
 
     def internal_kv_del(self, c_string key, c_bool del_by_prefix,
@@ -145,14 +130,11 @@ cdef class NewGcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            int num_deleted = 0
+            optional[int] opt_num_deleted = 0
+            CRayStatus status
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get()
-                .InternalKV()
-                .Del(ns, key, del_by_prefix, timeout_ms, num_deleted)
-            )
-        return num_deleted
+            status = self.inner.get().InternalKV().Del(ns, key, del_by_prefix, timeout_ms, opt_num_deleted.value())
+        return raise_or_return(convert_optional_int(status, opt_num_deleted))
 
     def internal_kv_keys(
         self, c_string prefix, namespace=None, timeout=None
@@ -160,25 +142,21 @@ cdef class NewGcsClient:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[c_string] keys
+            optional[c_vector[c_string]] opt_keys = c_vector[c_string]()
+            CRayStatus status
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().Keys(ns, prefix, timeout_ms, keys)
-            )
-
-        result = [key for key in keys]
-        return result
+            status = self.inner.get().InternalKV().Keys(ns, prefix, timeout_ms, opt_keys.value())
+        return raise_or_return(convert_optional_vector_str(status, opt_keys))
 
     def internal_kv_exists(self, c_string key, namespace=None, timeout=None) -> bool:
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool exists = False
+            optional[c_bool] opt_exists = 0
+            CRayStatus status
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().InternalKV().Exists(ns, key, timeout_ms, exists)
-            )
-        return exists
+            status = self.inner.get().InternalKV().Exists(ns, key, timeout_ms, opt_exists.value())
+        return raise_or_return(convert_optional_bool(status, opt_exists))
 
     #############################################################
     # Internal KV async methods
@@ -225,6 +203,8 @@ cdef class NewGcsClient:
         self, c_string key, c_string value, c_bool overwrite=False, namespace=None,
         timeout=None
     ) -> Future[int]:
+        # TODO(ryw): the sync `internal_kv_put` returns bool while this async version
+        # returns int. We should make them consistent.
         cdef:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -301,11 +281,10 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] c_node_ips = [ip for ip in node_ips]
             c_vector[c_bool] results
+            CRayStatus status
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Nodes().CheckAlive(c_node_ips, timeout_ms, results)
-            )
-        return [result for result in results]
+            status = self.inner.get().Nodes().CheckAlive(c_node_ips, timeout_ms, results)
+        return raise_or_return(convert_multi_bool(status, move(results)))
 
     def async_check_alive(
         self, node_ips: List[bytes], timeout: Optional[float] = None
@@ -333,32 +312,22 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[CNodeID] c_node_ids
             c_vector[c_string] results
+            CRayStatus status
         for node_id in node_ids:
             c_node_ids.push_back(CNodeID.FromBinary(node_id))
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Nodes().DrainNodes(c_node_ids, timeout_ms, results)
-            )
-        return [result for result in results]
+            status = self.inner.get().Nodes().DrainNodes(c_node_ids, timeout_ms, results)
+        return raise_or_return(convert_multi_str(status, move(results)))
 
     def get_all_node_info(
         self, timeout: Optional[float] = None
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef c_vector[CGcsNodeInfo] reply
-        cdef c_vector[c_string] serialized_reply
+        cdef CRayStatus status
         with nogil:
-            check_status_timeout_as_rpc_error(
-                self.inner.get().Nodes().GetAllNoCache(timeout_ms, reply)
-            )
-            for node in reply:
-                serialized_reply.push_back(node.SerializeAsString())
-        ret = {}
-        for serialized in serialized_reply:
-            proto = gcs_pb2.GcsNodeInfo()
-            proto.ParseFromString(serialized)
-            ret[NodeID.from_binary(proto.node_id)] = proto
-        return ret
+            status = self.inner.get().Nodes().GetAllNoCache(timeout_ms, reply)
+        return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     #############################################################
     # NodeResources methods
@@ -548,6 +517,22 @@ cdef raise_or_return(tup):
 # Must not raise exceptions, or it crashes the process.
 #############################################################
 
+cdef convert_get_all_node_info(
+        CRayStatus status, c_vector[CGcsNodeInfo]&& c_data):
+    # -> Dict[JobID, gcs_pb2.JobTableData]
+    cdef c_string b
+    try:
+        check_status_timeout_as_rpc_error(status)
+        node_table_data = {}
+        for c_proto in c_data:
+            b = c_proto.SerializeAsString()
+            proto = gcs_pb2.GcsNodeInfo()
+            proto.ParseFromString(b)
+            node_table_data[proto.node_id] = proto
+        return node_table_data, None
+    except Exception as e:
+        return None, e
+
 cdef convert_get_all_job_info(
         CRayStatus status, c_vector[CJobTableData]&& c_data):
     # -> Dict[JobID, gcs_pb2.JobTableData]
@@ -617,6 +602,7 @@ cdef convert_optional_vector_str(
         result.append(dereference(it))
         postincrement(it)
     return result, None
+
 cdef convert_optional_bool(CRayStatus status, const optional[c_bool]& b):
     # -> bool
     try:
@@ -630,5 +616,13 @@ cdef convert_multi_bool(CRayStatus status, c_vector[c_bool]&& c_data):
     try:
         check_status_timeout_as_rpc_error(status)
         return [b for b in c_data], None
+    except Exception as e:
+        return None, e
+
+cdef convert_multi_str(CRayStatus status, c_vector[c_string]&& c_data):
+    # -> List[bytes]
+    try:
+        check_status_timeout_as_rpc_error(status)
+        return [datum for datum in c_data], None
     except Exception as e:
         return None, e
