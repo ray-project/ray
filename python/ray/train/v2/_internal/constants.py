@@ -21,6 +21,13 @@ DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S: float = 10 * 60
 WORKER_GROUP_START_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"
 DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 30.0
 
+# The name of the file that is used to validate the storage.
+VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
+# The name of the file that is used to store the checkpoint manager snapshot.
+CHECKPOINT_MANAGER_SNAPSHOT_FILENAME = "checkpoint_manager_snapshot.json"
+# The coding scheme used to encode the checkpoint manager snapshot.
+CHECKPOINT_MANAGER_SNAPSHOT_CODING_SCHEME = "utf-8"
+
 # V2 feature flag.
 V2_ENABLED_ENV_VAR = "RAY_TRAIN_V2_ENABLED"
 

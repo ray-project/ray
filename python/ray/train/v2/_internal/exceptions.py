@@ -91,3 +91,18 @@ class WorkerGroupStartupFailedError(RayTrainError):
     Example scenario: A worker is scheduled onto a node that dies while
     the worker actor is initializing.
     """
+
+
+class ControllerInitializationError(RayTrainError):
+    """Exception raised when the train driver fails to initialize from a snapshot.
+
+    Example scenario:
+        1. The checkpoint manager snapshot version is not compatible with the current
+            version of Ray Train. Or,
+        2. The checkpoint manager snapshot JSON file is corrupted. Or,
+        3. The checkpoint manager snapshot contains checkpoints that can not be found
+            in the experiment storage directory.
+    """
+
+    def __init__(self, message: str = ""):
+        super().__init__(message)

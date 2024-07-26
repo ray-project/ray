@@ -22,6 +22,15 @@ py_test(
 )
 
 py_test(
+    name = "test_checkpoint_manager",
+    size = "small",
+    srcs = ["tests/test_checkpoint_manager.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
     name = "test_controller",
     size = "small",
     srcs = ["tests/test_controller.py"],

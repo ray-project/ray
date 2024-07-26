@@ -30,6 +30,10 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Tuple, Type, Union
 
 from ray.air._internal.filelock import TempFileLock
 from ray.train.constants import _get_ray_train_session_dir
+from ray.train.v2._internal.constants import (
+    CHECKPOINT_MANAGER_SNAPSHOT_FILENAME,
+    VALIDATE_STORAGE_MARKER_FILENAME,
+)
 from ray.train.v2._internal.util import date_str
 from ray.util.annotations import DeveloperAPI
 
@@ -38,9 +42,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-
-
-_VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
 
 
 class _ExcludingLocalFilesystem(LocalFileSystem):
@@ -411,7 +412,7 @@ class StorageContext:
         This validation file is also used to check whether the storage path is
         accessible by all nodes in the cluster."""
         valid_file = Path(
-            self.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME
+            self.experiment_fs_path, VALIDATE_STORAGE_MARKER_FILENAME
         ).as_posix()
         self.storage_filesystem.create_dir(self.experiment_fs_path)
         with self.storage_filesystem.open_output_stream(valid_file):
@@ -420,7 +421,7 @@ class StorageContext:
     def _check_validation_file(self):
         """Checks that the validation file exists at the storage path."""
         valid_file = Path(
-            self.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME
+            self.experiment_fs_path, VALIDATE_STORAGE_MARKER_FILENAME
         ).as_posix()
         if not _exists_at_fs_path(fs=self.storage_filesystem, fs_path=valid_file):
             raise RuntimeError(
@@ -453,9 +454,7 @@ class StorageContext:
         # TODO(justinvyu): Fix this cyclical import.
         from ray.train import Checkpoint
 
-        checkpoint_fs_path = Path(
-            self.experiment_fs_path, checkpoint_dir_name
-        ).as_posix()
+        checkpoint_fs_path = self.build_checkpoint_path_from_name(checkpoint_dir_name)
 
         logger.debug(
             "Copying checkpoint files to storage path:\n"
@@ -508,6 +507,13 @@ class StorageContext:
             )
         return Path(_get_ray_train_session_dir(), self.experiment_dir_name).as_posix()
 
+    @property
+    def checkpoint_manager_snapshot_path(self) -> str:
+        """The path to the checkpoint manager snapshot file."""
+        return Path(
+            self.experiment_fs_path, CHECKPOINT_MANAGER_SNAPSHOT_FILENAME
+        ).as_posix()
+
     @staticmethod
     def get_experiment_dir_name(run_obj: Union[str, Callable, Type]) -> str:
         from ray.tune.experiment import Experiment
@@ -524,3 +530,22 @@ class StorageContext:
     def make_default_checkpoint_dir_name():
         """Get the name of the checkpoint directory by timestamp."""
         return f"checkpoint_{date_str(include_ms=True)}"
+
+    def extract_checkpoint_dir_name_from_path(self, checkpoint_path: str) -> str:
+        """Get the checkpoint name from the checkpoint path.
+        The parent directory of the checkpoint path should be the experiment directory.
+        """
+        # TODO: Use Pathlib to extract the name when supports at least Python 3.9
+        experiment_fs_path = self.experiment_fs_path + "/"
+        if not checkpoint_path.startswith(experiment_fs_path):
+            raise ValueError(
+                f"Checkpoint path {checkpoint_path} is not under the experiment "
+                f"directory {self.experiment_fs_path}."
+            )
+        return checkpoint_path[len(experiment_fs_path) :]
+
+    def build_checkpoint_path_from_name(self, checkpoint_name: str) -> str:
+        """Get the checkpoint path from the checkpoint name.
+        The parent directory of the checkpoint path should be the experiment directory.
+        """
+        return Path(self.experiment_fs_path, checkpoint_name).as_posix()

@@ -9,11 +9,8 @@ import ray
 import ray.cloudpickle as ray_pickle
 from ray.train import Checkpoint
 from ray.train.tests.test_new_persistence import _resolve_storage_type
-from ray.train.v2._internal.execution.storage import (
-    _VALIDATE_STORAGE_MARKER_FILENAME,
-    StorageContext,
-    _list_at_fs_path,
-)
+from ray.train.v2._internal.constants import VALIDATE_STORAGE_MARKER_FILENAME
+from ray.train.v2._internal.execution.storage import StorageContext, _list_at_fs_path
 
 
 @pytest.fixture(params=["nfs", "cloud", "custom_fs"])
@@ -105,7 +102,7 @@ def test_storage_validation_marker(storage: StorageContext):
 
     # Remove the marker to simulate being on a new node w/o access to the shared storage
     storage.storage_filesystem.delete_file(
-        os.path.join(storage.experiment_fs_path, _VALIDATE_STORAGE_MARKER_FILENAME)
+        os.path.join(storage.experiment_fs_path, VALIDATE_STORAGE_MARKER_FILENAME)
     )
 
     # Simulate passing the storage context around through the object store
