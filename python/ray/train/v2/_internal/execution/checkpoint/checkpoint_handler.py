@@ -1,8 +1,10 @@
 from collections import deque
 from typing import TYPE_CHECKING, List, Optional
 
-from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
+from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
+    CheckpointManager,
+)
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
 
 if TYPE_CHECKING:
@@ -13,14 +15,14 @@ class CheckpointHandler(WorkerGroupCallback):
     """
     The CheckpointHandler lives on TrainController and is responsible to
     consolidate the _TrainingResults from workers and register it to the
-    _CheckpointManager.
+    CheckpointManager.
 
     Note that the CheckpointHandler is stateful. The values are carried across runs.
     This will handle reported checkpoints for the lifetime of a worker group.
     Any partial checkpoints will be abandoned when the worker group shuts down.
     """
 
-    def __init__(self, checkpoint_manager: _CheckpointManager):
+    def __init__(self, checkpoint_manager: CheckpointManager):
         # Number of workers in the current worker group. It is initialized
         # to be None. It is set to the number of workers when it receives the
         # worker group status for the first time.
@@ -30,7 +32,7 @@ class CheckpointHandler(WorkerGroupCallback):
         # A list of queues holding training results from workers.
         self._training_result_queues: Optional[List[deque]] = None
         # The checkpoint manager to register the consolidated checkpoint.
-        self._checkpoint_manager: _CheckpointManager = checkpoint_manager
+        self._checkpoint_manager: CheckpointManager = checkpoint_manager
 
     def _update_handler_training_result_queues(
         self, training_results: List[Optional["_TrainingResult"]]
@@ -55,7 +57,6 @@ class CheckpointHandler(WorkerGroupCallback):
             next step of committing the checkpoint in the checkpoint manager.
         3. Consolidate a list of checkpoints to single checkpoint.
         4. Register the checkpoint to checkpoint manager.
-        5. TODO: Snapshot checkpoint manager metadata to storage for recovery.
         """
         # Step 1: If self._num_workers is None, we need to initialize the number
         # of workers and training_results_queues from the worker group status. This
@@ -109,7 +110,6 @@ class CheckpointHandler(WorkerGroupCallback):
         consolidated_checkpoint_result = valid_training_results[0]
         # Step 4: Register the checkpoint to checkpoint manager.
         self._checkpoint_manager.register_checkpoint(consolidated_checkpoint_result)
-        # TODO Step 5: snapshot checkpoint manager metadata to storage for recovery
 
     def after_worker_group_start(self, worker_group: WorkerGroup) -> None:
         """Handle worker group start. Initialize internal states."""

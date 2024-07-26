@@ -3,12 +3,16 @@ import unittest.mock
 
 import pytest
 
+from ray.air.config import CheckpointConfig
 from ray.train import Checkpoint
-from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
     CheckpointHandler,
 )
+from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
+    CheckpointManager,
+)
+from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroupStatus,
     WorkerStatus,
@@ -47,11 +51,18 @@ def generate_worker_group_status(num_workers, num_ckpt, num_dummy, num_none):
         (10, 1, 8, 1, 0),  # one worker with checkpoint, one worker with None
     ],
 )
-def test_checkpoint_handler(num_workers, num_ckpt, num_dummy, num_none, expected):
+def test_checkpoint_handler(
+    tmp_path, num_workers, num_ckpt, num_dummy, num_none, expected
+):
     """Test the CheckpointHandler class. expected is the number of
-    times that the _CheckpointManager.register_checkpoint is called.
+    times that the CheckpointManager.register_checkpoint is called.
     """
-    checkpoint_manager = _CheckpointManager(checkpoint_config=None)
+    checkpoint_manager = CheckpointManager(
+        storage_context=StorageContext(
+            storage_path=tmp_path, experiment_dir_name="test_checkpoint_handler_dir"
+        ),
+        checkpoint_config=CheckpointConfig(),
+    )
     checkpoint_handler = CheckpointHandler(checkpoint_manager)
 
     worker_group = DummyWorkerGroup()
@@ -64,7 +75,7 @@ def test_checkpoint_handler(num_workers, num_ckpt, num_dummy, num_none, expected
         num_workers, num_ckpt, num_dummy, num_none
     )
     with unittest.mock.patch.object(
-        _CheckpointManager, "register_checkpoint"
+        CheckpointManager, "register_checkpoint"
     ) as fake_register_checkpoint:
         checkpoint_handler.after_worker_group_poll_status(worker_group_status)
         assert fake_register_checkpoint.call_count == expected

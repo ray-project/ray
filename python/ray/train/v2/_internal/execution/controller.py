@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 
 from ray._private.auto_init_hook import wrap_auto_init
-from ray.train._internal.checkpoint_manager import _CheckpointManager
+from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
     DEFAULT_HEALTH_CHECK_INTERVAL_S,
     HEALTH_CHECK_INTERVAL_S_ENV_VAR,
@@ -24,6 +24,9 @@ from ray.train.v2._internal.execution.callback import (
 from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
     CheckpointHandler,
 )
+from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
+    CheckpointManager,
+)
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
@@ -33,7 +36,7 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingDecision,
     ScalingPolicy,
 )
-from ray.train.v2._internal.execution.storage import get_fs_and_path
+from ray.train.v2._internal.execution.storage import StorageContext, get_fs_and_path
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import RunConfig
@@ -84,6 +87,8 @@ class TrainController:
         failure_policy: FailurePolicy,
         run_config: Optional[RunConfig] = None,
         callbacks: Optional[List[Callback]] = None,
+        # TODO: [Deprecation]
+        resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
         self._train_fn = train_fn
 
@@ -91,11 +96,18 @@ class TrainController:
         self._failure_policy = failure_policy
         self._run_config = run_config or RunConfig()
         self._callbacks = callbacks or []
-
-        # TODO: Initialize checkpoint manager on restore
-        self._checkpoint_manager = _CheckpointManager(
-            self._run_config.checkpoint_config
+        self._resume_from_checkpoint = resume_from_checkpoint
+        self._storage_context = StorageContext(
+            storage_path=self._run_config.storage_path,
+            experiment_dir_name=self._run_config.name,
+            storage_filesystem=self._run_config.storage_filesystem,
         )
+
+        self._checkpoint_manager = CheckpointManager(
+            checkpoint_config=self._run_config.checkpoint_config,
+            storage_context=self._storage_context,
+        )
+
         self._checkpoint_handler = CheckpointHandler(self._checkpoint_manager)
 
         # Group callbacks by the hooks they're subscribed to.
@@ -200,13 +212,15 @@ class TrainController:
             latest_checkpoint_result.checkpoint if latest_checkpoint_result else None
         )
 
-        # Start the worker group with the latest checkpoint.
+        # Start the worker group with the latest checkpoint if there is one.
+        # Otherwise, start the worker group with the checkpoint set by controller.
+        # Finally, if there is no checkpoint, start the worker group with None.
         try:
             self._worker_group.start(
                 train_fn=self._train_fn,
                 num_workers=num_workers,
                 resources_per_worker=resources_per_worker,
-                checkpoint=latest_checkpoint,
+                checkpoint=latest_checkpoint or self._resume_from_checkpoint,
             )
         except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError):
             logger.exception("Worker group startup failed:")
@@ -303,9 +317,6 @@ class TrainController:
             self._run_control_loop_iteration()
 
         self._shutdown()
-
-    def get_checkpoint_manager(self) -> _CheckpointManager:
-        return self._checkpoint_manager
 
     def get_result(self) -> Result:
         """Get the final training result from the TrainController."""

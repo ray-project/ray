@@ -25,7 +25,6 @@ from ray.train import (
 )
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2._internal.execution.storage import (
-    StorageContext,
     _delete_fs_path,
     _download_from_fs_path,
 )
@@ -264,10 +263,8 @@ def _resume_from_checkpoint(
     )
     result = trainer.fit()
 
-    # Make sure that the checkpoint indexing starts from scratch.
-    assert Path(
-        result.checkpoint.path
-    ).name == StorageContext._make_checkpoint_dir_name(0)
+    # Make sure that there is only on checkpoint recorded.
+    assert result.best_checkpoints and len(result.best_checkpoints) == 1
 
     # Clean up this run's experiment directory immediately after.
     _delete_fs_path(result.filesystem, Path(result.path).parent.as_posix())
@@ -292,11 +289,11 @@ def _assert_storage_contents(
     # If set, expect num_to_keep. Otherwise, expect to see all of them.
     expected_num_checkpoints = checkpoint_config.num_to_keep or constants.NUM_ITERATIONS
 
-    assert len(list(exp_dir.glob("checkpoint_*"))) == expected_num_checkpoints
+    assert len(list(exp_dir.glob("checkpoint_epoch=*"))) == expected_num_checkpoints
     checkpoint_epochs = sorted(
         [
             _get_checkpoint_epoch(checkpoint_dir.name)
-            for checkpoint_dir in exp_dir.glob("checkpoint_*")
+            for checkpoint_dir in exp_dir.glob("checkpoint_epoch=*")
         ]
     )
     # Ex: If num_to_keep=2 out of 6 total checkpoints,
@@ -308,7 +305,7 @@ def _assert_storage_contents(
         )
     )
 
-    for checkpoint_dir in exp_dir.glob("checkpoint_*"):
+    for checkpoint_dir in exp_dir.glob("checkpoint_epoch=*"):
         # 1 shared checkpoint.pkl file, written by the trainable / all workers.
         assert len(list(checkpoint_dir.glob("checkpoint.pkl"))) == 1
         if test_trainer:
@@ -388,17 +385,25 @@ def test_trainer(
         result = trainer.fit()
 
         # TODO: Re-enable restoration / resume_from_checkpoint coverage
-        # print("\nStarting manually restored run.\n")
-        # restored_trainer = DataParallelTrainer.restore(
-        #     path=str(URI(run_config.storage_path) / exp_name),
-        #     storage_filesystem=storage_filesystem,
-        # )
-        # result = restored_trainer.fit()
+        print("\nStarting manually restored run.\n")
+        restored_trainer = DataParallelTrainer(
+            train_fn,
+            train_loop_config={
+                "num_iterations": TestConstants.NUM_ITERATIONS,
+                "fail_iters": [2, 4],
+                # Test that global rank 0 is not required to checkpoint.
+                "no_checkpoint_ranks": no_checkpoint_ranks,
+                "time_per_iter": time_between_reports,
+            },
+            scaling_config=ScalingConfig(num_workers=TestConstants.NUM_WORKERS),
+            run_config=run_config,
+        )
+        result = restored_trainer.fit()
 
-        # _resume_from_checkpoint(
-        #     result.checkpoint,
-        #     expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
-        # )
+        _resume_from_checkpoint(
+            result.checkpoint,
+            expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
+        )
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,
