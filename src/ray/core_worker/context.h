@@ -60,7 +60,7 @@ class WorkerContext {
 
   const TaskID &GetCurrentTaskID() const;
 
-  const TaskID GetMainThreadOrActorCreationTaskID() const;
+  const TaskID &GetMainThreadOrActorCreationTaskID() const;
 
   const PlacementGroupID &GetCurrentPlacementGroupId() const ABSL_LOCKS_EXCLUDED(mutex_);
 
