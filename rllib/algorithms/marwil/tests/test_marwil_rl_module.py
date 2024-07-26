@@ -28,3 +28,10 @@ class TestMARWIL(unittest.TestCase):
             fw, env, fwd_fn = config
 
             print(f"[Fw={fw}] | [Env={env}] | [FWD={fwd_fn}]")
+
+
+if __name__ == "__main__":
+    import pytest
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
