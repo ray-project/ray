@@ -329,7 +329,7 @@ py_test(
     srcs = ["tuned_examples/bc/cartpole_bc.py"],
     # Include the zipped json data file as well.
     data = [
-        "tests/data/cartpole//cartpole-v1_large",
+        "tests/data/cartpole/cartpole-v1_large",
     ],
     args = ["--as-test", "--enable-new-api-stack"]
 )
