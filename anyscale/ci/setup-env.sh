@@ -11,7 +11,7 @@ export RUNTIME_ECR="830883877497.dkr.ecr.us-west-2.amazonaws.com"
 export DOCKER_BUILDKIT=1
 
 # Default cuda is also tagged as "gpu".
-readonly ML_CUDA_VERSION="cu118"
+readonly ML_CUDA_VERSION="cu121"
 export ML_CUDA_VERSION
 
 if [[ "${RAY_RELEASE_BUILD:-}" == "" ]]; then
