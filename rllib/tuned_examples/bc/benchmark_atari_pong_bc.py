@@ -157,7 +157,7 @@ destination_file_name = f"{tmp_path}/{game}/run_{run_number}-00000-of-00001"
 if not Path(destination_file_name).exists():
     # Define the bucket and source file.
     bucket_name = "rl_unplugged"
-    source_blob_name = f"atari/{game}/run_{run_number}-00000-of-00001"
+    source_blob_name = f"atari/{game}/run_{run_number}-00000-of-00100"
 
     # Download the data from the bucket.
     storage_client = storage.Client.create_anonymous_client()
