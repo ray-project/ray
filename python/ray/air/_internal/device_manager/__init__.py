@@ -30,7 +30,9 @@ def try_register_torch_accelerator_module() -> None:
             import habana_frameworks.torch.hpu as torch_hpu  # noqa: F401
 
     except ImportError:
-        raise ImportError("Could not import PyTorch")
+        raise ImportError(
+            "PyTorch extension modules for accelerators exits but import failed."
+        )
 
 
 def get_torch_device_manager_cls_by_resources(
