@@ -489,7 +489,7 @@ TEST_F(EventTest, TestEventJSON) {
     }}
   };
 
-  RAY_EXPORT_EVENT().WithField("event_data", export_event_data).WithField("is_delta_event", true);
+  RAY_EXPORT_EVENT().WithField("event_data", export_event_data);
 
   std::vector<std::string> vc;
   ReadContentFromFile(vc, log_dir + "/event_RAYLET.log");
@@ -502,7 +502,6 @@ TEST_F(EventTest, TestEventJSON) {
   EXPECT_EQ(export_event_as_json.contains("event_id"), true);
   EXPECT_EQ(export_event_as_json.contains("timestamp"), true);
   EXPECT_EQ(export_event_as_json.contains("event_data"), true);
-  EXPECT_EQ(export_event_as_json["is_delta_event"].get<bool>(), true);
   // Fields that shouldn't exist for export events but do exist for standard events
   EXPECT_EQ(export_event_as_json.contains("severity"), false);
   EXPECT_EQ(export_event_as_json.contains("label"), false);

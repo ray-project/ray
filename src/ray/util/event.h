@@ -80,12 +80,13 @@ namespace ray {
 
 // RAY_EXPORT_EVENT is intended to be used with WithField to specify "event_data"
 // and "is_delta_event"
-#define RAY_EXPORT_EVENT() ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_INFO,            \
-                  ray::RayEvent::EventLevelToLogLevel(                                               \
-                      ::ray::rpc::Event_Severity::Event_Severity_INFO),                              \
-                  "",                                                                                \
-                  __FILE__,                                                                          \
-                  __LINE__)
+#define RAY_EXPORT_EVENT()                                            \
+  ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_INFO,      \
+                ray::RayEvent::EventLevelToLogLevel(                  \
+                    ::ray::rpc::Event_Severity::Event_Severity_INFO), \
+                "",                                                   \
+                __FILE__,                                             \
+                __LINE__)
 
 // interface of event reporter
 class BaseEventReporter {
@@ -114,7 +115,8 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual std::string EventToString(const rpc::Event &event, const json &custom_fields);
 
-  virtual std::string ExportEventToString(const rpc::Event &event, const json &custom_fields);
+  virtual std::string ExportEventToString(const rpc::Event &event,
+                                          const json &custom_fields);
 
   virtual bool IsExportEvent(const rpc::Event &event, const json &custom_fields);
 
