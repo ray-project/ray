@@ -38,7 +38,6 @@ from ray.rllib.utils.metrics import (
     NUM_TRAINABLE_PARAMETERS,
     NUM_NON_TRAINABLE_PARAMETERS,
 )
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor, copy_torch_tensors
 from ray.rllib.utils.typing import (
     ModuleID,
@@ -123,7 +122,7 @@ class TorchLearner(Learner):
 
     def _uncompiled_update(
         self,
-        batch: NestedDict,
+        batch: Dict,
         **kwargs,
     ):
         """Performs a single update given a batch of data."""
@@ -377,7 +376,7 @@ class TorchLearner(Learner):
         )
 
     @override(Learner)
-    def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
+    def _update(self, batch: Dict[str, Any]) -> Tuple[Any, Any, Any]:
         # The first time we call _update after building the learner or
         # adding/removing models, we update with the uncompiled update method.
         # This makes it so that any variables that may be created during the first

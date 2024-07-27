@@ -842,17 +842,12 @@
 - name: air_example_gptj_deepspeed_fine_tuning
   group: AIR examples
   working_dir: air_examples/gptj_deepspeed_finetuning
-
-
   frequency: weekly
   team: ml
   cluster:
     byod:
       type: gpu
-      pip:
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
-        - jupytext==1.13.6
+      post_build_script: byod_gptj_test.sh
     cluster_compute: gptj_deepspeed_compute_aws.yaml
 
   run:
@@ -862,20 +857,11 @@
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
   group: AIR examples
   working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
-
   frequency: weekly
   team: ml
   cluster:
     byod:
       type: gpu
-      pip:
-        - "datasets"
-        - "evaluate"
-        - "scikit-learn"
-        - "boto3"
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
-        - jupytext==1.13.6
       post_build_script: byod_dolly_test.sh
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
@@ -888,16 +874,11 @@
 - name: air_example_vicuna_13b_lightning_deepspeed_finetuning
   group: AIR examples
   working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
-
-
   frequency: weekly
   team: ml
   cluster:
     byod:
       type: gpu
-      pip:
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
       post_build_script: byod_vicuna_test.sh
     cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
 
@@ -2844,6 +2825,7 @@
 - name: stress_test_placement_group
   group: core-multi-test
   working_dir: nightly_tests
+  env: aws_perf
 
   frequency: nightly
 
@@ -2917,6 +2899,7 @@
   group: core-daily-test
   team: core
   frequency: nightly
+  env: aws_perf
   working_dir: microbenchmark
 
   cluster:
@@ -3146,6 +3129,7 @@
 - name: stress_test_many_tasks
   group: core-daily-test
   working_dir: nightly_tests
+  env: aws_perf
 
   frequency: nightly
   team: core
@@ -3185,6 +3169,7 @@
 - name: stress_test_dead_actors
   group: core-daily-test
   working_dir: nightly_tests
+  env: aws_perf
 
   frequency: nightly
   team: core
@@ -3316,6 +3301,7 @@
 
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod: {}
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
@@ -3475,6 +3461,7 @@
 
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
@@ -3501,6 +3488,7 @@
 
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
@@ -3528,6 +3516,7 @@
 
   frequency: nightly-3x
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
@@ -3575,6 +3564,7 @@
 
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
@@ -3602,6 +3592,7 @@
 
   frequency: nightly-3x
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
@@ -3650,6 +3641,7 @@
 
   frequency: nightly-3x
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu

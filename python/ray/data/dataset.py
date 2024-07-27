@@ -2256,7 +2256,7 @@ class Dataset:
 
     @PublicAPI(api_group=SMD_API_GROUP)
     def zip(self, other: "Dataset") -> "Dataset":
-        """Materialize and zip the columns of this dataset with the columns of another.
+        """Zip the columns of this dataset with the columns of another.
 
         The datasets must have the same number of rows. Their column sets are
         merged, and any duplicate column names are disambiguated with suffixes like
@@ -2276,8 +2276,6 @@ class Dataset:
             >>> ds2 = ray.data.range(5)
             >>> ds1.zip(ds2).take_batch()
             {'id': array([0, 1, 2, 3, 4]), 'id_1': array([0, 1, 2, 3, 4])}
-
-        Time complexity: O(dataset size / parallelism)
 
         Args:
             other: The dataset to zip with on the right hand side.
@@ -4661,7 +4659,7 @@ class Dataset:
         return self._get_stats_summary().to_string()
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
-        return self._plan.stats_summary()
+        return self._plan.stats().to_summary()
 
     @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI

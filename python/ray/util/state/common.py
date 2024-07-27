@@ -90,7 +90,7 @@ class Humanify:
     convert units into a human readable string."""
 
     def timestamp(x: float):
-        """Converts miliseconds to a datetime object."""
+        """Converts milliseconds to a datetime object."""
         return str(datetime.datetime.fromtimestamp(x / 1000))
 
     def memory(x: int):
@@ -104,7 +104,7 @@ class Humanify:
         return str(format(x, ".3f")) + " B"
 
     def duration(x: int):
-        """Converts miliseconds to a human readable duration."""
+        """Converts milliseconds to a human readable duration."""
         return str(datetime.timedelta(milliseconds=x))
 
     def events(events: List[dict]):
@@ -630,12 +630,16 @@ class WorkerState(StateSchema):
     #: -> start_time_ms (worker is ready to be used).
     #: -> end_time_ms (worker is destroyed).
     worker_launch_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, format_fn=Humanify.timestamp
+        filterable=False,
+        detail=True,
+        format_fn=lambda x: "" if x == -1 else Humanify.timestamp(x),
     )
     #: The time worker is succesfully launched
     #: -1 if the value doesn't exist.
     worker_launched_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, format_fn=Humanify.timestamp
+        filterable=False,
+        detail=True,
+        format_fn=lambda x: "" if x == -1 else Humanify.timestamp(x),
     )
     #: The time when the worker is started and initialized.
     #: 0 if the value doesn't exist.

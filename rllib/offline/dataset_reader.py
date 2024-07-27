@@ -213,7 +213,7 @@ class DatasetReader(InputReader):
 
         # the number of steps to return per call to next()
         self.batch_size = self._ioctx.config.get("train_batch_size", 1)
-        num_workers = self._ioctx.config.get("num_workers", 0)
+        num_workers = self._ioctx.config.get("num_env_runners", 0)
         seed = self._ioctx.config.get("seed", None)
         if num_workers:
             self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)

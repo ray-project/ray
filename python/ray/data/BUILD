@@ -610,3 +610,11 @@ py_test(
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
+
+py_test(
+    name = "test_context",
+    size = "small",
+    srcs = ["tests/test_context.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
