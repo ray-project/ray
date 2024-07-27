@@ -529,7 +529,7 @@ cdef raise_or_return(tup):
 
 cdef convert_get_all_node_info(
         CRayStatus status, c_vector[CGcsNodeInfo]&& c_data):
-    # -> Dict[JobID, gcs_pb2.JobTableData]
+    # -> Dict[NodeID, gcs_pb2.GcsNodeInfo]
     cdef c_string b
     try:
         check_status_timeout_as_rpc_error(status)
@@ -538,7 +538,7 @@ cdef convert_get_all_node_info(
             b = c_proto.SerializeAsString()
             proto = gcs_pb2.GcsNodeInfo()
             proto.ParseFromString(b)
-            node_table_data[proto.node_id] = proto
+            node_table_data[NodeID.from_binary(proto.node_id)] = proto
         return node_table_data, None
     except Exception as e:
         return None, e
@@ -554,7 +554,7 @@ cdef convert_get_all_job_info(
             b = c_proto.SerializeAsString()
             proto = gcs_pb2.JobTableData()
             proto.ParseFromString(b)
-            job_table_data[proto.job_id] = proto
+            job_table_data[JobID.from_binary(proto.job_id)] = proto
         return job_table_data, None
     except Exception as e:
         return None, e
