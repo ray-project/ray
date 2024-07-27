@@ -41,7 +41,6 @@ class Backend(metaclass=Singleton):
     """
 
     share_cuda_visible_devices: bool = False
-    resources_per_worker: dict = None
 
     def on_start(self, worker_group: WorkerGroup, backend_config: BackendConfig):
         """Logic for starting this backend."""
