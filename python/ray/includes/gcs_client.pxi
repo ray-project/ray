@@ -569,6 +569,7 @@ cdef convert_optional_str_none_for_not_found(
         if status.IsNotFound():
             return None, None
         check_status_timeout_as_rpc_error(status)
+        assert c_str.has_value()
         return c_str.value(), None
     except Exception as e:
         return None, e
@@ -579,6 +580,8 @@ cdef convert_optional_multi_get(
     cdef unordered_map[c_string, c_string].const_iterator it
     try:
         check_status_timeout_as_rpc_error(status)
+        assert c_map.has_value()
+
         result = {}
         it = c_map.value().const_begin()
         while it != c_map.value().const_end():
@@ -594,6 +597,7 @@ cdef convert_optional_int(CRayStatus status, const optional[int]& c_int):
     # -> int
     try:
         check_status_timeout_as_rpc_error(status)
+        assert c_int.has_value()
         return c_int.value(), None
     except Exception as e:
         return None, e
@@ -601,25 +605,31 @@ cdef convert_optional_int(CRayStatus status, const optional[int]& c_int):
 cdef convert_optional_vector_str(
         CRayStatus status, const optional[c_vector[c_string]]& c_vec):
     # -> Dict[str, str]
+    cdef const c_vector[c_string]* vec
+    cdef c_vector[c_string].const_iterator it
     try:
         check_status_timeout_as_rpc_error(status)
+
+        assert c_vec.has_value()
+        vec = &c_vec.value()
+        it = vec.const_begin()
+        result = []
+        while it != dereference(vec).const_end():
+            result.append(dereference(it))
+            postincrement(it)
+        return result, None
     except Exception as e:
         return None, e
-    cdef const c_vector[c_string]* vec = &c_vec.value()
-    cdef c_vector[c_string].const_iterator it = dereference(vec).const_begin()
-    result = []
-    while it != dereference(vec).const_end():
-        result.append(dereference(it))
-        postincrement(it)
-    return result, None
+
 
 cdef convert_optional_bool(CRayStatus status, const optional[c_bool]& b):
     # -> bool
     try:
         check_status_timeout_as_rpc_error(status)
+        assert b.has_value()
+        return b.value(), None
     except Exception as e:
         return None, e
-    return b.value(), None
 
 cdef convert_multi_bool(CRayStatus status, c_vector[c_bool]&& c_data):
     # -> List[bool]
