@@ -76,7 +76,10 @@ def init_torch_device_manager():
 
 
 __all__ = [
-    "TorchDeviceManager",
+    TorchDeviceManager,
+    CUDATorchDeviceManager,
+    HPUTorchDeviceManager,
+    NPUTorchDeviceManager,
     try_register_torch_accelerator_module,
     get_torch_device_manager,
     init_torch_device_manager,

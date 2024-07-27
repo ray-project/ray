@@ -560,6 +560,14 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_device_manager",
+    size = "small",
+    srcs = ["tests/test_torch_device_manager.py"],
+    tags = ["team:ml", "exclusive", "ray_air"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_torch_trainer",
     size = "large",
     srcs = ["tests/test_torch_trainer.py"],
