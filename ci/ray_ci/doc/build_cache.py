@@ -1,6 +1,7 @@
 import tempfile
 import subprocess
 import os
+import pickle
 from typing import Set
 
 import boto3
@@ -10,6 +11,7 @@ from ray_release.util import get_write_state_machine_aws_bucket
 
 
 AWS_CACHE_KEY = "doc_build"
+ENVIRONMENT_PICKLE = "_build/doctrees/environment.pickle"
 
 
 class BuildCache:
@@ -29,6 +31,9 @@ class BuildCache:
         """
         Upload the build artifacts to S3
         """
+        logger.info("Massage the build artifacts to be used as a cache.")
+        self._massage_cache(ENVIRONMENT_PICKLE)
+
         logger.info("Obtaining the list of cache files.")
         cache_files = self._get_cache()
 
@@ -39,6 +44,26 @@ class BuildCache:
         self._upload_cache(doc_tarball)
 
         logger.info(f"Successfully uploaded {doc_tarball} to S3.")
+
+    def _massage_cache(self, environment_cache_file: str) -> None:
+        """
+        Massage the build artifacts, remove the unnecessary files so that they can
+        be used as a global cache
+        """
+        environment_cache_path = os.path.join(self._cache_dir, environment_cache_file)
+        environment_cache = None
+
+        with open(environment_cache_path, "rb") as f:
+            environment_cache = pickle.load(f)
+            for doc, dependencies in environment_cache.dependencies.items():
+                # Remove the site-packages dependencies because they are local to the
+                # build environment and cannot be used as a global cache
+                local_dependencies = [d for d in dependencies if "site-packages" in d]
+                for dependency in local_dependencies:
+                    environment_cache.dependencies[doc].remove(dependency)
+
+        with open(environment_cache_path, "wb+") as f:
+            pickle.dump(environment_cache, f, pickle.HIGHEST_PROTOCOL)
 
     def _get_cache(self) -> Set[str]:
         """
