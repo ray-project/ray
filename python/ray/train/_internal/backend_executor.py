@@ -99,7 +99,6 @@ class BackendExecutor:
 
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
-        self._backend.resources_per_worker = self._resources_per_worker
         self._num_workers = num_workers
         self._max_failures = max_retries
         if self._max_failures < 0:
@@ -484,7 +483,6 @@ class BackendExecutor:
             dataset_shard,
             metadata,
             storage,
-            device_manager,
         ):
             try:
                 init_session(
@@ -500,7 +498,6 @@ class BackendExecutor:
                     checkpoint=checkpoint,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
                     storage=storage,
-                    device_manager=device_manager,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -543,7 +540,6 @@ class BackendExecutor:
                     metadata=metadata,
                     checkpoint=checkpoint,
                     storage=storage,
-                    device_manager=None,
                 )
             )
 

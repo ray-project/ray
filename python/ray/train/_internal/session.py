@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
 
 import ray
-from ray.air._internal.device_manager import DeviceManager
 from ray.air._internal.session import _get_session
 from ray.air._internal.util import RunnerThread, StartTraceback
 from ray.air.constants import (
@@ -126,7 +125,6 @@ class _TrainSession:
         detailed_autofilled_metrics: bool = False,
         storage: Optional[StorageContext] = None,
         synchronous_result_reporting: bool = False,
-        device_manager: Optional[DeviceManager] = None,
     ):
         # `synchronous_result_reporting` refers to whether or not the
         # training function is immediately unblocked to continue running
@@ -170,7 +168,6 @@ class _TrainSession:
         self.time_total = 0.0
         self.local_ip = self.get_current_ip()
 
-        self.device_manager = device_manager
         self.accelerator = None
         self._state = {}
 

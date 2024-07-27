@@ -12,14 +12,6 @@ if HPU_PACKAGE_AVAILABLE:
 class HPUTorchDeviceManager(TorchDeviceManager):
     """HPU device manager"""
 
-    @staticmethod
-    def get_accelerator_name() -> str:
-        return "HPU"
-
-    @staticmethod
-    def get_device_type() -> str:
-        return "hpu"
-
     def is_device_available(self) -> bool():
         if not HPU_PACKAGE_AVAILABLE:
             return False

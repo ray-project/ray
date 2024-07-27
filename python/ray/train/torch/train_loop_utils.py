@@ -20,11 +20,13 @@ from torch.utils.data import (
 )
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray.air._internal.device_manager.nvidia_gpu import CUDATorchDeviceManager
-from ray.air._internal.device_manager.utils import try_register_torch_accelerator_module
+from ray.air._internal.device_manager import (
+    get_torch_device_manager,
+    try_register_torch_accelerator_module,
+)
 from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
-from ray.train._internal.session import get_accelerator, get_session, set_accelerator
+from ray.train._internal.session import get_accelerator, set_accelerator
 from ray.util.annotations import Deprecated, PublicAPI
 
 try_register_torch_accelerator_module()
@@ -369,12 +371,7 @@ class _TorchAccelerator(Accelerator):
         self.amp_is_enabled = amp
         self.scaler = GradScaler() if amp else None
         self._seed = None
-        # default is CUDADeviceManager
-        session = get_session()
-        if session and session.device_manager:
-            self.device_manager = session.device_manager
-        else:
-            self.device_manager = CUDATorchDeviceManager()
+        self.device_manager = get_torch_device_manager()
 
     def prepare_model(
         self,
@@ -643,7 +640,7 @@ class _WrappedDataLoader(DataLoader):
         self.dataloader_iter = None
         self.device = device
 
-        self.device_manager = get_session().device_manager or CUDATorchDeviceManager()
+        self.device_manager = get_torch_device_manager()
         # reset device is needed for npu in a new thread so far.
         if device.type == "npu":
             self.device_manager.set_device(device)
@@ -653,7 +650,7 @@ class _WrappedDataLoader(DataLoader):
             self._auto_transfer = auto_transfer
         else:
             self._auto_transfer = False
-        # create a new CUDA/NPU stream to move data from host to device concurrently
+        # create a new device stream to move data from host to device concurrently
         self._memcpy_stream = (
             self.device_manager.create_stream(device)
             if device.type != "cpu" and self._auto_transfer

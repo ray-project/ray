@@ -10,14 +10,6 @@ from ray.air._internal.device_manager.torch_device_manager import TorchDeviceMan
 class CUDATorchDeviceManager(TorchDeviceManager):
     """CUDA device manager"""
 
-    @staticmethod
-    def get_accelerator_name() -> str:
-        return "GPU"
-
-    @staticmethod
-    def get_device_type() -> str:
-        return "cuda"
-
     def is_device_available(self) -> bool():
         return torch.cuda.is_available()
 

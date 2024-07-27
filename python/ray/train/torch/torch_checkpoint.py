@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import torch
 
-from ray.air._internal.device_manager.utils import try_register_torch_accelerator_module
+from ray.air._internal.device_manager import try_register_torch_accelerator_module
 from ray.air._internal.torch_utils import (
     consume_prefix_in_state_dict_if_present_not_in_place,
     load_torch_model,

@@ -1,11 +1,10 @@
+from abc import ABC
 from typing import List, Union
 
 import torch
 
-from ray.air._internal.device_manager.device_manager import DeviceManager
 
-
-class TorchDeviceManager(DeviceManager):
+class TorchDeviceManager(ABC):
     """This class contains the function needed for supporting
     an acclerator family in Ray AI Library.
     """

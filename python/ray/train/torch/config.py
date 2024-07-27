@@ -9,11 +9,10 @@ import torch.distributed as dist
 
 import ray
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
-from ray.air._internal.device_manager.utils import (
-    get_torch_device_manager_cls_by_resources,
+from ray.air._internal.device_manager import (
+    init_torch_device_manager,
     try_register_torch_accelerator_module,
 )
-from ray.train._internal.session import get_session
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -214,13 +213,5 @@ class _TorchBackend(Backend):
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: BackendConfig
     ):
-        device_manager = get_torch_device_manager_cls_by_resources(
-            self.resources_per_worker
-        )()
-
-        def _set_torch_device_manager():
-            session = get_session()
-            session.device_manager = device_manager
-
-        worker_group.execute(_set_torch_device_manager)
+        worker_group.execute(init_torch_device_manager)
         worker_group.execute(_set_torch_distributed_env_vars)

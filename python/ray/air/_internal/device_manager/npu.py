@@ -28,14 +28,6 @@ if NPU_TORCH_PACKAGE_AVAILABLE:
 class NPUTorchDeviceManager(TorchDeviceManager):
     """Ascend NPU device manager"""
 
-    @staticmethod
-    def get_accelerator_name() -> str:
-        return "NPU"
-
-    @staticmethod
-    def get_device_type() -> str:
-        return "npu"
-
     def is_device_available(self) -> bool:
         if not NPU_TORCH_PACKAGE_AVAILABLE:
             return False

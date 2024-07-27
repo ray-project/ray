@@ -5,23 +5,17 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ray.air._internal.device_manager.nvidia_gpu import CUDATorchDeviceManager
+from ray.air._internal.device_manager import get_torch_device_manager
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
 
 def get_devices() -> List[torch.device]:
     """Gets the correct torch device list configured for this process.
 
-    Returns a list of torch Accelerator devices allocated for the current worker.
-    If no Accelerators are assigned, then it returns a list with a single CPU device.
+    Returns a list of torch accelerator devices allocated for the current worker.
+    If no accelerators are assigned, then it returns a list with a single CPU device.
     """
-    from ray.air._internal.session import _get_session
-
-    session = _get_session()
-    if session and session.device_manager:
-        return session.device_manager.get_devices()
-    else:
-        return CUDATorchDeviceManager().get_devices()
+    return get_torch_device_manager().get_devices()
 
 
 def convert_pandas_to_torch_tensor(
