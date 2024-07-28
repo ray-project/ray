@@ -98,5 +98,5 @@ def main(is_flink: bool):
 
 
 if __name__ == "__main__":
-    main(is_flink=True)
+    # main(is_flink=True)
     main(is_flink=False)

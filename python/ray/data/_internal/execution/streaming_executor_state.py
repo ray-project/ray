@@ -29,6 +29,7 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
+from ray.data._internal.execution.memory_budget import PerOpMemoryBudget, humanize
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.progress_bar import ProgressBar
@@ -192,9 +193,8 @@ class OpState:
         # Used for StreamingExecutor to signal exception or end of execution
         self._finished: bool = False
         self._exception: Optional[Exception] = None
-        self.last_update_time = -1
         self.start_time = time.time()
-        self.output_budget = -1
+        self.output_budget = PerOpMemoryBudget()
         self._scheduling_status = OpSchedulingStatus()
         self.run_times = 0
 
@@ -320,79 +320,6 @@ class OpState:
     def _get_average_ouput_size(self) -> float:
         return self.op._metrics.average_bytes_outputs_per_task
 
-    def _get_grow_rate(self, resource_manager: ResourceManager) -> float:
-        time_for_pipeline_to_process_one_data = 0
-        next_op = self.op
-        output_input_multipler = 1
-        time_for_op = 0
-
-        while len(next_op.output_dependencies) > 0:
-            assert len(next_op.output_dependencies) == 1
-
-            next_op = next_op.output_dependencies[0]
-
-            # Initialize grow rate to be 0.
-            if (
-                not next_op._metrics.average_task_duration
-                or not next_op._metrics.average_bytes_inputs_per_task
-                or not next_op._metrics.average_bytes_outputs_per_task
-            ):
-                continue
-
-            time_for_op += (
-                output_input_multipler
-                * next_op._metrics.average_task_duration
-                / next_op._metrics.average_bytes_inputs_per_task
-            )
-
-            output_input_multipler *= (
-                next_op._metrics.average_bytes_outputs_per_task
-                / next_op._metrics.average_bytes_inputs_per_task
-            )
-
-            if next_op.incremental_resource_usage().cpu == 0:
-                # @MaoZiming: if it is on GPU.
-                # However, time_for_op still accumulates.
-                # If the last stage is on GPU, then you don't have to care.
-                continue
-            time_for_pipeline_to_process_one_data += time_for_op
-            time_for_op = 0
-
-        num_executors_not_running_op = (
-            resource_manager.get_global_limits().cpu
-            - self.op.num_active_tasks() * self.op.incremental_resource_usage().cpu
-        )
-
-        if time_for_pipeline_to_process_one_data == 0:
-            return 0
-
-        return (
-            1 / time_for_pipeline_to_process_one_data
-        ) * num_executors_not_running_op
-
-    def _replenish_output_budget(self, resource_manager: ResourceManager) -> float:
-        # Initialize output_budget to object_store_memory.
-        INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
-        if self.output_budget == -1:
-            self.output_budget = INITIAL_BUDGET
-            self.last_update_time = time.time()
-            return
-
-        grow_rate = self._get_grow_rate(resource_manager)
-        now = time.time()
-        time_elapsed = now - self.last_update_time
-
-        self.output_budget += time_elapsed * grow_rate
-        # Cap output_budget to object_store_memory
-        self.output_budget = min(INITIAL_BUDGET, self.output_budget)
-        logger.debug(
-            f"@mzm INITIAL_BUDGET: {INITIAL_BUDGET}, "
-            f"self.output_budget: {self.output_budget}, "
-            f"time elapsed: {time_elapsed} "
-            f"grow_rate: {grow_rate}"
-        )
-        self.last_update_time = now
-
     def budget_policy_admission_control(
         self, resource_manager: ResourceManager
     ) -> bool:
@@ -402,7 +329,8 @@ class OpState:
         if ray.data.DataContext.get_current().is_conservative_policy:
             return True
 
-        if not (
+        # If not using global memory budget, only apply control on the first operator.
+        if not ray.data.DataContext.get_current().is_global_budget_policy and not (
             len(self.op.input_dependencies) == 1
             and isinstance(self.op.input_dependencies[0], InputDataBuffer)
         ):
@@ -410,17 +338,16 @@ class OpState:
 
         INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
 
-        self._replenish_output_budget(resource_manager)
+        self.output_budget.replenish(self.op, resource_manager)
         output_size = self._get_average_ouput_size() or INITIAL_BUDGET
-
         logger.debug(
-            f"@mzm output_budget: {self.output_budget}, output_size: {output_size}"
+            f"@mzm {self.op}",
+            f"per_op_budget: {humanize(self.output_budget.get())}",
+            f"output_size: {humanize(output_size)}",
         )
-
-        if output_size > self.output_budget:
-            return False
-        self.output_budget -= output_size
-        return True
+        if ray.data.DataContext.get_current().is_global_budget_policy:
+            return resource_manager.global_memory_budget.spend_if_available(output_size)
+        return self.output_budget.spend_if_available(output_size)
 
 
 def build_streaming_topology(
@@ -634,6 +561,8 @@ def select_operator_to_run(
     ops = []
     total_outputs = []
     min_count = float("inf")
+    # if ray.data.DataContext.get_current().is_global_budget_policy:
+    #     resource_manager.replenish_global_memory_budget()
     for op, state in topology.items():
         total_outputs.append(op)
         if len(op.input_dependencies) == 1:

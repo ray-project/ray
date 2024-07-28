@@ -290,6 +290,7 @@ class DataContext:
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
     is_budget_policy: bool = True
     is_conservative_policy: bool = False
+    is_global_budget_policy: bool = False
     retried_io_errors: List[str] = DEFAULT_RETRIED_IO_ERRORS
 
     def __post_init__(self):
