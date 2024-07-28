@@ -853,6 +853,7 @@ class InternalKVAccessor {
   /// \param added It's an output parameter. It'll be set to be true if
   ///     any row is added.
   /// \return Status
+  /// TODO(ryw): change the out parameter type to `int` just like AsyncInternalKVPut.
   virtual Status Put(const std::string &ns,
                      const std::string &key,
                      const std::string &value,
