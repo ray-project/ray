@@ -100,19 +100,29 @@ def _get_global_growth_rate(resource_manager: "ResourceManager", topology):
 
         num_completed, timespan = tasks_recently_completed(op._metrics, DURATION)
         if num_completed > 0:
-            task_completion_rate = num_completed / timespan
+            conservative_rate = num_completed / timespan
         else:
-            task_duration = op._metrics.average_task_duration
-            num_slots = resource_manager.get_global_limits().cpu
-            if task_duration is not None:
-                task_completion_rate = num_slots / task_duration
-            else:
-                task_completion_rate = 0
+            conservative_rate = 0
 
-        logger.debug(
-            f"@lsf Replenishing {op.name} input size {humanize(task_input_size)} completion rate {task_completion_rate:.2f}"
+        optimistic_rate = 0
+        task_duration = op._metrics.average_task_duration
+        num_slots = resource_manager.get_global_limits().cpu
+        if task_duration is not None:
+            optimistic_rate = num_slots / task_duration
+        else:
+            optimistic_rate = 0
+
+        conservative_rate = (
+            conservative_rate if conservative_rate > 0 else optimistic_rate
         )
-        ret += task_input_size * task_completion_rate
+        optimistic_rate = optimistic_rate if optimistic_rate > 0 else conservative_rate
+        avg_rate = (optimistic_rate + conservative_rate) / 2
+        logger.debug(
+            f"@lsf {op.name} input size {humanize(task_input_size)} "
+            f"optimistic {optimistic_rate:.2f}/s conservative {conservative_rate:.2f}/s avg {avg_rate:.2f}/s"
+        )
+
+        ret += task_input_size * avg_rate
 
     return ret
 
