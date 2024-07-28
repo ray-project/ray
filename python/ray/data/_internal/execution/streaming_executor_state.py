@@ -319,9 +319,8 @@ class OpState:
 
     def _get_average_ouput_size(self) -> float:
         return self.op._metrics.average_bytes_outputs_per_task
-    
-    def _get_grow_rate(self, resource_manager: ResourceManager) -> float:
 
+    def _get_grow_rate(self, resource_manager: ResourceManager) -> float:
         time_for_pipeline_to_process_one_data = 0
         next_op = self.op
         output_input_multipler = 1
@@ -339,31 +338,39 @@ class OpState:
                 or not next_op._metrics.average_bytes_outputs_per_task
             ):
                 continue
-                            
-            time_for_op += output_input_multipler * next_op._metrics.average_task_duration / next_op._metrics.average_bytes_inputs_per_task
 
-            output_input_multipler *= (next_op._metrics.average_bytes_outputs_per_task / next_op._metrics.average_bytes_inputs_per_task)
-            
+            time_for_op += (
+                output_input_multipler
+                * next_op._metrics.average_task_duration
+                / next_op._metrics.average_bytes_inputs_per_task
+            )
+
+            output_input_multipler *= (
+                next_op._metrics.average_bytes_outputs_per_task
+                / next_op._metrics.average_bytes_inputs_per_task
+            )
+
             if next_op.incremental_resource_usage().cpu == 0:
                 # @MaoZiming: if it is on GPU.
-                # However, time_for_op still accumulates. 
-                # If the last stage is on GPU, then you don't have to care. 
+                # However, time_for_op still accumulates.
+                # If the last stage is on GPU, then you don't have to care.
                 continue
             time_for_pipeline_to_process_one_data += time_for_op
             time_for_op = 0
-        
+
         num_executors_not_running_op = (
-                    resource_manager.get_global_limits().cpu
-                    - self.op.num_active_tasks() * self.op.incremental_resource_usage().cpu
-                )
+            resource_manager.get_global_limits().cpu
+            - self.op.num_active_tasks() * self.op.incremental_resource_usage().cpu
+        )
 
         if time_for_pipeline_to_process_one_data == 0:
             return 0
-        
-        return (1 / time_for_pipeline_to_process_one_data) * num_executors_not_running_op
+
+        return (
+            1 / time_for_pipeline_to_process_one_data
+        ) * num_executors_not_running_op
 
     def _replenish_output_budget(self, resource_manager: ResourceManager) -> float:
-
         # Initialize output_budget to object_store_memory.
         INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
         if self.output_budget == -1:
@@ -386,15 +393,19 @@ class OpState:
         )
         self.last_update_time = now
 
-    def budget_policy_admission_control(self, resource_manager: ResourceManager) -> bool:
-
+    def budget_policy_admission_control(
+        self, resource_manager: ResourceManager
+    ) -> bool:
         if not ray.data.DataContext.get_current().is_budget_policy:
             return True
-                
+
         if ray.data.DataContext.get_current().is_conservative_policy:
             return True
-                
-        if not (len(self.op.input_dependencies) == 1 and isinstance(self.op.input_dependencies[0], InputDataBuffer)): 
+
+        if not (
+            len(self.op.input_dependencies) == 1
+            and isinstance(self.op.input_dependencies[0], InputDataBuffer)
+        ):
             return True
 
         INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
@@ -622,7 +633,7 @@ def select_operator_to_run(
     # Filter to ops that are eligible for execution.
     ops = []
     total_outputs = []
-    min_count = float('inf')
+    min_count = float("inf")
     for op, state in topology.items():
         total_outputs.append(op)
         if len(op.input_dependencies) == 1:
@@ -667,43 +678,50 @@ def select_operator_to_run(
         ops = [
             op
             for op, state in topology.items()
-            if state.num_queued() > 0 and not op.completed()
+            if state.num_queued() > 0
+            and not op.completed()
             and state.budget_policy_admission_control(resource_manager)
         ]
 
     if ray.data.DataContext.get_current().is_conservative_policy:
         # max_buffered_output adds up the expected output sizes in the future over all operators.
-        total_max_buffered_outputs = sum([op._metrics.max_buffered_output for op in total_outputs])
+        total_max_buffered_outputs = sum(
+            [op._metrics.max_buffered_output for op in total_outputs]
+        )
         # Run a single-threaded pipeline first.
-        # To collect the output size for each operator. 
+        # To collect the output size for each operator.
         if min_count == 0:
             ops = [
-                op for op, state in topology.items() if state.run_times == 0 and op in ops
+                op
+                for op, state in topology.items()
+                if state.run_times == 0 and op in ops
             ]
-            
+
             if not ops:
                 ops = [
                     op
                     for op, state in topology.items()
-                    if state.num_queued() > 0 and not op.completed()
+                    if state.num_queued() > 0
+                    and not op.completed()
                     and state.run_times == 0
                 ]
         else:
             ops = [
-                op 
+                op
                 for op in ops
-                if op._metrics.average_bytes_outputs_per_task is not None 
+                if op._metrics.average_bytes_outputs_per_task is not None
                 and total_max_buffered_outputs
-                + op._metrics.average_bytes_outputs_per_task < resource_manager.get_global_limits().object_store_memory
+                + op._metrics.average_bytes_outputs_per_task
+                < resource_manager.get_global_limits().object_store_memory
             ]
-            
+
     # Nothing to run.
     if not ops:
         return None
 
     selected_op = None
     if ray.data.DataContext.get_current().is_budget_policy:
-        selected_op = ops[0]  # @lsf prefer the producer 
+        selected_op = ops[0]  # @lsf prefer the producer
     else:
         if ops:
             # Run metadata-only operators first. After that, choose the operator with the
@@ -723,7 +741,6 @@ def select_operator_to_run(
             state.run_times += 1
             break
     return selected_op
-
 
 
 def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) -> bool:

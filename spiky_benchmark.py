@@ -35,13 +35,12 @@ TIME_UNIT = 0.5
 
 
 def main(is_flink: bool):
-
     os.environ["RAY_DATA_OP_RESERVATION_RATIO"] = "0"
 
     NUM_CPUS = 8
     NUM_ROWS_PER_TASK = 10
     NUM_TASKS = 16 * 5
-    NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS  
+    NUM_ROWS_TOTAL = NUM_ROWS_PER_TASK * NUM_TASKS
     BLOCK_SIZE = 10 * 1024 * 1024 * 10
 
     def produce(batch):
@@ -72,17 +71,17 @@ def main(is_flink: bool):
     data_context.target_max_block_size = BLOCK_SIZE
 
     if is_flink:
-        data_context.is_budget_policy = False # Disable our policy. 
+        data_context.is_budget_policy = False  # Disable our policy.
     else:
         data_context.is_budget_policy = True
-        
+
     ray.init(num_cpus=NUM_CPUS, object_store_memory=25 * BLOCK_SIZE)
 
     ds = ray.data.range(NUM_ROWS_TOTAL, override_num_blocks=NUM_TASKS)
-    
+
     if is_flink:
         ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK, concurrency=2)
-        ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99, concurrency=6) 
+        ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99, concurrency=6)
     else:
         ds = ds.map_batches(produce, batch_size=NUM_ROWS_PER_TASK)
         ds = ds.map_batches(consume, batch_size=None, num_cpus=0.99)
@@ -98,9 +97,12 @@ def main(is_flink: bool):
     print(ds.stats())
     print(ray._private.internal_api.memory_summary(stats_only=True))
     print(f"Total time: {end_time - start_time:.4f}s")
-    timeline_utils.save_timeline(f"timeline_{'ray' if not is_flink else 'flink'}_spiky.json")
+    timeline_utils.save_timeline(
+        f"timeline_{'ray' if not is_flink else 'flink'}_spiky.json"
+    )
     ray.shutdown()
 
-if __name__ == "__main__": 
-    # main(is_flink=True) 
+
+if __name__ == "__main__":
+    # main(is_flink=True)
     main(is_flink=False)
