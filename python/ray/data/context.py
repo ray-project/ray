@@ -1,5 +1,6 @@
 import os
 import threading
+import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
@@ -90,6 +91,14 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error INTERNAL_FAILURE",
     "AWS Error NETWORK_CONNECTION",
     "AWS Error SLOW_DOWN",
+    "AWS Error UNKNOWN (HTTP status 503)",
+)
+
+DEFAULT_RETRIED_IO_ERRORS = (
+    "AWS Error INTERNAL_FAILURE",
+    "AWS Error NETWORK_CONNECTION",
+    "AWS Error SLOW_DOWN",
+    "AWS Error UNKNOWN (HTTP status 503)",
 )
 
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
@@ -230,6 +239,9 @@ class DataContext:
             call is made with a S3 URI.
         wait_for_min_actors_s: The default time to wait for minimum requested
             actors to start before raising a timeout, in seconds.
+        retried_io_errors: A list of substrings of error messages that should
+            trigger a retry when reading or writing files. This is useful for handling
+            transient errors when reading from remote storage systems.
     """
 
     target_max_block_size: int = DEFAULT_TARGET_MAX_BLOCK_SIZE
@@ -264,9 +276,9 @@ class DataContext:
     )
     write_file_retry_on_errors: List[str] = DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
     warn_on_driver_memory_usage_bytes: int = DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES
-    actor_task_retry_on_errors: Union[
-        bool, List[BaseException]
-    ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
+    actor_task_retry_on_errors: Union[bool, List[BaseException]] = (
+        DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
+    )
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
@@ -278,6 +290,7 @@ class DataContext:
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
     is_budget_policy: bool = True
     is_conservative_policy: bool = False
+    retried_io_errors: List[str] = DEFAULT_RETRIED_IO_ERRORS
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
@@ -293,6 +306,19 @@ class DataContext:
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if (
+            name == "write_file_retry_on_errors"
+            and value != DEFAULT_WRITE_FILE_RETRY_ON_ERRORS
+        ):
+            warnings.warn(
+                "`write_file_retry_on_errors` is deprecated. Configure "
+                "`retried_io_errors` instead.",
+                DeprecationWarning,
+            )
+
+        super().__setattr__(name, value)
 
     @staticmethod
     def get_current() -> "DataContext":

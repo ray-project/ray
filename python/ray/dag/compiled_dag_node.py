@@ -53,13 +53,14 @@ logger = logging.getLogger(__name__)
 @DeveloperAPI
 def do_allocate_channel(
     self,
-    readers: List[Optional["ray.actor.ActorHandle"]],
+    reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
 ) -> ChannelInterface:
     """Generic actor method to allocate an output channel.
 
     Args:
-        readers: The actor handles of the readers.
+        reader_and_node_list: A list of tuples, where each tuple contains a reader
+            actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
 
     Returns:
@@ -74,7 +75,7 @@ def do_allocate_channel(
 
     output_channel = typ.create_channel(
         self_actor,
-        readers,
+        reader_and_node_list,
     )
     return output_channel
 
@@ -521,6 +522,8 @@ class CompiledDAG:
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
+        # Mapping from the actor handle to the node ID that the actor is on.
+        self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
         # Type hints specified by the user for DAG (intermediate) outputs.
         self._type_hints = []
@@ -536,18 +539,42 @@ class CompiledDAG:
         self._max_execution_index: int = -1
         self._result_buffer: Dict[int, Any] = {}
 
-        # Creates the driver actor on the same node as the driver.
-        #
-        # To support the driver as a reader, the output writer needs to be able to
-        # invoke remote functions on the driver (e.g., to create the reader ref, to
-        # create a reader ref for a larger object when the channel backing store is
-        # resized, etc.). The `_driver_actor` serves as a way for the output writer to
-        # invoke remote functions on the driver node.
-        self._driver_actor = CompiledDAG.DAGDriverProxyActor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            )
-        ).remote()
+        def _get_or_create_local_actor_handle():
+            """
+            Get the actor handle of the current process. If the current process is
+            the driver process, create a new actor handle DAGDriverProxyActor.
+
+            Returns:
+              Return the actor handle if the current task is an actor method.
+              Create a DAGDriverProxyActor actor if the current process is the
+              driver process.
+
+            Raises:
+                NotImplementedError: If the current process is a Ray task.
+            """
+            runtime_context = ray.get_runtime_context()
+            if runtime_context.worker.mode == ray.WORKER_MODE:
+                try:
+                    return ray.get_runtime_context().current_actor
+                except RuntimeError:
+                    raise NotImplementedError(
+                        "Compiled DAGs currently require the InputNode() to be the "
+                        "driver process or an actor method. Ray task is not supported."
+                    )
+            # Creates the driver actor on the same node as the driver.
+            #
+            # To support the driver as a reader, the output writer needs to be able to
+            # invoke remote functions on the driver (e.g., to create the reader ref, to
+            # create a reader ref for a larger object when the channel backing store is
+            # resized, etc.). The driver actor serves as a way for the output writer
+            # to invoke remote functions on the driver node.
+            return CompiledDAG.DAGDriverProxyActor.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    ray.get_runtime_context().get_node_id(), soft=False
+                )
+            ).remote()
+
+        self._dag_creator_actor = _get_or_create_local_actor_handle()
 
     @property
     def has_single_output(self):
@@ -660,14 +687,14 @@ class CompiledDAG:
                 # with the default type hint for this DAG.
                 task.dag_node.with_type_hint(self._default_type_hint)
 
-            for kwarg, val in task.kwargs.items():
+            for _, val in task.kwargs.items():
                 if isinstance(val, DAGNode):
                     raise ValueError(
                         "Compiled DAG currently does not support binding to "
                         "other DAG nodes as kwargs"
                     )
 
-            for arg_idx, arg in enumerate(task.args):
+            for _, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode):
                     continue
 
@@ -759,6 +786,30 @@ class CompiledDAG:
             self._input_num_positional_args = max(input_positional_args) + 1
         self._input_kwargs = tuple(input_kwargs)
 
+    def _get_node_id(self, actor_handle: "ray.actor.ActorHandle") -> str:
+        """
+        Get the node ID of an actor handle and cache it.
+
+        Args:
+            actor_handle: The actor handle.
+        Returns:
+            The node ID of the actor handle.
+        """
+        if actor_handle in self.actor_to_node_id:
+            return self.actor_to_node_id[actor_handle]
+        node_id = None
+        if actor_handle == self._dag_creator_actor:
+            node_id = ray.get_runtime_context().get_node_id()
+        else:
+            node_id = ray.get(
+                actor_handle.__ray_call__.remote(
+                    lambda self: ray.get_runtime_context().get_node_id()
+                )
+            )
+        assert node_id is not None
+        self.actor_to_node_id[actor_handle] = node_id
+        return node_id
+
     def _get_or_compile(
         self,
     ) -> None:
@@ -808,22 +859,22 @@ class CompiledDAG:
                 # `readers` is the nodes that are ordered after the current one (`task`)
                 # in the DAG.
                 readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
-
+                reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                 dag_nodes = [reader.dag_node for reader in readers]
-                read_by_driver = False
+                read_by_multi_output_node = False
                 for dag_node in dag_nodes:
                     if isinstance(dag_node, MultiOutputNode):
-                        read_by_driver = True
+                        read_by_multi_output_node = True
                         break
-                if read_by_driver:
+                if read_by_multi_output_node:
                     if len(readers) != 1:
                         raise ValueError(
-                            "DAG outputs currently can only be read by the driver--not "
+                            "DAG outputs currently can only be read by the driver or "
+                            "the same actor that is also the InputNode, not by both "
                             "the driver and actors."
                         )
-                    # This node is a multi-output node, which means that it will only be
-                    # read by the driver, not an actor. Thus, we handle this case by
-                    # setting `reader_handles` to `[self._driver_actor]`.
+                    # This node is a multi-output node, which means it will only be
+                    # read by the driver or the actor that is also the InputNode.
 
                     # TODO(jhumphri): Handle case where there is an actor, other than
                     # just the driver actor, also reading the output from the `task`
@@ -843,16 +894,25 @@ class CompiledDAG:
                     #     print(result)
 
                     #     compiled_dag.teardown()
-                    reader_handles = [self._driver_actor]
+                    assert self._dag_creator_actor is not None
+                    reader_and_node_list.append(
+                        (
+                            self._dag_creator_actor,
+                            self._get_node_id(self._dag_creator_actor),
+                        )
+                    )
                 else:
-                    reader_handles = [
-                        reader.dag_node._get_actor_handle() for reader in readers
-                    ]
+                    for reader in readers:
+                        reader_handle = reader.dag_node._get_actor_handle()
+                        reader_and_node_list.append(
+                            (reader_handle, self._get_node_id(reader_handle))
+                        )
+
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 task.output_channel = ray.get(
                     fn.remote(
                         do_allocate_channel,
-                        reader_handles,
+                        reader_and_node_list,
                         typ=type_hint,
                     )
                 )
@@ -860,15 +920,28 @@ class CompiledDAG:
                 self.actor_refs.add(actor_handle)
                 self.actor_to_tasks[actor_handle].append(task)
             elif isinstance(task.dag_node, InputNode):
+                reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
+                # TODO (kevin85421): Currently, the shared memory channel doesn't
+                # support multiple readers on the same actor. However, if the
+                # InputNode is an actor instead of the driver process, we can support
+                # multiple readers on the same actor if the readers are on the same
+                # actor using IntraProcessChannel, which supports multiple readers
+                # on the same actor. We need to remove reader_handles_set in the future
+                # when we support multiple readers for both shared memory channel
+                # and IntraProcessChannel.
                 reader_handles_set = set()
                 for idx in task.downstream_node_idxs:
                     reader_task = self.idx_to_task[idx]
                     assert isinstance(reader_task.dag_node, ClassMethodNode)
                     reader_handle = reader_task.dag_node._get_actor_handle()
+                    if reader_handle not in reader_handles_set:
+                        reader_and_node_list.append(
+                            (reader_handle, self._get_node_id(reader_handle))
+                        )
                     reader_handles_set.add(reader_handle)
                 task.output_channel = do_allocate_channel(
                     self,
-                    list(reader_handles_set),
+                    reader_and_node_list,
                     typ=type_hint,
                 )
             else:
@@ -900,7 +973,7 @@ class CompiledDAG:
 
         from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
 
-        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and not self._detect_deadlock():
+        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and self._detect_deadlock():
             raise ValueError(
                 "This DAG cannot be compiled because it will deadlock on NCCL "
                 "calls. If you believe this is a false positive, please disable "
@@ -1068,6 +1141,9 @@ class CompiledDAG:
 
         If you are interested in the detailed explanation, please refer to
         https://github.com/ray-project/ray/pull/45960.
+
+        Returns:
+            True if deadlock is detected, otherwise False.
         """
         assert self.idx_to_task
         assert self.actor_to_tasks
@@ -1101,6 +1177,26 @@ class CompiledDAG:
             graph[from_idx].out_edges.add(to_idx)
             graph[to_idx].in_edges.add(from_idx)
 
+        def _is_same_actor(idx1: int, idx2: int) -> bool:
+            """
+            Args:
+                idx1: A key in the idx_to_task dictionary.
+                idx2: A key in the idx_to_task dictionary.
+
+            Returns:
+                True if both DAG nodes are on the same actor;
+                otherwise, False.
+            """
+            task1 = self.idx_to_task[idx1]
+            task2 = self.idx_to_task[idx2]
+            if not isinstance(task1.dag_node, ClassMethodNode):
+                return False
+            if not isinstance(task2.dag_node, ClassMethodNode):
+                return False
+            actor_id_1 = task1.dag_node._get_actor_handle()._actor_id
+            actor_id_2 = task2.dag_node._get_actor_handle()._actor_id
+            return actor_id_1 == actor_id_2
+
         graph = defaultdict(GraphNode)
         for idx, task in self.idx_to_task.items():
             # Add an edge from task_{bind_index} to task_{bind_index+1}
@@ -1111,6 +1207,23 @@ class CompiledDAG:
                 # Add an edge from the writer to the reader.
                 _add_edge(graph, idx, downstream_idx)
                 if task.dag_node.type_hint.requires_nccl():
+                    if _is_same_actor(idx, downstream_idx):
+                        actor_handle = self.idx_to_task[
+                            idx
+                        ].dag_node._get_actor_handle()
+                        method = self.idx_to_task[idx].dag_node.get_method_name()
+                        downstream_method = self.idx_to_task[
+                            downstream_idx
+                        ].dag_node.get_method_name()
+                        logger.error(
+                            "Detected a deadlock caused by using NCCL channels to "
+                            f"transfer data between the task `{method}` and "
+                            f"its downstream method `{downstream_method}` on the same "
+                            f"actor {actor_handle}. Please remove "
+                            '`TorchTensorType(transport="nccl")` between '
+                            "DAG nodes on the same actor."
+                        )
+                        return True
                     # Add an edge from the reader of an NCCL channel to the node
                     # that has the next bind index on the same actor as the writer.
                     _add_edge(graph, downstream_idx, next_task_idx)
@@ -1148,7 +1261,7 @@ class CompiledDAG:
                 "https://github.com/ray-project/ray/issues/new/."
             )
 
-        return topological_order_exists
+        return not topological_order_exists
 
     def _monitor_failures(self):
         outer = self

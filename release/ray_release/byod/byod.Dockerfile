@@ -24,5 +24,3 @@ EOF
 
 COPY "$PIP_REQUIREMENTS" .
 RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir -r "${PIP_REQUIREMENTS}"
-
-ENV LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so:$LD_PRELOAD

@@ -16,3 +16,5 @@
     :toctree:
 
     DataIterator
+    Dataset
+    Schema

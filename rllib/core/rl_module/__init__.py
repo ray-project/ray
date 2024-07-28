@@ -1,6 +1,13 @@
-from .rl_module import RLModule
-from .marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.marl_module import (
+    MultiAgentRLModule,
+    MultiAgentRLModuleSpec,
+)
+from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 
-__all__ = ["RLModule", "MultiAgentRLModule"]
 
-INFERENCE_ONLY = "_inference_only"
+__all__ = [
+    "MultiAgentRLModule",
+    "MultiAgentRLModuleSpec",
+    "RLModule",
+    "SingleAgentRLModuleSpec",
+]
