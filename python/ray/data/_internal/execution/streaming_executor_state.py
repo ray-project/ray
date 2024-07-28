@@ -29,7 +29,11 @@ from ray.data._internal.execution.interfaces.physical_operator import (
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
-from ray.data._internal.execution.memory_budget import PerOpMemoryBudget, humanize
+from ray.data._internal.execution.memory_budget import (
+    PerOpMemoryBudget,
+    humanize,
+    is_first_op,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.progress_bar import ProgressBar
@@ -317,9 +321,6 @@ class OpState:
         else:
             self._exception = exception
 
-    def _get_average_ouput_size(self) -> float:
-        return self.op._metrics.average_bytes_outputs_per_task
-
     def budget_policy_admission_control(
         self, resource_manager: ResourceManager
     ) -> bool:
@@ -330,24 +331,35 @@ class OpState:
             return True
 
         # If not using global memory budget, only apply control on the first operator.
-        if not ray.data.DataContext.get_current().is_global_budget_policy and not (
-            len(self.op.input_dependencies) == 1
-            and isinstance(self.op.input_dependencies[0], InputDataBuffer)
+        if (
+            not ray.data.DataContext.get_current().is_global_budget_policy
+            and not is_first_op(self.op)
         ):
             return True
 
         INITIAL_BUDGET = resource_manager.get_global_limits().object_store_memory
 
-        self.output_budget.replenish(self.op, resource_manager)
-        output_size = self._get_average_ouput_size() or INITIAL_BUDGET
+        if not ray.data.DataContext.get_current().is_global_budget_policy:
+            self.output_budget.replenish(self.op, resource_manager)
+            output_size = (
+                self.op._metrics.average_bytes_outputs_per_task or INITIAL_BUDGET
+            )
+            logger.debug(
+                f"@mzm {self.op}, "
+                f"per_op_budget: {humanize(self.output_budget.get())}, "
+                f"output_size: {humanize(output_size)}"
+            )
+            return self.output_budget.spend_if_available(output_size)
+
+        output_size = self.op._metrics.average_bytes_outputs_per_task
+        if output_size is None:
+            output_size = INITIAL_BUDGET if is_first_op(self.op) else 0
         logger.debug(
-            f"@mzm {self.op}",
-            f"per_op_budget: {humanize(self.output_budget.get())}",
-            f"output_size: {humanize(output_size)}",
+            f"@lsf {self.op}, "
+            f"global_budget: {humanize(resource_manager.global_memory_budget.get())}, "
+            f"output_size: {humanize(output_size)}"
         )
-        if ray.data.DataContext.get_current().is_global_budget_policy:
-            return resource_manager.global_memory_budget.spend_if_available(output_size)
-        return self.output_budget.spend_if_available(output_size)
+        return resource_manager.global_memory_budget.spend_if_available(output_size)
 
 
 def build_streaming_topology(
@@ -560,13 +572,17 @@ def select_operator_to_run(
     # Filter to ops that are eligible for execution.
     ops = []
     total_outputs = []
-    min_count = float("inf")
-    # if ray.data.DataContext.get_current().is_global_budget_policy:
-    #     resource_manager.replenish_global_memory_budget()
+    min_op_run_times = float(
+        "inf"
+    )  # The lowest number of times an operator has been run.
+    if ray.data.DataContext.get_current().is_global_budget_policy:
+        resource_manager.global_memory_budget.global_replenish(
+            resource_manager, topology
+        )
     for op, state in topology.items():
         total_outputs.append(op)
         if len(op.input_dependencies) == 1:
-            min_count = min(min_count, state.run_times)
+            min_op_run_times = min(min_op_run_times, state.run_times)
         if False and resource_manager.op_resource_allocator_enabled():  # @lsf
             under_resource_limits = (
                 resource_manager.op_resource_allocator.can_submit_new_task(op)
@@ -619,7 +635,7 @@ def select_operator_to_run(
         )
         # Run a single-threaded pipeline first.
         # To collect the output size for each operator.
-        if min_count == 0:
+        if min_op_run_times == 0:
             ops = [
                 op
                 for op, state in topology.items()
@@ -649,7 +665,10 @@ def select_operator_to_run(
         return None
 
     selected_op = None
-    if ray.data.DataContext.get_current().is_budget_policy:
+    if (
+        ray.data.DataContext.get_current().is_budget_policy
+        and not ray.data.DataContext.get_current().is_global_budget_policy
+    ):
         selected_op = ops[0]  # @lsf prefer the producer
     else:
         if ops:
