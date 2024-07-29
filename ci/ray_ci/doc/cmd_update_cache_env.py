@@ -5,12 +5,13 @@ import time
 from typing import List
 from datetime import datetime, timezone
 import click
-
+from ci.ray_ci.doc.build_cache import ENVIRONMENT_PICKLE
+PENDING_FILES_PATH = "pending_files.txt"
 
 def list_pending_files(ray_dir: str) -> List[str]:
     """List all files that are added/modified in git repo."""
     pending_files = []
-    with open(f"{ray_dir}/pending_files.txt", "r") as f:
+    with open(f"{ray_dir}/{PENDING_FILES_PATH}", "r") as f:
         pending_files = f.readlines()
         pending_files = [file.strip() for file in pending_files]
     return pending_files
@@ -23,7 +24,7 @@ def update_environment_pickle(ray_dir: str, pending_files: List[str]) -> None:
     """
     ray_doc_dir = os.path.join(ray_dir, "doc")
     with open(
-        os.path.join(ray_doc_dir, "_build/doctrees/environment.pickle"), "rb"
+        os.path.join(ray_doc_dir, ENVIRONMENT_PICKLE), "rb+"
     ) as f:
         env = pickle.load(f)
         # Update cache's environment source and doctree directory to the host path
@@ -56,7 +57,7 @@ def update_file_timestamp(ray_dir: str) -> None:
     Update files other than source files to
     an old timestamp to avoid rebuilding them.
     """
-    ray_doc_dir: str = os.path.join(ray_dir, "doc")
+    ray_doc_dir = os.path.join(ray_dir, "doc")
     new_timestamp = datetime(2000, 7, 22, 0, 0, tzinfo=timezone.utc).timestamp()
 
     # Update all template files timestamp
