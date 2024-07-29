@@ -6,6 +6,7 @@ from typing import List
 from datetime import datetime, timezone
 import click
 
+
 def list_pending_files(ray_dir: str) -> List[str]:
     """List all files that are added/modified in git repo."""
     pending_files = []
@@ -14,31 +15,47 @@ def list_pending_files(ray_dir: str) -> List[str]:
         pending_files = [file.strip() for file in pending_files]
     return pending_files
 
+
 def update_environment_pickle(ray_dir: str, pending_files: List[str]) -> None:
-    """Update the environment pickle file with the new source and doctree directory, and modify source file timestamps."""
+    """
+    Update the environment pickle file with
+    new source and doctree directory, and modify source file timestamps.
+    """
     ray_doc_dir = os.path.join(ray_dir, "doc")
-    with open(os.path.join(ray_doc_dir, "_build/doctrees/environment.pickle"), "rb") as f:
+    with open(
+        os.path.join(ray_doc_dir, "_build/doctrees/environment.pickle"), "rb"
+    ) as f:
         env = pickle.load(f)
         # Update cache's environment source and doctree directory to the host path
         env.srcdir = os.path.join(ray_doc_dir, "source")
         env.doctreedir = os.path.join(ray_doc_dir, "_build/doctrees")
         env.project.srcdir = os.path.join(ray_doc_dir, "source")
-        p = Project(os.path.join(ray_doc_dir, "source"), {'.rst': 'restructuredtext', '.md': 'myst-nb', '.ipynb': 'myst-nb'})
+        p = Project(
+            os.path.join(ray_doc_dir, "source"),
+            {".rst": "restructuredtext", ".md": "myst-nb", ".ipynb": "myst-nb"},
+        )
         p.discover()
         env.project = p
 
         # all_docs is a map of source doc name -> last modified timestamp
-        # Update timestamp of all docs, except the pending ones, to a later timestamp so they are not marked outdated and rebuilt.
+        # Update timestamp of all docs, except the pending ones
+        # to a later timestamp so they are not marked outdated and rebuilt.
         for doc, val in env.all_docs.items():
             if doc not in pending_files:
                 env.all_docs[doc] = int(time.time()) * 1000000
 
     # Write the updated environment pickle file back
-    with open(os.path.join(ray_doc_dir, "_build/doctrees/environment.pickle"), "wb+") as f:
+    with open(
+        os.path.join(ray_doc_dir, "_build/doctrees/environment.pickle"), "wb+"
+    ) as f:
         pickle.dump(env, f, pickle.HIGHEST_PROTOCOL)
 
+
 def update_file_timestamp(ray_dir: str) -> None:
-    """Update files other than source files to an old timestamp to avoid rebuilding them."""
+    """
+    Update files other than source files to
+    an old timestamp to avoid rebuilding them.
+    """
     ray_doc_dir: str = os.path.join(ray_dir, "doc")
     new_timestamp = datetime(2000, 7, 22, 0, 0, tzinfo=timezone.utc).timestamp()
 
@@ -59,12 +76,14 @@ def update_file_timestamp(ray_dir: str) -> None:
     os.utime(f"{ray_doc_dir}/Makefile", (new_timestamp, new_timestamp))
     print("Timestamp change operation completed.")
 
+
 @click.command()
 @click.option("--ray-dir", required=True, type=str, help="Path to the Ray repository.")
 def main(ray_dir: str) -> None:
     pending_files = list_pending_files(ray_dir)
     update_environment_pickle(ray_dir, pending_files)
     update_file_timestamp(ray_dir)
+
 
 if __name__ == "__main__":
     main()
