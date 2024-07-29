@@ -197,10 +197,10 @@ class Learner(Checkpointable):
             # Set the state of the learner.
             learner.set_state(state)
 
-            # Get the weights of the underlying multi-agent RLModule.
+            # Get the weights of the underlying MultiRLModule.
             weights = learner.get_state(components=COMPONENT_RL_MODULE)
 
-            # Set the weights of the underlying multi-agent RLModule.
+            # Set the weights of the underlying MultiRLModule.
             learner.set_state({COMPONENT_RL_MODULE: weights})
 
 
@@ -248,7 +248,7 @@ class Learner(Checkpointable):
 
         # These are the attributes that are set during build.
 
-        # The actual MARLModule used by this Learner.
+        # The actual MultiRLModule used by this Learner.
         self._module: Optional[MultiRLModule] = None
         # Our Learner connector pipeline.
         self._learner_connector: Optional[LearnerConnectorPipeline] = None
@@ -315,7 +315,7 @@ class Learner(Checkpointable):
 
     @property
     def module(self) -> MultiRLModule:
-        """The multi-agent RLModule that is being trained."""
+        """The MultiRLModule that is being trained."""
         return self._module
 
     def register_optimizer(
@@ -426,7 +426,7 @@ class Learner(Checkpointable):
     ) -> None:
         """Configures an optimizer for the given module_id.
 
-        This method is called for each RLModule in the Multi-Agent RLModule being
+        This method is called for each RLModule in the MultiRLModule being
         trained by the Learner, as well as any new module added during training via
         `self.add_module()`. It should configure and construct one or more optimizers
         and register them via calls to `self.register_optimizer()` along with the
@@ -787,7 +787,7 @@ class Learner(Checkpointable):
                     del self._optimizer_lr_schedules[optimizer]
             del self._module_optimizers[module_id]
 
-        # Remove the module from the MARLModule.
+        # Remove the module from the MultiRLModule.
         self.module.remove_module(module_id)
 
         # Change self.config to reflect the new architecture.

@@ -273,7 +273,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 )
                 self._cached_to_module = None
 
-                # MARLModule forward pass: Explore or not.
+                # MultiRLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
@@ -470,7 +470,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     shared_data=_shared_data,
                 )
 
-                # MARLModule forward pass: Explore or not.
+                # MultiRLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0

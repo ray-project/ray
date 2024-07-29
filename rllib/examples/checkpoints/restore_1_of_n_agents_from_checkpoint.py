@@ -40,7 +40,7 @@ Results to expect
 -----------------
 You should expect a reward of -400.0 eventually being achieved by a simple
 single PPO policy (no tuning, just using RLlib's default settings). In the
-second run of the experiment, the MARL module weights for policy 0 are
+second run of the experiment, the MultiRLModule weights for policy 0 are
 restored from the checkpoint of the first run. The reward for a single agent
 should be -400.0 again, but the training time should be shorter (around 30
 iterations instead of 190).
@@ -137,9 +137,9 @@ if __name__ == "__main__":
     module_spec.load_state_path = p_0_module_state_path
     module_specs["p0"] = module_spec
 
-    # Create the MARL module.
+    # Create the MultiRLModule.
     multi_rl_module_spec = MultiRLModuleSpec(module_specs=module_specs)
-    # Define the MARL module in the base config.
+    # Define the MultiRLModule in the base config.
     base_config.rl_module(rl_module_spec=multi_rl_module_spec)
     # We need to re-register the environment when starting a new run.
     register_env(
@@ -153,5 +153,5 @@ if __name__ == "__main__":
         TRAINING_ITERATION: 30,
     }
 
-    # Run the experiment again with the restored MARL module.
+    # Run the experiment again with the restored MultiRLModule.
     run_rllib_example_script_experiment(base_config, args, stop=stop)

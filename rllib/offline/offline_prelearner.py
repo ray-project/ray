@@ -111,7 +111,7 @@ class OfflinePreLearner:
                 # Then choose a learner randomly.
                 self._learner = learner[random.randint(0, len(learner) - 1)]
             self.learner_is_remote = True
-            # Build the module from spec. Note, this will be a MARL module.
+            # Build the module from spec. Note, this will be a MultiRLModule.
             self._module = module_spec.build()
             self._module.set_state(module_state)
         # Build the learner connector pipeline.
@@ -190,7 +190,7 @@ class OfflinePreLearner:
         return {"batch": [batch]}
 
     def _should_module_be_updated(self, module_id, multi_agent_batch=None):
-        """Checks which modules in a MARL module should be updated."""
+        """Checks which modules in a MultiRLModule should be updated."""
         if not self._policies_to_train:
             # In case of no update information, the module is updated.
             return True

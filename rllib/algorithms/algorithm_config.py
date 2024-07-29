@@ -1118,7 +1118,7 @@ class AlgorithmConfig(_Config):
         """
         from ray.rllib.core.learner.learner_group import LearnerGroup
 
-        # If `spaces` or `env` provided -> Create a MARL Module Spec first to be
+        # If `spaces` or `env` provided -> Create a MultiRLModuleSpec first to be
         # passed into the LearnerGroup constructor.
         if rl_module_spec is None and (env is not None or spaces is not None):
             rl_module_spec = self.get_multi_rl_module_spec(env=env, spaces=spaces)
@@ -1154,7 +1154,7 @@ class AlgorithmConfig(_Config):
         Returns:
             The newly created (and already built) Learner object.
         """
-        # If `spaces` or `env` provided -> Create a MARL Module Spec first to be
+        # If `spaces` or `env` provided -> Create a MultiRLModuleSpec first to be
         # passed into the LearnerGroup constructor.
         rl_module_spec = None
         if env is not None or spaces is not None:
@@ -3693,10 +3693,10 @@ class AlgorithmConfig(_Config):
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         inference_only: bool = False,
     ) -> MultiRLModuleSpec:
-        """Returns the MultiRLModule spec based on the given policy spec dict.
+        """Returns the MultiRLModuleSpec based on the given policy spec dict.
 
         policy_dict could be a partial dict of the policies that we need to turn into
-        an equivalent multi-agent RLModule spec.
+        an equivalent `MultiRLModuleSpec`.
 
         Args:
             policy_dict: The policy spec dict. Using this dict, we can determine the

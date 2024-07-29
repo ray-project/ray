@@ -122,8 +122,8 @@ class TfLearner(Learner):
 
     @override(Learner)
     def restore_from_path(self, path: Union[str, pathlib.Path]) -> None:
-        # This operation is potentially very costly because a MARL Module is created at
-        # build time, destroyed, and then a new one is created from a checkpoint.
+        # This operation is potentially very costly because a MultiRLModule is created
+        # at build time, destroyed, and then a new one is created from a checkpoint.
         # However, it is necessary due to complications with the way that Ray Tune
         # restores failed trials. When Tune restores a failed trial, it reconstructs the
         # entire experiment from the initial config. Therefore, to reflect any changes

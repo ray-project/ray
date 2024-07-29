@@ -831,7 +831,7 @@ class LearnerGroup(Checkpointable):
         """Convenience method instead of self.set_state({'learner': {'rl_module': ..}}).
 
         Args:
-            weights: The weights dict of the MARLModule of a Learner inside this
+            weights: The weights dict of the MultiRLModule of a Learner inside this
                 LearnerGroup.
         """
         self.set_state({COMPONENT_LEARNER: {COMPONENT_RL_MODULE: weights}})
@@ -1005,9 +1005,9 @@ class LearnerGroup(Checkpointable):
             for module_id, path in rl_module_ckpt_dirs.items():
                 rl_module_ckpt_dirs[module_id] = pathlib.Path(path)
 
-        # MARLModule checkpoint is provided.
+        # MultiRLModule checkpoint is provided.
         if multi_rl_module_ckpt_dir:
-            # Restore the entire MARLModule state.
+            # Restore the entire MultiRLModule state.
             if modules_to_load is None:
                 self.restore_from_path(
                     multi_rl_module_ckpt_dir,

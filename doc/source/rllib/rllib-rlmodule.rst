@@ -319,16 +319,16 @@ The following example creates a custom multi-agent RL module with underlying mod
 
 .. literalinclude:: doc_code/rlmodule_guide.py
     :language: python
-    :start-after: __write-custom-marlmodule-shared-enc-begin__
-    :end-before: __write-custom-marlmodule-shared-enc-end__
+    :start-after: __write-custom-multirlmodule-shared-enc-begin__
+    :end-before: __write-custom-multirlmodule-shared-enc-end__
 
 
 To construct this custom multi-agent RL module, pass the class to the :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec` constructor. Also, pass the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` for each agent because RLlib requires the observation, action spaces, and model hyper-parameters for each agent.
 
 .. literalinclude:: doc_code/rlmodule_guide.py
     :language: python
-    :start-after: __pass-custom-marlmodule-shared-enc-begin__
-    :end-before: __pass-custom-marlmodule-shared-enc-end__
+    :start-after: __pass-custom-multirlmodule-shared-enc-begin__
+    :end-before: __pass-custom-multirlmodule-shared-enc-end__
 
 
 Extending Existing RLlib RL Modules

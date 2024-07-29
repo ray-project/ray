@@ -789,7 +789,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             local_env_runner = self.env_runner_group.local_env_runner
             env = spaces = None
             # EnvRunners have a `module` property, which stores the RLModule
-            # (or MARLModule, which is a subclass of RLModule, in the multi-agent case).
+            # (or MultiRLModule, which is a subclass of RLModule, in the multi-module
+            # case, e.g. for multi-agent).
             if (
                 hasattr(local_env_runner, "module")
                 and local_env_runner.module is not None
@@ -2092,12 +2093,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """Returns the (single-agent) RLModule with `model_id` (None if ID not found).
 
         Args:
-            module_id: ID of the (single-agent) RLModule to return from the MARLModule
-                used by the local EnvRunner.
+            module_id: ID of the (single-agent) RLModule to return from the
+                MultiRLModule used by the local EnvRunner.
 
         Returns:
             The SingleAgentRLModule sitting under the ModuleID key inside the
-            local worker's (EnvRunner's) MARLModule.
+            local worker's (EnvRunner's) MultiRLModule.
         """
         module = self.env_runner.module
         if isinstance(module, MultiRLModule):
@@ -2270,10 +2271,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
         evaluation_workers: bool = True,
     ) -> MultiRLModuleSpec:
-        """Adds a new (single-agent) RLModule to this Algorithm's MARLModule.
+        """Adds a new (single-agent) RLModule to this Algorithm's MultiRLModule.
 
         Args:
-            module_id: ID of the RLModule to add to the MARLModule.
+            module_id: ID of the RLModule to add to the MultiRLModule.
                 IMPORTANT: Must not contain characters that
                 are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
                 or a dot, space or backslash at the end of the ID.
@@ -2367,10 +2368,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
         evaluation_workers: bool = True,
     ) -> Optional[Policy]:
-        """Removes a new (single-agent) RLModule from this Algorithm's MARLModule.
+        """Removes a new (single-agent) RLModule from this Algorithm's MultiRLModule.
 
         Args:
-            module_id: ID of the RLModule to remove from the MARLModule.
+            module_id: ID of the RLModule to remove from the MultiRLModule.
                 IMPORTANT: Must not contain characters that
                 are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
                 or a dot, space or backslash at the end of the ID.

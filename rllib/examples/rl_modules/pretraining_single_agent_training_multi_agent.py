@@ -99,7 +99,7 @@ if __name__ == "__main__":
     # Get the checkpoint path.
     module_chkpt_path = results.get_best_result().checkpoint.path
 
-    # Create a new MARL Module using the pre-trained module for policy 0.
+    # Create a new MultiRLModule using the pre-trained module for policy 0.
     env = gym.make("CartPole-v1")
     module_specs = {}
     module_class = PPOTorchRLModule

@@ -331,7 +331,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         class CustomRLModule3(DiscreteBCTorchModule):
             pass
 
-        class CustomMARLModule1(MultiRLModule):
+        class CustomMultiRLModule1(MultiRLModule):
             pass
 
         ########################################
@@ -343,18 +343,18 @@ class TestAlgorithmConfig(unittest.TestCase):
         # multi-agent
         class MultiAgentAlgoConfigWithNoSingleAgentSpec(AlgorithmConfig):
             def get_default_rl_module_spec(self):
-                return MultiRLModuleSpec(multi_rl_module_class=CustomMARLModule1)
+                return MultiRLModuleSpec(multi_rl_module_class=CustomMultiRLModule1)
 
         class MultiAgentAlgoConfig(AlgorithmConfig):
             def get_default_rl_module_spec(self):
                 return MultiRLModuleSpec(
-                    multi_rl_module_class=CustomMARLModule1,
+                    multi_rl_module_class=CustomMultiRLModule1,
                     module_specs=RLModuleSpec(module_class=DiscreteBCTorchModule),
                 )
 
         ########################################
-        # This is the simplest case where we have to construct the marl module based on
-        # the default specs only.
+        # This is the simplest case where we have to construct the MultiRLModule based
+        # on the default specs only.
         config = SingleAgentAlgoConfig().api_stack(enable_rl_module_and_learner=True)
 
         spec, expected = self._get_expected_marl_spec(config, DiscreteBCTorchModule)
@@ -367,7 +367,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         self._assertEqualMARLSpecs(spec, expected)
 
         ########################################
-        # This is the case where we pass in a multi-agent RLModuleSpec that asks the
+        # This is the case where we pass in a `MultiRLModuleSpec` that asks the
         # algorithm to assign a specific type of RLModule class to certain module_ids.
         config = (
             SingleAgentAlgoConfig()
@@ -435,7 +435,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    multi_rl_module_class=CustomMARLModule1,
+                    multi_rl_module_class=CustomMultiRLModule1,
                     module_specs={
                         "p1": RLModuleSpec(module_class=CustomRLModule1),
                         "p2": RLModuleSpec(module_class=CustomRLModule1),
@@ -445,7 +445,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         )
 
         spec, expected = self._get_expected_marl_spec(
-            config, CustomRLModule1, expected_multi_rl_module_class=CustomMARLModule1
+            config, CustomRLModule1, expected_multi_rl_module_class=CustomMultiRLModule1
         )
         self._assertEqualMARLSpecs(spec, expected)
 
@@ -455,13 +455,12 @@ class TestAlgorithmConfig(unittest.TestCase):
         # module_id is not specified in the original MultiRLModuleSpec. Since P1
         # and P2 are both assigned to CustomeRLModule1, the passed module_spec will not
         # be used. This is the expected behavior for adding a new modules to a
-        # multi-agent RLModule that is not defined in the original
-        # MultiRLModuleSpec.
+        # `MultiRLModule` that is not defined in the original MultiRLModuleSpec.
         spec, expected = self._get_expected_marl_spec(
             config,
             CustomRLModule1,
             passed_module_class=CustomRLModule3,
-            expected_multi_rl_module_class=CustomMARLModule1,
+            expected_multi_rl_module_class=CustomMultiRLModule1,
         )
         self._assertEqualMARLSpecs(spec, expected)
 
@@ -488,7 +487,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         spec, expected = self._get_expected_marl_spec(
             config,
             DiscreteBCTorchModule,
-            expected_multi_rl_module_class=CustomMARLModule1,
+            expected_multi_rl_module_class=CustomMultiRLModule1,
         )
         self._assertEqualMARLSpecs(spec, expected)
 
@@ -496,7 +495,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             config,
             CustomRLModule1,
             passed_module_class=CustomRLModule1,
-            expected_multi_rl_module_class=CustomMARLModule1,
+            expected_multi_rl_module_class=CustomMultiRLModule1,
         )
         self._assertEqualMARLSpecs(spec, expected)
 

@@ -341,7 +341,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
         ray.shutdown()
 
     def test_restore_from_path_multi_rl_module_and_individual_modules(self):
-        """Tests whether MARLModule- and single RLModule states can be restored."""
+        """Tests whether MultiRLModule- and single RLModule states can be restored."""
         fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
@@ -370,7 +370,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
             multi_rl_module.add_module(module_id="0", module=module_0)
             multi_rl_module.add_module(module_id="1", module=module_1)
 
-            # Check if we can load just the MARL Module.
+            # Check if we can load just the MultiRLModule.
             with tempfile.TemporaryDirectory() as tmpdir:
                 multi_rl_module.save_to_path(tmpdir)
                 old_learner_weights = learner_group.get_weights()
@@ -379,7 +379,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
                     component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                 )
                 # Check the weights of the module in the learner group are the
-                # same as the weights of the newly created marl module
+                # same as the weights of the newly created MultiRLModule
                 check(learner_group.get_weights(), multi_rl_module.get_state())
                 learner_group.set_state(
                     {
@@ -405,16 +405,16 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
                         component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/1",
                     )
                     # check the weights of the module in the learner group are the
-                    # same as the weights of the newly created marl module
+                    # same as the weights of the newly created MultiRLModule
                     new_multi_rl_module = MultiRLModule()
                     new_multi_rl_module.add_module(module_id="0", module=module_0)
                     new_multi_rl_module.add_module(module_id="1", module=temp_module)
                     check(learner_group.get_weights(), new_multi_rl_module.get_state())
                     learner_group.set_weights(old_learner_weights)
 
-            # Check if we can first load a MARLModule, then a single agent RLModule
-            # (within that MARLModule). Check that the single agent RL Module is loaded
-            # over the matching submodule in the MARL Module.
+            # Check if we can first load a MultiRLModule, then a single agent RLModule
+            # (within that MultiRLModule). Check that the single agent RL Module is
+            # loaded over the matching submodule in the MultiRLModule.
             with tempfile.TemporaryDirectory() as tmpdir:
                 module_0 = spec.build()
                 multi_rl_module = MultiRLModule()

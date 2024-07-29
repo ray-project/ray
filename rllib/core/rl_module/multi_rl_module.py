@@ -260,7 +260,7 @@ class MultiRLModule(RLModule):
 
     @override(RLModule)
     def _default_input_specs(self) -> SpecType:
-        """Multi-agent RLModule should not check the input specs.
+        """MultiRLModule should not check the input specs.
 
         The underlying single-agent RLModules will check the input specs.
         """
@@ -404,7 +404,7 @@ class MultiRLModule(RLModule):
 @PublicAPI(stability="alpha")
 @dataclass
 class MultiRLModuleSpec:
-    """A utility spec class to make it constructing MARL modules easier.
+    """A utility spec class to make it constructing MultiRLModules easier.
 
     Users can extend this class to modify the behavior of base class. For example to
     share neural networks across the modules, the build method can be overriden to
@@ -412,7 +412,7 @@ class MultiRLModuleSpec:
     then use it as a shared module.
 
     Args:
-        multi_rl_module_class: The class of the multi-agent RLModule to construct. By
+        multi_rl_module_class: The class of the MultiRLModule to construct. By
             default it is set to MultiRLModule class. This class simply loops
             throught each module and calls their foward methods.
         module_specs: The module specs for each individual module. It can be either a
@@ -423,8 +423,8 @@ class MultiRLModuleSpec:
             the load_state_path of one of the RLModuleSpecs' is also set,
             the weights of that RL Module will be loaded from the path specified in
             the RLModuleSpec. This is useful if you want to load the weights
-            of a MARL module and also manually load the weights of some of the RL
-            modules within that MARL module from other checkpoints.
+            of a MultiRLModule and also manually load the weights of some of the RL
+            modules within that MultiRLModule from other checkpoints.
         modules_to_load: A set of module ids to load from the checkpoint. This is
             only used if load_state_path is set. If this is None, all modules are
             loaded.

@@ -279,7 +279,7 @@ class DiscreteBCTorchModule(TorchRLModule):
 # __extend-spec-checking-type-specs-end__
 
 
-# __write-custom-marlmodule-shared-enc-begin__
+# __write-custom-multirlmodule-shared-enc-begin__
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleConfig, MultiRLModule
 
@@ -350,10 +350,10 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
         self._rl_modules = rl_modules
 
 
-# __write-custom-marlmodule-shared-enc-end__
+# __write-custom-multirlmodule-shared-enc-end__
 
 
-# __pass-custom-marlmodule-shared-enc-begin__
+# __pass-custom-multirlmodule-shared-enc-begin__
 import gymnasium as gym
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -385,7 +385,7 @@ spec = MultiRLModuleSpec(
 )
 
 module = spec.build()
-# __pass-custom-marlmodule-shared-enc-end__
+# __pass-custom-multirlmodule-shared-enc-end__
 
 
 # __checkpointing-begin__

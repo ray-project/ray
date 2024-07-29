@@ -9,7 +9,7 @@ from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.utils.test_utils import check
 
 
-class TestMARLModule(unittest.TestCase):
+class TestMultiRLModule(unittest.TestCase):
     def test_from_config(self):
         """Tests whether a MultiRLModule can be constructed from a config."""
         env_class = make_multi_agent("CartPole-v0")

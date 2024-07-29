@@ -60,7 +60,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         return config
 
     def test_e2e_load_simple_multi_rl_module(self):
-        """Test if we can train a PPO algorithm with a checkpointed MARL module e2e."""
+        """Test if we can train a PPO algo with a checkpointed MultiRLModule e2e."""
         config = self.get_ppo_config()
         env = MultiAgentCartPole({"num_agents": NUM_AGENTS})
         for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
@@ -94,7 +94,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             )
 
             # create the algorithm with multiple nodes and check if the weights
-            # are the same as the original MARL Module
+            # are the same as the original MultiRLModule
             algo = config.build()
             algo_module_weights = algo.learner_group.get_weights()
             check(algo_module_weights, multi_rl_module_weights)
@@ -160,7 +160,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             )
 
             # create the algorithm with multiple nodes and check if the weights
-            # are the same as the original MARL Module
+            # are the same as the original MultiRLModule
             algo = config.build()
             algo_module_weights = algo.learner_group.get_weights()
 
@@ -228,7 +228,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             )
 
             # create the algorithm with multiple nodes and check if the weights
-            # are the same as the original MARL Module
+            # are the same as the original MultiRLModule
             algo = config.build()
             algo_module_weights = algo.learner_group.get_weights()
 
@@ -245,7 +245,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         """Test if we can train a PPO algorithm with a cpkt MARL and RL module e2e.
 
         Additionally, check if we can set modules to load so that we can exclude
-        a module from our ckpted MARL module from being loaded.
+        a module from our ckpted MultiRLModule from being loaded.
 
         """
         num_agents = 3
@@ -307,11 +307,11 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             )
 
             # create the algorithm with multiple nodes and check if the weights
-            # are the same as the original MARL Module
+            # are the same as the original MultiRLModule
             algo = config.build()
             algo_module_weights = algo.learner_group.get_weights()
 
-            # weights of "policy_0" should be the same as in the loaded marl module
+            # weights of "policy_0" should be the same as in the loaded MultiRLModule
             # since we specified it as being apart of the modules_to_load
             check(
                 algo_module_weights["policy_0"],
@@ -324,7 +324,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 algo_module_weights["policy_1"],
                 convert_to_numpy(module_to_swap_in.get_state()),
             )
-            # weights of "policy_2" should be different from the loaded marl module
+            # weights of "policy_2" should be different from the loaded MultiRLModule
             # since we didn't specify it as being apart of the modules_to_load
             policy_2_algo_module_weight_sum = np.sum(
                 [
