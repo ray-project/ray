@@ -71,13 +71,13 @@ class CUDATorchDeviceManager(TorchDeviceManager):
         return True
 
     def create_stream(self, deivce: torch.device) -> torch.cuda.Stream:
-        """Create a CUDA Stream"""
+        """Create a stream on cuda device"""
         return torch.cuda.Stream(deivce)
 
     def get_stream_context(self, stream):
-        """Get a torch.cuda.stream context"""
+        """Get a stream context for cuda device"""
         return torch.cuda.stream(stream)
 
     def get_current_stream(self) -> torch.cuda.Stream:
-        """Get a current stream for cuda"""
+        """Get current stream for cuda device"""
         return torch.cuda.current_stream()

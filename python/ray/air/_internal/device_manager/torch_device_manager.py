@@ -34,5 +34,5 @@ class TorchDeviceManager(ABC):
         ...
 
     def get_current_stream(self):
-        """Get a torch stream like torch.cuda.current_stream"""
+        """Get current stream on accelerators like torch.cuda.current_stream"""
         ...

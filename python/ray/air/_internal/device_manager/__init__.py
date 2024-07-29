@@ -1,5 +1,5 @@
 import logging
-from typing import Optional
+from typing import Optional, Type
 
 import ray
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
@@ -12,6 +12,9 @@ from ray.air._internal.device_manager.nvidia_gpu import CUDATorchDeviceManager
 from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
 
 logger = logging.getLogger(__name__)
+
+
+DEFAULT_TORCH_DEVICE_MANAGER_CLS = CUDATorchDeviceManager
 
 
 SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER = {
@@ -31,18 +34,18 @@ def try_register_torch_accelerator_module() -> None:
 
     except ImportError:
         raise ImportError(
-            "PyTorch extension modules for accelerators exits but import failed."
+            "PyTorch extension modules for accelerators exits but fails to import."
         )
 
 
 def get_torch_device_manager_cls_by_resources(
     resources: Optional[dict],
-) -> TorchDeviceManager:
+) -> Type[TorchDeviceManager]:
     existing_device_manager = None
 
     # input resources may be None
     if not resources:
-        return CUDATorchDeviceManager
+        return DEFAULT_TORCH_DEVICE_MANAGER_CLS
 
     # select correct accelerator type from resources
     for resource_type, resource_value in resources.items():
@@ -59,17 +62,17 @@ def get_torch_device_manager_cls_by_resources(
             else:
                 existing_device_manager = device_manager
 
-    return existing_device_manager or CUDATorchDeviceManager
+    return existing_device_manager or DEFAULT_TORCH_DEVICE_MANAGER_CLS
 
 
 _torch_device_manager = None
 
 
 def get_torch_device_manager() -> TorchDeviceManager:
-    return _torch_device_manager or CUDATorchDeviceManager()
+    return _torch_device_manager or DEFAULT_TORCH_DEVICE_MANAGER_CLS()
 
 
-def init_torch_device_manager():
+def init_torch_device_manager() -> None:
     global _torch_device_manager
 
     resources = ray.get_runtime_context().get_accelerator_ids()

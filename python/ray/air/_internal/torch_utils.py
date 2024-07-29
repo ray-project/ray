@@ -12,7 +12,8 @@ from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_ne
 def get_devices() -> List[torch.device]:
     """Gets the correct torch device list configured for this process.
 
-    Returns a list of torch accelerator devices allocated for the current worker.
+    Returns a list of torch accelerator (GPU, HPU, NPU...) devices allocated for
+    the current worker.
     If no accelerators are assigned, then it returns a list with a single CPU device.
     """
     return get_torch_device_manager().get_devices()

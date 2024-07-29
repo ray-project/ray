@@ -79,17 +79,17 @@ class NPUTorchDeviceManager(TorchDeviceManager):
         torch.npu.set_device(device)
 
     def is_support_stream(self) -> bool:
-        """Validate if the device type support create a stream"""
+        """Validate if the device type support to create a stream"""
         return True
 
     def create_stream(self, deivce):
-        """Create a NPU Stream"""
+        """Create a stream on NPU device"""
         return torch.npu.Stream(deivce)
 
     def get_stream_context(self, stream):
-        """Get a torch.npu.stream context"""
+        """Get a torch.stream context on NPU device"""
         return torch.npu.stream(stream)
 
     def get_current_stream(self):
-        """Get current stream for npu"""
+        """Get current stream for NPU device"""
         return torch.npu.current_stream()
