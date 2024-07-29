@@ -1,3 +1,4 @@
+import logging
 import threading
 from typing import Any, List, Optional
 
@@ -5,6 +6,9 @@ import ray
 from ray.experimental import tqdm_ray
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated
+from ray.util.debug import log_once
+
+logger = logging.getLogger(__name__)
 
 try:
     import tqdm
@@ -89,9 +93,30 @@ class ProgressBar:
 
     def _truncate_name(self, name: str) -> str:
         ctx = ray.data.context.DataContext.get_current()
-        if ctx.enable_progress_bar_name_truncation and len(name) > self.MAX_NAME_LENGTH:
-            return name[: self.MAX_NAME_LENGTH - 3] + "..."
-        return name
+        if (
+            not ctx.enable_progress_bar_name_truncation
+            or len(name) <= self.MAX_NAME_LENGTH
+        ):
+            return name
+
+        if log_once("ray_data_truncate_operator_name"):
+            logger.warning(
+                f"Truncating long operator name to {self.MAX_NAME_LENGTH} characters."
+                "To disable this behavior, set `ray.data.DataContext.get_current()."
+                "DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = False`."
+            )
+        op_names = name.split("->")
+        # Include as many operators as possible without exceeding `MAX_NAME_LENGTH`.
+        # Always include the first and last operator names so
+        # it is easy to identify the DAG.
+        truncated_op_names = [op_names[0]]
+        for i, op_name in enumerate(op_names[1:-1]):
+            if len("->".join(truncated_op_names)) + len(op_name) > self.MAX_NAME_LENGTH:
+                truncated_op_names.append("...")
+                break
+            truncated_op_names.append(op_name)
+        truncated_op_names.append(op_names[-1])
+        return "->".join(truncated_op_names)
 
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
         t = threading.current_thread()
