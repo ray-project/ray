@@ -207,8 +207,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # For complete episodes mode, sample a single episode and
             # leave coordination of sampling to `synchronous_parallel_sample`.
             # TODO (simon, sven): The coordination will eventually move
-            # to `EnvRunnerGroup` in the future. So from the algorithm one
-            # would do `EnvRunnerGroup.sample()`.
+            #  to `EnvRunnerGroup` in the future. So from the algorithm one
+            #  would do `EnvRunnerGroup.sample()`.
             else:
                 samples = self._sample_episodes(
                     num_episodes=1,

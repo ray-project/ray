@@ -12,7 +12,7 @@ from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_b
 from ray.rllib.core import Columns, DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.rl_modules.classes.inverse_dynamics_model_rlm import (
-    InverseDynamicsModel
+    InverseDynamicsModel,
 )
 from ray.rllib.utils.metrics import ALL_MODULES
 
@@ -65,7 +65,6 @@ class PPOConfigWithCuriosity(PPOConfig):
 
 
 class PPOTorchLearnerWithCuriosity(PPOTorchLearner):
-
     def build(self):
         super().build()
 
@@ -98,7 +97,6 @@ class PPOTorchLearnerWithCuriosity(PPOTorchLearner):
                 AddObservationsFromEpisodesToBatch,
                 AddNextObservationsFromEpisodesToTrainBatch(),
             )
-
 
     def compute_loss(
         self,

@@ -444,7 +444,6 @@ class ConnectorV2(Checkpointable, abc.ABC):
         items_to_add: Any,
         num_items: int,
         single_agent_episode: Optional[SingleAgentEpisode] = None,
-            
     ) -> None:
         """Adds a list of items (or batched item) under `column` to the given `batch`.
 

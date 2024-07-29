@@ -1,9 +1,6 @@
 from typing import Any, Dict, TYPE_CHECKING
 
-import numpy as np
-
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.models.utils import get_activation_fn
@@ -43,44 +40,52 @@ class InverseDynamicsModel(TorchRLModule):
 
     .. testcode::
 
-        import numpy as np
-        import gymnasium as gym
-        from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+            import numpy as np
+            import gymnasium as gym
+            import torch
 
-        B = 10  # batch size
-        T = 5  # seq len
-        f = 25  # feature dim
+            from ray.rllib.core import Columns
+            from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+            from ray.rllib.examples.rl_modules.classes.inverse_dynamics_model_rlm import (  # noqa
+                InverseDynamicsModel
+            )
 
-        # Construct the RLModule.
-        rl_module_config = RLModuleConfig(
-            observation_space=gym.spaces.Box(-1.0, 1.0, (f,), np.float32),
-            action_space=gym.spaces.Discrete(4),
-            model_config_dict={"lstm_cell_size": CELL}
-        )
-        my_net = LSTMContainingRLModule(rl_module_config)
+            B = 10  # batch size
+            O = 4  # obs (1D) dim
+            A = 2  # num actions
+            f = 25  # feature dim
 
-        # Create some dummy input.
-        obs = torch.from_numpy(
-            np.random.random_sample(size=(B, T, f)
-        ).astype(np.float32))
-        state_in = my_net.get_initial_state()
-        # Repeat state_in across batch.
-        state_in = tree.map_structure(
-            lambda s: torch.from_numpy(s).unsqueeze(0).repeat(B, 1), state_in
-        )
-        input_dict = {
-            Columns.OBS: obs,
-            Columns.STATE_IN: state_in,
-        }
+            # Construct the RLModule.
+            rl_module_config = RLModuleConfig(
+                observation_space=gym.spaces.Box(-1.0, 1.0, (O,), np.float32),
+                action_space=gym.spaces.Discrete(A),
+            )
+            icm_net = InverseDynamicsModel(rl_module_config)
 
-        # Run through all 3 forward passes.
-        print(my_net.forward_inference(input_dict))
-        print(my_net.forward_exploration(input_dict))
-        print(my_net.forward_train(input_dict))
+            # Create some dummy input.
+            obs = torch.from_numpy(
+                np.random.random_sample(size=(B, O)).astype(np.float32)
+            )
+            next_obs = torch.from_numpy(
+                np.random.random_sample(size=(B, O)).astype(np.float32)
+            )
+            actions = torch.from_numpy(
+                np.random.random_integers(0, A - 1, size=(B,))
+            )
+            input_dict = {
+                Columns.OBS: obs,
+                Columns.NEXT_OBS: next_obs,
+                Columns.ACTIONS: actions,
+            }
 
-        # Print out the number of parameters.
-        num_all_params = sum(int(np.prod(p.size())) for p in my_net.parameters())
-        print(f"num params = {num_all_params}")
+            # Call `forward_train()` to get phi (feature vector from obs), next-phi
+            # (feature vector from next obs), and the intrinsic rewards (individual, per
+            # batch-item forward loss values).
+            print(icm_net.forward_train(input_dict))
+
+            # Print out the number of parameters.
+            num_all_params = sum(int(np.prod(p.size())) for p in icm_net.parameters())
+            print(f"num params = {num_all_params}")
     """
 
     @override(TorchRLModule)
@@ -162,7 +167,9 @@ class InverseDynamicsModel(TorchRLModule):
             torch.cat(
                 [
                     phi,
-                    one_hot(batch[Columns.ACTIONS].long(), self.config.action_space).float(),
+                    one_hot(
+                        batch[Columns.ACTIONS].long(), self.config.action_space
+                    ).float(),
                 ],
                 dim=-1,
             )
@@ -186,10 +193,6 @@ class InverseDynamicsModel(TorchRLModule):
 
     @override(TorchRLModule)
     def get_train_action_dist_cls(self):
-        ##    TorchCategorical
-        ##    if isinstance(self.action_space, Discrete)
-        ##    else TorchMultiCategorical(dist_inputs, self.model, self.action_space.nvec)
-        ##)
         return TorchCategorical
 
     @staticmethod
@@ -220,9 +223,8 @@ class InverseDynamicsModel(TorchRLModule):
 
         # Calculate the ICM loss.
         total_loss = (
-            (1.0 - config.curiosity_beta) * inverse_loss
-            + config.curiosity_beta * forward_loss
-        )
+            1.0 - config.curiosity_beta
+        ) * inverse_loss + config.curiosity_beta * forward_loss
 
         learner.metrics.log_dict(
             {
