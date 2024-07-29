@@ -98,8 +98,8 @@ class GetAllActorInfoFromNewGcsClient:
     def __init__(self, dashboard_head):
         self.gcs_aio_client = dashboard_head.gcs_aio_client
 
-    async def __call__(self) -> Dict[ActorID, gcs_pb2.ActorTableData]:
-        return await self.gcs_aio_client.get_all_actor_info()
+    async def __call__(self, timeout) -> Dict[ActorID, gcs_pb2.ActorTableData]:
+        return await self.gcs_aio_client.get_all_actor_info(timeout=timeout)
 
 
 class GetAllActorInfoFromGrpc:
@@ -109,9 +109,11 @@ class GetAllActorInfoFromGrpc:
             gcs_channel
         )
 
-    async def __call__(self) -> Dict[ActorID, gcs_pb2.ActorTableData]:
+    async def __call__(self, timeout) -> Dict[ActorID, gcs_pb2.ActorTableData]:
         request = gcs_service_pb2.GetAllActorInfoRequest()
-        reply = await self._gcs_actor_info_stub.GetAllActorInfo(request, timeout=5)
+        reply = await self._gcs_actor_info_stub.GetAllActorInfo(
+            request, timeout=timeout
+        )
         if reply.status.code != 0:
             raise Exception(f"Failed to GetAllActorInfo: {reply.status.message}")
         actors = {}
@@ -124,7 +126,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
 
-        self.get_all_actor_info = GetAllActorInfo(dashboard_head)
+        self.get_all_actor_info = None
         # A queue of dead actors in order of when they died
         self.dead_actors_queue = deque()
 
@@ -139,7 +141,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             try:
                 logger.info("Getting all actor info from GCS.")
 
-                actors = await self.get_all_actor_info()
+                actors = await self.get_all_actor_info(timeout=5)
                 actor_dicts: Dict[str, dict] = {
                     actor_id.hex(): actor_table_data_to_dict(actor_table_data)
                     for actor_id, actor_table_data in actors.items()
@@ -292,6 +294,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
+        self.get_all_actor_info = GetAllActorInfo(self._dashboard_head)
         await asyncio.gather(self._update_actors(), self._cleanup_actors())
 
     @staticmethod

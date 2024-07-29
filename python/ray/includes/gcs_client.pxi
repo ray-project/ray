@@ -27,8 +27,9 @@ from ray.includes.common cimport (
     CStatusCode_OK,
     MultiItemPyCallback,
     OptionalItemPyCallback,
+    StatusPyCallback,
 )
-from ray.includes.optional cimport optional
+from ray.includes.optional cimport optional, make_optional
 from ray.core.generated import gcs_pb2
 from cython.operator import dereference, postincrement
 cimport cpython
@@ -339,6 +340,24 @@ cdef class NewGcsClient:
             status = self.inner.get().Nodes().GetAllNoCache(timeout_ms, reply)
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
+    def async_get_all_node_info(
+        self, timeout: Optional[float] = None
+    ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            fut = incremented_fut()
+            void* fut_ptr = <void*>fut
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Nodes().AsyncGetAll(
+                    MultiItemPyCallback[CGcsNodeInfo](
+                        convert_get_all_node_info,
+                        assign_and_decrement_fut,
+                        fut_ptr),
+                    timeout_ms))
+        return asyncio.wrap_future(fut)
+
     #############################################################
     # NodeResources methods
     #############################################################
@@ -372,21 +391,52 @@ cdef class NewGcsClient:
     ) -> Future[Dict[ActorID, gcs_pb2.ActorTableData]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            optional[CActorID] c_actor_id = None if actor_id is None else actor_id.native()
-            optional[CJobID] c_job_id = None if job_id is None else job_id.native()
-            optional[c_string] c_actor_state_name = None if actor_state_name is None else actor_state_name.encode()
+            optional[CActorID] c_actor_id
+            optional[CJobID] c_job_id
+            optional[c_string] c_actor_state_name
             fut = incremented_fut()
             void* fut_ptr = <void*>fut
+        if actor_id is not None:
+            c_actor_id = (<ActorID>actor_id).native()
+        if job_id is not None:
+            c_job_id = (<JobID>job_id).native()
+        if actor_state_name is not None:
+            c_actor_state_name = <c_string>actor_state_name.encode()
 
         with nogil:
             check_status_timeout_as_rpc_error(
-                self.inner.get().Jobs().AsyncGetAllByFilter(
+                self.inner.get().Actors().AsyncGetAllByFilter(
                     c_actor_id, c_job_id, c_actor_state_name,
                     MultiItemPyCallback[CActorTableData](
                         convert_get_all_actor_info,
                         assign_and_decrement_fut,
                         fut_ptr),
                     timeout_ms))
+        return asyncio.wrap_future(fut)
+
+    def async_kill_actor(
+        self, actor_id: ActorID, c_bool force_kill, c_bool no_restart, timeout: Optional[float] = None
+    ) -> ConcurrentFuture[None]:
+        """
+        On success: returns None.
+        On failure: raises an exception.
+        """
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            fut = incremented_fut()
+            void* fut_ptr = <void*>fut
+            CActorID c_actor_id = actor_id.native()
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Actors().AsyncKillActor(
+                    c_actor_id,
+                    force_kill,
+                    no_restart,
+                    StatusPyCallback(convert_status, assign_and_decrement_fut, fut_ptr),
+                    timeout_ms
+                )
+            )
         return asyncio.wrap_future(fut)
     #############################################################
     # Job methods
@@ -599,12 +649,18 @@ cdef convert_get_all_actor_info(
             b = c_proto.SerializeAsString()
             proto = gcs_pb2.ActorTableData()
             proto.ParseFromString(b)
-            job_table_data[ActorID.from_binary(proto.actor_id)] = proto
+            actor_table_data[ActorID.from_binary(proto.actor_id)] = proto
         return actor_table_data, None
     except Exception as e:
         return None, e
 
-
+cdef convert_status(CRayStatus status):
+    # -> None
+    try:
+        check_status_timeout_as_rpc_error(status)
+        return None, None
+    except Exception as e:
+        return None, e
 cdef convert_optional_str_none_for_not_found(
         CRayStatus status, const optional[c_string]& c_str):
     # If status is NotFound, return None.

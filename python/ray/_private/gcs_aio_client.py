@@ -67,11 +67,13 @@ class NewGcsAioClient:
         self.internal_kv_keys = self.inner.async_internal_kv_keys
         self.check_alive = self.inner.async_check_alive
         self.get_all_job_info = self.inner.async_get_all_job_info
-        # Note: this only exists in the new client.
-        self.get_all_actor_info = self.inner.async_get_all_actor_info
         # Forwarded Properties.
         self.address = self.inner.address
         self.cluster_id = self.inner.cluster_id
+        # Note: these only exists in the new client.
+        self.get_all_actor_info = self.inner.async_get_all_actor_info
+        self.get_all_node_info = self.inner.async_get_all_node_info
+        self.kill_actor = self.inner.async_kill_actor
 
 
 class AsyncProxy:
