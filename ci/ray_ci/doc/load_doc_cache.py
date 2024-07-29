@@ -80,8 +80,8 @@ def list_changed_and_added_files(ray_dir: str):
     )
     filenames = []
     for file in untracked_files + modified_files:
-        filename = file.split(".")[0] # Remove extension
-        if filename.startswith("doc/"): # Remove "doc/" prefix
+        filename = file.split(".")[0]  # Remove extension
+        if filename.startswith("doc/"):  # Remove "doc/" prefix
             filename = filename.replace("doc/", "")
         filenames.append(filename)
     return filenames
@@ -92,7 +92,9 @@ def list_changed_and_added_files(ray_dir: str):
 def main(ray_dir: str) -> None:
     # List all changed and added files in the repo
     filenames = list_changed_and_added_files(ray_dir)
-    with open(f"{ray_dir}/pending_files.txt", "w") as f:
+    with open(
+        f"{ray_dir}/pending_files.txt", "w"
+    ) as f:  # Save to file to be used when updating cache environment
         f.write("\n".join(filenames))
 
     commit = find_latest_commit()
