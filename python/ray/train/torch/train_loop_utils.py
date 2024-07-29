@@ -2,6 +2,7 @@ import collections
 import logging
 import os
 import random
+import importlib
 import types
 from typing import Any, Callable, Dict, List, Optional, Union
 
@@ -642,6 +643,13 @@ class _WrappedDataLoader(DataLoader):
         )
         self.next_batch = None
 
+    def _is_module_available(self, module_name: str):
+        try:
+            return importlib.import_module(module_name)
+        except ImportError:
+            logger.debug(f"Module {module_name} could not be imported.")
+            return None
+
     def _move_to_device(self, item):
         if item is None:
             return None
@@ -663,10 +671,18 @@ class _WrappedDataLoader(DataLoader):
             elif isinstance(item, torch.Tensor):
                 item_on_device = try_move_device(item)
             else:
-                logger.debug(
-                    f"Data type {type(item)} doesn't support being moved to device."
-                )
-                item_on_device = item
+                # Last attempt, try "3rd-party" module(s)
+                pyg_module = self._is_module_available("torch_geometric.data")
+                if pyg_module is not None and (
+                    isinstance(item, getattr(pyg_module, "Data"))
+                    or isinstance(item, getattr(pyg_module, "HeteroData"))
+                ):
+                    item_on_device = try_move_device(item)
+                else:
+                    logger.debug(
+                        f"Data type {type(item)} doesn't support being moved to device."
+                    )
+                    item_on_device = item
 
             return item_on_device
 
