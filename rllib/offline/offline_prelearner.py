@@ -2,9 +2,8 @@ import numpy as np
 import random
 import ray
 from ray.actor import ActorHandle
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
@@ -17,6 +16,9 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 # This is the default schema used if no `input_read_schema` is set in
 # the config. If a user passes in a schema into `input_read_schema`
@@ -76,7 +78,7 @@ class OfflinePreLearner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(
         self,
-        config: AlgorithmConfig,
+        config: "AlgorithmConfig",
         learner: Union[Learner, list[ActorHandle]],
         locality_hints: Optional[list] = None,
         module_spec: Optional[MultiAgentRLModuleSpec] = None,
