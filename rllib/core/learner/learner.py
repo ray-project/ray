@@ -292,7 +292,7 @@ class Learner(Checkpointable):
             # TODO (sven): Figure out which space to provide here. For now,
             #  it doesn't matter, as the default connector piece doesn't use
             #  this information anyway.
-            #  module_spec = self._module_spec.as_multi_agent()
+            #  module_spec = self._module_spec.as_multi_rl_module_spec()
             self._learner_connector = self.config.build_learner_connector(
                 input_observation_space=None,
                 input_action_space=None,
@@ -1490,7 +1490,7 @@ class Learner(Checkpointable):
             module = self.config.get_multi_agent_module_spec().build()
 
         # If not already, convert to MultiRLModule.
-        module = module.as_multi_agent()
+        module = module.as_multi_rl_module()
 
         return module
 
