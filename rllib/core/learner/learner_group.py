@@ -2,6 +2,7 @@ import pathlib
 from collections import defaultdict, Counter
 import copy
 from functools import partial
+import itertools
 from typing import (
     Any,
     Callable,
@@ -21,6 +22,7 @@ import ray
 from ray import ObjectRef
 from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -44,7 +46,6 @@ from ray.rllib.utils.minibatch_utils import (
     ShardEpisodesIterator,
     ShardObjectRefIterator,
 )
-from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
@@ -695,7 +696,7 @@ class LearnerGroup(Checkpointable):
         Returns:
             The new MultiAgentRLModuleSpec (after the change has been performed).
         """
-        validate_policy_id(module_id, error=True)
+        validate_module_id(module_id, error=True)
 
         # Force-set inference-only = False.
         module_spec = copy.deepcopy(module_spec)
@@ -815,16 +816,33 @@ class LearnerGroup(Checkpointable):
                     lambda _learner, _ref=state_ref: _learner.set_state(ray.get(_ref))
                 )
 
-    def get_weights(self) -> StateDict:
+    def get_weights(
+        self, module_ids: Optional[Collection[ModuleID]] = None
+    ) -> StateDict:
         """Convenience method instead of self.get_state(components=...).
+
+        Args:
+            module_ids: An optional collection of ModuleIDs for which to return weights.
+                If None (default), return weights of all RLModules.
 
         Returns:
             The results of
             `self.get_state(components='learner/rl_module')['learner']['rl_module']`.
         """
-        return self.get_state(components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE)[
-            COMPONENT_LEARNER
-        ][COMPONENT_RL_MODULE]
+        # Return the entire RLModule state (all possible single-agent RLModules).
+        if module_ids is None:
+            components = COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+        # Return a subset of the single-agent RLModules.
+        else:
+            components = [
+                "".join(tup)
+                for tup in itertools.product(
+                    [COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/"],
+                    list(module_ids),
+                )
+            ]
+
+        return self.get_state(components)[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
 
     def set_weights(self, weights) -> None:
         """Convenience method instead of self.set_state({'learner': {'rl_module': ..}}).
