@@ -239,7 +239,7 @@ class AddModuleCallback(DefaultCallbacks):
         algorithm.add_module(
             module_id="test_module",
             module_spec=spec,
-            evaluation_workers=True,
+            add_to_eval_env_runners=True,
         )
 
 
