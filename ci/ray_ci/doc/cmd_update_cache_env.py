@@ -6,7 +6,9 @@ from typing import List
 from datetime import datetime, timezone
 import click
 from ci.ray_ci.doc.build_cache import ENVIRONMENT_PICKLE
+
 PENDING_FILES_PATH = "pending_files.txt"
+
 
 def list_pending_files(ray_dir: str) -> List[str]:
     """List all files that are added/modified in git repo."""
@@ -23,9 +25,7 @@ def update_environment_pickle(ray_dir: str, pending_files: List[str]) -> None:
     new source and doctree directory, and modify source file timestamps.
     """
     ray_doc_dir = os.path.join(ray_dir, "doc")
-    with open(
-        os.path.join(ray_doc_dir, ENVIRONMENT_PICKLE), "rb+"
-    ) as f:
+    with open(os.path.join(ray_doc_dir, ENVIRONMENT_PICKLE), "rb+") as f:
         env = pickle.load(f)
         # Update cache's environment source and doctree directory to the host path
         env.srcdir = os.path.join(ray_doc_dir, "source")
