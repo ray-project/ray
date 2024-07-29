@@ -12,10 +12,10 @@ from typing import (
 )
 
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
-    SingleAgentRLModuleSpec,
+    RLModuleSpec,
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
@@ -194,7 +194,7 @@ class TfLearner(Learner):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        module_spec: RLModuleSpec,
     ) -> None:
         # TODO(Avnishn):
         # WARNING:tensorflow:Using MirroredStrategy eagerly has significant overhead
@@ -215,7 +215,7 @@ class TfLearner(Learner):
             )
 
     @override(Learner)
-    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiAgentRLModuleSpec:
+    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiRLModuleSpec:
         with self._strategy.scope():
             marl_spec = super().remove_module(module_id, **kwargs)
 

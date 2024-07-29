@@ -51,11 +51,11 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
+from ray.rllib.core.rl_module.multi_rl_module import (
+    MultiRLModule,
+    MultiRLModuleSpec,
 )
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
@@ -794,22 +794,22 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 hasattr(local_env_runner, "module")
                 and local_env_runner.module is not None
             ):
-                marl_module_dict = dict(local_env_runner.module.as_multi_agent())
+                multi_rl_module_dict = dict(local_env_runner.module.as_multi_agent())
                 env = local_env_runner.env
                 spaces = {
                     mid: (mod.config.observation_space, mod.config.action_space)
-                    for mid, mod in marl_module_dict.items()
+                    for mid, mod in multi_rl_module_dict.items()
                 }
                 policy_dict, _ = self.config.get_multi_agent_setup(
                     env=env, spaces=spaces
                 )
-                module_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
+                module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
                     policy_dict=policy_dict
                 )
             # TODO (Sven): Deprecate this path: Old stack API RolloutWorkers and
-            #  DreamerV3's EnvRunners have a `marl_module_spec` property.
-            elif hasattr(local_env_runner, "marl_module_spec"):
-                module_spec: MultiAgentRLModuleSpec = local_env_runner.marl_module_spec
+            #  DreamerV3's EnvRunners have a `multi_rl_module_spec` property.
+            elif hasattr(local_env_runner, "multi_rl_module_spec"):
+                module_spec: MultiRLModuleSpec = local_env_runner.multi_rl_module_spec
             else:
                 raise AttributeError(
                     "Your local EnvRunner/RolloutWorker does NOT have any property "
@@ -821,14 +821,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
             # Check if there are modules to load from the `module_spec`.
             rl_module_ckpt_dirs = {}
-            marl_module_ckpt_dir = module_spec.load_state_path
+            multi_rl_module_ckpt_dir = module_spec.load_state_path
             modules_to_load = module_spec.modules_to_load
             for module_id, sub_module_spec in module_spec.module_specs.items():
                 if sub_module_spec.load_state_path:
                     rl_module_ckpt_dirs[module_id] = sub_module_spec.load_state_path
-            if marl_module_ckpt_dir or rl_module_ckpt_dirs:
+            if multi_rl_module_ckpt_dir or rl_module_ckpt_dirs:
                 self.learner_group.load_module_state(
-                    marl_module_ckpt_dir=marl_module_ckpt_dir,
+                    multi_rl_module_ckpt_dir=multi_rl_module_ckpt_dir,
                     modules_to_load=modules_to_load,
                     rl_module_ckpt_dirs=rl_module_ckpt_dirs,
                 )
@@ -2100,7 +2100,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             local worker's (EnvRunner's) MARLModule.
         """
         module = self.env_runner.module
-        if isinstance(module, MultiAgentRLModule):
+        if isinstance(module, MultiRLModule):
             return module[module_id]
         else:
             return module
@@ -2152,7 +2152,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             ]
         ] = None,
         evaluation_workers: bool = True,
-        module_spec: Optional[SingleAgentRLModuleSpec] = None,
+        module_spec: Optional[RLModuleSpec] = None,
     ) -> Optional[Policy]:
         """Adds a new policy to this Algorithm.
 
@@ -2225,7 +2225,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             module = policy.model
             self.learner_group.add_module(
                 module_id=policy_id,
-                module_spec=SingleAgentRLModuleSpec.from_module(module),
+                module_spec=RLModuleSpec.from_module(module),
             )
 
             # Update each Learner's `policies_to_train` information, but only
@@ -2263,13 +2263,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     def add_module(
         self,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        module_spec: RLModuleSpec,
         *,
         config_overrides: Optional[Dict] = None,
         new_agent_to_module_mapping_fn: Optional[AgentToModuleMappingFn] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
         evaluation_workers: bool = True,
-    ) -> MultiAgentRLModuleSpec:
+    ) -> MultiRLModuleSpec:
         """Adds a new (single-agent) RLModule to this Algorithm's MARLModule.
 
         Args:
@@ -2277,7 +2277,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 IMPORTANT: Must not contain characters that
                 are also not allowed in Unix/Win filesystems, such as: `<>:"/|?*`,
                 or a dot, space or backslash at the end of the ID.
-            module_spec: The SingleAgentRLModuleSpec to use for constructing the new
+            module_spec: The RLModuleSpec to use for constructing the new
                 RLModule.
             config_overrides: The `AlgorithmConfig` overrides that should apply to
                 the new Module, if any.
@@ -2295,7 +2295,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 to the evaluation EnvRunnerGroup.
 
         Returns:
-            The new MultiAgentRLModuleSpec after having added the RLModule.
+            The new MultiRLModuleSpec after having added the RLModule.
         """
         if not self.config.is_multi_agent():
             raise RuntimeError(
@@ -2388,7 +2388,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 to the evaluation EnvRunnerGroup.
 
         Returns:
-            The new MultiAgentRLModuleSpec after having removed the RLModule.
+            The new MultiRLModuleSpec after having removed the RLModule.
         """
         # Remove RLModule on the LearnerGroup.
         marl_spec = self.learner_group.remove_module(

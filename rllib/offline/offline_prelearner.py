@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -79,7 +79,7 @@ class OfflinePreLearner:
         config: AlgorithmConfig,
         learner: Union[Learner, list[ActorHandle]],
         locality_hints: Optional[list] = None,
-        module_spec: Optional[MultiAgentRLModuleSpec] = None,
+        module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
     ):
 

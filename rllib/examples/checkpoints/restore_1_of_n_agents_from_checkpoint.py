@@ -3,7 +3,7 @@ from checkpoint.
 
 This example:
     - Runs a multi-agent `Pendulum-v1` experiment with >= 2 policies.
-    - Saves a checkpoint of the `MultiAgentRLModule` used every `--checkpoint-freq`
+    - Saves a checkpoint of the `MultiRLModule` used every `--checkpoint-freq`
        iterations.
     - Stops the experiments after the agents reach a combined return of -800.
     - Picks the best checkpoint by combined return and restores policy 0 from it.
@@ -48,7 +48,7 @@ iterations instead of 190).
 
 import os
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -138,9 +138,9 @@ if __name__ == "__main__":
     module_specs["p0"] = module_spec
 
     # Create the MARL module.
-    marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
+    multi_rl_module_spec = MultiRLModuleSpec(module_specs=module_specs)
     # Define the MARL module in the base config.
-    base_config.rl_module(rl_module_spec=marl_module_spec)
+    base_config.rl_module(rl_module_spec=multi_rl_module_spec)
     # We need to re-register the environment when starting a new run.
     register_env(
         "env",

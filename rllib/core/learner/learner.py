@@ -26,11 +26,11 @@ from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
 from ray.rllib.core import COMPONENT_OPTIMIZER, COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
+from ray.rllib.core.rl_module.multi_rl_module import (
+    MultiRLModule,
+    MultiRLModuleSpec,
 )
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -132,8 +132,8 @@ class Learner(Checkpointable):
             If the module is a single agent module, after building the module it will
             be converted to a multi-agent module with a default key. Can be none if the
             module is provided directly via the `module` argument. Refer to
-            ray.rllib.core.rl_module.SingleAgentRLModuleSpec
-            or ray.rllib.core.rl_module.MultiAgentRLModuleSpec for more info.
+            ray.rllib.core.rl_module.RLModuleSpec
+            or ray.rllib.core.rl_module.MultiRLModuleSpec for more info.
         module: If learner is being used stand-alone, the RLModule can be optionally
             passed in directly instead of the through the `module_spec`.
 
@@ -151,7 +151,7 @@ class Learner(Checkpointable):
                 PPOTorchRLModule
             )
             from ray.rllib.core import COMPONENT_RL_MODULE
-            from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+            from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
             env = gym.make("CartPole-v1")
 
@@ -173,7 +173,7 @@ class Learner(Checkpointable):
             # Add a new module, perhaps for league based training.
             learner.add_module(
                 module_id="new_player",
-                module_spec=SingleAgentRLModuleSpec(
+                module_spec=RLModuleSpec(
                     module_class=PPOTorchRLModule,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
@@ -225,9 +225,7 @@ class Learner(Checkpointable):
         self,
         *,
         config: "AlgorithmConfig",
-        module_spec: Optional[
-            Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
-        ] = None,
+        module_spec: Optional[Union[RLModuleSpec, MultiRLModuleSpec]] = None,
         module: Optional[RLModule] = None,
     ):
         # TODO (sven): Figure out how to do this
@@ -251,7 +249,7 @@ class Learner(Checkpointable):
         # These are the attributes that are set during build.
 
         # The actual MARLModule used by this Learner.
-        self._module: Optional[MultiAgentRLModule] = None
+        self._module: Optional[MultiRLModule] = None
         # Our Learner connector pipeline.
         self._learner_connector: Optional[LearnerConnectorPipeline] = None
         # These are set for properly applying optimizers and adding or removing modules.
@@ -316,7 +314,7 @@ class Learner(Checkpointable):
         return self._distributed
 
     @property
-    def module(self) -> MultiAgentRLModule:
+    def module(self) -> MultiRLModule:
         """The multi-agent RLModule that is being trained."""
         return self._module
 
@@ -472,7 +470,7 @@ class Learner(Checkpointable):
         algorithm specific gradient postprocessing steps.
 
         This default implementation calls `self.postprocess_gradients_for_module()`
-        on each of the sub-modules in our MultiAgentRLModule: `self.module` and
+        on each of the sub-modules in our MultiRLModule: `self.module` and
         returns the accumulated gradients dicts.
 
         Args:
@@ -566,7 +564,7 @@ class Learner(Checkpointable):
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def apply_gradients(self, gradients_dict: ParamDict) -> None:
-        """Applies the gradients to the MultiAgentRLModule parameters.
+        """Applies the gradients to the MultiRLModule parameters.
 
         Args:
             gradients_dict: A dictionary of gradients in the same (flat) format as
@@ -696,11 +694,11 @@ class Learner(Checkpointable):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        module_spec: RLModuleSpec,
         config_overrides: Optional[Dict] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
-    ) -> MultiAgentRLModuleSpec:
-        """Adds a module to the underlying MultiAgentRLModule.
+    ) -> MultiRLModuleSpec:
+        """Adds a module to the underlying MultiRLModule.
 
         Changes this Learner's config in order to make this architectural change
         permanent wrt. to checkpointing.
@@ -718,7 +716,7 @@ class Learner(Checkpointable):
                 returns False) will not be updated.
 
         Returns:
-            The new MultiAgentRLModuleSpec (after the change has been performed).
+            The new MultiRLModuleSpec (after the change has been performed).
         """
         validate_policy_id(module_id, error=True)
         self._check_is_built()
@@ -739,9 +737,7 @@ class Learner(Checkpointable):
             self.config.multi_agent(
                 algorithm_config_overrides_per_module={module_id: config_overrides}
             )
-        self.config.rl_module(
-            rl_module_spec=MultiAgentRLModuleSpec.from_module(self.module)
-        )
+        self.config.rl_module(rl_module_spec=MultiRLModuleSpec.from_module(self.module))
         if new_should_module_be_updated is not None:
             self.config.multi_agent(policies_to_train=new_should_module_be_updated)
 
@@ -758,7 +754,7 @@ class Learner(Checkpointable):
         module_id: ModuleID,
         *,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
-    ) -> MultiAgentRLModuleSpec:
+    ) -> MultiRLModuleSpec:
         """Removes a module from the Learner.
 
         Args:
@@ -771,7 +767,7 @@ class Learner(Checkpointable):
                 returns False) will not be updated.
 
         Returns:
-            The new MultiAgentRLModuleSpec (after the change has been performed).
+            The new MultiRLModuleSpec (after the change has been performed).
         """
         self._check_is_built()
         module = self.module[module_id]
@@ -801,9 +797,7 @@ class Learner(Checkpointable):
         self.config.algorithm_config_overrides_per_module.pop(module_id, None)
         if new_should_module_be_updated is not None:
             self.config.multi_agent(policies_to_train=new_should_module_be_updated)
-        self.config.rl_module(
-            rl_module_spec=MultiAgentRLModuleSpec.from_module(self.module)
-        )
+        self.config.rl_module(rl_module_spec=MultiRLModuleSpec.from_module(self.module))
 
         # Remove all stats from the module from our metrics logger, so we don't report
         # results from this module again.
@@ -846,7 +840,7 @@ class Learner(Checkpointable):
         specify the specific loss computation logic. If the algorithm is single agent
         `compute_loss_for_module()` should be overridden instead.
         `fwd_out` is the output of the `forward_train()` method of the underlying
-        MultiAgentRLModule. `batch` is the data that was used to compute `fwd_out`.
+        MultiRLModule. `batch` is the data that was used to compute `fwd_out`.
         The returned dictionary must contain a key called
         ALL_MODULES, which will be used to compute gradients. It is recommended
         to not compute any forward passes within this method, and to use the
@@ -936,7 +930,7 @@ class Learner(Checkpointable):
 
         You can use this method to take more than one backward pass on the batch.
         The same `minibatch_size` and `num_iters` will be used for all module ids in
-        MultiAgentRLModule.
+        MultiRLModule.
 
         Args:
             batch: A batch of training data to update from.
@@ -989,7 +983,7 @@ class Learner(Checkpointable):
 
         You can use this method to take more than one backward pass on the batch.
         The same `minibatch_size` and `num_iters` will be used for all module ids in
-        MultiAgentRLModule.
+        MultiRLModule.
 
         Args:
             episodes: An list of episode objects to update from.
@@ -1472,7 +1466,7 @@ class Learner(Checkpointable):
             True if the module is compatible with the learner.
         """
 
-    def _make_module(self) -> MultiAgentRLModule:
+    def _make_module(self) -> MultiRLModule:
         """Construct the multi-agent RL module for the learner.
 
         This method uses `self._module_specs` or `self._module_obj` to construct the
@@ -1481,7 +1475,7 @@ class Learner(Checkpointable):
         need to happen for instantiation of the module.
 
         Returns:
-            A constructed MultiAgentRLModule.
+            A constructed MultiRLModule.
         """
         # Module was provided directly through constructor -> Use as-is.
         if self._module_obj is not None:
@@ -1495,7 +1489,7 @@ class Learner(Checkpointable):
         else:
             module = self.config.get_multi_agent_module_spec().build()
 
-        # If not already, convert to MultiAgentRLModule.
+        # If not already, convert to MultiRLModule.
         module = module.as_multi_agent()
 
         return module

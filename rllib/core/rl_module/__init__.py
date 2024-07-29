@@ -1,13 +1,13 @@
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
+from ray.rllib.core.rl_module.multi_rl_module import (
+    MultiRLModule,
+    MultiRLModuleSpec,
 )
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 
 
 __all__ = [
-    "MultiAgentRLModule",
-    "MultiAgentRLModuleSpec",
+    "MultiRLModule",
+    "MultiRLModuleSpec",
     "RLModule",
-    "SingleAgentRLModuleSpec",
+    "RLModuleSpec",
 ]

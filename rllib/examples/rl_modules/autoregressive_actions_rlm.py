@@ -41,7 +41,7 @@ over 100, the agent must learn to synchronize its actions.
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.models.catalog import Catalog
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedActionsEnv
 from ray.rllib.examples.rl_modules.classes.autoregressive_actions_rlm import (
     AutoregressiveActionsTorchRLM,
@@ -83,7 +83,7 @@ if __name__ == "__main__":
             },
             # We need to explicitly specify here RLModule to use and
             # the catalog needed to build it.
-            rl_module_spec=SingleAgentRLModuleSpec(
+            rl_module_spec=RLModuleSpec(
                 module_class=AutoregressiveActionsTorchRLM,
                 catalog_class=Catalog,
             ),
