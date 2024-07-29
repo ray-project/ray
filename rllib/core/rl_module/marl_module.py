@@ -25,7 +25,6 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
 from ray.rllib.utils.typing import ModuleID, StateDict, T
 from ray.util.annotations import PublicAPI
@@ -159,14 +158,18 @@ class MultiAgentRLModule(RLModule):
         Raises:
             ValueError: If the module ID already exists and override is False.
                 Warnings are raised if the module id is not valid according to the
-                logic of ``validate_policy_id()``.
+                logic of ``validate_module_id()``.
         """
-        validate_policy_id(module_id)
+        from ray.rllib.core.rl_module import validate_module_id
+
+        validate_module_id(module_id)
+
         if module_id in self._rl_modules and not override:
             raise ValueError(
                 f"Module ID {module_id} already exists. If your intention is to "
                 "override, set override=True."
             )
+
         # Set our own inference_only flag to False as soon as any added Module
         # has `inference_only=False`.
         if not module.config.inference_only:
