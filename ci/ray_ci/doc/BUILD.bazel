@@ -15,7 +15,7 @@ py_binary(
 )
 
 py_binary(
-    name = "load_doc_cache",
+    name = "cmd_load_doc_cache",
     srcs = ["load_doc_cache.py"],
     deps = [":doc"],
     exec_compatible_with = ["//:hermetic_python"],
