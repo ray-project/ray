@@ -451,9 +451,9 @@ class Router:
                     responses.append(obj)
                     if obj not in request_args and obj not in request_kwargs.values():
                         logger.warning(
-                            "Passing `DeploymentResponse` objects by reference in "
-                            "nested objects to downstream handle calls is deprecated "
-                            "and will be removed in the future. Pass them as top-level "
+                            "Passing `DeploymentResponse` objects in nested objects to "
+                            "downstream handle calls is deprecated and will not be "
+                            "supported in the future. Pass them as top-level "
                             "args or kwargs instead."
                         )
 
