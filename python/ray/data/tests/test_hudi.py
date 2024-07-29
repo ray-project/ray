@@ -39,8 +39,57 @@ def test_read_hudi_table(fs, data_path):
 
     ds = ray.data.read_hudi_table(target_table_path)
 
+    assert ds.schema() == [
+        "_hoodie_commit_time",
+        "_hoodie_commit_seqno",
+        "_hoodie_record_key",
+        "_hoodie_partition_path",
+        "_hoodie_file_name",
+        "ts",
+        "uuid",
+        "rider",
+        "driver",
+        "fare",
+        "city",
+    ]
     assert ds.count() == 5
-    assert ds.schema() is not None
+    rows = (
+        ds.select_columns(["_hoodie_commit_time", "ts", "uuid", "fare"])
+        .sort("ts")
+        .take_all()
+    )
+    assert rows == [
+        [
+            "20240402123035233",
+            1695046462179,
+            "9909a8b1-2d15-4d3d-8ec9-efc48c536a00",
+            33.9,
+        ],
+        [
+            "20240402123035233",
+            1695091554788,
+            "e96c4396-3fad-413a-a942-4cb36106d721",
+            27.7,
+        ],
+        [
+            "20240402123035233",
+            1695115999911,
+            "c8abbe79-8d89-47ea-b4ce-4d224bae5bfa",
+            17.85,
+        ],
+        [
+            "20240402123035233",
+            1695159649087,
+            "334e26e9-8355-45cc-97c6-c31daf0df330",
+            19.1,
+        ],
+        [
+            "20240402123035233",
+            1695516137016,
+            "e3cf430c-889d-4015-bc98-59bdce1e530c",
+            34.15,
+        ],
+    ]
 
 
 if __name__ == "__main__":
