@@ -20,7 +20,6 @@ import ray.train
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
 from ray.exceptions import RayTaskError
-from ray.rllib import _register_all
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.tune import TuneError
@@ -58,7 +57,6 @@ class TuneRestoreTest(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.logdir)
         ray.shutdown()
-        _register_all()
 
     def testTuneRestore(self):
         self.assertTrue(os.path.isfile(self.checkpoint_path))
@@ -546,7 +544,6 @@ class TuneExampleTest(unittest.TestCase):
 
     def tearDown(self):
         ray.shutdown()
-        _register_all()
 
     def testPBTKeras(self):
         from tensorflow.keras.datasets import cifar10
@@ -574,12 +571,11 @@ class TuneExampleTest(unittest.TestCase):
 class AutoInitTest(unittest.TestCase):
     def testTuneRestore(self):
         self.assertFalse(ray.is_initialized())
-        tune.run("__fake", name="TestAutoInit", stop={"training_iteration": 1})
+        tune.run(MyTrainableClass, name="TestAutoInit", stop={"training_iteration": 1})
         self.assertTrue(ray.is_initialized())
 
     def tearDown(self):
         ray.shutdown()
-        _register_all()
 
 
 class SearcherTest(unittest.TestCase):
