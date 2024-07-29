@@ -16,7 +16,6 @@ from typing import (
 )
 
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -161,12 +160,16 @@ class MultiAgentRLModule(RLModule):
                 Warnings are raised if the module id is not valid according to the
                 logic of ``validate_module_id()``.
         """
+        from ray.rllib.core.rl_module import validate_module_id
+
         validate_module_id(module_id)
+
         if module_id in self._rl_modules and not override:
             raise ValueError(
                 f"Module ID {module_id} already exists. If your intention is to "
                 "override, set override=True."
             )
+
         # Set our own inference_only flag to False as soon as any added Module
         # has `inference_only=False`.
         if not module.config.inference_only:
