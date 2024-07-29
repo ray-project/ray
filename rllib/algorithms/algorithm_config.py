@@ -23,6 +23,7 @@ from packaging import version
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
@@ -44,7 +45,6 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import NotProvided, from_config
-from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     NOT_SERIALIZABLE,
@@ -2655,7 +2655,7 @@ class AlgorithmConfig(_Config):
             # Make sure our Policy IDs are ok (this should work whether `policies`
             # is a dict or just any Sequence).
             for pid in policies:
-                validate_policy_id(pid, error=True)
+                validate_module_id(pid, error=True)
 
             # Collection: Convert to dict.
             if isinstance(policies, (set, tuple, list)):
