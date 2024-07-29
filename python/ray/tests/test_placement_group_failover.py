@@ -161,5 +161,71 @@ def test_gcs_restart_when_placement_group_failover(
     )
 
 
+def test_gcs_restart_when_pg_committing(
+    monkeypatch, ray_start_cluster_head_with_external_redis
+):
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def ready(self):
+            return True
+
+    cluster = ray_start_cluster_head_with_external_redis
+
+    with monkeypatch.context() as monkeypatch:
+        monkeypatch.setenv(
+            "RAY_testing_asio_delay_us",
+            "NodeManagerService.grpc_server.CommitBundleResources=500000000:500000000",
+        )
+        worker_never_commits = cluster.add_node(num_cpus=1)
+
+    # Create a placement group
+    bundles = [{"CPU": 1}, {"CPU": 1}]
+    pg = ray.util.placement_group(
+        name="pg_2_nodes", strategy="STRICT_SPREAD", bundles=bundles
+    )
+
+    # Create actors using the placement group, one for each bundle.
+    actor0 = Actor.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=0
+        )
+    ).remote()
+    actor1 = Actor.options(
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg, placement_group_bundle_index=1
+        )
+    ).remote()
+
+    # Wait for the actor to be ready. One of them are ready.
+    ready, unready = ray.wait([actor0.ready.remote(), actor1.ready.remote()], timeout=1)
+    assert len(ready) == 1, f"{ready=}, {unready=}"
+    assert len(unready) == 1, f"{ready=}, {unready=}"
+    assert ray.get(ready[0])
+
+    # The actor is ready, but the placement group is still committing, because one node
+    # is not finishing the commit.
+    assert not pg.wait(timeout_seconds=1)
+
+    # Simulate GCS server restart
+    cluster.head_node.kill_gcs_server()
+    cluster.head_node.start_gcs_server()
+
+    time.sleep(1)
+
+    # After GCS restart, the already-scheduled actor should not be killed.
+    ready, unready = ray.wait([actor0.ready.remote(), actor1.ready.remote()], timeout=1)
+    assert len(ready) == 1, f"{ready=}, {unready=}"
+    assert len(unready) == 1, f"{ready=}, {unready=}"
+    assert ray.get(ready[0])
+
+    cluster.remove_node(worker_never_commits)
+
+    cluster.add_node(num_cpus=1)
+    assert pg.wait()
+
+    # Now both actors are on.
+    assert ray.get([actor0.ready.remote(), actor1.ready.remote()]) == [True, True]
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-sv", __file__]))

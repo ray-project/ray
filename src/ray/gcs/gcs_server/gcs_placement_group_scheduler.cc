@@ -34,10 +34,10 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
       cluster_resource_scheduler_(cluster_resource_scheduler),
       raylet_client_pool_(raylet_client_pool) {}
 
-void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
-    std::shared_ptr<GcsPlacementGroup> placement_group,
-    PGSchedulingFailureCallback failure_callback,
-    PGSchedulingSuccessfulCallback success_callback) {
+void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(SchedulePgRequest request) {
+  auto placement_group = std::move(request.placement_group);
+  auto failure_callback = std::move(request.failure_callback);
+  auto success_callback = std::move(request.success_callback);
   // We need to ensure that the PrepareBundleResources won't be sent before the reply of
   // ReleaseUnusedBundles is returned.
   if (!nodes_of_releasing_unused_bundles_.empty()) {
@@ -381,8 +381,17 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
         ->set_node_id(location.first.Binary());
   }
 
-  CommitAllBundles(
-      lease_status_tracker, schedule_failure_handler, schedule_success_handler);
+  placement_group->UpdateState(rpc::PlacementGroupTableData::PREPARED);
+
+  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
+      placement_group_id,
+      placement_group->GetPlacementGroupTableData(),
+      [this, lease_status_tracker, schedule_failure_handler, schedule_success_handler](
+          Status status) {
+        RAY_CHECK_OK(status);
+        CommitAllBundles(
+            lease_status_tracker, schedule_failure_handler, schedule_success_handler);
+      }));
 }
 
 void GcsPlacementGroupScheduler::OnAllBundleCommitRequestReturned(
@@ -527,7 +536,8 @@ void GcsPlacementGroupScheduler::ReleaseUnusedBundles(
 void GcsPlacementGroupScheduler::Initialize(
     const absl::flat_hash_map<PlacementGroupID,
                               std::vector<std::shared_ptr<BundleSpecification>>>
-        &group_to_bundles) {
+        &committed_bundles,
+    const std::vector<SchedulePreparedPgRequest> &prepared_pgs) {
   // We need to reinitialize the `committed_bundle_location_index_`, otherwise,
   // it will get an empty bundle set when raylet fo occurred after GCS server restart.
 
@@ -535,7 +545,7 @@ void GcsPlacementGroupScheduler::Initialize(
   auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   committed_bundle_location_index_.AddNodes(alive_nodes);
 
-  for (const auto &group : group_to_bundles) {
+  for (const auto &group : committed_bundles) {
     const auto &placement_group_id = group.first;
     std::shared_ptr<BundleLocations> committed_bundle_locations =
         std::make_shared<BundleLocations>();
@@ -550,6 +560,15 @@ void GcsPlacementGroupScheduler::Initialize(
     cluster_resource_scheduler_.GetClusterResourceManager()
         .GetBundleLocationIndex()
         .AddOrUpdateBundleLocations(committed_bundle_locations);
+  }
+  for (const auto &req : prepared_pgs) {
+    const auto &pg = req.request.placement_group;
+    const auto pg_id = pg->GetPlacementGroupID();
+    auto tracker = LeaseStatusTracker::CreatePrepared(pg, req.prepared_bundles);
+    RAY_CHECK(placement_group_leasing_in_progress_.emplace(pg_id, tracker).second);
+
+    RAY_LOG(DEBUG).WithField(pg_id) << "Recommitting prepared pg";
+    CommitAllBundles(tracker, req.request.failure_callback, req.request.success_callback);
   }
 }
 
@@ -793,6 +812,32 @@ LeaseStatusTracker::LeaseStatusTracker(
     RAY_CHECK(iter != schedule_map.end());
     (*bundle_locations_)[bundle->BundleId()] = std::make_pair(iter->second, bundle);
   }
+}
+
+std::shared_ptr<LeaseStatusTracker> LeaseStatusTracker::CreatePrepared(
+    std::shared_ptr<GcsPlacementGroup> placement_group,
+    const std::vector<std::shared_ptr<const BundleSpecification>> &prepared_bundles) {
+  ScheduleMap schedule_map;
+  for (const auto &bundle : prepared_bundles) {
+    BundleID bundle_id = bundle->BundleId();
+    NodeID node_id = bundle->NodeId();
+    RAY_CHECK(!node_id.IsNil());
+    schedule_map[bundle_id] = node_id;
+  }
+
+  auto tracker = std::make_shared<LeaseStatusTracker>(
+      placement_group, /*unplaced_bundles=*/prepared_bundles, schedule_map);
+
+  for (const auto &bundle : prepared_bundles) {
+    const BundleID bundle_id = bundle->BundleId();
+    const NodeID node_id = schedule_map[bundle_id];
+    tracker->MarkPreparePhaseStarted(node_id, bundle);
+    tracker->MarkPrepareRequestReturned(node_id, bundle, Status::OK());
+  }
+
+  RAY_CHECK(tracker->AllPrepareRequestsReturned());
+  RAY_CHECK(tracker->AllPrepareRequestsSuccessful());
+  return tracker;
 }
 
 bool LeaseStatusTracker::MarkPreparePhaseStarted(
