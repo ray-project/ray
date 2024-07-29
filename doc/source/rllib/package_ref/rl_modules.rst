@@ -150,4 +150,4 @@ Saving and Loading
     :toctree: doc/
 
     ~MultiRLModule.save_to_path
-    ~MultiRLModule.load_from_path
+    ~MultiRLModule.restore_from_path
