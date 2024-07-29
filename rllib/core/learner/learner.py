@@ -26,6 +26,7 @@ from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
 from ray.rllib.core import COMPONENT_OPTIMIZER, COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
@@ -58,7 +59,6 @@ from ray.rllib.utils.minibatch_utils import (
     MiniBatchCyclicIterator,
 )
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import (
     EpisodeType,
@@ -716,9 +716,9 @@ class Learner(Checkpointable):
                 returns False) will not be updated.
 
         Returns:
-            The new MultiRLModuleSpec (after the change has been performed).
+            The new MultiRLModuleSpec (after the RLModule has been added).
         """
-        validate_policy_id(module_id, error=True)
+        validate_module_id(module_id, error=True)
         self._check_is_built()
 
         # Force-set inference-only = False.
@@ -767,7 +767,7 @@ class Learner(Checkpointable):
                 returns False) will not be updated.
 
         Returns:
-            The new MultiRLModuleSpec (after the change has been performed).
+            The new MultiRLModuleSpec (after the RLModule has been removed).
         """
         self._check_is_built()
         module = self.module[module_id]
