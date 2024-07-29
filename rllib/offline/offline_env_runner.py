@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 import time
 import ray
 
@@ -70,15 +71,32 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                     "'gcs' for GCS, "
                     "'s3' for S3, or 'abs'"
                 )
+            # Add the filesystem object to the write method kwargs.
+            self.data_write_method_kwargs.update(
+                {
+                    "filesystem": self.filesystem_object,
+                }
+            )
 
         # If we should store `SingleAgentEpisodes` or column data.
         self.output_write_episodes = self.config.output_write_episodes
 
+        # Buffer these many rows before writing to file.
+        self.output_max_rows_per_file = self.config.output_max_rows_per_file
+        if self.output_max_rows_per_file:
+            self.write_data_this_iter = False
+        else:
+            self.write_data_this_iter = True
+
         # Counts how often `sample` is called to define the output path for
         # each file.
-        self.sample_counter = 0
+        self._sample_counter = 0
+        self._num_env_steps = 0
 
-        self._episodes_data = []
+        if self.output_write_episodes:
+            self._sampled_episodes = []
+        else:
+            self._sampled_episodes_data = []
 
     @override(SingleAgentEnvRunner)
     def sample(
@@ -92,7 +110,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
     ) -> List[SingleAgentEpisode]:
 
         # Call the super sample method.
-        self.sample_counter += 1
+        self._sample_counter += 1
 
         assert not (num_timesteps is not None and num_episodes is not None)
 
@@ -153,32 +171,52 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         self._time_after_sampling = time.perf_counter()
 
-        # TODO (simon): Implement a num_rows_per_file.
-        # if self.num_rows_per_file:
-        #     self._samples_data.extend(samples_data)
-
-        #     if len(self._samples_dara) >= self.num_rows_per_file:
-        #         pass
-        #         # Store
-        # Write episodes as objects.
+        # Add data to the buffers.
         if self.output_write_episodes:
-            pass
-        # Otherwise store as column data.
+            self._num_env_steps += sum(eps.env_steps() for eps in samples)
+            self._sampled_episodes.extend(samples)
         else:
-            samples_ds = ray.data.from_items(samples_data)
-            try:
-                path = (
-                    Path(self.output_path)
-                    .joinpath(self.subdir_path)
-                    .joinpath(self.worker_path + f"-{self.sample_counter}".zfill(6))
-                )
-                getattr(samples_ds, self.data_write_method)(
-                    path.as_posix(), **self.data_write_method_kwargs
-                )
+            self._num_env_steps += len(samples_data)
+            self._sampled_episodes_data.extend(samples_data)
 
-                logger.info("Wrote samples to storage.")
-            except Exception as e:
-                logger.error(e)
+        # Start the recording of data.
+        if self.output_max_rows_per_file:
+            if self._num_env_steps >= self.output_max_rows_per_file:
+                self.write_data_this_iter = True
+
+        if self.write_data_this_iter:
+            # Write episodes as objects.
+            if self.output_write_episodes:
+                # TODO (simon): Complete.
+                pass
+            # Otherwise store as column data.
+            else:
+                if self.output_max_rows_per_file:
+                    self.write_data_this_iter = False
+
+                samples_to_write = self._sampled_episodes_data[
+                    : self.output_max_rows_per_file
+                ]
+                self._sampled_episodes_data = self._sampled_episodes_data[
+                    self.output_max_rows_per_file :
+                ]
+                self._num_env_steps = len(self._sampled_episodes_data)
+                samples_ds = ray.data.from_items(samples_to_write)
+                try:
+                    path = (
+                        Path(self.output_path)
+                        .joinpath(self.subdir_path)
+                        .joinpath(
+                            self.worker_path + f"-{self._sample_counter}".zfill(6)
+                        )
+                    )
+                    getattr(samples_ds, self.data_write_method)(
+                        path.as_posix(), **self.data_write_method_kwargs
+                    )
+
+                    logger.info("Wrote samples to storage.")
+                except Exception as e:
+                    logger.error(e)
 
         # Finally return the samples as usual.
         return samples
@@ -324,7 +362,9 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                             Columns.ACTIONS: actions[env_index],
                             Columns.REWARDS: rewards[env_index],
                             Columns.NEXT_OBS: obs[env_index],
-                            Columns.INFOS: infos[env_index],
+                            Columns.INFOS: iinfos[env_index]
+                            if len(infos[env_index]) > 0
+                            else None,
                             Columns.TERMINATEDS: terminateds[env_index],
                             Columns.TRUNCATEDS: truncateds[env_index],
                             **extra_model_output,
@@ -386,7 +426,9 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                             Columns.ACTIONS: actions[env_index],
                             Columns.REWARDS: rewards[env_index],
                             Columns.NEXT_OBS: obs[env_index],
-                            Columns.INFOS: infos[env_index],
+                            Columns.INFOS: infos[env_index]
+                            if len(infos[env_index]) > 0
+                            else None,
                             Columns.TERMINATEDS: terminateds[env_index],
                             Columns.TRUNCATEDS: truncateds[env_index],
                             **extra_model_output,
@@ -424,6 +466,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         ]
 
         ongoing_episodes_to_return = []
+        ongoing_episodes_continuations_data = []
         ongoing_episodes_to_return_data = []
         for i, eps in enumerate(self._episodes):
             # Just started Episodes do not have to be returned. There is no data
@@ -434,10 +477,12 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
             self._ongoing_episodes_for_metrics[eps.id_].append(eps)
             # Return finalized (numpy'ized) Episodes.
             ongoing_episodes_to_return.append(eps.finalize())
+            ongoing_episodes_continuations_data.append([self._episodes_data[i][-1]])
             ongoing_episodes_to_return_data.extend(self._episodes_data[i][:-1])
 
         # Continue collecting into the cut Episode chunks.
         self._episodes = ongoing_episodes_continuations
+        self._episodes_data = ongoing_episodes_continuations_data
 
         self._increase_sampled_metrics(ts)
 

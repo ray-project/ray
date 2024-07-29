@@ -19,7 +19,9 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .env_runners(num_env_runners=0, batch_mode="complete_episodes")
+    .env_runners(
+        rollout_fragment_length=1000, num_env_runners=0, batch_mode="truncate_episodes"
+    )
     .environment("CartPole-v1")
     .rl_module(
         model_config_dict={
@@ -44,12 +46,15 @@ config = (
     .offline_data(
         output="local:///tmp/cartpole/",
         output_write_episodes=False,
+        output_max_rows_per_file=1000,
     )
 )
 
-algo = config.build()
+# algo = config.build()
 
-algo.train()
+# for i in range(10):
+#     results = algo.train()
+#     print(results)
 
 stop = {
     f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000,
