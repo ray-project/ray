@@ -24,8 +24,8 @@ ACTOR_STATUS = [
 TypeActorStatus = Literal[tuple(ACTOR_STATUS)]
 PLACEMENT_GROUP_STATUS = [
     "PENDING",
-    "CREATED",
     "PREPARED",
+    "CREATED",
     "REMOVED",
     "RESCHEDULING",
 ]

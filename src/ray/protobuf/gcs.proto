@@ -631,10 +631,10 @@ message PlacementGroupTableData {
   enum PlacementGroupState {
     // Placement Group is pending or scheduling
     PENDING = 0;
-    // Placement Group is created.
-    CREATED = 1;
     // Placement Group is scheduled, and all nodes have prepared the resources.
-    PREPARED = 2;
+    PREPARED = 1;
+    // Placement Group is created.
+    CREATED = 2;
     // Placement Group is already removed and won't be reschedule.
     REMOVED = 3;
     // Placement Group is rescheduling because the node it placed is dead.
