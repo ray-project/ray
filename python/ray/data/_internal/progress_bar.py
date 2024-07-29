@@ -115,7 +115,8 @@ class ProgressBar:
                 truncated_op_names.append("...")
                 break
             truncated_op_names.append(op_name)
-        truncated_op_names.append(op_names[-1])
+        if len(op_names) > 1:
+            truncated_op_names.append(op_names[-1])
         return "->".join(truncated_op_names)
 
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
