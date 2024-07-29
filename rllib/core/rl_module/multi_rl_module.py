@@ -26,7 +26,6 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
 from ray.rllib.utils.typing import ModuleID, StateDict, T
 from ray.util.annotations import PublicAPI

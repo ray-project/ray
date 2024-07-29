@@ -1872,7 +1872,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
         if new_agent_to_module_mapping_fn is not None:
             self.config.multi_agent(policy_mapping_fn=new_agent_to_module_mapping_fn)
-        self.config.rl_module(rl_module_spec=marl_spec)
+        self.config.rl_module(rl_module_spec=multi_rl_module_spec)
         if new_should_module_be_updated is not None:
             self.config.multi_agent(policies_to_train=new_should_module_be_updated)
         self.config.freeze()
@@ -1902,7 +1902,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Add to eval EnvRunners and sync weights.
         if add_to_eval_env_runners is True and self.eval_env_runner_group is not None:
             if multi_rl_module_spec is None:
-                multi_rl_module_spec = self.eval_env_runner_group.foreach_worker(_add)[0]
+                multi_rl_module_spec = self.eval_env_runner_group.foreach_worker(_add)[
+                    0
+                ]
             else:
                 self.eval_env_runner_group.foreach_worker(_add)
             self.eval_env_runner_group.sync_weights(
@@ -2000,7 +2002,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             and self.eval_env_runner_group is not None
         ):
             if multi_rl_module_spec is None:
-                multi_rl_module_spec = self.eval_env_runner_group.foreach_worker(_remove)[0]
+                multi_rl_module_spec = self.eval_env_runner_group.foreach_worker(
+                    _remove
+                )[0]
             else:
                 self.eval_env_runner_group.foreach_worker(_remove)
             self.eval_env_runner_group.sync_weights(
