@@ -5,7 +5,6 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 
 import logging
 import math
-import os
 import threading
 import time
 from collections import defaultdict, deque
@@ -205,12 +204,9 @@ class OpState:
         Return the number of enabled progress bars created for this operator.
         """
         is_all_to_all = isinstance(self.op, AllToAllOperator)
-        is_ray_job = os.environ.get("RAY_JOB_ID") is not None
         # Only show 1:1 ops when in verbose progress mode.
-        progress_bar_enabled = (
-            DataContext.get_current().enable_progress_bars
-            and (is_all_to_all or verbose_progress)
-            and not is_ray_job
+        progress_bar_enabled = DataContext.get_current().enable_progress_bars and (
+            is_all_to_all or verbose_progress
         )
         self.progress_bar = ProgressBar(
             "- " + self.op.name,

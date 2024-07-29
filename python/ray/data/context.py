@@ -80,9 +80,14 @@ DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = env_bool(
 
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
-DEFAULT_ENABLE_PROGRESS_BARS = not bool(
-    env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
-)
+is_ray_job = os.environ.get("RAY_JOB_ID") is not None
+if is_ray_job:
+    # Disable progress bars by default in Ray jobs.
+    DEFAULT_ENABLE_PROGRESS_BARS = False
+else:
+    DEFAULT_ENABLE_PROGRESS_BARS = not bool(
+        env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
+    )
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
