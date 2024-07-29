@@ -78,21 +78,22 @@ def list_changed_and_added_files(ray_dir: str):
         .decode("utf-8")
         .split(os.linesep)
     )
-    return untracked_files + modified_files
+    filenames = []
+    for file in untracked_files + modified_files:
+        filename = file.split(".")[0] # Remove extension
+        if filename.startswith("doc/"): # Remove "doc/" prefix
+            filename = filename.replace("doc/", "")
+        filenames.append(filename)
+    return filenames
 
 
 @click.command()
 @click.option("--ray-dir", default="/ray", help="Path to Ray repo")
 def main(ray_dir: str) -> None:
     # List all changed and added files in the repo
-    files = list_changed_and_added_files(ray_dir)
+    filenames = list_changed_and_added_files(ray_dir)
     with open(f"{ray_dir}/pending_files.txt", "w") as f:
-        for file in files:
-            # Only keep filename without extension and remove "doc/" prefix
-            filename = file.split(".")[0]
-            if filename.startswith("doc/"):
-                filename = filename.replace("doc/", "")
-            f.write(filename + "\n")
+        f.write("\n".join(filenames))
 
     commit = find_latest_commit()
     cache_path = f"{ray_dir}/doc.tgz"
