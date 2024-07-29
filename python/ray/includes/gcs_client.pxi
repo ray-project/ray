@@ -384,9 +384,9 @@ cdef class NewGcsClient:
 
     def async_get_all_actor_info(
         self,
-        actor_id: Optional[ActorID]=None,
-        job_id: Optional[JobID]=None,
-        actor_state_name: Optional[str]=None,
+        actor_id: Optional[ActorID] = None,
+        job_id: Optional[JobID] = None,
+        actor_state_name: Optional[str] = None,
         timeout: Optional[float] = None
     ) -> Future[Dict[ActorID, gcs_pb2.ActorTableData]]:
         cdef:
@@ -415,7 +415,8 @@ cdef class NewGcsClient:
         return asyncio.wrap_future(fut)
 
     def async_kill_actor(
-        self, actor_id: ActorID, c_bool force_kill, c_bool no_restart, timeout: Optional[float] = None
+        self, actor_id: ActorID, c_bool force_kill, c_bool no_restart,
+        timeout: Optional[float] = None
     ) -> ConcurrentFuture[None]:
         """
         On success: returns None.
@@ -441,6 +442,7 @@ cdef class NewGcsClient:
     #############################################################
     # Job methods
     #############################################################
+
     def get_all_job_info(
         self, timeout: Optional[float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
