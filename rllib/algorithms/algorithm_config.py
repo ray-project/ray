@@ -23,6 +23,7 @@ from packaging import version
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
@@ -44,7 +45,6 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import NotProvided, from_config
-from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     NOT_SERIALIZABLE,
@@ -433,6 +433,9 @@ class AlgorithmConfig(_Config):
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
+        self.map_batches_kwargs = {}
+        self.iter_batches_kwargs = {}
+        self.prelearner_class = None
         self.prelearner_module_synch_period = 10
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
@@ -2373,6 +2376,9 @@ class AlgorithmConfig(_Config):
         input_read_method=NotProvided,
         input_read_method_kwargs=NotProvided,
         input_read_schema=NotProvided,
+        map_batches_kwargs=NotProvided,
+        iter_batches_kwargs=NotProvided,
+        prelearner_class=NotProvided,
         prelearner_module_synch_period=NotProvided,
         dataset_num_iters_per_learner=NotProvided,
         input_config=NotProvided,
@@ -2403,10 +2409,12 @@ class AlgorithmConfig(_Config):
                 offline data from `input_`. The default is `read_json` for JSON files.
                 See https://docs.ray.io/en/latest/data/api/input_output.html for more
                 info about available read methods in `ray.data`.
-            input_read_method_kwargs: kwargs for the `input_read_method`. These will be
-                passed into the read method without checking. If no arguments are passed
-                in the default argument `{'override_num_blocks': max(num_learners * 2,
-                2)}` is used.
+            input_read_method_kwargs: `kwargs` for the `input_read_method`. These will
+                be passed into the read method without checking. If no arguments are
+                passed in the default argument `{'override_num_blocks':
+                max(num_learners * 2, 2)}` is used. Use these `kwargs`` together with
+                the `map_batches_kwargs` and `iter_batches_kwargs` to tune the
+                performance of the data pipeline.
             input_read_schema: Table schema for converting offline data to episodes.
                 This schema maps the offline data columns to `ray.rllib.core.columns.
                 Columns`: {Columns.OBS: 'o_t', Columns.ACTIONS: 'a_t', ...}. Columns in
@@ -2415,6 +2423,27 @@ class AlgorithmConfig(_Config):
                 schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
                 contains already the names in this schema, no `input_read_schema` is
                 needed.
+            map_batches_kwargs: `kwargs` for the `map_batches` method. These will be
+                passed into the `ray.data.Dataset.map_batches` method when sampling
+                without checking. If no arguments passed in the default arguments `{
+                'concurrency': max(2, num_learners), 'zero_copy_batch': True}` is
+                used. Use these `kwargs`` together with the `input_read_method_kwargs`
+                and `iter_batches_kwargs` to tune the performance of the data pipeline.
+            iter_batches_kwargs: `kwargs` for the `iter_batches` method. These will be
+                passed into the `ray.data.Dataset.iter_batches` method when sampling
+                without checking. If no arguments are passed in, the default argument `{
+                'prefetch_batches': 2, 'local_buffer_shuffle_size':
+                train_batch_size_per_learner * 4}` is used. Use these `kwargs``
+                together with the `input_read_method_kwargs` and `map_batches_kwargs`
+                to tune the performance of the data pipeline.
+            prelearner_class: An optional `OfflinePreLearner` class that is used to
+                transform data batches in `ray.data.map_batches` used in the
+                `OfflineData` class to transform data from columns to batches that can
+                be used in the `Learner`'s `update` methods. Override the
+                `OfflinePreLearner` class and pass your dervied class in here, if you
+                need to make some further transformations specific for your data or
+                loss. The default is `None` which uses the base `OfflinePreLearner`
+                defined in `ray.rllib.offline.offline_prelearner`.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
@@ -2470,6 +2499,8 @@ class AlgorithmConfig(_Config):
             self.input_read_method_kwargs = input_read_method_kwargs
         if input_read_schema is not NotProvided:
             self.input_read_schema = input_read_schema
+        if prelearner_class is not NotProvided:
+            self.prelearner_class = prelearner_class
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
         if dataset_num_iters_per_learner is not NotProvided:
@@ -2624,7 +2655,7 @@ class AlgorithmConfig(_Config):
             # Make sure our Policy IDs are ok (this should work whether `policies`
             # is a dict or just any Sequence).
             for pid in policies:
-                validate_policy_id(pid, error=True)
+                validate_module_id(pid, error=True)
 
             # Collection: Convert to dict.
             if isinstance(policies, (set, tuple, list)):

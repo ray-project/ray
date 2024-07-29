@@ -81,10 +81,6 @@ class BCConfig(MARWILConfig):
         # Advantages (calculated during postprocessing)
         # not important for behavioral cloning.
         self.postprocess_inputs = False
-        # Set RLModule as default if the `EnvRUnner`'s are used.
-        if self.enable_env_runner_and_connector_v2:
-            self.api_stack(enable_rl_module_and_learner=True)
-
         # __sphinx_doc_end__
         # fmt: on
 
@@ -188,6 +184,9 @@ class BC(MARWIL):
                 batch,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
+                **self.offline_data.iter_batches_kwargs
+                if self.config.num_learners > 1
+                else {},
             )
 
             # Log training results.
@@ -217,7 +216,7 @@ class BC(MARWIL):
         # Update weights - after learning on the local worker -
         # on all remote workers.
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-            self.workers.sync_weights(
+            self.env_runner_group.sync_weights(
                 # Sync weights from learner_group to all EnvRunners.
                 from_worker_or_learner_group=self.learner_group,
                 policies=modules_to_update,

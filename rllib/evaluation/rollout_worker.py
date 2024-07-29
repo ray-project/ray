@@ -31,6 +31,7 @@ from ray.rllib.connectors.util import (
     create_connectors_for_policy,
     maybe_get_filters_for_syncing,
 )
+from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
@@ -72,7 +73,7 @@ from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, NoFilter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.policy import create_policy_for_framework, validate_policy_id
+from ray.rllib.utils.policy import create_policy_for_framework
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
@@ -1110,7 +1111,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
-        validate_policy_id(policy_id, error=False)
+        validate_module_id(policy_id, error=False)
 
         if module_spec is not None and not self.config.enable_rl_module_and_learner:
             raise ValueError(
@@ -1415,7 +1416,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         for pid, policy_state in policy_states.items():
             # If - for some reason - we have an invalid PolicyID in the state,
             # this might be from an older checkpoint (pre v1.0). Just warn here.
-            validate_policy_id(pid, error=False)
+            validate_module_id(pid, error=False)
 
             if pid not in self.policy_map:
                 spec = policy_state.get("policy_spec", None)
