@@ -25,6 +25,7 @@ from ray.experimental.channel import (
     SynchronousWriter,
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
+    ChannelContext,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -38,6 +39,26 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from enum import Enum, auto
+
+
+class DAGNodeOperationType(Enum):
+    READ = auto()
+    COMPUTE = auto()
+    WRITE = auto()
+
+
+class DAGNodeOperation:
+    def __init__(
+        self,
+        bind_index: int,
+        operation_type: DAGNodeOperationType,
+    ):
+        self.bind_index = bind_index
+        self.type = operation_type
+
+    def __repr__(self) -> str:
+        return f"DAGNodeOperation({self.bind_index}, {self.type})"
 
 
 # Holds the input arguments for an accelerated DAG node.
@@ -84,6 +105,7 @@ def do_allocate_channel(
 def do_exec_tasks(
     self,
     tasks: List["ExecutableTask"],
+    schedule: List[Tuple[int, DAGNodeOperation]],
 ) -> None:
     """Generic actor method to begin executing the tasks belonging to an actor.
     This runs an infinite loop to run each task in turn (following the order specified
@@ -103,11 +125,12 @@ def do_exec_tasks(
         while True:
             if done:
                 break
-            for idx, task in enumerate(tasks):
-                done = _exec_task(self, task, idx)
+            for idx, operation in schedule:
+                operation_type = operation.type
+                task = tasks[idx]
+                done = _exec_task(self, task, idx, operation_type)
                 if done:
                     break
-
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
         raise
@@ -150,7 +173,9 @@ def _wrap_exception(exc):
     return wrapped
 
 
-def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
+def _exec_task(
+    self, task: "ExecutableTask", idx: int, op_type: DAGNodeOperationType
+) -> bool:
     """
     Execute the task.
     Args:
@@ -162,41 +187,47 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     # TODO: for cases where output is passed as input to a task on
     # the same actor, introduce a "IntraProcessChannel" to avoid the overhead
     # of serialization/deserialization and synchronization.
-    method = getattr(self, task.method_name)
     input_reader = self._input_readers[idx]
     output_writer = self._output_writers[idx]
-    res = None
-    try:
-        res = input_reader.read()
-    except RayChannelError:
-        # Channel closed. Exit the loop.
-        return True
+    ctx = ChannelContext.get_current().serialization_context
 
-    try:
-        _process_return_vals(res, return_single_output=False)
-    except Exception as exc:
-        # Previous task raised an application-level exception.
-        # Propagate it and skip the actual task. We don't need to wrap the
-        # exception in a RayTaskError here because it has already been wrapped
-        # by the previous task.
-        output_writer.write(exc)
-        return False
+    if op_type == DAGNodeOperationType.READ:
+        try:
+            res = input_reader.read()
+            ctx.set_intermediate_result(idx, op_type, res)
+        except RayChannelError:
+            # Channel closed. Exit the loop.
+            return True
+    elif op_type == DAGNodeOperationType.COMPUTE:
+        res = ctx.get_intermediate_result(idx, DAGNodeOperationType.READ)
+        method = getattr(self, task.method_name)
+        try:
+            _process_return_vals(res, return_single_output=False)
+        except Exception as exc:
+            # Previous task raised an application-level exception.
+            # Propagate it and skip the actual task. We don't need to wrap the
+            # exception in a RayTaskError here because it has already been wrapped
+            # by the previous task.
+            ctx.set_intermediate_result(idx, op_type, exc)
+            return False
 
-    resolved_inputs = []
-    for task_input in task.task_inputs:
-        resolved_inputs.append(task_input.resolve(res))
+        resolved_inputs = []
+        for task_input in task.task_inputs:
+            resolved_inputs.append(task_input.resolve(res))
 
-    try:
-        output_val = method(*resolved_inputs, **task.resolved_kwargs)
-    except Exception as exc:
-        output_val = _wrap_exception(exc)
-
-    try:
-        output_writer.write(output_val)
-    except RayChannelError:
-        # Channel closed. Exit the loop.
-        return True
-
+        try:
+            output_val = method(*resolved_inputs, **task.resolved_kwargs)
+            # TODO: Cache in buffer.
+        except Exception as exc:
+            output_val = _wrap_exception(exc)
+        ctx.set_intermediate_result(idx, op_type, output_val)
+    elif op_type == DAGNodeOperationType.WRITE:
+        output_val = ctx.get_intermediate_result(idx, DAGNodeOperationType.COMPUTE)
+        try:
+            output_writer.write(output_val)
+        except RayChannelError:
+            # Channel closed. Exit the loop.
+            return True
     return False
 
 
@@ -990,7 +1021,6 @@ class CompiledDAG:
         # Create executable tasks for each actor
         for actor_handle, tasks in self.actor_to_tasks.items():
             executable_tasks = []
-            worker_fn = None
             for task in tasks:
                 resolved_args = []
                 has_at_least_one_channel_input = False
@@ -1024,19 +1054,19 @@ class CompiledDAG:
                     task.kwargs,
                 )
                 executable_tasks.append(executable_task)
-                if worker_fn is None:
-                    worker_fn = task.dag_node._get_remote_method("__ray_call__")
             # Sort executable tasks based on their bind index, i.e., submission order
             # so that they will be executed in that order.
             executable_tasks.sort(key=lambda task: task.bind_index)
-
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
-            # Assign the task with the correct input and output buffers.
-            self.worker_task_refs[
-                task.dag_node._get_actor_handle()
-            ] = worker_fn.options(concurrency_group="_ray_system").remote(
+
+        # Build schedule for each actor
+        for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
+            self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
+                concurrency_group="_ray_system"
+            ).remote(
                 do_exec_tasks,
                 executable_tasks,
+                self._build_execution_schedule(actor_handle),
             )
 
         self.dag_output_channels = []
@@ -1074,6 +1104,23 @@ class CompiledDAG:
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
+
+    def _build_execution_schedule(
+        self, actor_handle: "ray.actor.ActorHandle"
+    ) -> List[Tuple[int, DAGNodeOperation]]:
+        schedule = []
+        for idx, task in enumerate(self.actor_to_executable_tasks[actor_handle]):
+            bind_index = task.bind_index
+            schedule.append(
+                (idx, DAGNodeOperation(bind_index, DAGNodeOperationType.READ))
+            )
+            schedule.append(
+                (idx, DAGNodeOperation(bind_index, DAGNodeOperationType.COMPUTE))
+            )
+            schedule.append(
+                (idx, DAGNodeOperation(bind_index, DAGNodeOperationType.WRITE))
+            )
+        return schedule
 
     def _detect_deadlock(self) -> bool:
         """

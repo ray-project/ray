@@ -18,9 +18,30 @@ class _SerializationContext:
         # The number of readers for each channel. When the number of readers
         # reaches 0, remove the data from the buffer.
         self.channel_id_to_num_readers: Dict[str, int] = {}
+        self.intermediate_results_buffer: Dict[
+            int, Dict["DAGNodeOperationType", Any]
+        ] = {}
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport
+
+    def set_intermediate_result(
+        self, bind_index: int, op_type: "DAGNodeOperationType", value: Any
+    ) -> None:
+        if bind_index not in self.intermediate_results_buffer:
+            self.intermediate_results_buffer[bind_index] = {}
+        self.intermediate_results_buffer[bind_index][op_type] = value
+
+    def get_intermediate_result(
+        self, bind_index: int, op_type: "DAGNodeOperationType"
+    ) -> Any:
+        assert (
+            bind_index in self.intermediate_results_buffer
+        ), f"Bind index {bind_index} does not exist in the buffer."
+        assert (
+            op_type in self.intermediate_results_buffer[bind_index]
+        ), f"Operation type {op_type} does not exist in the buffer."
+        return self.intermediate_results_buffer[bind_index].pop(op_type)
 
     def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
         assert num_readers > 0, "num_readers must be greater than 0."
