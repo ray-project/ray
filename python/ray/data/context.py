@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray._private.ray_constants import env_bool, env_integer
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
@@ -85,11 +86,12 @@ DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
 is_ray_job = os.environ.get("RAY_JOB_ID") is not None
 if is_ray_job:
-    logger.info(
-        "Disabling operator-level progress bars by default in Ray Jobs."
-        "To enable progress bars for all operators, set "
-        "`ray.data.DataContext.get_current().enable_progress_bars = True`."
-    )
+    if log_once("ray_data_disable_progress_bars_in_ray_jobs"):
+        logger.info(
+            "Disabling operator-level progress bars by default in Ray Jobs. "
+            "To enable progress bars for all operators, set "
+            "`ray.data.DataContext.get_current().enable_progress_bars = True`."
+        )
     # Disable progress bars by default in Ray jobs.
     DEFAULT_ENABLE_PROGRESS_BARS = False
 else:
