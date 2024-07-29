@@ -35,7 +35,7 @@ class TestMultiRLModule(unittest.TestCase):
         self.assertIsInstance(multi_rl_module["module1"], DiscreteBCTorchModule)
         self.assertIsInstance(multi_rl_module["module2"], DiscreteBCTorchModule)
 
-    def test_as_multi_agent(self):
+    def test_as_multi_rl_module(self):
 
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
@@ -46,14 +46,14 @@ class TestMultiRLModule(unittest.TestCase):
                 env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
-        ).as_multi_agent()
+        ).as_multi_rl_module()
 
         self.assertNotIsInstance(multi_rl_module, DiscreteBCTorchModule)
         self.assertIsInstance(multi_rl_module, MultiRLModule)
         self.assertEqual({DEFAULT_MODULE_ID}, set(multi_rl_module.keys()))
 
-        # check as_multi_agent() for the second time
-        multi_rl_module2 = multi_rl_module.as_multi_agent()
+        # Check as_multi_rl_module() for the second time
+        multi_rl_module2 = multi_rl_module.as_multi_rl_module()
         self.assertEqual(id(multi_rl_module), id(multi_rl_module2))
 
     def test_get_state_and_set_state(self):
@@ -67,7 +67,7 @@ class TestMultiRLModule(unittest.TestCase):
                 env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
-        ).as_multi_agent()
+        ).as_multi_rl_module()
 
         state = module.get_state()
         self.assertIsInstance(state, dict)
@@ -83,7 +83,7 @@ class TestMultiRLModule(unittest.TestCase):
                 env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
-        ).as_multi_agent()
+        ).as_multi_rl_module()
         state2 = module2.get_state()
         check(state, state2, false=True)
 
@@ -103,7 +103,7 @@ class TestMultiRLModule(unittest.TestCase):
                 env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
-        ).as_multi_agent()
+        ).as_multi_rl_module()
 
         module.add_module(
             "test",
@@ -156,7 +156,7 @@ class TestMultiRLModule(unittest.TestCase):
                 env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
-        ).as_multi_agent()
+        ).as_multi_rl_module()
 
         module.add_module(
             "test",

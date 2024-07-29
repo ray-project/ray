@@ -795,7 +795,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 hasattr(local_env_runner, "module")
                 and local_env_runner.module is not None
             ):
-                multi_rl_module_dict = dict(local_env_runner.module.as_multi_agent())
+                multi_rl_module_dict = dict(
+                    local_env_runner.module.as_multi_rl_module()
+                )
                 env = local_env_runner.env
                 spaces = {
                     mid: (mod.config.observation_space, mod.config.action_space)

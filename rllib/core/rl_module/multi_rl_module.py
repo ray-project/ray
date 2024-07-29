@@ -25,6 +25,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
 from ray.rllib.utils.typing import ModuleID, StateDict, T
@@ -128,8 +129,8 @@ class MultiRLModule(RLModule):
         return len(self._rl_modules)
 
     @override(RLModule)
-    def as_multi_agent(self) -> "MultiRLModule":
-        """Returns a multi-agent wrapper around this module.
+    def as_multi_rl_module(self) -> "MultiRLModule":
+        """Returns self in order to match `RLModule.as_multi_rl_module()` behavior.
 
         This method is overridden to avoid double wrapping.
 
@@ -447,7 +448,7 @@ class MultiRLModuleSpec:
                 "RLModuleSpecs for each individual module."
             )
 
-    def get_marl_config(self) -> "MultiRLModuleConfig":
+    def get_multi_rl_module_config(self) -> "MultiRLModuleConfig":
         """Returns the MultiRLModuleConfig for this spec."""
         return MultiRLModuleConfig(
             # Only set `inference_only=True` if all single-agent specs are
@@ -483,7 +484,7 @@ class MultiRLModuleSpec:
             return self.module_specs[module_id].build()
 
         # Return MultiRLModule.
-        module_config = self.get_marl_config()
+        module_config = self.get_multi_rl_module_config()
         module = self.multi_rl_module_class(module_config)
         return module
 
@@ -602,13 +603,21 @@ class MultiRLModuleSpec:
                     self.inference_only = False
                 self.module_specs.update(other.module_specs)
 
-    def as_multi_agent(self) -> "MultiRLModuleSpec":
-        """Returns self to match `RLModuleSpec.as_multi_agent()`."""
+    def as_multi_rl_module_spec(self) -> "MultiRLModuleSpec":
+        """Returns self in order to match `RLModuleSpec.as_multi_rl_module_spec()`."""
         return self
 
     def __contains__(self, item) -> bool:
         """Returns whether the given `item` (ModuleID) is present in self."""
         return item in self.module_specs
+
+    @Deprecated(new="MultiRLModuleSpec.as_multi_rl_module_spec()", error=True)
+    def as_multi_agent(self):
+        pass
+
+    @Deprecated(new="MultiRLModuleSpec.get_multi_rl_module_config", error=True)
+    def get_marl_config(self, *args, **kwargs):
+        pass
 
 
 # TODO (sven): Shouldn't we simply use this class inside MultiRLModuleSpec instead

@@ -165,7 +165,7 @@ class RLModuleSpec:
             self.catalog_class = self.catalog_class or other.catalog_class
             self.load_state_path = self.load_state_path or other.load_state_path
 
-    def as_multi_agent(self) -> "MultiRLModuleSpec":
+    def as_multi_rl_module_spec(self) -> "MultiRLModuleSpec":
         """Returns a MultiRLModuleSpec (`self` under DEFAULT_MODULE_ID key)."""
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
@@ -173,6 +173,10 @@ class RLModuleSpec:
             module_specs={DEFAULT_MODULE_ID: self},
             load_state_path=self.load_state_path,
         )
+
+    @Deprecated(new="RLModuleSpec.as_multi_rl_module_spec()", error=True)
+    def as_multi_agent(self, *args, **kwargs):
+        pass
 
 
 @ExperimentalAPI
@@ -724,7 +728,7 @@ class RLModule(Checkpointable, abc.ABC):
             {},  # **kwargs
         )
 
-    def as_multi_agent(self) -> "MultiRLModule":
+    def as_multi_rl_module(self) -> "MultiRLModule":
         """Returns a multi-agent wrapper around this module."""
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 
@@ -742,6 +746,10 @@ class RLModule(Checkpointable, abc.ABC):
             The underlying module.
         """
         return self
+
+    @Deprecated(new="RLModule.as_multi_rl_module()", error=True)
+    def as_multi_agent(self, *args, **kwargs):
+        pass
 
     @Deprecated(new="RLModule.save_to_path(...)", error=True)
     def save_state(self, *args, **kwargs):

@@ -129,7 +129,7 @@ spec = RLModuleSpec(
 )
 
 module = spec.build()
-multi_rl_module = module.as_multi_agent()
+multi_rl_module = module.as_multi_rl_module()
 # __convert-sa-to-ma-end__
 
 
