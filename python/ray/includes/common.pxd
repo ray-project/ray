@@ -380,7 +380,11 @@ cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
 
 cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
-        pass
+        CRayStatus AsyncGetAllByFilter(
+            const optional[CActorID] &actor_id,
+            const optional[CJobID] &job_id,
+            const optional[c_string] &actor_state_name,
+            const MultiItemCallback[CActorTableData] &callback)
 
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus GetAll(

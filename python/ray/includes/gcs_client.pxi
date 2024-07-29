@@ -360,6 +360,35 @@ cdef class NewGcsClient:
         return ret
 
     #############################################################
+    # Actor methods
+    #############################################################
+
+    def async_get_all_actor_info(
+        self,
+        actor_id: Optional[ActorID]=None,
+        job_id: Optional[JobID]=None,
+        actor_state_name: Optional[str]=None,
+        timeout: Optional[float] = None
+    ) -> Future[Dict[ActorID, gcs_pb2.ActorTableData]]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            optional[CActorID] c_actor_id = None if actor_id is None else actor_id.native()
+            optional[CJobID] c_job_id = None if job_id is None else job_id.native()
+            optional[c_string] c_actor_state_name = None if actor_state_name is None else actor_state_name.encode()
+            fut = incremented_fut()
+            void* fut_ptr = <void*>fut
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Jobs().AsyncGetAllByFilter(
+                    c_actor_id, c_job_id, c_actor_state_name,
+                    MultiItemPyCallback[CActorTableData](
+                        convert_get_all_actor_info,
+                        assign_and_decrement_fut,
+                        fut_ptr),
+                    timeout_ms))
+        return asyncio.wrap_future(fut)
+    #############################################################
     # Job methods
     #############################################################
     def get_all_job_info(
@@ -375,7 +404,7 @@ cdef class NewGcsClient:
 
     def async_get_all_job_info(
         self, timeout: Optional[float] = None
-    ) -> Future[Dict[str, gcs_pb2.JobTableData]]:
+    ) -> Future[Dict[JobID, gcs_pb2.JobTableData]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
@@ -558,6 +587,23 @@ cdef convert_get_all_job_info(
         return job_table_data, None
     except Exception as e:
         return None, e
+
+cdef convert_get_all_actor_info(
+        CRayStatus status, c_vector[CActorTableData]&& c_data):
+    # -> Dict[ActorID, gcs_pb2.ActorTableData]
+    cdef c_string b
+    try:
+        check_status_timeout_as_rpc_error(status)
+        actor_table_data = {}
+        for c_proto in c_data:
+            b = c_proto.SerializeAsString()
+            proto = gcs_pb2.ActorTableData()
+            proto.ParseFromString(b)
+            job_table_data[ActorID.from_binary(proto.actor_id)] = proto
+        return actor_table_data, None
+    except Exception as e:
+        return None, e
+
 
 cdef convert_optional_str_none_for_not_found(
         CRayStatus status, const optional[c_string]& c_str):
