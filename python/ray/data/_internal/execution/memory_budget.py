@@ -84,6 +84,14 @@ def is_first_op(op) -> bool:
     )
 
 
+def _get_num_slots(op, resource_manager: "ResourceManager") -> int:
+    if op.incremental_resource_usage().cpu > 0:
+        return resource_manager.get_global_limits().cpu
+    if op.incremental_resource_usage().gpu > 0:
+        return resource_manager.get_global_limits().gpu
+    return 0
+
+
 def _get_global_growth_rate(resource_manager: "ResourceManager", topology):
     DURATION = 30  # consider tasks in the last 30 seconds
 
@@ -106,8 +114,8 @@ def _get_global_growth_rate(resource_manager: "ResourceManager", topology):
 
         optimistic_rate = 0
         task_duration = op._metrics.average_task_duration
-        num_slots = resource_manager.get_global_limits().cpu
         if task_duration is not None:
+            num_slots = _get_num_slots(op, resource_manager)
             optimistic_rate = num_slots / task_duration
         else:
             optimistic_rate = 0
@@ -179,7 +187,6 @@ def _get_per_op_grow_rate(op, resource_manager: "ResourceManager") -> float:
     time_for_pipeline_to_process_one_data = 0
     next_op = op
     output_input_multipler = 1
-    time_for_op = 0
 
     while len(next_op.output_dependencies) > 0:
         assert len(next_op.output_dependencies) == 1
@@ -194,7 +201,7 @@ def _get_per_op_grow_rate(op, resource_manager: "ResourceManager") -> float:
         ):
             continue
 
-        time_for_op += (
+        time_for_op = (
             output_input_multipler
             * next_op._metrics.average_task_duration
             / next_op._metrics.average_bytes_inputs_per_task
@@ -205,13 +212,12 @@ def _get_per_op_grow_rate(op, resource_manager: "ResourceManager") -> float:
             / next_op._metrics.average_bytes_inputs_per_task
         )
 
-        if next_op.incremental_resource_usage().cpu == 0:
-            # @MaoZiming: if it is on GPU.
-            # However, time_for_op still accumulates.
-            # If the last stage is on GPU, then you don't have to care.
-            continue
+        # @lsf/@mzm: Even if an op takes no CPU (e.g. runs on GPU), we still need to add it
+        # to the pipeline processing time. There might be room for optimization if the
+        # output size of an op is nearly 0.
+        # if next_op.incremental_resource_usage().cpu == 0:
+        #     continue
         time_for_pipeline_to_process_one_data += time_for_op
-        time_for_op = 0
 
     num_executors_not_running_op = (
         resource_manager.get_global_limits().cpu
