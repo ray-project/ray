@@ -1505,7 +1505,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
                   .AsyncGet(reader_actor,
                             [&addr, &promise](
                                 Status status,
-                                const boost::optional<rpc::ActorTableData> &result) {
+                                const std::optional<rpc::ActorTableData> &result) {
                               RAY_CHECK(result);
                               if (result) {
                                 addr.set_ip_address(result->address().ip_address());

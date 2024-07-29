@@ -53,7 +53,7 @@ Algorithms
 ----------
 
 Algorithms bring all RLlib components together, making learning of different tasks
-accessible via RLlib's Python API and its command line interface (CLI).
+accessible via RLlib's Python API.
 Each ``Algorithm`` class is managed by its respective ``AlgorithmConfig``, for example to
 configure a ``PPO`` instance, you should use the ``PPOConfig`` class.
 An ``Algorithm`` sets up its rollout workers and optimizers, and collects training metrics.
@@ -95,13 +95,6 @@ which implements the proximal policy optimization algorithm in RLlib.
 
             # Train via Ray Tune.
             tune.run("PPO", config=config)
-
-
-    .. tab-item:: RLlib Command Line
-
-        .. code-block:: bash
-
-            rllib train --run=PPO --env=CartPole-v1 --config='{"train_batch_size": 4000}'
 
 
 RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.

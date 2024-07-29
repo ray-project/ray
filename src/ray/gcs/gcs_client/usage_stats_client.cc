@@ -35,7 +35,7 @@ void UsageStatsClient::RecordExtraUsageTag(usage::TagKey key, const std::string 
       value,
       /*overwrite=*/true,
       GetGcsTimeoutMs(),
-      [](Status status, boost::optional<int> added_num) {
+      [](Status status, std::optional<int> added_num) {
         if (!status.ok()) {
           RAY_LOG(DEBUG) << "Failed to put extra usage tag, status = " << status;
         }
