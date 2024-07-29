@@ -10,6 +10,7 @@ DOC_BUILD_DIR_S3 = "doc_build"
 
 PENDING_FILES_PATH = "pending_files.txt"
 
+
 def find_latest_master_commit():
     """Find latest commit that was pushed to origin/master that is also on local env."""
     latest_commit = subprocess.check_output(
