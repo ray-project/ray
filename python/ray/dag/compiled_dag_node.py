@@ -39,13 +39,13 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from enum import Enum, auto
+from enum import Enum
 
 
 class DAGNodeOperationType(Enum):
-    READ = auto()
-    COMPUTE = auto()
-    WRITE = auto()
+    READ = "READ"
+    COMPUTE = "COMPUTE"
+    WRITE = "WRITE"
 
 
 class DAGNodeOperation:
