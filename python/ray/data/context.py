@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 import warnings
@@ -10,6 +11,8 @@ from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import ExecutionOptions
+
+logger = logging.getLogger(__name__)
 
 # The context singleton on this process.
 _default_context: "Optional[DataContext]" = None
@@ -82,6 +85,11 @@ DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
 is_ray_job = os.environ.get("RAY_JOB_ID") is not None
 if is_ray_job:
+    logger.info(
+        "Disabling operator-level progress bars by default in Ray Jobs."
+        "To enable progress bars for all operators, set "
+        "`ray.data.DataContext.get_current().enable_progress_bars = True`."
+    )
     # Disable progress bars by default in Ray jobs.
     DEFAULT_ENABLE_PROGRESS_BARS = False
 else:
