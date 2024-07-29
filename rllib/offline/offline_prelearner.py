@@ -207,6 +207,7 @@ class OfflinePreLearner:
         is_multi_agent: bool,
         batch: Dict[str, np.ndarray],
         schema: Dict[str, str] = SCHEMA,
+        finalize: bool = False,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 
@@ -270,6 +271,9 @@ class OfflinePreLearner:
                     },
                     len_lookback_buffer=0,
                 )
+
+            if finalize:
+                episode.finalize()
             episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
