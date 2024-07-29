@@ -22,8 +22,9 @@ class HPUTorchDeviceManager(TorchDeviceManager):
         if HPU_PACKAGE_AVAILABLE and torch_hpu.is_available():
             devices = [torch.device("hpu")]
         else:
-            devices = [torch.device("cpu")]
-
+            raise RuntimeError(
+                "Using NPUTorchDeviceManager but torch hpu is not available."
+            )
         return devices
 
     def set_device(self, device: Union[torch.device, int, str, None]):

@@ -1,4 +1,5 @@
 import pytest
+import torch
 
 import ray
 from ray.air._internal.device_manager import (
@@ -6,9 +7,13 @@ from ray.air._internal.device_manager import (
     NPUTorchDeviceManager,
     get_torch_device_manager,
 )
+from ray.air._internal.device_manager.npu import NPU_TORCH_PACKAGE_AVAILABLE
 from ray.cluster_utils import Cluster
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
+
+if NPU_TORCH_PACKAGE_AVAILABLE:
+    import torch_npu  # noqa: F401
 
 
 @pytest.fixture
@@ -37,7 +42,7 @@ def test_cuda_devcie_manager(ray_2_node_2_gpu):
     trainer.fit()
 
 
-def test_npu_device_mananger(ray_2_node_2_npus):
+def test_npu_device_manager(ray_2_node_2_npus):
     def train_fn():
         assert isinstance(get_torch_device_manager(), NPUTorchDeviceManager)
 
@@ -46,7 +51,14 @@ def test_npu_device_mananger(ray_2_node_2_npus):
         scaling_config=ScalingConfig(num_workers=1, resources_per_worker={"NPU": 1}),
     )
 
-    trainer.fit()
+    if NPU_TORCH_PACKAGE_AVAILABLE and torch.npu.is_available():
+        # Except test run successfully when torch npu is available.
+        trainer.fit()
+    else:
+        # A RuntimeError will be triggered when NPU resources are declared
+        # but the torch npu is actually not available
+        with pytest.raises(RuntimeError):
+            trainer.fit()
 
 
 def test_device_manager_conflict(ray_1_node_1_gpu_1_npu):

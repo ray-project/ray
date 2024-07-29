@@ -71,7 +71,9 @@ class NPUTorchDeviceManager(TorchDeviceManager):
 
             devices = [torch.device(f"npu:{device_id}") for device_id in device_ids]
         else:
-            devices = [torch.device("cpu")]
+            raise RuntimeError(
+                "Using NPUTorchDeviceManager but torch npu is not available."
+            )
 
         return devices
 
