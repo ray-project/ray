@@ -38,7 +38,13 @@ parser.set_defaults(enable_new_api_stack=True)
 
 
 
-class PrintMaxDistanceFrozenLakeCallback(DefaultCallbacks):
+class MeasureMaxDistanceToStart(DefaultCallbacks):
+    """Callback measuring the dist of the agent to its start position in FrozenLake-v1.
+
+    Makes the naive assumption that the start position ("S") is in the upper left
+    corner of the used map.
+    Uses the MetricsLogger to record the (euclidian) distance value.
+    """
     def __init__(self):
         super().__init__()
         self.max_dists = defaultdict(float)
@@ -110,6 +116,7 @@ if __name__ == "__main__":
         .environment(
             "FrozenLake-v1",
             env_config={
+                # Use a 12x12 map.
                 "desc": [
                     "SFFFFFFFFFFF",
                     "FFFFFFFFFFFF",
@@ -135,7 +142,7 @@ if __name__ == "__main__":
             #curiosity_feature_net_hiddens=[256, 256],
             #curiosity_inverse_net_activation="relu"
         )
-        .callbacks(PrintMaxDistanceFrozenLakeCallback)
+        .callbacks(MeasureMaxDistanceToStart)
         .env_runners(
             num_envs_per_env_runner=5,
             env_to_module_connector=lambda env: FlattenObservations(),
@@ -144,7 +151,6 @@ if __name__ == "__main__":
             learner_class=PPOTorchLearnerWithCuriosity,
             train_batch_size_per_learner=2000,
             num_sgd_iter=6,
-            #vf_loss_coeff=0.01,
             lr=0.0003,
         )
         .rl_module(model_config_dict={"vf_share_layers": True})
