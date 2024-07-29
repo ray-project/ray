@@ -8,6 +8,7 @@ import click
 S3_BUCKET = "ray-ci-results"
 DOC_BUILD_DIR_S3 = "doc_build"
 
+PENDING_FILES_PATH = "pending_files.txt"
 
 def find_latest_master_commit():
     """Find latest commit that was pushed to origin/master that is also on local env."""
@@ -30,8 +31,8 @@ def fetch_cache_from_s3(commit, target_file_path):
     Fetch doc cache archive from ray-ci-results S3 bucket
 
     Args:
-        commit (str): The commit hash of the doc cache to fetch
-        target_file_path (str): The file path to save the doc cache archive
+        commit: The commit hash of the doc cache to fetch
+        target_file_path: The file path to save the doc cache archive
     """
     # Create an S3 client
     s3 = boto3.client("s3")
@@ -50,7 +51,7 @@ def extract_cache(cache_path: str, doc_dir: str):
     Extract the doc cache archive to overwrite the ray/doc directory
 
     Args:
-        file_path (str): The file path of the doc cache archive
+        file_path: The file path of the doc cache archive
     """
     with tarfile.open(cache_path, "r:gz") as tar:
         tar.extractall(doc_dir)
@@ -102,7 +103,7 @@ def main(ray_dir: str) -> None:
     # List all changed and added files in the repo
     filenames = list_changed_and_added_files(ray_dir, latest_master_commit)
     with open(
-        f"{ray_dir}/pending_files.txt", "w"
+        f"{ray_dir}/{PENDING_FILES_PATH}", "w"
     ) as f:  # Save to file to be used when updating cache environment
         f.write("\n".join(filenames))
 
