@@ -72,6 +72,6 @@ Submit a text-to-image prompt to the Stable Diffusion model server:
 python stable_diffusion_tpu_req.py  --save_pictures
 ```
 
-* The results of the stable diffusion inference will be saved to a file named diffusion_results.png.
+* The results of the stable diffusion inference are saved to a file named diffusion_results.png.
 
 ![diffusion_results](../images/diffusion_results.png)
