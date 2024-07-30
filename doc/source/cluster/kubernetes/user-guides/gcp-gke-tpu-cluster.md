@@ -36,7 +36,7 @@ gcloud container clusters create kuberay-tpu-cluster \
 
 Replace CLUSTER_VERSION with the GKE version for the cluster, which must be version 1.30.1 or later.
 
-Run the following command to add a TPU node pool to the cluster. You can also create it from the [Google Cloud Console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console)
+Run the following command to add a TPU node pool to the cluster. You can also create it from the [Google Cloud Console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console):
 
 To create a node pool with a single-host TPU topology:
 ```sh
