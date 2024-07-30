@@ -58,7 +58,7 @@ Below is a config snippet for a RayCluster worker group with 2 Ray TPU worker Po
 
 After a Ray pod with with TPU pod resources is deployed, it will be able to execute tasks and actors annotated with TPU requests.
 TPUs are supported on Ray as a [custom resource](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#custom-resources),
-and are requested by tasks or actors using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
+Tasks or actors request the TPUs using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
 
 ## Multi-Host TPU autoscaling
 
