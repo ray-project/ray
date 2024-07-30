@@ -407,8 +407,7 @@ std::string Process::Exec(const std::string command) {
 #ifdef _WIN32
   std::unique_ptr<FILE, decltype(&_pclose)> pipe(_popen(command.c_str(), "r"), _pclose);
 #else
-  std::unique_ptr<FILE, void (*)(FILE *)> pipe(popen(command.c_str(), "r"),
-                                               [](FILE *f) -> void { pclose(f); });
+  std::unique_ptr<FILE, int (*)(FILE *)> pipe(popen(command.c_str(), "r"), pclose);
 #endif
   RAY_CHECK(pipe) << "popen() failed for command: " + command;
   while (fgets(buffer.data(), buffer.size(), pipe.get()) != nullptr) {
