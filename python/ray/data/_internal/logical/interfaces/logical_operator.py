@@ -61,7 +61,11 @@ class LogicalOperator(Operator):
         return None
 
     def aggregate_output_metadata(self) -> BlockMetadata:
-        """A ``BlockMetadata`` that represents the aggregate metadata of the outputs."""
+        """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
+
+        This method is used by methods like :meth:`~ray.data.Dataset.schema` to
+        efficiently return metadata.
+        """
         return BlockMetadata(None, None, None, None, None)
 
     def is_lineage_serializable(self) -> bool:
