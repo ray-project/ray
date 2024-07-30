@@ -40,9 +40,11 @@ for PY_VERSION_CODE in "${PY_VERSION_CODES[@]}"; do
     # so just upload the basic ray:cpu one.
     aws s3 cp "${S3_TEMP}/ray-opt/${PY_VERSION_CODE}/ray-${PY_VERSION_CODE}-cpu.tar.gz" \
         "${TMP}/ray-${PY_VERSION_CODE}-cpu.tar.gz"
+    gunzip -k "${TMP}/ray-${PY_VERSION_CODE}-cpu.tar.gz"
 
     aws s3 cp "${S3_TEMP}/ray-opt/${PY_VERSION_CODE}/ray-${PY_VERSION_CODE}-cpu-min.tar.gz" \
         "${TMP}/ray-${PY_VERSION_CODE}-cpu-min.tar.gz"
+    gunzip -k "${TMP}/ray-${PY_VERSION_CODE}-cpu-min.tar.gz"
 done
 
 if [[ "${BUILDKITE:-}" == "true" ]]; then
@@ -55,17 +57,23 @@ fi
 RAY_COMMIT="$(git rev-parse HEAD)"
 for PY_VERSION_CODE in "${PY_VERSION_CODES[@]}"; do
     # Must keep this consistent with the image.
-    ANYSCALE_PRESTART_DATA_PATH="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}.tar.gz"
+    ANYSCALE_PRESTART_DATA_PATH_TARGZ="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}.tar.gz"
+    ANYSCALE_PRESTART_DATA_PATH_TAR="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}.tar"
 
     aws s3 cp "${TMP}/ray-${PY_VERSION_CODE}-cpu.tar.gz" \
-        "s3://${ORG_DATA_BUCKET}/${ANYSCALE_PRESTART_DATA_PATH}"
+        "s3://${ORG_DATA_BUCKET}/${ANYSCALE_PRESTART_DATA_PATH_TARGZ}"
+    aws s3 cp "${TMP}/ray-${PY_VERSION_CODE}-cpu.tar" \
+        "s3://${ORG_DATA_BUCKET}/${ANYSCALE_PRESTART_DATA_PATH_TAR}"
 done
 for PY_VERSION_CODE in "${PY_VERSION_CODES[@]}"; do
     # Must keep this consistent with the image.
-    ANYSCALE_PRESTART_DATA_PATH="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}-min.tar.gz"
+    ANYSCALE_PRESTART_DATA_PATH_TARGZ="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}-min.tar.gz"
+    ANYSCALE_PRESTART_DATA_PATH_TAR="common/ray-opt/${RAY_VERSION}/${RAY_COMMIT}/ray-opt-${PY_VERSION_CODE}-min.tar"
 
     aws s3 cp "${TMP}/ray-${PY_VERSION_CODE}-cpu-min.tar.gz" \
-        "s3://${ORG_DATA_BUCKET}/${ANYSCALE_PRESTART_DATA_PATH}"
+        "s3://${ORG_DATA_BUCKET}/${ANYSCALE_PRESTART_DATA_PATH_TARGZ}"
+    aws s3 cp "${TMP}/ray-${PY_VERSION_CODE}-cpu-min.tar" \
+        "s3://${ORG_DATA_BUCKET}/${ANYSCALE_PRESTART_DATA_PATH_TAR}"
 done
 
 # Cleanup temp dir.
