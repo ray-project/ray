@@ -89,7 +89,6 @@ TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
       "127.0.0.1:" + std::to_string(gcs_server_->GetPort()),
       gcs_server_->GetClusterId(),
       *client_io_service_);
-  RAY_LOG(ERROR) << "TestRecordExtraUsageTag init done";
   usage_stats_client.RecordExtraUsageTag(usage::TagKey::_TEST1, "value1");
   ASSERT_TRUE(WaitForCondition(
       [this]() {

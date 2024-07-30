@@ -231,6 +231,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// \brief Get the job config by job id.
   ///
+  /// We don't return std::optional because it does not support references.
+  ///
   /// \param job_id ID of the job.
   /// \return Job config if given job is running, else nullptr.
   boost::optional<const rpc::JobConfig &> GetJobConfig(const JobID &job_id) const;
