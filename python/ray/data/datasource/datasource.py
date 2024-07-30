@@ -1,13 +1,10 @@
-from typing import TYPE_CHECKING, Callable, Iterable, List, Optional, Union
+from typing import Callable, Iterable, List, Optional
 
 import numpy as np
 
 from ray.data._internal.util import _check_pyarrow_version, unify_block_metadata_schema
 from ray.data.block import Block, BlockMetadata
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-
-if TYPE_CHECKING:
-    import pyarrow
 
 
 @PublicAPI
