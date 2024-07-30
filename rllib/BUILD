@@ -1384,10 +1384,10 @@ py_test(
 )
 
 py_test(
-    name = "test_marl_module",
+    name = "test_multi_rl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/rl_module/tests/test_marl_module.py"]
+    srcs = ["core/rl_module/tests/test_multi_rl_module.py"]
 )
 
 py_test(
@@ -2499,7 +2499,7 @@ py_test(
     name = "examples/curiosity/count_based_curiosity",
     main = "examples/curiosity/count_based_curiosity.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/curiosity/count_based_curiosity.py"],
     args = ["--enable-new-api-stack", "--as-test"]
 )
@@ -2508,10 +2508,20 @@ py_test(
     name = "examples/curiosity/euclidian_distance_based_curiosity",
     main = "examples/curiosity/euclidian_distance_based_curiosity.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/curiosity/euclidian_distance_based_curiosity.py"],
     args = ["--enable-new-api-stack", "--as-test"]
 )
+
+py_test(
+    name = "examples/curiosity/inverse_dynamics_model_based_curiosity",
+    main = "examples/curiosity/inverse_dynamics_model_based_curiosity.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/curiosity/inverse_dynamics_model_based_curiosity.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
 
 # subdirectory: curriculum/
 # ....................................

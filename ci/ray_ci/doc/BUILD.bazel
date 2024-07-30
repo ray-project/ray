@@ -14,6 +14,20 @@ py_binary(
     exec_compatible_with = ["//:hermetic_python"],
 )
 
+py_binary(
+    name = "cmd_load_doc_cache",
+    srcs = ["cmd_load_doc_cache.py"],
+    deps = [":doc"],
+    exec_compatible_with = ["//:hermetic_python"],
+)
+
+py_binary(
+    name = "cmd_update_cache_env",
+    srcs = ["cmd_update_cache_env.py"],
+    deps = [":doc"],
+    exec_compatible_with = ["//:hermetic_python"],
+)
+
 py_library(
     name = "doc",
     srcs = glob(
@@ -26,6 +40,11 @@ py_library(
     visibility = ["//ci/ray_ci/doc:__subpackages__"],
     deps = [
         "//ci/ray_ci:ray_ci_lib",
+        ci_require("sphinx"),
+        ci_require("myst_parser"),
+        ci_require("myst-nb"),
+        ci_require("jupytext"),
+        ci_require("appnope"),
     ],
 )
 
@@ -85,6 +104,22 @@ py_test(
     ],
     deps = [
         ":doc",
+        ci_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_update_cache_env",
+    size = "small",
+    srcs = ["test_update_cache_env.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":doc",
+        ":cmd_update_cache_env",
         ci_require("pytest"),
     ],
 )
