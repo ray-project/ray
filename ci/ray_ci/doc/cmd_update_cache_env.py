@@ -52,7 +52,7 @@ def update_environment_pickle(ray_dir: str, pending_files: List[str]) -> None:
         pickle.dump(env, f, pickle.HIGHEST_PROTOCOL)
 
 
-# TODO(@khluu): Check if this is necessary
+# TODO(@khluu): Check if this is necessary. Only update changed template files.
 def update_file_timestamp(ray_dir: str) -> None:
     """
     Update files other than source files to
