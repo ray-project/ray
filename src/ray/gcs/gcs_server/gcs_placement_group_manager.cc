@@ -973,18 +973,19 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
         prepared_bundles.emplace_back(std::make_shared<BundleSpecification>(bundle));
       }
       prepared_pgs.emplace_back(SchedulePreparedPgRequest{
-          .request = {.placement_group = placement_group,
-                      .success_callback =
-                          [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-                            OnPlacementGroupCreationSuccess(std::move(placement_group));
-                          },
-                      .failure_callback =
-                          [this](std::shared_ptr<GcsPlacementGroup> placement_group,
-                                 bool is_feasible) {
-                            OnPlacementGroupCreationFailed(std::move(placement_group),
-                                                           CreateDefaultBackoff(),
-                                                           is_feasible);
-                          }},
+          .request = {
+              .placement_group = placement_group,
+              .failure_callback =
+                  [this](std::shared_ptr<GcsPlacementGroup> placement_group,
+                         bool is_feasible) {
+                    OnPlacementGroupCreationFailed(
+                        std::move(placement_group), CreateDefaultBackoff(), is_feasible);
+                  },
+              .success_callback =
+                  [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+                    OnPlacementGroupCreationSuccess(std::move(placement_group));
+                  },
+          },
           .prepared_bundles = std::move(prepared_bundles)});
     }
     if (state == rpc::PlacementGroupTableData::CREATED ||
