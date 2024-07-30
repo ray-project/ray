@@ -19,7 +19,6 @@
 #include "ray/common/placement_group.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/entry_change_notification.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/sequencer.h"
 #include "src/ray/protobuf/gcs.pb.h"
