@@ -10,7 +10,7 @@ from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_b
     AddNextObservationsFromEpisodesToTrainBatch,
 )
 from ray.rllib.core import Columns, DEFAULT_MODULE_ID
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.rl_modules.classes.inverse_dynamics_model_rlm import (
     InverseDynamicsModel,
 )
@@ -72,7 +72,7 @@ class PPOTorchLearnerWithCuriosity(PPOTorchLearner):
         assert len(self.module) == 1 and DEFAULT_MODULE_ID in self.module
 
         # Add an InverseDynamicsModel to our MARLModule.
-        icm_spec = SingleAgentRLModuleSpec(
+        icm_spec = RLModuleSpec(
             module_class=InverseDynamicsModel,
             observation_space=self.module[DEFAULT_MODULE_ID].config.observation_space,
             action_space=self.module[DEFAULT_MODULE_ID].config.action_space,
