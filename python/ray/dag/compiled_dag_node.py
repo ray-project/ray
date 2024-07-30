@@ -51,14 +51,15 @@ class DAGNodeOperationType(Enum):
 class DAGNodeOperation:
     def __init__(
         self,
-        bind_index: int,
+        idx: int,
         operation_type: DAGNodeOperationType,
     ):
-        self.bind_index = bind_index
+        # not bind_index
+        self.idx = idx
         self.type = operation_type
 
     def __repr__(self) -> str:
-        return f"DAGNodeOperation({self.bind_index}, {self.type})"
+        return f"DAGNodeOperation({self.idx}, {self.type})"
 
 
 # Holds the input arguments for an accelerated DAG node.
@@ -105,7 +106,7 @@ def do_allocate_channel(
 def do_exec_tasks(
     self,
     tasks: List["ExecutableTask"],
-    schedule: List[Tuple[int, DAGNodeOperation]],
+    schedule: List[DAGNodeOperation],
 ) -> None:
     """Generic actor method to begin executing the tasks belonging to an actor.
     This runs an infinite loop to run each task in turn (following the order specified
@@ -125,8 +126,9 @@ def do_exec_tasks(
         while True:
             if done:
                 break
-            for idx, operation in schedule:
+            for operation in schedule:
                 operation_type = operation.type
+                idx = operation.idx
                 task = tasks[idx]
                 done = _exec_task(self, task, idx, operation_type)
                 if done:
@@ -1116,17 +1118,10 @@ class CompiledDAG:
     def _build_execution_schedule(self):
         for actor_handle in self.actor_to_executable_tasks:
             schedule = []
-            for idx, task in enumerate(self.actor_to_executable_tasks[actor_handle]):
-                bind_index = task.bind_index
-                schedule.append(
-                    (idx, DAGNodeOperation(bind_index, DAGNodeOperationType.READ))
-                )
-                schedule.append(
-                    (idx, DAGNodeOperation(bind_index, DAGNodeOperationType.COMPUTE))
-                )
-                schedule.append(
-                    (idx, DAGNodeOperation(bind_index, DAGNodeOperationType.WRITE))
-                )
+            for idx, _ in enumerate(self.actor_to_executable_tasks[actor_handle]):
+                schedule.append(DAGNodeOperation(idx, DAGNodeOperationType.READ))
+                schedule.append(DAGNodeOperation(idx, DAGNodeOperationType.COMPUTE))
+                schedule.append(DAGNodeOperation(idx, DAGNodeOperationType.WRITE))
             self.actor_to_execution_schedule[actor_handle] = schedule
 
     def _detect_deadlock(self) -> bool:
