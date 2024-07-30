@@ -4,6 +4,8 @@ import subprocess
 import tarfile
 import os
 import click
+from botocore import UNSIGNED
+from botocore.client import Config
 
 S3_BUCKET = "ray-ci-results"
 DOC_BUILD_DIR_S3 = "doc_build"
@@ -13,17 +15,18 @@ PENDING_FILES_PATH = "pending_files.txt"
 
 def find_latest_master_commit():
     """Find latest commit that was pushed to origin/master that is also on local env."""
-    latest_commit = subprocess.check_output(
-        [
-            "git",
-            "log",
-            "--pretty=format:%H",
-            "--first-parent",
-            "master",
-            "-n",
-            "1",
-        ]
-    ).decode("utf-8")
+    latest_commit = (
+        subprocess.check_output(
+            [
+                "git",
+                "merge-base",
+                "HEAD",
+                "origin/master",
+            ]
+        )
+        .strip()
+        .decode("utf-8")
+    )
     return latest_commit
 
 
@@ -36,7 +39,7 @@ def fetch_cache_from_s3(commit, target_file_path):
         target_file_path: The file path to save the doc cache archive
     """
     # Create an S3 client
-    s3 = boto3.client("s3")
+    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
     s3_file_path = f"{DOC_BUILD_DIR_S3}/{commit}.tgz"
     try:
         print(f"Downloading {commit}.tgz from S3...")
@@ -93,6 +96,8 @@ def list_changed_and_added_files(ray_dir: str, latest_master_commit: str):
         filename = file.split(".")[0]  # Remove extension
         if filename.startswith("doc/"):  # Remove "doc/" prefix
             filename = filename.replace("doc/", "")
+        if filename.startswith("source/"):  # Remove "doc/" prefix
+            filename = filename.replace("source/", "")
         filenames.append(filename)
     return filenames
 
