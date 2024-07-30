@@ -94,8 +94,11 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # Counts how often `sample` is called to define the output path for
         # each file.
         self._sample_counter = 0
+
         # Counts the sampled environment steps. This is used for checking,
         # if the `ouutput_max_rows_per_file` is hit during sampling.
+        # TODO (sven): Shouldn't we just use
+        #  `self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)` here?
         self._num_env_steps = 0
 
         # If we should output episodes or columns.
@@ -117,8 +120,6 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         """Samples from environments and writes data to disk."""
 
         # Call the super sample method.
-        self._sample_counter += 1
-
         samples = super().sample(
             num_timesteps=num_timesteps,
             num_episodes=num_episodes,
@@ -127,7 +128,11 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
             force_reset=force_reset,
         )
 
+        self._sample_counter += 1
+
         # Increase env step counter.
+        # TODO (sven): Shouldn't we just use
+        #  `self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)` here?
         self._num_env_steps += sum(eps.env_steps() for eps in samples)
 
         # Add data to the buffers.

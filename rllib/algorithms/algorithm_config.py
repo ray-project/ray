@@ -31,6 +31,8 @@ from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
+from ray.rllib.offline.input_reader import InputReader
+from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
@@ -2378,30 +2380,29 @@ class AlgorithmConfig(_Config):
     def offline_data(
         self,
         *,
-        input_=NotProvided,
-        input_read_method=NotProvided,
-        input_read_method_kwargs=NotProvided,
-        input_read_schema=NotProvided,
-        map_batches_kwargs=NotProvided,
-        iter_batches_kwargs=NotProvided,
-        prelearner_class=NotProvided,
-        prelearner_module_synch_period=NotProvided,
-        dataset_num_iters_per_learner=NotProvided,
-        input_config=NotProvided,
-        actions_in_input_normalized=NotProvided,
-        input_evaluation=NotProvided,
-        postprocess_inputs=NotProvided,
-        shuffle_buffer_size=NotProvided,
-        output=NotProvided,
-        output_config=NotProvided,
-        output_compress_columns=NotProvided,
-        output_max_file_size=NotProvided,
-        output_max_rows_per_file=NotProvided,
-        output_data_write_method=NotProvided,
-        output_data_write_method_kwargs=NotProvided,
+        input_: Optional[Union[str, Callable[[IOContext], InputReader]]] = NotProvided,
+        input_read_method: Optional[Union[str, Callable]] = NotProvided,
+        input_read_method_kwargs: Optional[Dict] = NotProvided,
+        input_read_schema: Optional[Dict[str, str]] = NotProvided,
+        map_batches_kwargs: Optional[Dict] = NotProvided,
+        iter_batches_kwargs: Optional[Dict] = NotProvided,
+        prelearner_class: Optional[Type] = NotProvided,
+        prelearner_module_synch_period: Optional[int] = NotProvided,
+        dataset_num_iters_per_learner: Optional[int] = NotProvided,
+        input_config: Optional[Dict] = NotProvided,
+        actions_in_input_normalized: Optional[bool] = NotProvided,
+        postprocess_inputs: Optional[bool] = NotProvided,
+        shuffle_buffer_size: Optional[int] = NotProvided,
+        output: Optional[str] = NotProvided,
+        output_config: Optional[Dict] = NotProvided,
+        output_compress_columns: Optional[bool] = NotProvided,
+        output_max_file_size: Optional[float] = NotProvided,
+        output_max_rows_per_file: Optional[int] = NotProvided,
+        output_data_write_method: Optional[str] = NotProvided,
+        output_data_write_method_kwargs: Optional[Dict] = NotProvided,
         output_filesystem=NotProvided,
-        output_filesystem_kwargs=NotProvided,
-        output_write_episodes=NotProvided,
+        output_filesystem_kwargs: Optional[Dict] = NotProvided,
+        output_write_episodes: Optional[bool] = NotProvided,
         offline_sampling=NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
@@ -2460,8 +2461,8 @@ class AlgorithmConfig(_Config):
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
                 higher this value the more off-policy the `PreLearner`'s module will be.
-                Values too small will force the `PreLearner` to sync a ,lot with the
-                `Learner` and will slow down the data pipeline. The default value chosen
+                Values too small will force the `PreLearner` to sync more frequently
+                and thus might slow down the data pipeline. The default value chosen
                 by the `OfflinePreLearner` is 10.
             dataset_num_iters_per_learner: Number of iterations to run in each learner
                 during a single training iteration. If `None`, each learner runs a
@@ -2511,6 +2512,10 @@ class AlgorithmConfig(_Config):
             self.input_read_method_kwargs = input_read_method_kwargs
         if input_read_schema is not NotProvided:
             self.input_read_schema = input_read_schema
+        if map_batches_kwargs is not NotProvided:
+            self.map_batches_kwargs = map_batches_kwargs
+        if iter_batches_kwargs is not NotProvided:
+            self.iter_batches_kwargs = iter_batches_kwargs
         if prelearner_class is not NotProvided:
             self.prelearner_class = prelearner_class
         if prelearner_module_synch_period is not NotProvided:
@@ -2550,15 +2555,6 @@ class AlgorithmConfig(_Config):
             self.input_config = input_config
         if actions_in_input_normalized is not NotProvided:
             self.actions_in_input_normalized = actions_in_input_normalized
-        if input_evaluation is not NotProvided:
-            deprecation_warning(
-                old="offline_data(input_evaluation={})".format(input_evaluation),
-                new="evaluation(off_policy_estimation_methods={})".format(
-                    input_evaluation
-                ),
-                error=True,
-                help="Running OPE during training is not recommended.",
-            )
         if postprocess_inputs is not NotProvided:
             self.postprocess_inputs = postprocess_inputs
         if shuffle_buffer_size is not NotProvided:
