@@ -92,6 +92,8 @@ def list_changed_and_added_files(ray_dir: str, latest_master_commit: str):
         filename = file.split(".")[0]  # Remove extension
         if filename.startswith("doc/"):  # Remove "doc/" prefix
             filename = filename.replace("doc/", "")
+        if filename.startswith("source/"):  # Remove "doc/" prefix
+            filename = filename.replace("source/", "")
         filenames.append(filename)
     return filenames
 
