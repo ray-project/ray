@@ -50,7 +50,7 @@ Port forward the Ray Serve service:
 kubectl port-forward svc/stable-diffusion-tpu-serve-svc 8000
 ```
 
-In a separate terminal, download the python prompt script:
+In a separate terminal, download the Python prompt script:
 
 ```sh
 curl -LO https://raw.githubusercontent.com/ray-project/serve_config_examples/master/stable_diffusion/stable_diffusion_tpu_req.py
