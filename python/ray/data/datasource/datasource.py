@@ -79,41 +79,6 @@ class Datasource:
         """If ``False``, only launch read tasks on the driver's node."""
         return True
 
-    def aggregate_output_metadata(self) -> BlockMetadata:
-        # Legacy datasources might not implement `get_read_tasks`.
-        if self.should_create_reader:
-            return BlockMetadata(None, None, None, None, None)
-
-        read_tasks = self.get_read_tasks(1)
-        assert len(read_tasks) > 0, "Datasource must return at least one read task"
-        # `get_read_tasks` isn't guaranteed to return exactly one read task.
-        metadata = [read_task.get_metadata() for read_task in read_tasks]
-
-        if all(meta.num_rows is not None for meta in metadata):
-            num_rows = sum(meta.num_rows for meta in metadata)
-        else:
-            num_rows = None
-
-        if all(meta.size_bytes is not None for meta in metadata):
-            size_bytes = sum(meta.size_bytes for meta in metadata)
-        else:
-            size_bytes = None
-
-        schema = unify_block_metadata_schema(metadata)
-
-        input_files = []
-        for meta in metadata:
-            if meta.input_files is not None:
-                input_files.extend(meta.input_files)
-
-        return BlockMetadata(
-            num_rows=num_rows,
-            size_bytes=size_bytes,
-            schema=schema,
-            input_files=input_files,
-            exec_stats=None,
-        )
-
 
 @Deprecated
 class Reader:
