@@ -52,7 +52,10 @@ class Read(AbstractMap):
 
         # HACK: Try to get a single read task to get the metadata.
         read_tasks = self._datasource.get_read_tasks(1)
-        assert len(read_tasks) > 0, "Datasource must return at least one read task"
+        if len(read_tasks) == 0:
+            # If there are no read tasks, the dataset is probably empty.
+            return BlockMetadata(None, None, None, None, None)
+
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
         metadata = [read_task.get_metadata() for read_task in read_tasks]
 

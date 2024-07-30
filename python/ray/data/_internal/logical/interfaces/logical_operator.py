@@ -61,6 +61,7 @@ class LogicalOperator(Operator):
         return None
 
     def aggregate_output_metadata(self) -> BlockMetadata:
+        """A ``BlockMetadata`` that represents the aggregate metadata of the outputs."""
         return BlockMetadata(None, None, None, None, None)
 
     def is_lineage_serializable(self) -> bool:
