@@ -140,7 +140,7 @@ class TrainRunInfo(BaseModel):
         description="The UNIX timestamp of the end time of this Train run. "
         "If null, the Train run has not ended yet."
     )
-    error: Optional[TrainRunError] = Field(
+    run_error: Optional[TrainRunError] = Field(
         description="The Train Run Error contains the truncated stack trace "
         "and the rank of the errored worker."
     )
