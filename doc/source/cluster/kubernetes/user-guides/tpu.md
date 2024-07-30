@@ -60,7 +60,7 @@ After a Ray pod with with TPU pod resources is deployed, it will be able to exec
 TPUs are supported on Ray as a [custom resource](https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#custom-resources),
 and are requested by tasks or actors using the decorator `@ray.remote(resources={"TPU": NUM_TPUS})`.
 
-## Multi-Host TPU Autoscaling
+## Multi-Host TPU autoscaling
 
 Multi-host TPU autoscaling is supported in Kuberay versions 1.1.0 or later and Ray versions 2.32.0 or later. Ray multi-host TPU worker groups are worker groups, which specify "google.com/tpu" Kubernetes container limits or requests and have `NumOfHosts` greater than 1. Ray treats each replica of a Ray multi-host TPU worker group as a TPU Pod slice and scales them atomically. When scaling up, multi-host worker groups create `NumOfHosts` Ray workers per replica. Likewise, Ray scales down multi-host worker group replicas by `NumOfHosts` workers. When a Ray schedules to delete a single Ray worker in a multi-host TPU worker group, Ray terminates the entire replica to which the worker belongs. When scheduling TPU workloads on multi-host worker groups, it's important to ensure Ray tasks or actors run on every TPU VM host in a worker group replica to avoid Ray from scaling down idle TPU workers.
 
