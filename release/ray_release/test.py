@@ -411,7 +411,6 @@ class Test(dict):
         """
         default = {
             "RAY_BACKEND_LOG_JSON": "1",
-            "LD_PRELOAD": "/usr/lib/x86_64-linux-gnu/libjemalloc.so.2",
             # Logs the full stack trace from Ray Data in case of exception,
             # which is useful for debugging failures.
             "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT": "1",
