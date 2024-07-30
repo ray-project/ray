@@ -59,7 +59,7 @@ curl -LO https://raw.githubusercontent.com/ray-project/serve_config_examples/mas
 Install the required dependencies to run the Python script locally:
 
 ```sh
-# Create a python virtual environment
+# Create a Python virtual environment.
 python3 -m venv myenv
 source myenv/bin/activate
 
