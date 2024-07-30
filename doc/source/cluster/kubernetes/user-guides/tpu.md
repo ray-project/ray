@@ -14,7 +14,7 @@ TPUs are custom-designed AI accelerators, which are optimized for training and i
 
 ## Quickstart: Serve a Stable Diffusion model on GKE with TPUs
 
-After setting up a GKE cluster with TPUs and the Ray TPU initialization webhook, you're ready to begin running workloads on Ray with TPUs. {ref}`Serve a Stable Diffusion model on GKE with TPUs <kuberay-tpu-stable-diffusion-example>` shows how to serve a model with KubeRay on single-host TPUs.
+After setting up a GKE cluster with TPUs and the Ray TPU initialization webhook, run a workload on Ray with TPUs. {ref}`Serve a Stable Diffusion model on GKE with TPUs <kuberay-tpu-stable-diffusion-example>` shows how to serve a model with KubeRay on single-host TPUs.
 
 ## Configuring Ray Pods for TPU usage
 
