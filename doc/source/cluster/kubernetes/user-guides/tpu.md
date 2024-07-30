@@ -7,7 +7,6 @@ This document provides tips on TPU usage with KubeRay.
 TPUs are available on Google Kubernetes Engine (GKE). To use TPUs with Kubernetes, configure
 both your Kubernetes setup and add additional values to your RayCluster configuration.
 Configure TPUs on GKE by referencing the {ref}`kuberay-gke-tpu-cluster-setup`.
-- {ref}`kuberay-gke-tpu-cluster-setup`
 
 ## About TPUs
 
