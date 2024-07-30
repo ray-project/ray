@@ -122,7 +122,7 @@ implement reinforcement learning policies in RLlib and can therefore be found in
 where their exploration and inference logic is used to sample from an environment.
 The second place in RLlib where RL Modules commonly occur is the :py:class:`~ray.rllib.core.learner.learner.Learner`,
 where their training logic is used in training the neural network.
-RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`
+RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`
 contains multiple RL Modules. The following figure is a rough sketch of how the above can look in practice:
 
 .. image:: images/rllib-concepts-rlmodules-sketch.png
