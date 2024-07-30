@@ -365,8 +365,9 @@ class Router:
         # update. This includes an optional autoscaling config.
         self.deployment_config: Optional[DeploymentConfig] = None
 
-        # Initializing `self._metrics_manager` before `self.long_poll_client` is necessary to avoid race condition
-        # where `self.update_deployment_config()` might be called before `self._metrics_manager` instance is created.
+        # Initializing `self._metrics_manager` before `self.long_poll_client` is
+        # necessary to avoid race condition where `self.update_deployment_config()`
+        # might be called before `self._metrics_manager` instance is created.
         self._metrics_manager = RouterMetricsManager(
             deployment_id,
             handle_id,
