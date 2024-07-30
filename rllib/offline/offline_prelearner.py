@@ -7,7 +7,7 @@ from typing import Any, Dict, List, Optional, Union
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -79,7 +79,7 @@ class OfflinePreLearner:
         config: AlgorithmConfig,
         learner: Union[Learner, list[ActorHandle]],
         locality_hints: Optional[list] = None,
-        module_spec: Optional[MultiAgentRLModuleSpec] = None,
+        module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
     ):
 
@@ -111,7 +111,7 @@ class OfflinePreLearner:
                 # Then choose a learner randomly.
                 self._learner = learner[random.randint(0, len(learner) - 1)]
             self.learner_is_remote = True
-            # Build the module from spec. Note, this will be a MARL module.
+            # Build the module from spec. Note, this will be a MultiRLModule.
             self._module = module_spec.build()
             self._module.set_state(module_state)
         # Build the learner connector pipeline.
@@ -190,7 +190,7 @@ class OfflinePreLearner:
         return {"batch": [batch]}
 
     def _should_module_be_updated(self, module_id, multi_agent_batch=None):
-        """Checks which modules in a MARL module should be updated."""
+        """Checks which modules in a MultiRLModule should be updated."""
         if not self._policies_to_train:
             # In case of no update information, the module is updated.
             return True

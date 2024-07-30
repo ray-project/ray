@@ -3,10 +3,7 @@ from typing import Any, Dict
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleConfig,
-)
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleConfig
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.utils.annotations import override
@@ -130,8 +127,8 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 
 
-class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
-    def __init__(self, config: MultiAgentRLModuleConfig) -> None:
+class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
+    def __init__(self, config: MultiRLModuleConfig) -> None:
         super().__init__(config)
 
     def setup(self):
