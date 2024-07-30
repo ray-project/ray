@@ -6,6 +6,8 @@ import io
 import cupy
 import numpy as np
 import time
+import os
+import json
 
 import ray
 from ray.air._internal import torch_utils
@@ -344,6 +346,16 @@ def main():
     results += exec_ray_dag_gpu_nccl(dynamic_shape=True)
     results += exec_ray_dag_gpu_nccl(dynamic_shape=False)
 
+    return results
+
+
+def to_dict_key(key: str):
+    for r in [" ", ":", "-"]:
+        key = key.replace(r, "_")
+    for r in ["(", ")"]:
+        key = key.replace(r, "")
+    return key
+
 
 if __name__ == "__main__":
     import argparse
@@ -360,4 +372,26 @@ if __name__ == "__main__":
     # Divide by 2 because we're using torch.float16.
     SHAPE = (args.tensor_size_bytes // 2,)
 
-    main()
+    results = main()
+
+    result_dict = {
+        f"{to_dict_key(v[0])}": (v[1], v[2]) for v in results if v is not None
+    }
+
+    perf_metrics = [
+        {
+            "perf_metric_name": to_dict_key(v[0]),
+            "perf_metric_value": v[1],
+            "perf_metric_type": "THROUGHPUT",
+        }
+        for v in results
+        if v is not None
+    ]
+    result_dict["perf_metrics"] = perf_metrics
+
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/microbenchmark_gpu.json"
+    )
+
+    with open(test_output_json, "wt") as f:
+        json.dump(result_dict, f)
