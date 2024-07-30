@@ -578,7 +578,7 @@ child tasks and actors to the same placement group, specify ``PlacementGroupSche
   :end-before: __child_capture_disable_pg_end__
 
 .. warning::
-  The value of ``placement_group_capture_child_tasks`` for a given actor is not inherited from its parent. If are creating nested actors of depth greater than 1 
+  The value of ``placement_group_capture_child_tasks`` for a given actor is not inherited from its parent. If you are creating nested actors of depth greater than 1 
   that should all use the same placement group, ``placement_group_capture_child_tasks`` should be explicitly set for each actor.
   
 
