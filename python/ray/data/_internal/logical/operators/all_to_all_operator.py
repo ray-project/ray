@@ -53,7 +53,7 @@ class RandomizeBlocks(AbstractAllToAll):
 
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregete_output_metadata()
+        return self._input_dependencies[0].aggregate_output_metadata()
 
 
 class RandomShuffle(AbstractAllToAll):
@@ -79,7 +79,7 @@ class RandomShuffle(AbstractAllToAll):
 
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregete_output_metadata()
+        return self._input_dependencies[0].aggregate_output_metadata()
 
 
 class Repartition(AbstractAllToAll):
@@ -110,7 +110,7 @@ class Repartition(AbstractAllToAll):
 
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregete_output_metadata()
+        return self._input_dependencies[0].aggregate_output_metadata()
 
 
 class Sort(AbstractAllToAll):
@@ -134,7 +134,7 @@ class Sort(AbstractAllToAll):
 
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].aggregete_output_metadata()
+        return self._input_dependencies[0].aggregate_output_metadata()
 
 
 class Aggregate(AbstractAllToAll):
