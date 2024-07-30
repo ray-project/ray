@@ -2499,7 +2499,7 @@ py_test(
     name = "examples/curiosity/count_based_curiosity",
     main = "examples/curiosity/count_based_curiosity.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/curiosity/count_based_curiosity.py"],
     args = ["--enable-new-api-stack", "--as-test"]
 )
@@ -2508,7 +2508,7 @@ py_test(
     name = "examples/curiosity/euclidian_distance_based_curiosity",
     main = "examples/curiosity/euclidian_distance_based_curiosity.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/curiosity/euclidian_distance_based_curiosity.py"],
     args = ["--enable-new-api-stack", "--as-test"]
 )

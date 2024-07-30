@@ -465,7 +465,7 @@ class TestCatalog(unittest.TestCase):
         module = spec.build()
 
         module.forward_inference(
-            input_data={"obs": torch.ones((32, *env.observation_space.shape))}
+            batch={"obs": torch.ones((32, *env.observation_space.shape))}
         )
 
 
