@@ -45,16 +45,10 @@ config = (
     )
     .offline_data(
         output="local:///tmp/cartpole/",
-        output_write_episodes=False,
+        output_write_episodes=True,
         output_max_rows_per_file=1000,
     )
 )
-
-# algo = config.build()
-
-# for i in range(10):
-#     results = algo.train()
-#     print(results)
 
 stop = {
     f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000,

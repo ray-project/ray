@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 import ray
 
 from pathlib import Path
@@ -44,6 +45,8 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         # If a specific filesystem is given, set it up. Note, this could
         # be `gcsfs` for GCS, `pyarrow` for S3 or `adlfs` for Azure Blob Storage.
+        # this filesystem is specifically needed, if a session has to be created
+        # with the cloud provider.
         if self.filesystem:
             if self.filesystem == "gcs":
                 import gcsfs
@@ -74,20 +77,28 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         # If we should store `SingleAgentEpisodes` or column data.
         self.output_write_episodes = self.config.output_write_episodes
+        # Which columns should be compressed in the output data.
         self.output_compress_columns = self.config.output_compress_columns
 
         # Buffer these many rows before writing to file.
         self.output_max_rows_per_file = self.config.output_max_rows_per_file
+        # If the user defines a maximum number of rows per file, set the
+        # event to `False` and check during sampling.
         if self.output_max_rows_per_file:
             self.write_data_this_iter = False
+        # Otherwise the event is always `True` and we write always sampled
+        # data immediately to disk.
         else:
             self.write_data_this_iter = True
 
         # Counts how often `sample` is called to define the output path for
         # each file.
         self._sample_counter = 0
+        # Counts the sampled environment steps. This is used for checking,
+        # if the `ouutput_max_rows_per_file` is hit during sampling.
         self._num_env_steps = 0
 
+        # If we should output episodes or columns.
         if self.output_write_episodes:
             self._samples = []
         else:
@@ -103,6 +114,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         random_actions: bool = False,
         force_reset: bool = False,
     ) -> List[SingleAgentEpisode]:
+        """Samples from environments and writes data to disk."""
 
         # Call the super sample method.
         self._sample_counter += 1
@@ -130,33 +142,54 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                 self.write_data_this_iter = True
 
         if self.write_data_this_iter:
+            # Reset the event.
+            if self.output_max_rows_per_file:
+                self.write_data_this_iter = False
             # Write episodes as objects.
             if self.output_write_episodes:
-                # TODO (simon): Complete.
-                pass
+                # If the user wants a maximum number of experiences per file,
+                # cut the samples to write to disk from the buffer.
+                if self.output_max_rows_per_file:
+                    samples_env_steps = np.cumsum(
+                        [eps.env_steps() for eps in self._samples]
+                    )
+                    samples_cut_idx = (
+                        samples_env_steps >= self.output_max_rows_per_file
+                    ).nonzero()[0][0] or len(self._samples)
+                    samples_to_write = self._samples[:samples_cut_idx]
+                    self._samples = self._samples[samples_cut_idx:]
+                # Otherwise, we write all buffered samples to disk.
+                else:
+                    samples_to_write = self._samples
+                    self._samples = []
+                samples_ds = ray.data.from_items(samples_to_write)
             # Otherwise store as column data.
             else:
-                if self.output_max_rows_per_file:
-                    self.write_data_this_iter = False
-
+                # Extract the number of samples to be written to disk this iteration.
                 samples_to_write = self._samples_data[: self.output_max_rows_per_file]
+                # Reset the buffer to the remaining data. This only makes sense, if
+                # `rollout_fragment_length` is smaller `output_max_rows_per_file` or
+                # a 2 x `output_max_rows_per_file`.
+                # TODO (simon): Find a better way to write these data.
                 self._samples_data = self._samples_data[self.output_max_rows_per_file :]
+                # Reset the counter.
                 self._num_env_steps = len(self._samples_data)
                 samples_ds = ray.data.from_items(samples_to_write)
-                try:
-                    path = (
-                        Path(self.output_path)
-                        .joinpath(self.subdir_path)
-                        .joinpath(
-                            self.worker_path + f"-{self._sample_counter}".zfill(6)
-                        )
-                    )
-                    getattr(samples_ds, self.data_write_method)(
-                        path.as_posix(), **self.data_write_method_kwargs
-                    )
-                    logger.info("Wrote samples to storage.")
-                except Exception as e:
-                    logger.error(e)
+            try:
+                # Setup the path for writing data. Each run will be written to
+                # its own file. A run is a writing event. The path will look
+                # like. 'base_path/env-name/00000<WorkerID>-00000<RunID>'.
+                path = (
+                    Path(self.output_path)
+                    .joinpath(self.subdir_path)
+                    .joinpath(self.worker_path + f"-{self._sample_counter}".zfill(6))
+                )
+                getattr(samples_ds, self.data_write_method)(
+                    path.as_posix(), **self.data_write_method_kwargs
+                )
+                logger.info("Wrote samples to storage.")
+            except Exception as e:
+                logger.error(e)
 
         # Finally return the samples as usual.
         return samples
