@@ -56,7 +56,7 @@ In a separate terminal, download the Python prompt script:
 curl -LO https://raw.githubusercontent.com/ray-project/serve_config_examples/master/stable_diffusion/stable_diffusion_tpu_req.py
 ```
 
-Install the required dependencies to run the python script locally:
+Install the required dependencies to run the Python script locally:
 
 ```sh
 # Create a python virtual environment
