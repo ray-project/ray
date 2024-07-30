@@ -128,7 +128,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 "Running",
                 dag.num_outputs_total(),
                 unit="bundle",
-                enabled=True,
             )
 
         self._output_node: OpState = self._topology[dag]
