@@ -106,17 +106,25 @@ class ProgressBar:
                 "DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = False`."
             )
         op_names = name.split("->")
-        # Include as many operators as possible without exceeding `MAX_NAME_LENGTH`.
-        # Always include the first and last operator names so
-        # it is easy to identify the DAG.
+        if len(op_names) == 1:
+            return op_names[0]
+
+        # Include as many operators as possible without approximately
+        # exceeding `MAX_NAME_LENGTH`. Always include the first and
+        # last operator names soit is easy to identify the DAG.
         truncated_op_names = [op_names[0]]
-        for i, op_name in enumerate(op_names[1:-1]):
-            if len("->".join(truncated_op_names)) + len(op_name) > self.MAX_NAME_LENGTH:
+        for op_name in op_names[1:-1]:
+            if (
+                len("->".join(truncated_op_names))
+                + len("->")
+                + len(op_name)
+                + len("->")
+                + len(op_names[-1])
+            ) > self.MAX_NAME_LENGTH:
                 truncated_op_names.append("...")
                 break
             truncated_op_names.append(op_name)
-        if len(op_names) > 1:
-            truncated_op_names.append(op_names[-1])
+        truncated_op_names.append(op_names[-1])
         return "->".join(truncated_op_names)
 
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
