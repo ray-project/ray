@@ -13,3 +13,5 @@ steps:
           propagate-environment: True
           volumes:
             - "/var/run/docker.sock:/var/run/docker.sock"
+    agents:
+      queue: large
