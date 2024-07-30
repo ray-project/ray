@@ -1,11 +1,9 @@
-from typing import TYPE_CHECKING, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Iterator, List, Optional
 
 from .operator import Operator
 from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
-    import pyarrow
-
     from ray.data._internal.execution.interfaces import RefBundle
 
 
