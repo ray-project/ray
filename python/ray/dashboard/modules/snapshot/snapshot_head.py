@@ -100,8 +100,8 @@ class KillActorViaGcsFromNewGcsClient:
         no_restart: bool,
         timeout: Optional[float] = None,
     ):
-        return await self.gcs_client.async_kill_actor_via_gcs(
-            actor_id.hex(), force_kill, no_restart, timeout
+        return await self.gcs_aio_client.kill_actor(
+            actor_id, force_kill, no_restart, timeout
         )
 
 
