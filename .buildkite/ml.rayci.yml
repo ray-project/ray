@@ -199,7 +199,7 @@ steps:
     tags: 
       - train
       - skip-on-premerge
-    instance_type: medium
+    instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... ml --run-flaky-tests
         --parallelism-per-worker 2
