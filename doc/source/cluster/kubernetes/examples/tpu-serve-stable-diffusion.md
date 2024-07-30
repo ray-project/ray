@@ -15,7 +15,7 @@ Skip this step if the [Ray Operator Addon](https://cloud.google.com/kubernetes-e
 ## Step 3: Install the RayService
 
 ```sh
-# Creates a RayCluster with a single-host v4 TPU worker group of 2x2x1 topology
+# Creates a RayCluster with a single-host v4 TPU worker group of 2x2x1 topology.
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.tpu-single-host.yaml
 ```
 
