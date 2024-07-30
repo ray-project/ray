@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, Iterator, List, Optional, Union
 
 from .operator import Operator
+from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
     import pyarrow
@@ -80,6 +81,9 @@ class LogicalOperator(Operator):
     def output_data(self) -> Optional[List["RefBundle"]]:
         """The output data of this operator, or ``None`` if not known."""
         return None
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        return BlockMetadata(None, None, None, None, None)
 
     def is_lineage_serializable(self) -> bool:
         """Returns whether the lineage of this operator can be serialized.

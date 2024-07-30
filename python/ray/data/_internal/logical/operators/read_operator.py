@@ -1,6 +1,7 @@
 from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.logical.operators.map_operator import AbstractMap
+from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, Reader
 
 
@@ -43,11 +44,5 @@ class Read(AbstractMap):
         """
         return self._detected_parallelism
 
-    def schema(self):
-        return self._datasource.schema()
-
-    def num_rows(self):
-        return self._datasource.num_rows()
-
-    def input_files(self) -> Optional[List[str]]:
-        return self._datasource.input_files()
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        return self._datasource.aggregate_output_metadata()

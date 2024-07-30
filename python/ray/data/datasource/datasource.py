@@ -82,36 +82,40 @@ class Datasource:
         """If ``False``, only launch read tasks on the driver's node."""
         return True
 
-    def num_rows(self) -> Optional[int]:
-        """Return the number of rows in the datasource, or ``None`` if unknown."""
+    def aggregate_output_metadata(self) -> BlockMetadata:
         # Legacy datasources might not implement `get_read_tasks`.
         if self.should_create_reader:
-            return None
+            return BlockMetadata(None, None, None, None, None)
 
         read_tasks = self.get_read_tasks(1)
         assert len(read_tasks) > 0, "Datasource must return at least one read task"
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
         metadata = [read_task.get_metadata() for read_task in read_tasks]
+
         if all(meta.num_rows is not None for meta in metadata):
-            return sum(meta.num_rows for meta in metadata)
+            num_rows = sum(meta.num_rows for meta in metadata)
         else:
-            return None
+            num_rows = None
 
-    def schema(self) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
-        """Return the schema of the datasource, or ``None`` if unknown."""
-        # Legacy datasources might not implement `get_read_tasks`.
-        if self.should_create_reader:
-            return None
+        if all(meta.size_bytes is not None for meta in metadata):
+            size_bytes = sum(meta.size_bytes for meta in metadata)
+        else:
+            size_bytes = None
 
-        read_tasks = self.get_read_tasks(1)
-        assert len(read_tasks) > 0, "Datasource must return at least one read task"
-        # `get_read_tasks` isn't guaranteed to return exactly one read task.
-        metadata = [read_task.get_metadata() for read_task in read_tasks]
-        return unify_block_metadata_schema(metadata)
+        schema = unify_block_metadata_schema(metadata)
 
-    def input_files(self) -> Optional[List[str]]:
-        """Return a list of input files, or ``None`` if unknown."""
-        return None
+        input_files = []
+        for meta in metadata:
+            if meta.input_files is not None:
+                input_files.extend(meta.input_files)
+
+        return BlockMetadata(
+            num_rows=num_rows,
+            size_bytes=size_bytes,
+            schema=schema,
+            input_files=input_files,
+            exec_stats=None,
+        )
 
 
 @Deprecated
