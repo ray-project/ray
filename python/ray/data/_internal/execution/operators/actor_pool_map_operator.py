@@ -269,9 +269,6 @@ class ActorPoolMapOperator(MapOperator):
                 "the parallelism when creating the Dataset."
             )
 
-    def num_running_actors(self) -> int:
-        return self._actor_pool.num_running_actors()
-
     def progress_str(self) -> str:
         base = f"{self._actor_pool.num_running_actors()} actors"
         pending = self._actor_pool.num_pending_actors()
