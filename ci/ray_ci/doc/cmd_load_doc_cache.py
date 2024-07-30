@@ -11,7 +11,7 @@ from ci.ray_ci.doc.build_cache import ENVIRONMENT_PICKLE
 
 S3_BUCKET = "ray-ci-results"
 DOC_BUILD_DIR_S3 = "doc_build"
-
+LAST_BUILD_CUTOFF = 3  # how many days ago to consider a build outdated
 PENDING_FILES_PATH = "pending_files.txt"
 
 
@@ -114,10 +114,10 @@ def should_load_cache(ray_dir: str):
         return True
     last_build_time = os.path.getmtime(f"{ray_doc_dir}/{ENVIRONMENT_PICKLE}")
     current_time = time.time()
-    # Load cache if last build was more than 3 days ago
+    # Load cache if last build was more than LAST_BUILD_CUTOFF days ago
     print("time diff: ", current_time - last_build_time)
-    if current_time - last_build_time > 3 * 60 * 60 * 24:
-        print("Last build was more than 3 days ago.")
+    if current_time - last_build_time > LAST_BUILD_CUTOFF * 60 * 60 * 24:
+        print(f"Last build was more than {LAST_BUILD_CUTOFF} days ago.")
         return True
     return False
 
@@ -142,6 +142,7 @@ def main(ray_dir: str) -> None:
     fetch_cache_from_s3(latest_master_commit, cache_path)
     # Extract cache to override ray/doc directory
     extract_cache(cache_path, f"{ray_dir}/doc")
+    os.remove(cache_path)
 
 
 if __name__ == "__main__":
