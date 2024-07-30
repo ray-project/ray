@@ -8,33 +8,15 @@ See the [GKE documentation](<https://cloud.google.com/kubernetes-engine/docs/how
 
 Run all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
-### GKE Autopilot
-
-Create an Autopilot GKE cluster with the [Ray Operator](https://cloud.google.com/kubernetes-engine/docs/add-on/ray-on-gke/concepts/overview) enabled in the us-central2-b compute region:
-
-```sh
-gcloud container clusters create-auto kuberay-tpu-cluster \
-    --enable-ray-operator \
-    --cluster-version=CLUSTER_VERSION \
-    --location=us-central2
-```
-
-Replace `CLUSTER_VERSION` with the GKE version for the cluster, which must be version 1.30.1 or later. Alternatively, create a cluster using the [Google Cloud Console](https://console.cloud.google.com/kubernetes/list).
-
-To use TPUs with Autopilot mode, you must select a compute location with capacity for TPU accelerators. v4 TPUs are available in us-central2-b. For more information on TPU availability by region/zone, see the [GKE documentation](https://cloud.google.com/kubernetes-engine/docs/concepts/tpus#availability).
-
-### GKE Standard
-
 Create a Standard GKE cluster with the Ray Operator enabled in the us-central2-b compute region:
 
 ```sh
 gcloud container clusters create kuberay-tpu-cluster \
     --addons=RayOperator \
-    --cluster-version=VERSION \
+    --machine-type=n1-standard-8 \
+    --cluster-version=1.30 \
     --location=us-central2-b
 ```
-
-Replace CLUSTER_VERSION with the GKE version for the cluster, which must be version 1.30.1 or later.
 
 Run the following command to add a TPU node pool to the cluster. You can also create it from the [Google Cloud Console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console):
 

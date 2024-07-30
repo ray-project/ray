@@ -6,7 +6,7 @@
 
 ## Step 1: Create a Kubernetes cluster with TPUs
 
-Follow [Creating a GKE Cluster with TPUs for KubeRay](kuberay-gke-tpu-cluster-setup) to create a GKE Autopilot or Standard cluster with 1 CPU node and 1 TPU node.
+Follow [Creating a GKE Cluster with TPUs for KubeRay](kuberay-gke-tpu-cluster-setup) to create a GKE cluster with 1 CPU node and 1 TPU node.
 
 ## Step 2: Install the KubeRay operator
 
