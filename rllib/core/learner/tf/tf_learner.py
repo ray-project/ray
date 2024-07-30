@@ -12,10 +12,10 @@ from typing import (
 )
 
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
-    SingleAgentRLModuleSpec,
+    RLModuleSpec,
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
@@ -26,7 +26,6 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import ALL_MODULES
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import (
     ModuleID,
     Optimizer,
@@ -123,8 +122,8 @@ class TfLearner(Learner):
 
     @override(Learner)
     def restore_from_path(self, path: Union[str, pathlib.Path]) -> None:
-        # This operation is potentially very costly because a MARL Module is created at
-        # build time, destroyed, and then a new one is created from a checkpoint.
+        # This operation is potentially very costly because a MultiRLModule is created
+        # at build time, destroyed, and then a new one is created from a checkpoint.
         # However, it is necessary due to complications with the way that Ray Tune
         # restores failed trials. When Tune restores a failed trial, it reconstructs the
         # entire experiment from the initial config. Therefore, to reflect any changes
@@ -195,7 +194,7 @@ class TfLearner(Learner):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        module_spec: RLModuleSpec,
     ) -> None:
         # TODO(Avnishn):
         # WARNING:tensorflow:Using MirroredStrategy eagerly has significant overhead
@@ -216,7 +215,7 @@ class TfLearner(Learner):
             )
 
     @override(Learner)
-    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiAgentRLModuleSpec:
+    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiRLModuleSpec:
         with self._strategy.scope():
             marl_spec = super().remove_module(module_id, **kwargs)
 
@@ -283,12 +282,12 @@ class TfLearner(Learner):
             self._possibly_traced_update = self._untraced_update
 
     @override(Learner)
-    def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
+    def _update(self, batch: Dict) -> Tuple[Any, Any, Any]:
         return self._possibly_traced_update(batch)
 
     def _untraced_update(
         self,
-        batch: NestedDict,
+        batch: Dict,
         # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in
         #  eager_tracing=True mode.
         #  It seems there may be a clash between the traced-by-tf function and the
@@ -299,11 +298,6 @@ class TfLearner(Learner):
         self.metrics.activate_tensor_mode()
 
         def helper(_batch):
-            # TODO (Kourosh, Sven): We need to go back to NestedDict because that's the
-            #  constraint on forward_train and compute_loss APIs. This seems to be
-            #  in-efficient. However, for tf>=2.12, it works also w/o this conversion
-            #  so remove this after we upgrade officially to tf==2.12.
-            _batch = NestedDict(_batch.copy())
             with tf.GradientTape(persistent=True) as tape:
                 fwd_out = self._module.forward_train(_batch)
                 loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
