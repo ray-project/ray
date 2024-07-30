@@ -7,6 +7,12 @@ from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
+class TrainRunError(BaseModel):
+    stack_trace: str
+    failed_rank: int
+
+
+@DeveloperAPI
 class RunStatusEnum(str, Enum):
     """Enumeration for the status of a train run."""
 
@@ -133,6 +139,10 @@ class TrainRunInfo(BaseModel):
     end_time_ms: Optional[int] = Field(
         description="The UNIX timestamp of the end time of this Train run. "
         "If null, the Train run has not ended yet."
+    )
+    error: Optional[TrainRunError] = Field(
+        description="The Train Run Error contains the truncated stack trace "
+        "and the rank of the errored worker."
     )
 
 

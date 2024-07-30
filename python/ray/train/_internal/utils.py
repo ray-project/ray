@@ -57,7 +57,8 @@ def check_for_failure(
                 return False, exc
             except Exception as exc:
                 # Other (e.g. training) errors should be directly raised
-                raise StartTraceback from exc
+                failed_actor_rank = remote_values.index(object_ref)
+                raise StartTraceback(tags={"failed_rank": failed_actor_rank}) from exc
 
     return True, None
 

@@ -1,13 +1,14 @@
 import logging
 import os
 from collections import defaultdict
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import ray
 from ray.data import Dataset
 from ray.train._internal.state.schema import (
     RunStatusEnum,
     TrainDatasetInfo,
+    TrainRunError,
     TrainRunInfo,
     TrainWorkerInfo,
 )
@@ -109,10 +110,14 @@ class TrainRunStateManager:
         run_status: RunStatusEnum,
         status_detail: str,
         end_time_ms: int,
+        run_error: Optional[TrainRunError] = None,
     ):
         """Update the train run status when the training is finished."""
         updates = dict(
-            run_status=run_status, status_detail=status_detail, end_time_ms=end_time_ms
+            run_status=run_status,
+            status_detail=status_detail,
+            end_time_ms=end_time_ms,
+            run_error=run_error,
         )
         self._update_train_run_info(run_id, updates)
 

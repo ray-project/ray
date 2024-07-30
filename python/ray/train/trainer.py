@@ -1,4 +1,5 @@
 import logging
+import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
@@ -129,10 +130,14 @@ class TrainingIterator:
                 raise StopIteration
             else:
                 return next_results
-        except StartTraceback:
+        except StartTraceback as e:
             # If this is a StartTraceback, then this is a user error.
             # We raise it directly
-            self._backend_executor.report_final_run_status(errored=True)
+            stack_trace = traceback.format_exc()
+            failed_rank = e.tags.get("failed_rank", None)
+            self._backend_executor.report_final_run_status(
+                errored=True, stack_trace=stack_trace, failed_rank=failed_rank
+            )
             try:
                 # Exception raised in at least one training worker. Immediately raise
                 # this error to the user and do not attempt to terminate gracefully.
