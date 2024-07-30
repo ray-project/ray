@@ -412,7 +412,6 @@ class Router:
             call_in_event_loop=self._event_loop,
         )
 
-
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         self._replica_scheduler.update_running_replicas(running_replicas)
         self._metrics_manager.update_running_replicas(running_replicas)
