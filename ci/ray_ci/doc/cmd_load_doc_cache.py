@@ -15,14 +15,18 @@ PENDING_FILES_PATH = "pending_files.txt"
 
 def find_latest_master_commit():
     """Find latest commit that was pushed to origin/master that is also on local env."""
-    latest_commit = subprocess.check_output(
-        [
-            "git",
-            "merge-base",
-            "HEAD",
-            "origin/master",
-        ]
-    ).strip().decode("utf-8")
+    latest_commit = (
+        subprocess.check_output(
+            [
+                "git",
+                "merge-base",
+                "HEAD",
+                "origin/master",
+            ]
+        )
+        .strip()
+        .decode("utf-8")
+    )
     return latest_commit
 
 
@@ -114,6 +118,7 @@ def main(ray_dir: str) -> None:
     fetch_cache_from_s3(latest_master_commit, cache_path)
     # Extract cache to override ray/doc directory
     extract_cache(cache_path, f"{ray_dir}/doc")
+
 
 if __name__ == "__main__":
     main()
