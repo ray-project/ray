@@ -4,6 +4,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import RLModuleSpec, ResultDict
 
@@ -64,6 +65,12 @@ class BCConfig(MARWILConfig):
         # Advantages (calculated during postprocessing)
         # not important for behavioral cloning.
         self.postprocess_inputs = False
+
+        # Set the offline prelearner to the default one. Note, MARWIL's
+        # specified offline prelearner requests a value function that
+        # BC does not have. Furthermore, MARWIL's prelearner calculates
+        # advantages unneeded for BC.
+        self.prelearner_class = OfflinePreLearner
         # __sphinx_doc_end__
         # fmt: on
 
