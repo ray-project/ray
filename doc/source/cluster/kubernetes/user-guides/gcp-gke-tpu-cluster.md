@@ -38,7 +38,7 @@ Replace CLUSTER_VERSION with the GKE version for the cluster, which must be vers
 
 Run the following command to add a TPU node pool to the cluster. You can also create it from the [Google Cloud Console](https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#console):
 
-To create a node pool with a single-host TPU topology:
+Create a node pool with a single-host TPU topology as follows:
 ```sh
 gcloud container node-pools create tpu-pool \
   --zone us-central2-b \
