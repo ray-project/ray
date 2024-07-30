@@ -18,6 +18,11 @@ TEAM_API_CONFIGS = {
             "ray.data.random_access_dataset.RandomAccessDataset",
         },
     },
+    "serve": {
+        "head_modules": {"ray.serve"},
+        "head_doc_file": "doc/source/serve/api/index.md",
+        "white_list_apis": {},
+    },
 }
 
 
