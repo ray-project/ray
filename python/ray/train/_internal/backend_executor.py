@@ -660,20 +660,25 @@ class BackendExecutor:
     def report_final_run_status(
         self, errored=False, failed_rank=None, stack_trace=None
     ):
-        """Report the final train run status and end time to TrainStateActor."""
+        """Report the final train run status, error, and end time to TrainStateActor."""
         if self.state_tracking_enabled:
-            from ray.train._internal.state.schema import RunStatusEnum, TrainRunError
+            from ray.train._internal.state.schema import (
+                MAX_ERROR_STACK_TRACE_LENGTH,
+                RunStatusEnum,
+                TrainRunError,
+            )
 
             if errored:
                 run_status = RunStatusEnum.ERRORED
-                run_error = TrainRunError(
-                    failed_rank=failed_rank,
-                    stack_trace=stack_trace,
-                )
                 status_detail = "Terminated due to an error in the training function."
+                truncated_stack_trace = stack_trace[-MAX_ERROR_STACK_TRACE_LENGTH:]
+                run_error = TrainRunError(
+                    failed_rank=failed_rank, stack_trace=truncated_stack_trace
+                )
             else:
                 run_status = RunStatusEnum.FINISHED
                 status_detail = ""
+                run_error = None
 
             self.state_manager.end_train_run(
                 run_id=self._trial_info.run_id,

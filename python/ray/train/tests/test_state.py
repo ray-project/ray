@@ -50,6 +50,7 @@ RUN_INFO_JSON_SAMPLE = """{
     "run_status": "RUNNING",
     "status_detail": "",
     "end_time_ms": null,
+    "run_error": null,
     "workers": [
         {
         "actor_id": "3d86c25634a71832dac32c8802000000",
@@ -289,18 +290,30 @@ def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
 def test_train_run_status(ray_start_gpu_cluster, raise_error):
     os.environ["RAY_TRAIN_ENABLE_STATE_TRACKING"] = "1"
 
-    def check_run_status(expected_status):
+    def get_train_run():
         state_actor = ray.get_actor(
             name=TRAIN_STATE_ACTOR_NAME, namespace=TRAIN_STATE_ACTOR_NAMESPACE
         )
         runs = ray.get(state_actor.get_all_train_runs.remote())
-        run = next(iter(runs.values()))
+        return next(iter(runs.values()))
+
+    def check_run_status(expected_status):
+        run = get_train_run()
         assert run.run_status == expected_status
+
+    def check_run_error(failed_rank, error_message):
+        run = get_train_run()
+        assert run.run_error
+        assert run.run_error.failed_rank == failed_rank
+        assert error_message in run.run_error.stack_trace
+
+    failed_rank = 0
+    error_message = "User Application Error"
 
     def train_func():
         check_run_status(expected_status=RunStatusEnum.RUNNING)
-        if raise_error:
-            raise RuntimeError
+        if raise_error and ray.train.get_context().get_world_rank() == failed_rank:
+            raise RuntimeError(error_message)
 
     trainer = DataParallelTrainer(
         train_loop_per_worker=train_func,
@@ -314,6 +327,7 @@ def test_train_run_status(ray_start_gpu_cluster, raise_error):
 
     if raise_error:
         check_run_status(expected_status=RunStatusEnum.ERRORED)
+        check_run_error(failed_rank=failed_rank, error_message=error_message)
     else:
         check_run_status(expected_status=RunStatusEnum.FINISHED)
 
