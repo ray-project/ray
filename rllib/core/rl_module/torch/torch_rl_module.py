@@ -3,9 +3,6 @@ from typing import Any, Collection, Dict, Optional, Union, Type
 from packaging import version
 
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface,
-)
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.models.torch.torch_distributions import TorchDistribution
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
@@ -166,31 +163,9 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def get_metadata(self, *args, **kwargs):
         self.unwrapped().get_metadata(*args, **kwargs)
 
-    # TODO (sven): Figure out a better way to avoid having to method-spam this wrapper
-    #  class, whenever we add a new API to any wrapped RLModule here. We could try
-    #  auto generating the wrapper methods, but this will bring its own challenge
-    #  (e.g. recursive calls due to __getattr__ checks, etc..).
-    def _compute_values(self, *args, **kwargs):
-        return self.unwrapped()._compute_values(*args, **kwargs)
-
     @override(RLModule)
     def unwrapped(self) -> "RLModule":
         return self.module
-
-
-# TODO (sven): Deprecate in favor of TargetNetworkAPI (only DQN still using
-#  this old API).
-class TorchDDPRLModuleWithTargetNetworksInterface(
-    TorchDDPRLModule,
-    RLModuleWithTargetNetworksInterface,
-):
-    @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self, *args, **kwargs):
-        return self.module.get_target_network_pairs(*args, **kwargs)
-
-    @override(RLModuleWithTargetNetworksInterface)
-    def sync_target_networks(self, *args, **kwargs):
-        return self.module.sync_target_networks(*args, **kwargs)
 
 
 def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):

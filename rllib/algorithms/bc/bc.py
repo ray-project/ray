@@ -3,7 +3,7 @@ from typing import Type, TYPE_CHECKING, Union
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
@@ -22,7 +22,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
 )
-from ray.rllib.utils.typing import RLModuleSpec, ResultDict
+from ray.rllib.utils.typing import RLModuleSpecType, ResultDict
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner import Learner
@@ -81,26 +81,22 @@ class BCConfig(MARWILConfig):
         # Advantages (calculated during postprocessing)
         # not important for behavioral cloning.
         self.postprocess_inputs = False
-        # Set RLModule as default if the `EnvRUnner`'s are used.
-        if self.enable_env_runner_and_connector_v2:
-            self.api_stack(enable_rl_module_and_learner=True)
-
         # __sphinx_doc_end__
         # fmt: on
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> RLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
 
-            return SingleAgentRLModuleSpec(
+            return RLModuleSpec(
                 module_class=BCTorchRLModule,
                 catalog_class=BCCatalog,
             )
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.bc.tf.bc_tf_rl_module import BCTfRLModule
 
-            return SingleAgentRLModuleSpec(
+            return RLModuleSpec(
                 module_class=BCTfRLModule,
                 catalog_class=BCCatalog,
             )
@@ -188,6 +184,9 @@ class BC(MARWIL):
                 batch,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
+                **self.offline_data.iter_batches_kwargs
+                if self.config.num_learners > 1
+                else {},
             )
 
             # Log training results.
@@ -217,7 +216,7 @@ class BC(MARWIL):
         # Update weights - after learning on the local worker -
         # on all remote workers.
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-            self.workers.sync_weights(
+            self.env_runner_group.sync_weights(
                 # Sync weights from learner_group to all EnvRunners.
                 from_worker_or_learner_group=self.learner_group,
                 policies=modules_to_update,

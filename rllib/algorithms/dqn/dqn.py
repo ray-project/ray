@@ -19,7 +19,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
 from ray.rllib.core.learner import Learner
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -67,7 +67,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.utils.typing import RLModuleSpec, SampleBatchType
+from ray.rllib.utils.typing import RLModuleSpecType, SampleBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -490,7 +490,7 @@ class DQNConfig(AlgorithmConfig):
             return self.rollout_fragment_length
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> RLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
         from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
 
         if self.framework_str == "torch":
@@ -498,7 +498,7 @@ class DQNConfig(AlgorithmConfig):
                 DQNRainbowTorchRLModule,
             )
 
-            return SingleAgentRLModuleSpec(
+            return RLModuleSpec(
                 module_class=DQNRainbowTorchRLModule,
                 catalog_class=DQNRainbowCatalog,
                 model_config_dict=self.model_config,

@@ -27,11 +27,12 @@ steps:
     key: lint-medium
     instance_type: medium
     depends_on: docbuild
-    job_env: docbuild
+    job_env: docbuild-py3.9
     commands:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
       - api_annotations
+      - api_policy_check serve
       - api_policy_check data
 
   - label: ":lint-roller: lint: linkcheck"
@@ -39,7 +40,7 @@ steps:
     commands:
       - make -C doc/ linkcheck_all
     depends_on: docbuild
-    job_env: docbuild
+    job_env: docbuild-py3.9
     tags:
       - oss
       - skip-on-premerge

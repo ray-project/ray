@@ -812,7 +812,8 @@ void GcsServer::DumpDebugStateToFile() const {
 
 std::string GcsServer::GetDebugState() const {
   std::ostringstream stream;
-  stream << gcs_node_manager_->DebugString() << "\n\n"
+  stream << "Gcs Debug state:\n\n"
+         << gcs_node_manager_->DebugString() << "\n\n"
          << gcs_actor_manager_->DebugString() << "\n\n"
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"

@@ -147,7 +147,7 @@ py_test(
 #
 # Tag: learning_tests
 #
-# This will test all yaml files (via `rllib train`)
+# This will test python/yaml config files
 # inside rllib/tuned_examples/[algo-name] for actual learning success.
 # --------------------------------------------------------------------
 
@@ -1384,10 +1384,10 @@ py_test(
 )
 
 py_test(
-    name = "test_marl_module",
+    name = "test_multi_rl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/rl_module/tests/test_marl_module.py"]
+    srcs = ["core/rl_module/tests/test_multi_rl_module.py"]
 )
 
 py_test(
@@ -2016,49 +2016,6 @@ py_test(
     srcs = ["tests/test_reproducibility.py"]
 )
 
-# Test [train|evaluate].py scripts (w/o confirming evaluation performance).
-py_test(
-    name = "test_rllib_evaluate_1",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestEvaluate1"]
-)
-
-py_test(
-    name = "test_rllib_evaluate_2",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestEvaluate2"]
-)
-
-py_test(
-    name = "test_rllib_evaluate_3",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestEvaluate3"]
-)
-
-# Test [train|evaluate].py scripts (and confirm `rllib evaluate` performance is same
-# as the final one from the `rllib train` run).
-py_test(
-    name = "test_rllib_train_and_evaluate",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestTrainAndEvaluate"]
-)
-
 py_test(
     name = "tests/test_supported_multi_agent_multi_gpu",
     main = "tests/test_supported_multi_agent.py",
@@ -2542,7 +2499,7 @@ py_test(
     name = "examples/curiosity/count_based_curiosity",
     main = "examples/curiosity/count_based_curiosity.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/curiosity/count_based_curiosity.py"],
     args = ["--enable-new-api-stack", "--as-test"]
 )
@@ -2551,10 +2508,20 @@ py_test(
     name = "examples/curiosity/euclidian_distance_based_curiosity",
     main = "examples/curiosity/euclidian_distance_based_curiosity.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/curiosity/euclidian_distance_based_curiosity.py"],
     args = ["--enable-new-api-stack", "--as-test"]
 )
+
+py_test(
+    name = "examples/curiosity/inverse_dynamics_model_based_curiosity",
+    main = "examples/curiosity/inverse_dynamics_model_based_curiosity.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/curiosity/inverse_dynamics_model_based_curiosity.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
 
 # subdirectory: curriculum/
 # ....................................

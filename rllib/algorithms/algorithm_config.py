@@ -23,8 +23,9 @@ from packaging import version
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module import validate_module_id
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
@@ -44,7 +45,6 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import NotProvided, from_config
-from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     NOT_SERIALIZABLE,
@@ -63,7 +63,7 @@ from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
     PolicyID,
     ResultDict,
-    RLModuleSpec,
+    RLModuleSpecType,
     SampleBatchType,
 )
 from ray.tune.logger import Logger
@@ -104,11 +104,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _check_rl_module_spec(module_spec: RLModuleSpec) -> None:
-    if not isinstance(module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)):
+def _check_rl_module_spec(module_spec: RLModuleSpecType) -> None:
+    if not isinstance(module_spec, (RLModuleSpec, MultiRLModuleSpec)):
         raise ValueError(
             "rl_module_spec must be an instance of "
-            "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
+            "RLModuleSpec or MultiRLModuleSpec."
             f"Got {type(module_spec)} instead."
         )
 
@@ -433,6 +433,9 @@ class AlgorithmConfig(_Config):
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
+        self.map_batches_kwargs = {}
+        self.iter_batches_kwargs = {}
+        self.prelearner_class = None
         self.prelearner_module_synch_period = 10
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
@@ -612,17 +615,6 @@ class AlgorithmConfig(_Config):
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
-        config["num_cpus_for_driver"] = config.pop(
-            "num_cpus_for_local_worker", config.pop("num_cpus_for_main_process", 1)
-        )
-        config["num_workers"] = config.pop(
-            "num_env_runners", config.pop("num_rollout_workers", 0)
-        )
-        config["num_cpus_per_worker"] = config.pop("num_cpus_per_env_runner", 1)
-        config["num_gpus_per_worker"] = config.pop("num_gpus_per_env_runner", 0)
-        config["num_learner_workers"] = config.pop("num_learners", 0)
-        config["num_cpus_per_learner_worker"] = config.pop("num_cpus_per_learner", 1)
-        config["num_gpus_per_learner_worker"] = config.pop("num_gpus_per_learner", 0)
 
         # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
         # These would be useless in the returned dict anyways.
@@ -927,7 +919,7 @@ class AlgorithmConfig(_Config):
                     AgentToModuleMapping(
                         module_specs=(
                             self.rl_module_spec.module_specs
-                            if isinstance(self.rl_module_spec, MultiAgentRLModuleSpec)
+                            if isinstance(self.rl_module_spec, MultiRLModuleSpec)
                             else set(self.policies)
                         ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
@@ -1083,7 +1075,7 @@ class AlgorithmConfig(_Config):
                     AgentToModuleMapping(
                         module_specs=(
                             self.rl_module_spec.module_specs
-                            if isinstance(self.rl_module_spec, MultiAgentRLModuleSpec)
+                            if isinstance(self.rl_module_spec, MultiRLModuleSpec)
                             else set(self.policies)
                         ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
@@ -1100,7 +1092,7 @@ class AlgorithmConfig(_Config):
         *,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[ModuleID, Tuple[gym.Space, gym.Space]]] = None,
-        rl_module_spec: Optional[RLModuleSpec] = None,
+        rl_module_spec: Optional[RLModuleSpecType] = None,
     ) -> "LearnerGroup":
         """Builds and returns a new LearnerGroup object based on settings in `self`.
 
@@ -1126,10 +1118,10 @@ class AlgorithmConfig(_Config):
         """
         from ray.rllib.core.learner.learner_group import LearnerGroup
 
-        # If `spaces` or `env` provided -> Create a MARL Module Spec first to be
+        # If `spaces` or `env` provided -> Create a MultiRLModuleSpec first to be
         # passed into the LearnerGroup constructor.
         if rl_module_spec is None and (env is not None or spaces is not None):
-            rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
+            rl_module_spec = self.get_multi_rl_module_spec(env=env, spaces=spaces)
 
         # Construct the actual LearnerGroup.
         learner_group = LearnerGroup(config=self.copy(), module_spec=rl_module_spec)
@@ -1162,11 +1154,11 @@ class AlgorithmConfig(_Config):
         Returns:
             The newly created (and already built) Learner object.
         """
-        # If `spaces` or `env` provided -> Create a MARL Module Spec first to be
+        # If `spaces` or `env` provided -> Create a MultiRLModuleSpec first to be
         # passed into the LearnerGroup constructor.
         rl_module_spec = None
         if env is not None or spaces is not None:
-            rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
+            rl_module_spec = self.get_multi_rl_module_spec(env=env, spaces=spaces)
         # Construct the actual Learner object.
         learner = self.learner_class(config=self, module_spec=rl_module_spec)
         # `build()` the Learner (internal structures such as RLModule, etc..).
@@ -2384,6 +2376,9 @@ class AlgorithmConfig(_Config):
         input_read_method=NotProvided,
         input_read_method_kwargs=NotProvided,
         input_read_schema=NotProvided,
+        map_batches_kwargs=NotProvided,
+        iter_batches_kwargs=NotProvided,
+        prelearner_class=NotProvided,
         prelearner_module_synch_period=NotProvided,
         dataset_num_iters_per_learner=NotProvided,
         input_config=NotProvided,
@@ -2414,10 +2409,12 @@ class AlgorithmConfig(_Config):
                 offline data from `input_`. The default is `read_json` for JSON files.
                 See https://docs.ray.io/en/latest/data/api/input_output.html for more
                 info about available read methods in `ray.data`.
-            input_read_method_kwargs: kwargs for the `input_read_method`. These will be
-                passed into the read method without checking. If no arguments are passed
-                in the default argument `{'override_num_blocks': max(num_learners * 2,
-                2)}` is used.
+            input_read_method_kwargs: `kwargs` for the `input_read_method`. These will
+                be passed into the read method without checking. If no arguments are
+                passed in the default argument `{'override_num_blocks':
+                max(num_learners * 2, 2)}` is used. Use these `kwargs`` together with
+                the `map_batches_kwargs` and `iter_batches_kwargs` to tune the
+                performance of the data pipeline.
             input_read_schema: Table schema for converting offline data to episodes.
                 This schema maps the offline data columns to `ray.rllib.core.columns.
                 Columns`: {Columns.OBS: 'o_t', Columns.ACTIONS: 'a_t', ...}. Columns in
@@ -2426,6 +2423,27 @@ class AlgorithmConfig(_Config):
                 schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
                 contains already the names in this schema, no `input_read_schema` is
                 needed.
+            map_batches_kwargs: `kwargs` for the `map_batches` method. These will be
+                passed into the `ray.data.Dataset.map_batches` method when sampling
+                without checking. If no arguments passed in the default arguments `{
+                'concurrency': max(2, num_learners), 'zero_copy_batch': True}` is
+                used. Use these `kwargs`` together with the `input_read_method_kwargs`
+                and `iter_batches_kwargs` to tune the performance of the data pipeline.
+            iter_batches_kwargs: `kwargs` for the `iter_batches` method. These will be
+                passed into the `ray.data.Dataset.iter_batches` method when sampling
+                without checking. If no arguments are passed in, the default argument `{
+                'prefetch_batches': 2, 'local_buffer_shuffle_size':
+                train_batch_size_per_learner * 4}` is used. Use these `kwargs``
+                together with the `input_read_method_kwargs` and `map_batches_kwargs`
+                to tune the performance of the data pipeline.
+            prelearner_class: An optional `OfflinePreLearner` class that is used to
+                transform data batches in `ray.data.map_batches` used in the
+                `OfflineData` class to transform data from columns to batches that can
+                be used in the `Learner`'s `update` methods. Override the
+                `OfflinePreLearner` class and pass your dervied class in here, if you
+                need to make some further transformations specific for your data or
+                loss. The default is `None` which uses the base `OfflinePreLearner`
+                defined in `ray.rllib.offline.offline_prelearner`.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
@@ -2481,6 +2499,8 @@ class AlgorithmConfig(_Config):
             self.input_read_method_kwargs = input_read_method_kwargs
         if input_read_schema is not NotProvided:
             self.input_read_schema = input_read_schema
+        if prelearner_class is not NotProvided:
+            self.prelearner_class = prelearner_class
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
         if dataset_num_iters_per_learner is not NotProvided:
@@ -2585,10 +2605,10 @@ class AlgorithmConfig(_Config):
                 A mapping from ModuleIDs to per-module AlgorithmConfig override dicts,
                 which apply certain settings,
                 e.g. the learning rate, from the main AlgorithmConfig only to this
-                particular module (within a MultiAgentRLModule).
+                particular module (within a MultiRLModule).
                 You can create override dicts by using the `AlgorithmConfig.overrides`
                 utility. For example, to override your learning rate and (PPO) lambda
-                setting just for a single RLModule with your MultiAgentRLModule, do:
+                setting just for a single RLModule with your MultiRLModule, do:
                 config.multi_agent(algorithm_config_overrides_per_module={
                 "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
                 })
@@ -2635,7 +2655,7 @@ class AlgorithmConfig(_Config):
             # Make sure our Policy IDs are ok (this should work whether `policies`
             # is a dict or just any Sequence).
             for pid in policies:
-                validate_policy_id(pid, error=True)
+                validate_module_id(pid, error=True)
 
             # Collection: Convert to dict.
             if isinstance(policies, (set, tuple, list)):
@@ -2871,9 +2891,7 @@ class AlgorithmConfig(_Config):
             log_level: Set the ray.rllib.* log level for the agent process and its
                 workers. Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level
                 will also periodically print out summaries of relevant internal dataflow
-                (this is also printed out once at startup at the INFO level). When using
-                the `rllib train` command, you can also use the `-v` and `-vv` flags as
-                shorthand for INFO and DEBUG.
+                (this is also printed out once at startup at the INFO level).
             log_sys_usage: Log system resource metrics to results. This requires
                 `psutil` to be installed for sys stats, and `gputil` for GPU metrics.
             fake_sampler: Use fake (infinite speed) sampler. For testing only.
@@ -3048,7 +3066,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         model_config_dict: Optional[Dict[str, Any]] = NotProvided,
-        rl_module_spec: Optional[RLModuleSpec] = NotProvided,
+        rl_module_spec: Optional[RLModuleSpecType] = NotProvided,
         # Deprecated arg.
         _enable_rl_module_api=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
@@ -3059,7 +3077,7 @@ class AlgorithmConfig(_Config):
                 will be used for any `RLModule` if not otherwise specified in the
                 `rl_module_spec`.
             rl_module_spec: The RLModule spec to use for this config. It can be either
-                a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
+                a RLModuleSpec or a MultiRLModuleSpec. If the
                 observation_space, action_space, catalog_class, or the model config is
                 not specified it will be inferred from the env and other parts of the
                 algorithm config object.
@@ -3148,19 +3166,18 @@ class AlgorithmConfig(_Config):
             _check_rl_module_spec(self._rl_module_spec)
             # Merge given spec with default one (in case items are missing, such as
             # spaces, module class, etc.)
-            if isinstance(self._rl_module_spec, SingleAgentRLModuleSpec):
-                if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+            if isinstance(self._rl_module_spec, RLModuleSpec):
+                if isinstance(default_rl_module_spec, RLModuleSpec):
                     default_rl_module_spec.update(self._rl_module_spec)
                     return default_rl_module_spec
-                elif isinstance(default_rl_module_spec, MultiAgentRLModuleSpec):
+                elif isinstance(default_rl_module_spec, MultiRLModuleSpec):
                     raise ValueError(
-                        "Cannot merge MultiAgentRLModuleSpec with "
-                        "SingleAgentRLModuleSpec!"
+                        "Cannot merge MultiRLModuleSpec with " "RLModuleSpec!"
                     )
             else:
-                marl_module_spec = copy.deepcopy(self._rl_module_spec)
-                marl_module_spec.update(default_rl_module_spec)
-                return marl_module_spec
+                multi_rl_module_spec = copy.deepcopy(self._rl_module_spec)
+                multi_rl_module_spec.update(default_rl_module_spec)
+                return multi_rl_module_spec
 
         # `self._rl_module_spec` has not been user defined -> return default one.
         else:
@@ -3643,15 +3660,15 @@ class AlgorithmConfig(_Config):
             torch_dynamo_mode=self.torch_compile_worker_dynamo_mode,
         )
 
-    def get_default_rl_module_spec(self) -> RLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
         """Returns the RLModule spec to use for this algorithm.
 
         Override this method in the sub-class to return the RLModule spec given
         the input framework.
 
         Returns:
-            The RLModuleSpec (SingleAgentRLModuleSpec or MultiAgentRLModuleSpec) to use
-            for this algorithm's RLModule.
+            The RLModuleSpec (or MultiRLModuleSpec) to
+            use for this algorithm's RLModule.
         """
         raise NotImplementedError
 
@@ -3667,19 +3684,19 @@ class AlgorithmConfig(_Config):
         """
         raise NotImplementedError
 
-    def get_marl_module_spec(
+    def get_multi_rl_module_spec(
         self,
         *,
         policy_dict: Optional[Dict[str, PolicySpec]] = None,
-        single_agent_rl_module_spec: Optional[SingleAgentRLModuleSpec] = None,
+        single_agent_rl_module_spec: Optional[RLModuleSpec] = None,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         inference_only: bool = False,
-    ) -> MultiAgentRLModuleSpec:
-        """Returns the MultiAgentRLModule spec based on the given policy spec dict.
+    ) -> MultiRLModuleSpec:
+        """Returns the MultiRLModuleSpec based on the given policy spec dict.
 
         policy_dict could be a partial dict of the policies that we need to turn into
-        an equivalent multi-agent RLModule spec.
+        an equivalent `MultiRLModuleSpec`.
 
         Args:
             policy_dict: The policy spec dict. Using this dict, we can determine the
@@ -3688,8 +3705,8 @@ class AlgorithmConfig(_Config):
                 they will get auto-filled with these values obtrained from the policy
                 spec dict. Here we are relying on the policy's logic for infering these
                 values from other sources of information (e.g. environement)
-            single_agent_rl_module_spec: The SingleAgentRLModuleSpec to use for
-                constructing a MultiAgentRLModuleSpec. If None, the already
+            single_agent_rl_module_spec: The RLModuleSpec to use for
+                constructing a MultiRLModuleSpec. If None, the already
                 configured spec (`self._rl_module_spec`) or the default RLModuleSpec for
                 this algorithm (`self.get_default_rl_module_spec()`) will be used.
             env: An optional env instance, from which to infer the different spaces for
@@ -3709,7 +3726,7 @@ class AlgorithmConfig(_Config):
                 environment (no target or critic networks).
         """
         # TODO (Kourosh,sven): When we replace policy entirely there will be no need for
-        #  this function to map policy_dict to marl_module_specs anymore. The module
+        #  this function to map policy_dict to multi_rl_module_specs anymore. The module
         #  spec will be directly given by the user or inferred from env and spaces.
         if policy_dict is None:
             policy_dict, _ = self.get_multi_agent_setup(env=env, spaces=spaces)
@@ -3724,16 +3741,16 @@ class AlgorithmConfig(_Config):
         current_rl_module_spec = self._rl_module_spec or default_rl_module_spec
 
         # Algorithm is currently setup as a single-agent one.
-        if isinstance(current_rl_module_spec, SingleAgentRLModuleSpec):
+        if isinstance(current_rl_module_spec, RLModuleSpec):
             # Use either the provided `single_agent_rl_module_spec` (a
-            # SingleAgentRLModuleSpec), the currently configured one of this
+            # RLModuleSpec), the currently configured one of this
             # AlgorithmConfig object, or the default one.
             single_agent_rl_module_spec = (
                 single_agent_rl_module_spec or current_rl_module_spec
             )
             single_agent_rl_module_spec.inference_only = inference_only
-            # Now construct the proper MultiAgentRLModuleSpec.
-            marl_module_spec = MultiAgentRLModuleSpec(
+            # Now construct the proper MultiRLModuleSpec.
+            multi_rl_module_spec = MultiRLModuleSpec(
                 module_specs={
                     k: copy.deepcopy(single_agent_rl_module_spec)
                     for k in policy_dict.keys()
@@ -3744,17 +3761,15 @@ class AlgorithmConfig(_Config):
         else:
             # The user currently has a MultiAgentSpec setup (either via
             # self._rl_module_spec or the default spec of this AlgorithmConfig).
-            assert isinstance(current_rl_module_spec, MultiAgentRLModuleSpec)
+            assert isinstance(current_rl_module_spec, MultiRLModuleSpec)
 
             # Default is single-agent but the user has provided a multi-agent spec
             # so the use-case is multi-agent.
-            if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+            if isinstance(default_rl_module_spec, RLModuleSpec):
                 # The individual (single-agent) module specs are defined by the user
-                # in the currently setup MultiAgentRLModuleSpec -> Use that
-                # SingleAgentRLModuleSpec.
-                if isinstance(
-                    current_rl_module_spec.module_specs, SingleAgentRLModuleSpec
-                ):
+                # in the currently setup MultiRLModuleSpec -> Use that
+                # RLModuleSpec.
+                if isinstance(current_rl_module_spec.module_specs, RLModuleSpec):
                     single_agent_spec = single_agent_rl_module_spec or (
                         current_rl_module_spec.module_specs
                     )
@@ -3765,7 +3780,7 @@ class AlgorithmConfig(_Config):
 
                 # The individual (single-agent) module specs have not been configured
                 # via this AlgorithmConfig object -> Use provided single-agent spec or
-                # the the default spec (which is also a SingleAgentRLModuleSpec in this
+                # the the default spec (which is also a RLModuleSpec in this
                 # case).
                 else:
                     single_agent_spec = (
@@ -3781,11 +3796,11 @@ class AlgorithmConfig(_Config):
                         for k in policy_dict.keys()
                     }
 
-                # Now construct the proper MultiAgentRLModuleSpec.
+                # Now construct the proper MultiRLModuleSpec.
                 # We need to infer the multi-agent class from `current_rl_module_spec`
                 # and fill in the module_specs dict.
-                marl_module_spec = current_rl_module_spec.__class__(
-                    marl_module_class=current_rl_module_spec.marl_module_class,
+                multi_rl_module_spec = current_rl_module_spec.__class__(
+                    multi_rl_module_class=current_rl_module_spec.multi_rl_module_class,
                     module_specs=module_specs,
                     modules_to_load=current_rl_module_spec.modules_to_load,
                     load_state_path=current_rl_module_spec.load_state_path,
@@ -3794,41 +3809,39 @@ class AlgorithmConfig(_Config):
             # Default is multi-agent and user wants to override it -> Don't use the
             # default.
             else:
-                # Use has given an override SingleAgentRLModuleSpec -> Use this to
-                # construct the individual RLModules within the MultiAgentRLModuleSpec.
+                # Use has given an override RLModuleSpec -> Use this to
+                # construct the individual RLModules within the MultiRLModuleSpec.
                 if single_agent_rl_module_spec is not None:
                     pass
-                # User has NOT provided an override SingleAgentRLModuleSpec.
+                # User has NOT provided an override RLModuleSpec.
                 else:
                     # But the currently setup multi-agent spec has a SingleAgentRLModule
                     # spec defined -> Use that to construct the individual RLModules
-                    # within the MultiAgentRLModuleSpec.
-                    if isinstance(
-                        current_rl_module_spec.module_specs, SingleAgentRLModuleSpec
-                    ):
+                    # within the MultiRLModuleSpec.
+                    if isinstance(current_rl_module_spec.module_specs, RLModuleSpec):
                         # The individual module specs are not given, it is given as one
-                        # SingleAgentRLModuleSpec to be re-used for all
+                        # RLModuleSpec to be re-used for all
                         single_agent_rl_module_spec = (
                             current_rl_module_spec.module_specs
                         )
                     # The currently setup multi-agent spec has NO
-                    # SingleAgentRLModuleSpec in it -> Error (there is no way we can
+                    # RLModuleSpec in it -> Error (there is no way we can
                     # infer this information from anywhere at this point).
                     else:
                         raise ValueError(
-                            "We have a MultiAgentRLModuleSpec "
+                            "We have a MultiRLModuleSpec "
                             f"({current_rl_module_spec}), but no "
-                            "`SingleAgentRLModuleSpec`s to compile the individual "
+                            "`RLModuleSpec`s to compile the individual "
                             "RLModules' specs! Use "
-                            "`AlgorithmConfig.get_marl_module_spec("
+                            "`AlgorithmConfig.get_multi_rl_module_spec("
                             "policy_dict=.., single_agent_rl_module_spec=..)`."
                         )
 
                 single_agent_rl_module_spec.inference_only = inference_only
 
-                # Now construct the proper MultiAgentRLModuleSpec.
-                marl_module_spec = current_rl_module_spec.__class__(
-                    marl_module_class=current_rl_module_spec.marl_module_class,
+                # Now construct the proper MultiRLModuleSpec.
+                multi_rl_module_spec = current_rl_module_spec.__class__(
+                    multi_rl_module_class=current_rl_module_spec.multi_rl_module_class,
                     module_specs={
                         k: copy.deepcopy(single_agent_rl_module_spec)
                         for k in policy_dict.keys()
@@ -3837,12 +3850,12 @@ class AlgorithmConfig(_Config):
                     load_state_path=current_rl_module_spec.load_state_path,
                 )
 
-        # Make sure that policy_dict and marl_module_spec have similar keys
-        if set(policy_dict.keys()) != set(marl_module_spec.module_specs.keys()):
+        # Make sure that policy_dict and multi_rl_module_spec have similar keys
+        if set(policy_dict.keys()) != set(multi_rl_module_spec.module_specs.keys()):
             raise ValueError(
                 "Policy dict and module spec have different keys! \n"
                 f"policy_dict keys: {list(policy_dict.keys())} \n"
-                f"module_spec keys: {list(marl_module_spec.module_specs.keys())}"
+                f"module_spec keys: {list(multi_rl_module_spec.module_specs.keys())}"
             )
 
         # Fill in the missing values from the specs that we already have. By combining
@@ -3850,20 +3863,18 @@ class AlgorithmConfig(_Config):
 
         for module_id in policy_dict:
             policy_spec = policy_dict[module_id]
-            module_spec = marl_module_spec.module_specs[module_id]
+            module_spec = multi_rl_module_spec.module_specs[module_id]
             if module_spec.module_class is None:
-                if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+                if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.module_class = default_rl_module_spec.module_class
-                elif isinstance(
-                    default_rl_module_spec.module_specs, SingleAgentRLModuleSpec
-                ):
+                elif isinstance(default_rl_module_spec.module_specs, RLModuleSpec):
                     module_class = default_rl_module_spec.module_specs.module_class
                     # This should be already checked in validate() but we check it
                     # again here just in case
                     if module_class is None:
                         raise ValueError(
                             "The default rl_module spec cannot have an empty "
-                            "module_class under its SingleAgentRLModuleSpec."
+                            "module_class under its RLModuleSpec."
                         )
                     module_spec.module_class = module_class
                 elif module_id in default_rl_module_spec.module_specs:
@@ -3878,11 +3889,9 @@ class AlgorithmConfig(_Config):
                         "the algorithm."
                     )
             if module_spec.catalog_class is None:
-                if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+                if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.catalog_class = default_rl_module_spec.catalog_class
-                elif isinstance(
-                    default_rl_module_spec.module_specs, SingleAgentRLModuleSpec
-                ):
+                elif isinstance(default_rl_module_spec.module_specs, RLModuleSpec):
                     catalog_class = default_rl_module_spec.module_specs.catalog_class
                     module_spec.catalog_class = catalog_class
                 elif module_id in default_rl_module_spec.module_specs:
@@ -3914,7 +3923,7 @@ class AlgorithmConfig(_Config):
                     self.model_config | module_spec.model_config_dict
                 )
 
-        return marl_module_spec
+        return multi_rl_module_spec
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""
@@ -4628,6 +4637,10 @@ class AlgorithmConfig(_Config):
                 "eager_tracing=True in order to reach similar execution "
                 "speed as with static-graph mode."
             )
+
+    @Deprecated(new="AlgorithmConfig.get_multi_rl_module_spec()", error=False)
+    def get_marl_module_spec(self, *args, **kwargs):
+        return self.get_multi_rl_module_spec(*args, **kwargs)
 
     @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
     def rollouts(self, *args, **kwargs):
