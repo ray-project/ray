@@ -2,7 +2,7 @@
 
 # Serve a Stable Diffusion model on GKE with TPUs
 
-> **Note:** The Python files for the Ray Serve application and its client are in the [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples). This example is adapted from the [tensorflow/tpu](https://github.com/tensorflow/tpu/tree/master/tools/ray_tpu/src/serve) Cloud TPU example.
+> **Note:** The Python files for the Ray Serve app and its client are in the [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples). This example is adapted from the [tensorflow/tpu](https://github.com/tensorflow/tpu/tree/master/tools/ray_tpu/src/serve) Cloud TPU example.
 
 ## Step 1: Create a Kubernetes cluster with TPUs
 
