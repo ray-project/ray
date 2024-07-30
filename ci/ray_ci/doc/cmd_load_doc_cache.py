@@ -6,6 +6,8 @@ import os
 import click
 from botocore import UNSIGNED
 from botocore.client import Config
+import time
+from ci.ray_ci.doc.build_cache import ENVIRONMENT_PICKLE
 
 S3_BUCKET = "ray-ci-results"
 DOC_BUILD_DIR_S3 = "doc_build"
@@ -102,9 +104,31 @@ def list_changed_and_added_files(ray_dir: str, latest_master_commit: str):
     return filenames
 
 
+def should_load_cache(ray_dir: str):
+    """
+    Check if cache should be loaded based on the timestamp of last build.
+    """
+    ray_doc_dir = os.path.join(ray_dir, "doc")
+    if not os.path.exists(f"{ray_doc_dir}/{ENVIRONMENT_PICKLE}"):
+        print("Doc build environment pickle file does not exist.")
+        return True
+    last_build_time = os.path.getmtime(f"{ray_doc_dir}/{ENVIRONMENT_PICKLE}")
+    current_time = time.time()
+    # Load cache if last build was more than 3 days ago
+    print("time diff: ", current_time - last_build_time)
+    if current_time - last_build_time > 3 * 60 * 60 * 24:
+        print("Last build was more than 3 days ago.")
+        return True
+    return False
+
+
 @click.command()
 @click.option("--ray-dir", default="/ray", help="Path to Ray repo")
 def main(ray_dir: str) -> None:
+    if not should_load_cache(ray_dir):
+        print("Skip loading global cache...")
+        return
+    print("Loading global cache ...")
     latest_master_commit = find_latest_master_commit()
     # List all changed and added files in the repo
     filenames = list_changed_and_added_files(ray_dir, latest_master_commit)

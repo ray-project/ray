@@ -16,6 +16,7 @@ def list_pending_files(ray_dir: str) -> List[str]:
     with open(f"{ray_dir}/{PENDING_FILES_PATH}", "r") as f:
         pending_files = f.readlines()
         pending_files = [file.strip() for file in pending_files]
+    os.remove(f"{ray_dir}/{PENDING_FILES_PATH}")
     return pending_files
 
 
@@ -82,6 +83,10 @@ def update_file_timestamp(ray_dir: str) -> None:
 @click.command()
 @click.option("--ray-dir", required=True, type=str, help="Path to the Ray repository.")
 def main(ray_dir: str) -> None:
+    if not os.path.exists(f"{ray_dir}/{PENDING_FILES_PATH}"):
+        print("Global cache was not loaded. Skip updating cache environment.")
+        return
+    print("Updating cache environment ...")
     pending_files = list_pending_files(ray_dir)
     update_environment_pickle(ray_dir, pending_files)
     update_file_timestamp(ray_dir)
