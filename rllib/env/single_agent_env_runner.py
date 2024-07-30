@@ -16,7 +16,7 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -99,7 +99,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Create our own instance of the (single-agent) `RLModule` (which
         # the needs to be weight-synched) each iteration.
         try:
-            module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
+            module_spec: RLModuleSpec = self.config.rl_module_spec
             module_spec.observation_space = self._env_to_module.observation_space
             module_spec.action_space = self.env.single_action_space
             if module_spec.model_config_dict is None:
@@ -107,7 +107,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # Only load a light version of the module, if available. This is useful
             # if the the module has target or critic networks not needed in sampling
             # or inference.
-            # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
+            # TODO (simon): Once we use `get_multi_rl_module_spec` here, we can remove
             #  this line here as the function takes care of this flag.
             module_spec.inference_only = True
             self.module: RLModule = module_spec.build()
@@ -207,8 +207,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # For complete episodes mode, sample a single episode and
             # leave coordination of sampling to `synchronous_parallel_sample`.
             # TODO (simon, sven): The coordination will eventually move
-            # to `EnvRunnerGroup` in the future. So from the algorithm one
-            # would do `EnvRunnerGroup.sample()`.
+            #  to `EnvRunnerGroup` in the future. So from the algorithm one
+            #  would do `EnvRunnerGroup.sample()`.
             else:
                 samples = self._sample_episodes(
                     num_episodes=1,
@@ -742,7 +742,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     def assert_healthy(self):
         """Checks that self.__init__() has been completed properly.
 
-        Ensures that the instances has a `MultiAgentRLModule` and an
+        Ensures that the instances has a `MultiRLModule` and an
         environment defined.
 
         Raises:

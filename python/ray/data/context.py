@@ -89,6 +89,9 @@ DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 DEFAULT_ENABLE_PROGRESS_BARS = not bool(
     env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
 )
+DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
+    "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
+)
 
 is_ray_job = os.environ.get("RAY_JOB_ID") is not None
 if is_ray_job:
@@ -232,6 +235,9 @@ class DataContext:
             to use.
         use_ray_tqdm: Whether to enable distributed tqdm.
         enable_progress_bars: Whether to enable progress bars.
+        enable_progress_bar_name_truncation: If True, the name of the progress bar
+            (often the operator name) will be truncated if it exceeds
+            `ProgressBar.MAX_NAME_LENGTH`. Otherwise, the full operator name is shown.
         enable_get_object_locations_for_metrics: Whether to enable
             ``get_object_locations`` for metrics.
         write_file_retry_on_errors: A list of substrings of error messages that should
@@ -295,6 +301,9 @@ class DataContext:
     use_ray_tqdm: bool = DEFAULT_USE_RAY_TQDM
     enable_progress_bars: bool = DEFAULT_ENABLE_PROGRESS_BARS
     enable_operator_progress_bars: bool = DEFAULT_ENABLE_OPERATOR_PROGRESS_BARS
+    enable_progress_bar_name_truncation: bool = (
+        DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
+    )
     enable_get_object_locations_for_metrics: bool = (
         DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS
     )
