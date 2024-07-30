@@ -4,6 +4,8 @@ import subprocess
 import tarfile
 import os
 import click
+from botocore import UNSIGNED
+from botocore.client import Config
 
 S3_BUCKET = "ray-ci-results"
 DOC_BUILD_DIR_S3 = "doc_build"
@@ -16,14 +18,11 @@ def find_latest_master_commit():
     latest_commit = subprocess.check_output(
         [
             "git",
-            "log",
-            "--pretty=format:%H",
-            "--first-parent",
-            "master",
-            "-n",
-            "1",
+            "merge-base",
+            "HEAD",
+            "origin/master",
         ]
-    ).decode("utf-8")
+    ).strip().decode("utf-8")
     return latest_commit
 
 
@@ -36,7 +35,7 @@ def fetch_cache_from_s3(commit, target_file_path):
         target_file_path: The file path to save the doc cache archive
     """
     # Create an S3 client
-    s3 = boto3.client("s3")
+    s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
     s3_file_path = f"{DOC_BUILD_DIR_S3}/{commit}.tgz"
     try:
         print(f"Downloading {commit}.tgz from S3...")
@@ -113,7 +112,6 @@ def main(ray_dir: str) -> None:
     fetch_cache_from_s3(latest_master_commit, cache_path)
     # Extract cache to override ray/doc directory
     extract_cache(cache_path, f"{ray_dir}/doc")
-
 
 if __name__ == "__main__":
     main()

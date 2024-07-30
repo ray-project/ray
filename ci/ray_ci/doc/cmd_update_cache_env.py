@@ -84,7 +84,7 @@ def update_file_timestamp(ray_dir: str) -> None:
 def main(ray_dir: str) -> None:
     pending_files = list_pending_files(ray_dir)
     update_environment_pickle(ray_dir, pending_files)
-    # update_file_timestamp(ray_dir)
+    update_file_timestamp(ray_dir)
 
 
 if __name__ == "__main__":

@@ -4,7 +4,8 @@
 # You can set these variables from the command line.
 # Allow linkcheck to run without treating warnings as errors; -W will
 # fast-fail if enabled; it's better to gather the whole list of bad links at once.
-SPHINXOPTS    = -W -j auto
+SPHINXOPTS    = -a -E -W -j auto
+LOCALSPHINXOPTS = -W -j auto
 LINKCHECKOPTS = -a -E -j auto
 SPHINXBUILD   = sphinx-build
 PAPER         =
@@ -19,6 +20,7 @@ endif
 PAPEROPT_a4      = -D latex_paper_size=a4
 PAPEROPT_letter  = -D latex_paper_size=letter
 ALLSPHINXOPTS    = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
+ALLLOCALSPHINXOPTS    = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LOCALSPHINXOPTS) source
 ALLLINKCHECKOPTS = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LINKCHECKOPTS) source
 # the i18n builder cannot share the environment and doctrees with the others
 I18NSPHINXOPTS  = $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
@@ -76,6 +78,15 @@ html:
 	@echo "View the documentation by opening a browser and going to $(BUILDDIR)/html/index.html."
 
 develop: html
+
+RAY_DIR := $(shell pwd | rev | cut -d'/' -f2- | rev)
+
+local:
+	@echo "Loading cache"
+	bazel run //ci/ray_ci/doc:cmd_load_doc_cache -- --ray-dir=$(RAY_DIR)
+	@echo "Updating cache environment"
+	bazel run //ci/ray_ci/doc:cmd_update_cache_env -- --ray-dir=$(RAY_DIR)
+	$(SPHINXBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
 
 dirhtml:
 	$(SPHINXBUILD) -b dirhtml $(ALLSPHINXOPTS) $(BUILDDIR)/dirhtml
