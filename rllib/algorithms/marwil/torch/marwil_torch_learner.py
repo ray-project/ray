@@ -113,7 +113,7 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         # the policy loss.
         if config.beta == 0.0:
             self.metrics.log_dict(
-                {POLICY_LOSS_KEY, policy_loss}, key=module_id, window=1
+                {POLICY_LOSS_KEY: policy_loss}, key=module_id, window=1
             )
         # Log more stats, if using the MARWIL loss.
         else:
