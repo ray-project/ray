@@ -106,6 +106,14 @@ py_test(
 )
 
 py_test(
+    name = "test_serve_dashboard_2",
+    size = "enormous",
+    srcs = ["modules/serve/tests/test_serve_dashboard_2.py"],
+    tags = ["team:serve"],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_data_head",
     size = "small",
     srcs = ["modules/data/tests/test_data_head.py"],

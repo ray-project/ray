@@ -33,26 +33,16 @@ Installation and Setup
 
 Install RLlib and run your first experiment on your laptop in seconds:
 
-**TensorFlow:**
-
-.. code-block:: bash
-
-    $ conda create -n rllib python=3.8
-    $ conda activate rllib
-    $ pip install "ray[rllib]" tensorflow "gymnasium[atari]" "gymnasium[accept-rom-license]" atari_py
-    $ # Run a test job:
-    $ rllib train --run APPO --env CartPole-v0
-
-
 **PyTorch:**
 
 .. code-block:: bash
 
-    $ conda create -n rllib python=3.8
+    $ conda create -n rllib python=3.11
     $ conda activate rllib
     $ pip install "ray[rllib]" torch "gymnasium[atari]" "gymnasium[accept-rom-license]" atari_py
-    $ # Run a test job:
-    $ rllib train --run APPO --env CartPole-v0 --torch
+    $ # Run a test job (assuming you are in the `ray` pip-installed directory):
+    $ cd rllib/examples/inference/
+    $ python policy_inference_after_training.py --stop-reward=100.0
 
 
 Algorithms Supported

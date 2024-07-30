@@ -4,12 +4,11 @@ from typing import Any, Dict, List, Tuple, Type, Union
 from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
+from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface,
-)
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
@@ -28,7 +27,7 @@ QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 
 
 @ExperimentalAPI
-class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
+class DQNRainbowRLModule(RLModule, TargetNetworkAPI):
     @override(RLModule)
     def setup(self):
         # Get the DQN Rainbow catalog.
@@ -65,8 +64,6 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         # If not an inference-only module (e.g., for evaluation), set up the
         # target networks and state dict keys to be taken care of when syncing.
         if not self.config.inference_only or self.framework != "torch":
-            # Build the same encoder for the target network(s).
-            self.target_encoder = catalog.build_encoder(framework=self.framework)
             # Holds the parameter names to be removed or renamed when synching
             # from the learner to the inference module.
             self._inference_only_state_dict_keys = {}
@@ -76,28 +73,55 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         if self.uses_dueling:
             # If in a dueling setting setup the value function head.
             self.vf = catalog.build_vf_head(framework=self.framework)
-        if not self.config.inference_only or self.framework != "torch":
-            # Implement the same heads for the target network(s).
-            self.af_target = catalog.build_af_head(framework=self.framework)
-            if self.uses_dueling:
-                # If in a dueling setting setup the target value function head.
-                self.vf_target = catalog.build_vf_head(framework=self.framework)
 
         # Define the action distribution for sampling the exploit action
         # during exploration.
         self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 
-    @override(RLModuleWithTargetNetworksInterface)
+    @override(TargetNetworkAPI)
+    def make_target_networks(self) -> None:
+        self._target_encoder = make_target_network(self.encoder)
+        self._target_af = make_target_network(self.af)
+        if self.uses_dueling:
+            self._target_vf = make_target_network(self.vf)
+
+    @override(TargetNetworkAPI)
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
-        """Returns target Q and Q network(s) to update the target network(s)."""
-        return [(self.target_encoder, self.encoder), (self.af_target, self.af)] + (
+        return [(self.encoder, self._target_encoder), (self.af, self._target_af)] + (
             # If we have a dueling architecture we need to update the value stream
             # target, too.
             [
-                (self.vf_target, self.vf),
+                (self.vf, self._target_vf),
             ]
             if self.uses_dueling
             else []
+        )
+
+    @override(TargetNetworkAPI)
+    def forward_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        """Computes Q-values from the target network.
+
+        Note, these can be accompanied with logits and probabilities
+        in case of distributional Q-learning, i.e. `self.num_atoms > 1`.
+
+        Args:
+            batch: The batch received in the forward pass.
+
+        Results:
+            A dictionary containing the target Q-value predictions ("qf_preds")
+            and in case of distributional Q-learning in addition to the target
+            Q-value predictions ("qf_preds") the support atoms ("atoms"), the target
+            Q-logits  ("qf_logits"), and the probabilities ("qf_probs").
+        """
+        # If we have a dueling architecture we have to add the value stream.
+        return self._qf_forward_helper(
+            batch,
+            self._target_encoder,
+            (
+                {"af": self._target_af, "vf": self._target_vf}
+                if self.uses_dueling
+                else self._target_af
+            ),
         )
 
     @override(RLModule)
@@ -159,16 +183,14 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             ),
         ]
 
-    @abc.abstractmethod
-    @OverrideToImplementCustomLogic
     def _qf(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
-        """Computes Q-values.
+        """Computes Q-values, given encoder, q-net and (optionally), advantage net.
 
-        Note, these can be accompanied with logits and pobabilities
+        Note, these can be accompanied by logits and probabilities
         in case of distributional Q-learning, i.e. `self.num_atoms > 1`.
 
         Args:
-            batch: The batch recevied in the forward pass.
+            batch: The batch received in the forward pass.
 
         Results:
             A dictionary containing the Q-value predictions ("qf_preds")
@@ -176,24 +198,12 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
             predictions ("qf_preds") the support atoms ("atoms"), the Q-logits
             ("qf_logits"), and the probabilities ("qf_probs").
         """
-
-    @abc.abstractmethod
-    @OverrideToImplementCustomLogic
-    def _qf_target(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
-        """Computes Q-values from the target network.
-
-        Note, these can be accompanied with logits and pobabilities
-        in case of distributional Q-learning, i.e. `self.num_atoms > 1`.
-
-        Args:
-            batch: The batch recevied in the forward pass.
-
-        Results:
-            A dictionary containing the target Q-value predictions ("qf_preds")
-            and in case of distributional Q-learning in addition to the target
-            Q-value predictions ("qf_preds") the support atoms ("atoms"), the target
-            Q-logits  ("qf_logits"), and the probabilities ("qf_probs").
-        """
+        # If we have a dueling architecture we have to add the value stream.
+        return self._qf_forward_helper(
+            batch,
+            self.encoder,
+            {"af": self.af, "vf": self.vf} if self.uses_dueling else self.af,
+        )
 
     @abc.abstractmethod
     @OverrideToImplementCustomLogic
@@ -229,7 +239,7 @@ class DQNRainbowRLModule(RLModule, RLModuleWithTargetNetworksInterface):
         Q-learning or not.
 
         Args:
-            batch: The batch recevied in the forward pass.
+            batch: The batch received in the forward pass.
             encoder: The encoder network to use. Here we have a single encoder
                 for all heads (Q or advantages and value in case of a dueling
                 architecture).
