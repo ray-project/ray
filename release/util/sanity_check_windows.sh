@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-# This script automatically download ray and run the sanity check (sanity_check.py and sanity_check_cpp.sh)
+# This script automatically download ray and run the sanity check for Windows
 # in various Python version. This script requires conda command to exist.
 
 unset RAY_ADDRESS
