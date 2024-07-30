@@ -24,6 +24,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/util/event_label.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -477,19 +478,18 @@ TEST_F(EventTest, TestEventJSON) {
   EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir));
 
-  json export_event_data = {
-    {"task_id", "task0"},
-    {"attempt_number", 0},
-    {"state_updates", {
-      {"node_id", "node0"},
-      {"worker_id", "worker0"},
-      {"state_ts", {
-        {0, 123},
-      }},
-    }}
-  };
+  rpc::TaskEvents task_event;
+  task_event.set_task_id("task_id0");
+  task_event.set_attempt_number(1);
+  task_event.set_job_id("job_id0");
 
-  RAY_EXPORT_EVENT().WithField("event_data", export_event_data);
+  std::string export_event_data_str;
+  google::protobuf::util::JsonPrintOptions options;
+  options.preserve_proto_field_names = true;
+  RAY_CHECK(google::protobuf::util::MessageToJsonString(task_event, &export_event_data_str, options).ok());
+  json event_data_as_json = json::parse(export_event_data_str);
+
+  RAY_EXPORT_EVENT().WithExportEventData<rpc::TaskEvents>(task_event);
 
   std::vector<std::string> vc;
   ReadContentFromFile(vc, log_dir + "/event_RAYLET.log");
@@ -508,7 +508,7 @@ TEST_F(EventTest, TestEventJSON) {
   EXPECT_EQ(export_event_as_json.contains("message"), false);
 
   json event_data = export_event_as_json["event_data"].get<json>();
-  EXPECT_EQ(event_data, export_event_data);
+  EXPECT_EQ(event_data, event_data_as_json);
 }
 
 TEST_F(EventTest, TestRayCheckAbort) {

@@ -41,6 +41,8 @@ cc_test(
         "//src/ray/util",
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
+        "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
 
