@@ -131,7 +131,9 @@ class ProgressBar:
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
         t = threading.current_thread()
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=False, timeout=0.1)
+            done, remaining = ray.wait(
+                remaining, num_returns=len(remaining), fetch_local=False, timeout=0.1
+            )
             self.update(len(done))
 
             with _canceled_threads_lock:
@@ -148,7 +150,12 @@ class ProgressBar:
         # See https://github.com/ray-project/ray/issues/30375.
         fetch_local = True
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=fetch_local, timeout=0.1)
+            done, remaining = ray.wait(
+                remaining,
+                num_returns=len(remaining),
+                fetch_local=fetch_local,
+                timeout=0.1,
+            )
             if fetch_local:
                 fetch_local = False
             for ref, result in zip(done, ray.get(done)):
