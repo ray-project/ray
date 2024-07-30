@@ -120,12 +120,12 @@ DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error UNKNOWN (HTTP status 503)",
 )
 
-DEFAULT_RETRIED_IO_ERRORS = [
+DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error INTERNAL_FAILURE",
     "AWS Error NETWORK_CONNECTION",
     "AWS Error SLOW_DOWN",
     "AWS Error UNKNOWN (HTTP status 503)",
-]
+)
 
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
 
@@ -321,7 +321,9 @@ class DataContext:
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
-    retried_io_errors: List[str] = DEFAULT_RETRIED_IO_ERRORS
+    retried_io_errors: List[str] = field(
+        default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
+    )
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
