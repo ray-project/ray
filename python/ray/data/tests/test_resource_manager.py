@@ -55,80 +55,83 @@ class TestResourceManager:
             * ResourceManager.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
         )
 
-        with patch("ray.cluster_resources", return_value=cluster_resources):
-            # Test default resource limits.
-            # When no resource limits are set, the resource limits should default to
-            # the cluster resources for CPU/GPU, and
-            # DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION of cluster object store memory.
-            options = ExecutionOptions()
-            resource_manager = ResourceManager(MagicMock(), options)
-            expected = ExecutionResources(
-                cpu=cluster_resources["CPU"],
-                gpu=cluster_resources["GPU"],
-                object_store_memory=default_object_store_memory_limit,
-            )
-            assert resource_manager.get_global_limits() == expected
+        def get_total_resources():
+            return ExecutionResources.from_resource_dict(cluster_resources)
 
-            # Test setting resource_limits
-            options = ExecutionOptions()
-            options.resource_limits = ExecutionResources(
-                cpu=1, gpu=2, object_store_memory=100
-            )
-            resource_manager = ResourceManager(MagicMock(), options)
-            expected = ExecutionResources(
-                cpu=1,
-                gpu=2,
-                object_store_memory=100,
-            )
-            assert resource_manager.get_global_limits() == expected
+        # Test default resource limits.
+        # When no resource limits are set, the resource limits should default to
+        # the cluster resources for CPU/GPU, and
+        # DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION of cluster object store memory.
+        options = ExecutionOptions()
+        resource_manager = ResourceManager(MagicMock(), options, get_total_resources)
+        expected = ExecutionResources(
+            cpu=cluster_resources["CPU"],
+            gpu=cluster_resources["GPU"],
+            object_store_memory=default_object_store_memory_limit,
+        )
+        assert resource_manager.get_global_limits() == expected
 
-            # Test setting exclude_resources
-            # The actual limit should be the default limit minus the excluded resources.
-            options = ExecutionOptions()
-            options.exclude_resources = ExecutionResources(
-                cpu=1, gpu=2, object_store_memory=100
-            )
-            resource_manager = ResourceManager(MagicMock(), options)
-            expected = ExecutionResources(
-                cpu=cluster_resources["CPU"] - 1,
-                gpu=cluster_resources["GPU"] - 2,
-                object_store_memory=default_object_store_memory_limit - 100,
-            )
-            assert resource_manager.get_global_limits() == expected
+        # Test setting resource_limits
+        options = ExecutionOptions()
+        options.resource_limits = ExecutionResources(
+            cpu=1, gpu=2, object_store_memory=100
+        )
+        resource_manager = ResourceManager(MagicMock(), options, get_total_resources)
+        expected = ExecutionResources(
+            cpu=1,
+            gpu=2,
+            object_store_memory=100,
+        )
+        assert resource_manager.get_global_limits() == expected
 
-            # Test that we don't support setting both resource_limits
-            # and exclude_resources.
-            with pytest.raises(ValueError):
-                options = ExecutionOptions()
-                options.resource_limits = ExecutionResources(cpu=2)
-                options.exclude_resources = ExecutionResources(cpu=1)
-                options.validate()
+        # Test setting exclude_resources
+        # The actual limit should be the default limit minus the excluded resources.
+        options = ExecutionOptions()
+        options.exclude_resources = ExecutionResources(
+            cpu=1, gpu=2, object_store_memory=100
+        )
+        resource_manager = ResourceManager(MagicMock(), options, get_total_resources)
+        expected = ExecutionResources(
+            cpu=cluster_resources["CPU"] - 1,
+            gpu=cluster_resources["GPU"] - 2,
+            object_store_memory=default_object_store_memory_limit - 100,
+        )
+        assert resource_manager.get_global_limits() == expected
+
+        # Test that we don't support setting both resource_limits
+        # and exclude_resources.
+        with pytest.raises(ValueError):
+            options = ExecutionOptions()
+            options.resource_limits = ExecutionResources(cpu=2)
+            options.exclude_resources = ExecutionResources(cpu=1)
+            options.validate()
 
     def test_global_limits_cache(self):
-        resources = {"CPU": 4, "GPU": 1, "object_store_memory": 0}
+        get_total_resources = MagicMock(return_value=ExecutionResources(4, 1, 0))
+
         cache_interval_s = 0.1
         with patch.object(
             ResourceManager,
             "GLOBAL_LIMITS_UPDATE_INTERVAL_S",
             cache_interval_s,
         ):
-            with patch(
-                "ray.cluster_resources",
-                return_value=resources,
-            ) as ray_cluster_resources:
-                resource_manager = ResourceManager(MagicMock(), ExecutionOptions())
-                expected_resource = ExecutionResources(4, 1, 0)
-                # The first call should call ray.cluster_resources().
-                assert resource_manager.get_global_limits() == expected_resource
-                assert ray_cluster_resources.call_count == 1
-                # The second call should return the cached value.
-                assert resource_manager.get_global_limits() == expected_resource
-                assert ray_cluster_resources.call_count == 1
-                time.sleep(cache_interval_s)
-                # After the cache interval, the third call should call
-                # ray.cluster_resources() again.
-                assert resource_manager.get_global_limits() == expected_resource
-                assert ray_cluster_resources.call_count == 2
+            resource_manager = ResourceManager(
+                MagicMock(),
+                ExecutionOptions(),
+                get_total_resources,
+            )
+            expected_resource = ExecutionResources(4, 1, 0)
+            # The first call should call ray.cluster_resources().
+            assert resource_manager.get_global_limits() == expected_resource
+            assert get_total_resources.call_count == 1
+            # The second call should return the cached value.
+            assert resource_manager.get_global_limits() == expected_resource
+            assert get_total_resources.call_count == 1
+            time.sleep(cache_interval_s)
+            # After the cache interval, the third call should call
+            # ray.cluster_resources() again.
+            assert resource_manager.get_global_limits() == expected_resource
+            assert get_total_resources.call_count == 2
 
     def test_update_usage(self):
         """Test calculating op_usage."""
@@ -184,7 +187,7 @@ class TestResourceManager:
             )
             topo[op].add_output(ref_bundle)
 
-        resource_manager = ResourceManager(topo, ExecutionOptions())
+        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
         resource_manager._op_resource_allocator = None
         resource_manager.update_usages()
 
@@ -234,7 +237,11 @@ class TestResourceManager:
         o3 = mock_map_op(o2)
 
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
-        resource_manager = ResourceManager(topo, ExecutionOptions())
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(return_value=ExecutionResources.zero()),
+        )
         ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer = 1
         ray.data.DataContext.get_current().target_max_block_size = 2
 
@@ -330,7 +337,7 @@ class TestReservationOpResourceAllocator:
             nonlocal global_limits
             return global_limits
 
-        resource_manager = ResourceManager(topo, ExecutionOptions())
+        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = op_internal_usage
         resource_manager._mem_op_outputs = op_outputs_usages
@@ -459,7 +466,7 @@ class TestReservationOpResourceAllocator:
         o3 = mock_map_op(o2, incremental_resource_usage=incremental_usage)
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
-        resource_manager = ResourceManager(topo, ExecutionOptions())
+        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
         )
@@ -492,7 +499,7 @@ class TestReservationOpResourceAllocator:
         )
         topo, _ = build_streaming_topology(o2, ExecutionOptions())
 
-        resource_manager = ResourceManager(topo, ExecutionOptions())
+        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
         )
@@ -513,7 +520,7 @@ class TestReservationOpResourceAllocator:
         o3 = LimitOperator(1, o2)
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
-        resource_manager = ResourceManager(topo, ExecutionOptions())
+        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
         )
@@ -549,7 +556,7 @@ class TestReservationOpResourceAllocator:
 
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
-        resource_manager = ResourceManager(topo, ExecutionOptions())
+        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
         assert not resource_manager.op_resource_allocator_enabled()
 
 
