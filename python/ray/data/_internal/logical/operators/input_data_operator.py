@@ -1,3 +1,4 @@
+import functools
 from typing import Callable, List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
@@ -32,6 +33,7 @@ class InputData(LogicalOperator):
             return None
         return self.input_data
 
+    @functools.cache
     def aggregate_output_metadata(self) -> BlockMetadata:
         if self.input_data is None:
             return BlockMetadata(None, None, None, None, None)

@@ -45,6 +45,7 @@ class Read(AbstractMap):
         """
         return self._detected_parallelism
 
+    @functools.cache
     def aggregate_output_metadata(self) -> BlockMetadata:
         # Legacy datasources might not implement `get_read_tasks`.
         if self._datasource.should_create_reader:

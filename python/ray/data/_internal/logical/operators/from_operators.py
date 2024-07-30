@@ -1,4 +1,5 @@
 import abc
+import functools
 from typing import TYPE_CHECKING, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import RefBundle
@@ -39,6 +40,7 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
     def output_data(self) -> Optional[List[RefBundle]]:
         return self._input_data
 
+    @functools.cache
     def aggregate_output_metadata(self) -> BlockMetadata:
         return BlockMetadata(
             num_rows=self._num_rows(),
