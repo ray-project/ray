@@ -30,6 +30,25 @@ namespace ray {
 
 namespace gcs {
 
+// StoreClient using Redis as persistence backend.
+// Note in redis term a "key" points to a hash table and a "field" is a key, a "value"
+// is just a value. We double quote "key" and "field" to avoid confusion.
+//
+// In variable namings, we stick to the table - key - value terminology.
+//
+// Schema:
+// - Each table is a Redis HASH. The HASH "key" is
+//    "RAY" + `external_storage_namespace` + "@" + `table_name`.
+//    The RAY prefix is in case external_storage_namespace being empty.
+// - Each key-value pair in the hash is a row in the table. The "field" is the key.
+//
+// Consistency:
+// - All Put/Get/Delete operations to a same (table, key) pair are serialized, see #35123.
+// - For MultiGet/BatchDelete operations, they are subject to *all* keys in the operation,
+//      i.e. only after it's at the queue front of all keys, it will be processed.
+// - A big loophole is GetAll and AsyncGetKeys. They're not serialized with other
+// operations, since "since it's either RPC call or used during initializing GCS". [1]
+// [1] https://github.com/ray-project/ray/pull/35123#issuecomment-1546549046
 class RedisStoreClient : public StoreClient {
  public:
   explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client);
@@ -71,30 +90,33 @@ class RedisStoreClient : public StoreClient {
 
  private:
   /// \class RedisScanner
-  /// This class is used to scan data from Redis.
   ///
-  /// If you called one method, should never call the other methods.
-  /// Otherwise it will disturb the status of the RedisScanner.
+  /// This class is used to HSCAN data from a Redis table. For our purpose, pattern
+  /// matching is not supported (always returns all keys in the table, that is "*").
+  ///
+  /// The scan is not locked with other operations. It's not guaranteed to be consistent
+  /// with other operations. It's batched by
+  /// RAY_maximum_gcs_storage_operation_batch_size.
+  ///
+  /// Callers can only call ScanKeysAndValues or ScanKeys once.
   class RedisScanner {
    public:
     explicit RedisScanner(std::shared_ptr<RedisClient> redis_client,
-                          const std::string &external_storage_namespace,
-                          const std::string &table_name);
+                          const std::string &table_name,
+                          const std::string &match_pattern);
 
-    Status ScanKeysAndValues(const std::string &match_pattern,
-                             const MapCallback<std::string, std::string> &callback);
+    Status ScanKeysAndValues(const MapCallback<std::string, std::string> &callback);
 
    private:
-    void Scan(const std::string &match_pattern, const StatusCallback &callback);
+    void Scan(const StatusCallback &callback);
 
-    void OnScanCallback(const std::string &match_pattern,
-                        const std::shared_ptr<CallbackReply> &reply,
+    void OnScanCallback(const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
     /// The table name that the scanner will scan.
     std::string table_name_;
 
-    // The namespace of the external storage. Used for isolation.
-    std::string external_storage_namespace_;
+    /// The pattern to match the keys.
+    std::string match_pattern_;
 
     /// Mutex to protect the cursor_ field and the keys_ field and the
     /// key_value_map_ field.
@@ -132,12 +154,8 @@ class RedisStoreClient : public StoreClient {
   std::vector<std::function<void()>> TakeRequestsFromSendingQueue(
       const std::vector<std::string> &keys) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  Status DoPut(const std::string &key,
-               const std::string &data,
-               bool overwrite,
-               std::function<void(bool)> callback);
-
-  Status DeleteByKeys(const std::vector<std::string> &keys,
+  Status DeleteByKeys(const std::string &table_name,
+                      const std::vector<std::string> &keys,
                       std::function<void(int64_t)> callback);
 
   // Send the redis command to the server. This method will make request to be
@@ -151,6 +169,9 @@ class RedisStoreClient : public StoreClient {
                     std::vector<std::string> args,
                     RedisCallback redis_callback);
 
+  // HMGET external_storage_namespace@table_name key1 key2 ...
+  // `keys` are chunked to multiple HMGET commands by
+  // RAY_maximum_gcs_storage_operation_batch_size.
   void MGetValues(const std::string &table_name,
                   const std::vector<std::string> &keys,
                   const MapCallback<std::string, std::string> &callback);
@@ -165,6 +186,13 @@ class RedisStoreClient : public StoreClient {
       pending_redis_request_by_key_ ABSL_GUARDED_BY(mu_);
   FRIEND_TEST(RedisStoreClientTest, Random);
 };
+
+// Helper function used by Python to delete all redis HASHes with a given prefix.
+bool RedisDelKeyPrefixSync(const std::string &host,
+                           int32_t port,
+                           const std::string &password,
+                           bool use_ssl,
+                           const std::string &key_prefix);
 
 }  // namespace gcs
 
