@@ -559,7 +559,7 @@ class BackendExecutor:
                 datasets=datasets,
                 worker_group=self.worker_group,
                 start_time_ms=self._start_time_ms,
-                run_status=RunStatusEnum.STARTED,
+                run_status=RunStatusEnum.RUNNING,
             )
 
         # Run the training function asynchronously in its own thread.

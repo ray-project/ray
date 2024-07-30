@@ -10,8 +10,8 @@ from ray.util.annotations import DeveloperAPI
 class RunStatusEnum(str, Enum):
     """Enumeration for the status of a train run."""
 
-    # The train run has started
-    STARTED = "STARTED"
+    # The train run is running
+    RUNNING = "RUNNING"
     # The train run was terminated as expected
     FINISHED = "FINISHED"
     # The train run was terminated early due to errors in the training function
@@ -121,7 +121,7 @@ class TrainRunInfo(BaseModel):
     )
     run_status: RunStatusEnum = Field(
         description="The current status of the train run. It can be one of the "
-        "following: STARTED, FINISHED, ERRORED, or ABORTED."
+        "following: RUNNING, FINISHED, ERRORED, or ABORTED."
     )
     status_detail: str = Field(
         description="Detailed information about the current run status, "
