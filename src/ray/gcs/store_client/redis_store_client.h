@@ -39,7 +39,6 @@ namespace gcs {
 // Schema:
 // - Each table is a Redis HASH. The HASH "key" is
 //    "RAY" + `external_storage_namespace` + "@" + `table_name`.
-//    The RAY prefix is in case external_storage_namespace being empty.
 // - Each key-value pair in the hash is a row in the table. The "field" is the key.
 //
 // Consistency:
@@ -91,8 +90,7 @@ class RedisStoreClient : public StoreClient {
  private:
   /// \class RedisScanner
   ///
-  /// This class is used to HSCAN data from a Redis table. For our purpose, pattern
-  /// matching is not supported (always returns all keys in the table, that is "*").
+  /// This class is used to HSCAN data from a Redis table.
   ///
   /// The scan is not locked with other operations. It's not guaranteed to be consistent
   /// with other operations. It's batched by
