@@ -13,9 +13,9 @@
 // limitations under the License.
 
 #pragma once
+#include <google/protobuf/util/json_util.h>
 #include <gtest/gtest_prod.h>
 
-#include <google/protobuf/util/json_util.h>
 #include <boost/asio.hpp>
 #include <boost/asio/ip/host_name.hpp>
 #include <cmath>
@@ -277,11 +277,13 @@ class RayEvent {
     std::string export_event_data_str;
     google::protobuf::util::JsonPrintOptions options;
     options.preserve_proto_field_names = true;
-    RAY_CHECK(google::protobuf::util::MessageToJsonString(event_data, &export_event_data_str, options).ok());
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  event_data, &export_event_data_str, options)
+                  .ok());
     json event_data_as_json = json::parse(export_event_data_str);
     custom_fields_["event_data"] = event_data_as_json;
     return *this;
-  } 
+  }
 
   static void ReportEvent(const std::string &severity,
                           const std::string &label,
