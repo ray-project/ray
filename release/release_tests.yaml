@@ -2375,7 +2375,7 @@
   run:
     timeout: 7200
     long_running: false
-    script: python workloads/microbenchmarks.py
+    script: python workloads/microbenchmarks.py --run-all
 
   alert: default
 
