@@ -947,7 +947,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   absl::flat_hash_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
       commited_bundles;
   // Bundles that are PREPARED. The scheduler will commit them asap.
-  std::vector<SchedulePreparedPgRequest> prepared_pgs;
+  std::vector<SchedulePgRequest> prepared_pgs;
 
   std::vector<PlacementGroupID> groups_to_remove;
   const auto &jobs = gcs_init_data.Jobs();
@@ -966,27 +966,24 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
           placement_group->GetName(), pg_id);
     }
     if (state == rpc::PlacementGroupTableData::PREPARED) {
+      RAY_CHECK(!placement_group->HasUnplacedBundles());
       // The PG is PREPARED. Add to `used_bundles` and `prepared_pgs`.
-      std::vector<std::shared_ptr<const BundleSpecification>> prepared_bundles;
       for (const auto &bundle : item.second.bundles()) {
         used_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
-        prepared_bundles.emplace_back(std::make_shared<BundleSpecification>(bundle));
       }
-      prepared_pgs.emplace_back(SchedulePreparedPgRequest{
-          .request = {
-              .placement_group = placement_group,
-              .failure_callback =
-                  [this](std::shared_ptr<GcsPlacementGroup> placement_group,
-                         bool is_feasible) {
-                    OnPlacementGroupCreationFailed(
-                        std::move(placement_group), CreateDefaultBackoff(), is_feasible);
-                  },
-              .success_callback =
-                  [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-                    OnPlacementGroupCreationSuccess(std::move(placement_group));
-                  },
-          },
-          .prepared_bundles = std::move(prepared_bundles)});
+      prepared_pgs.emplace_back(SchedulePgRequest{
+          .placement_group = placement_group,
+          .failure_callback =
+              [this](std::shared_ptr<GcsPlacementGroup> placement_group,
+                     bool is_feasible) {
+                OnPlacementGroupCreationFailed(
+                    std::move(placement_group), CreateDefaultBackoff(), is_feasible);
+              },
+          .success_callback =
+              [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+                OnPlacementGroupCreationSuccess(std::move(placement_group));
+              },
+      });
     }
     if (state == rpc::PlacementGroupTableData::CREATED ||
         state == rpc::PlacementGroupTableData::RESCHEDULING) {

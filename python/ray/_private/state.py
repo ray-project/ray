@@ -317,6 +317,8 @@ class GlobalState:
         def get_state(state):
             if state == gcs_pb2.PlacementGroupTableData.PENDING:
                 return "PENDING"
+            elif state == gcs_pb2.PlacementGroupTableData.PREPARED:
+                return "PREPARED"
             elif state == gcs_pb2.PlacementGroupTableData.CREATED:
                 return "CREATED"
             elif state == gcs_pb2.PlacementGroupTableData.RESCHEDULING:

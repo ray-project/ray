@@ -55,17 +55,11 @@ struct SchedulePgRequest {
   PGSchedulingSuccessfulCallback success_callback;
 };
 
-struct SchedulePreparedPgRequest {
-  SchedulePgRequest request;
-  std::vector<std::shared_ptr<const BundleSpecification>> prepared_bundles;
-};
-
 class GcsPlacementGroupSchedulerInterface {
  public:
   /// Schedule unplaced bundles of the specified placement group.
   ///
   /// \param placement_group The placement group to be scheduled.
-  /// \param prepare_success_callback Called if the pg is prepared.
   /// \param failure_callback Called if the pg failed to schedule (prepare or commit).
   /// \param success_callback Called if the pg is committed.
   virtual void ScheduleUnplacedBundles(SchedulePgRequest request) = 0;
@@ -115,7 +109,7 @@ class GcsPlacementGroupSchedulerInterface {
       const absl::flat_hash_map<PlacementGroupID,
                                 std::vector<std::shared_ptr<BundleSpecification>>>
           &group_to_bundles,
-      const std::vector<SchedulePreparedPgRequest> &prepared_pgs) = 0;
+      const std::vector<SchedulePgRequest> &prepared_pgs) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
@@ -365,7 +359,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const absl::flat_hash_map<PlacementGroupID,
                                 std::vector<std::shared_ptr<BundleSpecification>>>
           &group_to_bundles,
-      const std::vector<SchedulePreparedPgRequest> &prepared_pgs) override;
+      const std::vector<SchedulePgRequest> &prepared_pgs) override;
 
   /// Add resources changed listener.
   void AddResourcesChangedListener(std::function<void()> listener);

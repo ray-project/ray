@@ -537,7 +537,7 @@ void GcsPlacementGroupScheduler::Initialize(
     const absl::flat_hash_map<PlacementGroupID,
                               std::vector<std::shared_ptr<BundleSpecification>>>
         &committed_bundles,
-    const std::vector<SchedulePreparedPgRequest> &prepared_pgs) {
+    const std::vector<SchedulePgRequest> &prepared_pgs) {
   // We need to reinitialize the `committed_bundle_location_index_`, otherwise,
   // it will get an empty bundle set when raylet fo occurred after GCS server restart.
 
@@ -562,13 +562,17 @@ void GcsPlacementGroupScheduler::Initialize(
         .AddOrUpdateBundleLocations(committed_bundle_locations);
   }
   for (const auto &req : prepared_pgs) {
-    const auto &pg = req.request.placement_group;
+    const auto &pg = req.placement_group;
+    // The PG should have all bundles placeed.
+    RAY_CHECK(!pg->HasUnplacedBundles());
+    const auto &prepared_bundles = pg->GetBundles();
+
     const auto pg_id = pg->GetPlacementGroupID();
-    auto tracker = LeaseStatusTracker::CreatePrepared(pg, req.prepared_bundles);
+    auto tracker = LeaseStatusTracker::CreatePrepared(pg, prepared_bundles);
     RAY_CHECK(placement_group_leasing_in_progress_.emplace(pg_id, tracker).second);
 
     RAY_LOG(DEBUG).WithField(pg_id) << "Recommitting prepared pg";
-    CommitAllBundles(tracker, req.request.failure_callback, req.request.success_callback);
+    CommitAllBundles(tracker, req.failure_callback, req.success_callback);
   }
 }
 
