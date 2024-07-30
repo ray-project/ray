@@ -81,7 +81,7 @@ namespace ray {
 
 // RAY_EXPORT_EVENT macro allows creating an event without specifying
 // event_type and label (not relevant for export API so default used).
-// This macro is intended to be used with WithExportEventData to 
+// This macro is intended to be used with WithExportEventData to
 // specify the event data.
 #define RAY_EXPORT_EVENT()                                            \
   ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_INFO,      \
