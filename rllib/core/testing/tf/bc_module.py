@@ -4,10 +4,7 @@ from typing import Any, Dict
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleConfig,
-)
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.models.tf.tf_distributions import TfCategorical
 from ray.rllib.utils.annotations import override
@@ -123,8 +120,8 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 
 
-class BCTfMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
-    def __init__(self, config: MultiAgentRLModuleConfig) -> None:
+class BCTfMultiAgentModuleWithSharedEncoder(MultiRLModule):
+    def __init__(self, config: MultiRLModuleConfig) -> None:
         super().__init__(config)
 
     def setup(self):

@@ -70,10 +70,11 @@ class ProgressBar:
                 self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
             else:
                 self._bar = tqdm.tqdm(
-                    total=total,
+                    total=total or 0,
                     position=position,
                     dynamic_ncols=True,
                     unit=unit,
+                    unit_scale=True,
                 )
             self._bar.set_description(self._desc)
         else:

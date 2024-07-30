@@ -28,7 +28,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module import validate_module_id
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
@@ -293,14 +293,14 @@ class EnvRunnerGroup:
         # Generic EnvRunner.
         else:
             remote_spaces = self.foreach_worker(
-                lambda worker: worker.marl_module.foreach_module(
+                lambda worker: worker.multi_rl_module.foreach_module(
                     lambda mid, m: (
                         mid,
                         m.config.observation_space,
                         m.config.action_space,
                     ),
                 )
-                if hasattr(worker, "marl_module")
+                if hasattr(worker, "multi_rl_module")
                 else [
                     (
                         DEFAULT_POLICY_ID,
@@ -655,7 +655,7 @@ class EnvRunnerGroup:
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
-        module_spec: Optional[SingleAgentRLModuleSpec] = None,
+        module_spec: Optional[RLModuleSpec] = None,
         # Deprecated.
         workers: Optional[List[Union[EnvRunner, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> None:

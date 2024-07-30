@@ -3,7 +3,7 @@ from typing import Type, TYPE_CHECKING, Union
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
@@ -22,7 +22,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
     TIMERS,
 )
-from ray.rllib.utils.typing import RLModuleSpec, ResultDict
+from ray.rllib.utils.typing import RLModuleSpecType, ResultDict
 
 if TYPE_CHECKING:
     from ray.rllib.core.learner import Learner
@@ -85,18 +85,18 @@ class BCConfig(MARWILConfig):
         # fmt: on
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> RLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
 
-            return SingleAgentRLModuleSpec(
+            return RLModuleSpec(
                 module_class=BCTorchRLModule,
                 catalog_class=BCCatalog,
             )
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.bc.tf.bc_tf_rl_module import BCTfRLModule
 
-            return SingleAgentRLModuleSpec(
+            return RLModuleSpec(
                 module_class=BCTfRLModule,
                 catalog_class=BCCatalog,
             )
