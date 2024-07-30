@@ -50,7 +50,6 @@ do
     pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray[cpp]=="${RAY_VERSION}"
 
     failed=false
-    cpp_failed=false
     printf "\n\n\n"
     echo "========================================================="
     if python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$RAY_HASH"; then
