@@ -141,13 +141,16 @@ class FileReader(abc.ABC):
 
 def _add_column_to_batch(batch: DataBatch, column: str, value: Any) -> DataBatch:
     import pandas as pd
+    import pyarrow as pa
 
-    assert isinstance(batch, (pd.DataFrame, dict))
+    assert isinstance(batch, (pd.DataFrame, dict, pa.Table)), batch
 
     if isinstance(batch, pd.DataFrame) and column not in batch.columns:
         batch[column] = value
     elif isinstance(batch, dict) and column not in batch:
         batch_size = len(batch[next(iter(batch.keys()))])
         batch[column] = [value] * batch_size
+    elif isinstance(batch, pa.Table) and column not in batch.column_names:
+        batch = batch.append_column(column, pa.array([value] * len(batch)))
 
     return batch

@@ -51,7 +51,7 @@ class CSVReader(FileReader):
                     table = pa.Table.from_batches([batch], schema=schema)
                     if schema is None:
                         schema = table.schema
-                    yield table.to_pydict()
+                    yield table
                 except StopIteration:
                     return
         except pa.lib.ArrowInvalid as e:
