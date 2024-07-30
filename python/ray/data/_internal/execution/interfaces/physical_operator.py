@@ -409,6 +409,15 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources(0, 0, 0)
 
+    def current_running_processor_usage(self) -> ExecutionResources:
+        """Returns currently running CPU and GPU usage of this operator, excluding object
+        store memory.
+
+        This method is called by the resource manager and the streaming executor to
+        display the number of currently running CPUs and GPUs in the progress bar.
+        """
+        return ExecutionResources(0, 0, 0)
+
     def base_resource_usage(self) -> ExecutionResources:
         """Returns the minimum amount of resources required for execution.
 

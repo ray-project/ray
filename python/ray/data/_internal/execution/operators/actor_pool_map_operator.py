@@ -269,6 +269,9 @@ class ActorPoolMapOperator(MapOperator):
                 "the parallelism when creating the Dataset."
             )
 
+    def num_running_actors(self) -> int:
+        return self._actor_pool.num_running_actors()
+
     def progress_str(self) -> str:
         base = f"{self._actor_pool.num_running_actors()} actors"
         pending = self._actor_pool.num_pending_actors()
@@ -290,13 +293,21 @@ class ActorPoolMapOperator(MapOperator):
         )
 
     def current_processor_usage(self) -> ExecutionResources:
-        # Exclude pending actors from the total count and only count running actors
-        # towards our current resource usage to avoid the progress bar from displaying
-        # more GPUs than actually used.
-        num_active_workers = self._actor_pool.num_running_actors()
+        # Both pending and running actors count towards our current resource usage.
+        num_active_workers = self._actor_pool.current_size()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
+        )
+
+    def current_running_processor_usage(self) -> ExecutionResources:
+        # Exclude pending actors from the total count and only count running actors
+        # towards our current running resource usage to avoid the progress bar from
+        # displaying more GPUs than actually used.
+        num_running_workers = self._actor_pool.num_running_actors()
+        return ExecutionResources(
+            cpu=self._ray_remote_args.get("num_cpus", 0) * num_running_workers,
+            gpu=self._ray_remote_args.get("num_gpus", 0) * num_running_workers,
         )
 
     def incremental_resource_usage(self) -> ExecutionResources:

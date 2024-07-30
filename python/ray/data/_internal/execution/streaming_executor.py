@@ -339,7 +339,7 @@ class StreamingExecutor(Executor, threading.Thread):
         return len(self._output_node.outqueue) == 0
 
     def _report_current_usage(self) -> None:
-        cur_usage = self._resource_manager.get_global_usage()
+        cur_usage = self._resource_manager.get_global_running_usage()
         limits = self._resource_manager.get_global_limits()
         resources_status = (
             "Running: "

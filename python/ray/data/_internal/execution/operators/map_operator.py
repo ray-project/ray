@@ -403,6 +403,10 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def current_running_processor_usage(self) -> ExecutionResources:
+        raise NotImplementedError
+
+    @abstractmethod
     def base_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
