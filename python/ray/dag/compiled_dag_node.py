@@ -1123,6 +1123,44 @@ class CompiledDAG:
         self._dag_output_fetcher.start()
 
     def _build_execution_schedule(self):
+        """
+        Generate an execution schedule for each actor. The schedule is a list of
+        DAGNodeOperation.
+
+        Step 1: Generate a graph based on the following rules:
+
+        #1  Divide a DAG node into three GraphNodes: READ, COMPUTE, and WRITE. Each
+            GraphNode has a DAGNodeOperation.
+        #2  Add edges between READ and COMPUTE, and between COMPUTE and WRITE, which
+            belong to the same task.
+        #3  Add an edge between COMPUTE with bind_index i and COMPUTE with bind_index
+            i+1 if they belong to the same actor.
+        #4  Add an edge between WRITE of the writer task and READ of the reader task.
+
+        Step 2: Topological sort
+
+        If there are multiple GraphNodes with zero in-degree, select one based on
+        the following rules:
+
+        #1  If the nodes are not NCCL write nodes, select the one with the smallest
+            `bind_index`. If there are multiple candidate nodes with the smallest
+            `bind_index` of the actors that they belong to, any one of them is
+            acceptable.
+
+        #2  If the node is an NCCL write node, select it only if all of its downstream
+            nodes are also the roots of their heaps.
+
+        #3  If #1 and #2 cannot be satisfied, it means that all candidate nodes are
+            NCCL write nodes. In this case, select the one that is the root of the
+            heap and its downstream nodes, regardless of whether the downstream nodes
+            are roots of their heaps or not.
+
+        Then, put the selected nodes into the corresponding actors' schedules.
+
+        [Example]:
+
+        See `test_execution_schedule` for more examples.
+        """
         from functools import total_ordering
 
         @total_ordering
@@ -1152,14 +1190,6 @@ class CompiledDAG:
 
             def __hash__(self):
                 return hash((self.operation, self.idx))
-
-            def __repr__(self) -> str:
-                return (
-                    f"GraphNode(operation: {self.operation}, "
-                    f"idx: {self.idx}, "
-                    f"actor_handle: {self.actor_handle}, "
-                    f"out_edges: {self.out_edges})"
-                )
 
         def _add_edge(in_node: GraphNode, out_node: GraphNode):
             in_node.out_edges.add((out_node.idx, out_node.operation.type))
@@ -1225,7 +1255,13 @@ class CompiledDAG:
         visited_nodes = set()
 
         def _select_next_nodes():
-            # TODO (kevin85421): Remove all nodes in next_nodes from actor_to_candidates
+            """
+            Select the next nodes for topological sort. This function may return
+            multiple nodes if they are NCCL nodes. In that case, this function only
+            removes the NCCL write node, which is also the root of a heap. Other nodes
+            will be removed in the following iterations. Additionally, visited_nodes
+            ensures that the same node will not be scheduled more than once.
+            """
             next_nodes = []
             first_nccl_node = None
             for _, candidates in actor_to_candidates.items():
