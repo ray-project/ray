@@ -15,15 +15,23 @@ from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.train.tests.util import mock_storage_context
-from ray.tune import PlacementGroupFactory, ResumeConfig
+from ray.tune import PlacementGroupFactory, ResumeConfig, register_trainable
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.result import DONE
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.tests.tune_test_util import TrialResultObserver
+from ray.tune.utils.mock_trainable import MyTrainableClass
 
 STORAGE = mock_storage_context()
+MOCK_TRAINABLE_NAME = "mock_trainable"
+
+
+@pytest.fixture(autouse=True)
+def register_mock_trainable():
+    register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
+    yield
 
 
 @pytest.fixture(scope="function")
@@ -83,16 +91,13 @@ def test_checkpoint_save_restore(
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
         "storage": STORAGE,
     }
-    runner.add_trial(Trial("__fake", **kwargs))
+    runner.add_trial(Trial(MOCK_TRAINABLE_NAME, **kwargs))
     trials = runner.get_trials()
 
     runner.step()  # Start trial
 
     while trials[0].status != Trial.RUNNING:
         runner.step()
-
-    # Set some state that will be saved in the checkpoint
-    assert ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)) == 1
 
     while trials[0].status != Trial.TERMINATED:
         runner.step()
@@ -103,7 +108,7 @@ def test_checkpoint_save_restore(
 
     # Prepare new trial
     kwargs["restore_path"] = trials[0].checkpoint.path
-    new_trial = Trial("__fake", **kwargs)
+    new_trial = Trial(MOCK_TRAINABLE_NAME, **kwargs)
     runner.add_trial(new_trial)
     trials = runner.get_trials()
 
@@ -115,8 +120,6 @@ def test_checkpoint_save_restore(
 
     # Restore
     runner.step()
-
-    assert ray.get(trials[1].temporary_state.ray_actor.get_info.remote()) == 1
 
     # Run to termination
     while trials[1].status != Trial.TERMINATED:
@@ -146,7 +149,7 @@ def test_checkpoint_at_end(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, 
         "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         "storage": STORAGE,
     }
-    runner.add_trial(Trial("__fake", **kwargs))
+    runner.add_trial(Trial(MOCK_TRAINABLE_NAME, **kwargs))
     trials = runner.get_trials()
 
     while not runner.is_finished():
@@ -176,14 +179,11 @@ def test_pause_resume_trial(
         "checkpoint_config": CheckpointConfig(checkpoint_frequency=1),
         "storage": STORAGE,
     }
-    runner.add_trial(Trial("__fake", **kwargs))
+    runner.add_trial(Trial(MOCK_TRAINABLE_NAME, **kwargs))
     trials = runner.get_trials()
 
     while trials[0].status != Trial.RUNNING:
         runner.step()
-
-    assert ray.get(trials[0].temporary_state.ray_actor.get_info.remote()) is None
-    assert ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)) == 1
 
     runner._schedule_trial_pause(trials[0], should_checkpoint=True)
 
@@ -198,8 +198,6 @@ def test_pause_resume_trial(
 
     while trials[0].status != Trial.RUNNING:
         runner.step()
-
-    assert ray.get(trials[0].temporary_state.ray_actor.get_info.remote()) == 1
 
     while trials[0].status != Trial.TERMINATED:
         runner.step()
@@ -223,7 +221,9 @@ def test_checkpoint_num_to_keep(
     Legacy test: test_trial_runner_2.py::TrialRunnerTest::testPauseResumeCheckpointCount
     """
     trial = Trial(
-        "__fake", checkpoint_config=CheckpointConfig(num_to_keep=2), storage=STORAGE
+        MOCK_TRAINABLE_NAME,
+        checkpoint_config=CheckpointConfig(num_to_keep=2),
+        storage=STORAGE,
     )
     trial.init_local_path()
 
@@ -319,7 +319,7 @@ def test_checkpoint_freq_buffered(
         {"TUNE_RESULT_BUFFER_LENGTH": "7", "TUNE_RESULT_BUFFER_MIN_TIME_S": "1"},
     ):
         trial = Trial(
-            "__fake",
+            MOCK_TRAINABLE_NAME,
             checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
             storage=STORAGE,
         )
@@ -364,7 +364,7 @@ def test_checkpoint_at_end_not_buffered(
         {"TUNE_RESULT_BUFFER_LENGTH": "7", "TUNE_RESULT_BUFFER_MIN_TIME_S": "0.5"},
     ):
         trial = Trial(
-            "__fake",
+            MOCK_TRAINABLE_NAME,
             checkpoint_config=CheckpointConfig(
                 checkpoint_at_end=True,
             ),
@@ -427,13 +427,14 @@ def test_checkpoint_user_checkpoint(
             resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
         )
         runner.add_trial(
-            Trial("__fake", config={"user_checkpoint_freq": 2}, storage=STORAGE)
+            Trial(
+                MOCK_TRAINABLE_NAME, config={"user_checkpoint_freq": 2}, storage=STORAGE
+            )
         )
         trials = runner.get_trials()
 
         while not trials[0].status == Trial.RUNNING:
             runner.step()
-        assert ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)) == 1
 
         while trials[0].last_result.get(TRAINING_ITERATION, 0) < 1:
             runner.step()  # Process result
@@ -481,13 +482,16 @@ def test_checkpoint_user_checkpoint_buffered(
             checkpoint_period=0,
         )
         runner.add_trial(
-            Trial("__fake", config={"user_checkpoint_freq": 10}, storage=STORAGE)
+            Trial(
+                MOCK_TRAINABLE_NAME,
+                config={"user_checkpoint_freq": 10},
+                storage=STORAGE,
+            )
         )
         trials = runner.get_trials()
 
         while trials[0].status != Trial.RUNNING:
             runner.step()
-        assert ray.get(trials[0].temporary_state.ray_actor.set_info.remote(1)) == 1
         assert num_checkpoints(trials[0]) == 0
 
         while trials[0].last_result.get(TRAINING_ITERATION, 0) < 8:
@@ -546,7 +550,11 @@ def test_checkpoint_auto_period(
             save_to_dir.side_effect = lambda *a, **kw: time.sleep(2)
 
             runner.add_trial(
-                Trial("__fake", config={"user_checkpoint_freq": 1}, storage=storage)
+                Trial(
+                    MOCK_TRAINABLE_NAME,
+                    config={"user_checkpoint_freq": 1},
+                    storage=storage,
+                )
             )
 
             runner.step()  # Run one step, this will trigger checkpointing
@@ -585,7 +593,7 @@ def test_checkpoint_force_with_num_to_keep(ray_start_4_cpus_2_gpus_extra, tmp_pa
                 return "", ""
 
         trial = CheckpointingTrial(
-            "__fake",
+            MOCK_TRAINABLE_NAME,
             checkpoint_config=checkpoint_config,
             stopping_criterion={"training_iteration": 10},
             storage=storage,

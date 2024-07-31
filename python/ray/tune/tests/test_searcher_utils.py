@@ -10,7 +10,7 @@ from ray.tune.utils.mock_trainable import MyTrainableClass
 MOCK_TRAINABLE_NAME = "mock_trainable"
 
 
-@pytest.fixture(autouse=True, scope="module")
+@pytest.fixture(autouse=True)
 def register_mock_trainable():
     register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
 
