@@ -937,7 +937,7 @@ py_test(
 
 # MARWIL
 py_test(
-    name = "test_marwil_old",
+    name = "test_marwil_old_api_stack",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     # Include the json data file.
@@ -946,7 +946,7 @@ py_test(
         "tests/data/pendulum/large.json",
         "tests/data/cartpole/small.json",
     ],
-    srcs = ["algorithms/marwil/tests/test_marwil_old.py"]
+    srcs = ["algorithms/marwil/tests/test_marwil_old_api_stack.py"]
 )
 py_test(
     name = "test_marwil_rl_module",

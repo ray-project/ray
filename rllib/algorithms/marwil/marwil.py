@@ -23,7 +23,6 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
@@ -193,7 +192,7 @@ class MARWILConfig(AlgorithmConfig):
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use 'torch' instead."
             )
 
     @override(AlgorithmConfig)
@@ -206,7 +205,8 @@ class MARWILConfig(AlgorithmConfig):
             return MARWILTorchLearner
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use 'torch'."
+                f"The framework {self.framework_str} is not supported. "
+                "Use 'torch' instead."
             )
 
     @override(AlgorithmConfig)
@@ -325,7 +325,7 @@ class MARWIL(Algorithm):
         elif self.config.enable_rl_module_and_learner:
             raise ValueError(
                 "`enable_rl_module_and_learner=True`. Hybrid stack is not "
-                "is not supported for MARWIL. Either use the old stack with "
+                "supported for MARWIL. Either use the old stack with "
                 "`ModelV2` or the new stack with `RLModule`. You can enable "
                 "the new stack by setting both, `enable_rl_module_and_learner` "
                 "and `enable_env_runner_and_connector_v2` to `True`."
@@ -433,89 +433,4 @@ class MARWIL(Algorithm):
         # Update global vars on local worker as well.
         self.env_runner.set_global_vars(global_vars)
 
-        return train_results
-
-    def _training_step_hybrid_step(self) -> ResultDict:
-        """Implements training logic for the hybrid stack.
-
-        Note, the hybrid stack cannot fall back on MARWIL b/c MARWIL
-        is still on the old stack. Instead it needs to use `RolloutWorkers`
-        for evaluation and the `RLModule`s for inference and training.
-        Specifically it cannot use the new `OfflineData` class for
-        training.
-        """
-        # Implement logic using RLModule and Learner API.
-        # TODO (sven): Remove RolloutWorkers/EnvRunners for
-        # datasets. Use RolloutWorker/EnvRunner only for
-        # env stepping.
-        # TODO (simon): Take care of sampler metrics: right
-        # now all rewards are `nan`, which possibly confuses
-        # the user that sth. is not right, although it is as
-        # we do not step the env.
-        with self._timers[SAMPLE_TIMER]:
-            # Sampling from offline data.
-            # TODO (simon): We have to remove the `RolloutWorker`
-            #  here and just use the already distributed `dataset`
-            #  for sampling. Only in online evaluation
-            #  `RolloutWorker/EnvRunner` should be used.
-            if self.config.count_steps_by == "agent_steps":
-                train_batch = synchronous_parallel_sample(
-                    worker_set=self.env_runner_group,
-                    max_agent_steps=self.config.train_batch_size,
-                    sample_timeout_s=self.config.sample_timeout_s,
-                )
-            else:
-                train_batch = synchronous_parallel_sample(
-                    worker_set=self.env_runner_group,
-                    max_env_steps=self.config.train_batch_size,
-                    sample_timeout_s=self.config.sample_timeout_s,
-                )
-
-            # TODO (sven): Use metrics API as soon as we moved to new API stack
-            #  (from currently hybrid stack).
-            # self.metrics.log_dict(
-            #    {
-            #        NUM_AGENT_STEPS_SAMPLED_LIFETIME: len(train_batch),
-            #        NUM_ENV_STEPS_SAMPLED_LIFETIME: len(train_batch),
-            #    },
-            #    reduce="sum",
-            # )
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += len(train_batch)
-            self._counters[NUM_ENV_STEPS_SAMPLED] += len(train_batch)
-
-        # Updating the policy.
-        train_results = self.learner_group.update_from_batch(
-            batch=train_batch.as_multi_agent(module_id=list(self.config.policies)[0])
-        )
-        # TODO (sven): Use metrics API as soon as we moved to new API stack
-        #  (from currently hybrid stack).
-        # self.metrics.log_dict(
-        #    {
-        #        NUM_AGENT_STEPS_TRAINED_LIFETIME: len(train_batch),
-        #        NUM_ENV_STEPS_TRAINED_LIFETIME: len(train_batch),
-        #    },
-        #    reduce="sum",
-        # )
-        self._counters[NUM_AGENT_STEPS_TRAINED] += len(train_batch)
-        self._counters[NUM_ENV_STEPS_TRAINED] += len(train_batch)
-
-        # Synchronize weights.
-        # As the results contain for each policy the loss and in addition the
-        # total loss over all policies is returned, this total loss has to be
-        # removed.
-        policies_to_update = set(train_results.keys()) - {ALL_MODULES}
-
-        # with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-        with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if self.env_runner_group.num_remote_workers() > 0:
-                self.env_runner_group.sync_weights(
-                    from_worker_or_learner_group=self.learner_group,
-                    policies=policies_to_update,
-                )
-            # Get weights from Learner to local worker.
-            else:
-                self.env_runner.set_weights(self.learner_group.get_weights())
-
-        # TODO (sven): Use metrics API as soon as we moved to new API stack
-        #  (from currently hybrid stack).
         return train_results
