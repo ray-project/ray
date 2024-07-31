@@ -787,38 +787,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         if self.config.enable_rl_module_and_learner:
             if self.config.enable_env_runner_and_connector_v2:
-                module_spec = self.config.get_multi_rl_module_spec(
+                module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
                     spaces=self.env_runner_group.get_spaces(),
                     inference_only=False,
                 )
             # TODO (Sven): Deprecate this path: Old stack API RolloutWorkers and
             #  DreamerV3's EnvRunners have a `multi_rl_module_spec` property.
             elif hasattr(self.env_runner, "multi_rl_module_spec"):
-            #self._setup_multi_rl_module_spec()
-            #local_env_runner = self.env_runner_group.local_env_runner
-            #env = spaces = None
-            # EnvRunners have a `module` property, which stores the RLModule
-            # (or MultiRLModule, which is a subclass of RLModule, in the multi-module
-            # case, e.g. for multi-agent).
-            #if (
-            #    hasattr(self.env_runner, "module")
-            #    and self.env_runner.module is not None
-            #):
-            #    multi_rl_module_dict = dict(
-            #        self.env_runner.module.as_multi_rl_module()
-            #    )
-            #    env = self.env_runner.env
-            #    spaces = {
-            #        mid: (mod.config.observation_space, mod.config.action_space)
-            #        for mid, mod in multi_rl_module_dict.items()
-            #    }
-            #    policy_dict, _ = self.config.get_multi_agent_setup(
-            #        env=env, spaces=spaces
-            #    )
-            #    module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-            #        policy_dict=policy_dict
-            #    )
-            #elif hasattr(self.env_runner, "multi_rl_module_spec"):
                 module_spec: MultiRLModuleSpec = self.env_runner.multi_rl_module_spec
             else:
                 raise AttributeError(

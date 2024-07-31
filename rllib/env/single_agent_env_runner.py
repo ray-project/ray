@@ -16,8 +16,7 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -98,13 +97,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._cached_to_module = None
 
         # Create an instance of the `RLModule`.
-        #try:
         module_spec: RLModuleSpec = self.config.get_rl_module_spec(
             env=self.env, spaces=self.get_spaces(), inference_only=True
         )
         self.module = module_spec.build()
-        #except NotImplementedError:
-        #    self.module = None
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
@@ -607,7 +603,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         return {
             "__env__": (self.env.observation_space, self.env.action_space),
             DEFAULT_MODULE_ID: (
-                self._env_to_module.observation_space, self.env.single_action_space
+                self._env_to_module.observation_space,
+                self.env.single_action_space,
             ),
         }
 

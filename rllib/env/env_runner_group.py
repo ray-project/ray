@@ -36,7 +36,6 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -279,7 +278,8 @@ class EnvRunnerGroup:
         """
         # Get ID of the first remote worker.
         remote_worker_ids = (
-            [self._worker_manager.actor_ids()[0]] if self._worker_manager.actor_ids()
+            [self._worker_manager.actor_ids()[0]]
+            if self._worker_manager.actor_ids()
             else []
         )
 
@@ -294,8 +294,7 @@ class EnvRunnerGroup:
                 local_env_runner=not remote_worker_ids,
             )
             spaces = {
-                e[0]: (getattr(e[1], "original_space", e[1]), e[2])
-                for e in spaces[0]
+                e[0]: (getattr(e[1], "original_space", e[1]), e[2]) for e in spaces[0]
             }
             # Try to add the actual env's obs/action spaces.
             env_spaces = self.foreach_worker(
@@ -311,9 +310,7 @@ class EnvRunnerGroup:
                 spaces["__env__"] = env_spaces[0][0]
         # Generic EnvRunner.
         else:
-            spaces = self.foreach_worker(
-                lambda env_runner: env_runner.get_spaces()
-            )[0]
+            spaces = self.foreach_worker(lambda env_runner: env_runner.get_spaces())[0]
 
         logger.info(
             "Inferred observation/action spaces from remote "

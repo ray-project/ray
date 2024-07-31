@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from ray.rllib.algorithms.algorithm_config import NotProvided
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -30,14 +30,17 @@ class PPOConfigWithCuriosity(PPOConfig):
         curiosity_beta: float = NotProvided,
         curiosity_eta: float = NotProvided,
     ) -> "PPOConfigWithCuriosity":
-        """
+        """Sets the config's curiosity settings.
 
         Args:
-            curiosity_beta:
-            curiosity_eta:
+            curiosity_beta: The coefficient used for the intrinsic rewards. Overall
+                rewards are computed as `R = R[extrinsic] + beta * R[intrinsic]`.
+            curiosity_eta: Fraction of the forward loss (within the total loss term)
+                vs the inverse dynamics loss. The total loss of the ICM is computed as:
+                `L = eta * [forward loss] + (1.0 - eta) * [inverse loss]`.
 
         Returns:
-
+            This updated AlgorithmConfig object.
         """
         if curiosity_beta is not NotProvided:
             self.curiosity_beta = curiosity_beta

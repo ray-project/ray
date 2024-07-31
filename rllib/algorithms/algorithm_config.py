@@ -36,7 +36,8 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.annotations import (
-    OldAPIStack, OverrideToImplementCustomLogic_CallToSuperRecommended
+    OldAPIStack,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
@@ -1120,9 +1121,7 @@ class AlgorithmConfig(_Config):
 
         # If `spaces` or `env` provided -> Create a MultiRLModuleSpec first to be
         # passed into the LearnerGroup constructor.
-        #if rl_module_spec is None:
-        #    rl_module_spec = self.get_multi_rl_module_spec()
-        if rl_module_spec is None:# and (env is not None or spaces is not None):
+        if rl_module_spec is None:
             rl_module_spec = self.get_multi_rl_module_spec(env=env, spaces=spaces)
 
         # Construct the actual LearnerGroup.
@@ -3443,7 +3442,9 @@ class AlgorithmConfig(_Config):
         """
         raise NotImplementedError
 
-    def get_rl_module_spec(self, env=None, spaces=None, inference_only=None) -> RLModuleSpec:
+    def get_rl_module_spec(
+        self, env=None, spaces=None, inference_only=None
+    ) -> RLModuleSpec:
         rl_module_spec = copy.deepcopy(self.rl_module_spec)
 
         # If a MultiRLModuleSpec -> Reduce to single-agent (and assert that
@@ -3478,7 +3479,7 @@ class AlgorithmConfig(_Config):
                 rl_module_spec.observation_space = env.single_observation_space
             rl_module_spec.action_space = env.single_action_space
 
-        # If module_config_dict is not defined, set to our generic one. 
+        # If module_config_dict is not defined, set to our generic one.
         if rl_module_spec.model_config_dict is None:
             rl_module_spec.model_config_dict = self.config.model_config
 
@@ -3598,7 +3599,9 @@ class AlgorithmConfig(_Config):
                                 k, single_agent_spec
                             )
                         )
-                        for k in (policy_dict | current_rl_module_spec.module_specs).keys()
+                        for k in (
+                            policy_dict | current_rl_module_spec.module_specs
+                        ).keys()
                     }
 
                 # Now construct the proper MultiRLModuleSpec.
@@ -3655,17 +3658,9 @@ class AlgorithmConfig(_Config):
                     load_state_path=current_rl_module_spec.load_state_path,
                 )
 
-        # Make sure that policy_dict and multi_rl_module_spec have similar keys
-        #if set(policy_dict.keys()) != set(multi_rl_module_spec.module_specs.keys()):
-        #    raise ValueError(
-        #        "Policy dict and module spec have different keys! \n"
-        #        f"policy_dict keys: {list(policy_dict.keys())} \n"
-        #        f"module_spec keys: {list(multi_rl_module_spec.module_specs.keys())}"
-        #    )
-
         # Fill in the missing values from the specs that we already have. By combining
         # PolicySpecs and the default RLModuleSpec.
-        for module_id in (policy_dict | multi_rl_module_spec.module_specs):
+        for module_id in policy_dict | multi_rl_module_spec.module_specs:
 
             # Remove/skip `learner_only=True` RLModules if `inference_only` is True.
             module_spec = multi_rl_module_spec.module_specs[module_id]

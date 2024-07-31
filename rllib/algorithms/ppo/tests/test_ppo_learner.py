@@ -90,7 +90,7 @@ class TestPPO(unittest.TestCase):
             algo_config.validate()
             algo_config.freeze()
 
-            learner_group = algo_config.build_learner_group()
+            learner_group = algo_config.build_learner_group(env=self.ENV)
 
             # Load the algo weights onto the learner_group.
             learner_group.set_weights(algo.get_weights())

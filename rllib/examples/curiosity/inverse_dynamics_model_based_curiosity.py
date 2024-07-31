@@ -87,7 +87,6 @@ from ray.rllib.examples.learners.classes.curiosity_ppo_torch_learner import (
 from ray.rllib.examples.rl_modules.classes.inverse_dynamics_model_rlm import (
     InverseDynamicsModel,
 )
-from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -220,28 +219,31 @@ if __name__ == "__main__":
             lr=0.0003,
         )
         .rl_module(
-            rl_module_spec=MultiRLModuleSpec(module_specs={
-                # The "main" RLModule (policy) to be trained by our algo.
-                DEFAULT_MODULE_ID: RLModuleSpec(
-                    model_config_dict={"vf_share_layers": True},
-                ),
-                # The inverse dynamics model.
-                ICM_MODULE_ID: RLModuleSpec(
-                    module_class=InverseDynamicsModel,
-                    # Only create the ICM on the Learner workers, NOT on the EnvRunners.
-                    learner_only=True,
-                    # Configure the architecture of the ICM here.
-                    model_config_dict={
-                        "feature_dim": 288,
-                        "feature_net_hiddens": (256, 256),
-                        "feature_net_activation": "relu",
-                        "inverse_net_hiddens": (256, 256),
-                        "inverse_net_activation": "relu",
-                        "forward_net_hiddens": (256, 256),
-                        "forward_net_activation": "relu",
-                    },
-                ),
-            }),
+            rl_module_spec=MultiRLModuleSpec(
+                module_specs={
+                    # The "main" RLModule (policy) to be trained by our algo.
+                    DEFAULT_MODULE_ID: RLModuleSpec(
+                        model_config_dict={"vf_share_layers": True},
+                    ),
+                    # The inverse dynamics model.
+                    ICM_MODULE_ID: RLModuleSpec(
+                        module_class=InverseDynamicsModel,
+                        # Only create the ICM on the Learner workers, NOT on the
+                        # EnvRunners.
+                        learner_only=True,
+                        # Configure the architecture of the ICM here.
+                        model_config_dict={
+                            "feature_dim": 288,
+                            "feature_net_hiddens": (256, 256),
+                            "feature_net_activation": "relu",
+                            "inverse_net_hiddens": (256, 256),
+                            "inverse_net_activation": "relu",
+                            "forward_net_hiddens": (256, 256),
+                            "forward_net_activation": "relu",
+                        },
+                    ),
+                }
+            ),
             # Use a different learning rate for training the ICM.
             algorithm_config_overrides_per_module={
                 ICM_MODULE_ID: PPOConfigWithCuriosity.overrides(lr=0.0005)
