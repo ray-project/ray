@@ -367,9 +367,6 @@ class FileBasedDatasource(Datasource):
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
 
-    def input_files(self) -> Optional[List[str]]:
-        return self._paths()
-
 
 def _add_partitions(
     data: Union["pyarrow.Table", "pd.DataFrame"], partitions: Dict[str, Any]

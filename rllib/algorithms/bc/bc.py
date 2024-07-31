@@ -1,10 +1,13 @@
+from typing import Type, Union
+
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import RLModuleSpec, ResultDict
+from ray.rllib.utils.typing import ResultDict, RLModuleSpecType
 
 
 class BCConfig(MARWILConfig):
@@ -70,18 +73,34 @@ class BCConfig(MARWILConfig):
         # fmt: on
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> RLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
 
-            return SingleAgentRLModuleSpec(
+            return RLModuleSpec(
                 module_class=BCTorchRLModule,
                 catalog_class=BCCatalog,
             )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch'."
+                "Use `torch` instead."
+            )
+
+    @override(AlgorithmConfig)
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.bc.torch.bc_torch_learner import BCTorchLearner
+
+            return BCTorchLearner
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.bc.tf.bc_tf_learner import BCTfLearner
+
+            return BCTfLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
             )
 
     @override(MARWILConfig)
