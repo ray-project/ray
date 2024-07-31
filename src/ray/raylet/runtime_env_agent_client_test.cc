@@ -19,7 +19,6 @@
 #include <boost/beast/version.hpp>
 #include <boost/chrono.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <boost/optional.hpp>
 #include <boost/thread.hpp>
 #include <memory>
 #include <string>

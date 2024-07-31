@@ -63,7 +63,7 @@ class TestReportCheckpointCallback:
         # simulates the end of an epoch, and asserts that a metric and checkpoint are
         # reported.
         callback = ReportCheckpointCallback()
-        callback.model = model
+        callback.set_model(model)
 
         callback.on_epoch_end(0, {"loss": 0})
 

@@ -65,8 +65,8 @@ class NodeFailureTests(unittest.TestCase):
         # One step with all nodes up, enough to satisfy resource requirements
         ppo.train()
 
-        self.assertEqual(ppo.workers.num_healthy_remote_workers(), 6)
-        self.assertEqual(ppo.workers.num_remote_workers(), 6)
+        self.assertEqual(ppo.env_runner_group.num_healthy_remote_workers(), 6)
+        self.assertEqual(ppo.env_runner_group.num_remote_workers(), 6)
 
         # Remove the first non-head node.
         node_to_kill = get_other_nodes(self.cluster, exclude_head=True)[0]
@@ -75,8 +75,8 @@ class NodeFailureTests(unittest.TestCase):
         # step() should continue with 4 rollout workers.
         ppo.train()
 
-        self.assertEqual(ppo.workers.num_healthy_remote_workers(), 4)
-        self.assertEqual(ppo.workers.num_remote_workers(), 6)
+        self.assertEqual(ppo.env_runner_group.num_healthy_remote_workers(), 4)
+        self.assertEqual(ppo.env_runner_group.num_remote_workers(), 6)
 
         # node comes back immediately.
         self.cluster.add_node(
@@ -107,8 +107,8 @@ class NodeFailureTests(unittest.TestCase):
         ppo.train()
 
         # Workers should be back up, everything back to normal.
-        self.assertEqual(ppo.workers.num_healthy_remote_workers(), 6)
-        self.assertEqual(ppo.workers.num_remote_workers(), 6)
+        self.assertEqual(ppo.env_runner_group.num_healthy_remote_workers(), 6)
+        self.assertEqual(ppo.env_runner_group.num_remote_workers(), 6)
 
 
 if __name__ == "__main__":

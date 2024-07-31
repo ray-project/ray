@@ -19,7 +19,6 @@
 #include "ray/common/placement_group.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/entry_change_notification.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/sequencer.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -853,6 +852,7 @@ class InternalKVAccessor {
   /// \param added It's an output parameter. It'll be set to be true if
   ///     any row is added.
   /// \return Status
+  /// TODO(ryw): change the out parameter type to `int` just like AsyncInternalKVPut.
   virtual Status Put(const std::string &ns,
                      const std::string &key,
                      const std::string &value,
