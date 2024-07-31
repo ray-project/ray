@@ -1127,11 +1127,12 @@ class CompiledDAG:
             def __init__(self, operation: DAGNodeOperation, idx, idx_to_task):
                 self.operation = operation
                 self.idx = idx
+
                 dag_node = idx_to_task[idx].dag_node
                 self.actor_handle = None
                 if isinstance(dag_node, ClassMethodNode):
                     self.actor_handle = dag_node._get_actor_handle()
-                self.requires_nccl = idx_to_task[idx].dag_node.type_hint.requires_nccl()
+                self.requires_nccl = dag_node.type_hint.requires_nccl()
                 self.in_edges = set()
                 self.out_edges = set()
 
@@ -1212,14 +1213,12 @@ class CompiledDAG:
                     graph[downstream_idx][DAGNodeOperationType.READ],
                 )
 
-        actor_to_candidates = {}
+        actor_to_candidates = defaultdict(list)
         for idx, node_dict in graph.items():
             for _, node in node_dict.items():
                 if node.in_degree == 0:
-                    if node.actor_handle not in actor_to_candidates:
-                        actor_to_candidates[node.actor_handle] = [node]
-                    else:
-                        actor_to_candidates[node.actor_handle].append(node)
+                    actor_to_candidates[node.actor_handle].append(node)
+
         for actor_handle, candidates in actor_to_candidates.items():
             candidates.sort()
 
@@ -1283,10 +1282,7 @@ class CompiledDAG:
                     out_node = graph[out_node_idx][out_node_type]
                     out_node.in_edges.remove((node.idx, node.operation.type))
                     if out_node.in_degree == 0:
-                        if out_node.actor_handle not in actor_to_candidates:
-                            actor_to_candidates[out_node.actor_handle] = [out_node]
-                        else:
-                            actor_to_candidates[out_node.actor_handle].append(out_node)
+                        actor_to_candidates[out_node.actor_handle].append(out_node)
             for _, candidates in actor_to_candidates.items():
                 candidates.sort()
 
