@@ -18,26 +18,28 @@ class _SerializationContext:
         # The number of readers for each channel. When the number of readers
         # reaches 0, remove the data from the buffer.
         self.channel_id_to_num_readers: Dict[str, int] = {}
+        # The key is the order of the task on the actor, which follows the ascending
+        # order of bind_index, and the value is a dictionary of intermediate results.
+        # The dictionary maps the operation type, such as "READ", "COMPUTE", and "WRITE"
+        # , to the intermediate result.
         self.intermediate_results_buffer: Dict[int, Dict[str, Any]] = {}
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport
 
-    def set_intermediate_result(
-        self, bind_index: int, op_type: str, value: Any
-    ) -> None:
-        if bind_index not in self.intermediate_results_buffer:
-            self.intermediate_results_buffer[bind_index] = {}
-        self.intermediate_results_buffer[bind_index][op_type] = value
+    def set_intermediate_result(self, idx: int, op_type: str, value: Any) -> None:
+        if idx not in self.intermediate_results_buffer:
+            self.intermediate_results_buffer[idx] = {}
+        self.intermediate_results_buffer[idx][op_type] = value
 
-    def get_intermediate_result(self, bind_index: int, op_type: str) -> Any:
+    def get_intermediate_result(self, idx: int, op_type: str) -> Any:
         assert (
-            bind_index in self.intermediate_results_buffer
-        ), f"Bind index {bind_index} does not exist in the buffer."
+            idx in self.intermediate_results_buffer
+        ), f"Index {idx} does not exist in the buffer."
         assert (
-            op_type in self.intermediate_results_buffer[bind_index]
+            op_type in self.intermediate_results_buffer[idx]
         ), f"Operation type {op_type} does not exist in the buffer."
-        return self.intermediate_results_buffer[bind_index].pop(op_type)
+        return self.intermediate_results_buffer[idx].pop(op_type)
 
     def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
         assert num_readers > 0, "num_readers must be greater than 0."
