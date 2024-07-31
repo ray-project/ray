@@ -7,7 +7,7 @@ from ray.rllib.algorithms.marwil.marwil_offline_prelearner import (
     MARWILOfflinePreLearner,
 )
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -37,7 +37,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.typing import (
     EnvType,
     ResultDict,
-    RLModuleSpec,
+    RLModuleSpecType,
 )
 from ray.tune.logger import Logger
 
@@ -180,13 +180,13 @@ class MARWILConfig(AlgorithmConfig):
         return self
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> RLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.marwil.torch.marwil_torch_rl_module import (
                 MARWILTorchRLModule,
             )
 
-            return SingleAgentRLModuleSpec(
+            return RLModuleSpec(
                 module_class=MARWILTorchRLModule,
                 catalog_class=MARWILCatalog,
             )
@@ -404,9 +404,12 @@ class MARWIL(Algorithm):
         # Collect SampleBatches from sample workers.
         with self._timers[SAMPLE_TIMER]:
             train_batch = synchronous_parallel_sample(worker_set=self.env_runner_group)
-        train_batch = train_batch.as_multi_agent()
+        train_batch = train_batch.as_multi_agent(
+            module_id=list(self.config.policies)[0]
+        )
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+
         # Train.
         if self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
