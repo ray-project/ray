@@ -5,9 +5,9 @@ import time
 from typing import List
 from datetime import datetime, timezone
 import click
-from ci.ray_ci.doc.build_cache import ENVIRONMENT_PICKLE
 
 PENDING_FILES_PATH = "pending_files.txt"
+ENVIRONMENT_PICKLE = "_build/doctrees/environment.pickle"
 
 
 def list_pending_files(ray_dir: str) -> List[str]:
