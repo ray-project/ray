@@ -10,6 +10,7 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.conftest import start_nccl_mock
 from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode, MultiOutputNode
+from ray.dag.compiled_dag_node import DAGNodeOperationType
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
@@ -72,6 +73,45 @@ def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
             ]
         )
     compiled_graph = dag.experimental_compile()
+
+    w1_expected_schedule = [
+        (0, DAGNodeOperationType.READ),
+        (0, DAGNodeOperationType.COMPUTE),
+        (0, DAGNodeOperationType.WRITE),
+        (1, DAGNodeOperationType.READ),
+        (1, DAGNodeOperationType.COMPUTE),
+        (1, DAGNodeOperationType.WRITE),
+        (2, DAGNodeOperationType.READ),
+        (2, DAGNodeOperationType.COMPUTE),
+        (2, DAGNodeOperationType.WRITE),
+        (3, DAGNodeOperationType.READ),
+        (3, DAGNodeOperationType.COMPUTE),
+        (3, DAGNodeOperationType.WRITE),
+    ]
+    w2_expected_schedule = [
+        (0, DAGNodeOperationType.READ),
+        (0, DAGNodeOperationType.COMPUTE),
+        (0, DAGNodeOperationType.WRITE),
+        (1, DAGNodeOperationType.READ),
+        (1, DAGNodeOperationType.COMPUTE),
+        (2, DAGNodeOperationType.READ),
+        (1, DAGNodeOperationType.WRITE),
+        (2, DAGNodeOperationType.COMPUTE),
+        (2, DAGNodeOperationType.WRITE),
+        (3, DAGNodeOperationType.READ),
+        (3, DAGNodeOperationType.COMPUTE),
+        (3, DAGNodeOperationType.WRITE),
+    ]
+    w1_schedule = compiled_graph.actor_to_execution_schedule[w1]
+    w2_schedule = compiled_graph.actor_to_execution_schedule[w2]
+
+    for schedule, expected_schedule in zip(
+        [w1_schedule, w2_schedule], [w1_expected_schedule, w2_expected_schedule]
+    ):
+        assert len(schedule) == len(expected_schedule)
+        for i, operation in enumerate(schedule):
+            assert operation.idx == expected_schedule[i][0]
+            assert operation.type == expected_schedule[i][1]
     compiled_graph.teardown()
 
 
