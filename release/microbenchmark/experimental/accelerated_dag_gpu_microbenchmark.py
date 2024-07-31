@@ -270,15 +270,15 @@ def _exec_ray_put_gpu():
 
 
 def exec_ray_dag_cpu(sender_hint, receiver_hint):
-    sender = TorchTensorWorker.remote(scheduling_strategy=sender_hint)
-    receiver = TorchTensorWorker.remote(scheduling_strategy=receiver_hint)
+    sender = TorchTensorWorker.options(scheduling_strategy=sender_hint).remote()
+    receiver = TorchTensorWorker.options(scheduling_strategy=receiver_hint).remote()
     return exec_ray_dag("exec_ray_dag_cpu", sender, receiver)
 
 
 def exec_ray_core_cpu(sender_hint, receiver_hint):
     time.sleep(1)
-    sender = TorchTensorWorker.remote(scheduling_strategy=sender_hint)
-    receiver = TorchTensorWorker.remote(scheduling_strategy=receiver_hint)
+    sender = TorchTensorWorker.options(scheduling_strategy=sender_hint).remote()
+    receiver = TorchTensorWorker.options(scheduling_strategy=receiver_hint).remote()
     return exec_ray_dag("exec_ray_core_cpu", sender, receiver, use_adag=False)
 
 
