@@ -27,6 +27,7 @@ from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.tests.execution.utils import create_execution_test_objects
 from ray.tune.tune_config import TuneConfig
 from ray.tune.utils.util import flatten_dict
+from ray.tune.utils.mock_trainable import MyTrainableClass
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -576,8 +577,9 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             def status(self, status):
                 pass
 
+        ray.tune.register_trainable("mock_trainable", MyTrainableClass)
         trials = [
-            MockTrial("PPO", config=dict(num=i), storage=storage_context)
+            MockTrial("mock_trainable", config=dict(num=i), storage=storage_context)
             for i in range(1, 5)
         ]
         trial1, trial2, trial3, trial4 = trials
@@ -640,7 +642,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         self.assertTrue(scheduler.choose_trial_to_run(runner))
 
         # Assert that trials do not hang when a terminated trial is added
-        trial5 = Trial("PPO", config=dict(num=5))
+        trial5 = Trial("mock_trainable", config=dict(num=5))
         runner.add_trial(trial5)
         scheduler.on_trial_add(runner, trial5)
         trial5.set_status(Trial.TERMINATED)
