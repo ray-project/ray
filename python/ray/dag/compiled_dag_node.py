@@ -1127,14 +1127,11 @@ class CompiledDAG:
 
         @total_ordering
         class GraphNode:
-            def __init__(self, operation: DAGNodeOperation, idx, idx_to_task):
+            def __init__(self, operation: DAGNodeOperation, idx, dag_node):
                 self.operation = operation
                 self.idx = idx
-
-                dag_node = idx_to_task[idx].dag_node
-                self.actor_handle = None
-                if isinstance(dag_node, ClassMethodNode):
-                    self.actor_handle = dag_node._get_actor_handle()
+                assert isinstance(dag_node, ClassMethodNode)
+                self.actor_handle = dag_node._get_actor_handle()
                 self.requires_nccl = dag_node.type_hint.requires_nccl()
                 self.in_edges = set()
                 self.out_edges = set()
@@ -1154,7 +1151,7 @@ class CompiledDAG:
                 return False
 
             def __hash__(self):
-                return hash((self.operation, self.idx, self.operation.type))
+                return hash((self.operation, self.idx))
 
             def __repr__(self) -> str:
                 return (
@@ -1178,27 +1175,28 @@ class CompiledDAG:
         for _, executable_tasks in self.actor_to_executable_tasks.items():
             prev_compute_node = None
             for local_idx, exec_task in enumerate(executable_tasks):
+                idx = exec_task.idx
                 read_node = GraphNode(
                     DAGNodeOperation(local_idx, DAGNodeOperationType.READ),
-                    exec_task.idx,
-                    self.idx_to_task,
+                    idx,
+                    self.idx_to_task[idx].dag_node,
                 )
                 compute_node = GraphNode(
                     DAGNodeOperation(local_idx, DAGNodeOperationType.COMPUTE),
-                    exec_task.idx,
-                    self.idx_to_task,
+                    idx,
+                    self.idx_to_task[idx].dag_node,
                 )
                 write_node = GraphNode(
                     DAGNodeOperation(local_idx, DAGNodeOperationType.WRITE),
-                    exec_task.idx,
-                    self.idx_to_task,
+                    idx,
+                    self.idx_to_task[idx].dag_node,
                 )
                 _add_edge(read_node, compute_node)
                 _add_edge(compute_node, write_node)
                 if prev_compute_node is not None:
                     _add_edge(prev_compute_node, compute_node)
                 prev_compute_node = compute_node
-                graph[exec_task.idx] = {
+                graph[idx] = {
                     DAGNodeOperationType.READ: read_node,
                     DAGNodeOperationType.COMPUTE: compute_node,
                     DAGNodeOperationType.WRITE: write_node,
