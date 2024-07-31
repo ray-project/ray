@@ -9,7 +9,7 @@ import tree  # pip install dm_tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -245,7 +245,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 else:
                     sa_module = (
                         rl_module[DEFAULT_MODULE_ID]
-                        if isinstance(rl_module, MultiAgentRLModule)
+                        if isinstance(rl_module, MultiRLModule)
                         else rl_module
                     )
                 # This single-agent RLModule is NOT stateful -> Skip.

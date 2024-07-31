@@ -13,7 +13,7 @@ from ray.rllib.core import (
     COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -273,7 +273,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 )
                 self._cached_to_module = None
 
-                # MARLModule forward pass: Explore or not.
+                # MultiRLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
@@ -470,7 +470,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     shared_data=_shared_data,
                 )
 
-                # MARLModule forward pass: Explore or not.
+                # MultiRLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
@@ -755,7 +755,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     def assert_healthy(self):
         """Checks that self.__init__() has been completed properly.
 
-        Ensures that the instances has a `MultiAgentRLModule` and an
+        Ensures that the instances has a `MultiRLModule` and an
         environment defined.
 
         Raises:
@@ -855,7 +855,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     for mid, o in self._env_to_module.observation_space.spaces.items()
                 },
             )
-            ma_rlm_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
+            ma_rlm_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
                 policy_dict=policy_dict,
                 # Built only a light version of the module in sampling and inference.
                 inference_only=True,

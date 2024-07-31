@@ -2,6 +2,7 @@ import pathlib
 from collections import defaultdict, Counter
 import copy
 from functools import partial
+import itertools
 from typing import (
     Any,
     Callable,
@@ -21,8 +22,9 @@ import ray
 from ray import ObjectRef
 from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module import validate_module_id
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
@@ -44,11 +46,10 @@ from ray.rllib.utils.minibatch_utils import (
     ShardEpisodesIterator,
     ShardObjectRefIterator,
 )
-from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     EpisodeType,
     ModuleID,
-    RLModuleSpec,
+    RLModuleSpecType,
     ShouldModuleBeUpdatedFn,
     StateDict,
     T,
@@ -90,7 +91,8 @@ class LearnerGroup(Checkpointable):
         self,
         *,
         config: "AlgorithmConfig",
-        module_spec: Optional[RLModuleSpec] = None,
+        # TODO (sven): Rename into `rl_module_spec`.
+        module_spec: Optional[RLModuleSpecType] = None,
     ):
         """Initializes a LearnerGroup instance.
 
@@ -112,7 +114,7 @@ class LearnerGroup(Checkpointable):
         self._module_spec = module_spec
 
         learner_class = self.config.learner_class
-        module_spec = module_spec or self.config.get_marl_module_spec()
+        module_spec = module_spec or self.config.get_multi_rl_module_spec()
 
         self._learner = None
         self._workers = None
@@ -671,11 +673,11 @@ class LearnerGroup(Checkpointable):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        module_spec: RLModuleSpec,
         config_overrides: Optional[Dict] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
-    ) -> MultiAgentRLModuleSpec:
-        """Adds a module to the underlying MultiAgentRLModule.
+    ) -> MultiRLModuleSpec:
+        """Adds a module to the underlying MultiRLModule.
 
         Changes this Learner's config in order to make this architectural change
         permanent wrt. to checkpointing.
@@ -693,9 +695,9 @@ class LearnerGroup(Checkpointable):
                 returns False) will not be updated.
 
         Returns:
-            The new MultiAgentRLModuleSpec (after the change has been performed).
+            The new MultiRLModuleSpec (after the change has been performed).
         """
-        validate_policy_id(module_id, error=True)
+        validate_module_id(module_id, error=True)
 
         # Force-set inference-only = False.
         module_spec = copy.deepcopy(module_spec)
@@ -730,7 +732,7 @@ class LearnerGroup(Checkpointable):
         module_id: ModuleID,
         *,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
-    ) -> MultiAgentRLModuleSpec:
+    ) -> MultiRLModuleSpec:
         """Removes a module from the Learner.
 
         Args:
@@ -743,7 +745,7 @@ class LearnerGroup(Checkpointable):
                 returns False) will not be updated.
 
         Returns:
-            The new MultiAgentRLModuleSpec (after the change has been performed).
+            The new MultiRLModuleSpec (after the change has been performed).
         """
         # Remove all stats from the module from our metrics logger (hybrid API stack
         # only), so we don't report results from this module again.
@@ -815,22 +817,39 @@ class LearnerGroup(Checkpointable):
                     lambda _learner, _ref=state_ref: _learner.set_state(ray.get(_ref))
                 )
 
-    def get_weights(self) -> StateDict:
+    def get_weights(
+        self, module_ids: Optional[Collection[ModuleID]] = None
+    ) -> StateDict:
         """Convenience method instead of self.get_state(components=...).
+
+        Args:
+            module_ids: An optional collection of ModuleIDs for which to return weights.
+                If None (default), return weights of all RLModules.
 
         Returns:
             The results of
             `self.get_state(components='learner/rl_module')['learner']['rl_module']`.
         """
-        return self.get_state(components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE)[
-            COMPONENT_LEARNER
-        ][COMPONENT_RL_MODULE]
+        # Return the entire RLModule state (all possible single-agent RLModules).
+        if module_ids is None:
+            components = COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+        # Return a subset of the single-agent RLModules.
+        else:
+            components = [
+                "".join(tup)
+                for tup in itertools.product(
+                    [COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/"],
+                    list(module_ids),
+                )
+            ]
+
+        return self.get_state(components)[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
 
     def set_weights(self, weights) -> None:
         """Convenience method instead of self.set_state({'learner': {'rl_module': ..}}).
 
         Args:
-            weights: The weights dict of the MARLModule of a Learner inside this
+            weights: The weights dict of the MultiRLModule of a Learner inside this
                 LearnerGroup.
         """
         self.set_state({COMPONENT_LEARNER: {COMPONENT_RL_MODULE: weights}})
@@ -964,59 +983,59 @@ class LearnerGroup(Checkpointable):
     def load_module_state(
         self,
         *,
-        marl_module_ckpt_dir: Optional[str] = None,
+        multi_rl_module_ckpt_dir: Optional[str] = None,
         modules_to_load: Optional[Set[str]] = None,
         rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ) -> None:
         """Load the checkpoints of the modules being trained by this LearnerGroup.
 
         `load_module_state` can be used 3 ways:
-            1. Load a checkpoint for the MultiAgentRLModule being trained by this
+            1. Load a checkpoint for the MultiRLModule being trained by this
                 LearnerGroup. Limit the modules that are loaded from the checkpoint
                 by specifying the `modules_to_load` argument.
             2. Load the checkpoint(s) for single agent RLModules that
-                are in the MultiAgentRLModule being trained by this LearnerGroup.
-            3. Load a checkpoint for the MultiAgentRLModule being trained by this
+                are in the MultiRLModule being trained by this LearnerGroup.
+            3. Load a checkpoint for the MultiRLModule being trained by this
                 LearnerGroup and load the checkpoint(s) for single agent RLModules
-                that are in the MultiAgentRLModule. The checkpoints for the single
+                that are in the MultiRLModule. The checkpoints for the single
                 agent RLModules take precedence over the module states in the
-                MultiAgentRLModule checkpoint.
+                MultiRLModule checkpoint.
 
-        NOTE: At lease one of marl_module_ckpt_dir or rl_module_ckpt_dirs is
+        NOTE: At lease one of multi_rl_module_ckpt_dir or rl_module_ckpt_dirs is
             must be specified. modules_to_load can only be specified if
-            marl_module_ckpt_dir is specified.
+            multi_rl_module_ckpt_dir is specified.
 
         Args:
-            marl_module_ckpt_dir: The path to the checkpoint for the
-                MultiAgentRLModule.
+            multi_rl_module_ckpt_dir: The path to the checkpoint for the
+                MultiRLModule.
             modules_to_load: A set of module ids to load from the checkpoint.
             rl_module_ckpt_dirs: A mapping from module ids to the path to a
                 checkpoint for a single agent RLModule.
         """
-        if not (marl_module_ckpt_dir or rl_module_ckpt_dirs):
+        if not (multi_rl_module_ckpt_dir or rl_module_ckpt_dirs):
             raise ValueError(
-                "At least one of `marl_module_ckpt_dir` or "
+                "At least one of `multi_rl_module_ckpt_dir` or "
                 "`rl_module_ckpt_dirs` must be provided!"
             )
-        if marl_module_ckpt_dir:
-            marl_module_ckpt_dir = pathlib.Path(marl_module_ckpt_dir)
+        if multi_rl_module_ckpt_dir:
+            multi_rl_module_ckpt_dir = pathlib.Path(multi_rl_module_ckpt_dir)
         if rl_module_ckpt_dirs:
             for module_id, path in rl_module_ckpt_dirs.items():
                 rl_module_ckpt_dirs[module_id] = pathlib.Path(path)
 
-        # MARLModule checkpoint is provided.
-        if marl_module_ckpt_dir:
-            # Restore the entire MARLModule state.
+        # MultiRLModule checkpoint is provided.
+        if multi_rl_module_ckpt_dir:
+            # Restore the entire MultiRLModule state.
             if modules_to_load is None:
                 self.restore_from_path(
-                    marl_module_ckpt_dir,
+                    multi_rl_module_ckpt_dir,
                     component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                 )
             # Restore individual module IDs.
             else:
                 for module_id in modules_to_load:
                     self.restore_from_path(
-                        marl_module_ckpt_dir / module_id,
+                        multi_rl_module_ckpt_dir / module_id,
                         component=(
                             COMPONENT_LEARNER
                             + "/"

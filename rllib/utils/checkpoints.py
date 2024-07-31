@@ -713,7 +713,7 @@ def convert_to_msgpack_checkpoint(
         this is the same as `msgpack_checkpoint_dir`.
     """
     from ray.rllib.algorithms import Algorithm
-    from ray.rllib.utils.policy import validate_policy_id
+    from ray.rllib.core.rl_module import validate_module_id
 
     # Try to import msgpack and msgpack_numpy.
     msgpack = try_import_msgpack(error=True)
@@ -768,7 +768,7 @@ def convert_to_msgpack_checkpoint(
     # Write individual policies to disk, each in their own subdirectory.
     for pid, policy_state in policy_states.items():
         # From here on, disallow policyIDs that would not work as directory names.
-        validate_policy_id(pid, error=True)
+        validate_module_id(pid, error=True)
         policy_dir = os.path.join(msgpack_checkpoint_dir, "policies", pid)
         os.makedirs(policy_dir, exist_ok=True)
         policy = algo.get_policy(pid)
