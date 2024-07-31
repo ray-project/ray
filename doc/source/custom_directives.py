@@ -29,6 +29,10 @@ from sphinx.util.nodes import make_refnode
 
 from preprocess_github_markdown import preprocess_github_markdown_file
 
+import json
+import subprocess
+from packaging.version import Version
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -1250,6 +1254,44 @@ def pregenerate_example_rsts(
                 "  .. this file is pregenerated; please edit ./examples.yml to "
                 "modify examples for this library."
             )
+
+
+ray_prefix = "ray-"
+min_version = "1.11.0"
+
+
+def generate_version_url(version):
+    return f"https://docs.ray.io/en/{version}/"
+
+
+#
+# Gets the releases from git, sorts them in semver order, and generates the JSON needed for the version switcher
+#
+def generate_versions_json():
+    try:
+        versions = []
+        tags = subprocess.check_output(["git", "tag"]).decode("utf-8").split()
+        for tag in tags:
+            if ray_prefix in tag:
+                version = tag.split(ray_prefix)[1]
+                if Version(version) >= Version(min_version):
+                    versions.append(version)
+        versions.sort(key=Version, reverse=True)
+
+        version_json_data = [
+            {"version": v, "url": generate_version_url(v)} for v in ["latest", "master"]
+        ] + [
+            {"version": f"releases/{v}", "url": generate_version_url(f"releases-{v}")}
+            for v in versions
+        ]
+
+        with open("versions.json", "w") as f:
+            json.dump(version_json_data, f, indent=4)
+
+        return []
+    except Exception as e:
+        print(f"Error fetching versions: {e}")
+        return []
 
 
 REMIX_ICONS = [
