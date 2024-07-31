@@ -1146,10 +1146,8 @@ class CompiledDAG:
             `bind_index`. If there are multiple candidate nodes with the smallest
             `bind_index` of the actors that they belong to, any one of them is
             acceptable.
-
         #2  If the node is an NCCL write node, select it only if all of its downstream
             nodes are also the roots of their heaps.
-
         #3  If #1 and #2 cannot be satisfied, it means that all candidate nodes are
             NCCL write nodes. In this case, select the one that is the root of the
             heap and its downstream nodes, regardless of whether the downstream nodes
@@ -1161,6 +1159,10 @@ class CompiledDAG:
 
         See `test_execution_schedule` for more examples.
         """
+        assert self.idx_to_task
+        assert self.actor_to_executable_tasks
+        assert not self.actor_to_execution_schedule
+
         from functools import total_ordering
 
         @total_ordering
