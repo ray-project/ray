@@ -32,7 +32,7 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 
 PYTHON_VERSIONS=( "3.9" "3.10" "3.11" "3.12" )
 
-for PYTHON_VERSION in "${PYTHON_VERSIONS[@]}" do
+for PYTHON_VERSION in "${PYTHON_VERSIONS[@]}"; do
     ENV_NAME="${RAY_VERSION}-${PYTHON_VERSION}-env"
     conda create -y -n "${ENV_NAME}" python="${PYTHON_VERSION}"
     conda activate "${ENV_NAME}"
