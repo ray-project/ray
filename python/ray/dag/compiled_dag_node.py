@@ -215,7 +215,6 @@ def _exec_operation(self, task: "ExecutableTask", operation: DAGNodeOperation) -
 
         try:
             output_val = method(*resolved_inputs, **task.resolved_kwargs)
-            # TODO: Cache in buffer.
         except Exception as exc:
             output_val = _wrap_exception(exc)
         ctx.set_intermediate_result(idx, op_type.value, output_val)
@@ -555,9 +554,6 @@ class CompiledDAG:
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
         self.actor_to_execution_schedule: Dict[
-            "ray.actor.ActorHandle", List[DAGNodeOperation]
-        ] = defaultdict(list)
-        self.actor_to_execution_schedule_2: Dict[
             "ray.actor.ActorHandle", List[DAGNodeOperation]
         ] = defaultdict(list)
         # Mapping from the actor handle to the node ID that the actor is on.
