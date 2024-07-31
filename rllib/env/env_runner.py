@@ -1,6 +1,7 @@
 import abc
-from typing import Any, TYPE_CHECKING
+from typing import Any, Dict, Tuple, TYPE_CHECKING
 
+import gymnasium as gym
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
@@ -78,6 +79,10 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         Returns:
             The collected experience in any form.
         """
+
+    @abc.abstractmethod
+    def get_spaces(self) -> Dict[str, Tuple[gym.Space, gym.Space]]:
+        """Returns a dict mapping ModuleIDs to 2-tuples of obs- and action space."""
 
     def stop(self) -> None:
         """Releases all resources used by this EnvRunner.

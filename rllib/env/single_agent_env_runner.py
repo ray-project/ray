@@ -97,32 +97,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # required in the learning step.
         self._cached_to_module = None
 
-        # Create our own instance of the (single-agent) `RLModule` (which
-        # the needs to be weight-synched) each iteration.
-        try:
-            module_spec: RLModuleSpec = self.config.rl_module_spec
-            # If a MultiRLModuleSpec -> Reduce to single-agent (and assert that
-            # all non DEFAULT_MODULE_IDs are `learner_only` (so will not be built
-            # here on EnvRunner).
-            if isinstance(module_spec, MultiRLModuleSpec):
-                assert DEFAULT_MODULE_ID in module_spec
-                for mid, spec in module_spec.module_specs.items():
-                    if mid != DEFAULT_MODULE_ID:
-                        assert spec.learner_only
-                module_spec = module_spec[DEFAULT_MODULE_ID]
-            module_spec.observation_space = self._env_to_module.observation_space
-            module_spec.action_space = self.env.single_action_space
-            if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = self.config.model_config
-            # Only load a light version of the module, if available. This is useful
-            # if the the module has target or critic networks not needed in sampling
-            # or inference.
-            # TODO (simon): Once we use `get_multi_rl_module_spec` here, we can remove
-            #  this line here as the function takes care of this flag.
-            module_spec.inference_only = True
-            self.module: RLModule = module_spec.build()
-        except NotImplementedError:
-            self.module = None
+        # Create an instance of the `RLModule`.
+        #try:
+        module_spec: RLModuleSpec = self.config.get_rl_module_spec(
+            env=self.env, spaces=self.get_spaces(), inference_only=True
+        )
+        self.module = module_spec.build()
+        #except NotImplementedError:
+        #    self.module = None
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
@@ -619,6 +601,15 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._increase_sampled_metrics(ts)
 
         return samples
+
+    @override(EnvRunner)
+    def get_spaces(self):
+        return {
+            "__env__": (self.env.observation_space, self.env.action_space),
+            DEFAULT_MODULE_ID: (
+                self._env_to_module.observation_space, self.env.single_action_space
+            ),
+        }
 
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).

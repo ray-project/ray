@@ -242,12 +242,6 @@ if __name__ == "__main__":
                     },
                 ),
             }),
-        )
-        # TODO (sven): Maybe move this into `.rl_module()`? For now,
-        #  if we do want to override some config settings for one specific RLModule, we
-        #  still have to do this through `.multi_agent()`, even though we do not have
-        #  a multi-agent setup here.
-        .multi_agent(
             # Use a different learning rate for training the ICM.
             algorithm_config_overrides_per_module={
                 ICM_MODULE_ID: PPOConfigWithCuriosity.overrides(lr=0.0005)
