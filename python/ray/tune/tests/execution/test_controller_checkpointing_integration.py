@@ -432,15 +432,7 @@ def test_checkpoint_auto_period(
 
         with mock.patch.object(runner, "save_to_dir") as save_to_dir:
             save_to_dir.side_effect = lambda *a, **kw: time.sleep(2)
-
-            runner.add_trial(
-                Trial(
-                    MOCK_TRAINABLE_NAME,
-                    config={"user_checkpoint_freq": 1},
-                    storage=storage,
-                )
-            )
-
+            runner.add_trial(Trial(MOCK_TRAINABLE_NAME, storage=storage))
             runner.step()  # Run one step, this will trigger checkpointing
 
         assert runner._checkpoint_manager._checkpoint_period > 38.0
