@@ -30,7 +30,6 @@ from sphinx.util.nodes import make_refnode
 from preprocess_github_markdown import preprocess_github_markdown_file
 
 import json
-import subprocess
 from packaging.version import Version
 
 logger = logging.getLogger(__name__)
@@ -1265,7 +1264,8 @@ def generate_version_url(version):
 
 
 #
-# Gets the releases from git, sorts them in semver order, and generates the JSON needed for the version switcher
+# Gets the releases from git, sorts them in semver order,
+# and generates the JSON needed for the version switcher
 #
 def generate_versions_json():
     try:
