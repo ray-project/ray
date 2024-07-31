@@ -389,6 +389,7 @@ class ExecutableTask:
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
         self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
+        self.idx = task.idx
 
         # Reverse map for input_channels: maps an input channel to
         # its index in input_channels.
@@ -558,6 +559,9 @@ class CompiledDAG:
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
         self.actor_to_execution_schedule: Dict[
+            "ray.actor.ActorHandle", List[DAGNodeOperation]
+        ] = defaultdict(list)
+        self.actor_to_execution_schedule_2: Dict[
             "ray.actor.ActorHandle", List[DAGNodeOperation]
         ] = defaultdict(list)
         # Mapping from the actor handle to the node ID that the actor is on.
@@ -1067,7 +1071,8 @@ class CompiledDAG:
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build schedule for each actor
-        self._build_execution_schedule()
+        # self._build_execution_schedule()
+        self._build_execution_schedule_2()
 
         # Execute schedule for each actor
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
@@ -1123,6 +1128,196 @@ class CompiledDAG:
                 schedule.append(DAGNodeOperation(idx, DAGNodeOperationType.COMPUTE))
                 schedule.append(DAGNodeOperation(idx, DAGNodeOperationType.WRITE))
             self.actor_to_execution_schedule[actor_handle] = schedule
+
+    def _build_execution_schedule_2(self):
+        from functools import total_ordering
+
+        @total_ordering
+        class GraphNode:
+            def __init__(self, operation: DAGNodeOperation, idx, idx_to_task):
+                self.operation = operation
+                self.idx = idx
+                dag_node = idx_to_task[idx].dag_node
+                self.actor_handle = None
+                if isinstance(dag_node, ClassMethodNode):
+                    self.actor_handle = dag_node._get_actor_handle()
+                self.requires_nccl = idx_to_task[idx].dag_node.type_hint.requires_nccl()
+                self.in_edges = set()
+                self.out_edges = set()
+
+            @property
+            def in_degree(self) -> int:
+                return len(self.in_edges)
+
+            def __lt__(self, other):
+                assert self.actor_handle == other.actor_handle
+                return self.operation.idx < other.operation.idx
+
+            def __eq__(self, other):
+                assert self.actor_handle == other.actor_handle
+                if self.operation.idx == other.operation.idx:
+                    return self.operation.type == other.operation.type
+                return False
+
+            def __hash__(self):
+                return hash((self.operation, self.idx, self.operation.type))
+
+            def __repr__(self) -> str:
+                return (
+                    f"GraphNode(operation_type: {self.operation.type}, "
+                    f"idx: {self.idx}, "
+                    f"out_edges: {self.out_edges})"
+                )
+
+        def _add_edge(in_node: GraphNode, out_node: GraphNode):
+            in_node.out_edges.add((out_node.idx, out_node.operation.type))
+            out_node.in_edges.add((in_node.idx, in_node.operation.type))
+
+        graph: Dict[int, Dict[DAGNodeOperationType, GraphNode]] = {}
+
+        from ray.dag import (
+            ClassMethodNode,
+            MultiOutputNode,
+        )
+
+        for _, executable_tasks in self.actor_to_executable_tasks.items():
+            prev_compute_node = None
+            for local_idx, exec_task in enumerate(executable_tasks):
+                read_node = GraphNode(
+                    DAGNodeOperation(local_idx, DAGNodeOperationType.READ),
+                    exec_task.idx,
+                    self.idx_to_task,
+                )
+                compute_node = GraphNode(
+                    DAGNodeOperation(local_idx, DAGNodeOperationType.COMPUTE),
+                    exec_task.idx,
+                    self.idx_to_task,
+                )
+                write_node = GraphNode(
+                    DAGNodeOperation(local_idx, DAGNodeOperationType.WRITE),
+                    exec_task.idx,
+                    self.idx_to_task,
+                )
+                _add_edge(read_node, compute_node)
+                _add_edge(compute_node, write_node)
+                if prev_compute_node is not None:
+                    _add_edge(prev_compute_node, compute_node)
+                prev_compute_node = compute_node
+                graph[exec_task.idx] = {
+                    DAGNodeOperationType.READ: read_node,
+                    DAGNodeOperationType.COMPUTE: compute_node,
+                    DAGNodeOperationType.WRITE: write_node,
+                }
+
+        for idx, task in self.idx_to_task.items():
+            if not isinstance(task.dag_node, ClassMethodNode):
+                continue
+            for downstream_idx in task.downstream_node_idxs:
+                downstream_dag_node = self.idx_to_task[downstream_idx].dag_node
+                if isinstance(downstream_dag_node, MultiOutputNode):
+                    continue
+                _add_edge(
+                    graph[idx][DAGNodeOperationType.WRITE],
+                    graph[downstream_idx][DAGNodeOperationType.READ],
+                )
+
+        # print("graph")
+        # for idx, node_dict in graph.items():
+        #     print("idx", idx)
+        #     for _, node in node_dict.items():
+        #         print(node)
+
+        actor_to_candidates = {}
+        for idx, node_dict in graph.items():
+            for _, node in node_dict.items():
+                if node.in_degree == 0:
+                    if node.actor_handle not in actor_to_candidates:
+                        actor_to_candidates[node.actor_handle] = [node]
+                    else:
+                        actor_to_candidates[node.actor_handle].append(node)
+        for actor_handle, candidates in actor_to_candidates.items():
+            candidates.sort()
+
+        # print("actor_to_candidates", actor_to_candidates)
+
+        visited_nodes = set()
+
+        def _select_next_nodes():
+            next_nodes = []
+            first_nccl_node = None
+            for _, candidates in actor_to_candidates.items():
+                if (
+                    not candidates[0].requires_nccl
+                    or candidates[0].operation.type != DAGNodeOperationType.WRITE
+                ):
+                    next_nodes.append(candidates.pop(0))
+                    return next_nodes
+                if first_nccl_node is None:
+                    first_nccl_node = candidates[0]
+                is_next_node = True
+                for downstream_node_metadata in candidates[0].out_edges:
+                    downstream_node = graph[downstream_node_metadata[0]][
+                        downstream_node_metadata[1]
+                    ]
+                    downstream_node_actor = downstream_node.actor_handle
+                    if (
+                        downstream_node_actor not in actor_to_candidates
+                        or downstream_node
+                        != actor_to_candidates[downstream_node_actor][0]
+                    ):
+                        is_next_node = False
+                        break
+                if is_next_node:
+                    next_nodes.append(candidates.pop(0))
+                    for downstream_node_metadata in next_nodes[0].out_edges:
+                        downstream_node = graph[downstream_node_metadata[0]][
+                            downstream_node_metadata[1]
+                        ]
+                        next_nodes.append(downstream_node)
+
+            next_nodes.append(first_nccl_node)
+            actor_to_candidates[first_nccl_node.actor_handle].remove(first_nccl_node)
+
+            for downstream_node_metadata in first_nccl_node.out_edges:
+                downstream_node = graph[downstream_node_metadata[0]][
+                    downstream_node_metadata[1]
+                ]
+                next_nodes.append(downstream_node)
+            return next_nodes
+
+        while actor_to_candidates:
+            nodes = _select_next_nodes()
+            for node in nodes:
+                if node in visited_nodes:
+                    continue
+                self.actor_to_execution_schedule[node.actor_handle].append(
+                    node.operation
+                )
+                visited_nodes.add(node)
+                for out_node_idx, out_node_type in node.out_edges:
+                    out_node = graph[out_node_idx][out_node_type]
+                    out_node.in_edges.remove((node.idx, node.operation.type))
+                    if out_node.in_degree == 0:
+                        if out_node.actor_handle not in actor_to_candidates:
+                            actor_to_candidates[out_node.actor_handle] = [out_node]
+                        else:
+                            actor_to_candidates[out_node.actor_handle].append(out_node)
+            for _, candidates in actor_to_candidates.items():
+                candidates.sort()
+
+            delete_keys = []
+            for actor_handle, candidates in actor_to_candidates.items():
+                if len(candidates) == 0:
+                    delete_keys.append(actor_handle)
+            for key in delete_keys:
+                del actor_to_candidates[key]
+
+        # print("actor_to_execution_schedule")
+        # for actor_handle, schedule in self.actor_to_execution_schedule.items():
+        #     print("actor", actor_handle)
+        #     print(schedule)
+        # print(self.actor_to_execution_schedule)
+        # TODO: Check whether topological sort exists or not.
 
     def _detect_deadlock(self) -> bool:
         """
