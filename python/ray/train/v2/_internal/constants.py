@@ -36,12 +36,18 @@ def is_v2_enabled() -> bool:
     return env_bool(V2_ENABLED_ENV_VAR, False)
 
 
-ENV_VARS_TO_PROPAGATE = (V2_ENABLED_ENV_VAR,)
+ENV_VARS_TO_PROPAGATE = (
+    V2_ENABLED_ENV_VAR,
+    HEALTH_CHECK_INTERVAL_S_ENV_VAR,
+    WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
+    WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
+)
 
 
 def get_env_vars_to_propagate() -> Dict[str, str]:
     """Returns a dictionary of environment variables that should be propagated
-    from the driver to each training worker.
+    from the driver to the controller, and then from the controller
+    to each training worker.
 
     This way, users only need to set environment variables in one place
     when launching the script instead of needing to manually set a runtime environment.

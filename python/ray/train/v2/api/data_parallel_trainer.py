@@ -1,6 +1,7 @@
 import logging
 from typing import Any, Callable, Dict, Optional, Union
 
+import ray
 from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig, Checkpoint
 from ray.train._internal.data_config import DataConfig
@@ -11,12 +12,13 @@ from ray.train.v2._internal.callbacks import (
     BackendSetupCallback,
     WorkingDirectorySetupCallback,
 )
-from ray.train.v2._internal.constants import _UNSUPPORTED
+from ray.train.v2._internal.constants import _UNSUPPORTED, get_env_vars_to_propagate
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import construct_train_func
 from ray.train.v2.api.config import RunConfig, ScalingConfig
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -173,7 +175,16 @@ class DataParallelTrainer:
 
         # TODO: Add support for user-defined callbacks
 
-        controller = TrainController(
+        controller_actor_cls = ray.remote(
+            num_cpus=0,
+            scheduling_strategy=NodeAffinitySchedulingStrategy(
+                node_id=ray.get_runtime_context().get_node_id(),
+                soft=False,
+            ),
+            runtime_env={"env_vars": get_env_vars_to_propagate()},
+        )(TrainController)
+
+        controller = controller_actor_cls.remote(
             train_fn=train_fn,
             scaling_policy=create_scaling_policy(self.scaling_config),
             failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
@@ -181,9 +192,9 @@ class DataParallelTrainer:
             callbacks=callbacks,
             resume_from_checkpoint=self.resume_from_checkpoint,
         )
-        controller.run()
+        ray.get(controller.run.remote())
 
-        return controller.get_result()
+        return ray.get(controller.get_result.remote())
 
     @classmethod
     def restore(cls, *args, **kwargs):
