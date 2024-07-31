@@ -2,9 +2,10 @@ import json
 import logging
 from collections import defaultdict
 from io import BytesIO
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 
 from ray.anyscale.data.datasource.file_reader import FileReader
+from ray.data.block import DataBatch
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -30,7 +31,7 @@ class JSONReader(FileReader):
         self.arrow_json_args = arrow_json_args
 
     # TODO(ekl) The PyArrow JSON reader doesn't support streaming reads.
-    def read_stream(self, f: "pyarrow.NativeFile", path: str):
+    def read_stream(self, f: "pyarrow.NativeFile", path: str) -> Iterable[DataBatch]:
         import pyarrow as pa
 
         buffer: pa.lib.Buffer = f.read_buffer()
@@ -46,7 +47,9 @@ class JSONReader(FileReader):
             )
             yield from self._read_with_python_json(buffer)
 
-    def _read_with_pyarrow_read_json(self, buffer: "pyarrow.lib.Buffer"):
+    def _read_with_pyarrow_read_json(
+        self, buffer: "pyarrow.lib.Buffer"
+    ) -> Iterable[DataBatch]:
         """Read with PyArrow JSON reader, trying to auto-increase the
         read block size in the case of the read object
         straddling block boundaries."""
@@ -77,7 +80,7 @@ class JSONReader(FileReader):
                     read_options=self.read_options,
                     **self.arrow_json_args,
                 )
-                yield table.to_pydict()
+                yield table
                 self.read_options.block_size = init_block_size
                 break
             except pa.ArrowInvalid as e:
@@ -105,7 +108,9 @@ class JSONReader(FileReader):
                     # unrelated error, simply reraise
                     raise e
 
-    def _read_with_python_json(self, buffer: "pyarrow.lib.Buffer"):
+    def _read_with_python_json(
+        self, buffer: "pyarrow.lib.Buffer"
+    ) -> Iterable[DataBatch]:
         """Fallback method to read JSON files with Python's native json.load(),
         in case the default pyarrow json reader fails."""
         parsed_json = json.load(BytesIO(buffer))
