@@ -4,8 +4,8 @@
 # in various Python version. This script requires conda command to exist.
 
 unset RAY_ADDRESS
-export RAY_HASH=$RAY_HASH
-export RAY_VERSION=$RAY_VERSION
+export RAY_HASH="$RAY_HASH"
+export RAY_VERSION="$RAY_VERSION"
 
 if [[ -z "$RAY_HASH" ]]; then
     echo "RAY_HASH env var should be provided"
@@ -33,11 +33,10 @@ source "$(conda info --base)/etc/profile.d/conda.sh"
 
 PYTHON_VERSIONS=( "3.9" "3.10" "3.11" "3.12" )
 
-for PYTHON_VERSION in "${PYTHON_VERSIONS[@]}"
-do
-    env_name="${RAY_VERSION}-${PYTHON_VERSION}-env"
-    conda create -y -n "${env_name}" python="${PYTHON_VERSION}"
-    conda activate "${env_name}"
+for PYTHON_VERSION in "${PYTHON_VERSIONS[@]}" do
+    ENV_NAME="${RAY_VERSION}-${PYTHON_VERSION}-env"
+    conda create -y -n "${ENV_NAME}" python="${PYTHON_VERSION}"
+    conda activate "${ENV_NAME}"
     printf "\n\n\n"
     echo "========================================================="
     echo "Python version."
@@ -46,22 +45,21 @@ do
     echo "========================================================="
     printf "\n\n\n"
 
-    # shellcheck disable=SC2102
-    pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple ray[cpp]=="${RAY_VERSION}"
+    pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple "ray[cpp]==${RAY_VERSION}"
 
-    failed=false
+    FAILED="false"
     printf "\n\n\n"
     echo "========================================================="
     if python sanity_check.py --ray_version="$RAY_VERSION" --ray_commit="$RAY_HASH"; then
         echo "PYTHON ${PYTHON_VERSION} succeed sanity check."
     else
-        failed=true
+        FAILED="true"
     fi
     echo "========================================================="
     printf "\n\n\n"
     conda deactivate
-    conda remove -y --name "${env_name}" --all
-    if [ "$failed" = true ]; then
+    conda remove -y --name "${ENV_NAME}" --all
+    if [ "$FAILED" == "true" ]; then
         echo "PYTHON ${PYTHON_VERSION} failed sanity check."
         exit 1
     fi
