@@ -3,7 +3,6 @@
 # This script automatically download ray and run the sanity check for Windows
 # in various Python version. This script requires conda command to exist.
 
-unset RAY_ADDRESS
 export RAY_HASH="$RAY_HASH"
 export RAY_VERSION="$RAY_VERSION"
 
@@ -17,7 +16,7 @@ if [[ -z "$RAY_VERSION" ]]; then
     exit 1
 fi
 
-if ! [ -x "$(command -v conda)" ]; then
+if [[ ! -x "$(command -v conda)" ]]; then
     echo "conda doesn't exist. Please download conda for this machine"
     exit 1
 else
@@ -59,7 +58,7 @@ for PYTHON_VERSION in "${PYTHON_VERSIONS[@]}" do
     printf "\n\n\n"
     conda deactivate
     conda remove -y --name "${ENV_NAME}" --all
-    if [ "$FAILED" == "true" ]; then
+    if [[ "$FAILED" == "true" ]]; then
         echo "PYTHON ${PYTHON_VERSION} failed sanity check."
         exit 1
     fi
