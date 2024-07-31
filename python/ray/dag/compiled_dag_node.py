@@ -49,6 +49,7 @@ class DAGNodeOperationType(Enum):
     2. COMPUTE: Execute the method corresponding to the node.
     3. WRITE: Write to an output channel.
     """
+
     READ = "READ"
     COMPUTE = "COMPUTE"
     WRITE = "WRITE"
@@ -63,7 +64,9 @@ class DAGNodeOperation:
         """
         Args:
             idx: The index of the task that this operation belongs to
-                in the actor's ExecutableTask list.
+                in the actor's ExecutableTask list. The index is not
+                the same as bind_index, but there are positive correlations
+                between the two.
             operation_type: The type of operation to perform.
         """
         self.idx = idx
