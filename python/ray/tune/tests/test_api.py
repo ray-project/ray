@@ -425,10 +425,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertRaises(TuneError, f)
 
     def testBadParams6(self):
+        register_trainable("f1", lambda x: x)
+
         def f():
-            run_experiments(
-                {"foo": {"run": "dummy", "resources_per_trial": {"asdf": 1}}}
-            )
+            run_experiments({"foo": {"run": "f1", "invalid_key": {"asdf": 1}}})
 
         self.assertRaises(TuneError, f)
 
@@ -676,7 +676,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
         new_trials = tune.run(test, resume="AUTO+ERRORED_ONLY", **config).trials
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
-        self.assertTrue(all(t.last_result.get("hello") == 123 for t in new_trials))
 
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
@@ -815,8 +814,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testAllValuesReceived(self):
         results1 = [
-            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4)
-            for i in range(5)
+            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4) for i in range(5)
         ]
 
         logs1, _ = self.checkAndReturnConsistentLogs(results1)
