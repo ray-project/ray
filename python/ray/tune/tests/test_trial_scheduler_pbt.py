@@ -26,8 +26,8 @@ from ray.tune.schedulers.pb2_utils import UCB
 from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.tests.execution.utils import create_execution_test_objects
 from ray.tune.tune_config import TuneConfig
-from ray.tune.utils.util import flatten_dict
 from ray.tune.utils.mock_trainable import MyTrainableClass
+from ray.tune.utils.util import flatten_dict
 
 # Import psutil after ray so the packaged version is used.
 import psutil

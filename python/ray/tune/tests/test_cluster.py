@@ -1,7 +1,7 @@
 import os
-from pathlib import Path
 import sys
 import time
+from pathlib import Path
 from typing import Optional
 from unittest.mock import MagicMock
 
@@ -18,7 +18,6 @@ from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.utils.mock_trainable import MyTrainableClass
-
 
 MOCK_TRAINABLE_NAME = "mock_trainable"
 
