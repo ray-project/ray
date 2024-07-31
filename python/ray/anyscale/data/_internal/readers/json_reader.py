@@ -4,7 +4,7 @@ from collections import defaultdict
 from io import BytesIO
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 
-from ray.anyscale.data.datasource.file_reader import FileReader
+from .file_reader import FileReader
 from ray.data.block import DataBatch
 from ray.data.context import DataContext
 

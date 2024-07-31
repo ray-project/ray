@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 
-from ray.anyscale.data.datasource.file_reader import FileReader
+from .file_reader import FileReader
 from ray.data._internal.datasource.webdataset_datasource import (
     _apply_list,
     _default_decoder,

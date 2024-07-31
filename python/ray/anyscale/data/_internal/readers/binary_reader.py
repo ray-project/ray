@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Iterable
 
-from ray.anyscale.data.datasource.file_reader import FileReader
+from .file_reader import FileReader
 from ray.data.block import DataBatch
 
 if TYPE_CHECKING:

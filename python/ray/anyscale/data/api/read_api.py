@@ -10,7 +10,19 @@ from ray.anyscale.data._internal.logical.operators.expand_paths_operator import 
     ExpandPaths,
 )
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
-from ray.anyscale.data.datasource.file_reader import FileReader
+from ray.anyscale.data._internal.readers import (
+    AudioReader,
+    AvroReader,
+    BinaryReader,
+    CSVReader,
+    FileReader,
+    ImageReader,
+    JSONReader,
+    NumpyReader,
+    TextReader,
+    VideoReader,
+    WebDatasetReader,
+)
 from ray.anyscale.data.datasource.snowflake_datasource import SnowflakeDatasource
 from ray.data._internal.datasource.image_datasource import ImageDatasource
 from ray.data._internal.datasource.json_datasource import JSONDatasource
@@ -116,8 +128,6 @@ def read_audio(
         A :class:`~ray.data.Dataset` containing audio amplitudes and associated
         metadata.
     """  # noqa: E501
-    from ray.anyscale.data.datasource.audio_reader import AudioReader
-
     reader = AudioReader(
         include_paths=include_paths,
         partitioning=partitioning,
@@ -197,8 +207,6 @@ def read_videos(
     Returns:
         A :class:`~ray.data.Dataset` containing video frames from the video files.
     """
-    from ray.anyscale.data.datasource.video_reader import VideoReader
-
     reader = VideoReader(
         include_paths=include_paths,
         partitioning=partitioning,
@@ -278,8 +286,6 @@ def read_webdataset(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
 ) -> Dataset:
-    from ray.anyscale.data.datasource.webdataset_reader import WebDatasetReader
-
     reader = WebDatasetReader(
         decoder=decoder,
         fileselect=fileselect,
@@ -319,8 +325,6 @@ def read_avro(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
 ) -> Dataset:
-    from ray.anyscale.data.datasource.avro_reader import AvroReader
-
     reader = AvroReader(
         include_paths=include_paths,
         partitioning=partitioning,
@@ -353,8 +357,6 @@ def read_json(
     concurrency: Optional[int] = None,
     **arrow_json_args,
 ) -> Dataset:
-    from ray.anyscale.data.datasource.json_reader import JSONReader
-
     reader = JSONReader(
         arrow_json_args,
         include_paths=include_paths,
@@ -387,8 +389,6 @@ def read_numpy(
     concurrency: Optional[int] = None,
     **numpy_load_args,
 ) -> Dataset:
-    from ray.anyscale.data.datasource.numpy_reader import NumpyReader
-
     reader = NumpyReader(
         numpy_load_args=numpy_load_args,
         include_paths=include_paths,
@@ -421,8 +421,6 @@ def read_binary_files(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
 ) -> Dataset:
-    from ray.anyscale.data.datasource.binary_reader import BinaryReader
-
     reader = BinaryReader(
         include_paths=include_paths,
         partitioning=partitioning,
@@ -456,8 +454,6 @@ def read_images(
     file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
 ) -> Dataset:
-    from ray.anyscale.data.datasource.image_reader import ImageReader
-
     reader = ImageReader(
         size=size,
         mode=mode,
@@ -493,8 +489,6 @@ def read_text(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
 ) -> Dataset:
-    from ray.anyscale.data.datasource.text_reader import TextReader
-
     reader = TextReader(
         drop_empty_lines=drop_empty_lines,
         encoding=encoding,
@@ -529,8 +523,6 @@ def read_csv(
     concurrency: Optional[int] = None,
     **arrow_csv_args,
 ) -> Dataset:
-    from ray.anyscale.data.datasource.csv_reader import CSVReader
-
     reader = CSVReader(
         arrow_csv_args=arrow_csv_args,
         include_paths=include_paths,

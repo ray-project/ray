@@ -1,6 +1,6 @@
 from typing import Any, Dict, List, Union
 
-from ray.anyscale.data.datasource.file_reader import FileReader
+from ray.anyscale.data._internal.readers import FileReader
 from ray.data._internal.logical.interfaces import LogicalOperator
 
 

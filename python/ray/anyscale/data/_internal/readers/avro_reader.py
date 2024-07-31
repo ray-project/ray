@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import TYPE_CHECKING, Iterable
 
-from ray.anyscale.data.datasource.file_reader import FileReader
+from .file_reader import FileReader
 from ray.data._internal.util import _check_import
 from ray.data.block import DataBatch
 

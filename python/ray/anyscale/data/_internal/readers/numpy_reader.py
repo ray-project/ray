@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
 
 import numpy as np
 
-from ray.anyscale.data.datasource.file_reader import FileReader
+from .file_reader import FileReader
 from ray.data.block import Block
 
 if TYPE_CHECKING:

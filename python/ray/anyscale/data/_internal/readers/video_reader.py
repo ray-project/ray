@@ -2,7 +2,7 @@ from typing import Iterable
 
 import pyarrow
 
-from ray.anyscale.data.datasource.file_reader import FileReader
+from .file_reader import FileReader
 from ray.data._internal.util import _check_import
 from ray.data.block import DataBatch
 
