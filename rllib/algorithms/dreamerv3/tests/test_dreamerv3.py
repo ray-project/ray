@@ -205,7 +205,9 @@ class TestDreamerV3(unittest.TestCase):
 
                     # Create our RLModule to compute actions with.
                     policy_dict, _ = config.get_multi_agent_setup()
-                    module_spec = config.get_marl_module_spec(policy_dict=policy_dict)
+                    module_spec = config.get_multi_rl_module_spec(
+                        policy_dict=policy_dict
+                    )
                     rl_module = module_spec.build()[DEFAULT_MODULE_ID]
 
                     # Count the generated RLModule's parameters and compare to the

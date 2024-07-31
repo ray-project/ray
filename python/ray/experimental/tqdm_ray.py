@@ -182,6 +182,7 @@ class _Bar:
             unit=state["unit"],
             position=pos_offset + state["pos"],
             dynamic_ncols=True,
+            unit_scale=True,
         )
         if state["x"]:
             self.bar.update(state["x"])

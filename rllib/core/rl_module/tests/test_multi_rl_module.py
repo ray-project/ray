@@ -2,64 +2,59 @@ import tempfile
 import unittest
 
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec, RLModuleConfig
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleConfig,
-)
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec, RLModuleConfig
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleConfig
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.utils.test_utils import check
 
 
-class TestMARLModule(unittest.TestCase):
+class TestMultiRLModule(unittest.TestCase):
     def test_from_config(self):
-        """Tests whether a MultiAgentRLModule can be constructed from a config."""
+        """Tests whether a MultiRLModule can be constructed from a config."""
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
-        module1 = SingleAgentRLModuleSpec(
+        module1 = RLModuleSpec(
             module_class=DiscreteBCTorchModule,
             observation_space=env.observation_space[0],
             action_space=env.action_space[0],
             model_config_dict={"fcnet_hiddens": [32]},
         )
 
-        module2 = SingleAgentRLModuleSpec(
+        module2 = RLModuleSpec(
             module_class=DiscreteBCTorchModule,
             observation_space=env.observation_space[0],
             action_space=env.action_space[0],
             model_config_dict={"fcnet_hiddens": [32]},
         )
 
-        config = MultiAgentRLModuleConfig(
-            modules={"module1": module1, "module2": module2}
-        )
-        marl_module = MultiAgentRLModule(config)
+        config = MultiRLModuleConfig(modules={"module1": module1, "module2": module2})
+        multi_rl_module = MultiRLModule(config)
 
-        self.assertEqual(set(marl_module.keys()), {"module1", "module2"})
-        self.assertIsInstance(marl_module["module1"], DiscreteBCTorchModule)
-        self.assertIsInstance(marl_module["module2"], DiscreteBCTorchModule)
+        self.assertEqual(set(multi_rl_module.keys()), {"module1", "module2"})
+        self.assertIsInstance(multi_rl_module["module1"], DiscreteBCTorchModule)
+        self.assertIsInstance(multi_rl_module["module2"], DiscreteBCTorchModule)
 
-    def test_as_multi_agent(self):
+    def test_as_multi_rl_module(self):
 
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
 
-        marl_module = DiscreteBCTorchModule(
+        multi_rl_module = DiscreteBCTorchModule(
             config=RLModuleConfig(
                 env.observation_space[0],
                 env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
-        ).as_multi_agent()
+        ).as_multi_rl_module()
 
-        self.assertNotIsInstance(marl_module, DiscreteBCTorchModule)
-        self.assertIsInstance(marl_module, MultiAgentRLModule)
-        self.assertEqual({DEFAULT_MODULE_ID}, set(marl_module.keys()))
+        self.assertNotIsInstance(multi_rl_module, DiscreteBCTorchModule)
+        self.assertIsInstance(multi_rl_module, MultiRLModule)
+        self.assertEqual({DEFAULT_MODULE_ID}, set(multi_rl_module.keys()))
 
-        # check as_multi_agent() for the second time
-        marl_module2 = marl_module.as_multi_agent()
-        self.assertEqual(id(marl_module), id(marl_module2))
+        # Check as_multi_rl_module() for the second time
+        multi_rl_module2 = multi_rl_module.as_multi_rl_module()
+        self.assertEqual(id(multi_rl_module), id(multi_rl_module2))
 
     def test_get_state_and_set_state(self):
 
@@ -72,7 +67,7 @@ class TestMARLModule(unittest.TestCase):
                 env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
-        ).as_multi_agent()
+        ).as_multi_rl_module()
 
         state = module.get_state()
         self.assertIsInstance(state, dict)
@@ -88,7 +83,7 @@ class TestMARLModule(unittest.TestCase):
                 env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
-        ).as_multi_agent()
+        ).as_multi_rl_module()
         state2 = module2.get_state()
         check(state, state2, false=True)
 
@@ -108,7 +103,7 @@ class TestMARLModule(unittest.TestCase):
                 env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
-        ).as_multi_agent()
+        ).as_multi_rl_module()
 
         module.add_module(
             "test",
@@ -161,7 +156,7 @@ class TestMARLModule(unittest.TestCase):
                 env.action_space[0],
                 model_config_dict={"fcnet_hiddens": [32]},
             )
-        ).as_multi_agent()
+        ).as_multi_rl_module()
 
         module.add_module(
             "test",
@@ -186,7 +181,7 @@ class TestMARLModule(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             module.save_to_path(tmpdir)
-            module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
+            module2 = MultiRLModule.from_checkpoint(tmpdir)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
             self.assertEqual(module.keys(), {"test", "test2", DEFAULT_MODULE_ID})
@@ -197,7 +192,7 @@ class TestMARLModule(unittest.TestCase):
         # Check that - after removing a module - the checkpoint is correct.
         with tempfile.TemporaryDirectory() as tmpdir:
             module.save_to_path(tmpdir)
-            module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
+            module2 = MultiRLModule.from_checkpoint(tmpdir)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
             self.assertEqual(module.keys(), {"test2", DEFAULT_MODULE_ID})
@@ -216,9 +211,9 @@ class TestMARLModule(unittest.TestCase):
         )
         # Check that - after adding a module - the checkpoint is correct.
         with tempfile.TemporaryDirectory() as tmpdir:
-            tmpdir = "/tmp/test_marl_module"
+            tmpdir = "/tmp/test_multi_rl_module"
             module.save_to_path(tmpdir)
-            module2 = MultiAgentRLModule.from_checkpoint(tmpdir)
+            module2 = MultiRLModule.from_checkpoint(tmpdir)
             check(module.get_state(), module2.get_state())
             self.assertEqual(module.keys(), module2.keys())
             self.assertEqual(module.keys(), {"test2", "test3", DEFAULT_MODULE_ID})
