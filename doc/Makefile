@@ -82,9 +82,7 @@ develop: html
 RAY_DIR := $(shell pwd | rev | cut -d'/' -f2- | rev)
 
 local:
-	@echo "Loading cache"
 	bazel run //ci/ray_ci/doc:cmd_load_doc_cache -- --ray-dir=$(RAY_DIR)
-	@echo "Updating cache environment"
 	bazel run //ci/ray_ci/doc:cmd_update_cache_env -- --ray-dir=$(RAY_DIR)
 	$(SPHINXBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
 
