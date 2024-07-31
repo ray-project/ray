@@ -553,6 +553,8 @@ class CompiledDAG:
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
+        # Mapping from the actor handle to the execution schedule which is a list
+        # of operations to be executed.
         self.actor_to_execution_schedule: Dict[
             "ray.actor.ActorHandle", List[DAGNodeOperation]
         ] = defaultdict(list)
@@ -1062,10 +1064,8 @@ class CompiledDAG:
             executable_tasks.sort(key=lambda task: task.bind_index)
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
-        # Build schedule for each actor
+        # Build an execution schedule for each actor
         self._build_execution_schedule()
-
-        # Execute schedule for each actor
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
                 concurrency_group="_ray_system"
