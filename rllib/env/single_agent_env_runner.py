@@ -16,6 +16,7 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
@@ -100,6 +101,15 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # the needs to be weight-synched) each iteration.
         try:
             module_spec: RLModuleSpec = self.config.rl_module_spec
+            # If a MultiRLModuleSpec -> Reduce to single-agent (and assert that
+            # all non DEFAULT_MODULE_IDs are `learner_only` (so will not be built
+            # here on EnvRunner).
+            if isinstance(module_spec, MultiRLModuleSpec):
+                assert DEFAULT_MODULE_ID in module_spec
+                for mid, spec in module_spec.module_specs.items():
+                    if mid != DEFAULT_MODULE_ID:
+                        assert spec.learner_only
+                module_spec = module_spec[DEFAULT_MODULE_ID]
             module_spec.observation_space = self._env_to_module.observation_space
             module_spec.action_space = self.env.single_action_space
             if module_spec.model_config_dict is None:

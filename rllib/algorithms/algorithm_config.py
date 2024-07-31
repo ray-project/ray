@@ -3720,10 +3720,12 @@ class AlgorithmConfig(_Config):
                 EnvRunner. If not provided, will try to infer from `env`. Otherwise
                 from `self.observation_space` and `self.action_space`. If no
                 information on spaces can be inferred, will raise an error.
-            inference_only: If `True`, the module spec will be used in either
-                sampling or inference and can be built in its light version (if
-                available), i.e. it contains only the networks needed for acting in the
-                environment (no target or critic networks).
+            inference_only: If `True`, the returned module spec will be used in an
+                inference-only setting (sampling) and the Module can thus be built in
+                its light version (if available), i.e. it contains only the networks
+                needed for acting in the environment (no target or critic networks).
+                If `True`, the returned spec will also NOT contain those (sub)
+                RLModuleSpecs that have their `learner_only` flag set to True.
         """
         # TODO (Kourosh,sven): When we replace policy entirely there will be no need for
         #  this function to map policy_dict to multi_rl_module_specs anymore. The module
@@ -3860,10 +3862,16 @@ class AlgorithmConfig(_Config):
 
         # Fill in the missing values from the specs that we already have. By combining
         # PolicySpecs and the default RLModuleSpec.
-
         for module_id in policy_dict:
-            policy_spec = policy_dict[module_id]
+
+            # Remove/skip `learner_only=True` RLModules if `inference_only` is True.
             module_spec = multi_rl_module_spec.module_specs[module_id]
+            if inference_only and module_spec.learner_only:
+                multi_rl_module_spec.remove_modules(module_id)
+                continue
+
+            policy_spec = policy_dict[module_id]
+
             if module_spec.module_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.module_class = default_rl_module_spec.module_class
