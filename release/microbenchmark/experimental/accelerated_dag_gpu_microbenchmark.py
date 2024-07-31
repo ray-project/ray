@@ -347,6 +347,8 @@ def main(distributed):
         results += timeit("exec_torch_gpu", _exec_torch_gpu)
         results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
 
+    print(ray.nodes())
+
     results += exec_nccl_gpu()
 
     if not distributed:
