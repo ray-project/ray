@@ -32,9 +32,9 @@ def is_nan_or_inf(value):
 class StartTraceback(Exception):
     """These exceptions (and their tracebacks) can be skipped with `skip_exceptions`"""
 
-    def __init__(self, *args: object, tags: Dict = {}) -> None:
+    def __init__(self, *args: object, tags: Optional[Dict] = None) -> None:
         super().__init__(*args)
-        self.tags = tags
+        self.tags = tags if tags else {}
 
 
 def skip_exceptions(exc: Optional[Exception]) -> Exception:
