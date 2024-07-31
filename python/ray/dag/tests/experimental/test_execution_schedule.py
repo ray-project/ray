@@ -26,12 +26,6 @@ class MockedWorker:
         """
         start_nccl_mock()
 
-    def no_op(self, value):
-        return value
-
-    def no_op_two(self, value1, value2):
-        return value1, value2
-
     def fwd(self, value):
         return value
 
@@ -42,14 +36,14 @@ class MockedWorker:
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
     """
-    If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
-    used, and the graph is valid. If tensor_transport is TorchTensorType.NCCL, the
-    NCCL channel will be used, and the graph is invalid.
+    This test simulates a simple 1F1B pipeline parallelism for training with
+    2 workers and 2 batches.
 
-    [Case: TorchTensorType.NCCL]
-    The first a.no_op writes to the second a.no_op via the NCCL channel. However,
-    the NCCL channel only supports synchronous communication and an actor can
-    only execute one task at a time, so the graph is deadlocked.
+    w1: fwd_b1  fwd_b2          bwd_b1          bwd_b2
+    w2:         fwd_b1  bwd_b1  fwd_b2  bwd_b2
+
+    The communication between workers is done using NCCL. The communication
+    within the worker actor is done using IntraProcessChannel.
     """
     monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
 
