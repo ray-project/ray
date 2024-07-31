@@ -37,7 +37,6 @@ from ray.tune.search._mock import _MockSearcher
 from ray.tune.trainable.metadata import _TrainingRunMetadata
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
-
 TRAINABLE_NAME = "test_trainable"
 
 

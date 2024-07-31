@@ -6,7 +6,6 @@ from ray.tune.search.repeater import Repeater
 from ray.tune.search.search_generator import SearchGenerator
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
-
 MOCK_TRAINABLE_NAME = "mock_trainable"
 
 
