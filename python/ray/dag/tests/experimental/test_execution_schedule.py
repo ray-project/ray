@@ -51,7 +51,7 @@ def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
     the NCCL channel only supports synchronous communication and an actor can
     only execute one task at a time, so the graph is deadlocked.
     """
-    monkeypatch.setattr(ray.dag.constants, 'RAY_ADAG_ENABLE_DETECT_DEADLOCK', False)
+    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
 
     w1 = MockedWorker.remote()
     w2 = MockedWorker.remote()

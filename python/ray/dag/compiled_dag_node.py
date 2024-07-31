@@ -1213,14 +1213,13 @@ class CompiledDAG:
                     graph[downstream_idx][DAGNodeOperationType.READ],
                 )
 
+        import heapq
+
         actor_to_candidates = defaultdict(list)
         for idx, node_dict in graph.items():
             for _, node in node_dict.items():
                 if node.in_degree == 0:
-                    actor_to_candidates[node.actor_handle].append(node)
-
-        for actor_handle, candidates in actor_to_candidates.items():
-            candidates.sort()
+                    heapq.heappush(actor_to_candidates[node.actor_handle], node)
 
         visited_nodes = set()
 
@@ -1233,7 +1232,7 @@ class CompiledDAG:
                     not candidates[0].requires_nccl
                     or candidates[0].operation.type != DAGNodeOperationType.WRITE
                 ):
-                    next_nodes.append(candidates.pop(0))
+                    next_nodes.append(heapq.heappop(candidates))
                     return next_nodes
                 if first_nccl_node is None:
                     first_nccl_node = candidates[0]
@@ -1251,7 +1250,7 @@ class CompiledDAG:
                         is_next_node = False
                         break
                 if is_next_node:
-                    next_nodes.append(candidates.pop(0))
+                    next_nodes.append(heapq.heappop(candidates))
                     for downstream_node_metadata in next_nodes[0].out_edges:
                         downstream_node = graph[downstream_node_metadata[0]][
                             downstream_node_metadata[1]
@@ -1259,9 +1258,10 @@ class CompiledDAG:
                         next_nodes.append(downstream_node)
                     return next_nodes
 
-            next_nodes.append(first_nccl_node)
-            actor_to_candidates[first_nccl_node.actor_handle].remove(first_nccl_node)
-
+            assert first_nccl_node is not None
+            next_nodes.append(
+                heapq.heappop(actor_to_candidates[first_nccl_node.actor_handle])
+            )
             for downstream_node_metadata in first_nccl_node.out_edges:
                 downstream_node = graph[downstream_node_metadata[0]][
                     downstream_node_metadata[1]
@@ -1282,9 +1282,9 @@ class CompiledDAG:
                     out_node = graph[out_node_idx][out_node_type]
                     out_node.in_edges.remove((node.idx, node.operation.type))
                     if out_node.in_degree == 0:
-                        actor_to_candidates[out_node.actor_handle].append(out_node)
-            for _, candidates in actor_to_candidates.items():
-                candidates.sort()
+                        heapq.heappush(
+                            actor_to_candidates[out_node.actor_handle], out_node
+                        )
 
             delete_keys = []
             for actor_handle, candidates in actor_to_candidates.items():
