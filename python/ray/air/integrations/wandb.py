@@ -416,8 +416,7 @@ class _WandbLoggingActor:
             log, config_update = self._handle_result(item_content)
             try:
                 self._wandb.config.update(config_update, allow_val_change=True)
-                step = log.get(TRAINING_ITERATION)
-                self._wandb.log(log, step=step)
+                self._wandb.log(log, step=log.get(TRAINING_ITERATION))
             except urllib.error.HTTPError as e:
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
