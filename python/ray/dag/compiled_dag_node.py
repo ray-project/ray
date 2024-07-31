@@ -1071,8 +1071,7 @@ class CompiledDAG:
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build schedule for each actor
-        # self._build_execution_schedule()
-        self._build_execution_schedule_2()
+        self._build_execution_schedule()
 
         # Execute schedule for each actor
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
@@ -1121,15 +1120,6 @@ class CompiledDAG:
         self._dag_output_fetcher.start()
 
     def _build_execution_schedule(self):
-        for actor_handle in self.actor_to_executable_tasks:
-            schedule = []
-            for idx, _ in enumerate(self.actor_to_executable_tasks[actor_handle]):
-                schedule.append(DAGNodeOperation(idx, DAGNodeOperationType.READ))
-                schedule.append(DAGNodeOperation(idx, DAGNodeOperationType.COMPUTE))
-                schedule.append(DAGNodeOperation(idx, DAGNodeOperationType.WRITE))
-            self.actor_to_execution_schedule[actor_handle] = schedule
-
-    def _build_execution_schedule_2(self):
         from functools import total_ordering
 
         @total_ordering
@@ -1164,8 +1154,9 @@ class CompiledDAG:
 
             def __repr__(self) -> str:
                 return (
-                    f"GraphNode(operation_type: {self.operation.type}, "
+                    f"GraphNode(operation: {self.operation}, "
                     f"idx: {self.idx}, "
+                    f"actor_handle: {self.actor_handle}, "
                     f"out_edges: {self.out_edges})"
                 )
 
@@ -1221,12 +1212,6 @@ class CompiledDAG:
                     graph[downstream_idx][DAGNodeOperationType.READ],
                 )
 
-        # print("graph")
-        # for idx, node_dict in graph.items():
-        #     print("idx", idx)
-        #     for _, node in node_dict.items():
-        #         print(node)
-
         actor_to_candidates = {}
         for idx, node_dict in graph.items():
             for _, node in node_dict.items():
@@ -1238,11 +1223,10 @@ class CompiledDAG:
         for actor_handle, candidates in actor_to_candidates.items():
             candidates.sort()
 
-        # print("actor_to_candidates", actor_to_candidates)
-
         visited_nodes = set()
 
         def _select_next_nodes():
+            # TODO (kevin85421): Remove all nodes in next_nodes from actor_to_candidates
             next_nodes = []
             first_nccl_node = None
             for _, candidates in actor_to_candidates.items():
@@ -1274,6 +1258,7 @@ class CompiledDAG:
                             downstream_node_metadata[1]
                         ]
                         next_nodes.append(downstream_node)
+                    return next_nodes
 
             next_nodes.append(first_nccl_node)
             actor_to_candidates[first_nccl_node.actor_handle].remove(first_nccl_node)
@@ -1312,11 +1297,6 @@ class CompiledDAG:
             for key in delete_keys:
                 del actor_to_candidates[key]
 
-        # print("actor_to_execution_schedule")
-        # for actor_handle, schedule in self.actor_to_execution_schedule.items():
-        #     print("actor", actor_handle)
-        #     print(schedule)
-        # print(self.actor_to_execution_schedule)
         # TODO: Check whether topological sort exists or not.
 
     def _detect_deadlock(self) -> bool:
