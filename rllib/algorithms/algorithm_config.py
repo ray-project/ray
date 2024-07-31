@@ -31,7 +31,6 @@ from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
-from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.offline.input_reader import InputReader
 from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.policy import Policy, PolicySpec
@@ -450,8 +449,8 @@ class AlgorithmConfig(_Config):
         self.output_compress_columns = ["obs", "new_obs"]
         self.output_max_file_size = 64 * 1024 * 1024
         self.output_max_rows_per_file = None
-        self.output_data_write_method = "write_parquet"
-        self.output_data_write_method_kwargs = {}
+        self.output_write_method = "write_parquet"
+        self.output_write_method_kwargs = {}
         self.output_filesystem = None
         self.output_filesystem_kwargs = {}
         self.output_write_episodes = True
@@ -2399,12 +2398,12 @@ class AlgorithmConfig(_Config):
         output_compress_columns: Optional[bool] = NotProvided,
         output_max_file_size: Optional[float] = NotProvided,
         output_max_rows_per_file: Optional[int] = NotProvided,
-        output_data_write_method: Optional[str] = NotProvided,
-        output_data_write_method_kwargs: Optional[Dict] = NotProvided,
-        output_filesystem=NotProvided,
+        output_write_method: Optional[str] = NotProvided,
+        output_write_method_kwargs: Optional[Dict] = NotProvided,
+        output_filesystem: Optional[str] = NotProvided,
         output_filesystem_kwargs: Optional[Dict] = NotProvided,
         output_write_episodes: Optional[bool] = NotProvided,
-        offline_sampling=NotProvided,
+        offline_sampling: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
 
