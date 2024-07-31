@@ -3673,7 +3673,9 @@ class AlgorithmConfig(_Config):
                 multi_rl_module_spec.remove_modules(module_id)
                 continue
 
-            policy_spec = policy_dict.get(module_id, policy_dict[DEFAULT_MODULE_ID])
+            policy_spec = policy_dict.get(module_id)
+            if policy_spec is None:
+                policy_spec = policy_dict[DEFAULT_MODULE_ID]
 
             if module_spec.module_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):

@@ -6,6 +6,7 @@ from typing import (
     Callable,
     Collection,
     Dict,
+    ItemsView,
     KeysView,
     List,
     Optional,
@@ -13,6 +14,7 @@ from typing import (
     Tuple,
     Type,
     Union,
+    ValuesView,
 )
 
 from ray.rllib.core.models.specs.typing import SpecType
@@ -120,9 +122,17 @@ class MultiRLModule(RLModule):
             if not isinstance(module_spec, RLModuleSpec):
                 raise ValueError(f"Module {module_id} is not a RLModuleSpec object.")
 
+    def items(self) -> ItemsView[ModuleID, RLModule]:
+        """Returns a keys view over the module IDs in this MultiRLModule."""
+        return self._rl_modules.items()
+
     def keys(self) -> KeysView[ModuleID]:
         """Returns a keys view over the module IDs in this MultiRLModule."""
         return self._rl_modules.keys()
+
+    def values(self) -> ValuesView[ModuleID]:
+        """Returns a keys view over the module IDs in this MultiRLModule."""
+        return self._rl_modules.values()
 
     def __len__(self) -> int:
         """Returns the number of RLModules within this MultiRLModule."""
