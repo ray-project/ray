@@ -127,10 +127,8 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                operation_type = operation.type
-                idx = operation.idx
-                task = tasks[idx]
-                done = _exec_task(self, task, idx, operation_type)
+                task = tasks[operation.idx]
+                done = _exec_operation(self, task, operation)
                 if done:
                     break
     except Exception:
@@ -175,20 +173,18 @@ def _wrap_exception(exc):
     return wrapped
 
 
-def _exec_task(
-    self, task: "ExecutableTask", idx: int, op_type: DAGNodeOperationType
-) -> bool:
+def _exec_operation(self, task: "ExecutableTask", operation: DAGNodeOperation) -> bool:
     """
-    Execute the task.
+    Execute the `operation` which belongs to `task`.
     Args:
         task: The task to execute.
-        idx: The index of the task in the list of tasks of the actor.
+        operation: The operation to execute.
     Returns:
-        True if we are done executing all tasks of this actor, False otherwise.
+        True if we are done executing all operations of this actor, False otherwise.
     """
-    # TODO: for cases where output is passed as input to a task on
-    # the same actor, introduce a "IntraProcessChannel" to avoid the overhead
-    # of serialization/deserialization and synchronization.
+    idx = operation.idx
+    op_type = operation.type
+
     input_reader = self._input_readers[idx]
     output_writer = self._output_writers[idx]
     ctx = ChannelContext.get_current().serialization_context
