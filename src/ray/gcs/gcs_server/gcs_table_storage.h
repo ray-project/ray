@@ -50,6 +50,14 @@ class GcsTable {
 
   virtual ~GcsTable() = default;
 
+  void AddPutCallback(std::function<void(const Key &, const Data &)> callback) {
+    put_callbacks_.push_back(std::move(callback));
+  }
+
+  void AddDeleteCallback(std::function<void(const Key &)> callback) {
+    delete_callbacks_.push_back(std::move(callback));
+  }
+
   /// Write data to the table asynchronously.
   ///
   /// \param key The key that will be written to the table.
@@ -89,6 +97,8 @@ class GcsTable {
  protected:
   std::string table_name_;
   std::shared_ptr<StoreClient> store_client_;
+  std::vector<std::function<void(const Key &, const Data &)>> put_callbacks_;
+  std::vector<std::function<void(const Key &)>> delete_callbacks_;
 };
 
 /// \class GcsTableWithJobId

@@ -282,6 +282,8 @@ void GcsServer::Stop() {
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
+    // Clean all Table callbacks...
+
     kv_manager_.reset();
 
     is_stopped_ = true;
@@ -311,7 +313,9 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_node_manager_);
   auto node_death_callback = [this](const NodeID &node_id) {
     main_service_.post(
-        [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id, nullptr); },
+        [this, node_id] {
+          return gcs_node_manager_->OnNodeDead(node_id, nullptr, nullptr);
+        },
         "GcsServer.NodeDeathCallback");
   };
 

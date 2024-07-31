@@ -87,14 +87,20 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                         rpc::CheckAliveReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a node failure. This will mark the failed node as dead in gcs
-  /// node table.
+  void ReactorOnNodeChanged(const NodeID &node_id, const rpc::GcsNodeInfo &node_info);
+  void ReactorOnNodeDead(const NodeID &node_id, const rpc::GcsNodeInfo &info);
+  void ReactorOnNodeAlive(const NodeID &node_id, const rpc::GcsNodeInfo &info);
+
+  /// Handle a node death. This will mark the failed node as dead in gcs node table.
   ///
   /// \param node_id The ID of the failed node.
   /// \param node_table_updated_callback The status callback function after
   /// faled node info is updated to gcs node table.
-  void OnNodeFailure(const NodeID &node_id,
-                     const StatusCallback &node_table_updated_callback);
+  /// \param death_info The death info of the node. If it is nullptr, the manager infers
+  /// the death info based on existing draining requests.
+  void OnNodeDead(const NodeID &node_id,
+                  const StatusCallback &node_table_updated_callback,
+                  rpc::NodeDeathInfo *death_info = nullptr);
 
   /// Add an alive node.
   ///
@@ -182,7 +188,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node_id The ID of the node. The node must not be removed
   /// from alive nodes yet.
   /// \return The inferred death info of the node.
-  rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
+  rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id) const;
 
   /// Alive nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;

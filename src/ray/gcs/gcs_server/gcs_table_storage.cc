@@ -29,9 +29,13 @@ Status GcsTable<Key, Data>::Put(const Key &key,
                                  key.Binary(),
                                  value.SerializeAsString(),
                                  /*overwrite*/ true,
-                                 [callback](auto) {
+                                 // TODO (ryw): before submit, consider about this copy
+                                 [this, key, value, callback](auto) {
                                    if (callback) {
                                      callback(Status::OK());
+                                   }
+                                   for (auto &put_callback : this->put_callbacks_) {
+                                     put_callback(key, value);
                                    }
                                  });
 }
@@ -74,11 +78,14 @@ Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
 
 template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Delete(const Key &key, const StatusCallback &callback) {
-  return store_client_->AsyncDelete(table_name_, key.Binary(), [callback](auto) {
-    if (callback) {
-      callback(Status::OK());
-    }
-  });
+  return store_client_->AsyncDelete(
+      table_name_, key.Binary(), [this, key, callback](auto) {
+        // TODO: maybe don't invoke if bool == false?
+        callback(Status::OK());
+        for (auto &delete_callback : this->delete_callbacks_) {
+          delete_callback(key);
+        }
+      });
 }
 
 template <typename Key, typename Data>
@@ -90,9 +97,15 @@ Status GcsTable<Key, Data>::BatchDelete(const std::vector<Key> &keys,
     keys_to_delete.emplace_back(std::move(key.Binary()));
   }
   return this->store_client_->AsyncBatchDelete(
-      this->table_name_, keys_to_delete, [callback](auto) {
+      this->table_name_, keys_to_delete, [this, keys, callback](auto) {
         if (callback) {
           callback(Status::OK());
+        }
+        // TODO(ryw): do we need a nested loop, or a batch delete callback?
+        for (auto &key : keys) {
+          for (auto &delete_callback : this->delete_callbacks_) {
+            delete_callback(key);
+          }
         }
       });
 }
