@@ -9,14 +9,22 @@ import ray
 from ray import tune
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.train.tests.util import mock_storage_context
-from ray.tune import PlacementGroupFactory, TuneError
+from ray.tune import PlacementGroupFactory, TuneError, register_trainable
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.utils.mock import TrialStatusSnapshot, TrialStatusSnapshotTaker
+from ray.tune.utils.mock_trainable import MyTrainableClass
 
 STORAGE = mock_storage_context()
+MOCK_TRAINABLE_NAME = "mock_trainable"
+
+
+@pytest.fixture(autouse=True)
+def register_mock_trainable():
+    register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
+    yield
 
 
 @pytest.fixture(scope="function")
@@ -66,7 +74,10 @@ def test_resource_parallelism_single(
         "placement_group_factory": PlacementGroupFactory(bundles),
         "storage": STORAGE,
     }
-    trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
+    trials = [
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+    ]
     for t in trials:
         runner.add_trial(t)
 
@@ -102,7 +113,7 @@ def test_fractional_gpus(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
         },
         "storage": STORAGE,
     }
-    trials = [Trial("__fake", **kwargs) for i in range(4)]
+    trials = [Trial(MOCK_TRAINABLE_NAME, **kwargs) for i in range(4)]
     for t in trials:
         runner.add_trial(t)
 
@@ -135,7 +146,7 @@ def test_multi_step(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
         "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         "storage": STORAGE,
     }
-    trials = [Trial("__fake", **kwargs) for i in range(2)]
+    trials = [Trial(MOCK_TRAINABLE_NAME, **kwargs) for i in range(2)]
     for t in trials:
         runner.add_trial(t)
 
@@ -183,7 +194,7 @@ def test_resources_changing(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
         "placement_group_factory": PlacementGroupFactory([{"CPU": 2, "GPU": 0}]),
         "storage": STORAGE,
     }
-    trials = [Trial("__fake", **kwargs)]
+    trials = [Trial(MOCK_TRAINABLE_NAME, **kwargs)]
     for t in trials:
         runner.add_trial(t)
 
