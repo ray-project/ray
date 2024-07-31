@@ -344,7 +344,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         """
         import pandas as pd
 
-        def get_tar_file_iterable():
+        def get_tar_file_iterator():
             return _tar_file_iterator(
                 stream,
                 fileselect=self.fileselect,
@@ -355,7 +355,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         # S3 can raise transient errors during iteration
         ctx = ray.data.DataContext.get_current()
         files = iterate_with_retry(
-            get_tar_file_iterable, "iterate tar file", match=ctx.retried_io_errors
+            get_tar_file_iterator, "iterate tar file", match=ctx.retried_io_errors
         )
 
         samples = _group_by_keys(files, meta=dict(__url__=path), suffixes=self.suffixes)
