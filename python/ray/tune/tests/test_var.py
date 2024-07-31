@@ -14,7 +14,6 @@ from ray.tune.search.variant_generator import (
 )
 from ray.tune.utils.mock_trainable import MyTrainableClass
 
-
 MOCK_TRAINABLE_NAME = "mock_trainable"
 
 
