@@ -144,7 +144,12 @@ class EnvRunnerGroup:
                 # If experiences should be recorded, use the `
                 # OfflineSingleAgentEnvRunner`.
                 if config.output:
-                    if not config.is_multi_agent():
+                    # No multi-agent support.
+                    if config.is_multi_agent():
+                        raise ValueError("Multi-agent recording is not supported, yet.")
+                    # Otherwise, load the single-agent env runner for
+                    # recording.
+                    else:
                         from ray.rllib.offline.offline_env_runner import (
                             OfflineSingleAgentEnvRunner,
                         )

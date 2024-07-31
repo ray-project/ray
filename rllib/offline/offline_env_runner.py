@@ -28,8 +28,8 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         super().__init__(config, **kwargs)
 
         # Set the output write method.
-        self.data_write_method = self.config.output_data_write_method
-        self.data_write_method_kwargs = self.config.output_data_write_method_kwargs
+        self.output_write_method = self.config.output_write_method
+        self.output_write_method_kwargs = self.config.output_write_method_kwargs
 
         # Set the filesystem.
         self.filesystem = self.config.output_filesystem
@@ -69,7 +69,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                     "'s3' for S3, or 'abs'"
                 )
             # Add the filesystem object to the write method kwargs.
-            self.data_write_method_kwargs.update(
+            self.output_write_method_kwargs.update(
                 {
                     "filesystem": self.filesystem_object,
                 }
@@ -184,8 +184,8 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                     .joinpath(self.subdir_path)
                     .joinpath(self.worker_path + f"-{self._sample_counter}".zfill(6))
                 )
-                getattr(samples_ds, self.data_write_method)(
-                    path.as_posix(), **self.data_write_method_kwargs
+                getattr(samples_ds, self.output_write_method)(
+                    path.as_posix(), **self.output_write_method_kwargs
                 )
                 logger.info("Wrote samples to storage.")
             except Exception as e:

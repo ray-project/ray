@@ -31,6 +31,7 @@ from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
+from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
@@ -2378,31 +2379,31 @@ class AlgorithmConfig(_Config):
     def offline_data(
         self,
         *,
-        input_=NotProvided,
-        input_read_method=NotProvided,
-        input_read_method_kwargs=NotProvided,
-        input_read_schema=NotProvided,
-        map_batches_kwargs=NotProvided,
-        iter_batches_kwargs=NotProvided,
-        prelearner_class=NotProvided,
-        prelearner_module_synch_period=NotProvided,
-        dataset_num_iters_per_learner=NotProvided,
-        input_config=NotProvided,
-        actions_in_input_normalized=NotProvided,
+        input_: Optional[Union[str, List[str], Dict[str, Any], Callable]] = NotProvided,
+        input_read_method: Optional[str] = NotProvided,
+        input_read_method_kwargs: Optional[Dict[str, Any]] = NotProvided,
+        input_read_schema: Optional[Dict[str, str]] = NotProvided,
+        map_batches_kwargs: Optional[Dict[str, Any]] = NotProvided,
+        iter_batches_kwargs: Optional[Dict[str, Any]] = NotProvided,
+        prelearner_class: Optional[OfflinePreLearner] = NotProvided,
+        prelearner_module_synch_period: Optional[int] = NotProvided,
+        dataset_num_iters_per_learner: Optional[int] = NotProvided,
+        input_config: Optional[Dict[str, Any]] = NotProvided,
+        actions_in_input_normalized: Optional[bool] = NotProvided,
         input_evaluation=NotProvided,
-        postprocess_inputs=NotProvided,
-        shuffle_buffer_size=NotProvided,
-        output=NotProvided,
-        output_config=NotProvided,
-        output_compress_columns=NotProvided,
-        output_max_file_size=NotProvided,
-        output_max_rows_per_file=NotProvided,
-        output_data_write_method=NotProvided,
-        output_data_write_method_kwargs=NotProvided,
-        output_filesystem=NotProvided,
-        output_filesystem_kwargs=NotProvided,
-        output_write_episodes=NotProvided,
-        offline_sampling=NotProvided,
+        postprocess_inputs: Optional[bool] = NotProvided,
+        shuffle_buffer_size: Optional[int] = NotProvided,
+        output: Optional[str, Callable] = NotProvided,
+        output_config: Optional[Dict[str, Any]] = NotProvided,
+        output_compress_columns: Optional[bool] = NotProvided,
+        output_max_file_size: Optional[int] = NotProvided,
+        output_max_rows_per_file: Optional[int] = NotProvided,
+        output_write_method: Optional[str] = NotProvided,
+        output_write_method_kwargs: Optional[Dict[str, Any]] = NotProvided,
+        output_filesystem: Optional[str] = NotProvided,
+        output_filesystem_kwargs: Optional[Dict[str, Any]] = NotProvided,
+        output_write_episodes: Optional[bool] = NotProvided,
+        offline_sampling: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
 
@@ -2418,9 +2419,9 @@ class AlgorithmConfig(_Config):
                 ray.rllib.offline.InputReader.
                 - A string key that indexes a callable with tune.registry.register_input
             input_read_method: Read method for the `ray.data.Dataset` to read in the
-                offline data from `input_`. The default is `read_json` for JSON files.
-                See https://docs.ray.io/en/latest/data/api/input_output.html for more
-                info about available read methods in `ray.data`.
+                offline data from `input_`. The default is `read_parquet` for Parquet
+                files. See https://docs.ray.io/en/latest/data/api/input_output.html for
+                more info about available read methods in `ray.data`.
             input_read_method_kwargs: `kwargs` for the `input_read_method`. These will
                 be passed into the read method without checking. If no arguments are
                 passed in the default argument `{'override_num_blocks':
@@ -2494,6 +2495,21 @@ class AlgorithmConfig(_Config):
                 output data.
             output_max_file_size: Max output file size (in bytes) before rolling over
                 to a new file.
+            output_max_rows_per_file: Max output row numbers before rolling over to a
+                new file.
+            output_write_method: Write method for the `ray.data.Dataset` to write the
+                offline data to `output`. The default is `read_parquet` for Parquet
+                files. See https://docs.ray.io/en/latest/data/api/input_output.html for
+                more info about available read methods in `ray.data`.
+            output_write_method_kwargs: `kwargs` for the `output_write_method`. These
+                will be passed into the write method without checking.
+            output_filesystem: A cloud filesystem to handle access to cloud storage when
+                writing experiences. Should be either `gcs` for Google Cloud Storage,
+                `s3` for AWS S3 buckets, or `abs` for Azure Blob Storage.
+            output_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
+                given by `output_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
+                `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
+                ABS filesystem arguments.
             offline_sampling: Whether sampling for the Algorithm happens via
                 reading from offline data. If True, EnvRunners will NOT limit the
                 number of collected batches within the same `sample()` call based on
@@ -2573,10 +2589,10 @@ class AlgorithmConfig(_Config):
             self.output_max_file_size = output_max_file_size
         if output_max_rows_per_file is not NotProvided:
             self.output_max_rows_per_file = output_max_rows_per_file
-        if output_data_write_method is not NotProvided:
-            self.output_data_write_method = output_data_write_method
-        if output_data_write_method_kwargs is not NotProvided:
-            self.output_data_write_method_kwargs = output_data_write_method_kwargs
+        if output_write_method is not NotProvided:
+            self.output_write_method = output_write_method
+        if output_write_method_kwargs is not NotProvided:
+            self.output_write_method_kwargs = output_write_method_kwargs
         if output_filesystem is not NotProvided:
             self.output_filesystem = output_filesystem
         if output_filesystem_kwargs is not NotProvided:
