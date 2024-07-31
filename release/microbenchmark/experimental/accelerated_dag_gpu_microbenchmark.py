@@ -269,16 +269,16 @@ def _exec_ray_put_gpu():
     ray.get(ray.put(t))
 
 
-def exec_ray_dag_cpu():
-    sender = TorchTensorWorker.options().remote()
-    receiver = TorchTensorWorker.options().remote()
+def exec_ray_dag_cpu(sender_hint, receiver_hint):
+    sender = TorchTensorWorker.remote(scheduling_strategy=sender_hint)
+    receiver = TorchTensorWorker.remote(scheduling_strategy=receiver_hint)
     return exec_ray_dag("exec_ray_dag_cpu", sender, receiver)
 
 
-def exec_ray_core_cpu():
+def exec_ray_core_cpu(sender_hint, receiver_hint):
     time.sleep(1)
-    sender = TorchTensorWorker.remote()
-    receiver = TorchTensorWorker.remote()
+    sender = TorchTensorWorker.remote(scheduling_strategy=sender_hint)
+    receiver = TorchTensorWorker.remote(scheduling_strategy=receiver_hint)
     return exec_ray_dag("exec_ray_core_cpu", sender, receiver, use_adag=False)
 
 
@@ -289,17 +289,25 @@ def exec_ray_dag_gpu_ipc_gpu():
     return exec_ray_dag_ipc("exec_ray_dag_gpu_ipc_gpu", sender, receiver)
 
 
-def exec_ray_dag_gpu_cpu_gpu():
+def exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint):
     time.sleep(1)
-    sender = TorchTensorWorker.options(num_gpus=1).remote()
-    receiver = TorchTensorWorker.options(num_gpus=1).remote()
+    sender = TorchTensorWorker.options(
+        num_gpus=1, scheduling_strategy=sender_hint
+    ).remote()
+    receiver = TorchTensorWorker.options(
+        num_gpus=1, scheduling_strategy=receiver_hint
+    ).remote()
     return exec_ray_dag("exec_ray_dag_gpu_cpu_gpu", sender, receiver)
 
 
-def exec_ray_dag_gpu_nccl(dynamic_shape: bool = False):
+def exec_ray_dag_gpu_nccl(sender_hint, receiver_hint, dynamic_shape: bool = False):
     time.sleep(1)
-    sender = TorchTensorWorker.options(num_gpus=1).remote()
-    receiver = TorchTensorWorker.options(num_gpus=1).remote()
+    sender = TorchTensorWorker.options(
+        num_gpus=1, scheduling_strategy=sender_hint
+    ).remote()
+    receiver = TorchTensorWorker.options(
+        num_gpus=1, scheduling_strategy=receiver_hint
+    ).remote()
     return exec_ray_dag(
         "exec_ray_dag_gpu_nccl" + ("_dynamic" if dynamic_shape else ""),
         sender,
@@ -309,14 +317,18 @@ def exec_ray_dag_gpu_nccl(dynamic_shape: bool = False):
     )
 
 
-def exec_ray_core_gpu():
+def exec_ray_core_gpu(sender_hint, receiver_hint):
     time.sleep(1)
-    sender = TorchTensorWorker.options(num_gpus=1).remote()
-    receiver = TorchTensorWorker.options(num_gpus=1).remote()
+    sender = TorchTensorWorker.options(
+        num_gpus=1, scheduling_strategy=sender_hint
+    ).remote()
+    receiver = TorchTensorWorker.options(
+        num_gpus=1, scheduling_strategy=receiver_hint
+    ).remote()
     return exec_ray_dag("exec_ray_core_gpu", sender, receiver, use_adag=False)
 
 
-def main():
+def main(distributed):
     results = []
 
     ray.init(
@@ -330,21 +342,39 @@ def main():
         }
     )
 
-    results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
-    results += timeit("exec_torch_gpu", _exec_torch_gpu)
-    results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
+    if not distributed:
+        results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
+        results += timeit("exec_torch_gpu", _exec_torch_gpu)
+        results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
+
     results += exec_nccl_gpu()
 
-    results += timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
-    results += timeit("exec_ray_put_np_zero_copy", _exec_ray_put_np_zero_copy)
-    results += timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
+    if not distributed:
+        results += timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
+        results += timeit("exec_ray_put_np_zero_copy", _exec_ray_put_np_zero_copy)
+        results += timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
 
-    results += exec_ray_core_cpu()
-    results += exec_ray_dag_cpu()
-    results += exec_ray_core_gpu()
-    results += exec_ray_dag_gpu_cpu_gpu()
-    results += exec_ray_dag_gpu_nccl(dynamic_shape=True)
-    results += exec_ray_dag_gpu_nccl(dynamic_shape=False)
+    sender_hint, receiver_hint = None, None
+    if distributed:
+        local_node_id = ray.get_runtime_context().get_node_id()
+        node_ids = [node["NodeID"] for node in ray.nodes()]
+        remote_node_ids = [node_id for node_id in node_ids if node_id != local_node_id]
+        assert remote_node_ids
+        remote_node_id = remote_node_ids[0]
+
+        sender_hint = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+            local_node_id, soft=False
+        )
+        receiver_hint = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+            remote_node_id, soft=False
+        )
+
+    results += exec_ray_core_cpu(sender_hint, receiver_hint)
+    results += exec_ray_dag_cpu(sender_hint, receiver_hint)
+    results += exec_ray_core_gpu(sender_hint, receiver_hint)
+    results += exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint)
+    results += exec_ray_dag_gpu_nccl(sender_hint, receiver_hint, dynamic_shape=True)
+    results += exec_ray_dag_gpu_nccl(sender_hint, receiver_hint, dynamic_shape=False)
 
     return results
 
@@ -367,12 +397,17 @@ if __name__ == "__main__":
         # 100KB
         default=100_000,
     )
+    parser.add_argument(
+        "--distributed",
+        action="store_true",
+        help="Whether this is running on more than one node",
+    )
     args = parser.parse_args()
 
     # Divide by 2 because we're using torch.float16.
     SHAPE = (args.tensor_size_bytes // 2,)
 
-    results = main()
+    results = main(args.distributed)
 
     result_dict = {
         f"{to_dict_key(v[0])}": (v[1], v[2]) for v in results if v is not None
