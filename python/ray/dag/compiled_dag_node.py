@@ -43,6 +43,12 @@ from enum import Enum
 
 
 class DAGNodeOperationType(Enum):
+    """
+    There are three types of operations that a DAG node can perform:
+    1. READ: Read from an input channel.
+    2. COMPUTE: Execute the method corresponding to the node.
+    3. WRITE: Write to an output channel.
+    """
     READ = "READ"
     COMPUTE = "COMPUTE"
     WRITE = "WRITE"
@@ -54,12 +60,14 @@ class DAGNodeOperation:
         idx: int,
         operation_type: DAGNodeOperationType,
     ):
-        # not bind_index
+        """
+        Args:
+            idx: The index of the task that this operation belongs to
+                in the actor's ExecutableTask list.
+            operation_type: The type of operation to perform.
+        """
         self.idx = idx
         self.type = operation_type
-
-    def __repr__(self) -> str:
-        return f"DAGNodeOperation({self.idx}, {self.type})"
 
 
 # Holds the input arguments for an accelerated DAG node.
