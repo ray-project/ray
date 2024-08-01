@@ -240,9 +240,14 @@ Model-based RL
 
 DreamerV3
 ---------
-`[paper] <https://arxiv.org/pdf/2301.04104v1.pdf>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/dreamerv3.py>`__
+`[paper] <https://arxiv.org/pdf/2301.04104v1.pdf>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dreamerv3/dreamerv3.py>`__
 
-DreamerV3 trains a world model in supervised fashion using real environment
+
+.. figure:: images/algos/dreamerv3-architecture.svg
+    :width: 750
+
+    **DreamerV3 architecture:** DreamerV3 trains a world model in supervised fashion using real environment
 interactions. The world model's objective is to correctly predict all aspects
 of the transition dynamics of the RL environment, which includes (besides predicting the
 correct next observations) predicting the received rewards as well as a boolean episode
@@ -254,7 +259,12 @@ on "dreamed" trajectories produced by the world model.
 DreamerV3 can be used in all types of environments, including those with image- or vector based
 observations, continuous- or discrete actions, as well as sparse or dense reward functions.
 
-Tuned examples: `Atari 100k <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_100k.py>`__, `Atari 200M <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_200M.py>`__, `DeepMind Control Suite <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/dm_control_suite_vision.py>`__
+
+
+**Tuned examples:**
+`Atari 100k <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_100k.py>`__,
+`Atari 200M <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/atari_200M.py>`__,
+`DeepMind Control Suite <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dreamerv3/dm_control_suite_vision.py>`__
 
 
 **Pong-v5 results (1, 2, and 4 GPUs)**:
