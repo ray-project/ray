@@ -112,8 +112,6 @@ std::string LogEventReporter::ExportEventToString(const rpc::Event &event,
   j["timestamp"] = timestamp;
   j["event_id"] = event.event_id();
   j["source_type"] = Event_SourceType_Name(event.source_type());
-  j["host_name"] = event.source_hostname();
-  j["pid"] = std::to_string(event.source_pid());
   j["event_data"] = custom_fields["event_data"].get<json>();
   return j.dump();
 }
