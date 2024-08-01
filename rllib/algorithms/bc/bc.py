@@ -1,9 +1,6 @@
-from typing import Type, Union
-
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
-from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import override
@@ -85,22 +82,6 @@ class BCConfig(MARWILConfig):
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
                 "Use `torch` instead."
-            )
-
-    @override(AlgorithmConfig)
-    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
-        if self.framework_str == "torch":
-            from ray.rllib.algorithms.bc.torch.bc_torch_learner import BCTorchLearner
-
-            return BCTorchLearner
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.bc.tf.bc_tf_learner import BCTfLearner
-
-            return BCTfLearner
-        else:
-            raise ValueError(
-                f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
             )
 
     @override(MARWILConfig)
