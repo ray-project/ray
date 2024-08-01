@@ -96,11 +96,17 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # required in the learning step.
         self._cached_to_module = None
 
-        # Create an instance of the `RLModule`.
-        module_spec: RLModuleSpec = self.config.get_rl_module_spec(
-            env=self.env, spaces=self.get_spaces(), inference_only=True
-        )
-        self.module = module_spec.build()
+        # Create the RLModule.
+        try:
+            module_spec: RLModuleSpec = self.config.get_rl_module_spec(
+                env=self.env, spaces=self.get_spaces(), inference_only=True
+            )
+            # Build the module from its spec.
+            self.module = module_spec.build()
+        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
+        # will not have an RLModule, but might still be usable with random actions.
+        except NotImplementedError:
+            self.module = None
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)

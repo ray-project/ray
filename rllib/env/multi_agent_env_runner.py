@@ -101,8 +101,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # required in the learning step.
         self._cached_to_module = None
 
-        # Construct the RLModule.
-        self.module = self._make_module()
+        # Construct the MultiRLModule.
+        try:
+            module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
+                env=self.env, spaces=self.get_spaces(), inference_only=True
+            )
+            # Build the module from its spec.
+            self.module = module_spec.build()
+        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
+        # will not have an RLModule, but might still be usable with random actions.
+        except NotImplementedError:
+            self.module = None
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
@@ -854,14 +863,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     def stop(self):
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         self.env.close()
-
-    def _make_module(self):
-        # Create an instance of the `MultiRLModule`.
-        module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-            env=self.env, spaces=self.get_spaces(), inference_only=True
-        )
-        # Build the module from its spec.
-        return module_spec.build()
 
     def _setup_metrics(self):
         self.metrics = MetricsLogger()
