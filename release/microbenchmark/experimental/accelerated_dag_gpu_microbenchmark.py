@@ -8,6 +8,7 @@ import numpy as np
 import time
 import os
 import json
+import socket
 
 import ray
 from ray.air._internal import torch_utils
@@ -68,15 +69,22 @@ class TorchTensorWorker:
 
 @ray.remote(num_gpus=1)
 class NcclWorker:
-    def __init__(self, world_size, rank, comm_id):
+    def __init__(self, rank):
+        self.rank = rank
+
+    def get_node_id(self):
+        return ray.get_runtime_context().get_node_id()
+
+    def init(self, world_size):
         from ray.air._internal import torch_utils
 
         self.device = torch_utils.get_devices()[0]
         self.world_size = world_size
-        self.rank = rank
 
         torch.distributed.init_process_group(
-            backend="nccl", world_size=world_size, rank=rank
+            backend="nccl",
+            world_size=world_size,
+            rank=self.rank,
         )
 
     def _send(self, buf, num_el, rank):
@@ -122,7 +130,11 @@ def exec_ray_dag(
         dag = receiver.recv.bind(dag)
 
     if use_adag:
-        dag = dag.experimental_compile(_buffer_size_bytes=int(SHAPE[0] * 3))
+        # NCCL takes a while to warm up on multi node so increase the default
+        # timeout.
+        dag = dag.experimental_compile(
+            _buffer_size_bytes=int(SHAPE[0] * 3), _execution_timeout=120
+        )
 
         def _run():
             i = np.random.randint(100)
@@ -203,11 +215,20 @@ def _exec_torch_gpu():
     assert (t2[0].item(), t2.shape, t2.dtype) == (i, SHAPE, DTYPE)
 
 
-def exec_nccl_gpu():
-    import cupy.cuda.nccl
+def exec_nccl_gpu(sender_hint, receiver_hint):
+    workers = [
+        NcclWorker.options(scheduling_strategy=sender_hint).remote(0),
+        NcclWorker.options(scheduling_strategy=receiver_hint).remote(1),
+    ]
 
-    comm_id = cupy.cuda.nccl.get_unique_id()
-    workers = [NcclWorker.remote(2, i, comm_id) for i in range(2)]
+    # node_id = ray.get(workers[0].get_node_id.remote())
+    # head_node = [node for node in ray.nodes() if node["NodeID"] == node_id]
+    # assert len(head_node) == 1
+    # head_node = head_node[0]
+    # rank_0_addr = f"{head_node['NodeManagerAddress']}:8888"
+
+    ray.get([worker.init.remote(2) for worker in workers])
+
     tasks = [worker.do_send_recv.remote(SHAPE, DTYPE) for worker in workers]
     done_refs, _ = ray.wait(tasks, num_returns=1)
 
@@ -336,25 +357,11 @@ def main(distributed):
             "env_vars": {
                 "CUDA_VISIBLE_DEVICES": "0,1",
                 # Needed for torch distributed.
-                "MASTER_ADDR": "localhost",
+                "MASTER_ADDR": socket.gethostbyname(socket.gethostname()),
                 "MASTER_PORT": "8888",
             }
         }
     )
-
-    if not distributed:
-        results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
-        results += timeit("exec_torch_gpu", _exec_torch_gpu)
-        results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
-
-    print(ray.nodes())
-
-    results += exec_nccl_gpu()
-
-    if not distributed:
-        results += timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
-        results += timeit("exec_ray_put_np_zero_copy", _exec_ray_put_np_zero_copy)
-        results += timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
 
     sender_hint, receiver_hint = None, None
     if distributed:
@@ -364,12 +371,26 @@ def main(distributed):
         assert remote_node_ids
         remote_node_id = remote_node_ids[0]
 
+        # Pin sender on local node and receiver on the other node for consistent
+        # results.
         sender_hint = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
             local_node_id, soft=False
         )
         receiver_hint = ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
             remote_node_id, soft=False
         )
+
+    if not distributed:
+        results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)
+        results += timeit("exec_torch_gpu", _exec_torch_gpu)
+        results += timeit("exec_torch_gpu_cpu_gpu", _exec_torch_gpu_cpu_gpu)
+
+    results += exec_nccl_gpu(sender_hint, receiver_hint)
+
+    if not distributed:
+        results += timeit("exec_ray_put_cpu", _exec_ray_put_cpu)
+        results += timeit("exec_ray_put_np_zero_copy", _exec_ray_put_np_zero_copy)
+        results += timeit("exec_ray_put_gpu", _exec_ray_put_gpu)
 
     results += exec_ray_core_cpu(sender_hint, receiver_hint)
     results += exec_ray_dag_cpu(sender_hint, receiver_hint)
