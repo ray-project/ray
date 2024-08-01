@@ -185,7 +185,15 @@ if __name__ == "__main__":
             os._exit(143)
 
         signal.signal(signal.SIGTERM, sigterm_handler)
-        ret_code = process.wait()
+        while True:
+            try:
+                ret_code = process.wait()
+                break
+            except KeyboardInterrupt:
+                # Jupyter notebook interrupt button triggers SIGINT signal and
+                # `start_ray_node` (subprocess) will receive SIGINT signal and it
+                # causes KeyboardInterrupt exception being raised.
+                pass
         try_clean_temp_dir_at_exit()
         sys.exit(ret_code)
     except Exception:
