@@ -534,11 +534,15 @@ cdef convert_get_all_node_info(
     try:
         check_status_timeout_as_rpc_error(status)
         node_table_data = {}
-        for c_proto in c_data:
-            b = c_proto.SerializeAsString()
-            proto = gcs_pb2.GcsNodeInfo()
-            proto.ParseFromString(b)
-            node_table_data[NodeID.from_binary(proto.node_id)] = proto
+        # No GIL for C++ looping && serialization.
+        # GIL for Pyhton deserialization and dict building.
+        with nogil:
+            for c_proto in c_data:
+                b = c_proto.SerializeAsString()
+                with gil:
+                    proto = gcs_pb2.GcsNodeInfo()
+                    proto.ParseFromString(b)
+                    node_table_data[NodeID.from_binary(proto.node_id)] = proto
         return node_table_data, None
     except Exception as e:
         return None, e
@@ -550,11 +554,15 @@ cdef convert_get_all_job_info(
     try:
         check_status_timeout_as_rpc_error(status)
         job_table_data = {}
-        for c_proto in c_data:
-            b = c_proto.SerializeAsString()
-            proto = gcs_pb2.JobTableData()
-            proto.ParseFromString(b)
-            job_table_data[JobID.from_binary(proto.job_id)] = proto
+        # No GIL for C++ looping && serialization.
+        # GIL for Pyhton deserialization and dict building.
+        with nogil:
+            for c_proto in c_data:
+                b = c_proto.SerializeAsString()
+                with gil:
+                    proto = gcs_pb2.JobTableData()
+                    proto.ParseFromString(b)
+                    job_table_data[JobID.from_binary(proto.job_id)] = proto
         return job_table_data, None
     except Exception as e:
         return None, e
