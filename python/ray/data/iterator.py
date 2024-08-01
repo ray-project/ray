@@ -744,7 +744,7 @@ class DataIterator(abc.ABC):
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your model accepts different types, shapes, or names of tensors as input, specify the type spec.
-            If type specs are not specified, they are automatically inferred from schema of the iterator.
+            If type specs are not specified, they are automatically inferred from the schema of the iterator.
 
             >>> import tensorflow as tf
             >>> it.to_tf(
@@ -756,8 +756,8 @@ class DataIterator(abc.ABC):
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float32, name='features'), TensorSpec(shape=(None,), dtype=tf.float32, name='label'))>
 
             If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
-            A common use case is to include sample weights in the data samples and fit a tf.keras.Model. Refer to `TensorFlow API reference <https://www.tensorflow.org/versions/\
-            r2.0/api_docs/python/tf/keras/Model#fit>`_ for usage.
+            A common use case is to include sample weights in the data samples and fit a `tf.keras.Model <https://www.tensorflow.org/versions/\
+            r2.0/api_docs/python/tf/keras/Model#fit>`.
 
             >>> ds = ds.add_column("sample weights", lambda df: 1)
             >>> it = ds.iterator()
