@@ -46,7 +46,7 @@ namespace core {
 /// to the actor that will execute it.
 
 // Interface for testing.
-class CoreWorkerDirectActorTaskSubmitterInterface {
+class ActorTaskSubmitterInterface {
  public:
   virtual void AddActorQueueIfNotExists(const ActorID &actor_id,
                                         int32_t max_pending_calls,
@@ -67,14 +67,14 @@ class CoreWorkerDirectActorTaskSubmitterInterface {
   /// If called, preempted = true will be set in the death cause upon actor death.
   virtual void SetPreempted(const ActorID &actor_id) = 0;
 
-  virtual ~CoreWorkerDirectActorTaskSubmitterInterface() {}
+  virtual ~ActorTaskSubmitterInterface() {}
 };
 
 // This class is thread-safe.
-class CoreWorkerDirectActorTaskSubmitter
-    : public CoreWorkerDirectActorTaskSubmitterInterface {
+class ActorTaskSubmitter
+    : public ActorTaskSubmitterInterface {
  public:
-  CoreWorkerDirectActorTaskSubmitter(
+  ActorTaskSubmitter(
       rpc::CoreWorkerClientPool &core_worker_client_pool,
       CoreWorkerMemoryStore &store,
       TaskFinisherInterface &task_finisher,

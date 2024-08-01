@@ -135,7 +135,7 @@ class DirectActorSubmitterTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<MockTaskFinisherInterface> task_finisher_;
   instrumented_io_context io_context;
   boost::asio::io_service::work io_work;
-  CoreWorkerDirectActorTaskSubmitter submitter_;
+  ActorTaskSubmitter submitter_;
 
  protected:
   bool CheckSubmitTask(TaskSpecification task) {

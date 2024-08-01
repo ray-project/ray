@@ -36,7 +36,7 @@ class DirectTaskTransportTest : public ::testing::Test {
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
         [&](const rpc::Address &) { return nullptr; });
     memory_store = std::make_unique<CoreWorkerMemoryStore>();
-    actor_task_submitter = std::make_unique<CoreWorkerDirectActorTaskSubmitter>(
+    actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
         *client_pool, *memory_store, *task_finisher, *actor_creator, nullptr, io_context);
   }
 
@@ -68,7 +68,7 @@ class DirectTaskTransportTest : public ::testing::Test {
  protected:
   instrumented_io_context io_context;
   boost::asio::io_service::work io_work;
-  std::unique_ptr<CoreWorkerDirectActorTaskSubmitter> actor_task_submitter;
+  std::unique_ptr<ActorTaskSubmitter> actor_task_submitter;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;
   std::unique_ptr<CoreWorkerMemoryStore> memory_store;
   std::shared_ptr<MockTaskFinisherInterface> task_finisher;

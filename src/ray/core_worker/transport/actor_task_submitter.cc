@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/direct_actor_task_submitter.h"
+#include "ray/core_worker/transport/actor_task_submitter.h"
 
 #include <thread>
 
@@ -25,7 +25,7 @@ using namespace ray::gcs;
 namespace ray {
 namespace core {
 
-void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
+void ActorTaskSubmitter::AddActorQueueIfNotExists(
     const ActorID &actor_id,
     int32_t max_pending_calls,
     bool execute_out_of_order,
@@ -41,7 +41,7 @@ void CoreWorkerDirectActorTaskSubmitter::AddActorQueueIfNotExists(
           actor_id, execute_out_of_order, max_pending_calls, fail_if_actor_unreachable));
 }
 
-void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
+void ActorTaskSubmitter::KillActor(const ActorID &actor_id,
                                                    bool force_kill,
                                                    bool no_restart) {
   absl::MutexLock lock(&mu_);
@@ -70,7 +70,7 @@ void CoreWorkerDirectActorTaskSubmitter::KillActor(const ActorID &actor_id,
   SendPendingTasks(actor_id);
 }
 
-Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   auto task_id = task_spec.TaskId();
   auto actor_id = task_spec.ActorId();
   RAY_LOG(DEBUG).WithField(task_id) << "Submitting task";
@@ -130,7 +130,7 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
                 }
               });
         },
-        "CoreWorkerDirectActorTaskSubmitter::SubmitTask");
+        "ActorTaskSubmitter::SubmitTask");
   } else {
     // Do not hold the lock while calling into task_finisher_.
     task_finisher_.MarkTaskCanceled(task_id);
@@ -163,14 +163,14 @@ Status CoreWorkerDirectActorTaskSubmitter::SubmitTask(TaskSpecification task_spe
   return Status::OK();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
+void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
   queue.rpc_client = nullptr;
   core_worker_client_pool_.Disconnect(WorkerID::FromBinary(queue.worker_id));
   queue.worker_id.clear();
   queue.pending_force_kill.reset();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::FailInflightTasks(
+void ActorTaskSubmitter::FailInflightTasks(
     const absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
         &inflight_task_callbacks) {
   // NOTE(kfstorm): We invoke the callbacks with a bad status to act like there's a
@@ -183,7 +183,7 @@ void CoreWorkerDirectActorTaskSubmitter::FailInflightTasks(
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
+void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
                                                       const rpc::Address &address,
                                                       int64_t num_restarts) {
   RAY_LOG(DEBUG).WithField(actor_id).WithField(WorkerID::FromBinary(address.worker_id()))
@@ -241,7 +241,7 @@ void CoreWorkerDirectActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   FailInflightTasks(inflight_task_callbacks);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
+void ActorTaskSubmitter::DisconnectActor(
     const ActorID &actor_id,
     int64_t num_restarts,
     bool dead,
@@ -334,7 +334,7 @@ void CoreWorkerDirectActorTaskSubmitter::DisconnectActor(
   FailInflightTasks(inflight_task_callbacks);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(
+void ActorTaskSubmitter::FailTaskWithError(
     const PendingTaskWaitingForDeathInfo &task) {
   rpc::RayErrorInfo error_info;
   if (!task.actor_preempted) {
@@ -357,7 +357,7 @@ void CoreWorkerDirectActorTaskSubmitter::FailTaskWithError(
       task.task_spec.TaskId(), error_info.error_type(), &task.status, &error_info);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
+void ActorTaskSubmitter::CheckTimeoutTasks() {
   // For each task in `wait_for_death_info_tasks`, if it times out, fail it with
   // timeout_error_info. But operating on the queue requires the mu_ lock; while calling
   // FailPendingTask requires the opposite. So we copy the tasks out from the queue within
@@ -384,7 +384,7 @@ void CoreWorkerDirectActorTaskSubmitter::CheckTimeoutTasks() {
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
+void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   auto &client_queue = it->second;
@@ -407,7 +407,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
               HandlePushTaskReply(
                   Status::IOError("The actor is restarting."), reply, addr, task_spec);
             },
-            "CoreWorkerDirectActorTaskSubmitter::SendPendingTasks_ForceFail");
+            "ActorTaskSubmitter::SendPendingTasks_ForceFail");
       }
     }
     return;
@@ -433,7 +433,7 @@ void CoreWorkerDirectActorTaskSubmitter::SendPendingTasks(const ActorID &actor_i
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderCompletedTasks(
+void ActorTaskSubmitter::ResendOutOfOrderCompletedTasks(
     const ActorID &actor_id) {
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
@@ -454,7 +454,7 @@ void CoreWorkerDirectActorTaskSubmitter::ResendOutOfOrderCompletedTasks(
   }
 }
 
-void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
+void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
                                                        const TaskSpecification &task_spec,
                                                        bool skip_queue) {
   const auto task_id = task_spec.TaskId();
@@ -513,7 +513,7 @@ void CoreWorkerDirectActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 
-void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
+void ActorTaskSubmitter::HandlePushTaskReply(
     const Status &status,
     const rpc::PushTaskReply &reply,
     const rpc::Address &addr,
@@ -655,14 +655,14 @@ void CoreWorkerDirectActorTaskSubmitter::HandlePushTaskReply(
   }
 }
 
-bool CoreWorkerDirectActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
+bool ActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
 
   auto iter = client_queues_.find(actor_id);
   return (iter != client_queues_.end() && iter->second.rpc_client);
 }
 
-bool CoreWorkerDirectActorTaskSubmitter::PendingTasksFull(const ActorID &actor_id) const {
+bool ActorTaskSubmitter::PendingTasksFull(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
@@ -670,7 +670,7 @@ bool CoreWorkerDirectActorTaskSubmitter::PendingTasksFull(const ActorID &actor_i
          it->second.cur_pending_calls >= it->second.max_pending_calls;
 }
 
-size_t CoreWorkerDirectActorTaskSubmitter::NumPendingTasks(
+size_t ActorTaskSubmitter::NumPendingTasks(
     const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
@@ -678,12 +678,12 @@ size_t CoreWorkerDirectActorTaskSubmitter::NumPendingTasks(
   return it->second.cur_pending_calls;
 }
 
-bool CoreWorkerDirectActorTaskSubmitter::CheckActorExists(const ActorID &actor_id) const {
+bool ActorTaskSubmitter::CheckActorExists(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
   return client_queues_.find(actor_id) != client_queues_.end();
 }
 
-std::string CoreWorkerDirectActorTaskSubmitter::DebugString(
+std::string ActorTaskSubmitter::DebugString(
     const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
@@ -694,7 +694,7 @@ std::string CoreWorkerDirectActorTaskSubmitter::DebugString(
   return stream.str();
 }
 
-void CoreWorkerDirectActorTaskSubmitter::RetryCancelTask(TaskSpecification task_spec,
+void ActorTaskSubmitter::RetryCancelTask(TaskSpecification task_spec,
                                                          bool recursive,
                                                          int64_t milliseconds) {
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
@@ -707,7 +707,7 @@ void CoreWorkerDirectActorTaskSubmitter::RetryCancelTask(TaskSpecification task_
       std::chrono::milliseconds(milliseconds));
 }
 
-Status CoreWorkerDirectActorTaskSubmitter::CancelTask(TaskSpecification task_spec,
+Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                                       bool recursive) {
   // We don't support force_kill = true for actor tasks.
   bool force_kill = false;

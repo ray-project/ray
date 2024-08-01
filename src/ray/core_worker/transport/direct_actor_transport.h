@@ -38,7 +38,7 @@
 #include "ray/core_worker/transport/actor_scheduling_queue.h"
 #include "ray/core_worker/transport/concurrency_group_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
-#include "ray/core_worker/transport/direct_actor_task_submitter.h"
+#include "ray/core_worker/transport/actor_task_submitter.h"
 #include "ray/core_worker/transport/normal_scheduling_queue.h"
 #include "ray/core_worker/transport/out_of_order_actor_scheduling_queue.h"
 #include "ray/core_worker/transport/thread_pool.h"
