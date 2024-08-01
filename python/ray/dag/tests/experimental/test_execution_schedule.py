@@ -33,6 +33,12 @@ class MockedWorker:
     def bwd(self, value):
         return value
 
+    def no_op(self, value):
+        return value
+
+    def no_op_two(self, value1, value2):
+        return value1, value2
+
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
@@ -72,7 +78,7 @@ def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
                 batch_2,
             ]
         )
-    compiled_graph = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
 
     w1_expected_schedule = [
         (0, DAGNodeOperationType.READ),
@@ -102,8 +108,8 @@ def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
         (3, DAGNodeOperationType.COMPUTE),
         (3, DAGNodeOperationType.WRITE),
     ]
-    w1_schedule = compiled_graph.actor_to_execution_schedule[w1]
-    w2_schedule = compiled_graph.actor_to_execution_schedule[w2]
+    w1_schedule = compiled_dag.actor_to_execution_schedule[w1]
+    w2_schedule = compiled_dag.actor_to_execution_schedule[w2]
 
     for schedule, expected_schedule in zip(
         [w1_schedule, w2_schedule], [w1_expected_schedule, w2_expected_schedule]
@@ -112,7 +118,65 @@ def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
         for i, operation in enumerate(schedule):
             assert operation.idx == expected_schedule[i][0]
             assert operation.type == expected_schedule[i][1]
-    compiled_graph.teardown()
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
+def test_3_actors_with_nccl(ray_start_regular):
+    """
+    Driver -> a.no_op -> b.no_op -> a.no_op_two -> Driver
+                      |          |
+                      -> c.no_op -
+    """
+    a = MockedWorker.remote()
+    b = MockedWorker.remote()
+    c = MockedWorker.remote()
+
+    ray.get([a.start_mock.remote(), b.start_mock.remote(), c.start_mock.remote()])
+
+    with InputNode() as inp:
+        dag = a.no_op.bind(inp)
+        dag.with_type_hint(TorchTensorType(transport="nccl"))
+        branch1 = b.no_op.bind(dag)
+        branch1.with_type_hint(TorchTensorType(transport="nccl"))
+        branch2 = c.no_op.bind(dag)
+        branch2.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = a.no_op_two.bind(branch1, branch2)
+
+    compiled_dag = dag.experimental_compile()
+
+    a_expected_schedule = [
+        (0, DAGNodeOperationType.READ),
+        (0, DAGNodeOperationType.COMPUTE),
+        (0, DAGNodeOperationType.WRITE),
+        (1, DAGNodeOperationType.READ),
+        (1, DAGNodeOperationType.COMPUTE),
+        (1, DAGNodeOperationType.WRITE),
+    ]
+    b_expected_schedule = [
+        (0, DAGNodeOperationType.READ),
+        (0, DAGNodeOperationType.COMPUTE),
+        (0, DAGNodeOperationType.WRITE),
+    ]
+    c_expected_schedule = [
+        (0, DAGNodeOperationType.READ),
+        (0, DAGNodeOperationType.COMPUTE),
+        (0, DAGNodeOperationType.WRITE),
+    ]
+    a_schedule = compiled_dag.actor_to_execution_schedule[a]
+    b_schedule = compiled_dag.actor_to_execution_schedule[b]
+    c_schedule = compiled_dag.actor_to_execution_schedule[c]
+
+    for schedule, expected_schedule in zip(
+        [a_schedule, b_schedule, c_schedule],
+        [a_expected_schedule, b_expected_schedule, c_expected_schedule],
+    ):
+        assert len(schedule) == len(expected_schedule)
+        for i, operation in enumerate(schedule):
+            assert operation.idx == expected_schedule[i][0]
+            assert operation.type == expected_schedule[i][1]
+
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":
