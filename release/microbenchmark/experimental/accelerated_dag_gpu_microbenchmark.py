@@ -133,7 +133,7 @@ def exec_ray_dag(
         # NCCL takes a while to warm up on multi node so increase the default
         # timeout.
         dag = dag.experimental_compile(
-            _buffer_size_bytes=int(SHAPE[0] * 3), _execution_timeout=120
+            _execution_timeout=600
         )
 
         def _run():
