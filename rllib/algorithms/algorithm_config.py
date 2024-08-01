@@ -3478,8 +3478,35 @@ class AlgorithmConfig(_Config):
         raise NotImplementedError
 
     def get_rl_module_spec(
-        self, env=None, spaces=None, inference_only=None
+        self,
+        env: Optional[EnvType] = None,
+        spaces: Optional[Dict[str, gym.Space]] = None,
+        inference_only: Optional[bool] = None,
     ) -> RLModuleSpec:
+        """Returns the RLModuleSpec based on the given env/spaces.
+
+        Args:
+            env: An optional environment instance, from which to infer the observation-
+                and action spaces for the RLModule. If not provided, will try to infer
+                from `spaces`, otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be inferred, will
+                raise an error.
+            spaces: Optional dict mapping ModuleIDs to 2-tuples of observation- and
+                action space that should be used for the respective RLModule.
+                These spaces are usually provided by an already instantiated remote
+                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, will try
+                to infer from `env`, otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be inferred,
+                will raise an error.
+            inference_only: If `True`, the returned module spec will be used in an
+                inference-only setting (sampling) and the RLModule can thus be built in
+                its light version (if available). For example, the `inference_only`
+                version of an RLModule might only contain the networks required for
+                computing actions, but misses additional target- or critic networks.
+
+        Returns:
+            A new RLModuleSpec instance that can be used to build an RLModule.
+        """
         rl_module_spec = copy.deepcopy(self.rl_module_spec)
 
         # If a MultiRLModuleSpec -> Reduce to single-agent (and assert that
@@ -3516,7 +3543,7 @@ class AlgorithmConfig(_Config):
 
         # If module_config_dict is not defined, set to our generic one.
         if rl_module_spec.model_config_dict is None:
-            rl_module_spec.model_config_dict = self.config.model_config
+            rl_module_spec.model_config_dict = self.model_config
 
         if inference_only is not None:
             rl_module_spec.inference_only = inference_only
@@ -3526,45 +3553,38 @@ class AlgorithmConfig(_Config):
     def get_multi_rl_module_spec(
         self,
         *,
-        policy_dict: Optional[Dict[str, PolicySpec]] = None,
-        single_agent_rl_module_spec: Optional[RLModuleSpec] = None,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         inference_only: bool = False,
+        # @HybridAPIStack
+        policy_dict: Optional[Dict[str, PolicySpec]] = None,
+        single_agent_rl_module_spec: Optional[RLModuleSpec] = None,
     ) -> MultiRLModuleSpec:
-        """Returns the MultiRLModuleSpec based on the given policy spec dict.
-
-        policy_dict could be a partial dict of the policies that we need to turn into
-        an equivalent `MultiRLModuleSpec`.
+        """Returns the MultiRLModuleSpec based on the given env/spaces.
 
         Args:
-            policy_dict: The policy spec dict. Using this dict, we can determine the
-                inferred values for observation_space, action_space, and config for
-                each policy. If the module spec does not have these values specified,
-                they will get auto-filled with these values obtrained from the policy
-                spec dict. Here we are relying on the policy's logic for infering these
-                values from other sources of information (e.g. environement)
-            single_agent_rl_module_spec: The RLModuleSpec to use for
-                constructing a MultiRLModuleSpec. If None, the already
-                configured spec (`self._rl_module_spec`) or the default RLModuleSpec for
-                this algorithm (`self.get_default_rl_module_spec()`) will be used.
-            env: An optional env instance, from which to infer the different spaces for
-                the different RLModules. If not provided, will try to infer from
-                `spaces`. Otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be infered, will
+            env: An optional environment instance, from which to infer the different
+                spaces for the individual RLModules. If not provided, will try to infer
+                from `spaces`, otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be inferred, will
                 raise an error.
-            spaces: Optional dict mapping policy IDs to tuples of 1) observation space
-                and 2) action space that should be used for the respective policy.
-                These spaces were usually provided by an already instantiated remote
-                EnvRunner. If not provided, will try to infer from `env`. Otherwise
-                from `self.observation_space` and `self.action_space`. If no
-                information on spaces can be inferred, will raise an error.
+            spaces: Optional dict mapping ModuleIDs to 2-tuples of observation- and
+                action space that should be used for the respective RLModule.
+                These spaces are usually provided by an already instantiated remote
+                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, will try
+                to infer from `env`, otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be inferred,
+                will raise an error.
             inference_only: If `True`, the returned module spec will be used in an
-                inference-only setting (sampling) and the Module can thus be built in
-                its light version (if available), i.e. it contains only the networks
-                needed for acting in the environment (no target or critic networks).
-                If `True`, the returned spec will also NOT contain those (sub)
+                inference-only setting (sampling) and the RLModule can thus be built in
+                its light version (if available). For example, the `inference_only`
+                version of an RLModule might only contain the networks required for
+                computing actions, but misses additional target- or critic networks.
+                Also, if `True`, the returned spec will NOT contain those (sub)
                 RLModuleSpecs that have their `learner_only` flag set to True.
+
+        Returns:
+            A new MultiRLModuleSpec instance that can be used to build a MultiRLModule.
         """
         # TODO (Kourosh,sven): When we replace policy entirely there will be no need for
         #  this function to map policy_dict to multi_rl_module_specs anymore. The module
