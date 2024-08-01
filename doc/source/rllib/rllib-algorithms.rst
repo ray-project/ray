@@ -21,7 +21,7 @@ Overview
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`DQN/Rainbow (Deep Q Networks) <dqn>`                                  | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| |                |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
-| :ref:`SAC (Soft Actor Critic) <sac>`                                        | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| | |cont_actions|                 |
+| :ref:`SAC (Soft Actor Critic) <sac>`                                        | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions|                 |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | **High-throughput on- and off policy**                                                                                                                                           |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
@@ -61,8 +61,8 @@ Proximal Policy Optimization (PPO)
     **PPO architecture:** In a training iteration, PPO performs three major steps: sampling a set of episodes or episode fragments (1),
     converting these into a train batch and updating the model(s) using a clipped objective and multiple SGD passes over this batch (2),
     and synching the weights from the Learners back to the EnvRunners (3).
-    PPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learner
-    workers for updating the model(s).
+    PPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
+    for updating the model(s).
 
 **Tuned examples:**
 `Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/atari_ppo.py>`__,
@@ -93,8 +93,8 @@ Deep Q Networks (DQN, Rainbow, Parametric DQN)
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
     for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
     This reuse of training data makes DQN very sample-efficient and off-policy.
-    DQN scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learner
-    workers for updating the model(s).
+    DQN scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
+    for updating the model(s).
 
 
 All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default.
@@ -129,7 +129,6 @@ Soft Actor Critic (SAC)
 ------------------------
 `[original paper] <https://arxiv.org/pdf/1801.01290>`__,
 `[follow up paper] <https://arxiv.org/pdf/1812.05905.pdf>`__,
-`[discrete actions paper] <https://arxiv.org/pdf/1910.07207v2.pdf>`__,
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/sac/sac.py>`__.
 
 .. figure:: images/algos/dqn-sac-architecture.svg
@@ -139,17 +138,13 @@ Soft Actor Critic (SAC)
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
     for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
     This reuse of training data makes DQN very sample-efficient and off-policy.
-    SAC scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learner
-    workers for updating the model(s).
+    SAC scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
+    for updating the model(s).
 
 
-**Tuned examples (continuous actions):**
+**Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
 `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah-sac.yaml>`__,
-
-**Tuned examples (discrete actions):**
-`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/cartpole-sac.yaml>`__
-
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -176,8 +171,8 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
     To account for the fact that this asynchronous design leads to some degree of off-policiness
     on the EnvRunners (models are not always synched back to EnvRunners right after a new version of the weights is available), IMPALA uses
     a procedure called v-trace, `described in the paper <https://arxiv.org/abs/1802.01561>`__.
-    IMPALA scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learner
-    workers for updating the model(s).
+    IMPALA scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
+    for updating the model(s).
 
 
 Tuned examples:
@@ -213,7 +208,7 @@ Asynchronous Proximal Policy Optimization (APPO)
 .. figure:: images/algos/impala-appo-architecture.svg
     :width: 750
 
-    **APPO architecture:** APPO is an asynchronous variant of `Proximal Policy Optimization (PPO) <ppo>`__ based on the IMPALA architecture,
+    **APPO architecture:** APPO is an asynchronous variant of `Proximal Policy Optimization (PPO) <ppo>`_ based on the IMPALA architecture,
     but using a surrogate policy loss with clipping, allowing for multiple SGD passes per collected train batch.
     In a training iteration, APPO requests samples from all EnvRunners asynchronously and the collected episode
     samples are returned to the main algo process as ray references (rather than actual objects available on the local algo process).
@@ -221,8 +216,8 @@ Asynchronous Proximal Policy Optimization (APPO)
     To account for the fact that this asynchronous design leads to some degree of off-policiness
     on the EnvRunners (models are not always synched back to EnvRunners right after a new version of the weights is available), APPO uses
     a procedure called v-trace, `described in the IMPALA paper here <https://arxiv.org/abs/1802.01561>`__.
-    APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learner
-    workers for updating the model(s).
+    APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
+    for updating the model(s).
 
 **Tuned examples:**
 `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong-appo.yaml>`__
@@ -245,20 +240,18 @@ DreamerV3
 
 
 .. figure:: images/algos/dreamerv3-architecture.svg
-    :width: 750
+    :width: 850
 
-    **DreamerV3 architecture:** DreamerV3 trains a world model in supervised fashion using real environment
-interactions. The world model's objective is to correctly predict all aspects
-of the transition dynamics of the RL environment, which includes (besides predicting the
-correct next observations) predicting the received rewards as well as a boolean episode
-continuation flag.
-An RSSM (recurrent state space model) is used to train in turn the world model
-(from actual env data) as well as the critic and actor networks, both of which are trained
-on "dreamed" trajectories produced by the world model.
-
-DreamerV3 can be used in all types of environments, including those with image- or vector based
-observations, continuous- or discrete actions, as well as sparse or dense reward functions.
-
+    **DreamerV3 architecture:** DreamerV3 trains a recurrent WORLD_MODEL in supervised fashion
+    using real environment interactions (sampled from a replay buffer). The WORLD_MODEL's objective
+    is to correctly predict the transition dynamics of the RL environment: next observation, reward,
+    and a boolean continuation flag.
+    The ACTOR- and CRITIC-networks are subsequently trained on synthesized trajectories only,
+    which are "dreamed" by the WORLD_MODEL.
+    DreamerV3 scales out on both axes, supporting multiple EnvRunners for sample collection and
+    multiple GPU- or CPU-based Learners for updating the model(s).
+    It can also be used in different environment types, including those with image- or vector based
+    observations, continuous- or discrete actions, as well as sparse or dense reward functions.
 
 
 **Tuned examples:**
@@ -300,22 +293,28 @@ Offline RL and Imitation Learning
 
 .. _bc:
 
-Behavior Cloning (BC; derived from MARWIL implementation)
----------------------------------------------------------
+Behavior Cloning (BC)
+---------------------
 `[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bc/bc.py>`__
 
-Our behavioral cloning implementation is directly derived from our `MARWIL`_ implementation,
-with the only difference being the ``beta`` parameter force-set to 0.0. This makes
-BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
-BC requires the `offline datasets API <rllib-offline.html>`__ to be used.
+.. figure:: images/algos/bc-marwil-architecture.svg
+    :width: 750
 
-Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole-bc.yaml>`__
+    **BC architecture:** Our behavioral cloning implementation is directly derived from our `MARWIL`_ implementation,
+    with the only difference being the ``beta`` parameter force-set to 0.0. This makes
+    BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
+    BC requires the `offline datasets API <rllib-offline.html>`__ to be used.
+
+**Tuned examples:**
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole_bc.py>`__
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/pendulum_bc.py>`__
 
 **BC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. autoclass:: ray.rllib.algorithms.bc.bc.BCConfig
    :members: training
+
 
 .. _marwil:
 
@@ -328,7 +327,8 @@ MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for
 When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning (see `BC`_).
 MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
-Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-marwil.yaml>`__
+**Tuned examples:**
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-marwil.yaml>`__
 
 **MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
