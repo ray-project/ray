@@ -9,10 +9,11 @@ from typing import TYPE_CHECKING, Deque, Dict, Optional, Tuple
 
 import ray
 from ray._private.ray_constants import env_bool
-from ray.data._internal.execution.autoscaler import Autoscaler, AutoscalingActorPool
-from ray.data._internal.execution.autoscaling_requester import (
-    get_or_create_autoscaling_requester_actor,
+from ray.anyscale.air._internal.autoscaling_coordinator import (
+    get_or_create_autoscaling_coordinator,
 )
+from ray.data._internal.execution.autoscaler import Autoscaler, AutoscalingActorPool
+from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -140,6 +141,10 @@ class AnyscaleAutoscaler(Autoscaler):
 
     # Min number of seconds between two autoscaling requests.
     MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS = 20
+    # The time in seconds after which an autoscaling request will expire.
+    AUTOSCALING_REQUEST_EXPIRE_TIME_S = 180
+    # Timeout in seconds for getting the result of a call to the AutoscalingCoordinator.
+    AUTOSCALING_REQUEST_GET_TIMEOUT_S = 5
 
     def __init__(
         self,
@@ -191,6 +196,10 @@ class AnyscaleAutoscaler(Autoscaler):
         self._last_cluster_util_check_time = 0
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
+        self._requester_id = f"data-{execution_id}"
+        # Send an empty request to register ourselves as soon as possible,
+        # so the first `get_total_resources` call can get the allocated resources.
+        self._send_resource_request([])
         super().__init__(topology, resource_manager, execution_id)
 
     def try_trigger_scaling(self):
@@ -362,7 +371,10 @@ class AnyscaleAutoscaler(Autoscaler):
             now - self._last_cluster_util_check_time
             < self._cluster_util_check_interval_s
         ):
-            return None, None
+            return (
+                self._cluster_cpu_util_calculator.get_average(),
+                self._cluster_mem_util_calculator.get_average(),
+            )
         self._last_cluster_util_check_time = now
 
         cur_resource_usage = self._resource_manager.get_global_usage()
@@ -393,14 +405,24 @@ class AnyscaleAutoscaler(Autoscaler):
         # in order to update the average cluster utilization.
         cpu_util, mem_util = self._get_cluster_cpu_and_mem_util()
 
-        if cpu_util is None or cpu_util < self._cluster_scaling_up_util_threshold:
-            return
-        if mem_util is None or mem_util < self._cluster_scaling_up_util_threshold:
-            return
-
         # Limit the frequency of autoscaling requests.
         now = time.time()
         if now - self._last_request_time < self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS:
+            return
+
+        cpu_util = cpu_util or 0
+        mem_util = mem_util or 0
+        if (
+            cpu_util <= self._cluster_scaling_up_util_threshold
+            and mem_util <= self._cluster_scaling_up_util_threshold
+        ):
+            logger.debug(
+                "Cluster utilization is below threshold: "
+                f"CPU={cpu_util:.2f}, memory={mem_util:.2f}."
+            )
+            # Still send an empty request when upscaling is not needed,
+            # to renew our registration on AutoscalingCoordinator.
+            self._send_resource_request([])
             return
 
         resource_request = []
@@ -424,13 +446,56 @@ class AnyscaleAutoscaler(Autoscaler):
         logger.debug(debug_msg)
         self._send_resource_request(resource_request)
 
+    @cached_property
+    def _autoscaling_coordinator(self):
+        return get_or_create_autoscaling_coordinator()
+
     def _send_resource_request(self, resource_request):
         # Make autoscaler resource request.
-        actor = get_or_create_autoscaling_requester_actor()
-        actor.request_resources.remote(resource_request, self._execution_id)
+        try:
+            ray.get(
+                self._autoscaling_coordinator.request_resources.remote(
+                    requester_id=self._requester_id,
+                    resources=resource_request,
+                    expire_after_s=self.AUTOSCALING_REQUEST_EXPIRE_TIME_S,
+                    request_remaining=True,
+                ),
+                timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
+            )
+        except Exception:
+            msg = (
+                f"Failed to send resource request for {self._requester_id}."
+                " If this only happens transiently during network partition or"
+                " CPU being overloaded, it's safe to ignore this error."
+                " If this error persists, file a GitHub issue."
+            )
+            logger.warning(msg, exc_info=True)
         self._last_request_time = time.time()
 
     def on_executor_shutdown(self):
-        # Make request for zero resources to autoscaler for this execution.
-        actor = get_or_create_autoscaling_requester_actor()
-        actor.request_resources.remote({}, self._execution_id)
+        # Cancel the resource request when the executor is shutting down.
+        try:
+            ray.get(
+                self._autoscaling_coordinator.cancel_request.remote(
+                    self._requester_id,
+                ),
+                timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
+            )
+        except Exception:
+            msg = (
+                f"Failed to cancel resource request for {self._requester_id}."
+                " The request will still expire after the timeout of"
+                f" {self.MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS} seconds."
+            )
+            logger.warning(msg, exc_info=True)
+
+    def get_total_resources(self) -> ExecutionResources:
+        resources = ray.get(
+            self._autoscaling_coordinator.get_allocated_resources.remote(
+                requester_id=self._requester_id,
+            )
+        )
+        total = ExecutionResources.zero()
+        for res in resources:
+            total = total.add(ExecutionResources.from_resource_dict(res))
+        return total

@@ -1,11 +1,9 @@
-from typing import Dict, List
+from unittest.mock import MagicMock, patch
 
 import pytest
 from freezegun import freeze_time
 
-from ray.anyscale.train._internal.execution.scaling_policy.autoscaling_requester import (  # noqa: E501
-    AutoscalingRequester,
-)
+from ray.anyscale.air._internal.autoscaling_coordinator import ResourceRequestPriority
 from ray.anyscale.train._internal.execution.scaling_policy.elastic import (
     ElasticScalingPolicy,
 )
@@ -19,33 +17,26 @@ from ray.train.v2._internal.execution.worker_group import (
 from ray.train.v2._internal.util import time_monotonic
 
 
-class MockAutoscalingRequester(AutoscalingRequester):
-    def __init__(self):
-        self._requested = []
-        self._node_resources = []
+@pytest.fixture(autouse=True)
+def mock_autoscaling_coordinator(monkeypatch):
+    mock_coordinator = MagicMock()
+    mock_coordinator._allocated_resources = None
+    mock_coordinator.get_allocated_resources.remote = MagicMock(
+        side_effect=lambda _: mock_coordinator._allocated_resources
+    )
 
-    def request(self, bundles: List[Dict]):
-        self._requested = bundles
-
-    def node_resources(self) -> List[Dict[str, float]]:
-        return self._node_resources
-
-    def clear_request(self):
-        self._requested = []
-
-    # === Test methods ===
-    def set_node_resources(self, node_resources):
-        self._node_resources = node_resources
-
-    def get_requested_bundles(self):
-        return self._requested
+    monkeypatch.setattr(
+        ElasticScalingPolicy, "_autoscaling_coordinator", mock_coordinator
+    )
 
 
 @pytest.fixture(autouse=True)
-def patch_autoscaling_requester(monkeypatch):
-    monkeypatch.setattr(
-        ElasticScalingPolicy, "autoscaling_requester_cls", MockAutoscalingRequester
-    )
+def patch_ray_get():
+    with patch(
+        "ray.get",
+        side_effect=lambda x, **_: x,
+    ):
+        yield
 
 
 def _get_mock_worker_group_status(
@@ -72,8 +63,7 @@ def test_recovery_decision():
         use_gpu=True,
     )
     policy = ElasticScalingPolicy(scaling_config)
-    autoscaling_requester = policy.autoscaling_requester
-    assert isinstance(autoscaling_requester, MockAutoscalingRequester)
+    mock_coordinator = policy._autoscaling_coordinator
 
     # No resources are available
     worker_group_status = _get_mock_worker_group_status(0, float("-inf"))
@@ -81,17 +71,18 @@ def test_recovery_decision():
     assert isinstance(decision, NoopDecision)
 
     # Resources for < min workers are available
-    autoscaling_requester.set_node_resources([resources_per_worker] * (min_workers - 1))
+    mock_coordinator._allocated_resources = [resources_per_worker] * (min_workers - 1)
     decision = policy.make_decision_for_non_running_worker_group(worker_group_status)
     assert isinstance(decision, NoopDecision)
 
     # Resources for >= min workers are available
-    autoscaling_requester.set_node_resources([resources_per_worker] * min_workers)
+    mock_coordinator._allocated_resources = [resources_per_worker] * min_workers
     decision = policy.make_decision_for_non_running_worker_group(worker_group_status)
     assert isinstance(decision, ResizeDecision)
     assert decision.num_workers == min_workers
 
-    autoscaling_requester.set_node_resources([resources_per_worker] * max_workers)
+    mock_coordinator._allocated_resources = [resources_per_worker] * max_workers
+
     worker_group_status = _get_mock_worker_group_status(min_workers, time_monotonic())
     decision = policy.make_decision_for_non_running_worker_group(worker_group_status)
     assert isinstance(decision, ResizeDecision)
@@ -113,8 +104,7 @@ def test_monitor_recently_started_worker_group():
         elastic_resize_monitor_interval_s=monitor_interval_s,
     )
     policy = ElasticScalingPolicy(scaling_config)
-    autoscaling_requester = policy.autoscaling_requester
-    assert isinstance(autoscaling_requester, MockAutoscalingRequester)
+    mock_coordinator = policy._autoscaling_coordinator
 
     with freeze_time() as frozen_time:
         # The worker group just started
@@ -127,9 +117,10 @@ def test_monitor_recently_started_worker_group():
 
         # Even though there are new resources available, we should not resize yet
         # because the monitor interval has not passed since
-        autoscaling_requester.set_node_resources(
-            [resources_per_worker] * (max_workers - 1)
+        mock_coordinator._allocated_resources = [resources_per_worker] * (
+            max_workers - 1
         )
+
         assert isinstance(
             policy.make_decision_for_running_worker_group(worker_group_status),
             NoopDecision,
@@ -158,14 +149,13 @@ def test_monitor_long_running_worker_group():
         elastic_resize_monitor_interval_s=monitor_interval_s,
     )
     policy = ElasticScalingPolicy(scaling_config)
-    autoscaling_requester = policy.autoscaling_requester
-    assert isinstance(autoscaling_requester, MockAutoscalingRequester)
+    mock_coordinator = policy._autoscaling_coordinator
 
     with freeze_time() as frozen_time:
         worker_group_status = _get_mock_worker_group_status(
             min_workers, time_monotonic()
         )
-        autoscaling_requester.set_node_resources([resources_per_worker] * min_workers)
+        mock_coordinator._allocated_resources = [resources_per_worker] * min_workers
 
         # The worker group has been running for a while at the same size
         frozen_time.tick(monitor_interval_s * 60)
@@ -176,7 +166,7 @@ def test_monitor_long_running_worker_group():
 
         # We recently considered resizing, so we should wait until the next interval
         # to consider again --> no-op even if new resources are available
-        autoscaling_requester.set_node_resources([resources_per_worker] * max_workers)
+        mock_coordinator._allocated_resources = [resources_per_worker] * max_workers
         frozen_time.tick(monitor_interval_s / 2)
         decision = policy.make_decision_for_running_worker_group(worker_group_status)
         assert isinstance(decision, NoopDecision)
@@ -234,15 +224,41 @@ def test_request_and_clear():
         )
     )
     assert isinstance(policy, ControllerCallback)
+    mock_coordinator = policy._autoscaling_coordinator
 
-    policy.after_controller_start()
-    assert (
-        policy.autoscaling_requester.get_requested_bundles()
-        == [resources_per_worker] * 4
-    )
+    def assert_resource_request_called_with():
+        nonlocal mock_coordinator
 
+        mock_coordinator.request_resources.remote.assert_called_with(
+            requester_id=policy._requester_id,
+            resources=[resources_per_worker] * 4,
+            expire_after_s=ElasticScalingPolicy.AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
+            priority=ResourceRequestPriority.HIGH,
+        )
+
+    with freeze_time() as frozen_time:
+        worker_group_status = _get_mock_worker_group_status(2, time_monotonic())
+
+        # Test request_resources is called when the controller starts.
+        policy.after_controller_start()
+        assert mock_coordinator.request_resources.remote.call_count == 1
+        assert_resource_request_called_with()
+
+        # Test request_resources is only called in
+        # `make_decision_for_running_worker_group`,
+        # if `AUTOSCALING_REQUESTS_INTERVAL_S` has passed.
+        frozen_time.tick(ElasticScalingPolicy.AUTOSCALING_REQUESTS_INTERVAL_S / 2)
+        policy.make_decision_for_running_worker_group(worker_group_status)
+        assert mock_coordinator.request_resources.remote.call_count == 1
+
+        frozen_time.tick(ElasticScalingPolicy.AUTOSCALING_REQUESTS_INTERVAL_S / 2)
+        policy.make_decision_for_running_worker_group(worker_group_status)
+        assert mock_coordinator.request_resources.remote.call_count == 2
+        assert_resource_request_called_with()
+
+    # Test cancel_request is called when the controller is shutting down.
     policy.before_controller_shutdown()
-    assert policy.autoscaling_requester.get_requested_bundles() == []
+    mock_coordinator.cancel_request.remote.assert_called_once()
 
 
 if __name__ == "__main__":

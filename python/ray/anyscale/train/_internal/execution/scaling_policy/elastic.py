@@ -1,7 +1,14 @@
 import logging
-from typing import Dict, List
+import uuid
+from functools import cached_property
+from typing import Dict, List, Optional
 
-from .autoscaling_requester import TrainAutoscalingRequester
+import ray
+from ray.anyscale.air._internal.autoscaling_coordinator import (
+    ResourceDict,
+    ResourceRequestPriority,
+    get_or_create_autoscaling_coordinator,
+)
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
@@ -13,19 +20,30 @@ from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class ElasticScalingPolicy(ScalingPolicy):
-    autoscaling_requester_cls = TrainAutoscalingRequester
+
+    # The time in seconds after which an autoscaling request will expire.
+    AUTOSCALING_REQUESTS_EXPIRE_TIME_S = 180
+    # Minimum interval in seconds between two consecutive autoscaling requests.
+    AUTOSCALING_REQUESTS_INTERVAL_S = 20
+    # Timeout in seconds for getting the result of a call to the AutoscalingCoordinator.
+    AUTOSCALING_REQUESTS_GET_TIMEOUT_S = 5
 
     def __init__(self, scaling_config: ScalingConfig):
         super().__init__(scaling_config)
 
-        self.autoscaling_requester = self.autoscaling_requester_cls()
-
         self._latest_monitor_time = float("-inf")
+        # Requester ID for AutoscalingCoordinator.
+        # TODO: define the UUID in TrainController.
+        self._requester_id = "train-" + uuid.uuid4().hex
+        self._latest_autoscaling_request_time = float("-inf")
 
-    def _count_possible_workers(self, node_resources: List[Dict[str, float]]) -> int:
+    def _count_possible_workers(
+        self, allocated_resources: List[Dict[str, float]]
+    ) -> int:
         # TODO: Fractional resources do not work well here.
         single_worker_resources = self.scaling_config._resources_per_worker_not_none
         total_num_workers = 0
@@ -34,7 +52,7 @@ class ElasticScalingPolicy(ScalingPolicy):
         if sum(single_worker_resources.values()) == 0:
             return self.scaling_config.max_workers
 
-        for resources in node_resources:
+        for resources in allocated_resources:
             num_workers = min(
                 [
                     resources.get(resource, 0.0) // single_worker_resources[resource]
@@ -46,9 +64,10 @@ class ElasticScalingPolicy(ScalingPolicy):
 
         return int(total_num_workers)
 
-    def _get_resize_decision(self) -> ResizeDecision:
-        node_resources = self.autoscaling_requester.node_resources()
-        available_workers = self._count_possible_workers(node_resources)
+    def _get_resize_decision(
+        self, allocated_resources: List[ResourceDict]
+    ) -> ResizeDecision:
+        available_workers = self._count_possible_workers(allocated_resources)
         num_workers = min(available_workers, self.scaling_config.max_workers)
         return ResizeDecision(
             num_workers=num_workers,
@@ -58,7 +77,12 @@ class ElasticScalingPolicy(ScalingPolicy):
     def make_decision_for_non_running_worker_group(
         self, worker_group_status: WorkerGroupStatus
     ) -> ScalingDecision:
-        decision = self._get_resize_decision()
+        self._maybe_send_resource_request()
+
+        allocated_resources = self._get_allocated_resources()
+        if allocated_resources is None:
+            return NoopDecision()
+        decision = self._get_resize_decision(allocated_resources)
 
         if decision.num_workers < self.scaling_config.min_workers:
             logger.info(
@@ -80,6 +104,8 @@ class ElasticScalingPolicy(ScalingPolicy):
     def make_decision_for_running_worker_group(
         self, worker_group_status: WorkerGroupStatus
     ) -> ScalingDecision:
+        self._maybe_send_resource_request()
+
         # Ensure that we don't make resizing decisions too frequently.
         # The latest restart time and the latest monitor time (whichever is later)
         # determine the time of the next resize consideration.
@@ -87,7 +113,8 @@ class ElasticScalingPolicy(ScalingPolicy):
             worker_group_status.latest_start_time, self._latest_monitor_time
         )
 
-        time_since_latest_consideration = time_monotonic() - latest_consideration_time
+        now = time_monotonic()
+        time_since_latest_consideration = now - latest_consideration_time
         if (
             time_since_latest_consideration
             < self.scaling_config.elastic_resize_monitor_interval_s
@@ -95,14 +122,17 @@ class ElasticScalingPolicy(ScalingPolicy):
             logger.debug(
                 "Skipping resize decision due to the latest resizing consideration "
                 "happening too recently: "
-                f"{time_since_latest_consideration=} < "
-                "ScalingConfig(elastic_resize_monitor_interval_s="
-                f"{self.scaling_config.elastic_resize_monitor_interval_s})"
+                "%.2f < ScalingConfig(elastic_resize_monitor_interval_s=%.2f.",
+                time_since_latest_consideration,
+                self.scaling_config.elastic_resize_monitor_interval_s,
             )
             return NoopDecision()
 
-        self._latest_monitor_time = time_monotonic()
-        decision = self._get_resize_decision()
+        self._latest_monitor_time = now
+        allocated_resources = self._get_allocated_resources()
+        if allocated_resources is None:
+            return NoopDecision()
+        decision = self._get_resize_decision(allocated_resources)
         if decision.num_workers == worker_group_status.num_workers:
             logger.info(
                 "Did not detect any changes in the cluster resources. "
@@ -117,6 +147,83 @@ class ElasticScalingPolicy(ScalingPolicy):
             f"{worker_group_status.num_workers} -> {decision.num_workers} workers."
         )
         return decision
+
+    # ---------------------------------------------------
+    # Methods for interacting with AutoscalingCoordinator
+    # ---------------------------------------------------
+
+    @cached_property
+    def _autoscaling_coordinator(self):
+        return get_or_create_autoscaling_coordinator()
+
+    def _maybe_send_resource_request(self):
+        """Send a resource request to AutoscalingCoordinator,
+        if AUTOSCALING_REQUESTS_INTERVAL_S has passed since the last send."""
+        now = time_monotonic()
+        if (
+            now - self._latest_autoscaling_request_time
+            < self.AUTOSCALING_REQUESTS_INTERVAL_S
+        ):
+            return
+
+        resources_per_worker = self.scaling_config._resources_per_worker_not_none
+        max_workers = self.scaling_config.max_workers
+        try:
+            ray.get(
+                self._autoscaling_coordinator.request_resources.remote(
+                    requester_id=self._requester_id,
+                    resources=[resources_per_worker] * max_workers,
+                    expire_after_s=self.AUTOSCALING_REQUESTS_EXPIRE_TIME_S,
+                    priority=ResourceRequestPriority.HIGH,
+                )
+            )
+            self._latest_autoscaling_request_time = time_monotonic()
+        except Exception:
+            msg = (
+                f"Failed to send resource request for {self._requester_id}."
+                " If this only happens transiently during network partition or"
+                " CPU being overloaded, it's safe to ignore this error."
+                " If this error persists, file a GitHub issue."
+            )
+            logger.warning(msg, exc_info=True)
+
+    def _get_allocated_resources(self) -> Optional[List[ResourceDict]]:
+        """Get allocated resources from AutoscalingCoordinator.
+        Return None if there is an error."""
+        try:
+            return ray.get(
+                self._autoscaling_coordinator.get_allocated_resources.remote(
+                    self._requester_id
+                ),
+                timeout=self.AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
+            )
+        except Exception:
+            msg = (
+                f"Failed to get allocated resources for {self._requester_id}."
+                " Will not resize the worker group."
+                " If this only happens transiently during network partition or"
+                " CPU being overloaded, it's safe to ignore this error."
+                " If this error persists, file a GitHub issue."
+            )
+            logger.warning(msg, exc_info=True)
+            return None
+
+    def _cancel_resource_request(self):
+        """Cancel the resource request to AutoscalingCoordinator."""
+        try:
+            ray.get(
+                self._autoscaling_coordinator.cancel_request.remote(
+                    requester_id=self._requester_id,
+                ),
+                timeout=self.AUTOSCALING_REQUESTS_GET_TIMEOUT_S,
+            )
+        except Exception:
+            msg = (
+                f"Failed to cancel resource request for {self._requester_id}."
+                " The request will still expire after the timeout of"
+                f" {self.AUTOSCALING_REQUESTS_EXPIRE_TIME_S} seconds."
+            )
+            logger.warning(msg, exc_info=True)
 
     # --------------------------
     # ControllerCallback
@@ -135,11 +242,10 @@ class ElasticScalingPolicy(ScalingPolicy):
             "only allows a maximum of 2 single GPU nodes for upscaling, "
             "no nodes will spin up."
         )
-
-        self.autoscaling_requester.request(bundles=[resources_per_worker] * max_workers)
+        self._maybe_send_resource_request()
 
     def before_controller_shutdown(self):
-        """Clear the autoscaling request when the control loop shuts down.
-        If this is not cleared, the autoscaler will keep trying to upscale the cluster,
-        and idle nodes will not be removed."""
-        self.autoscaling_requester.clear_request()
+        """Clear the autoscaling request eagerly when the control loop shuts down.
+        So that cluster can scale down more quickly before the request timeout.
+        """
+        self._cancel_resource_request()
