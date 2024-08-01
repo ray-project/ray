@@ -300,34 +300,11 @@ class EnvRunnerGroup:
             else []
         )
 
-        # Try to figure out spaces from the first remote worker.
-        # Traditional RolloutWorker.
-        if issubclass(self.env_runner_cls, RolloutWorker):
-            spaces = self.foreach_worker(
-                lambda worker: worker.foreach_policy(
-                    lambda p, pid: (pid, p.observation_space, p.action_space)
-                ),
-                remote_worker_ids=remote_worker_ids,
-                local_env_runner=not remote_worker_ids,
-            )
-            spaces = {
-                e[0]: (getattr(e[1], "original_space", e[1]), e[2]) for e in spaces[0]
-            }
-            # Try to add the actual env's obs/action spaces.
-            env_spaces = self.foreach_worker(
-                lambda worker: worker.foreach_env(
-                    lambda env: (env.observation_space, env.action_space)
-                ),
-                remote_worker_ids=remote_worker_ids,
-                local_env_runner=not remote_worker_ids,
-            )
-            if env_spaces:
-                # env_spaces group spaces by environment then worker.
-                # So need to unpack thing twice.
-                spaces["__env__"] = env_spaces[0][0]
-        # Generic EnvRunner.
-        else:
-            spaces = self.foreach_worker(lambda env_runner: env_runner.get_spaces())[0]
+        spaces = self.foreach_worker(
+            lambda env_runner: env_runner.get_spaces(),
+            remote_worker_ids=remote_worker_ids,
+            local_env_runner=not remote_worker_ids,
+        )[0]
 
         logger.info(
             "Inferred observation/action spaces from remote "
