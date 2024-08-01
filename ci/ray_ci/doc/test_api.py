@@ -163,5 +163,19 @@ def test_is_public():
     ).is_public()
 
 
+def test_is_deprecated():
+    assert not API(
+        name="a.b._private_function",
+        annotation_type=AnnotationType.PUBLIC_API,
+        code_type=CodeType.FUNCTION,
+    ).is_deprecated()
+
+    assert API(
+        name="a.b.function",
+        annotation_type=AnnotationType.DEPRECATED,
+        code_type=CodeType.FUNCTION,
+    ).is_deprecated()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
