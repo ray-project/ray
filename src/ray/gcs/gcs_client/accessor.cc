@@ -159,7 +159,7 @@ Status ActorInfoAccessor::AsyncGet(
         if (reply.has_actor_table_data()) {
           callback(status, reply.actor_table_data());
         } else {
-          callback(status, boost::none);
+          callback(status, std::nullopt);
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", actor id = " << actor_id
@@ -172,7 +172,8 @@ Status ActorInfoAccessor::AsyncGetAllByFilter(
     const std::optional<ActorID> &actor_id,
     const std::optional<JobID> &job_id,
     const std::optional<std::string> &actor_state_name,
-    const MultiItemCallback<rpc::ActorTableData> &callback) {
+    const MultiItemCallback<rpc::ActorTableData> &callback,
+    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
   rpc::GetAllActorInfoRequest request;
   if (actor_id) {
@@ -188,10 +189,12 @@ Status ActorInfoAccessor::AsyncGetAllByFilter(
   }
 
   client_impl_->GetGcsRpcClient().GetAllActorInfo(
-      request, [callback](const Status &status, const rpc::GetAllActorInfoReply &reply) {
+      request,
+      [callback](const Status &status, const rpc::GetAllActorInfoReply &reply) {
         callback(status, VectorFromProtobuf(reply.actor_table_data()));
         RAY_LOG(DEBUG) << "Finished getting all actor info, status = " << status;
-      });
+      },
+      timeout_ms);
   return Status::OK();
 }
 
@@ -210,7 +213,7 @@ Status ActorInfoAccessor::AsyncGetByName(
         if (reply.has_actor_table_data()) {
           callback(status, reply.actor_table_data());
         } else {
-          callback(status, boost::none);
+          callback(status, std::nullopt);
         }
         RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
                        << ", name = " << name;
@@ -249,7 +252,7 @@ Status ActorInfoAccessor::AsyncListNamedActors(
       request,
       [callback](const Status &status, const rpc::ListNamedActorsReply &reply) {
         if (!status.ok()) {
-          callback(status, boost::none);
+          callback(status, std::nullopt);
         } else {
           callback(status, VectorFromProtobuf(reply.named_actors_list()));
         }
@@ -311,7 +314,8 @@ Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_s
 Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id,
                                          bool force_kill,
                                          bool no_restart,
-                                         const ray::gcs::StatusCallback &callback) {
+                                         const ray::gcs::StatusCallback &callback,
+                                         int64_t timeout_ms) {
   rpc::KillActorViaGcsRequest request;
   request.set_actor_id(actor_id.Binary());
   request.set_force_kill(force_kill);
@@ -326,7 +330,8 @@ Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id,
                   : Status(StatusCode(reply.status().code()), reply.status().message());
           callback(status);
         }
-      });
+      },
+      timeout_ms);
   return Status::OK();
 }
 
@@ -359,7 +364,7 @@ Status ActorInfoAccessor::AsyncSubscribe(
       [this, actor_id, subscribe](const StatusCallback &fetch_done) {
         auto callback = [actor_id, subscribe, fetch_done](
                             const Status &status,
-                            const boost::optional<rpc::ActorTableData> &result) {
+                            const std::optional<rpc::ActorTableData> &result) {
           if (result) {
             subscribe(actor_id, *result);
           }
@@ -945,7 +950,7 @@ Status WorkerInfoAccessor::AsyncGet(
         if (reply.has_worker_table_data()) {
           callback(status, reply.worker_table_data());
         } else {
-          callback(status, boost::none);
+          callback(status, std::nullopt);
         }
         RAY_LOG(DEBUG) << "Finished getting worker info, worker id = " << worker_id;
       });
@@ -1059,7 +1064,7 @@ Status PlacementGroupInfoAccessor::AsyncGet(
         if (reply.has_placement_group_table_data()) {
           callback(status, reply.placement_group_table_data());
         } else {
-          callback(status, boost::none);
+          callback(status, std::nullopt);
         }
         RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
                        << placement_group_id;
@@ -1083,7 +1088,7 @@ Status PlacementGroupInfoAccessor::AsyncGetByName(
         if (reply.has_placement_group_table_data()) {
           callback(status, reply.placement_group_table_data());
         } else {
-          callback(status, boost::none);
+          callback(status, std::nullopt);
         }
         RAY_LOG(DEBUG) << "Finished getting named placement group info, status = "
                        << status << ", name = " << name;
@@ -1133,7 +1138,7 @@ Status InternalKVAccessor::AsyncInternalKVGet(
       req,
       [callback](const Status &status, const rpc::InternalKVGetReply &reply) {
         if (reply.status().code() == (int)StatusCode::NotFound) {
-          callback(status, boost::none);
+          callback(status, std::nullopt);
         } else {
           callback(status, reply.value());
         }
@@ -1239,7 +1244,7 @@ Status InternalKVAccessor::AsyncInternalKVKeys(
       req,
       [callback](const Status &status, const rpc::InternalKVKeysReply &reply) {
         if (!status.ok()) {
-          callback(status, boost::none);
+          callback(status, std::nullopt);
         } else {
           callback(status, VectorFromProtobuf(reply.results()));
         }
@@ -1261,7 +1266,7 @@ Status InternalKVAccessor::Put(const std::string &ns,
       value,
       overwrite,
       timeout_ms,
-      [&ret_promise, &added](Status status, boost::optional<int> added_num) {
+      [&ret_promise, &added](Status status, std::optional<int> added_num) {
         added = static_cast<bool>(added_num.value_or(0));
         ret_promise.set_value(status);
       }));
@@ -1324,7 +1329,7 @@ Status InternalKVAccessor::Del(const std::string &ns,
       key,
       del_by_prefix,
       timeout_ms,
-      [&ret_promise, &num_deleted](Status status, const boost::optional<int> &value) {
+      [&ret_promise, &num_deleted](Status status, const std::optional<int> &value) {
         num_deleted = value.value_or(0);
         ret_promise.set_value(status);
       }));
@@ -1340,7 +1345,7 @@ Status InternalKVAccessor::Exists(const std::string &ns,
       ns,
       key,
       timeout_ms,
-      [&ret_promise, &exists](Status status, const boost::optional<bool> &value) {
+      [&ret_promise, &exists](Status status, const std::optional<bool> &value) {
         exists = value.value_or(false);
         ret_promise.set_value(status);
       }));

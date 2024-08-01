@@ -605,9 +605,18 @@ class ReporterAgent(
         if raylet_proc is None:
             return []
         else:
-            workers = {
-                self._generate_worker_key(proc): proc for proc in raylet_proc.children()
-            }
+            workers = {}
+            if sys.platform == "win32":
+                # windows, get the child process not the runner
+                for child in raylet_proc.children():
+                    if child.children():
+                        child = child.children()[0]
+                    workers[self._generate_worker_key(child)] = child
+            else:
+                workers = {
+                    self._generate_worker_key(proc): proc
+                    for proc in raylet_proc.children()
+                }
 
             # We should keep `raylet_proc.children()` in `self` because
             # when `cpu_percent` is first called, it returns the meaningless 0.
@@ -645,9 +654,16 @@ class ReporterAgent(
         try:
             if not self._raylet_proc:
                 curr_proc = psutil.Process()
-                # Here, parent is always raylet because the
-                # dashboard agent is a child of the raylet process.
-                self._raylet_proc = curr_proc.parent()
+                # The dashboard agent is a child of the raylet process.
+                # It is not necessarily the direct child (python-windows
+                # typically uses a py.exe runner to run python), so search
+                # up for a process named 'raylet'
+                candidate = curr_proc.parent()
+                while candidate:
+                    if "raylet" in candidate.name():
+                        break
+                    candidate = candidate.parent()
+                self._raylet_proc = candidate
 
             if self._raylet_proc is not None:
                 if self._raylet_proc.pid == 1:

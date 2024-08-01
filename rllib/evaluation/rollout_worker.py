@@ -31,7 +31,8 @@ from ray.rllib.connectors.util import (
     create_connectors_for_policy,
     maybe_get_filters_for_syncing,
 )
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module import validate_module_id
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
@@ -72,7 +73,7 @@ from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, NoFilter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
-from ray.rllib.utils.policy import create_policy_for_framework, validate_policy_id
+from ray.rllib.utils.policy import create_policy_for_framework
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
 from ray.rllib.utils.tf_utils import get_gpu_devices as get_tf_gpu_devices
@@ -516,8 +517,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
 
-        # if RLModule API is enabled, marl_module_spec holds the specs of the RLModules
-        self.marl_module_spec = None
+        # If RLModule API is enabled, multi_rl_module_spec holds the specs of the
+        # RLModules.
+        self.multi_rl_module_spec = None
         self._update_policy_map(policy_dict=self.policy_dict)
 
         # Update Policy's view requirements from Model, only if Policy directly
@@ -1073,7 +1075,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         policies_to_train: Optional[
             Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = None,
-        module_spec: Optional[SingleAgentRLModuleSpec] = None,
+        module_spec: Optional[RLModuleSpec] = None,
     ) -> Policy:
         """Adds a new policy to this RolloutWorker.
 
@@ -1110,7 +1112,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             KeyError: If the given `policy_id` already exists in this worker's
                 PolicyMap.
         """
-        validate_policy_id(policy_id, error=False)
+        validate_module_id(policy_id, error=False)
 
         if module_spec is not None and not self.config.enable_rl_module_and_learner:
             raise ValueError(
@@ -1415,7 +1417,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         for pid, policy_state in policy_states.items():
             # If - for some reason - we have an invalid PolicyID in the state,
             # this might be from an older checkpoint (pre v1.0). Just warn here.
-            validate_policy_id(pid, error=False)
+            validate_module_id(pid, error=False)
 
             if pid not in self.policy_map:
                 spec = policy_state.get("policy_spec", None)
@@ -1673,7 +1675,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         policy_dict: MultiAgentPolicyConfigDict,
         policy: Optional[Policy] = None,
         policy_states: Optional[Dict[PolicyID, PolicyState]] = None,
-        single_agent_rl_module_spec: Optional[SingleAgentRLModuleSpec] = None,
+        single_agent_rl_module_spec: Optional[RLModuleSpec] = None,
     ) -> None:
         """Updates the policy map (and other stuff) on this worker.
 
@@ -1682,7 +1684,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 with the postprocessed observation_spaces.
             2. It updates the policy_specs with the complete algorithm_config (merged
                 with the policy_spec's config).
-            3. If needed it will update the self.marl_module_spec on this worker
+            3. If needed it will update the self.multi_rl_module_spec on this worker
             3. It updates the policy map with the new policies
             4. It updates the filter dict
             5. It calls the on_create_policy() hook of the callbacks on the newly added
@@ -1692,8 +1694,8 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             policy_dict: The policy dict to update the policy map with.
             policy: The policy to update the policy map with.
             policy_states: The policy states to update the policy map with.
-            single_agent_rl_module_spec: The SingleAgentRLModuleSpec to add to the
-                MultiAgentRLModuleSpec. If None, the config's
+            single_agent_rl_module_spec: The RLModuleSpec to add to the
+                MultiRLModuleSpec. If None, the config's
                 `get_default_rl_module_spec` method's output will be used to create
                 the policy with.
         """
@@ -1702,23 +1704,23 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # merge configs. Also updates the preprocessor dict.
         updated_policy_dict = self._get_complete_policy_specs_dict(policy_dict)
 
-        # Use the updated policy dict to create the marl_module_spec if necessary
+        # Use the updated policy dict to create the multi_rl_module_spec if necessary
         if self.config.enable_rl_module_and_learner:
-            spec = self.config.get_marl_module_spec(
+            spec = self.config.get_multi_rl_module_spec(
                 policy_dict=updated_policy_dict,
                 single_agent_rl_module_spec=single_agent_rl_module_spec,
             )
-            if self.marl_module_spec is None:
-                # this is the first time, so we should create the marl_module_spec
-                self.marl_module_spec = spec
+            if self.multi_rl_module_spec is None:
+                # this is the first time, so we should create the multi_rl_module_spec
+                self.multi_rl_module_spec = spec
             else:
                 # This is adding a new policy, so we need call add_modules on the
                 # module_specs of returned spec.
-                self.marl_module_spec.add_modules(spec.module_specs)
+                self.multi_rl_module_spec.add_modules(spec.module_specs)
 
-            # Add __marl_module_spec key into the config so that the policy can access
-            # it.
-            updated_policy_dict = self._update_policy_dict_with_marl_module(
+            # Add `__multi_rl_module_spec` key into the config so that the policy can
+            # access it.
+            updated_policy_dict = self._update_policy_dict_with_multi_rl_module(
                 updated_policy_dict
             )
 
@@ -1800,11 +1802,11 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         return updated_policy_dict
 
-    def _update_policy_dict_with_marl_module(
+    def _update_policy_dict_with_multi_rl_module(
         self, policy_dict: MultiAgentPolicyConfigDict
     ) -> MultiAgentPolicyConfigDict:
         for name, policy_spec in policy_dict.items():
-            policy_spec.config["__marl_module_spec"] = self.marl_module_spec
+            policy_spec.config["__multi_rl_module_spec"] = self.multi_rl_module_spec
         return policy_dict
 
     def _build_policy_map(

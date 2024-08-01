@@ -16,7 +16,7 @@ import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -159,7 +159,7 @@ class PPOConfig(AlgorithmConfig):
         }
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
         from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
         if self.framework_str == "torch":
@@ -167,15 +167,11 @@ class PPOConfig(AlgorithmConfig):
                 PPOTorchRLModule,
             )
 
-            return SingleAgentRLModuleSpec(
-                module_class=PPOTorchRLModule, catalog_class=PPOCatalog
-            )
+            return RLModuleSpec(module_class=PPOTorchRLModule, catalog_class=PPOCatalog)
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return SingleAgentRLModuleSpec(
-                module_class=PPOTfRLModule, catalog_class=PPOCatalog
-            )
+            return RLModuleSpec(module_class=PPOTfRLModule, catalog_class=PPOCatalog)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -431,7 +427,7 @@ class PPO(Algorithm):
             # Sample in parallel from the workers.
             if self.config.count_steps_by == "agent_steps":
                 episodes, env_runner_results = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     max_agent_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=(
@@ -441,7 +437,7 @@ class PPO(Algorithm):
                 )
             else:
                 episodes, env_runner_results = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     max_env_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=(
@@ -513,8 +509,8 @@ class PPO(Algorithm):
             #  as it might be a very large set (100s of Modules) vs a smaller Modules
             #  set that's present in the current train batch.
             modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-            # if self.workers.num_remote_workers() > 0:
-            self.workers.sync_weights(
+            # if self.env_runner_group.num_remote_workers() > 0:
+            self.env_runner_group.sync_weights(
                 # Sync weights from learner_group to all EnvRunners.
                 from_worker_or_learner_group=self.learner_group,
                 policies=modules_to_update,
@@ -522,7 +518,7 @@ class PPO(Algorithm):
             )
             # else:
             #    weights = self.learner_group.get_weights(inference_only=True)
-            #    self.workers.local_worker().set_weights(weights)
+            #    self.env_runner.set_weights(weights)
 
         return self.metrics.reduce()
 
@@ -531,13 +527,13 @@ class PPO(Algorithm):
         with self._timers[SAMPLE_TIMER]:
             if self.config.count_steps_by == "agent_steps":
                 train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     max_agent_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
                 )
             else:
                 train_batch = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     max_env_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
                 )
@@ -583,7 +579,7 @@ class PPO(Algorithm):
             # TODO (sven): num_grad_updates per each policy should be
             #  accessible via `train_results` (and get rid of global_vars).
             "num_grad_updates_per_policy": {
-                pid: self.workers.local_worker().policy_map[pid].num_grad_updates
+                pid: self.env_runner.policy_map[pid].num_grad_updates
                 for pid in policies_to_update
             },
         }
@@ -591,19 +587,19 @@ class PPO(Algorithm):
         # Update weights - after learning on the local worker - on all remote
         # workers.
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            if self.workers.num_remote_workers() > 0:
+            if self.env_runner_group.num_remote_workers() > 0:
                 from_worker_or_learner_group = None
                 if self.config.enable_rl_module_and_learner:
                     # sync weights from learner_group to all rollout workers
                     from_worker_or_learner_group = self.learner_group
-                self.workers.sync_weights(
+                self.env_runner_group.sync_weights(
                     from_worker_or_learner_group=from_worker_or_learner_group,
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )
             elif self.config.enable_rl_module_and_learner:
                 weights = self.learner_group.get_weights()
-                self.workers.local_worker().set_weights(weights)
+                self.env_runner.set_weights(weights)
 
         if self.config.enable_rl_module_and_learner:
             kl_dict = {}
@@ -667,6 +663,6 @@ class PPO(Algorithm):
         # TODO (simon): At least in RolloutWorker obsolete I guess as called in
         #  `sync_weights()` called above if remote workers. Can we call this
         #  where `set_weights()` is called on the local_worker?
-        self.workers.local_worker().set_global_vars(global_vars)
+        self.env_runner.set_global_vars(global_vars)
 
         return train_results

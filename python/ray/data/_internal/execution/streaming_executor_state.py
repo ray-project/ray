@@ -205,8 +205,11 @@ class OpState:
         """
         is_all_to_all = isinstance(self.op, AllToAllOperator)
         # Only show 1:1 ops when in verbose progress mode.
-        progress_bar_enabled = DataContext.get_current().enable_progress_bars and (
-            is_all_to_all or verbose_progress
+        ctx = DataContext.get_current()
+        progress_bar_enabled = (
+            ctx.enable_progress_bars
+            and ctx.enable_operator_progress_bars
+            and (is_all_to_all or verbose_progress)
         )
         self.progress_bar = ProgressBar(
             "- " + self.op.name,

@@ -176,6 +176,22 @@ def add_rllib_example_script_args(
         "one.",
     )
 
+    # RLlib logging options.
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="The output directory to write trajectories to, which are collected by "
+        "the algo's EnvRunners.",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default=None,  # None -> use default
+        choices=["INFO", "DEBUG", "WARN", "ERROR"],
+        help="The log-level to be used by the RLlib logger.",
+    )
+
     # tune.Tuner options.
     parser.add_argument(
         "--no-tune",
@@ -445,7 +461,7 @@ def check_compute_single_action(
     try:
         # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(algorithm.workers.local_worker().get_policies_to_train()))
+        pid = next(iter(algorithm.env_runner.get_policies_to_train()))
         pol = algorithm.get_policy(pid)
     except AttributeError:
         pol = algorithm.policy
@@ -584,12 +600,12 @@ def check_compute_single_action(
         if what is algorithm:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(algorithm, "workers", None)
+            worker_set = getattr(algorithm, "env_runner_group", None)
             assert worker_set
-            if not worker_set.local_worker():
+            if not worker_set.local_env_runner:
                 obs_space = algorithm.get_policy(pid).observation_space
             else:
-                obs_space = worker_set.local_worker().for_policy(
+                obs_space = worker_set.local_env_runner.for_policy(
                     lambda p: p.observation_space, policy_id=pid
                 )
             obs_space = getattr(obs_space, "original_space", obs_space)
@@ -1495,6 +1511,14 @@ def run_rllib_example_script_experiment(
                 evaluation_parallel_to_training=args.evaluation_parallel_to_training,
             )
 
+        # Set the log-level (if applicable).
+        if args.log_level is not None:
+            config.debugging(log_level=args.log_level)
+
+        # Set the output dir (if applicable).
+        if args.output is not None:
+            config.offline_data(output=args.output)
+
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
         assert not args.as_test and not args.as_release_test
@@ -2057,18 +2081,14 @@ def test_ckpt_restore(
         # Check, whether the eval EnvRunnerGroup has the same policies and
         # `policy_mapping_fn`.
         if eval_env_runner_group:
-            eval_mapping_src = inspect.getsource(
-                alg1.evaluation_workers.local_worker().policy_mapping_fn
+            eval_mapping_src = inspect.getsource(alg1.eval_env_runner.policy_mapping_fn)
+            check(
+                eval_mapping_src,
+                inspect.getsource(alg2.eval_env_runner.policy_mapping_fn),
             )
             check(
                 eval_mapping_src,
-                inspect.getsource(
-                    alg2.evaluation_workers.local_worker().policy_mapping_fn
-                ),
-            )
-            check(
-                eval_mapping_src,
-                inspect.getsource(alg2.workers.local_worker().policy_mapping_fn),
+                inspect.getsource(alg2.env_runner.policy_mapping_fn),
                 false=True,
             )
 

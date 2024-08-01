@@ -18,6 +18,30 @@ TEAM_API_CONFIGS = {
             "ray.data.random_access_dataset.RandomAccessDataset",
         },
     },
+    "serve": {
+        "head_modules": {"ray.serve"},
+        "head_doc_file": "doc/source/serve/api/index.md",
+        "white_list_apis": {},
+    },
+    "core": {
+        "head_modules": {"ray"},
+        "head_doc_file": "doc/source/ray-core/api/index.rst",
+        "white_list_apis": {
+            # These APIs will be documented in near future
+            "ray.util.scheduling_strategies.DoesNotExist",
+            "ray.util.scheduling_strategies.Exists",
+            "ray.util.scheduling_strategies.NodeLabelSchedulingStrategy",
+            "ray.util.scheduling_strategies.In",
+            "ray.util.scheduling_strategies.NotIn",
+            # TODO(jjyao): document or deprecate these APIs
+            "ray.experimental.compiled_dag_ref.CompiledDAGFuture",
+            "ray.experimental.compiled_dag_ref.CompiledDAGRef",
+            "ray.cross_language.cpp_actor_class",
+            "ray.cross_language.cpp_function",
+            "ray.client_builder.ClientContext",
+            "ray.remote_function.RemoteFunction",
+        },
+    },
 }
 
 
