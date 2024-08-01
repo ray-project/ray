@@ -10,7 +10,7 @@ from ray.train.tests.util import mock_storage_context
 from ray.tune import PlacementGroupFactory, register_trainable
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
-from ray.tune.utils.mock_trainable import MyTrainableClass
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 STORAGE = mock_storage_context()
 
@@ -31,12 +31,7 @@ def test_stop_trial(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testStopTrial
     """
 
-    class SlowTrainable(MyTrainableClass):
-        def step(self):
-            time.sleep(1)
-            return super().step()
-
-    register_trainable("mock_trainable", SlowTrainable)
+    register_mock_trainable()
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(), storage=STORAGE
     )
@@ -47,10 +42,10 @@ def test_stop_trial(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
         "storage": STORAGE,
     }
     trials = [
-        Trial("mock_trainable", **kwargs),
-        Trial("mock_trainable", **kwargs),
-        Trial("mock_trainable", **kwargs),
-        Trial("mock_trainable", **kwargs),
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+        Trial(MOCK_TRAINABLE_NAME, **kwargs),
     ]
     for t in trials:
         runner.add_trial(t)
