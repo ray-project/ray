@@ -33,6 +33,9 @@ class MockedWorker:
     def bwd(self, value):
         return value
 
+    def read_input(self, input):
+        return input
+
     def no_op(self, value):
         return value
 
@@ -60,9 +63,10 @@ def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
     ray.get([w1.start_mock.remote(), w2.start_mock.remote()])
 
     with InputNode() as inp:
-        batch_1 = w1.fwd.bind(inp)
+        w1_input = w1.read_input.bind(inp)
+        batch_1 = w1.fwd.bind(w1_input)
         batch_1.with_type_hint(TorchTensorType(transport=TorchTensorType.NCCL))
-        batch_2 = w1.fwd.bind(inp)
+        batch_2 = w1.fwd.bind(w1_input)
         batch_2.with_type_hint(TorchTensorType(transport=TorchTensorType.NCCL))
         batch_1 = w2.fwd.bind(batch_1)
         batch_1 = w2.bwd.bind(batch_1)
@@ -93,6 +97,9 @@ def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
         (3, DAGNodeOperationType.READ),
         (3, DAGNodeOperationType.COMPUTE),
         (3, DAGNodeOperationType.WRITE),
+        (4, DAGNodeOperationType.READ),
+        (4, DAGNodeOperationType.COMPUTE),
+        (4, DAGNodeOperationType.WRITE),
     ]
     w2_expected_schedule = [
         (0, DAGNodeOperationType.READ),
@@ -118,6 +125,10 @@ def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
         for i, operation in enumerate(schedule):
             assert operation.idx == expected_schedule[i][0]
             assert operation.type == expected_schedule[i][1]
+
+    ref = compiled_dag.execute(123)
+    assert ray.get(ref) == [123, 123]
+
     compiled_dag.teardown()
 
 
@@ -175,6 +186,9 @@ def test_three_actors_with_nccl_1(ray_start_regular):
         for i, operation in enumerate(schedule):
             assert operation.idx == expected_schedule[i][0]
             assert operation.type == expected_schedule[i][1]
+
+    ref = compiled_dag.execute(123)
+    assert ray.get(ref) == (123, 123)
 
     compiled_dag.teardown()
 
@@ -243,6 +257,9 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
         for i, operation in enumerate(schedule):
             assert operation.idx == expected_schedule[i][0]
             assert operation.type == expected_schedule[i][1]
+
+    ref = compiled_dag.execute(123)
+    assert ray.get(ref) == [123, 123, 123]
 
     compiled_dag.teardown()
 
