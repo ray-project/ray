@@ -1,3 +1,4 @@
+import logging
 import os
 import threading
 import warnings
@@ -6,10 +7,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray._private.ray_constants import env_bool, env_integer
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import ExecutionOptions
+
+logger = logging.getLogger(__name__)
 
 # The context singleton on this process.
 _default_context: "Optional[DataContext]" = None
@@ -80,12 +84,31 @@ DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = env_bool(
 
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
+# Globally enable or disable all progress bars.
+# If this is False, both the global and operator-level progress bars are disabled.
 DEFAULT_ENABLE_PROGRESS_BARS = not bool(
     env_integer("RAY_DATA_DISABLE_PROGRESS_BARS", 0)
 )
 DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
+
+is_ray_job = os.environ.get("RAY_JOB_ID") is not None
+if is_ray_job:
+    if log_once("ray_data_disable_operator_progress_bars_in_ray_jobs"):
+        logger.info(
+            "Disabling operator-level progress bars by default in Ray Jobs. "
+            "To enable progress bars for all operators, set "
+            "`ray.data.DataContext.get_current().enable_operator_progress_bars = True`."
+        )
+    # Disable operator-level progress bars by default in Ray jobs.
+    # The global progress bar for the overall Dataset execution will
+    # still be enabled, unless the user also sets
+    # `ray.data.DataContext.get_current().enable_progress_bars = False`.
+    DEFAULT_ENABLE_OPERATOR_PROGRESS_BARS = False
+else:
+    # When not running in Ray job, operator-level progress bars are enabled by default.
+    DEFAULT_ENABLE_OPERATOR_PROGRESS_BARS = True
 
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
@@ -277,6 +300,7 @@ class DataContext:
     )
     use_ray_tqdm: bool = DEFAULT_USE_RAY_TQDM
     enable_progress_bars: bool = DEFAULT_ENABLE_PROGRESS_BARS
+    enable_operator_progress_bars: bool = DEFAULT_ENABLE_OPERATOR_PROGRESS_BARS
     enable_progress_bar_name_truncation: bool = (
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
@@ -297,7 +321,9 @@ class DataContext:
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
-    retried_io_errors: List[str] = DEFAULT_RETRIED_IO_ERRORS
+    retried_io_errors: List[str] = field(
+        default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
+    )
 
     def __post_init__(self):
         # The additonal ray remote args that should be added to
