@@ -6,8 +6,8 @@ from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
 from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
@@ -54,10 +54,10 @@ class APPOLearner(IMPALALearner):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        module_spec: RLModuleSpec,
         config_overrides: Optional[Dict] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
-    ) -> MultiAgentRLModuleSpec:
+    ) -> MultiRLModuleSpec:
         marl_spec = super().add_module(module_id=module_id)
         # Create target networks for added Module, if applicable.
         if isinstance(self.module[module_id].unwrapped(), TargetNetworkAPI):
@@ -65,7 +65,7 @@ class APPOLearner(IMPALALearner):
         return marl_spec
 
     @override(IMPALALearner)
-    def remove_module(self, module_id: str) -> MultiAgentRLModuleSpec:
+    def remove_module(self, module_id: str) -> MultiRLModuleSpec:
         marl_spec = super().remove_module(module_id)
         self.curr_kl_coeffs_per_module.pop(module_id)
         return marl_spec

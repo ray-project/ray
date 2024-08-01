@@ -317,7 +317,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 (within the vector of sub-environments of the BaseEnv).
             rl_module: The RLModule used to compute actions for stepping the env.
                 In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiAgentRLModule.
+                agent setup, this will be a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -360,7 +360,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             env_index: The index of the sub-environment that has just been stepped.
             rl_module: The RLModule used to compute actions for stepping the env.
                 In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiAgentRLModule.
+                agent setup, this will be a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -420,7 +420,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 or truncated.
             rl_module: The RLModule used to compute actions for stepping the env.
                 In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiAgentRLModule.
+                agent setup, this will be a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
