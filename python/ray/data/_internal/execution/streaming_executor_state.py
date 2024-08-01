@@ -245,6 +245,9 @@ class OpState:
         self.outqueue.append(ref)
         self.num_completed_tasks += 1
         if self.progress_bar:
+            assert (
+                ref.num_rows() is not None
+            ), "RefBundle must have a valid number of rows"
             self.progress_bar.update(ref.num_rows(), self.op.num_output_rows_total())
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
