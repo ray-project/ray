@@ -7,41 +7,46 @@
 Algorithms
 ==========
 
-Available Algorithms - Overview
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Overview
+~~~~~~~~
 
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| **Algorithm**                                                           | Single-agent   | Multi-agent   | Multi-GPU   | Multi-node + Multi-GPU |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| **On-Policy**                                                                                                                                   |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| :ref:`PPO (Proximal Policy Optimization) <ppo>`                         | |single_agent| | |multi_agent| | |multi_gpu| | |multi_node_multi_gpu| |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| **Off-Policy**                                                                                                                                  |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| :ref:`SAC (Soft Actor Critic) <sac>`                                    | |single_agent| | |multi_agent| | |multi_gpu| | |multi_node_multi_gpu| |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| :ref:`DQN/Rainbow (Deep Q Networks) <dqn>`                              | |single_agent| | |multi_agent| | |multi_gpu| | |multi_node_multi_gpu| |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| **High-throughput on- and off policy**                                                                                                          |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>` | |single_agent| | |multi_agent| | |multi_gpu| | |multi_node_multi_gpu| |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`          | |single_agent| | |multi_agent| | |multi_gpu| | |multi_node_multi_gpu| |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| **Model-based RL**                                                                                                                              |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| :ref:`DreamerV3 <dreamerv3>`                                            | |single_agent| |               | |multi_gpu| | |multi_node_multi_gpu| |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| **Offline RL and Imitation Learning**                                                                                                           |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
-| :ref:`BC (Behavior Cloning) <bc>`                                       | |single_agent| |               |             |                        |
-+-------------------------------------------------------------------------+----------------+---------------+-------------+------------------------+
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| **Algorithm**                                                               | **Single- and Multi-agent**  | **Multi-GPU (multi-node)**         | **Action Spaces**              |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| **On-Policy**                                                                                                                                                                    |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`PPO (Proximal Policy Optimization) <ppo>`                             | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| **Off-Policy**                                                                                                                                                                   |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`DQN/Rainbow (Deep Q Networks) <dqn>`                                  | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| |                |discr_actions| |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`SAC (Soft Actor Critic) <sac>`                                        | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| | |cont_actions|                 |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| **High-throughput on- and off policy**                                                                                                                                           |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>`     | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| |                |discr_actions| |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`              | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| |                |discr_actions| |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| **Model-based RL**                                                                                                                                                               |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`DreamerV3 <dreamerv3>`                                                | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| **Offline RL and Imitation Learning**                                                                                                                                            |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`BC (Behavior Cloning) <bc>`                                           | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`MARWIL (Monotonic Advantage Re-Weighted Imitation Learning) <marwil>` | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| **Algorithm Extensions/Plugins**                                                                                                                                                 |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
+| :ref:`Curiosity-driven Exploration by Self-supervised Prediction <icm>`     | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
++-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 
 
-
-On-policy RL
-~~~~~~~~~~~~
+On-policy
+~~~~~~~~~
 
 .. _ppo:
 
@@ -49,16 +54,20 @@ Proximal Policy Optimization (PPO)
 ----------------------------------
 `[paper] <https://arxiv.org/abs/1707.06347>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo.py>`__
-PPO's clipped objective supports multiple SGD passes over the same batch of experiences in one training iteration.
-PPO scales out on both axes, supporting multiple EnvRunner workers for sample collection and multiple GPU- or CPU-based Learner workers for updating
-the model.
 
-.. figure:: images/ppo-arch.svg
+.. figure:: images/algos/ppo-architecture.svg
+    :width: 650
 
-    PPO architecture
+    **PPO architecture:** In a training iteration, PPO performs three major steps: sampling a set of episodes or episode fragments (1),
+    converting these into a train batch and updating the model(s) using a clipped objective and multiple SGD passes over this batch (2),
+    and synching the weights from the Learners back to the EnvRunners (3).
+    PPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learner
+    workers for updating the model(s).
 
-Tuned examples:
-
+**Tuned examples:**
+`Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/atari_ppo.py>`__,
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/cartpole_ppo.py>`__.
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/pendulum_ppo.py>`__.
 
 
 **PPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
@@ -74,17 +83,29 @@ Off-Policy
 
 Deep Q Networks (DQN, Rainbow, Parametric DQN)
 ----------------------------------------------
-`[paper] <https://arxiv.org/abs/1312.5602>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__
-DQN can be scaled by increasing the number of workers or using Ape-X. Memory usage is reduced by compressing samples in the replay buffer with LZ4. All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default. See also how to use `parametric-actions in DQN <rllib-models.html#variable-length-parametric-action-spaces>`__.
+`[paper] <https://arxiv.org/abs/1312.5602>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__
 
-.. figure:: images/dqn-arch.svg
+.. figure:: images/algos/dqn-architecture.svg
+    :width: 650
 
-    DQN architecture
+    **DQN architecture:** DQN uses a replay buffer to temporarily store episode samples collected from the environment(s).
+    Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
+    for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
+    This reuse of training data makes DQN very sample-efficient and off-policy.
+    DQN scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learner
+    workers for updating the model(s).
 
-Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-dqn.yaml>`__, `Rainbow configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-rainbow.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-dqn.yaml>`__, `with Dueling and Double-Q <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-duel-ddqn.yaml>`__, `with Distributional DQN <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-dist-dqn.yaml>`__.
 
-.. tip::
-    Consider using `Ape-X <#distributed-prioritized-experience-replay-ape-x>`__ for faster training with similar timestep efficiency.
+All of the DQN improvements evaluated in `Rainbow <https://arxiv.org/abs/1710.02298>`__ are available, though not all are enabled by default.
+See also how to use `parametric-actions in DQN <rllib-models.html#variable-length-parametric-action-spaces>`__.
+
+**Tuned examples:**
+`PongDeterministic-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-dqn.yaml>`__,
+`Rainbow configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/pong-rainbow.yaml>`__,
+`{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-dqn.yaml>`__,
+`with Dueling and Double-Q <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-duel-ddqn.yaml>`__,
+`with Distributional DQN <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/dqn/atari-dist-dqn.yaml>`__.
 
 .. hint::
     For a complete `rainbow <https://arxiv.org/pdf/1710.02298.pdf>`__ setup,
@@ -96,17 +117,6 @@ Tuned examples: `PongDeterministic-v4 <https://github.com/ray-project/ray/blob/m
     "v_max": 10.0``
     (set ``v_min`` and ``v_max`` according to your expected range of returns).
 
-**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
-
-=============  ========================  =============================  ==============================  ===============================
- Atari env     RLlib DQN                 RLlib Dueling DDQN             RLlib Dist. DQN                 Hessel et al. DQN
-=============  ========================  =============================  ==============================  ===============================
-BeamRider      2869                      1910                           4447                            ~2000
-Breakout       287                       312                            410                             ~150
-Qbert          3921                      7968                           15780                           ~4000
-SpaceInvaders  650                       1001                           1025                            ~500
-=============  ========================  =============================  ==============================  ===============================
-
 **DQN-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. autoclass:: ray.rllib.algorithms.dqn.dqn.DQNConfig
@@ -117,10 +127,12 @@ SpaceInvaders  650                       1001                           1025    
 
 Soft Actor Critic (SAC)
 ------------------------
-`[original paper] <https://arxiv.org/pdf/1801.01290>`__, `[follow up paper] <https://arxiv.org/pdf/1812.05905.pdf>`__, `[discrete actions paper] <https://arxiv.org/pdf/1910.07207v2.pdf>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/sac/sac.py>`__
+`[original paper] <https://arxiv.org/pdf/1801.01290>`__,
+`[follow up paper] <https://arxiv.org/pdf/1812.05905.pdf>`__,
+`[discrete actions paper] <https://arxiv.org/pdf/1910.07207v2.pdf>`__,
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/sac/sac.py>`__.
 
-.. figure:: images/dqn-arch.svg
+.. figure:: images/algos/dqn-architecture.svg
 
     SAC architecture (same as DQN)
 
@@ -133,13 +145,6 @@ Tuned examples (continuous actions):
 Tuned examples (discrete actions):
 `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/cartpole-sac.yaml>`__
 
-**MuJoCo results @3M steps:** `more details <https://github.com/ray-project/rl-experiments>`__
-
-=============  ==========  ===================
-MuJoCo env     RLlib SAC   Haarnoja et al SAC
-=============  ==========  ===================
-HalfCheetah    13000       ~15000
-=============  ==========  ===================
 
 **SAC-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
@@ -150,7 +155,39 @@ HalfCheetah    13000       ~15000
 High-Throughput On- and Off-Policy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. _impala:
+
+Importance Weighted Actor-Learner Architecture (IMPALA)
+-------------------------------------------------------
+`[paper] <https://arxiv.org/abs/1802.01561>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/impala/impala.py>`__
+
+In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__. Note that we don't provide a deep residual network out of the box, but one can be plugged in as a `custom model <rllib-models.html#custom-models-tensorflow>`__. Multiple learner GPUs and experience replay are also supported.
+
+.. figure:: images/algos/impala-architecture.svg
+    :width: 650
+
+    IMPALA architecture
+
+Tuned examples:
+`PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala.yaml>`__,
+`vectorized configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala-vectorized.yaml>`__,
+`multi-gpu configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala-fast.yaml>`__,
+`{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/atari-impala.yaml>`__.
+
+.. figure:: images/impala.png
+    :width: 650
+
+   Multi-GPU IMPALA scales up to solve PongNoFrameskip-v4 in ~3 minutes using a pair of V100 GPUs and 128 CPU workers.
+   The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
+
+**IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.impala.impala.ImpalaConfig
+   :members: training
+
 .. _appo:
+
 
 Asynchronous Proximal Policy Optimization (APPO)
 ------------------------------------------------
@@ -162,7 +199,8 @@ We include an asynchronous variant of Proximal Policy Optimization (PPO) based o
 
     APPO isn't always more efficient; it's often better to use :ref:`standard PPO <ppo>` or :ref:`IMPALA <impala>`.
 
-.. figure:: images/impala-arch.svg
+.. figure:: images/algos/impala-architecture.svg
+    :width: 650
 
     APPO architecture (same as IMPALA)
 
@@ -171,53 +209,6 @@ Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/mas
 **APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. autoclass:: ray.rllib.algorithms.appo.appo.APPOConfig
-   :members: training
-
-
-.. _impala:
-
-Importance Weighted Actor-Learner Architecture (IMPALA)
--------------------------------------------------------
-`[paper] <https://arxiv.org/abs/1802.01561>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/impala/impala.py>`__
-In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__. Note that we don't provide a deep residual network out of the box, but one can be plugged in as a `custom model <rllib-models.html#custom-models-tensorflow>`__. Multiple learner GPUs and experience replay are also supported.
-
-.. figure:: images/impala-arch.svg
-
-    IMPALA architecture
-
-Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala.yaml>`__, `vectorized configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala-vectorized.yaml>`__, `multi-gpu configuration <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala-fast.yaml>`__, `{BeamRider,Breakout,Qbert,SpaceInvaders}NoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/atari-impala.yaml>`__
-
-**Atari results @10M steps**: `more details <https://github.com/ray-project/rl-experiments>`__
-
-=============  ==================================  ====================================
- Atari env     RLlib IMPALA 32-workers             Mnih et al A3C 16-workers
-=============  ==================================  ====================================
-BeamRider      2071                                ~3000
-Breakout       385                                 ~150
-Qbert          4068                                ~1000
-SpaceInvaders  719                                 ~600
-=============  ==================================  ====================================
-
-**Scalability:**
-
-=============  ===============================  =================================
- Atari env     RLlib IMPALA 32-workers @1 hour  Mnih et al A3C 16-workers @1 hour
-=============  ===============================  =================================
-BeamRider      3181                             ~1000
-Breakout       538                              ~10
-Qbert          10850                            ~500
-SpaceInvaders  843                              ~300
-=============  ===============================  =================================
-
-.. figure:: images/impala.png
-
-   Multi-GPU IMPALA scales up to solve PongNoFrameskip-v4 in ~3 minutes using a pair of V100 GPUs and 128 CPU workers.
-   The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
-
-**IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. autoclass:: ray.rllib.algorithms.impala.impala.ImpalaConfig
    :members: training
 
 
@@ -295,28 +286,6 @@ Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rll
 .. autoclass:: ray.rllib.algorithms.bc.bc.BCConfig
    :members: training
 
-
-.. _cql:
-
-Conservative Q-Learning (CQL)
------------------------------
-`[paper] <https://arxiv.org/abs/2006.04779>`__ `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/cql/cql.py>`__
-
-In offline RL, the algorithm has no access to an environment, but can only sample from a fixed dataset of pre-collected state-action-reward tuples.
-In particular, CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values outside the dataset distribution via
-conservative critic estimates. It does so by adding a simple Q regularizer loss to the standard Bellman update loss.
-This ensures that the critic does not output overly-optimistic Q-values. This conservative
-correction term can be added on top of any off-policy Q-learning algorithm (here, we provide this for SAC).
-
-RLlib's CQL is evaluated against the Behavior Cloning (BC) benchmark at 500K gradient steps over the dataset. The only difference between the BC- and CQL configs is the ``bc_iters`` parameter in CQL, indicating how many gradient steps we perform over the BC loss. CQL is evaluated on the `D4RL <https://github.com/rail-berkeley/d4rl>`__ benchmark, which has pre-collected offline datasets for many types of environments.
-
-Tuned examples: `HalfCheetah Random <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/halfcheetah-cql.yaml>`__, `Hopper Random <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/hopper-cql.yaml>`__
-
-**CQL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
-   :members: training
-
 .. _marwil:
 
 Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
@@ -334,3 +303,29 @@ Tuned examples: `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rll
 
 .. autoclass:: ray.rllib.algorithms.marwil.marwil.MARWILConfig
    :members: training
+
+
+
+.. |single_agent| image:: images/sigils/single-agent.svg
+    :class: inline-figure
+    :width: 84
+
+.. |multi_agent| image:: images/sigils/multi-agent.svg
+    :class: inline-figure
+    :width: 84
+
+.. |multi_gpu| image:: images/sigils/multi-gpu.svg
+    :class: inline-figure
+    :width: 84
+
+.. |multi_node_multi_gpu| image:: images/sigils/multi-node-multi-gpu.svg
+    :class: inline-figure
+    :width: 84
+
+.. |discr_actions| image:: images/sigils/discr-actions.svg
+    :class: inline-figure
+    :width: 84
+
+.. |cont_actions| image:: images/sigils/cont-actions.svg
+    :class: inline-figure
+    :width: 84
