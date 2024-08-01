@@ -398,18 +398,18 @@ TEST(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   lease_policy->is_locality_aware = true;
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -450,18 +450,18 @@ TEST(NormalTaskSubmitterTest, TestSubmitOneTask) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
 
   TaskSpecification task = BuildEmptyTaskSpec();
 
@@ -502,18 +502,18 @@ TEST(NormalTaskSubmitterTest, TestRetryTaskApplicationLevelError) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
   task.GetMutableMessage().set_retry_exceptions(true);
 
@@ -559,18 +559,18 @@ TEST(NormalTaskSubmitterTest, TestHandleTaskFailure) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -602,18 +602,18 @@ TEST(NormalTaskSubmitterTest, TestHandleUnschedulableTask) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kTwoRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -672,18 +672,18 @@ TEST(NormalTaskSubmitterTest, TestHandleRuntimeEnvSetupFailed) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kTwoRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -742,18 +742,18 @@ TEST(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletDied) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kTwoRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -771,18 +771,18 @@ TEST(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::DRIVER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kTwoRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::DRIVER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kTwoRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -828,18 +828,18 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<StaticLeaseRequestRateLimiter>(concurrency);
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          rateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                rateLimiter);
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -906,18 +906,18 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamic) {
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          rateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                rateLimiter);
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -1013,18 +1013,18 @@ TEST(NormalTaskSubmitterTest, TestConcurrentWorkerLeasesDynamicWithSpillback) {
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<DynamicRateLimiter>(1);
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          lease_client_factory,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          rateLimiter);
+                                raylet_client,
+                                client_pool,
+                                lease_client_factory,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                rateLimiter);
 
   std::vector<TaskSpecification> tasks;
   for (int i = 0; i < 2 * concurrency; i++) {
@@ -1117,18 +1117,18 @@ TEST(NormalTaskSubmitterTest, TestSubmitMultipleTasks) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -1189,18 +1189,18 @@ TEST(NormalTaskSubmitterTest, TestReuseWorkerLease) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -1262,18 +1262,18 @@ TEST(NormalTaskSubmitterTest, TestRetryLeaseCancellation) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1330,18 +1330,18 @@ TEST(NormalTaskSubmitterTest, TestConcurrentCancellationAndSubmission) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1395,18 +1395,18 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReusedOnError) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
 
@@ -1451,18 +1451,18 @@ TEST(NormalTaskSubmitterTest, TestWorkerNotReturnedOnExit) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
@@ -1507,18 +1507,18 @@ TEST(NormalTaskSubmitterTest, TestSpillback) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          lease_client_factory,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                lease_client_factory,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1581,18 +1581,18 @@ TEST(NormalTaskSubmitterTest, TestSpillbackRoundTrip) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>(local_raylet_id);
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          lease_client_factory,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          local_raylet_id,
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                lease_client_factory,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                local_raylet_id,
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -1659,18 +1659,18 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
 
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
@@ -1812,18 +1812,18 @@ TEST(NormalTaskSubmitterTest, TestBacklogReport) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
 
@@ -1881,18 +1881,18 @@ TEST(NormalTaskSubmitterTest, TestWorkerLeaseTimeout) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          /*lease_timeout_ms=*/5,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                /*lease_timeout_ms=*/5,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
   TaskSpecification task3 = BuildEmptyTaskSpec();
@@ -1948,18 +1948,18 @@ TEST(NormalTaskSubmitterTest, TestKillExecutingTask) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -2010,18 +2010,18 @@ TEST(NormalTaskSubmitterTest, TestKillPendingTask) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
 
   ASSERT_TRUE(submitter.SubmitTask(task).ok());
@@ -2055,18 +2055,18 @@ TEST(NormalTaskSubmitterTest, TestKillResolvingTask) {
   auto actor_creator = std::make_shared<MockActorCreator>();
   auto lease_policy = std::make_shared<MockLeasePolicy>();
   NormalTaskSubmitter submitter(address,
-                                          raylet_client,
-                                          client_pool,
-                                          nullptr,
-                                          lease_policy,
-                                          store,
-                                          task_finisher,
-                                          NodeID::Nil(),
-                                          WorkerType::WORKER,
-                                          kLongTimeout,
-                                          actor_creator,
-                                          JobID::Nil(),
-                                          kOneRateLimiter);
+                                raylet_client,
+                                client_pool,
+                                nullptr,
+                                lease_policy,
+                                store,
+                                task_finisher,
+                                NodeID::Nil(),
+                                WorkerType::WORKER,
+                                kLongTimeout,
+                                actor_creator,
+                                JobID::Nil(),
+                                kOneRateLimiter);
   TaskSpecification task = BuildEmptyTaskSpec();
   ObjectID obj1 = ObjectID::FromRandom();
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj1.Binary());

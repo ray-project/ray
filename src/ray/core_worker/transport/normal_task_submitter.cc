@@ -161,10 +161,10 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
 }
 
 void NormalTaskSubmitter::ReturnWorker(const rpc::Address addr,
-                                                 bool was_error,
-                                                 const std::string &error_detail,
-                                                 bool worker_exiting,
-                                                 const SchedulingKey &scheduling_key) {
+                                       bool was_error,
+                                       const std::string &error_detail,
+                                       bool worker_exiting,
+                                       const SchedulingKey &scheduling_key) {
   RAY_LOG(DEBUG) << "Returning worker " << WorkerID::FromBinary(addr.worker_id())
                  << " to raylet " << NodeID::FromBinary(addr.raylet_id());
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
@@ -247,8 +247,7 @@ void NormalTaskSubmitter::OnWorkerIdle(
   RequestNewWorkerIfNeeded(scheduling_key);
 }
 
-void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(
-    const SchedulingKey &scheduling_key) {
+void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &task_queue = scheduling_key_entry.task_queue;
   if (!task_queue.empty()) {
@@ -283,8 +282,7 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(
   }
 }
 
-std::shared_ptr<WorkerLeaseInterface>
-NormalTaskSubmitter::GetOrConnectLeaseClient(
+std::shared_ptr<WorkerLeaseInterface> NormalTaskSubmitter::GetOrConnectLeaseClient(
     const rpc::Address *raylet_address) {
   std::shared_ptr<WorkerLeaseInterface> lease_client;
   RAY_CHECK(raylet_address != nullptr);
@@ -350,8 +348,8 @@ void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
   }
 }
 
-void NormalTaskSubmitter::RequestNewWorkerIfNeeded(
-    const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
+void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduling_key,
+                                                   const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
   const size_t kMaxPendingLeaseRequestsPerSchedulingCategory =
@@ -753,8 +751,8 @@ void NormalTaskSubmitter::HandleGetTaskFailureCause(
 }
 
 Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
-                                                 bool force_kill,
-                                                 bool recursive) {
+                                       bool force_kill,
+                                       bool recursive) {
   RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
                 << " force_kill: " << force_kill << " recursive: " << recursive;
   const SchedulingKey scheduling_key(
@@ -860,9 +858,9 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
 }
 
 Status NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
-                                                       const rpc::Address &worker_addr,
-                                                       bool force_kill,
-                                                       bool recursive) {
+                                             const rpc::Address &worker_addr,
+                                             bool force_kill,
+                                             bool recursive) {
   auto client = client_cache_->GetOrConnect(worker_addr);
   auto request = rpc::RemoteCancelTaskRequest();
   request.set_force_kill(force_kill);
