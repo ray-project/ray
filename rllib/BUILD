@@ -496,7 +496,7 @@ py_test(
     main = "tuned_examples/marwil/cartpole_marwil.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "medium",
-    srcs = ["tuned_examples/bc/cartpole_marwil.py"],
+    srcs = ["tuned_examples/marwil/cartpole_marwil.py"],
     # Include the zipped json data file as well.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
