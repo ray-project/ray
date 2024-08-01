@@ -72,6 +72,7 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
+parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--upgrade-task-threshold",
     type=float,
@@ -212,16 +213,16 @@ if __name__ == "__main__":
                 **ENV_OPTIONS,
             },
         )
-        .training(
-            num_sgd_iter=6,
-            vf_loss_coeff=0.01,
-            lr=0.0002,
-            model={"vf_share_layers": True},
-        )
         .env_runners(
             num_envs_per_env_runner=5,
             env_to_module_connector=lambda env: FlattenObservations(),
         )
+        .training(
+            num_sgd_iter=6,
+            vf_loss_coeff=0.01,
+            lr=0.0002,
+        )
+        .rl_module(model_config_dict={"vf_share_layers": True})
     )
 
     stop = {

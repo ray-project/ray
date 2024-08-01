@@ -2653,6 +2653,10 @@ class Dataset:
             The in-memory size of the dataset in bytes, or None if the
             in-memory size is not known.
         """
+        # If the size is known from metadata, return it.
+        if self._logical_plan.dag.aggregate_output_metadata().size_bytes is not None:
+            return self._logical_plan.dag.aggregate_output_metadata().size_bytes
+
         metadata = self._plan.execute().metadata
         if not metadata or metadata[0].size_bytes is None:
             return None

@@ -58,8 +58,8 @@ class BatchIndividualItems(ConnectorV2):
                 # connector piece is called.
                 if not self._multi_agent:
                     continue
-                # If MA Off-Policy and independent sampling we need to overcome
-                # this check.
+                # If MA Off-Policy and independent sampling we need to overcome this
+                # check.
                 module_data = column_data
                 for col, col_data in module_data.copy().items():
                     if isinstance(col_data, list) and col != Columns.INFOS:
