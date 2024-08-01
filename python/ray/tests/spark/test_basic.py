@@ -1,5 +1,6 @@
 import os
 import shutil
+import signal
 import tempfile
 import socket
 import threading
@@ -506,6 +507,33 @@ class TestSparkLocalCluster:
         assert config["idle_timeout_minutes"] == 3.0
         assert config["provider"]["extra_aa"] == "abc"
         assert config["provider"]["extra_bb"] == 789
+
+    def test_sigint_signal(self):
+        local_addr, remote_addr = setup_ray_cluster(
+            max_worker_nodes=1,
+            head_node_options={"include_dashboard": False},
+            collect_log_to_path="/tmp/ray_log_collect",
+        )
+
+        ray.init(address=local_addr)
+
+        # send a SIGINT signal to current process group,
+        # then test the Ray node is not killed by the SIGINT signal.
+        os.killpg(os.getpgid(0), signal.SIGINT)
+
+        time.sleep(1)
+
+        @ray.remote
+        def f(x):
+            return x * x
+
+        futures = [f.remote(i) for i in range(32)]
+        results = ray.get(futures)
+        assert results == [i * i for i in range(32)]
+
+        ray.shutdown()
+
+        shutdown_ray_cluster()
 
 
 if __name__ == "__main__":
