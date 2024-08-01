@@ -115,7 +115,7 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
 
     import ray
     from ray.rllib.algorithms.ppo import PPOConfig
-    from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
     from ray.rllib.core.learner.learner_group import LearnerGroup
 
 
@@ -395,7 +395,6 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
     from ray.rllib.core.learner.torch.torch_learner import TorchLearner
     from ray.rllib.policy.sample_batch import SampleBatch
     from ray.rllib.utils.annotations import override
-    from ray.rllib.utils.nested_dict import NestedDict
     from ray.rllib.utils.numpy import convert_to_numpy
     from ray.rllib.utils.typing import ModuleID, TensorType
 
@@ -409,7 +408,7 @@ A :py:class:`~ray.rllib.core.learner.learner.Learner` that implements behavior c
             *,
             module_id: ModuleID,
             config: AlgorithmConfig = None,
-            batch: NestedDict,
+            batch: Dict[str, Any],
             fwd_out: Dict[str, TensorType],
         ) -> TensorType:
 

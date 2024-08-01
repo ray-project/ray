@@ -6,9 +6,9 @@ import gymnasium as gym
 import tree  # pip install dm_tree
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.marl_module import (
-        MultiAgentRLModule,
-        MultiAgentRLModuleSpec,
+    from ray.rllib.core.rl_module.multi_rl_module import (
+        MultiRLModule,
+        MultiRLModuleSpec,
     )
     from ray.rllib.core.models.catalog import Catalog
 
@@ -32,7 +32,6 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
@@ -46,7 +45,7 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 @dataclass
-class SingleAgentRLModuleSpec:
+class RLModuleSpec:
     """Utility spec class to make constructing RLModules (in single-agent case) easier.
 
     Args:
@@ -97,15 +96,13 @@ class SingleAgentRLModuleSpec:
         return module
 
     @classmethod
-    def from_module(cls, module: "RLModule") -> "SingleAgentRLModuleSpec":
-        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+    def from_module(cls, module: "RLModule") -> "RLModuleSpec":
+        from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 
-        if isinstance(module, MultiAgentRLModule):
-            raise ValueError(
-                "MultiAgentRLModule cannot be converted to SingleAgentRLModuleSpec."
-            )
+        if isinstance(module, MultiRLModule):
+            raise ValueError("MultiRLModule cannot be converted to RLModuleSpec.")
 
-        return SingleAgentRLModuleSpec(
+        return RLModuleSpec(
             module_class=type(module),
             observation_space=module.config.observation_space,
             action_space=module.config.action_space,
@@ -128,7 +125,7 @@ class SingleAgentRLModuleSpec:
         module_class = deserialize_type(d["module_class"])
         module_config = RLModuleConfig.from_dict(d["module_config"])
 
-        spec = SingleAgentRLModuleSpec(
+        spec = RLModuleSpec(
             module_class=module_class,
             observation_space=module_config.observation_space,
             action_space=module_config.action_space,
@@ -146,8 +143,8 @@ class SingleAgentRLModuleSpec:
             override: Whether to update all properties in `self` with those of `other.
                 If False, only update those properties in `self` that are not None.
         """
-        if not isinstance(other, SingleAgentRLModuleSpec):
-            raise ValueError("Can only update with another SingleAgentRLModuleSpec.")
+        if not isinstance(other, RLModuleSpec):
+            raise ValueError("Can only update with another RLModuleSpec.")
 
         # If the field is None in the other, keep the current field, otherwise update
         # with the new value.
@@ -168,14 +165,18 @@ class SingleAgentRLModuleSpec:
             self.catalog_class = self.catalog_class or other.catalog_class
             self.load_state_path = self.load_state_path or other.load_state_path
 
-    def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
-        """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_MODULE_ID key)."""
-        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+    def as_multi_rl_module_spec(self) -> "MultiRLModuleSpec":
+        """Returns a MultiRLModuleSpec (`self` under DEFAULT_MODULE_ID key)."""
+        from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
-        return MultiAgentRLModuleSpec(
+        return MultiRLModuleSpec(
             module_specs={DEFAULT_MODULE_ID: self},
             load_state_path=self.load_state_path,
         )
+
+    @Deprecated(new="RLModuleSpec.as_multi_rl_module_spec()", error=True)
+    def as_multi_agent(self, *args, **kwargs):
+        pass
 
 
 @ExperimentalAPI
@@ -266,7 +267,7 @@ class RLModule(Checkpointable, abc.ABC):
         env = gym.make("CartPole-v1")
 
         # Create a single agent RL module spec.
-        module_spec = SingleAgentRLModuleSpec(
+        module_spec = RLModuleSpec(
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
@@ -303,7 +304,7 @@ class RLModule(Checkpointable, abc.ABC):
         env = gym.make("CartPole-v1")
 
         # Create a single agent RL module spec.
-        module_spec = SingleAgentRLModuleSpec(
+        module_spec = RLModuleSpec(
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
@@ -331,7 +332,7 @@ class RLModule(Checkpointable, abc.ABC):
         env = gym.make("CartPole-v1")
 
         # Create a single agent RL module spec.
-        module_spec = SingleAgentRLModuleSpec(
+        module_spec = RLModuleSpec(
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
@@ -632,7 +633,7 @@ class RLModule(Checkpointable, abc.ABC):
         return self._forward_inference(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_inference(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Forward-pass during evaluation. See forward_inference for details."""
 
     @check_input_specs("_input_specs_exploration")
@@ -655,7 +656,7 @@ class RLModule(Checkpointable, abc.ABC):
         return self._forward_exploration(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Forward-pass during exploration. See forward_exploration for details."""
 
     @check_input_specs("_input_specs_train")
@@ -682,7 +683,7 @@ class RLModule(Checkpointable, abc.ABC):
         return self._forward_train(batch, **kwargs)
 
     @abc.abstractmethod
-    def _forward_train(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Forward-pass during training. See forward_train for details."""
 
     @OverrideToImplementCustomLogic
@@ -727,13 +728,13 @@ class RLModule(Checkpointable, abc.ABC):
             {},  # **kwargs
         )
 
-    def as_multi_agent(self) -> "MultiAgentRLModule":
+    def as_multi_rl_module(self) -> "MultiRLModule":
         """Returns a multi-agent wrapper around this module."""
-        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+        from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 
-        marl_module = MultiAgentRLModule()
-        marl_module.add_module(DEFAULT_MODULE_ID, self)
-        return marl_module
+        multi_rl_module = MultiRLModule()
+        multi_rl_module.add_module(DEFAULT_MODULE_ID, self)
+        return multi_rl_module
 
     def unwrapped(self) -> "RLModule":
         """Returns the underlying module if this module is a wrapper.
@@ -745,6 +746,10 @@ class RLModule(Checkpointable, abc.ABC):
             The underlying module.
         """
         return self
+
+    @Deprecated(new="RLModule.as_multi_rl_module()", error=True)
+    def as_multi_agent(self, *args, **kwargs):
+        pass
 
     @Deprecated(new="RLModule.save_to_path(...)", error=True)
     def save_state(self, *args, **kwargs):

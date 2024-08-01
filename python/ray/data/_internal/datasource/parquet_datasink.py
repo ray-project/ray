@@ -81,7 +81,7 @@ class ParquetDatasink(_FileDatasink):
         call_with_retry(
             write_blocks_to_path,
             description=f"write '{write_path}'",
-            match=DataContext.get_current().write_file_retry_on_errors,
+            match=DataContext.get_current().retried_io_errors,
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )

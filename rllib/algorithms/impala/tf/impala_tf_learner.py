@@ -11,7 +11,6 @@ from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
@@ -26,7 +25,7 @@ class IMPALATfLearner(IMPALALearner, TfLearner):
         *,
         module_id: ModuleID,
         config: IMPALAConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
