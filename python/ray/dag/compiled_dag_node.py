@@ -42,6 +42,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from enum import Enum
 
 
+@DeveloperAPI
 class DAGNodeOperationType(Enum):
     """
     There are three types of operations that a DAG node can perform:
@@ -55,6 +56,7 @@ class DAGNodeOperationType(Enum):
     WRITE = "WRITE"
 
 
+@DeveloperAPI
 class DAGNodeOperation:
     def __init__(
         self,
