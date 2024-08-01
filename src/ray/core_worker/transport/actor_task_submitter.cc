@@ -25,11 +25,10 @@ using namespace ray::gcs;
 namespace ray {
 namespace core {
 
-void ActorTaskSubmitter::AddActorQueueIfNotExists(
-    const ActorID &actor_id,
-    int32_t max_pending_calls,
-    bool execute_out_of_order,
-    bool fail_if_actor_unreachable) {
+void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
+                                                  int32_t max_pending_calls,
+                                                  bool execute_out_of_order,
+                                                  bool fail_if_actor_unreachable) {
   absl::MutexLock lock(&mu_);
   // No need to check whether the insert was successful, since it is possible
   // for this worker to have multiple references to the same actor.
@@ -42,8 +41,8 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(
 }
 
 void ActorTaskSubmitter::KillActor(const ActorID &actor_id,
-                                                   bool force_kill,
-                                                   bool no_restart) {
+                                   bool force_kill,
+                                   bool no_restart) {
   absl::MutexLock lock(&mu_);
   rpc::KillActorRequest request;
   request.set_intended_actor_id(actor_id.Binary());
@@ -184,8 +183,8 @@ void ActorTaskSubmitter::FailInflightTasks(
 }
 
 void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
-                                                      const rpc::Address &address,
-                                                      int64_t num_restarts) {
+                                      const rpc::Address &address,
+                                      int64_t num_restarts) {
   RAY_LOG(DEBUG).WithField(actor_id).WithField(WorkerID::FromBinary(address.worker_id()))
       << "Connecting to actor";
 
@@ -241,11 +240,10 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   FailInflightTasks(inflight_task_callbacks);
 }
 
-void ActorTaskSubmitter::DisconnectActor(
-    const ActorID &actor_id,
-    int64_t num_restarts,
-    bool dead,
-    const rpc::ActorDeathCause &death_cause) {
+void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
+                                         int64_t num_restarts,
+                                         bool dead,
+                                         const rpc::ActorDeathCause &death_cause) {
   RAY_LOG(DEBUG).WithField(actor_id) << "Disconnecting from actor, death context type="
                                      << GetActorDeathCauseString(death_cause);
 
@@ -334,8 +332,7 @@ void ActorTaskSubmitter::DisconnectActor(
   FailInflightTasks(inflight_task_callbacks);
 }
 
-void ActorTaskSubmitter::FailTaskWithError(
-    const PendingTaskWaitingForDeathInfo &task) {
+void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo &task) {
   rpc::RayErrorInfo error_info;
   if (!task.actor_preempted) {
     error_info = task.timeout_error_info;
@@ -433,8 +430,7 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   }
 }
 
-void ActorTaskSubmitter::ResendOutOfOrderCompletedTasks(
-    const ActorID &actor_id) {
+void ActorTaskSubmitter::ResendOutOfOrderCompletedTasks(const ActorID &actor_id) {
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
   if (!it->second.rpc_client) {
@@ -455,8 +451,8 @@ void ActorTaskSubmitter::ResendOutOfOrderCompletedTasks(
 }
 
 void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
-                                                       const TaskSpecification &task_spec,
-                                                       bool skip_queue) {
+                                       const TaskSpecification &task_spec,
+                                       bool skip_queue) {
   const auto task_id = task_spec.TaskId();
 
   auto request = std::make_unique<rpc::PushTaskRequest>();
@@ -513,11 +509,10 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
 }
 
-void ActorTaskSubmitter::HandlePushTaskReply(
-    const Status &status,
-    const rpc::PushTaskReply &reply,
-    const rpc::Address &addr,
-    const TaskSpecification &task_spec) {
+void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
+                                             const rpc::PushTaskReply &reply,
+                                             const rpc::Address &addr,
+                                             const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
@@ -670,8 +665,7 @@ bool ActorTaskSubmitter::PendingTasksFull(const ActorID &actor_id) const {
          it->second.cur_pending_calls >= it->second.max_pending_calls;
 }
 
-size_t ActorTaskSubmitter::NumPendingTasks(
-    const ActorID &actor_id) const {
+size_t ActorTaskSubmitter::NumPendingTasks(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
@@ -683,8 +677,7 @@ bool ActorTaskSubmitter::CheckActorExists(const ActorID &actor_id) const {
   return client_queues_.find(actor_id) != client_queues_.end();
 }
 
-std::string ActorTaskSubmitter::DebugString(
-    const ActorID &actor_id) const {
+std::string ActorTaskSubmitter::DebugString(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);
   RAY_CHECK(it != client_queues_.end());
@@ -695,8 +688,8 @@ std::string ActorTaskSubmitter::DebugString(
 }
 
 void ActorTaskSubmitter::RetryCancelTask(TaskSpecification task_spec,
-                                                         bool recursive,
-                                                         int64_t milliseconds) {
+                                         bool recursive,
+                                         int64_t milliseconds) {
   RAY_LOG(DEBUG).WithField(task_spec.TaskId())
       << "Task cancelation will be retried in " << milliseconds << " ms";
   execute_after(
@@ -707,8 +700,7 @@ void ActorTaskSubmitter::RetryCancelTask(TaskSpecification task_spec,
       std::chrono::milliseconds(milliseconds));
 }
 
-Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec,
-                                                      bool recursive) {
+Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive) {
   // We don't support force_kill = true for actor tasks.
   bool force_kill = false;
   RAY_LOG(INFO).WithField(task_spec.TaskId()).WithField(task_spec.ActorId())

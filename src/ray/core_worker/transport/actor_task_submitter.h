@@ -71,16 +71,14 @@ class ActorTaskSubmitterInterface {
 };
 
 // This class is thread-safe.
-class ActorTaskSubmitter
-    : public ActorTaskSubmitterInterface {
+class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
  public:
-  ActorTaskSubmitter(
-      rpc::CoreWorkerClientPool &core_worker_client_pool,
-      CoreWorkerMemoryStore &store,
-      TaskFinisherInterface &task_finisher,
-      ActorCreatorInterface &actor_creator,
-      std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
-      instrumented_io_context &io_service)
+  ActorTaskSubmitter(rpc::CoreWorkerClientPool &core_worker_client_pool,
+                     CoreWorkerMemoryStore &store,
+                     TaskFinisherInterface &task_finisher,
+                     ActorCreatorInterface &actor_creator,
+                     std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
+                     instrumented_io_context &io_service)
       : core_worker_client_pool_(core_worker_client_pool),
         resolver_(store, task_finisher, actor_creator),
         task_finisher_(task_finisher),

@@ -31,10 +31,9 @@ namespace core {
 /// by raylet.
 class ActorManager {
  public:
-  explicit ActorManager(
-      std::shared_ptr<gcs::GcsClient> gcs_client,
-      std::shared_ptr<ActorTaskSubmitterInterface> actor_task_submitter,
-      std::shared_ptr<ReferenceCounterInterface> reference_counter)
+  explicit ActorManager(std::shared_ptr<gcs::GcsClient> gcs_client,
+                        std::shared_ptr<ActorTaskSubmitterInterface> actor_task_submitter,
+                        std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : gcs_client_(gcs_client),
         actor_task_submitter_(actor_task_submitter),
         reference_counter_(reference_counter) {}
