@@ -488,8 +488,8 @@ class DreamerV3EnvRunner(EnvRunner):
         return {
             "__env__": (self.env.observation_space, self.env.action_space),
             DEFAULT_MODULE_ID: (
-                self.module.config.observation_space,
-                self.module.config.action_space,
+                self.env.single_observation_space,
+                self.env.single_action_space,
             ),
         }
 
