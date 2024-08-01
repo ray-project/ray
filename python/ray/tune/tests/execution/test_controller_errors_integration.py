@@ -15,7 +15,8 @@ from ray.tune.registry import TRAINABLE_CLASS, _global_registry
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.tests.execution.utils import BudgetResourceManager
-from ray.tune.utils.mock_trainable import MyTrainableClass
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
+
 
 STORAGE = mock_storage_context()
 
@@ -25,6 +26,11 @@ def ray_start_4_cpus_2_gpus_extra():
     address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
     yield address_info
     ray.shutdown()
+
+
+@pytest.fixture(autouse=True)
+def register_trainable():
+    register_mock_trainable()
 
 
 def create_mock_components():
@@ -63,9 +69,10 @@ def test_invalid_trainable(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
         "stopping_criterion": {"training_iteration": 1},
         "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         "storage": STORAGE,
+        "config": {"sleep": 0.5},
     }
     _global_registry.register(TRAINABLE_CLASS, "asdf", None)
-    trials = [Trial("asdf", **kwargs), Trial(MyTrainableClass, **kwargs)]
+    trials = [Trial("asdf", **kwargs), Trial(MOCK_TRAINABLE_NAME, **kwargs)]
     for t in trials:
         runner.add_trial(t)
 
@@ -122,7 +129,7 @@ def test_failure_recovery(
         "config": {"mock_error": True, "persistent_error": persistent_error},
         "storage": STORAGE,
     }
-    runner.add_trial(Trial(MyTrainableClass, **kwargs))
+    runner.add_trial(Trial(MOCK_TRAINABLE_NAME, **kwargs))
     trials = runner.get_trials()
 
     while not runner.is_finished():
@@ -177,8 +184,8 @@ def test_fail_fast(ray_start_4_cpus_2_gpus_extra, resource_manager_cls, fail_fas
         },
         "storage": STORAGE,
     }
-    runner.add_trial(Trial(MyTrainableClass, **kwargs))
-    runner.add_trial(Trial(MyTrainableClass, **kwargs))
+    runner.add_trial(Trial(MOCK_TRAINABLE_NAME, **kwargs))
+    runner.add_trial(Trial(MOCK_TRAINABLE_NAME, **kwargs))
     trials = runner.get_trials()
 
     if fail_fast == TuneController.RAISE:
