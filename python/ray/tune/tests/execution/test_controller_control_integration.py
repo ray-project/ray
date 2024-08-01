@@ -1,5 +1,4 @@
 import sys
-import time
 from collections import Counter
 
 import pytest
