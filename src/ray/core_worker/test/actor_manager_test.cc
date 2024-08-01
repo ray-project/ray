@@ -92,9 +92,9 @@ class MockGcsClient : public gcs::GcsClient {
   }
 };
 
-class MockDirectActorSubmitter : public ActorTaskSubmitterInterface {
+class MockActorTaskSubmitter : public ActorTaskSubmitterInterface {
  public:
-  MockDirectActorSubmitter() : ActorTaskSubmitterInterface() {}
+  MockActorTaskSubmitter() : ActorTaskSubmitterInterface() {}
   void AddActorQueueIfNotExists(const ActorID &actor_id,
                                 int32_t max_pending_calls,
                                 bool execute_out_of_order = false,
@@ -123,7 +123,7 @@ class MockDirectActorSubmitter : public ActorTaskSubmitterInterface {
 
   MOCK_METHOD(void, SetPreempted, (const ActorID &actor_id), (override));
 
-  virtual ~MockDirectActorSubmitter() {}
+  virtual ~MockActorTaskSubmitter() {}
 };
 
 class MockReferenceCounter : public ReferenceCounterInterface {
@@ -166,7 +166,7 @@ class ActorManagerTest : public ::testing::Test {
                  /*fetch_cluster_id_if_nil=*/false),
         gcs_client_mock_(new MockGcsClient(options_)),
         actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
-        actor_task_submitter_(new MockDirectActorSubmitter()),
+        actor_task_submitter_(new MockActorTaskSubmitter()),
         reference_counter_(new MockReferenceCounter()) {
     gcs_client_mock_->Init(actor_info_accessor_);
   }
@@ -216,7 +216,7 @@ class ActorManagerTest : public ::testing::Test {
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
   MockActorInfoAccessor *actor_info_accessor_;
-  std::shared_ptr<MockDirectActorSubmitter> actor_task_submitter_;
+  std::shared_ptr<MockActorTaskSubmitter> actor_task_submitter_;
   std::shared_ptr<MockReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;
 };
