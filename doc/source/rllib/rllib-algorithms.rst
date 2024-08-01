@@ -86,7 +86,7 @@ Deep Q Networks (DQN, Rainbow, Parametric DQN)
 `[paper] <https://arxiv.org/abs/1312.5602>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__
 
-.. figure:: images/algos/dqn-architecture.svg
+.. figure:: images/algos/dqn-sac-architecture.svg
     :width: 650
 
     **DQN architecture:** DQN uses a replay buffer to temporarily store episode samples collected from the environment(s).
@@ -132,17 +132,22 @@ Soft Actor Critic (SAC)
 `[discrete actions paper] <https://arxiv.org/pdf/1910.07207v2.pdf>`__,
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/sac/sac.py>`__.
 
-.. figure:: images/algos/dqn-architecture.svg
+.. figure:: images/algos/dqn-sac-architecture.svg
+    :width: 750
 
-    SAC architecture (same as DQN)
+    **SAC architecture:** SAC uses a replay buffer to temporarily store episode samples collected from the environment(s).
+    Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
+    for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
+    This reuse of training data makes DQN very sample-efficient and off-policy.
+    SAC scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learner
+    workers for updating the model(s).
 
-RLlib's soft-actor critic implementation is ported from the `official SAC repo <https://github.com/rail-berkeley/softlearning>`__ to better integrate with RLlib APIs.
-Note that SAC has two fields to configure for custom models: ``policy_model_config`` and ``q_model_config``, the ``model`` field of the config is ignored.
 
-Tuned examples (continuous actions):
+**Tuned examples (continuous actions):**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/pendulum-sac.yaml>`__,
 `HalfCheetah-v3 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/halfcheetah-sac.yaml>`__,
-Tuned examples (discrete actions):
+
+**Tuned examples (discrete actions):**
 `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/sac/cartpole-sac.yaml>`__
 
 
@@ -162,12 +167,18 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
 `[paper] <https://arxiv.org/abs/1802.01561>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/impala/impala.py>`__
 
-In IMPALA, a central learner runs SGD in a tight loop while asynchronously pulling sample batches from many actor processes. RLlib's IMPALA implementation uses DeepMind's reference `V-trace code <https://github.com/deepmind/scalable_agent/blob/master/vtrace.py>`__. Note that we don't provide a deep residual network out of the box, but one can be plugged in as a `custom model <rllib-models.html#custom-models-tensorflow>`__. Multiple learner GPUs and experience replay are also supported.
+.. figure:: images/algos/impala-appo-architecture.svg
+    :width: 750
 
-.. figure:: images/algos/impala-architecture.svg
-    :width: 650
+    **IMPALA architecture:** In a training iteration, IMPALA requests samples from all EnvRunners asynchronously and the collected episode
+    samples are returned to the main algo process as ray references (rather than actual objects available on the local algo process).
+    These episode references are then passed to the Learner(s) for asynchronous updates of the model(s).
+    To account for the fact that this asynchronous design leads to some degree of off-policiness
+    on the EnvRunners (models are not always synched back to EnvRunners right after a new version of the weights is available), IMPALA uses
+    a procedure called v-trace, `described in the paper <https://arxiv.org/abs/1802.01561>`__.
+    IMPALA scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learner
+    workers for updating the model(s).
 
-    IMPALA architecture
 
 Tuned examples:
 `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/impala/pong-impala.yaml>`__,
@@ -181,30 +192,40 @@ Tuned examples:
    Multi-GPU IMPALA scales up to solve PongNoFrameskip-v4 in ~3 minutes using a pair of V100 GPUs and 128 CPU workers.
    The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
 
+
 **IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. autoclass:: ray.rllib.algorithms.impala.impala.ImpalaConfig
    :members: training
 
-.. _appo:
 
+.. _appo:
 
 Asynchronous Proximal Policy Optimization (APPO)
 ------------------------------------------------
 `[paper] <https://arxiv.org/abs/1707.06347>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/appo/appo.py>`__
-We include an asynchronous variant of Proximal Policy Optimization (PPO) based on the IMPALA architecture. This is similar to IMPALA but using a surrogate policy loss with clipping. Compared to synchronous PPO, APPO is more efficient in wall-clock time due to its use of asynchronous sampling. Using a clipped loss also allows for multiple SGD passes, and therefore the potential for better sample efficiency compared to IMPALA. V-trace can also be enabled to correct for off-policy samples.
 
 .. tip::
 
     APPO isn't always more efficient; it's often better to use :ref:`standard PPO <ppo>` or :ref:`IMPALA <impala>`.
 
-.. figure:: images/algos/impala-architecture.svg
-    :width: 650
+.. figure:: images/algos/impala-appo-architecture.svg
+    :width: 750
 
-    APPO architecture (same as IMPALA)
+    **APPO architecture:** APPO is an asynchronous variant of `Proximal Policy Optimization (PPO) <ppo>`__ based on the IMPALA architecture,
+    but using a surrogate policy loss with clipping, allowing for multiple SGD passes per collected train batch.
+    In a training iteration, APPO requests samples from all EnvRunners asynchronously and the collected episode
+    samples are returned to the main algo process as ray references (rather than actual objects available on the local algo process).
+    These episode references are then passed to the Learner(s) for asynchronous updates of the model(s).
+    To account for the fact that this asynchronous design leads to some degree of off-policiness
+    on the EnvRunners (models are not always synched back to EnvRunners right after a new version of the weights is available), APPO uses
+    a procedure called v-trace, `described in the IMPALA paper here <https://arxiv.org/abs/1802.01561>`__.
+    APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learner
+    workers for updating the model(s).
 
-Tuned examples: `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong-appo.yaml>`__
+**Tuned examples:**
+`PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong-appo.yaml>`__
 
 **APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
