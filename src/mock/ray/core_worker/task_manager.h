@@ -40,7 +40,8 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
                const Status *status,
                const rpc::RayErrorInfo *ray_error_info,
                bool mark_task_object_failed,
-               bool fail_immediately),
+               bool fail_immediately,
+               bool *update_seqno),
               (override));
   MOCK_METHOD(void,
               OnTaskDependenciesInlined,
@@ -54,7 +55,9 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               (const, override));
   MOCK_METHOD(bool,
               RetryTaskIfPossible,
-              (const TaskID &task_id, const rpc::RayErrorInfo &error_info),
+              (const TaskID &task_id,
+               const rpc::RayErrorInfo &error_info,
+               bool *update_seqno),
               (override));
   MOCK_METHOD(void, MarkDependenciesResolved, (const TaskID &task_id), (override));
   MOCK_METHOD(void,

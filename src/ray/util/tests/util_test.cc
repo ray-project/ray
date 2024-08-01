@@ -241,6 +241,12 @@ TEST(UtilTest, GetAllProcsWithPpid) {
 #endif
 }
 
+TEST(UtilTest, EndsWithTest) {
+  const auto str = "Hello, C++20!";
+  ASSERT_TRUE(EndsWith(str, "C++20!") && !EndsWith(str, "c++20!") && EndsWith(str, "!") &&
+              !EndsWith(str, "?"));
+}
+
 }  // namespace ray
 
 int main(int argc, char **argv) {

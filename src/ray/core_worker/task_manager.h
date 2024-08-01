@@ -38,7 +38,8 @@ class TaskFinisherInterface {
                                    bool is_application_error) = 0;
 
   virtual bool RetryTaskIfPossible(const TaskID &task_id,
-                                   const rpc::RayErrorInfo &error_info) = 0;
+                                   const rpc::RayErrorInfo &error_info,
+                                   bool *update_seqno = nullptr) = 0;
 
   virtual void FailPendingTask(const TaskID &task_id,
                                rpc::ErrorType error_type,
@@ -50,7 +51,8 @@ class TaskFinisherInterface {
                                       const Status *status,
                                       const rpc::RayErrorInfo *ray_error_info = nullptr,
                                       bool mark_task_object_failed = true,
-                                      bool fail_immediately = false) = 0;
+                                      bool fail_immediately = false,
+                                      bool *update_seqno = nullptr) = 0;
 
   virtual void MarkTaskWaitingForExecution(const TaskID &task_id,
                                            const NodeID &node_id,
@@ -466,7 +468,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param[in] task_id ID of the task to be retried.
   /// \return true if task is scheduled to be retried.
   bool RetryTaskIfPossible(const TaskID &task_id,
-                           const rpc::RayErrorInfo &error_info) override;
+                           const rpc::RayErrorInfo &error_info,
+                           bool *update_seqno = nullptr) override;
 
   /// A pending task failed. This will either retry the task or mark the task
   /// as failed if there are no retries left.
@@ -488,7 +491,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                               const Status *status = nullptr,
                               const rpc::RayErrorInfo *ray_error_info = nullptr,
                               bool mark_task_object_failed = true,
-                              bool fail_immediately = false) override;
+                              bool fail_immediately = false,
+                              bool *update_seqno = nullptr) override;
 
   /// A pending task failed. This will mark the task as failed.
   /// This doesn't always mark the return object as failed

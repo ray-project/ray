@@ -134,7 +134,7 @@ void ActorSchedulingQueue::ScheduleRequests() {
     auto head = pending_actor_tasks_.begin();
     RAY_LOG(ERROR) << "Cancelling stale RPC with seqno "
                    << pending_actor_tasks_.begin()->first << " < " << next_seq_no_;
-    head->second.Cancel(Status::Invalid("client cancelled stale rpc"));
+    head->second.Cancel(Status::Invalid(kActorCancelSeqnoErrorTaskMessage));
     {
       absl::MutexLock lock(&mu_);
       pending_task_id_to_is_canceled.erase(head->second.TaskID());
