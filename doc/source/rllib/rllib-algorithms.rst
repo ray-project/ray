@@ -56,7 +56,7 @@ Proximal Policy Optimization (PPO)
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo.py>`__
 
 .. figure:: images/algos/ppo-architecture.svg
-    :width: 650
+    :width: 750
 
     **PPO architecture:** In a training iteration, PPO performs three major steps: sampling a set of episodes or episode fragments (1),
     converting these into a train batch and updating the model(s) using a clipped objective and multiple SGD passes over this batch (2),
