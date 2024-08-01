@@ -19,7 +19,7 @@ from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
 from ray.train._internal.storage import StorageContext
-from ray.tune import PlacementGroupFactory, Trainable, register_trainable
+from ray.tune import PlacementGroupFactory, Trainable
 from ray.tune.experiment import Trial
 from ray.tune.experiment.trial import _TemporaryTrialState
 from ray.tune.schedulers import (
@@ -35,9 +35,7 @@ from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _explore
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search._mock import _MockSearcher
 from ray.tune.trainable.metadata import _TrainingRunMetadata
-from ray.tune.utils.mock_trainable import MyTrainableClass
-
-MOCK_TRAINABLE_NAME = "mock_trainable"
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 
 def result(t, rew):
@@ -54,7 +52,7 @@ class EarlyStoppingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
-        register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
+        register_mock_trainable()
 
     def tearDown(self):
         ray.shutdown()
@@ -314,7 +312,7 @@ class HyperbandSuite(unittest.TestCase):
     def setUp(self):
         ray.init(object_store_memory=int(1e8))
 
-        register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
+        register_mock_trainable()
 
     def tearDown(self):
         ray.shutdown()
@@ -834,7 +832,7 @@ class BOHBSuite(unittest.TestCase):
     def setUp(self):
         ray.init(object_store_memory=int(1e8))
 
-        register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
+        register_mock_trainable()
 
     def tearDown(self):
         ray.shutdown()
@@ -1060,7 +1058,7 @@ class PopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
-        register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
+        register_mock_trainable()
 
     def tearDown(self):
         ray.shutdown()
@@ -2100,7 +2098,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4)
 
-        register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
+        register_mock_trainable()
 
     def tearDown(self):
         ray.shutdown()
@@ -2215,7 +2213,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
-        register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
+        register_mock_trainable()
 
     def tearDown(self):
         ray.shutdown()

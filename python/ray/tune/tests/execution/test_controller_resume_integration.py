@@ -10,33 +10,23 @@ from ray import tune
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.train import CheckpointConfig
 from ray.train.tests.util import mock_storage_context
-from ray.tune import Experiment, PlacementGroupFactory, ResumeConfig, register_trainable
+from ray.tune import Experiment, PlacementGroupFactory, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.search import BasicVariantGenerator
-from ray.tune.utils.mock_trainable import MyTrainableClass
+from ray.tune.utils.mock_trainable import (
+    register_mock_trainable,
+    MOCK_TRAINABLE_NAME,
+    MOCK_ERROR_KEY,
+)
 
 STORAGE = mock_storage_context()
-MOCK_TRAINABLE_NAME = "mock_trainable"
-MOCK_ERROR_KEY = "mock_error"
-
-
-class MockTrainable(MyTrainableClass):
-    def setup(self, config):
-        super().setup(config)
-        self._should_error = config.get(MOCK_ERROR_KEY, False)
-
-    def step(self):
-        if self._should_error:
-            raise ValueError("Erroring for the test!")
-        return super().step()
 
 
 @pytest.fixture(autouse=True)
-def register_mock_trainable():
-    register_trainable(MOCK_TRAINABLE_NAME, MockTrainable)
-    yield
+def register_test_trainable():
+    register_mock_trainable()
 
 
 @pytest.fixture(scope="function")
@@ -500,7 +490,7 @@ def test_controller_restore_with_dataset(
     ray.shutdown()
     ray.init(num_cpus=2)
 
-    register_trainable(MOCK_TRAINABLE_NAME, MockTrainable)
+    register_mock_trainable()
     new_runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=STORAGE,

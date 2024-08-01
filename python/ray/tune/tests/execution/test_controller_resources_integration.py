@@ -21,7 +21,7 @@ STORAGE = mock_storage_context()
 
 
 @pytest.fixture(autouse=True)
-def register_trainable():
+def register_test_trainable():
     register_mock_trainable()
 
 

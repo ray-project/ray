@@ -29,7 +29,7 @@ def ray_start_4_cpus_2_gpus_extra():
 
 
 @pytest.fixture(autouse=True)
-def register_trainable():
+def register_test_trainable():
     register_mock_trainable()
 
 

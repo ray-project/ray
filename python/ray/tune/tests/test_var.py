@@ -12,16 +12,14 @@ from ray.tune.search.variant_generator import (
     RecursiveDependencyError,
     _resolve_nested_dict,
 )
-from ray.tune.utils.mock_trainable import MyTrainableClass
-
-MOCK_TRAINABLE_NAME = "mock_trainable"
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 
 class VariantGeneratorTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
-        tune.register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
+        register_mock_trainable()
 
     def tearDown(self):
         ray.shutdown()

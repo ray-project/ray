@@ -8,6 +8,7 @@ from ray.tune import Trainable
 
 
 MOCK_TRAINABLE_NAME = "mock_trainable"
+MOCK_ERROR_KEY = "mock_error"
 
 
 class MyTrainableClass(Trainable):
@@ -19,7 +20,7 @@ class MyTrainableClass(Trainable):
 
     def setup(self, config):
         self._sleep_time = config.get("sleep", 0)
-        self._mock_error = config.get("mock_error", False)
+        self._mock_error = config.get(MOCK_ERROR_KEY, False)
         self._persistent_error = config.get("persistent_error", False)
 
         self.timestep = 0

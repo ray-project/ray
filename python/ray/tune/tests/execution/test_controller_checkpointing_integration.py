@@ -15,23 +15,21 @@ from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train._internal.storage import StorageContext
 from ray.train.tests.util import mock_storage_context
-from ray.tune import PlacementGroupFactory, ResumeConfig, register_trainable
+from ray.tune import PlacementGroupFactory, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.result import DONE
 from ray.tune.schedulers import FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.tests.tune_test_util import TrialResultObserver
-from ray.tune.utils.mock_trainable import MyTrainableClass
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 STORAGE = mock_storage_context()
-MOCK_TRAINABLE_NAME = "mock_trainable"
 
 
 @pytest.fixture(autouse=True)
-def register_mock_trainable():
-    register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
-    yield
+def register_test_trainable():
+    register_mock_trainable()
 
 
 @pytest.fixture(scope="function")

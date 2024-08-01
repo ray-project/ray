@@ -9,15 +9,13 @@ import ray
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.train.tests.util import mock_storage_context
-from ray.tune import Experiment, PlacementGroupFactory, register_trainable
+from ray.tune import Experiment, PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import ConcurrencyLimiter, Repeater, Searcher, SearchGenerator
 from ray.tune.search._mock import _MockSuggestionAlgorithm
-from ray.tune.utils.mock_trainable import MyTrainableClass
-
-MOCK_TRAINABLE_NAME = "mock_trainable"
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 
 class TestTuneController(TuneController):
@@ -27,8 +25,8 @@ class TestTuneController(TuneController):
 
 
 @pytest.fixture(autouse=True)
-def register_mock_trainable():
-    register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
+def register_test_trainable():
+    register_mock_trainable()
     yield
 
 
