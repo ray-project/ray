@@ -17,7 +17,6 @@ from ray.tune.search import BasicVariantGenerator
 from ray.tune.tests.execution.utils import BudgetResourceManager
 from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
-
 STORAGE = mock_storage_context()
 
 

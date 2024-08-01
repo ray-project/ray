@@ -16,9 +16,9 @@ from ray.tune.experiment import Trial
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.utils.mock_trainable import (
-    register_mock_trainable,
-    MOCK_TRAINABLE_NAME,
     MOCK_ERROR_KEY,
+    MOCK_TRAINABLE_NAME,
+    register_mock_trainable,
 )
 
 STORAGE = mock_storage_context()

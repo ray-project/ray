@@ -15,7 +15,6 @@ import pytest
 import ray
 from ray import train, tune
 from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
-
 from ray.train import CheckpointConfig
 from ray.train._internal.session import shutdown_session
 from ray.train._internal.storage import (
@@ -812,7 +811,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def testAllValuesReceived(self):
         results1 = [
-            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4) for i in range(5)
+            dict(timesteps_total=(i + 1), my_score=i**2, done=i == 4)
+            for i in range(5)
         ]
 
         logs1, _ = self.checkAndReturnConsistentLogs(results1)

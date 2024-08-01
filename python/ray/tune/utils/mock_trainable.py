@@ -6,7 +6,6 @@ import numpy as np
 
 from ray.tune import Trainable
 
-
 MOCK_TRAINABLE_NAME = "mock_trainable"
 MOCK_ERROR_KEY = "mock_error"
 
