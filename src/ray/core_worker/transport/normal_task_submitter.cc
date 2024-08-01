@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/transport/normal_task_submitter.h"
 
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/pb_util.h"
@@ -21,7 +21,7 @@
 namespace ray {
 namespace core {
 
-Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
@@ -143,7 +143,7 @@ Status CoreWorkerDirectTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   return Status::OK();
 }
 
-void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
+void NormalTaskSubmitter::AddWorkerLeaseClient(
     const rpc::Address &addr,
     std::shared_ptr<WorkerLeaseInterface> lease_client,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources,
@@ -160,7 +160,7 @@ void CoreWorkerDirectTaskSubmitter::AddWorkerLeaseClient(
   RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 }
 
-void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::Address addr,
+void NormalTaskSubmitter::ReturnWorker(const rpc::Address addr,
                                                  bool was_error,
                                                  const std::string &error_detail,
                                                  bool worker_exiting,
@@ -194,7 +194,7 @@ void CoreWorkerDirectTaskSubmitter::ReturnWorker(const rpc::Address addr,
   worker_to_lease_entry_.erase(addr);
 }
 
-void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
+void NormalTaskSubmitter::OnWorkerIdle(
     const rpc::Address &addr,
     const SchedulingKey &scheduling_key,
     bool was_error,
@@ -247,7 +247,7 @@ void CoreWorkerDirectTaskSubmitter::OnWorkerIdle(
   RequestNewWorkerIfNeeded(scheduling_key);
 }
 
-void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
+void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(
     const SchedulingKey &scheduling_key) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   auto &task_queue = scheduling_key_entry.task_queue;
@@ -284,7 +284,7 @@ void CoreWorkerDirectTaskSubmitter::CancelWorkerLeaseIfNeeded(
 }
 
 std::shared_ptr<WorkerLeaseInterface>
-CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
+NormalTaskSubmitter::GetOrConnectLeaseClient(
     const rpc::Address *raylet_address) {
   std::shared_ptr<WorkerLeaseInterface> lease_client;
   RAY_CHECK(raylet_address != nullptr);
@@ -308,12 +308,12 @@ CoreWorkerDirectTaskSubmitter::GetOrConnectLeaseClient(
   return lease_client;
 }
 
-void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklog() {
+void NormalTaskSubmitter::ReportWorkerBacklog() {
   absl::MutexLock lock(&mu_);
   ReportWorkerBacklogInternal();
 }
 
-void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogInternal() {
+void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
   absl::flat_hash_map<SchedulingClass, std::pair<TaskSpecification, int64_t>> backlogs;
   for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
     const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
@@ -340,7 +340,7 @@ void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogInternal() {
                                            backlog_reports);
 }
 
-void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
+void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
     const SchedulingKey &scheduling_key) {
   const auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
@@ -350,7 +350,7 @@ void CoreWorkerDirectTaskSubmitter::ReportWorkerBacklogIfNeeded(
   }
 }
 
-void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
+void NormalTaskSubmitter::RequestNewWorkerIfNeeded(
     const SchedulingKey &scheduling_key, const rpc::Address *raylet_address) {
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
 
@@ -598,7 +598,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
   }
 }
 
-void CoreWorkerDirectTaskSubmitter::PushNormalTask(
+void NormalTaskSubmitter::PushNormalTask(
     const rpc::Address &addr,
     shared_ptr<rpc::CoreWorkerClientInterface> client,
     const SchedulingKey &scheduling_key,
@@ -699,7 +699,7 @@ void CoreWorkerDirectTaskSubmitter::PushNormalTask(
       });
 }
 
-void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
+void NormalTaskSubmitter::HandleGetTaskFailureCause(
     const Status &task_execution_status,
     const bool is_actor,
     const TaskID &task_id,
@@ -752,7 +752,7 @@ void CoreWorkerDirectTaskSubmitter::HandleGetTaskFailureCause(
       fail_immediately));
 }
 
-Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
+Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                                  bool force_kill,
                                                  bool recursive) {
   RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
@@ -841,7 +841,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
                     RayConfig::instance().cancellation_retry_ms()));
               }
               cancel_retry_timer_->async_wait(
-                  boost::bind(&CoreWorkerDirectTaskSubmitter::CancelTask,
+                  boost::bind(&NormalTaskSubmitter::CancelTask,
                               this,
                               task_spec,
                               force_kill,
@@ -859,7 +859,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
   return Status::OK();
 }
 
-Status CoreWorkerDirectTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
+Status NormalTaskSubmitter::CancelRemoteTask(const ObjectID &object_id,
                                                        const rpc::Address &worker_addr,
                                                        bool force_kill,
                                                        bool recursive) {

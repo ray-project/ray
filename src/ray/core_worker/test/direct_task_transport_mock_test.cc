@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // clang-format off
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/transport/normal_task_submitter.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/actor_creator.h"
@@ -36,7 +36,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         [&](const rpc::Address &) { return nullptr; });
     static std::shared_ptr<LeaseRequestRateLimiter> kRateLimiter =
         std::make_shared<StaticLeaseRequestRateLimiter>(1);
-    task_submitter = std::make_unique<CoreWorkerDirectTaskSubmitter>(
+    task_submitter = std::make_unique<NormalTaskSubmitter>(
         rpc::Address(), /* rpc_address */
         raylet_client,  /* lease_client */
         client_pool,    /* core_worker_client_pool */
@@ -62,7 +62,7 @@ class DirectTaskTransportTest : public ::testing::Test {
     return TaskSpecification(task_spec);
   }
 
-  std::unique_ptr<CoreWorkerDirectTaskSubmitter> task_submitter;
+  std::unique_ptr<NormalTaskSubmitter> task_submitter;
   std::shared_ptr<MockRayletClientInterface> raylet_client;
   std::shared_ptr<MockTaskFinisherInterface> task_finisher;
   std::shared_ptr<MockActorCreatorInterface> actor_creator;
