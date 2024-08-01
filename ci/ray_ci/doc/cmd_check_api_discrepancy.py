@@ -42,6 +42,11 @@ TEAM_API_CONFIGS = {
             "ray.remote_function.RemoteFunction",
         },
     },
+    "rllib": {
+        "head_modules": {"ray.rllib"},
+        "head_doc_file": "doc/source/rllib/package_ref/index.rst",
+        "white_list_apis": {},
+    },
 }
 
 
@@ -71,19 +76,27 @@ def main(ray_checkout_dir: str, team: str) -> None:
 
     # Policy 01: all public APIs should be documented
     logger.info("Validating that public APIs should be documented...")
-    good_apis, bad_apis = API.split_good_and_bad_apis(
-        api_in_codes, api_in_docs, white_list_apis
-    )
+    (
+        good_apis,
+        public_not_documented_apis,
+        documented_not_public_apis,
+    ) = API.split_good_and_bad_apis(api_in_codes, api_in_docs, white_list_apis)
 
     logger.info("Public APIs that are documented:")
     for api in good_apis:
         logger.info(f"\t{api}")
 
     logger.info("Public APIs that are NOT documented:")
-    for api in bad_apis:
+    for api in public_not_documented_apis:
         logger.info(f"\t{api}")
 
-    assert not bad_apis, "Some public APIs are not documented. Please document them."
+    logger.info("Documented APIs that are NOT public:")
+    for api in documented_not_public_apis:
+        logger.info(f"\t{api}")
+
+    assert (
+        not public_not_documented_apis and not documented_not_public_apis
+    ), "Some public APIs are not documented. Please document them."
 
     return
 

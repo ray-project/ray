@@ -162,7 +162,8 @@ class API:
         those that are public but NOT documented.
         """
         good_apis = []
-        bad_apis = []
+        public_not_documented_apis = []
+        documented_not_public_apis = []
 
         for name, api in api_in_codes.items():
             if not api.is_public():
@@ -174,6 +175,14 @@ class API:
             if name in api_in_docs:
                 good_apis.append(name)
             else:
-                bad_apis.append(name)
+                public_not_documented_apis.append(name)
 
-        return good_apis, bad_apis
+        for name in api_in_docs:
+            if name in white_list_apis:
+                continue
+
+            api = api_in_codes.get(name)
+            if not api or not api.is_public():
+                documented_not_public_apis.append(name)
+
+        return good_apis, public_not_documented_apis, documented_not_public_apis
