@@ -26,8 +26,7 @@ which maps agent IDs to a policy ID.
     by sub-classing either of the available, built-in classes, depending on your
     needs.
 
-.. include::
-    policy/custom_policies.rst
+.. include:: policy/custom_policies.rst
 
 .. currentmodule:: ray.rllib
 
