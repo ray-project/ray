@@ -1147,13 +1147,15 @@ class CompiledDAG:
         #1  If the nodes are not NCCL write nodes, select the one with the smallest
             `bind_index`. If there are multiple candidate nodes with the smallest
             `bind_index` of the actors that they belong to, any one of them is
-            acceptable.
+            acceptable. For the implementation details, we maintain a priority queue
+            for each actor, where the peek of the priority queue is the node with the
+            smallest `bind_index`.
         #2  If the node is an NCCL write node, select it only if all of its downstream
-            nodes are also the roots of their heaps.
+            nodes are also the peeks of their priority queues.
         #3  If #1 and #2 cannot be satisfied, it means that all candidate nodes are
-            NCCL write nodes. In this case, select the one that is the root of the
-            heap and its downstream nodes, regardless of whether the downstream nodes
-            are roots of their heaps or not.
+            NCCL write nodes. In this case, select the one that is the peek of the
+            priority queue and its downstream nodes, regardless of whether the
+            downstream nodes are peeks of their priority queues or not.
 
         Then, put the selected nodes into the corresponding actors' schedules.
 
@@ -1262,9 +1264,10 @@ class CompiledDAG:
             """
             Select the next nodes for topological sort. This function may return
             multiple nodes if they are NCCL nodes. In that case, this function only
-            removes the NCCL write node, which is also the root of a heap. Other nodes
-            will be removed in the following iterations. Additionally, visited_nodes
-            ensures that the same node will not be scheduled more than once.
+            removes the NCCL write node, which is also the peek of a priority queue.
+            Other nodes will be removed in the following iterations. Additionally,
+            visited_nodes ensures that the same node will not be scheduled more than
+            once.
             """
             next_nodes = []
             first_nccl_node = None
