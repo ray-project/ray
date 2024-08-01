@@ -9,22 +9,20 @@ import ray
 from ray import tune
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
 from ray.train.tests.util import mock_storage_context
-from ray.tune import PlacementGroupFactory, TuneError, register_trainable
+from ray.tune import PlacementGroupFactory, TuneError
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.utils.mock import TrialStatusSnapshot, TrialStatusSnapshotTaker
-from ray.tune.utils.mock_trainable import MyTrainableClass
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 STORAGE = mock_storage_context()
-MOCK_TRAINABLE_NAME = "mock_trainable"
 
 
 @pytest.fixture(autouse=True)
-def register_mock_trainable():
-    register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
-    yield
+def register_trainable():
+    register_mock_trainable()
 
 
 @pytest.fixture(scope="function")
@@ -43,7 +41,7 @@ def ray_start_4_cpus_2_gpus_extra():
         [{"CPU": 1}, {"CPU": 3, "GPU": 1}],
         [{"CPU": 1, "a": 2}],
         [{"CPU": 1}, {"a": 2}],
-        [{"CPU": 1, "GPU": 1}],
+        [{"CPU": 1, "GPU": 1}, {"GPU": 1}],
     ],
 )
 def test_resource_parallelism_single(

@@ -16,9 +16,7 @@ from ray.tune.error import TuneError
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.search import BasicVariantGenerator
-from ray.tune.utils.mock_trainable import MyTrainableClass
-
-MOCK_TRAINABLE_NAME = "mock_trainable"
+from ray.tune.utils.mock_trainable import MyTrainableClass, MOCK_TRAINABLE_NAME
 
 
 def _check_trial_running(trial):

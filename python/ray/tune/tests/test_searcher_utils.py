@@ -1,17 +1,14 @@
 import pytest
 
-from ray.tune import register_trainable
 from ray.tune.search import BasicVariantGenerator, ConcurrencyLimiter, Searcher
 from ray.tune.search.repeater import Repeater
 from ray.tune.search.search_generator import SearchGenerator
-from ray.tune.utils.mock_trainable import MyTrainableClass
-
-MOCK_TRAINABLE_NAME = "mock_trainable"
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 
 @pytest.fixture(autouse=True)
-def register_mock_trainable():
-    register_trainable(MOCK_TRAINABLE_NAME, MyTrainableClass)
+def register_trainable():
+    register_mock_trainable()
 
 
 def test_nested_suggestion():
