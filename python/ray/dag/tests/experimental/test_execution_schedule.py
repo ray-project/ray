@@ -122,7 +122,7 @@ def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
-def test_3_actors_with_nccl(ray_start_regular):
+def test_three_actors_with_nccl_1(ray_start_regular):
     """
     Driver -> a.no_op -> b.no_op -> a.no_op_two -> Driver
                       |          |
@@ -163,6 +163,74 @@ def test_3_actors_with_nccl(ray_start_regular):
         (0, DAGNodeOperationType.COMPUTE),
         (0, DAGNodeOperationType.WRITE),
     ]
+    a_schedule = compiled_dag.actor_to_execution_schedule[a]
+    b_schedule = compiled_dag.actor_to_execution_schedule[b]
+    c_schedule = compiled_dag.actor_to_execution_schedule[c]
+
+    for schedule, expected_schedule in zip(
+        [a_schedule, b_schedule, c_schedule],
+        [a_expected_schedule, b_expected_schedule, c_expected_schedule],
+    ):
+        assert len(schedule) == len(expected_schedule)
+        for i, operation in enumerate(schedule):
+            assert operation.idx == expected_schedule[i][0]
+            assert operation.type == expected_schedule[i][1]
+
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
+def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
+    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
+
+    a = MockedWorker.remote()
+    b = MockedWorker.remote()
+    c = MockedWorker.remote()
+
+    ray.get([a.start_mock.remote(), b.start_mock.remote(), c.start_mock.remote()])
+
+    with InputNode() as inp:
+        branch1 = a.no_op.bind(inp)
+        branch1.with_type_hint(TorchTensorType(transport="nccl"))
+        branch2 = b.no_op.bind(inp)
+        branch2.with_type_hint(TorchTensorType(transport="nccl"))
+        branch3 = c.no_op.bind(inp)
+        branch3.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = MultiOutputNode(
+            [
+                a.no_op.bind(branch3),
+                b.no_op.bind(branch1),
+                c.no_op.bind(branch2),
+            ]
+        )
+
+    compiled_dag = dag.experimental_compile()
+
+    a_expected_schedule = [
+        (0, DAGNodeOperationType.READ),
+        (0, DAGNodeOperationType.COMPUTE),
+        (1, DAGNodeOperationType.READ),
+        (0, DAGNodeOperationType.WRITE),
+        (1, DAGNodeOperationType.COMPUTE),
+        (1, DAGNodeOperationType.WRITE),
+    ]
+    b_expected_schedule = [
+        (0, DAGNodeOperationType.READ),
+        (0, DAGNodeOperationType.COMPUTE),
+        (1, DAGNodeOperationType.READ),
+        (0, DAGNodeOperationType.WRITE),
+        (1, DAGNodeOperationType.COMPUTE),
+        (1, DAGNodeOperationType.WRITE),
+    ]
+    c_expected_schedule = [
+        (0, DAGNodeOperationType.READ),
+        (0, DAGNodeOperationType.COMPUTE),
+        (0, DAGNodeOperationType.WRITE),
+        (1, DAGNodeOperationType.READ),
+        (1, DAGNodeOperationType.COMPUTE),
+        (1, DAGNodeOperationType.WRITE),
+    ]
+
     a_schedule = compiled_dag.actor_to_execution_schedule[a]
     b_schedule = compiled_dag.actor_to_execution_schedule[b]
     c_schedule = compiled_dag.actor_to_execution_schedule[c]
