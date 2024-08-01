@@ -2,12 +2,11 @@ import numpy as np
 import random
 import ray
 from ray.actor import ActorHandle
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -17,6 +16,9 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 # This is the default schema used if no `input_read_schema` is set in
 # the config. If a user passes in a schema into `input_read_schema`
@@ -76,10 +78,10 @@ class OfflinePreLearner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(
         self,
-        config: AlgorithmConfig,
+        config: "AlgorithmConfig",
         learner: Union[Learner, list[ActorHandle]],
         locality_hints: Optional[list] = None,
-        module_spec: Optional[MultiAgentRLModuleSpec] = None,
+        module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
     ):
 
@@ -111,7 +113,7 @@ class OfflinePreLearner:
                 # Then choose a learner randomly.
                 self._learner = learner[random.randint(0, len(learner) - 1)]
             self.learner_is_remote = True
-            # Build the module from spec. Note, this will be a MARL module.
+            # Build the module from spec. Note, this will be a MultiRLModule.
             self._module = module_spec.build()
             self._module.set_state(module_state)
         # Build the learner connector pipeline.
@@ -190,7 +192,7 @@ class OfflinePreLearner:
         return {"batch": [batch]}
 
     def _should_module_be_updated(self, module_id, multi_agent_batch=None):
-        """Checks which modules in a MARL module should be updated."""
+        """Checks which modules in a MultiRLModule should be updated."""
         if not self._policies_to_train:
             # In case of no update information, the module is updated.
             return True
@@ -205,6 +207,7 @@ class OfflinePreLearner:
         is_multi_agent: bool,
         batch: Dict[str, np.ndarray],
         schema: Dict[str, str] = SCHEMA,
+        finalize: bool = False,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 
@@ -268,6 +271,9 @@ class OfflinePreLearner:
                     },
                     len_lookback_buffer=0,
                 )
+
+            if finalize:
+                episode.finalize()
             episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
