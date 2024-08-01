@@ -1,6 +1,7 @@
 import copy
 import logging
 import logging.handlers
+import os
 import pathlib
 import random
 import re
@@ -1257,41 +1258,59 @@ def pregenerate_example_rsts(
 
 ray_prefix = "ray-"
 min_version = "1.11.0"
+repo_url = "https://github.com/ray-project/ray.git"
+static_dir_name = "_static"
+version_json_filename = "versions.json"
 
 
 def generate_version_url(version):
     return f"https://docs.ray.io/en/{version}/"
 
 
-#
-# Gets the releases from git, sorts them in semver order,
-# and generates the JSON needed for the version switcher
-#
 def generate_versions_json():
-    try:
-        versions = []
-        tags = subprocess.check_output(["git", "tag"]).decode("utf-8").split()
-        for tag in tags:
-            if ray_prefix in tag:
-                version = tag.split(ray_prefix)[1]
-                if Version(version) >= Version(min_version):
-                    versions.append(version)
-        versions.sort(key=Version, reverse=True)
+    """Gets the releases from the remote repo, sorts them in semver order,
+    and generates the JSON needed for the version switcher
+    """
 
-        version_json_data = [
-            {"version": v, "url": generate_version_url(v)} for v in ["latest", "master"]
-        ] + [
-            {"version": f"releases/{v}", "url": generate_version_url(f"releases-{v}")}
-            for v in versions
-        ]
+    version_json_data = []
 
-        with open("versions.json", "w") as f:
-            json.dump(version_json_data, f, indent=4)
+    # Versions that should always appear at the top
+    for version in ["latest", "master"]:
+        version_json_data.append(
+            {"version": version, "url": generate_version_url(version)}
+        )
 
-        return []
-    except Exception as e:
-        print(f"Error fetching versions: {e}")
-        return []
+    git_versions = []
+    # Fetch release tags from repo
+    output = subprocess.check_output(["git", "ls-remote", "--tags", repo_url]).decode(
+        "utf-8"
+    )
+    # Extract release versions from tags
+    tags = re.findall(r"refs/tags/(.+?)(?:\^|\s|$)", output)
+    for tag in tags:
+        if ray_prefix in tag:
+            version = tag.split(ray_prefix)[1]
+            if Version(version) >= Version(min_version):
+                git_versions.append(version)
+    git_versions.sort(key=Version, reverse=True)
+
+    for version in git_versions:
+        version_json_data.append(
+            {
+                "version": f"releases/{version}",
+                "url": generate_version_url(f"releases-{version}"),
+            }
+        )
+
+    # Ensure static path exists
+    static_dir = os.path.join(os.path.dirname(__file__), static_dir_name)
+    if not os.path.exists(static_dir):
+        os.makedirs(static_dir)
+
+    # Write JSON output
+    output_path = os.path.join(static_dir, version_json_filename)
+    with open(output_path, "w") as f:
+        json.dump(version_json_data, f, indent=4)
 
 
 REMIX_ICONS = [
