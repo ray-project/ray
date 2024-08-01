@@ -3,7 +3,9 @@
 
 .. currentmodule:: {{ module }}
 
+{% if name | has_public_constructor(module) %}
 .. autoclass:: {{ objname }}
+{% endif %}
 
 {% block methods %}
 {% if methods %}

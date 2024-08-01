@@ -406,6 +406,11 @@ def filter_out_undoc_class_members(member_name, class_name, module_name):
         return ""
 
 
+def has_public_constructor(class_name, module_name):
+    cls = getattr(import_module(module_name), class_name)
+    return _is_public_api(cls)
+
+
 def get_api_groups(method_names, class_name, module_name):
     api_groups = set()
     cls = getattr(import_module(module_name), class_name)
