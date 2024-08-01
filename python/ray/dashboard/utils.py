@@ -82,7 +82,6 @@ class DashboardHeadModule(abc.ABC):
     def http_session(self):
         return self._dashboard_head.http_session
 
-
     @abc.abstractmethod
     async def run(self, server):
         """

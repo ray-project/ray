@@ -123,6 +123,7 @@ class DashboardHead:
         self.http_port = http_port
         self.http_port_retries = http_port_retries
         self._modules_to_load = modules_to_load
+        self._modules_loaded = False
 
         self.gcs_address = None
         assert gcs_address is not None
@@ -167,6 +168,14 @@ class DashboardHead:
 
     @property
     def http_session(self):
+        if not self._modules_loaded:
+            # When the dashboard is still starting up, this property gets
+            # called as part of the method_route_table_factory magic. In
+            # this case, the property is not actually used but the magic
+            # method calls every property to look for a route to add to
+            # the global route table. It should be okay for http_server
+            # to still be None at this point.
+            return None
         assert self.http_server, "Accessing unsupported API in a minimal ray."
         return self.http_server.http_session
 
@@ -233,6 +242,7 @@ class DashboardHead:
                 "to load, {}".format(loaded_modules, modules_to_load)
             )
 
+        self._modules_loaded = True
         logger.info("Loaded %d modules. %s", len(modules), modules)
         return modules
 
