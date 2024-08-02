@@ -517,14 +517,18 @@ class TestSparkLocalCluster:
 
         ray.init(address=local_addr)
 
-        head_proc_pid = ray.util.spark.cluster_init._active_ray_cluster.head_proc.pid
+        def sigint_noop_handler(signum, frame):
+            pass
+
+        default_sigint_handler = signal.signal(signal.SIGINT, sigint_noop_handler)
 
         # send a SIGINT signal to head process (i.e. the `start_ray_node` process),
         # then test the Ray node is not killed by the SIGINT signal.
         # See https://github.com/ray-project/ray/pull/46899 for details
-        os.kill(head_proc_pid, signal.SIGINT)
+        os.killpg(os.getpgid(0), signal.SIGINT)
 
         time.sleep(1)
+        signal.signal(signal.SIGINT, default_sigint_handler)
 
         @ray.remote
         def f(x):
