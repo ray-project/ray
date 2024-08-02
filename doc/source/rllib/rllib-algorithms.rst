@@ -11,8 +11,9 @@ Overview
 ~~~~~~~~
 
 The following table is an overview of all available algorithms in RLlib. Note that all of them support
-multi-GPU training on a single (GPU) node in `Ray (open-source) <https://docs.ray.io/en/latest/index.html>`__ as well as multi-GPU training
-on multi-node (GPU) clusters when using the `Anyscale platform <https://www.anyscale.com/platform>`__.
+multi-GPU training on a single (GPU) node in `Ray (open-source) <https://docs.ray.io/en/latest/index.html>`__ (|multi_gpu|)
+as well as multi-GPU training on multi-node (GPU) clusters when using the `Anyscale platform <https://www.anyscale.com/platform>`__
+(|multi_node_multi_gpu|).
 
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | **Algorithm**                                                               | **Single- and Multi-agent**  | **Multi-GPU (multi-node)**         | **Action Spaces**              |
@@ -365,7 +366,7 @@ Curiosity-driven Exploration by Self-supervised Prediction
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/inverse_dynamics_model_based_curiosity.py>`__
 
 .. figure:: images/algos/icm-architecture.svg
-    :width: 750
+    :width: 850
 
     **ICM (intrinsic curiosity model) architecture:** The main idea behind ICM is to train a world-model
     (in parallel to the "main" policy) to predict the environment's dynamics. The loss of
