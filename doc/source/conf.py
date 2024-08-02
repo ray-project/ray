@@ -323,7 +323,11 @@ html_context = {
 }
 
 html_sidebars = {
-    "**": ["main-sidebar"],
+    "**": [
+        "main-sidebar-readthedocs"
+        if os.getenv("READTHEDOCS") == "True"
+        else "main-sidebar"
+    ],
     "ray-overview/examples": [],
 }
 
