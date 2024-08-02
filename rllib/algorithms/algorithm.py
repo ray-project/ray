@@ -2438,7 +2438,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
             add_to_learners: Whether to add the new RLModule to the LearnerGroup
-                (with its n Learners).
+                (with its n Learners). This setting is only valid on the hybrid-API
+                stack (with Learners, but w/o EnvRunners).
             add_to_env_runners: Whether to add the new RLModule to the EnvRunnerGroup
                 (with its m EnvRunners plus the local one).
             add_to_eval_env_runners: Whether to add the new RLModule to the eval
@@ -2482,7 +2483,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 module_spec=module_spec,
             )
 
-        # If learner API is enabled, we need to also add the underlying module
+        # If Learner API is enabled, we need to also add the underlying module
         # to the learner group.
         if add_to_learners and self.config.enable_rl_module_and_learner:
             policy = self.get_policy(policy_id)
@@ -2538,7 +2539,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
-        evaluation_workers: bool = True,
+        remove_from_learners: bool = True,
+        remove_from_env_runners: bool = True,
+        remove_from_eval_env_runners: bool = True,
+        # Deprecated args.
+        evaluation_workers=DEPRECATED_VALUE,
     ) -> None:
         """Removes a policy from this Algorithm.
 
@@ -2554,9 +2559,21 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 If None, will keep the existing setup in place. Policies,
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
-            evaluation_workers: Whether to also remove the policy from the
-                evaluation EnvRunnerGroup.
+            remove_from_learners: Whether to remove the Policy from the LearnerGroup
+                (with its n Learners). Only valid on the hybrid API stack (w/ Learners,
+                but w/o EnvRunners).
+            remove_from_env_runners: Whether to remove the Policy from the
+                EnvRunnerGroup (with its m EnvRunners plus the local one).
+            remove_from_eval_env_runners: Whether to remove the RLModule from the eval
+                EnvRunnerGroup (with its o EnvRunners plus the local one).
         """
+        if evaluation_workers != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Algorithm.remove_policy(evaluation_workers=...)",
+                new="Algorithm.remove_policy(remove_from_eval_env_runners=...)",
+                error=False,
+            )
+            remove_from_eval_env_runners = evaluation_workers
 
         def fn(worker):
             worker.remove_policy(
@@ -2566,11 +2583,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
 
         # Update all EnvRunner workers.
-        self.env_runner_group.foreach_worker(fn, local_env_runner=True)
+        if remove_from_env_runners:
+            self.env_runner_group.foreach_worker(fn, local_env_runner=True)
 
         # Update each Learner's `policies_to_train` information, but only
         # if the arg is explicitly provided here.
-        if self.config.enable_rl_module_and_learner and policies_to_train is not None:
+        if (
+            remove_from_learners
+            and self.config.enable_rl_module_and_learner
+            and policies_to_train is not None
+        ):
             self.learner_group.foreach_learner(
                 func=lambda learner: learner.config.multi_agent(
                     policies_to_train=policies_to_train
@@ -2579,7 +2601,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
 
         # Update the evaluation worker set's workers, if required.
-        if evaluation_workers and self.eval_env_runner_group is not None:
+        if remove_from_eval_env_runners and self.eval_env_runner_group is not None:
             self.eval_env_runner_group.foreach_worker(fn, local_env_runner=True)
 
     @OldAPIStack
