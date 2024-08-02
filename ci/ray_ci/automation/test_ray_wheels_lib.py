@@ -10,6 +10,7 @@ from ci.ray_ci.automation.ray_wheels_lib import (
     download_wheel_from_s3,
     download_ray_wheels_from_s3,
     _check_downloaded_wheels,
+    check_wheels_exist_on_s3,
     PYTHON_VERSIONS,
     ALL_PLATFORMS,
     RAY_TYPES,
@@ -230,6 +231,11 @@ def test_download_ray_wheels_from_s3_fail_download(
             )
     assert mock_check_wheels.call_count == 0
 
+
+def test_download_wheel_from_s3():
+    a = check_wheels_exist_on_s3("1234567", "1.0.0")
+    print(a)
+    assert a == True
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
