@@ -1331,7 +1331,7 @@ class SingleAgentEpisode:
         Args:
             key: The `key` within `self.extra_model_outputs` to override data on or
                 to insert as a new key into `self.extra_model_outputs`.
-            new_data: The new reward data to overwrite existing data with.
+            new_data: The new data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode
                 is still not finalized yet. In case this episode has already been
                 finalized, this should be a np.ndarray with a length exactly

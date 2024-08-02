@@ -14,8 +14,8 @@ from ray.tune import register_env
 from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 
 # The new RLModule / Learner API
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.tests.test_multi_agent_env import BasicMultiAgent
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 
@@ -170,10 +170,10 @@ class TestEnvRunnerV2(unittest.TestCase):
             # placeholder RLModule, since the compute_actions() method is
             # directly overridden in the policy class.
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
+                rl_module_spec=MultiRLModuleSpec(
                     module_specs={
-                        "pol1": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "pol2": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "pol1": RLModuleSpec(module_class=RandomRLModule),
+                        "pol2": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -237,10 +237,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
+                rl_module_spec=MultiRLModuleSpec(
                     module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -334,10 +334,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
+                rl_module_spec=MultiRLModuleSpec(
                     module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -390,10 +390,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
+                rl_module_spec=MultiRLModuleSpec(
                     module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -449,10 +449,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
+                rl_module_spec=MultiRLModuleSpec(
                     module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )

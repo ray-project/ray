@@ -16,7 +16,7 @@ import numpy as np
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     standardize_fields,
     synchronous_parallel_sample,
@@ -159,7 +159,7 @@ class PPOConfig(AlgorithmConfig):
         }
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
         from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
         if self.framework_str == "torch":
@@ -167,15 +167,11 @@ class PPOConfig(AlgorithmConfig):
                 PPOTorchRLModule,
             )
 
-            return SingleAgentRLModuleSpec(
-                module_class=PPOTorchRLModule, catalog_class=PPOCatalog
-            )
+            return RLModuleSpec(module_class=PPOTorchRLModule, catalog_class=PPOCatalog)
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return SingleAgentRLModuleSpec(
-                module_class=PPOTfRLModule, catalog_class=PPOCatalog
-            )
+            return RLModuleSpec(module_class=PPOTfRLModule, catalog_class=PPOCatalog)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "

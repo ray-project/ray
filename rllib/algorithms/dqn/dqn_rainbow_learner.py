@@ -4,8 +4,8 @@ from typing import Any, Dict, Optional
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
 from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
     AddObservationsFromEpisodesToBatch,
 )
@@ -55,8 +55,8 @@ class DQNRainbowLearner(Learner):
             )
         )
 
-        # Prepend a NEXT_OBS from episodes to train batch connector piece (right
-        # after the observation default piece).
+        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # after the corresponding "add-OBS-..." default piece).
         if self.config.add_default_connectors_to_learner_pipeline:
             self._learner_connector.insert_after(
                 AddObservationsFromEpisodesToBatch,
@@ -68,10 +68,10 @@ class DQNRainbowLearner(Learner):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        module_spec: RLModuleSpec,
         config_overrides: Optional[Dict] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
-    ) -> MultiAgentRLModuleSpec:
+    ) -> MultiRLModuleSpec:
         marl_spec = super().add_module(module_id=module_id)
         # Create target networks for added Module, if applicable.
         if isinstance(self.module[module_id].unwrapped(), TargetNetworkAPI):

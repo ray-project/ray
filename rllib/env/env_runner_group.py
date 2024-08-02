@@ -28,7 +28,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module import validate_module_id
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
@@ -141,16 +141,33 @@ class EnvRunnerGroup:
         self.env_runner_cls = config.env_runner_cls
         if self.env_runner_cls is None:
             if config.enable_env_runner_and_connector_v2:
-                if config.is_multi_agent():
-                    from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+                # If experiences should be recorded, use the `
+                # OfflineSingleAgentEnvRunner`.
+                if config.output:
+                    # No multi-agent support.
+                    if config.is_multi_agent():
+                        raise ValueError("Multi-agent recording is not supported, yet.")
+                    # Otherwise, load the single-agent env runner for
+                    # recording.
+                    else:
+                        from ray.rllib.offline.offline_env_runner import (
+                            OfflineSingleAgentEnvRunner,
+                        )
 
-                    self.env_runner_cls = MultiAgentEnvRunner
+                        self.env_runner_cls = OfflineSingleAgentEnvRunner
                 else:
-                    from ray.rllib.env.single_agent_env_runner import (
-                        SingleAgentEnvRunner,
-                    )
+                    if config.is_multi_agent():
+                        from ray.rllib.env.multi_agent_env_runner import (
+                            MultiAgentEnvRunner,
+                        )
 
-                    self.env_runner_cls = SingleAgentEnvRunner
+                        self.env_runner_cls = MultiAgentEnvRunner
+                    else:
+                        from ray.rllib.env.single_agent_env_runner import (
+                            SingleAgentEnvRunner,
+                        )
+
+                        self.env_runner_cls = SingleAgentEnvRunner
             else:
                 self.env_runner_cls = RolloutWorker
         self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
@@ -293,14 +310,14 @@ class EnvRunnerGroup:
         # Generic EnvRunner.
         else:
             remote_spaces = self.foreach_worker(
-                lambda worker: worker.marl_module.foreach_module(
+                lambda worker: worker.multi_rl_module.foreach_module(
                     lambda mid, m: (
                         mid,
                         m.config.observation_space,
                         m.config.action_space,
                     ),
                 )
-                if hasattr(worker, "marl_module")
+                if hasattr(worker, "multi_rl_module")
                 else [
                     (
                         DEFAULT_POLICY_ID,
@@ -655,7 +672,7 @@ class EnvRunnerGroup:
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
-        module_spec: Optional[SingleAgentRLModuleSpec] = None,
+        module_spec: Optional[RLModuleSpec] = None,
         # Deprecated.
         workers: Optional[List[Union[EnvRunner, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> None:
