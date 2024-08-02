@@ -125,6 +125,7 @@ class ResourceManager:
             op_usage = op.current_processor_usage()
             op_running_usage = op.current_running_processor_usage()
             assert not op_usage.object_store_memory
+            assert not op_running_usage.object_store_memory
             op_usage.object_store_memory = self._estimate_object_store_memory(op, state)
             op_running_usage.object_store_memory = self._estimate_object_store_memory(
                 op, state
