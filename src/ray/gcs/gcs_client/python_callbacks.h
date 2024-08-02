@@ -76,7 +76,6 @@ class PyCallback {
       : converter(converter), assigner(assigner), context(context) {}
 
   void operator()(Args &&...args) {
-    PythonGilHolder gil;
     PyObject *result = converter(std::forward<Args>(args)...);
     CheckNoException();
 
@@ -85,6 +84,7 @@ class PyCallback {
   }
 
   void CheckNoException() {
+    PythonGilHolder gil;
     if (PyErr_Occurred() != nullptr) {
       PyErr_Print();
       PyErr_Clear();
