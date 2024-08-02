@@ -7,25 +7,21 @@ import pytest
 import ray
 import ray.cluster_utils
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.experimental.channel.conftest import start_nccl_mock
 from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode, MultiOutputNode
 from ray.dag.compiled_dag_node import DAGNodeOperationType
+import torch
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
+USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
+
 
 @ray.remote(num_cpus=0, num_gpus=1)
-class MockedWorker:
+class Worker:
     def __init__(self):
         pass
-
-    def start_mock(self):
-        """
-        Patch methods that require CUDA.
-        """
-        start_nccl_mock()
 
     def fwd(self, value):
         return value
@@ -55,12 +51,13 @@ def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
     The communication between workers is done using NCCL. The communication
     within the worker actor is done using IntraProcessChannel.
     """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
     monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
 
-    w1 = MockedWorker.remote()
-    w2 = MockedWorker.remote()
-
-    ray.get([w1.start_mock.remote(), w2.start_mock.remote()])
+    w1 = Worker.remote()
+    w2 = Worker.remote()
 
     with InputNode() as inp:
         w1_input = w1.read_input.bind(inp)
@@ -126,8 +123,14 @@ def test_simulate_pp_2workers_1f1b(ray_start_regular, monkeypatch):
             assert operation.idx == expected_schedule[i][0]
             assert operation.type == expected_schedule[i][1]
 
-    ref = compiled_dag.execute(123)
-    assert ray.get(ref) == [123, 123]
+    tensor_cpu = torch.zeros(10, 10)
+    ref = compiled_dag.execute(tensor_cpu)
+    tensors = ray.get(ref)
+    tensor_cuda = tensor_cpu.to("cuda:0")
+
+    assert len(tensors) == 2
+    for t in tensors:
+        assert torch.equal(t, tensor_cuda)
 
     compiled_dag.teardown()
 
@@ -139,11 +142,12 @@ def test_three_actors_with_nccl_1(ray_start_regular):
                       |          |
                       -> c.no_op -
     """
-    a = MockedWorker.remote()
-    b = MockedWorker.remote()
-    c = MockedWorker.remote()
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
 
-    ray.get([a.start_mock.remote(), b.start_mock.remote(), c.start_mock.remote()])
+    a = Worker.remote()
+    b = Worker.remote()
+    c = Worker.remote()
 
     with InputNode() as inp:
         dag = a.no_op.bind(inp)
@@ -187,21 +191,28 @@ def test_three_actors_with_nccl_1(ray_start_regular):
             assert operation.idx == expected_schedule[i][0]
             assert operation.type == expected_schedule[i][1]
 
-    ref = compiled_dag.execute(123)
-    assert ray.get(ref) == (123, 123)
+    tensor_cpu = torch.zeros(10, 10)
+    ref = compiled_dag.execute(tensor_cpu)
+    tensors = ray.get(ref)
+    tensor_cuda = tensor_cpu.to("cuda:0")
+
+    assert len(tensors) == 2
+    for t in tensors:
+        assert torch.equal(t, tensor_cuda)
 
     compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
 def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
     monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
 
-    a = MockedWorker.remote()
-    b = MockedWorker.remote()
-    c = MockedWorker.remote()
-
-    ray.get([a.start_mock.remote(), b.start_mock.remote(), c.start_mock.remote()])
+    a = Worker.remote()
+    b = Worker.remote()
+    c = Worker.remote()
 
     with InputNode() as inp:
         branch1 = a.no_op.bind(inp)
@@ -258,8 +269,14 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
             assert operation.idx == expected_schedule[i][0]
             assert operation.type == expected_schedule[i][1]
 
-    ref = compiled_dag.execute(123)
-    assert ray.get(ref) == [123, 123, 123]
+    tensor_cpu = torch.zeros(10, 10)
+    ref = compiled_dag.execute(tensor_cpu)
+    tensors = ray.get(ref)
+    tensor_cuda = tensor_cpu.to("cuda:0")
+
+    assert len(tensors) == 3
+    for t in tensors:
+        assert torch.equal(t, tensor_cuda)
 
     compiled_dag.teardown()
 
