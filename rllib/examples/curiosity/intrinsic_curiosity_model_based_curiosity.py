@@ -1,4 +1,4 @@
-"""Example of implementing and running inverse dynamics model (ICM) based curiosity.
+"""Example of implementing and training with an intrinsic curiosity model (ICM).
 
 This type of curiosity-based learning trains a simplified model of the environment
 dynamics based on three networks:
@@ -87,8 +87,9 @@ from ray.rllib.examples.learners.classes.curiosity_ppo_torch_learner import (
     PPOConfigWithCuriosity,
     PPOTorchLearnerWithCuriosity,
 )
-from ray.rllib.examples.rl_modules.classes.inverse_dynamics_model_rlm import (
-    InverseDynamicsModel,
+from ray.rllib.examples.rl_modules.classes.intrinsic_curiosity_model_rlm import (
+    ICM_MODULE_ID,
+    IntrinsicCuriosityModel,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -228,7 +229,8 @@ if __name__ == "__main__":
             # Plug in the correct Learner class, based on the "main" RLlib
             # algorithm to be used.
             learner_class=(
-                PPOTorchLearnerWithCuriosity if args.algo == "PPO"
+                PPOTorchLearnerWithCuriosity
+                if args.algo == "PPO"
                 else DQNTorchLearnerWithCuriosity
             ),
             train_batch_size_per_learner=2000,
@@ -239,11 +241,15 @@ if __name__ == "__main__":
                 module_specs={
                     # The "main" RLModule (policy) to be trained by our algo.
                     DEFAULT_MODULE_ID: RLModuleSpec(
-                        model_config_dict={"vf_share_layers": True},
+                        **(
+                            {"model_config_dict": {"vf_share_layers": True}}
+                            if args.algo == "PPO"
+                            else {}
+                        ),
                     ),
-                    # The inverse dynamics model.
+                    # The intrinsic curiosity model.
                     ICM_MODULE_ID: RLModuleSpec(
-                        module_class=InverseDynamicsModel,
+                        module_class=IntrinsicCuriosityModel,
                         # Only create the ICM on the Learner workers, NOT on the
                         # EnvRunners.
                         learner_only=True,
@@ -270,5 +276,16 @@ if __name__ == "__main__":
     # Set PPO-specific hyper-parameters.
     if args.algo == "PPO":
         base_config.training(num_sgd_iter=6)
+    elif args.algo == "DQN":
+        base_config.training(
+            replay_buffer_config={
+                "type": "PrioritizedEpisodeReplayBuffer",
+                "capacity": 50000,
+                "alpha": 0.6,
+                "beta": 0.4,
+            },
+            # Epsilon exploration schedule for DQN.
+            epsilon=[[0, 1.0], [100000, 0.02]],
+        )
 
     run_rllib_example_script_experiment(base_config, args)

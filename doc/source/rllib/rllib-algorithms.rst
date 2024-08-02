@@ -43,7 +43,7 @@ on multi-node (GPU) clusters when using the `Anyscale platform <https://www.anys
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`MARWIL (Monotonic Advantage Re-Weighted Imitation Learning) <marwil>` | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
-| **Algorithm Extensions and -Plugins**                                                                                                                                                 |
+| **Algorithm Extensions and -Plugins**                                                                                                                                            |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`Curiosity-driven Exploration by Self-supervised Prediction <icm>`     | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
@@ -367,7 +367,19 @@ Curiosity-driven Exploration by Self-supervised Prediction
 .. figure:: images/algos/icm-architecture.svg
     :width: 750
 
-    **ICM (inverse dynamics model) architecture:** RLlib's curiosity implementation works with any of RLlib's algorithms
+    **ICM (intrinsic curiosity model) architecture:** The main idea behind ICM is to train a world-model
+    (in parallel to the "main" policy) to predict the environment's dynamics. The loss of
+    the world model is the intrinsic reward that will be added to the env's reward. This makes sure
+    that when in regions of the environment that are relatively unknown (world model performs
+    badly in predicting what happens next), the artificial intrinsic reward is large and the
+    agent is motivated to go and explore these unknown regions.
+    RLlib's curiosity implementation works with any of RLlib's algorithms. See these links here for example implementations on top of
+    `PPO and DQN <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/intrinsic_curiosity_model_based_curiosity.py>`__.
+    ICM uses the chosen Algorithm's `training_step()` as-is, but then executes the following additional steps during
+    `LearnerGroup.update`: Duplicate the train batch of the "main" policy and use it for
+    performing a self-supervised update of the ICM. Use the ICM to compute the intrinsic rewards
+    and add these to the extrinsic (env) rewards. Then continue updating the "main" policy.
+
 
 **Tuned examples:**
 `12x12 FrozenLake-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/inverse_dynamics_model_based_curiosity.py>`__

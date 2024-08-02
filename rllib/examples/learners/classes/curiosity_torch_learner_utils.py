@@ -10,7 +10,7 @@ from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_b
 from ray.rllib.core import Columns, DEFAULT_MODULE_ID
 from ray.rllib.utils.metrics import ALL_MODULES
 
-ICM_MODULE_ID = "_inverse_dynamics_model"
+ICM_MODULE_ID = "_intrinsic_curiosity_model"
 
 
 def make_curiosity_config_class(config_class):
@@ -35,8 +35,8 @@ def make_curiosity_config_class(config_class):
                 curiosity_beta: The coefficient used for the intrinsic rewards. Overall
                     rewards are computed as `R = R[extrinsic] + beta * R[intrinsic]`.
                 curiosity_eta: Fraction of the forward loss (within the total loss term)
-                    vs the inverse dynamics loss. The total loss of the ICM is computed as:
-                    `L = eta * [forward loss] + (1.0 - eta) * [inverse loss]`.
+                    vs the inverse dynamics loss. The total loss of the ICM is computed
+                    as: `L = eta * [forward loss] + (1.0 - eta) * [inverse loss]`.
 
             Returns:
                 This updated AlgorithmConfig object.
@@ -58,9 +58,9 @@ def make_curiosity_learner_class(learner_class):
             # Assert, we are only training one policy (RLModule) and we have the ICM
             # in our MultiRLModule.
             assert (
-                    len(self.module) == 2
-                    and DEFAULT_MODULE_ID in self.module
-                    and ICM_MODULE_ID in self.module
+                len(self.module) == 2
+                and DEFAULT_MODULE_ID in self.module
+                and ICM_MODULE_ID in self.module
             )
 
             # Prepend a "add-NEXT_OBS-from-episodes-to-train-batch" connector piece
@@ -72,10 +72,10 @@ def make_curiosity_learner_class(learner_class):
                 )
 
         def compute_loss(
-                self,
-                *,
-                fwd_out: Dict[str, Any],
-                batch: Dict[str, Any],
+            self,
+            *,
+            fwd_out: Dict[str, Any],
+            batch: Dict[str, Any],
         ) -> Dict[str, Any]:
             # Compute the ICM loss first (so we'll have the chance to change the rewards
             # in the batch for the "main" RLModule (before we compute its loss with the
@@ -92,11 +92,12 @@ def make_curiosity_learner_class(learner_class):
                 batch=batch[DEFAULT_MODULE_ID],
                 fwd_out=icm_fwd_out,
             )
+            # Log the env steps trained counter for the ICM
 
             # Add intrinsic rewards from ICM's `fwd_out` (multiplied by factor `eta`)
             # to "main" module batch's extrinsic rewards.
             batch[DEFAULT_MODULE_ID][Columns.REWARDS] += (
-                    self.config.curiosity_eta * icm_fwd_out[Columns.INTRINSIC_REWARDS]
+                self.config.curiosity_eta * icm_fwd_out[Columns.INTRINSIC_REWARDS]
             )
 
             # Compute the "main" RLModule's loss.
