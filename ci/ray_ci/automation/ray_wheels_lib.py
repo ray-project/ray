@@ -15,6 +15,7 @@ ALL_PLATFORMS = [
     "win_amd64",
 ]
 RAY_TYPES = ["ray", "ray_cpp"]
+RAY_WHEELS_BUCKET = "ray-wheels"
 
 
 def _check_downloaded_wheels(directory_path: str, wheels: List[str]) -> None:
@@ -60,14 +61,13 @@ def download_wheel_from_s3(key: str, directory_path: str) -> None:
         key: The key of the wheel in S3.
         directory_path: The directory to download the wheel to.
     """
-    bucket = "ray-wheels"
     s3_client = boto3.client("s3", region_name="us-west-2")
     wheel_name = key.split("/")[-1]  # Split key to get the wheel file name
 
     logger.info(
-        f"Downloading {bucket}/{key} to {directory_path}/{wheel_name} ........."
+        f"Downloading {RAY_WHEELS_BUCKET}/{key} to {directory_path}/{wheel_name} ........."
     )
-    s3_client.download_file(bucket, key, os.path.join(directory_path, wheel_name))
+    s3_client.download_file(RAY_WHEELS_BUCKET, key, os.path.join(directory_path, wheel_name))
 
 
 def download_ray_wheels_from_s3(
@@ -90,3 +90,22 @@ def download_ray_wheels_from_s3(
         download_wheel_from_s3(s3_key, full_directory_path)
 
     _check_downloaded_wheels(full_directory_path, wheels)
+
+def check_wheels_exist_on_s3(commit_hash: str, ray_version: str) -> bool:
+    """
+    Check if all wheels exist on S3.
+    Args:
+        commit_hash: The commit hash of the green commit.
+        ray_version: The version of Ray.
+    """
+    s3_client = boto3.client("s3", region_name="us-west-2")
+    wheels = _get_wheel_names(ray_version=ray_version)
+    for wheel in wheels:
+        wheel_s3_key = f"releases/{ray_version}/{commit_hash}/{wheel}.whl"
+        try:
+            s3_client.head_object(Bucket=RAY_WHEELS_BUCKET, Key=wheel_s3_key)
+            return True
+        except Exception as e:
+            logger.error(f"Wheel {wheel_s3_key} does not exist on S3: {e}")
+            return False
+    return True
