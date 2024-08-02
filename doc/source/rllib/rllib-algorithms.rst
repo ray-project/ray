@@ -10,6 +10,10 @@ Algorithms
 Overview
 ~~~~~~~~
 
+The following table is an overview of all available algorithms in RLlib. Note that all of them support
+multi-GPU training on a single (GPU) node in `Ray (open-source) <https://docs.ray.io/en/latest/index.html>`__ as well as multi-GPU training
+on multi-node (GPU) clusters when using the `Anyscale platform <https://www.anyscale.com/platform>`__.
+
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | **Algorithm**                                                               | **Single- and Multi-agent**  | **Multi-GPU (multi-node)**         | **Action Spaces**              |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
@@ -39,7 +43,7 @@ Overview
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`MARWIL (Monotonic Advantage Re-Weighted Imitation Learning) <marwil>` | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
-| **Algorithm Extensions/Plugins**                                                                                                                                                 |
+| **Algorithm Extensions and -Plugins**                                                                                                                                                 |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`Curiosity-driven Exploration by Self-supervised Prediction <icm>`     | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
@@ -288,6 +292,7 @@ DreamerV3
     **Right**: Episode reward over wall-time.
 
 
+
 Offline RL and Imitation Learning
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -301,10 +306,14 @@ Behavior Cloning (BC)
 .. figure:: images/algos/bc-architecture.svg
     :width: 750
 
-    **BC architecture:** Our behavioral cloning implementation is directly derived from our `MARWIL`_ implementation,
-    with the only difference being the ``beta`` parameter force-set to 0.0. This makes
+    **BC architecture:** RLlib's behavioral cloning (BC) uses Ray Data to tap into its parallel data
+    processing capabilities. In one training iteration, episodes are parallelly read in from
+    offline (ex. JSON) files by the n DataWorkers. These episodes are then preprocessed into train
+    batches and sent as data iterators directly to the n Learners, which perform the forward- and backward passes
+    as well as the optimizer step.
+    RLlib's  (BC) implementation is directly derived from the `MARWIL`_ implementation,
+    with the only difference being the ``beta`` parameter (set to 0.0). This makes
     BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
-    BC requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
 **Tuned examples:**
 `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole_bc.py>`__
@@ -323,9 +332,17 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 `[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil/marwil.py>`__
 
-MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on batched historical data.
-When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to vanilla imitation learning (see `BC`_).
-MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
+.. figure:: images/algos/marwil-architecture.svg
+    :width: 750
+
+    **MAREIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
+    batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to plain
+    imitation learning (see `BC`_). MARWIL uses Ray Data to tap into its parallel data
+    processing capabilities. In one training iteration, episodes are parallelly read in from
+    offline (ex. JSON) files by the n DataWorkers. These episodes are then preprocessed into train
+    batches and sent as data iterators directly to the n Learners, which perform the forward- and backward passes
+    as well as the optimizer step.
+
 
 **Tuned examples:**
 `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-marwil.yaml>`__
@@ -334,6 +351,27 @@ MARWIL requires the `offline datasets API <rllib-offline.html>`__ to be used.
 
 .. autoclass:: ray.rllib.algorithms.marwil.marwil.MARWILConfig
    :members: training
+
+
+
+Algorithm Extensions- and Plugins
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _icm:
+
+Curiosity-driven Exploration by Self-supervised Prediction
+----------------------------------------------------------
+`[paper] <https://arxiv.org/pdf/1705.05363.pdf>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/inverse_dynamics_model_based_curiosity.py>`__
+
+.. figure:: images/algos/icm-architecture.svg
+    :width: 750
+
+    **ICM (inverse dynamics model) architecture:** RLlib's curiosity implementation works with any of RLlib's algorithms
+
+**Tuned examples:**
+`12x12 FrozenLake-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/inverse_dynamics_model_based_curiosity.py>`__
+
 
 
 

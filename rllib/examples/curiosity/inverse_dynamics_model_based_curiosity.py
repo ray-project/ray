@@ -76,6 +76,10 @@ from collections import defaultdict
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.examples.learners.classes.curiosity_dqn_torch_learner import (
+    DQNConfigWithCuriosity,
+    DQNTorchLearnerWithCuriosity,
+)
 from ray.rllib.examples.learners.classes.curiosity_ppo_torch_learner import (
     PPOConfigWithCuriosity,
     PPOTorchLearnerWithCuriosity,
@@ -167,8 +171,17 @@ class MeasureMaxDistanceToStart(DefaultCallbacks):
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    if args.algo not in ["DQN", "PPO"]:
+        raise ValueError(
+            "Curiosity example only implemented for either DQN or PPO! See the "
+        )
+
+    config_class = (
+        PPOConfigWithCuriosity if args.algo == "PPO" else DQNConfigWithCuriosity
+    )
+
     base_config = (
-        PPOConfigWithCuriosity()
+        config_class()
         .environment(
             "FrozenLake-v1",
             env_config={
@@ -204,12 +217,20 @@ if __name__ == "__main__":
             env_to_module_connector=lambda env: FlattenObservations(),
         )
         .training(
-            learner_class=PPOTorchLearnerWithCuriosity,
+            # Plug in the correct Learner class, based on the "main" RLlib
+            # algorithm to be used.
+            learner_class=(
+                PPOTorchLearnerWithCuriosity if args.algo == "PPO"
+                else DQNTorchLearnerWithCuriosity
+            ),
             train_batch_size_per_learner=2000,
-            num_sgd_iter=6,
             lr=0.0003,
         )
         .rl_module(model_config_dict={"vf_share_layers": True})
     )
+
+    # Set PPO-specific hyper-parameters.
+    if args.algo == "PPO":
+        base_config.training(num_sgd_iter=6)
 
     run_rllib_example_script_experiment(base_config, args)

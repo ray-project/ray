@@ -2514,12 +2514,21 @@ py_test(
 )
 
 py_test(
-    name = "examples/curiosity/inverse_dynamics_model_based_curiosity",
+    name = "examples/curiosity/inverse_dynamics_model_based_curiosity_ppo",
     main = "examples/curiosity/inverse_dynamics_model_based_curiosity.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
     srcs = ["examples/curiosity/inverse_dynamics_model_based_curiosity.py"],
-    args = ["--enable-new-api-stack", "--as-test"]
+    args = ["--enable-new-api-stack", "--as-test", "--algo=PPO"]
+)
+
+py_test(
+    name = "examples/curiosity/inverse_dynamics_model_based_curiosity_dqn",
+    main = "examples/curiosity/inverse_dynamics_model_based_curiosity.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/curiosity/inverse_dynamics_model_based_curiosity.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--algo=DQN"]
 )
 
 
