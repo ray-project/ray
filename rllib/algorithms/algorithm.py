@@ -784,42 +784,24 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # TODO (Rohan138): Refactor this and remove deprecated methods
             # Need to add back method_type in case Algorithm is restored from checkpoint
             method_config["type"] = method_type
-        self.learner_group = None
+
         if self.config.enable_rl_module_and_learner:
-            local_env_runner = self.env_runner_group.local_env_runner
-            env = spaces = None
-            # EnvRunners have a `module` property, which stores the RLModule
-            # (or MultiRLModule, which is a subclass of RLModule, in the multi-module
-            # case, e.g. for multi-agent).
-            if (
-                hasattr(local_env_runner, "module")
-                and local_env_runner.module is not None
-            ):
-                multi_rl_module_dict = dict(
-                    local_env_runner.module.as_multi_rl_module()
-                )
-                env = local_env_runner.env
-                spaces = {
-                    mid: (mod.config.observation_space, mod.config.action_space)
-                    for mid, mod in multi_rl_module_dict.items()
-                }
-                policy_dict, _ = self.config.get_multi_agent_setup(
-                    env=env, spaces=spaces
-                )
+            if self.config.enable_env_runner_and_connector_v2:
                 module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-                    policy_dict=policy_dict
+                    spaces=self.env_runner_group.get_spaces(),
+                    inference_only=False,
                 )
             # TODO (Sven): Deprecate this path: Old stack API RolloutWorkers and
             #  DreamerV3's EnvRunners have a `multi_rl_module_spec` property.
-            elif hasattr(local_env_runner, "multi_rl_module_spec"):
-                module_spec: MultiRLModuleSpec = local_env_runner.multi_rl_module_spec
+            elif hasattr(self.env_runner, "multi_rl_module_spec"):
+                module_spec: MultiRLModuleSpec = self.env_runner.multi_rl_module_spec
             else:
                 raise AttributeError(
                     "Your local EnvRunner/RolloutWorker does NOT have any property "
                     "referring to its RLModule!"
                 )
             self.learner_group = self.config.build_learner_group(
-                rl_module_spec=module_spec, env=env, spaces=spaces
+                rl_module_spec=module_spec
             )
 
             # Check if there are modules to load from the `module_spec`.
@@ -849,7 +831,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     lambda w: w.set_is_policy_to_train(policies_to_train),
                 )
                 # Sync the weights from the learner group to the rollout workers.
-                local_env_runner.set_weights(self.learner_group.get_weights())
+                self.env_runner.set_weights(self.learner_group.get_weights())
                 self.env_runner_group.sync_weights(inference_only=True)
             # New stack/EnvRunner APIs: Use get/set_state.
             else:
@@ -858,7 +840,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                     inference_only=True,
                 )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-                local_env_runner.set_state({COMPONENT_RL_MODULE: rl_module_state})
+                self.env_runner.set_state({COMPONENT_RL_MODULE: rl_module_state})
                 self.env_runner_group.sync_env_runner_states(
                     config=self.config,
                     env_steps_sampled=self.metrics.peek(
