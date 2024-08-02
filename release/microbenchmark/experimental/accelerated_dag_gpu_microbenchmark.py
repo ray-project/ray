@@ -13,7 +13,7 @@ import socket
 import ray
 from ray.air._internal import torch_utils
 import ray.cluster_utils
-from ray.dag import InputNode
+from ray.dag import InputNode, DAGContext
 from ray.util.collective.collective_group import nccl_util
 
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
@@ -130,11 +130,7 @@ def exec_ray_dag(
         dag = receiver.recv.bind(dag)
 
     if use_adag:
-        # NCCL takes a while to warm up on multi node so increase the default
-        # timeout.
-        dag = dag.experimental_compile(
-            _execution_timeout=600
-        )
+        dag = dag.experimental_compile()
 
         def _run():
             i = np.random.randint(100)
@@ -362,6 +358,11 @@ def main(distributed):
             }
         }
     )
+
+    # NCCL takes a while to warm up on multi node so increase the default
+    # timeout.
+    ctx = DAGContext.get_current()
+    ctx.retrieval_timeout = 120
 
     sender_hint, receiver_hint = None, None
     if distributed:
