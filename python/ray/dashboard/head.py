@@ -154,7 +154,7 @@ class DashboardHead:
     async def _configure_http_server(self, modules):
         from ray.dashboard.http_server_head import HttpServerDashboardHead
 
-        http_server = HttpServerDashboardHead(
+        self.http_server = HttpServerDashboardHead(
             self.ip,
             self.http_host,
             self.http_port,
@@ -163,8 +163,7 @@ class DashboardHead:
             self.session_name,
             self.metrics,
         )
-        await http_server.run(modules)
-        return http_server
+        await self.http_server.run(modules)
 
     @property
     def http_session(self):
@@ -335,7 +334,7 @@ class DashboardHead:
         http_host, http_port = self.http_host, self.http_port
         if self.serve_frontend:
             logger.info("Initialize the http server.")
-            self.http_server = await self._configure_http_server(modules)
+            await self._configure_http_server(modules)
             http_host, http_port = self.http_server.get_address()
             logger.info(f"http server initialized at {http_host}:{http_port}")
         else:
