@@ -69,6 +69,7 @@ Proximal Policy Optimization (PPO)
     PPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model(s).
 
+
 **Tuned examples:**
 `Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/atari_ppo.py>`__,
 `CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/ppo/cartpole_ppo.py>`__.
@@ -189,8 +190,8 @@ Tuned examples:
 .. figure:: images/impala.png
     :width: 650
 
-   Multi-GPU IMPALA scales up to solve PongNoFrameskip-v4 in ~3 minutes using a pair of V100 GPUs and 128 CPU workers.
-   The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
+    Multi-GPU IMPALA scales up to solve PongNoFrameskip-v4 in ~3 minutes using a pair of V100 GPUs and 128 CPU workers.
+    The maximum training throughput reached is ~30k transitions per second (~120k environment frames per second).
 
 
 **IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
@@ -223,6 +224,7 @@ Asynchronous Proximal Policy Optimization (APPO)
     a procedure called v-trace, `described in the IMPALA paper here <https://arxiv.org/abs/1802.01561>`__.
     APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model(s).
+
 
 **Tuned examples:**
 `PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong-appo.yaml>`__
