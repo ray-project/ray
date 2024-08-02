@@ -104,7 +104,7 @@ class PPOConfig(AlgorithmConfig):
             .environment(env="CartPole-v1")
             # Update the config object's training parameters.
             .training(
-               lr=0.001, clip_param=0.2
+                lr=0.001, clip_param=0.2
             )
         )
 
