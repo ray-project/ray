@@ -1232,6 +1232,7 @@ min_version = "1.11.0"
 repo_url = "https://github.com/ray-project/ray.git"
 static_dir_name = "_static"
 version_json_filename = "versions.json"
+dereference_suffix = "^{}"
 
 
 def generate_version_url(version):
@@ -1257,11 +1258,11 @@ def generate_versions_json():
         "utf-8"
     )
     # Extract release versions from tags
-    tags = re.findall(r"refs/tags/(.+?)(?:\^|\s|$)", output)
+    tags = re.findall(r"refs/tags/(.+)", output)
     for tag in tags:
-        if ray_prefix in tag:
+        if ray_prefix in tag and dereference_suffix not in tag:
             version = tag.split(ray_prefix)[1]
-            if Version(version) >= Version(min_version):
+            if version not in git_versions and Version(version) >= Version(min_version):
                 git_versions.append(version)
     git_versions.sort(key=Version, reverse=True)
 
