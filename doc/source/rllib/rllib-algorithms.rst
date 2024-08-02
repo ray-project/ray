@@ -86,7 +86,7 @@ Deep Q Networks (DQN, Rainbow, Parametric DQN)
 `[paper] <https://arxiv.org/abs/1312.5602>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn.py>`__
 
-.. figure:: images/algos/dqn-sac-architecture.svg
+.. figure:: images/algos/dqn-architecture.svg
     :width: 650
 
     **DQN architecture:** DQN uses a replay buffer to temporarily store episode samples collected from the environment(s).
@@ -131,7 +131,7 @@ Soft Actor Critic (SAC)
 `[follow up paper] <https://arxiv.org/pdf/1812.05905.pdf>`__,
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/sac/sac.py>`__.
 
-.. figure:: images/algos/dqn-sac-architecture.svg
+.. figure:: images/algos/sac-architecture.svg
     :width: 750
 
     **SAC architecture:** SAC uses a replay buffer to temporarily store episode samples collected from the environment(s).
@@ -162,7 +162,7 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
 `[paper] <https://arxiv.org/abs/1802.01561>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/impala/impala.py>`__
 
-.. figure:: images/algos/impala-appo-architecture.svg
+.. figure:: images/algos/impala-architecture.svg
     :width: 750
 
     **IMPALA architecture:** In a training iteration, IMPALA requests samples from all EnvRunners asynchronously and the collected episode
@@ -205,7 +205,7 @@ Asynchronous Proximal Policy Optimization (APPO)
 
     APPO isn't always more efficient; it's often better to use :ref:`standard PPO <ppo>` or :ref:`IMPALA <impala>`.
 
-.. figure:: images/algos/impala-appo-architecture.svg
+.. figure:: images/algos/appo-architecture.svg
     :width: 750
 
     **APPO architecture:** APPO is an asynchronous variant of `Proximal Policy Optimization (PPO) <ppo>`_ based on the IMPALA architecture,
@@ -298,7 +298,7 @@ Behavior Cloning (BC)
 `[paper] <http://papers.nips.cc/paper/7866-exponentially-weighted-imitation-learning-for-batched-historical-data>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/bc/bc.py>`__
 
-.. figure:: images/algos/bc-marwil-architecture.svg
+.. figure:: images/algos/bc-architecture.svg
     :width: 750
 
     **BC architecture:** Our behavioral cloning implementation is directly derived from our `MARWIL`_ implementation,
