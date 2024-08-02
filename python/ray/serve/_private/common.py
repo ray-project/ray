@@ -1,7 +1,7 @@
 import json
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, List, Optional
+from typing import Awaitable, Callable, Dict, List, Optional
 
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
@@ -694,6 +694,9 @@ class RequestMetadata:
 
     # Serve's gRPC context associated with this request for getting and setting metadata
     grpc_context: Optional[RayServegRPCContext] = None
+
+    # Tracing context
+    tracing_context: Optional[Dict[str, str]] = None
 
     @property
     def is_http_request(self) -> bool:

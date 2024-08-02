@@ -1,0 +1,15 @@
+group: runtime rayci release
+depends_on:
+  - reef-tests
+steps:
+  - label: release run_release_test
+    if: build.branch == "master"
+    commands:
+      - ./anyscale/ci/release_run_release_test.sh
+    instance_type: small
+
+  - label: release ci_pipeline_scheduler
+    if: build.branch == "master"
+    commands:
+      - ./anyscale/ci/release_rayci_tool.sh ci_pipeline_scheduler //ci/ray_ci/pipeline:scheduler
+    instance_type: small
