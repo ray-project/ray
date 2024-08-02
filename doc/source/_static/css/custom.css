@@ -393,7 +393,7 @@ table.autosummary tr > td:first-child > p > a > code > span {
 
 /* Prevent the the PyData theme Version Switcher from getting too large */
 .version-switcher__menu {
-  max-height: 500px;
+  max-height: 496px;
   overflow: scroll;
 }
 
