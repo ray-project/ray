@@ -1,5 +1,6 @@
 import collections
 import heapq
+import sys
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -53,6 +54,51 @@ def lazy_import_pandas():
 
         _pandas = pandas
     return _pandas
+
+
+def get_deep_size(obj):
+    """Calculates the memory size of objects,
+    including nested objects using an iterative approach."""
+    seen = set()
+    total_size = 0
+    objects = collections.deque([obj])
+
+    while objects:
+        current = objects.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        size = sys.getsizeof(current)
+        total_size += size
+
+        if isinstance(current, np.ndarray):
+            total_size += current.nbytes - size  # Avoid double counting
+        elif isinstance(current, pandas.DataFrame):
+            total_size += current.memory_usage(deep=True).sum() - size
+        elif isinstance(current, (list, tuple, set)):
+            objects.extend(current)
+        elif isinstance(current, dict):
+            objects.extend(current.keys())
+            objects.extend(current.values())
+
+    return total_size
+
+
+def calculate_accurate_memory_usage(df):
+    # Get initial memory usage including deep introspection
+    memory_usage = df.memory_usage(deep=True)
+
+    # Handle object columns separately
+    for column in df.select_dtypes(include=["object"]).columns:
+        column_memory = 0
+        for element in df[column]:
+            column_memory += get_deep_size(element)
+        memory_usage[column] = column_memory
+
+    # Sum up total memory usage
+    total_memory_usage = memory_usage.sum()
+
+    return total_memory_usage
 
 
 class PandasRow(TableRow):
@@ -293,7 +339,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        return int(self._table.memory_usage(index=True, deep=True).sum())
+        return int(calculate_accurate_memory_usage(self._table))
 
     def _zip(self, acc: BlockAccessor) -> "pandas.DataFrame":
         r = self.to_pandas().copy(deep=False)
