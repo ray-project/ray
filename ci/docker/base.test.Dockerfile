@@ -53,7 +53,6 @@ RUN echo "ulimit -c 0" >> /root/.bashrc
 RUN mkdir /ray
 WORKDIR /ray
 
-# Below should be re-run each time
 COPY . .
 
 RUN ./ci/env/install-miniconda.sh

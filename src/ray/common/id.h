@@ -580,6 +580,11 @@ struct DefaultLogKey<ObjectID> {
   constexpr static std::string_view key = kLogKeyObjectID;
 };
 
+template <>
+struct DefaultLogKey<PlacementGroupID> {
+  constexpr static std::string_view key = kLogKeyPlacementGroupID;
+};
+
 }  // namespace ray
 
 namespace std {
