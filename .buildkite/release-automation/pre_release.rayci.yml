@@ -5,4 +5,5 @@ steps:
   - label: "Check Ray wheels"
     key: check-ray-wheels
     commands:
+      - source .buildkite/release-automation/set-ray-version.sh
       - bazel run //ci/ray_ci/automation:check_ray_wheels_s3 -- --ray_version="${RAY_VERSION}" --ray_commit="${BUILDKITE_COMMIT}"
