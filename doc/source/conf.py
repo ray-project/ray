@@ -294,6 +294,7 @@ html_theme_options = {
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "version-switcher",
         "navbar-icon-links",
         "navbar-anyscale",
     ],
@@ -313,6 +314,10 @@ html_theme_options = {
     "navigation_depth": 4,
     "pygment_light_style": "stata-dark",
     "pygment_dark_style": "stata-dark",
+    "switcher": {
+        "json_url": "https://docs.ray.io/en/master/_static/versions.json",
+        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
+    },
 }
 
 html_context = {
