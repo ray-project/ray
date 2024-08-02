@@ -230,8 +230,8 @@ class Learner(Checkpointable):
     ):
         # TODO (sven): Figure out how to do this
         self.config = config.copy(copy_frozen=False)
-        self._module_spec = module_spec
-        self._module_obj = module
+        self._module_spec: Optional[MultiRLModuleSpec] = module_spec
+        self._module_obj: Optional[MultiRLModule] = module
         self._device = None
 
         # Set a seed, if necessary.
@@ -1477,6 +1477,7 @@ class Learner(Checkpointable):
         # Module was provided directly through constructor -> Use as-is.
         if self._module_obj is not None:
             module = self._module_obj
+            self._module_spec = MultiRLModuleSpec.from_module(module)
         # RLModuleSpec was provided directly through constructor -> Use it to build the
         # RLModule.
         elif self._module_spec is not None:
