@@ -167,7 +167,7 @@ class DashboardHead:
 
     @property
     def http_session(self):
-        if not self._modules_loaded:
+        if not self._modules_loaded and not self.http_server:
             # When the dashboard is still starting up, this property gets
             # called as part of the method_route_table_factory magic. In
             # this case, the property is not actually used but the magic
