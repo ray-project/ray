@@ -27,5 +27,5 @@ loggers:
         propagate: False
     ray.air.util.tensor_extensions:
         level: DEBUG
-        handlers: [file, console, error-file]
+        handlers: [file, console]
         propagate: False
