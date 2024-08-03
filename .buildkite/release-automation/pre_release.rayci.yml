@@ -5,4 +5,4 @@ steps:
   - label: "Check Ray wheels"
     key: check-ray-wheels
     commands:
-      - bazel run //ci/ray_ci/automation:check_ray_wheels_s3 -- --ray_version="${RAY_VERSION}" --ray_commit="${RAY_COMMIT}"
+      - bazel run //ci/ray_ci/automation:check_ray_wheels_s3 -- --ray_version="${RAY_VERSION}" --commit_hash="${RAY_COMMIT}"
