@@ -45,14 +45,13 @@ using SubscriptionFailureCallback =
 
 /// Subscription info stores metadata that is needed for subscriptions.
 struct SubscriptionInfo {
-  SubscriptionInfo(SubscriptionItemCallback i_cb, SubscriptionFailureCallback f_cb)
-      : item_cb(std::move(i_cb)), failure_cb(std::move(f_cb)) {}
+  SubscriptionInfo() = default;
 
   // Callback that runs on each received rpc::PubMessage.
-  SubscriptionItemCallback item_cb;
+  std::vector<SubscriptionItemCallback> item_cb;
 
   // Callback that runs after a polling request fails. The input is the failure status.
-  SubscriptionFailureCallback failure_cb;
+  std::vector<SubscriptionFailureCallback> failure_cb;
 };
 
 /// All subscription info for the publisher.
@@ -151,7 +150,7 @@ class SubscriberChannel {
 
   /// Returns a subscription callback; Returns a nullopt if the object id is not
   /// subscribed.
-  absl::optional<SubscriptionItemCallback> GetSubscriptionItemCallback(
+  absl::optional<std::vector<SubscriptionItemCallback>> GetSubscriptionItemCallback(
       const rpc::Address &publisher_address, const std::string &key_id) const {
     const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
@@ -170,7 +169,7 @@ class SubscriberChannel {
 
   /// Returns a publisher failure callback; Returns a nullopt if the object id is not
   /// subscribed.
-  absl::optional<SubscriptionFailureCallback> GetFailureCallback(
+  absl::optional<std::vector<SubscriptionFailureCallback>> GetFailureCallback(
       const rpc::Address &publisher_address, const std::string &key_id) const {
     const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
     auto subscription_it = subscription_map_.find(publisher_id);
