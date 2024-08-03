@@ -34,7 +34,8 @@ bool SubscriberChannel::Subscribe(
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
 
   if (key_id) {
-    auto &subscription_info = subscription_map_[publisher_id].per_entity_subscription[*key_id];
+    auto &subscription_info =
+        subscription_map_[publisher_id].per_entity_subscription[*key_id];
     subscription_info.item_cb.push_back(std::move(subscription_callback));
     subscription_info.failure_cb.push_back(std::move(subscription_failure_callback));
     return true;
@@ -47,7 +48,8 @@ bool SubscriberChannel::Subscribe(
   }
 
   all_entities_subscription->item_cb.push_back(std::move(subscription_callback));
-  all_entities_subscription->failure_cb.push_back(std::move(subscription_failure_callback));
+  all_entities_subscription->failure_cb.push_back(
+      std::move(subscription_failure_callback));
   return true;
 }
 
@@ -136,15 +138,16 @@ void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_add
   if (!maybe_subscription_callback.has_value()) {
     return;
   }
-  const auto& subscription_callbacks= maybe_subscription_callback.value();
-  for(const auto& subscription_callback : subscription_callbacks){
+  const auto &subscription_callbacks = maybe_subscription_callback.value();
+  for (const auto &subscription_callback : subscription_callbacks) {
     cum_processed_messages_++;
     // If the object id is still subscribed, run a callback to the callback io service.
     const auto &channel_name =
-    rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
+        rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
     callback_service_->post(
-        [subscription_callback,
-        msg = std::move(pub_message)]() { subscription_callback(msg); },
+        [subscription_callback, msg = std::move(pub_message)]() {
+          subscription_callback(msg);
+        },
         "Subscriber.HandlePublishedMessage_" + channel_name);
   }
 }
@@ -200,10 +203,10 @@ bool SubscriberChannel::HandlePublisherFailureInternal(
     const Status &status) {
   auto maybe_failure_callback = GetFailureCallback(publisher_address, key_id);
   if (maybe_failure_callback.has_value()) {
-    const auto& failure_callbacks= maybe_failure_callback.value();
-    for(const auto& failure_callback : failure_callbacks){
+    const auto &failure_callbacks = maybe_failure_callback.value();
+    for (const auto &failure_callback : failure_callbacks) {
       const auto &channel_name =
-      rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
+          rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
       callback_service_->post(
           [failure_callback, key_id, status]() { failure_callback(key_id, status); },
           "Subscriber.HandleFailureCallback_" + channel_name);
