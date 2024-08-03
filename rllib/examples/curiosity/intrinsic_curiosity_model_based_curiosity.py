@@ -91,15 +91,20 @@ from ray.rllib.examples.rl_modules.classes.intrinsic_curiosity_model_rlm import 
     ICM_MODULE_ID,
     IntrinsicCuriosityModel,
 )
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
 
 parser = add_rllib_example_script_args(
-    default_iters=20000,
-    default_timesteps=100000000,
-    default_reward=1.0,
+    default_iters=2000,
+    default_timesteps=10000000,
+    default_reward=0.9,
 )
 parser.set_defaults(enable_new_api_stack=True)
 
@@ -216,7 +221,7 @@ if __name__ == "__main__":
         # Use our custom `curiosity` method to set up the PPO/ICM-Learner.
         .curiosity(
             # Intrinsic reward coefficient.
-            curiosity_eta=0.1,
+            curiosity_eta=0.05,
             # Forward loss weight (vs inverse dynamics loss, which will be `1. - beta`).
             # curiosity_beta=0.2,
         )
@@ -257,7 +262,7 @@ if __name__ == "__main__":
             ),
             # Use a different learning rate for training the ICM.
             algorithm_config_overrides_per_module={
-                ICM_MODULE_ID: config_class.overrides(lr=0.0003)
+                ICM_MODULE_ID: config_class.overrides(lr=0.0005)
             },
         )
     )
@@ -275,8 +280,8 @@ if __name__ == "__main__":
         base_config.training(
             # Plug in the correct Learner class.
             learner_class=DQNTorchLearnerWithCuriosity,
-            train_batch_size_per_learner=32,
-            lr=0.0004,
+            train_batch_size_per_learner=128,
+            lr=0.00075,
             replay_buffer_config={
                 "type": "PrioritizedEpisodeReplayBuffer",
                 "capacity": 500000,
@@ -284,10 +289,22 @@ if __name__ == "__main__":
                 "beta": 0.4,
             },
             # Epsilon exploration schedule for DQN.
-            epsilon=[[0, 1.0], [750000, 0.05]],
+            epsilon=[[0, 1.0], [500000, 0.05]],
             n_step=(3, 5),
             double_q=True,
             dueling=True,
         )
 
-    run_rllib_example_script_experiment(base_config, args)
+    success_key = f"{ENV_RUNNER_RESULTS}/max_dist_travelled_across_running_episodes"
+    stop = {
+        success_key: 8.0,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+    }
+
+    run_rllib_example_script_experiment(
+        base_config,
+        args,
+        stop=stop,
+        success_metric={success_key: stop[success_key]},
+    )
