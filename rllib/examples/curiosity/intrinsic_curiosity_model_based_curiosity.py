@@ -216,25 +216,14 @@ if __name__ == "__main__":
         # Use our custom `curiosity` method to set up the PPO/ICM-Learner.
         .curiosity(
             # Intrinsic reward coefficient.
-            # curiosity_eta=1.0,
+            curiosity_eta=0.1,
             # Forward loss weight (vs inverse dynamics loss, which will be `1. - beta`).
             # curiosity_beta=0.2,
         )
         .callbacks(MeasureMaxDistanceToStart)
         .env_runners(
-            num_envs_per_env_runner=5,
+            num_envs_per_env_runner=5 if args.algo == "PPO" else 1,
             env_to_module_connector=lambda env: FlattenObservations(),
-        )
-        .training(
-            # Plug in the correct Learner class, based on the "main" RLlib
-            # algorithm to be used.
-            learner_class=(
-                PPOTorchLearnerWithCuriosity
-                if args.algo == "PPO"
-                else DQNTorchLearnerWithCuriosity
-            ),
-            train_batch_size_per_learner=2000,
-            lr=0.0003,
         )
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(
@@ -268,24 +257,37 @@ if __name__ == "__main__":
             ),
             # Use a different learning rate for training the ICM.
             algorithm_config_overrides_per_module={
-                ICM_MODULE_ID: PPOConfigWithCuriosity.overrides(lr=0.0005)
+                ICM_MODULE_ID: config_class.overrides(lr=0.0003)
             },
         )
     )
 
     # Set PPO-specific hyper-parameters.
     if args.algo == "PPO":
-        base_config.training(num_sgd_iter=6)
+        base_config.training(
+            num_sgd_iter=6,
+            # Plug in the correct Learner class.
+            learner_class=PPOTorchLearnerWithCuriosity,
+            train_batch_size_per_learner=2000,
+            lr=0.0003,
+        )
     elif args.algo == "DQN":
         base_config.training(
+            # Plug in the correct Learner class.
+            learner_class=DQNTorchLearnerWithCuriosity,
+            train_batch_size_per_learner=32,
+            lr=0.0004,
             replay_buffer_config={
                 "type": "PrioritizedEpisodeReplayBuffer",
-                "capacity": 50000,
+                "capacity": 500000,
                 "alpha": 0.6,
                 "beta": 0.4,
             },
             # Epsilon exploration schedule for DQN.
-            epsilon=[[0, 1.0], [100000, 0.02]],
+            epsilon=[[0, 1.0], [750000, 0.05]],
+            n_step=(3, 5),
+            double_q=True,
+            dueling=True,
         )
 
     run_rllib_example_script_experiment(base_config, args)
