@@ -45,7 +45,7 @@ class TFRecordDatasink(BlockBasedFileDatasink):
 
 
 def _convert_arrow_table_to_examples(
-    arrow_table: pyarrow.Table,
+    arrow_table: "pyarrow.Table",
     tf_schema: Optional["schema_pb2.Schema"] = None,
 ) -> Iterable["tf.train.Example"]:
     import tensorflow as tf

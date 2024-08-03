@@ -30,7 +30,7 @@ class TFRecordDatasource(FileBasedDatasource):
         self,
         paths: Union[str, List[str]],
         tf_schema: Optional["schema_pb2.Schema"] = None,
-        tfx_read_options: Optional[TFXReadOptions] = None,
+        tfx_read_options: Optional["TFXReadOptions"] = None,
         **file_based_datasource_kwargs,
     ):
         """
