@@ -90,7 +90,7 @@ class InverseDynamicsModel(TorchRLModule):
 
     @override(TorchRLModule)
     def setup(self):
-        # Get the IDM achitecture settings from the our RLModuleConfig's (self.config)
+        # Get the IDM achitecture settings from the RLModuleConfig's (self.config)
         # `model_config_dict` property:
         cfg = self.config.model_config_dict
 
@@ -103,7 +103,7 @@ class InverseDynamicsModel(TorchRLModule):
         in_size = self.config.observation_space.shape[0]
         for out_size in dense_layers:
             layers.append(nn.Linear(in_size, out_size))
-            if cfg.get("feature_net_activation"):
+            if cfg.get("feature_net_activation") not in [None, "linear"]:
                 layers.append(
                     get_activation_fn(cfg["feature_net_activation"], "torch")()
                 )
@@ -119,7 +119,7 @@ class InverseDynamicsModel(TorchRLModule):
         in_size = feature_dim * 2
         for out_size in dense_layers:
             layers.append(nn.Linear(in_size, out_size))
-            if cfg.get("inverse_net_activation"):
+            if cfg.get("inverse_net_activation") not in [None, "linear"]:
                 layers.append(
                     get_activation_fn(cfg["inverse_net_activation"], "torch")()
                 )
@@ -136,7 +136,7 @@ class InverseDynamicsModel(TorchRLModule):
         in_size = feature_dim + self.config.action_space.n
         for out_size in dense_layers:
             layers.append(nn.Linear(in_size, out_size))
-            if cfg.get("forward_net_activation"):
+            if cfg.get("forward_net_activation") not in [None, "linear"]:
                 layers.append(
                     get_activation_fn(cfg["forward_net_activation"], "torch")()
                 )
