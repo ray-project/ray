@@ -1,3 +1,4 @@
+import logging
 import threading
 from typing import Any, List, Optional
 
@@ -5,6 +6,9 @@ import ray
 from ray.experimental import tqdm_ray
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated
+from ray.util.debug import log_once
+
+logger = logging.getLogger(__name__)
 
 try:
     import tqdm
@@ -44,6 +48,10 @@ class ProgressBar:
     because no tasks have finished yet), doesn't display the full
     progress bar. Still displays basic progress stats from tqdm."""
 
+    # If the name/description of the progress bar exceeds this length,
+    # it will be truncated.
+    MAX_NAME_LENGTH = 100
+
     def __init__(
         self,
         name: str,
@@ -52,7 +60,7 @@ class ProgressBar:
         position: int = 0,
         enabled: Optional[bool] = None,
     ):
-        self._desc = name
+        self._desc = self._truncate_name(name)
         self._progress = 0
         # Prepend a space to the unit for better formatting.
         if unit[0] != " ":
@@ -70,10 +78,11 @@ class ProgressBar:
                 self._bar = tqdm_ray.tqdm(total=total, unit=unit, position=position)
             else:
                 self._bar = tqdm.tqdm(
-                    total=total,
+                    total=total or 0,
                     position=position,
                     dynamic_ncols=True,
                     unit=unit,
+                    unit_scale=True,
                 )
             self._bar.set_description(self._desc)
         else:
@@ -83,10 +92,48 @@ class ProgressBar:
                 needs_warning = False
             self._bar = None
 
+    def _truncate_name(self, name: str) -> str:
+        ctx = ray.data.context.DataContext.get_current()
+        if (
+            not ctx.enable_progress_bar_name_truncation
+            or len(name) <= self.MAX_NAME_LENGTH
+        ):
+            return name
+
+        if log_once("ray_data_truncate_operator_name"):
+            logger.warning(
+                f"Truncating long operator name to {self.MAX_NAME_LENGTH} characters."
+                "To disable this behavior, set `ray.data.DataContext.get_current()."
+                "DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = False`."
+            )
+        op_names = name.split("->")
+        if len(op_names) == 1:
+            return op_names[0]
+
+        # Include as many operators as possible without approximately
+        # exceeding `MAX_NAME_LENGTH`. Always include the first and
+        # last operator names soit is easy to identify the DAG.
+        truncated_op_names = [op_names[0]]
+        for op_name in op_names[1:-1]:
+            if (
+                len("->".join(truncated_op_names))
+                + len("->")
+                + len(op_name)
+                + len("->")
+                + len(op_names[-1])
+            ) > self.MAX_NAME_LENGTH:
+                truncated_op_names.append("...")
+                break
+            truncated_op_names.append(op_name)
+        truncated_op_names.append(op_names[-1])
+        return "->".join(truncated_op_names)
+
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
         t = threading.current_thread()
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=False, timeout=0.1)
+            done, remaining = ray.wait(
+                remaining, num_returns=len(remaining), fetch_local=False, timeout=0.1
+            )
             self.update(len(done))
 
             with _canceled_threads_lock:
@@ -103,7 +150,12 @@ class ProgressBar:
         # See https://github.com/ray-project/ray/issues/30375.
         fetch_local = True
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=fetch_local, timeout=0.1)
+            done, remaining = ray.wait(
+                remaining,
+                num_returns=len(remaining),
+                fetch_local=fetch_local,
+                timeout=0.1,
+            )
             if fetch_local:
                 fetch_local = False
             for ref, result in zip(done, ray.get(done)):
@@ -117,6 +169,7 @@ class ProgressBar:
         return [ref_to_result[ref] for ref in refs]
 
     def set_description(self, name: str) -> None:
+        name = self._truncate_name(name)
         if self._bar and name != self._desc:
             self._desc = name
             self._bar.set_description(self._desc)
