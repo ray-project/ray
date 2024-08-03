@@ -1705,7 +1705,7 @@ def read_tfrecords(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    tfx_read_options: Optional[TFXReadOptions] = None,
+    tfx_read_options: Optional["TFXReadOptions"] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
