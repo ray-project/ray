@@ -36,7 +36,6 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -272,7 +271,7 @@ class EnvRunnerGroup:
             and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):
-            spaces = self._get_spaces_from_remote_worker()
+            spaces = self.get_spaces()
         else:
             spaces = None
 
@@ -288,68 +287,24 @@ class EnvRunnerGroup:
                 spaces=spaces,
             )
 
-    def _get_spaces_from_remote_worker(self):
-        """Infer observation and action spaces from a remote worker.
+    def get_spaces(self):
+        """Infer observation and action spaces from one (local or remote) EnvRunner.
 
         Returns:
-            A dict mapping from policy ids to spaces.
+            A dict mapping from ModuleID to a 2-tuple containing obs- and action-space.
         """
         # Get ID of the first remote worker.
-        worker_id = self._worker_manager.actor_ids()[0]
+        remote_worker_ids = (
+            [self._worker_manager.actor_ids()[0]]
+            if self._worker_manager.actor_ids()
+            else []
+        )
 
-        # Try to figure out spaces from the first remote worker.
-        # Traditional RolloutWorker.
-        if issubclass(self.env_runner_cls, RolloutWorker):
-            remote_spaces = self.foreach_worker(
-                lambda worker: worker.foreach_policy(
-                    lambda p, pid: (pid, p.observation_space, p.action_space)
-                ),
-                remote_worker_ids=[worker_id],
-                local_env_runner=False,
-            )
-        # Generic EnvRunner.
-        else:
-            remote_spaces = self.foreach_worker(
-                lambda worker: worker.multi_rl_module.foreach_module(
-                    lambda mid, m: (
-                        mid,
-                        m.config.observation_space,
-                        m.config.action_space,
-                    ),
-                )
-                if hasattr(worker, "multi_rl_module")
-                else [
-                    (
-                        DEFAULT_POLICY_ID,
-                        worker.module.config.observation_space,
-                        worker.module.config.action_space,
-                    ),
-                ]
-            )
-
-        if not remote_spaces:
-            raise ValueError(
-                "Could not get observation and action spaces from remote "
-                "worker. Maybe specify them manually in the config?"
-            )
-        spaces = {
-            e[0]: (getattr(e[1], "original_space", e[1]), e[2])
-            for e in remote_spaces[0]
-        }
-
-        if issubclass(self.env_runner_cls, RolloutWorker):
-            # Try to add the actual env's obs/action spaces.
-            env_spaces = self.foreach_worker(
-                lambda worker: worker.foreach_env(
-                    lambda env: (env.observation_space, env.action_space)
-                ),
-                remote_worker_ids=[worker_id],
-                local_env_runner=False,
-            )
-            if env_spaces:
-                # env_spaces group spaces by environment then worker.
-                # So need to unpack thing twice.
-                spaces["__env__"] = env_spaces[0][0]
+        spaces = self.foreach_worker(
+            lambda env_runner: env_runner.get_spaces(),
+            remote_worker_ids=remote_worker_ids,
+            local_env_runner=not remote_worker_ids,
+        )[0]
 
         logger.info(
             "Inferred observation/action spaces from remote "

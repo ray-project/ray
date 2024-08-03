@@ -72,9 +72,9 @@ class StaticLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
 };
 
 // This class is thread-safe.
-class CoreWorkerDirectTaskSubmitter {
+class NormalTaskSubmitter {
  public:
-  explicit CoreWorkerDirectTaskSubmitter(
+  explicit NormalTaskSubmitter(
       rpc::Address rpc_address,
       std::shared_ptr<WorkerLeaseInterface> lease_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,
