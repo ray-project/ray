@@ -1,4 +1,4 @@
-from typing import Any, Dict, Tuple
+from typing import Any, Dict
 
 from ray.rllib.algorithms.algorithm_config import NotProvided
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -10,25 +10,16 @@ from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_b
     AddNextObservationsFromEpisodesToTrainBatch,
 )
 from ray.rllib.core import Columns, DEFAULT_MODULE_ID
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.examples.rl_modules.classes.inverse_dynamics_model_rlm import (
-    InverseDynamicsModel,
-)
 from ray.rllib.utils.metrics import ALL_MODULES
 
 ICM_MODULE_ID = "_inverse_dynamics_model"
 
 
 class PPOConfigWithCuriosity(PPOConfig):
-    # Define defaults.
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.curiosity_feature_net_hiddens = (256, 256)
-        self.curiosity_feature_net_activation = "relu"
-        self.curiosity_inverse_net_hiddens = (256, 256)
-        self.curiosity_inverse_net_activation = "relu"
-        self.curiosity_forward_net_hiddens = (256, 256)
-        self.curiosity_forward_net_activation = "relu"
+
+        # Define defaults.
         self.curiosity_beta = 0.2
         self.curiosity_eta = 1.0
 
@@ -36,27 +27,21 @@ class PPOConfigWithCuriosity(PPOConfig):
     def curiosity(
         self,
         *,
-        curiosity_feature_net_hiddens: Tuple[int, ...] = NotProvided,
-        curiosity_feature_net_activation: str = NotProvided,
-        curiosity_inverse_net_hiddens: Tuple[int, ...] = NotProvided,
-        curiosity_inverse_net_activation: str = NotProvided,
-        curiosity_forward_net_hiddens: Tuple[int, ...] = NotProvided,
-        curiosity_forward_net_activation: str = NotProvided,
         curiosity_beta: float = NotProvided,
         curiosity_eta: float = NotProvided,
-    ):
-        if curiosity_feature_net_hiddens is not NotProvided:
-            self.curiosity_feature_net_hiddens = curiosity_feature_net_hiddens
-        if curiosity_feature_net_activation is not NotProvided:
-            self.curiosity_feature_net_activation = curiosity_feature_net_activation
-        if curiosity_inverse_net_hiddens is not NotProvided:
-            self.curiosity_inverse_net_hiddens = curiosity_inverse_net_hiddens
-        if curiosity_inverse_net_activation is not NotProvided:
-            self.curiosity_inverse_net_activation = curiosity_inverse_net_activation
-        if curiosity_forward_net_hiddens is not NotProvided:
-            self.curiosity_forward_net_hiddens = curiosity_forward_net_hiddens
-        if curiosity_forward_net_activation is not NotProvided:
-            self.curiosity_forward_net_activation = curiosity_forward_net_activation
+    ) -> "PPOConfigWithCuriosity":
+        """Sets the config's curiosity settings.
+
+        Args:
+            curiosity_beta: The coefficient used for the intrinsic rewards. Overall
+                rewards are computed as `R = R[extrinsic] + beta * R[intrinsic]`.
+            curiosity_eta: Fraction of the forward loss (within the total loss term)
+                vs the inverse dynamics loss. The total loss of the ICM is computed as:
+                `L = eta * [forward loss] + (1.0 - eta) * [inverse loss]`.
+
+        Returns:
+            This updated AlgorithmConfig object.
+        """
         if curiosity_beta is not NotProvided:
             self.curiosity_beta = curiosity_beta
         if curiosity_eta is not NotProvided:
@@ -68,26 +53,12 @@ class PPOTorchLearnerWithCuriosity(PPOTorchLearner):
     def build(self):
         super().build()
 
-        # Assert, we are only training one policy (RLModule).
-        assert len(self.module) == 1 and DEFAULT_MODULE_ID in self.module
-
-        # Add an InverseDynamicsModel to our MARLModule.
-        icm_spec = RLModuleSpec(
-            module_class=InverseDynamicsModel,
-            observation_space=self.module[DEFAULT_MODULE_ID].config.observation_space,
-            action_space=self.module[DEFAULT_MODULE_ID].config.action_space,
-            model_config_dict={
-                "feature_net_hiddens": self.config.curiosity_feature_net_hiddens,
-                "feature_net_activation": self.config.curiosity_feature_net_activation,
-                "inverse_net_hiddens": self.config.curiosity_inverse_net_hiddens,
-                "inverse_net_activation": self.config.curiosity_inverse_net_activation,
-                "forward_net_hiddens": self.config.curiosity_forward_net_hiddens,
-                "forward_net_activation": self.config.curiosity_forward_net_activation,
-            },
-        )
-        self.add_module(
-            module_id=ICM_MODULE_ID,
-            module_spec=icm_spec,
+        # Assert, we are only training one policy (RLModule) and we have the ICM
+        # in our MultiRLModule.
+        assert (
+            len(self.module) == 2
+            and DEFAULT_MODULE_ID in self.module
+            and ICM_MODULE_ID in self.module
         )
 
         # Prepend a "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right

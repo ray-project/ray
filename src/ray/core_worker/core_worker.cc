@@ -450,7 +450,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             }
             RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
           } else {
-            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+            RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
           }
         }
       },
@@ -541,7 +541,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                           : std::shared_ptr<LeasePolicyInterface>(
                                 std::make_shared<LocalLeasePolicy>(rpc_address_));
 
-  direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
+  normal_task_submitter_ = std::make_unique<NormalTaskSubmitter>(
       rpc_address_,
       local_raylet_client_,
       core_worker_client_pool_,
@@ -1077,7 +1077,7 @@ void CoreWorker::InternalHeartbeat() {
       }
       RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
     } else {
-      RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+      RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
     }
   }
 
@@ -1088,9 +1088,9 @@ void CoreWorker::InternalHeartbeat() {
 
   // Periodically report the lastest backlog so that
   // local raylet will have the eventually consistent view of worker backlogs
-  // even in cases where backlog reports from direct_task_transport
+  // even in cases where backlog reports from normal_task_submitter
   // are lost or reordered.
-  direct_task_submitter_->ReportWorkerBacklog();
+  normal_task_submitter_->ReportWorkerBacklog();
 
   // Check for unhandled exceptions to raise after a timeout on the driver.
   // Only do this for TTY, since shells like IPython sometimes save references
@@ -2231,7 +2231,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 
     io_service_.post(
         [this, task_spec]() {
-          RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+          RAY_UNUSED(normal_task_submitter_->SubmitTask(task_spec));
         },
         "CoreWorker.SubmitTask");
   }
@@ -2386,7 +2386,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                         << "Failed to register actor. Error message: "
                         << status.ToString();
                   } else {
-                    RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+                    RAY_UNUSED(normal_task_submitter_->SubmitTask(task_spec));
                   }
                 }));
           },
@@ -2401,7 +2401,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       }
       io_service_.post(
           [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+            RAY_UNUSED(normal_task_submitter_->SubmitTask(task_spec));
           },
           "CoreWorker.SubmitTask");
     }
@@ -2601,7 +2601,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
     RAY_LOG(DEBUG).WithField(object_id)
         << "Request to cancel a task of object to an owner "
         << obj_addr.SerializeAsString();
-    return direct_task_submitter_->CancelRemoteTask(
+    return normal_task_submitter_->CancelRemoteTask(
         object_id, obj_addr, force_kill, recursive);
   }
 
@@ -2625,7 +2625,7 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
 
     return actor_task_submitter_->CancelTask(task_spec.value(), recursive);
   } else {
-    return direct_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
+    return normal_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
   }
 }
 
@@ -2645,7 +2645,7 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
       recursive_cancellation_status.push_back(std::make_pair(child_id, result));
     } else {
       auto result =
-          direct_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
+          normal_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
       recursive_cancellation_status.push_back(std::make_pair(child_id, result));
     }
   }

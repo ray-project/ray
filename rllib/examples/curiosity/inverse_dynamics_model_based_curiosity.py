@@ -76,9 +76,16 @@ from collections import defaultdict
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.learners.classes.curiosity_ppo_torch_learner import (
+    ICM_MODULE_ID,
     PPOConfigWithCuriosity,
     PPOTorchLearnerWithCuriosity,
+)
+from ray.rllib.examples.rl_modules.classes.inverse_dynamics_model_rlm import (
+    InverseDynamicsModel,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -193,10 +200,12 @@ if __name__ == "__main__":
                 "max_episode_steps": 22,
             },
         )
-        # Use our custom `curiosity` method to set up the ICM and our PPO/ICM-Learner.
+        # Use our custom `curiosity` method to set up the PPO/ICM-Learner.
         .curiosity(
-            # curiosity_feature_net_hiddens=[256, 256],
-            # curiosity_inverse_net_activation="relu",
+            # Intrinsic reward coefficient.
+            # curiosity_eta=1.0,
+            # Forward loss weight (vs inverse dynamics loss, which will be `1. - beta`).
+            # curiosity_beta=0.2,
         )
         .callbacks(MeasureMaxDistanceToStart)
         .env_runners(
@@ -209,7 +218,37 @@ if __name__ == "__main__":
             num_sgd_iter=6,
             lr=0.0003,
         )
-        .rl_module(model_config_dict={"vf_share_layers": True})
+        .rl_module(
+            rl_module_spec=MultiRLModuleSpec(
+                module_specs={
+                    # The "main" RLModule (policy) to be trained by our algo.
+                    DEFAULT_MODULE_ID: RLModuleSpec(
+                        model_config_dict={"vf_share_layers": True},
+                    ),
+                    # The inverse dynamics model.
+                    ICM_MODULE_ID: RLModuleSpec(
+                        module_class=InverseDynamicsModel,
+                        # Only create the ICM on the Learner workers, NOT on the
+                        # EnvRunners.
+                        learner_only=True,
+                        # Configure the architecture of the ICM here.
+                        model_config_dict={
+                            "feature_dim": 288,
+                            "feature_net_hiddens": (256, 256),
+                            "feature_net_activation": "relu",
+                            "inverse_net_hiddens": (256, 256),
+                            "inverse_net_activation": "relu",
+                            "forward_net_hiddens": (256, 256),
+                            "forward_net_activation": "relu",
+                        },
+                    ),
+                }
+            ),
+            # Use a different learning rate for training the ICM.
+            algorithm_config_overrides_per_module={
+                ICM_MODULE_ID: PPOConfigWithCuriosity.overrides(lr=0.0005)
+            },
+        )
     )
 
     run_rllib_example_script_experiment(base_config, args)
