@@ -115,7 +115,7 @@ def test_read_operator(ray_start_regular_shared):
 
 def test_read_operator_emits_warning_for_large_read_tasks():
     class StubDatasource(Datasource):
-        def estimate_inmemory_data_size(self) -> int | None:
+        def estimate_inmemory_data_size(self) -> Optional[int]:
             return None
 
         def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
