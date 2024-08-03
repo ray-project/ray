@@ -2,7 +2,6 @@ import collections
 import logging
 import os
 import warnings
-from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -99,6 +98,8 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from tensorflow_metadata.proto.v0 import schema_pb2
+
+    from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 
 
 T = TypeVar("T")
@@ -1686,24 +1687,6 @@ def read_numpy(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
-
-
-@PublicAPI(stability="alpha")
-@dataclass
-class TFXReadOptions:
-    """
-    Specifies read options when reading TFRecord files with TFX.
-    """
-
-    # An int representing the number of consecutive elements of
-    # this dataset to combine in a single batch when tfx-bsl is used to read
-    # the tfrecord files.
-    batch_size: int = 2048
-
-    # Toggles the schema inference applied; applicable
-    # only if tfx-bsl is used and tf_schema argument is missing.
-    # Defaults to True.
-    auto_infer_schema: bool = True
 
 
 @PublicAPI(stability="alpha")

@@ -1,5 +1,6 @@
 import logging
 import struct
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, Iterable, Iterator, List, Optional, Union
 
 import pyarrow
@@ -8,6 +9,7 @@ from ray.air.util.tensor_extensions.arrow import pyarrow_table_from_pydict
 from ray.data.aggregate import AggregateFn
 from ray.data.block import Block
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -15,10 +17,26 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data.dataset import Dataset
-    from ray.data.read_api import TFXReadOptions
-
 
 logger = logging.getLogger(__name__)
+
+
+@PublicAPI(stability="alpha")
+@dataclass
+class TFXReadOptions:
+    """
+    Specifies read options when reading TFRecord files with TFX.
+    """
+
+    # An int representing the number of consecutive elements of
+    # this dataset to combine in a single batch when tfx-bsl is used to read
+    # the tfrecord files.
+    batch_size: int = 2048
+
+    # Toggles the schema inference applied; applicable
+    # only if tfx-bsl is used and tf_schema argument is missing.
+    # Defaults to True.
+    auto_infer_schema: bool = True
 
 
 class TFRecordDatasource(FileBasedDatasource):
