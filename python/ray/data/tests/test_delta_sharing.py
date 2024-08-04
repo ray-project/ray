@@ -48,7 +48,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
         )
 
     @patch(
-        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource."
+        "ray.data._internal.datasource.delta_sharing_datasource.DeltaSharingDatasource."
         "setup_delta_sharing_connections"
     )
     def test_init(self, mock_setup_delta_sharing_connections):
@@ -71,7 +71,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
         self.assertEqual(datasource._timestamp, None)
 
     @patch(
-        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource."
+        "ray.data._internal.datasource.delta_sharing_datasource.DeltaSharingDatasource."
         "setup_delta_sharing_connections"
     )
     def test_get_read_tasks(self, mock_setup_delta_sharing_connections):
@@ -213,7 +213,7 @@ class MockDeltaSharingDatasource:
 @pytest.fixture
 def mock_delta_sharing_datasource(mocker):
     mock_datasource = mocker.patch(
-        "ray.data.datasource.delta_sharing_datasource.DeltaSharingDatasource",
+        "ray.data._internal.datasource.delta_sharing_datasource.DeltaSharingDatasource",
         new=MockDeltaSharingDatasource,
     )
     return mock_datasource
