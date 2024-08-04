@@ -214,7 +214,16 @@ Asynchronous Proximal Policy Optimization (APPO)
 .. figure:: images/algos/appo-architecture.svg
     :width: 750
 
-    **APPO architecture:** APPO is an asynchronous variant of `Proximal Policy Optimization (PPO) <ppo>`_ based on the IMPALA architecture, but using a surrogate policy loss with clipping, allowing for multiple SGD passes per collected train batch. In a training iteration, APPO requests samples from all EnvRunners asynchronously and the collected episode samples are returned to the main algo process as ray references (rather than actual objects available on the local algo process). These episode references are then passed to the Learner(s) for asynchronous updates of the model(s). To account for the fact that this asynchronous design leads to some degree of off-policiness on the EnvRunners (models are not always synched back to EnvRunners right after a new version of the weights is available), APPO uses a procedure called v-trace, `described in the IMPALA paper here <https://arxiv.org/abs/1802.01561>`__. APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners for updating the model(s).
+    **APPO architecture:** APPO is an asynchronous variant of PPO based on the IMPALA architecture,
+    but using a surrogate policy loss with clipping, allowing for multiple SGD passes per collected train batch.
+    In a training iteration, APPO requests samples from all EnvRunners asynchronously and the collected episode
+    samples are returned to the main algo process as ray references (rather than actual objects available on the local algo process).
+    These episode references are then passed to the Learner(s) for asynchronous updates of the model(s).
+    To account for the fact that this asynchronous design leads to some degree of off-policiness
+    on the EnvRunners (models are not always synched back to EnvRunners right after a new version of the weights is available), APPO uses
+    a procedure called v-trace, `described in the IMPALA paper here <https://arxiv.org/abs/1802.01561>`__.
+    APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
+    for updating the model(s).
 
 
 **Tuned examples:**
