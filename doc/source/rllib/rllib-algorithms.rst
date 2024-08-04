@@ -367,7 +367,7 @@ Curiosity-driven Exploration by Self-supervised Prediction
 `[paper] <https://arxiv.org/pdf/1705.05363.pdf>`__
 `[implementation] <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/inverse_dynamics_model_based_curiosity.py>`__
 
-.. figure:: images/algos/icm-architecture.svg
+.. figure:: images/algos/curiosity-architecture.svg
     :width: 850
 
     **ICM (intrinsic curiosity model) architecture:** The main idea behind ICM is to train a world-model
