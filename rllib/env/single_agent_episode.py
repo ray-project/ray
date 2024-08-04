@@ -49,6 +49,7 @@ class SingleAgentEpisode:
     .. testcode::
 
         import gymnasium as gym
+        import numpy as np
 
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
