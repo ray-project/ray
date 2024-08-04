@@ -214,7 +214,7 @@ Asynchronous Proximal Policy Optimization (APPO)
 .. figure:: images/algos/appo-architecture.svg
     :width: 750
 
-    **APPO architecture:** APPO is an asynchronous variant of PPO based on the IMPALA architecture,
+    **APPO architecture:** APPO is an asynchronous variant of :ref:`Proximal Policy Optimization (PPO) <ppo>` based on the IMPALA architecture,
     but using a surrogate policy loss with clipping, allowing for multiple SGD passes per collected train batch.
     In a training iteration, APPO requests samples from all EnvRunners asynchronously and the collected episode
     samples are returned to the main algo process as ray references (rather than actual objects available on the local algo process).
