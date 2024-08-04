@@ -34,3 +34,7 @@ loggers:
         level: DEBUG
         handlers: [file, console, error-file]
         propagate: False
+    ray.anyscale.air._internal.autoscaling_coordinator:
+        level: DEBUG
+        handlers: [file, console, error-file]
+        propagate: False
