@@ -26,7 +26,7 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_manager.h"
 #include "ray/core_worker/transport/dependency_resolver.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/task_receiver.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
@@ -72,9 +72,9 @@ class StaticLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
 };
 
 // This class is thread-safe.
-class CoreWorkerDirectTaskSubmitter {
+class NormalTaskSubmitter {
  public:
-  explicit CoreWorkerDirectTaskSubmitter(
+  explicit NormalTaskSubmitter(
       rpc::Address rpc_address,
       std::shared_ptr<WorkerLeaseInterface> lease_client,
       std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool,

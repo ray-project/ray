@@ -104,6 +104,8 @@ using MultiItemPyCallback = PyCallback<Status, std::vector<T> &&>;
 template <typename Data>
 using OptionalItemPyCallback = PyCallback<Status, const std::optional<Data> &>;
 
+using StatusPyCallback = PyCallback<Status>;
+
 }  // namespace gcs
 
 }  // namespace ray
