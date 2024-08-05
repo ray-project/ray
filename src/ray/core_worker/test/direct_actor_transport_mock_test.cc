@@ -13,7 +13,7 @@
 // limitations under the License.
 
 // clang-format off
-#include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/task_receiver.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/core_worker/actor_creator.h"
