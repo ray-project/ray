@@ -30,7 +30,6 @@ using rpc::ActorTableData;
 using rpc::ErrorTableData;
 using rpc::GcsNodeInfo;
 using rpc::JobTableData;
-using rpc::ObjectTableData;
 using rpc::PlacementGroupTableData;
 using rpc::ResourceUsageBatchData;
 using rpc::StoredConfig;

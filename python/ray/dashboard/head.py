@@ -286,6 +286,7 @@ class DashboardHead:
             self.gcs_aio_client = GcsAioClient(
                 address=gcs_address, nums_reconnect_retry=0
             )
+            # TODO(ryw): once we removed the old gcs client, also remove this.
             gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
             gcs_channel.connect()
             self.aiogrpc_gcs_channel = gcs_channel.channel()

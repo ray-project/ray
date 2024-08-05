@@ -115,7 +115,7 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
 
     import ray
     from ray.rllib.algorithms.ppo import PPOConfig
-    from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
     from ray.rllib.core.learner.learner_group import LearnerGroup
 
 

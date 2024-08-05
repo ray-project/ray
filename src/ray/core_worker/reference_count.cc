@@ -360,6 +360,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   if (add_local_ref) {
     it->second.local_ref_count++;
   }
+  PRINT_REF_COUNT(it);
   return true;
 }
 

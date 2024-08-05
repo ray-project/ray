@@ -17,7 +17,7 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.models.base import ACTOR, ENCODER_OUT
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     ENV_RUNNER_RESULTS,
@@ -66,7 +66,7 @@ class BCActor(torch.nn.Module):
 
 
 def train_ppo_module_with_bc_finetune(
-    dataset: ray.data.Dataset, ppo_module_spec: SingleAgentRLModuleSpec
+    dataset: ray.data.Dataset, ppo_module_spec: RLModuleSpec
 ) -> str:
     """Train an Actor with BC finetuning on dataset.
 
@@ -107,7 +107,7 @@ def train_ppo_module_with_bc_finetune(
 
 
 def train_ppo_agent_from_checkpointed_module(
-    module_spec_from_ckpt: SingleAgentRLModuleSpec,
+    module_spec_from_ckpt: RLModuleSpec,
 ) -> float:
     """Trains a checkpointed RLModule using PPO.
 
@@ -156,7 +156,7 @@ if __name__ == "__main__":
 
     ds = ray.data.read_json("s3://rllib-oss-tests/cartpole-expert")
 
-    module_spec = SingleAgentRLModuleSpec(
+    module_spec = RLModuleSpec(
         module_class=PPOTorchRLModule,
         observation_space=GYM_ENV.observation_space,
         action_space=GYM_ENV.action_space,
