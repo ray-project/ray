@@ -111,8 +111,8 @@ class tqdm:
         """Implements tqdm.tqdm.close."""
         # Don't bother if ray is shutdown (in __del__ hook).
         if ray is not None and not self._closed:
+            self._closed = True
             self._dump_state(force_flush=True)
-        self._closed = True
 
     def refresh(self):
         """Implements tqdm.tqdm.refresh."""
