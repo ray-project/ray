@@ -3007,6 +3007,7 @@ def read_lance(
     columns: Optional[List[str]] = None,
     filter: Optional[str] = None,
     storage_options: Optional[Dict[str, str]] = None,
+    scanner_options: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -3033,6 +3034,10 @@ def read_lance(
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https\
                 ://lancedb.github.io/lance/read_and_write.html#object-store-configuration>`_.
+        scanner_options: Additional options to configure the `LanceDataset.scanner()`
+            method, such as `batch_size`. For more information,
+            see `LanceDB API doc <https://lancedb.github.io\
+            /lance/api/python/lance.html#lance.dataset.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -3051,6 +3056,7 @@ def read_lance(
         columns=columns,
         filter=filter,
         storage_options=storage_options,
+        scanner_options=scanner_options,
     )
 
     return read_datasource(
