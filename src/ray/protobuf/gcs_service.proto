@@ -135,7 +135,7 @@ message GetAllActorInfoRequest {
 
 message GetAllActorInfoReply {
   GcsStatus status = 1;
-  // Data of actor.2
+  // Data of actor.
   repeated ActorTableData actor_table_data = 2;
   // Length of the corresponding resource without truncation.
   int64 total = 3;

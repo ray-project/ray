@@ -1,3 +1,4 @@
+import os
 import dataclasses
 import inspect
 import logging
@@ -12,7 +13,7 @@ from grpc.aio._call import UnaryStreamCall
 import ray
 import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray._private.utils import hex_to_binary
 from ray._raylet import ActorID, JobID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
@@ -139,29 +140,145 @@ class IdToIpMap:
         return True
 
 
-class StateDataSourceClient:
-    """The client to query states from various data sources such as Raylet, GCS, Agents.
-
-    Note that it doesn't directly query core workers. They are proxied through raylets.
-
-    The module is not in charge of service discovery. The caller is responsible for
-    finding services and register stubs through `register*` APIs.
-
-    Non `register*` APIs
-    - Return the protobuf directly if it succeeds to query the source.
-    - Raises an exception if there's any network issue.
-    - throw a ValueError if it cannot find the source.
+class GcsStateDataSourceClient:
+    """
+    Sub-interface of StateDataSourceClient for querying states from GCS.
     """
 
-    def __init__(self, gcs_channel: grpc.aio.Channel, gcs_aio_client: GcsAioClient):
-        self.register_gcs_client(gcs_channel)
-        self._raylet_stubs = {}
-        self._runtime_env_agent_addresses = {}  # {node_id -> url}
-        self._log_agent_stub = {}
-        self._job_client = JobInfoStorageClient(gcs_aio_client)
-        self._id_id_map = IdToIpMap()
-        self._gcs_aio_client = gcs_aio_client
-        self._client_session = aiohttp.ClientSession()
+    def __new__(self, gcs_aio_client: GcsAioClient):
+        use_old_client = os.environ.get("RAY_USE_OLD_GCS_CLIENT", "0") == "1"
+        if use_old_client:
+            return GcsStateDataSourceClientFromGrpc(gcs_aio_client)
+        else:
+            return GcsStateDataSourceClientFromNewGcsClient(gcs_aio_client)
+
+
+class GcsStateDataSourceClientFromNewGcsClient:
+    def __init__(self, gcs_aio_client: GcsAioClient) -> None:
+        self.gcs_aio_client = gcs_aio_client
+
+    async def get_all_actor_info(
+        self,
+        timeout: int = None,
+        limit: int = None,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+    ) -> Optional[GetAllActorInfoReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+        if filters is None:
+            filters = []
+
+        filter_actor_id = None
+        filter_job_id = None
+        filter_actor_state_name = None
+        for key, predicate, value in filters:
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+            if key == "actor_id":
+                filter_actor_id = ActorID(hex_to_binary(value))
+            elif key == "job_id":
+                filter_job_id = JobID(hex_to_binary(value))
+            elif key == "state":
+                # Convert to uppercase.
+                value = value.upper()
+                if value not in ActorTableData.ActorState.keys():
+                    raise ValueError(f"Invalid actor state for filtering: {value}")
+                filter_actor_state_name = value
+        return await self.gcs_aio_client.raw_get_all_actor_info(
+            actor_id=filter_actor_id,
+            job_id=filter_job_id,
+            actor_state_name=filter_actor_state_name,
+            limit=limit,
+            timeout=timeout,
+        )
+
+    async def get_task_events(
+        self,
+        timeout: int = None,
+        limit: int = None,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+        exclude_driver: bool = False,
+    ) -> Optional[GetTaskEventsReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+        if filters is None:
+            filters = []
+
+        filter_actor_id = None
+        filter_job_id = None
+        filter_task_id = None
+        filter_name = None
+        filter_state = None
+        for key, predicate, value in filters:
+            if predicate != "=":
+                continue
+            if key == "actor_id":
+                filter_actor_id = ActorID(hex_to_binary(value))
+            elif key == "job_id":
+                filter_job_id = JobID(hex_to_binary(value))
+            elif key == "task_id":
+                filter_task_id = TaskID(hex_to_binary(value))
+            elif key == "name":
+                filter_name = value
+            elif key == "state":
+                filter_state = value
+
+        return await self.gcs_aio_client.raw_get_task_events(
+            actor_id=filter_actor_id,
+            job_id=filter_job_id,
+            task_id=filter_task_id,
+            name=filter_name,
+            state=filter_state,
+            exclude_driver=exclude_driver,
+            limit=limit,
+            timeout=timeout,
+        )
+
+    async def get_all_placement_group_info(
+        self,
+        timeout: int = None,
+        limit: int = None,
+    ) -> Optional[GetAllPlacementGroupReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+
+        return await self.gcs_aio_client.raw_get_all_placement_group(
+            limit=limit,
+            timeout=timeout,
+        )
+
+    async def get_all_node_info(
+        self,
+        timeout: int = None,
+    ) -> Optional[GetAllNodeInfoReply]:
+        return await self.gcs_aio_client.raw_get_all_node_info(
+            timeout=timeout,
+        )
+
+    async def get_all_worker_info(
+        self,
+        timeout: int = None,
+        limit: int = None,
+    ) -> Optional[GetAllWorkerInfoReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+
+        return await self.gcs_aio_client.raw_get_all_worker_info(
+            limit=limit,
+            timeout=timeout,
+        )
+
+
+class GcsStateDataSourceClientFromGrpc:
+    def __init__(self, gcs_aio_client: GcsAioClient) -> None:
+        """
+        Creates its own GcsChannel. Only reads the address from gcs_aio_client.
+        """
+        gcs_address = gcs_aio_client.address
+        self.gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
+        self.gcs_channel.connect()
+        self.register_gcs_client(self.gcs_channel.channel())
 
     def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
@@ -179,71 +296,6 @@ class StateDataSourceClient:
         self._gcs_task_info_stub = gcs_service_pb2_grpc.TaskInfoGcsServiceStub(
             gcs_channel
         )
-
-    def register_raylet_client(
-        self, node_id: str, address: str, port: int, runtime_env_agent_port: int
-    ):
-        full_addr = f"{address}:{port}"
-        options = _STATE_MANAGER_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
-            full_addr, options, asynchronous=True
-        )
-        self._raylet_stubs[node_id] = NodeManagerServiceStub(channel)
-        # TODO(ryw): runtime env agent is on the raylet's address, not node manager's.
-        # So the correct way is to use
-        # f"http://{raylet_ip_address}:{runtime_env_agent_port}".
-        # However we don't have a good way to get *all* node's raylet_ip_address, as
-        # this value is not exposed in GcsNodeInfo and hence isn't available via
-        # GetClusterInfo. In practice, this should not matter a lot until we see a
-        # raylet ip != node manager ip case, which should break more thing than just
-        # runtime env agent connectivity.
-        self._runtime_env_agent_addresses[
-            node_id
-        ] = f"http://{address}:{runtime_env_agent_port}"
-        self._id_id_map.put(node_id, address)
-
-    def unregister_raylet_client(self, node_id: str):
-        self._raylet_stubs.pop(node_id)
-        self._runtime_env_agent_addresses.pop(node_id)
-        self._id_id_map.pop(node_id)
-
-    def register_agent_client(self, node_id, address: str, port: int):
-        options = _STATE_MANAGER_GRPC_OPTIONS
-        channel = ray._private.utils.init_grpc_channel(
-            f"{address}:{port}", options=options, asynchronous=True
-        )
-        self._log_agent_stub[node_id] = LogServiceStub(channel)
-        self._id_id_map.put(node_id, address)
-
-    def unregister_agent_client(self, node_id: str):
-        self._log_agent_stub.pop(node_id)
-        self._id_id_map.pop(node_id)
-
-    def get_all_registered_raylet_ids(self) -> List[str]:
-        return self._raylet_stubs.keys()
-
-    # Returns all node_ids who has runtime_env_agent listening.
-    def get_all_registered_runtime_env_agent_ids(self) -> List[str]:
-        return self._runtime_env_agent_addresses.keys()
-
-    # Returns all nod_ids which registered their log_agent_stub.
-    def get_all_registered_log_agent_ids(self) -> List[str]:
-        return self._log_agent_stub.keys()
-
-    def ip_to_node_id(self, ip: Optional[str]) -> Optional[str]:
-        """Return the node id that corresponds to the given ip.
-
-        Args:
-            ip: The ip address.
-
-        Returns:
-            None if the corresponding id doesn't exist.
-            Node id otherwise. If None node_ip is given,
-            it will also return None.
-        """
-        if not ip:
-            return None
-        return self._id_id_map.get_node_id(ip)
 
     @handle_grpc_network_errors
     async def get_all_actor_info(
@@ -353,6 +405,117 @@ class StateDataSourceClient:
             request, timeout=timeout
         )
         return reply
+
+
+class StateDataSourceClient:
+    """The client to query states from various data sources such as Raylet, GCS, Agents.
+
+    Note that it doesn't directly query core workers. They are proxied through raylets.
+
+    Queries info from:
+    - GCS via gRPC methods.
+    - Raylets via gRPC NodeManagerServiceStub.
+    - Agents via gRPC LogServiceStub.
+    - `get_all_jobs` via JobInfoStorageClient via GcsAioClient from GCS.
+    - `get_all_cluster_events` via DataSource.
+    - Runtime Env Agents via HTTP.
+
+    For the GCS part excluding `get_all_jobs`, it defaults to use the GcsAioClient. If
+    the environment variable RAY_USE_OLD_GCS_CLIENT=1, it usees the direct gRPC stubs.
+
+    The module is not in charge of service discovery. The caller is responsible for
+    finding services and register stubs through `register*` APIs.
+
+    Non `register*` APIs
+    - Return the protobuf directly if it succeeds to query the source.
+    - Raises an exception if there's any network issue.
+    - throw a ValueError if it cannot find the source.
+    """
+
+    def __init__(self, gcs_aio_client: GcsAioClient):
+        self._raylet_stubs = {}
+        self._runtime_env_agent_addresses = {}  # {node_id -> url}
+        self._log_agent_stub = {}
+        self._job_client = JobInfoStorageClient(gcs_aio_client)
+        self._id_id_map = IdToIpMap()
+        self._gcs_aio_client = gcs_aio_client
+        self._client_session = aiohttp.ClientSession()
+        self._gcs_state_data_source_client = GcsStateDataSourceClient(gcs_aio_client)
+        # methods from GcsStateDataSourceClient
+        self.get_all_actor_info = self._gcs_state_data_source_client.get_all_actor_info
+        self.get_all_task_info = self._gcs_state_data_source_client.get_all_task_info
+        self.get_all_placement_group_info = (
+            self._gcs_state_data_source_client.get_all_placement_group_info
+        )
+        self.get_all_node_info = self._gcs_state_data_source_client.get_all_node_info
+        self.get_all_worker_info = (
+            self._gcs_state_data_source_client.get_all_worker_info
+        )
+
+    def register_raylet_client(
+        self, node_id: str, address: str, port: int, runtime_env_agent_port: int
+    ):
+        full_addr = f"{address}:{port}"
+        options = _STATE_MANAGER_GRPC_OPTIONS
+        channel = ray._private.utils.init_grpc_channel(
+            full_addr, options, asynchronous=True
+        )
+        self._raylet_stubs[node_id] = NodeManagerServiceStub(channel)
+        # TODO(ryw): runtime env agent is on the raylet's address, not node manager's.
+        # So the correct way is to use
+        # f"http://{raylet_ip_address}:{runtime_env_agent_port}".
+        # However we don't have a good way to get *all* node's raylet_ip_address, as
+        # this value is not exposed in GcsNodeInfo and hence isn't available via
+        # GetClusterInfo. In practice, this should not matter a lot until we see a
+        # raylet ip != node manager ip case, which should break more thing than just
+        # runtime env agent connectivity.
+        self._runtime_env_agent_addresses[
+            node_id
+        ] = f"http://{address}:{runtime_env_agent_port}"
+        self._id_id_map.put(node_id, address)
+
+    def unregister_raylet_client(self, node_id: str):
+        self._raylet_stubs.pop(node_id)
+        self._runtime_env_agent_addresses.pop(node_id)
+        self._id_id_map.pop(node_id)
+
+    def register_agent_client(self, node_id, address: str, port: int):
+        options = _STATE_MANAGER_GRPC_OPTIONS
+        channel = ray._private.utils.init_grpc_channel(
+            f"{address}:{port}", options=options, asynchronous=True
+        )
+        self._log_agent_stub[node_id] = LogServiceStub(channel)
+        self._id_id_map.put(node_id, address)
+
+    def unregister_agent_client(self, node_id: str):
+        self._log_agent_stub.pop(node_id)
+        self._id_id_map.pop(node_id)
+
+    def get_all_registered_raylet_ids(self) -> List[str]:
+        return self._raylet_stubs.keys()
+
+    # Returns all node_ids who has runtime_env_agent listening.
+    def get_all_registered_runtime_env_agent_ids(self) -> List[str]:
+        return self._runtime_env_agent_addresses.keys()
+
+    # Returns all nod_ids which registered their log_agent_stub.
+    def get_all_registered_log_agent_ids(self) -> List[str]:
+        return self._log_agent_stub.keys()
+
+    def ip_to_node_id(self, ip: Optional[str]) -> Optional[str]:
+        """Return the node id that corresponds to the given ip.
+
+        Args:
+            ip: The ip address.
+
+        Returns:
+            None if the corresponding id doesn't exist.
+            Node id otherwise. If None node_ip is given,
+            it will also return None.
+        """
+        if not ip:
+            return None
+        return self._id_id_map.get_node_id(ip)
 
     # TODO(rickyx):
     # This is currently mirroring dashboard/modules/job/job_head.py::list_jobs

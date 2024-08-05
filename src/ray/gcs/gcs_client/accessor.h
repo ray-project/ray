@@ -58,6 +58,7 @@ class ActorInfoAccessor {
   /// \param  actor_id To filter actors by actor_id.
   /// \param  job_id To filter actors by job_id.
   /// \param  actor_state_name To filter actors based on actor state.
+  /// \param  limit max number of return actors. -1 means no limit.
   /// \param callback Callback that will be called after lookup finishes.
   /// \param timeout_ms -1 means infinite.
   /// \return Status
@@ -65,8 +66,19 @@ class ActorInfoAccessor {
       const std::optional<ActorID> &actor_id,
       const std::optional<JobID> &job_id,
       const std::optional<std::string> &actor_state_name,
+      int64_t limit,
       const MultiItemCallback<rpc::ActorTableData> &callback,
       int64_t timeout_ms = -1);
+
+  /// Raw version of `AsyncGetAllByFilter`. Same as above but returns raw data. Used by
+  /// StateDataSourceClient.
+  virtual Status AsyncRawGetAllActorInfo(
+      const std::optional<ActorID> &actor_id,
+      const std::optional<JobID> &job_id,
+      const std::optional<std::string> &actor_state_name,
+      int64_t limit,
+      const OptionalItemCallback<rpc::GetAllActorInfoReply> &callback,
+      int64_t timeout_ms);
 
   /// Get actor specification for a named actor from the GCS asynchronously.
   ///
@@ -362,6 +374,11 @@ class NodeInfoAccessor {
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                              int64_t timeout_ms);
 
+  /// Raw version of `AsyncGetAll`. Same as above but returns raw data. Used by
+  /// StateDataSourceClient.
+  virtual Status AsyncRawGetAllNodeInfo(
+      const OptionalItemCallback<rpc::GetAllNodeInfoReply> &callback, int64_t timeout_ms);
+
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
   /// \param subscribe Callback that will be called if a node is
@@ -587,6 +604,19 @@ class TaskInfoAccessor {
   /// \return Status
   virtual Status AsyncGetTaskEvents(const MultiItemCallback<rpc::TaskEvents> &callback);
 
+  /// Raw version of `AsyncGetTaskEvents`. With filters and returns raw data. Used by
+  /// StateDataSourceClient.
+  virtual Status AsyncRawGetTaskEvents(
+      const std::optional<ActorID> &actor_id,
+      const std::optional<JobID> &job_id,
+      const std::optional<TaskID> &task_id,
+      const std::optional<std::string> &name,
+      const std::optional<std::string> &state,
+      bool exclude_driver,
+      int64_t limit,
+      const OptionalItemCallback<rpc::GetTaskEventsReply> &callback,
+      int64_t timeout_ms);
+
  private:
   GcsClient *client_impl_;
 };
@@ -632,6 +662,13 @@ class WorkerInfoAccessor {
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::WorkerTableData> &callback);
+
+  /// Raw version of `AsyncGetAll`. Same as above but returns raw data. Used by
+  /// StateDataSourceClient.
+  virtual Status AsyncRawGetAllWorkerInfo(
+      int64_t limit,
+      const OptionalItemCallback<rpc::GetAllWorkerInfoReply> &callback,
+      int64_t timeout_ms);
 
   /// Add worker information to GCS asynchronously.
   ///
@@ -719,6 +756,13 @@ class PlacementGroupInfoAccessor {
   /// \return Status
   virtual Status AsyncGetAll(
       const MultiItemCallback<rpc::PlacementGroupTableData> &callback);
+
+  /// Raw version of `AsyncGetAllPlacementGroupInfo`. Same as above but returns raw data.
+  /// Used by StateDataSourceClient.
+  virtual Status AsyncRawGetAllPlacementGroup(
+      int64_t limit,
+      const OptionalItemCallback<rpc::GetAllPlacementGroupReply> &callback,
+      int64_t timeout_ms);
 
   /// Remove a placement group to GCS synchronously.
   ///

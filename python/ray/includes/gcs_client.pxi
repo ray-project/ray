@@ -22,6 +22,11 @@ import concurrent.futures
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
+    CGetAllActorInfoReply,
+    CGetTaskEventsReply,
+    CGetAllPlacementGroupReply,
+    CGetAllNodeInfoReply,
+     CGetAllWorkerInfoReply,
     ConnectOnSingletonIoContext,
     CStatusCode,
     CStatusCode_OK,
@@ -30,7 +35,7 @@ from ray.includes.common cimport (
     StatusPyCallback,
 )
 from ray.includes.optional cimport optional, make_optional
-from ray.core.generated import gcs_pb2
+from ray.core.generated import gcs_pb2, gcs_service_pb2
 from cython.operator import dereference, postincrement
 cimport cpython
 
@@ -349,6 +354,24 @@ cdef class NewGcsClient:
                     timeout_ms))
         return asyncio.wrap_future(fut)
 
+    def async_raw_get_all_node_info(
+        self,
+        timeout: Optional[float] = None
+    ) -> Future[gcs_service_pb2.GetAllNodeInfoReply]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            fut = incremented_fut()
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Nodes().AsyncRawGetAllNodeInfo(
+                    OptionalItemPyCallback[CGetAllNodeInfoReply](
+                        &convert_optional_raw_get_all_node_info_reply,
+                        assign_and_decrement_fut,
+                        fut),
+                    timeout_ms))
+        return asyncio.wrap_future(fut)
+
     #############################################################
     # NodeResources methods
     #############################################################
@@ -378,6 +401,7 @@ cdef class NewGcsClient:
         actor_id: Optional[ActorID] = None,
         job_id: Optional[JobID] = None,
         actor_state_name: Optional[str] = None,
+        limit: Optional[int] = None,
         timeout: Optional[float] = None
     ) -> Future[Dict[ActorID, gcs_pb2.ActorTableData]]:
         cdef:
@@ -385,6 +409,7 @@ cdef class NewGcsClient:
             optional[CActorID] c_actor_id
             optional[CJobID] c_job_id
             optional[c_string] c_actor_state_name
+            int64_t c_limit = limit if limit is not None else -1
             fut = incremented_fut()
         if actor_id is not None:
             c_actor_id = (<ActorID>actor_id).native()
@@ -396,9 +421,42 @@ cdef class NewGcsClient:
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Actors().AsyncGetAllByFilter(
-                    c_actor_id, c_job_id, c_actor_state_name,
+                    c_actor_id, c_job_id, c_actor_state_name, c_limit,
                     MultiItemPyCallback[CActorTableData](
                         &convert_get_all_actor_info,
+                        assign_and_decrement_fut,
+                        fut),
+                    timeout_ms))
+        return asyncio.wrap_future(fut)
+
+    def async_raw_get_all_actor_info(
+        self,
+        actor_id: Optional[ActorID] = None,
+        job_id: Optional[JobID] = None,
+        actor_state_name: Optional[str] = None,
+        limit: Optional[int] = None,
+        timeout: Optional[float] = None
+    ) -> Future[gcs_service_pb2.GetAllActorInfoReply]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            optional[CActorID] c_actor_id
+            optional[CJobID] c_job_id
+            optional[c_string] c_actor_state_name
+            int64_t c_limit = limit if limit is not None else -1
+            fut = incremented_fut()
+        if actor_id is not None:
+            c_actor_id = (<ActorID>actor_id).native()
+        if job_id is not None:
+            c_job_id = (<JobID>job_id).native()
+        if actor_state_name is not None:
+            c_actor_state_name = <c_string>actor_state_name.encode()
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Actors().AsyncRawGetAllActorInfo(
+                    c_actor_id, c_job_id, c_actor_state_name, c_limit,
+                    OptionalItemPyCallback[CGetAllActorInfoReply](
+                        &convert_optional_raw_get_all_actor_info_reply,
                         assign_and_decrement_fut,
                         fut),
                     timeout_ms))
@@ -431,7 +489,6 @@ cdef class NewGcsClient:
     #############################################################
     # Job methods
     #############################################################
-
     def get_all_job_info(
         self, timeout: Optional[float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
@@ -471,6 +528,99 @@ cdef class NewGcsClient:
                 .RuntimeEnvs()
                 .PinRuntimeEnvUri(c_uri, expiration_s, timeout_ms)
             )
+
+    #############################################################
+    # Task methods
+    #############################################################
+    def async_raw_get_task_events(
+        self,
+        actor_id: Optional[ActorID] = None,
+        job_id: Optional[JobID] = None,
+        task_id: Optional[TaskID] = None,
+        name: Optional[str] = None,
+        state: Optional[str] = None,
+        exclude_driver: c_bool = False,
+        limit: Optional[int] = None,
+        timeout: Optional[float] = None
+    ) -> Future[gcs_service_pb2.GetTaskEventsReply]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            optional[CActorID] c_actor_id
+            optional[CJobID] c_job_id
+            optional[CTaskID] c_task_id
+            optional[c_string] c_name
+            optional[c_string] c_state
+            int64_t c_limit = limit if limit is not None else -1
+            fut = incremented_fut()
+        if actor_id is not None:
+            c_actor_id = (<ActorID>actor_id).native()
+        if job_id is not None:
+            c_job_id = (<JobID>job_id).native()
+        if task_id is not None:
+            c_task_id = (<TaskID>task_id).native()
+        if name is not None:
+            c_name = <c_string>name.encode()
+        if state is not None:
+            c_state = <c_string>state.encode()
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Tasks().AsyncRawGetTaskEvents(
+                    c_actor_id, c_job_id, c_task_id, c_name, c_state, exclude_driver, c_limit,
+                    OptionalItemPyCallback[CGetTaskEventsReply](
+                        &convert_optional_raw_get_task_events_reply,
+                        assign_and_decrement_fut,
+                        fut),
+                    timeout_ms))
+        return asyncio.wrap_future(fut)
+
+    #############################################################
+    # Placement Group methods
+    #############################################################
+    def async_raw_get_all_placement_group(
+        self,
+        limit: Optional[int] = None,
+        timeout: Optional[float] = None
+    ) -> Future[gcs_service_pb2.GetAllPlacementGroupReply]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t c_limit = limit if limit is not None else -1
+            fut = incremented_fut()
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().PlacementGroups().AsyncRawGetAllPlacementGroup(
+                    c_limit,
+                    OptionalItemPyCallback[CGetAllPlacementGroupReply](
+                        &convert_optional_raw_get_all_placement_group_reply,
+                        assign_and_decrement_fut,
+                        fut),
+                    timeout_ms))
+        return asyncio.wrap_future(fut)
+
+    #############################################################
+    # Worker methods
+    #############################################################
+    def async_raw_get_all_worker_info(
+        self,
+        limit: Optional[int] = None,
+        timeout: Optional[float] = None
+    ) -> Future[gcs_service_pb2.GetAllWorkerInfoReply]:
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t c_limit = limit if limit is not None else -1
+            fut = incremented_fut()
+
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Workers().AsyncRawGetAllWorkerInfo(
+                    c_limit,
+                    OptionalItemPyCallback[CGetAllWorkerInfoReply](
+                        &convert_optional_raw_get_all_worker_info_reply,
+                        assign_and_decrement_fut,
+                        fut),
+                    timeout_ms))
+        return asyncio.wrap_future(fut)
 
     #############################################################
     # Autoscaler methods
@@ -594,6 +744,76 @@ cdef raise_or_return(tup):
 # Returns `Tuple[object, Optional[Exception]]` (we are all gophers now lol).
 # Must not raise exceptions, or it crashes the process.
 #############################################################
+
+cdef convert_optional_raw_get_all_actor_info_reply(
+        CRayStatus status, optional[CGetAllActorInfoReply]&& c_data) with gil:
+    # -> gcs_service_pb2.GetAllActorInfoReply
+    cdef c_string serialized_reply
+    try:
+        check_status_timeout_as_rpc_error(status)
+        with nogil:
+            serialized_reply = c_data.value().SerializeAsString()
+        proto = gcs_service_pb2.GetAllActorInfoReply()
+        proto.ParseFromString(serialized_reply)
+        return proto, None
+    except Exception as e:
+        return None, e
+
+cdef convert_optional_raw_get_task_events_reply(
+        CRayStatus status, optional[CGetTaskEventsReply]&& c_data) with gil:
+    # -> gcs_service_pb2.GetTaskEventsReply
+    cdef c_string serialized_reply
+    try:
+        check_status_timeout_as_rpc_error(status)
+        with nogil:
+            serialized_reply = c_data.value().SerializeAsString()
+        proto = gcs_service_pb2.GetTaskEventsReply()
+        proto.ParseFromString(serialized_reply)
+        return proto, None
+    except Exception as e:
+        return None, e
+
+cdef convert_optional_raw_get_all_placement_group_reply(
+        CRayStatus status, optional[CGetAllPlacementGroupReply]&& c_data) with gil:
+    # -> gcs_service_pb2.GetAllPlacementGroupReply
+    cdef c_string serialized_reply
+    try:
+        check_status_timeout_as_rpc_error(status)
+        with nogil:
+            serialized_reply = c_data.value().SerializeAsString()
+        proto = gcs_service_pb2.GetAllPlacementGroupReply()
+        proto.ParseFromString(serialized_reply)
+        return proto, None
+    except Exception as e:
+        return None, e
+
+cdef convert_optional_raw_get_all_node_info_reply(
+        CRayStatus status, optional[CGetAllNodeInfoReply]&& c_data) with gil:
+    # -> gcs_service_pb2.GetAllNodeInfoReply
+    cdef c_string serialized_reply
+    try:
+        check_status_timeout_as_rpc_error(status)
+        with nogil:
+            serialized_reply = c_data.value().SerializeAsString()
+        proto = gcs_service_pb2.GetAllNodeInfoReply()
+        proto.ParseFromString(serialized_reply)
+        return proto, None
+    except Exception as e:
+        return None, e
+
+cdef convert_optional_raw_get_all_worker_info_reply(
+        CRayStatus status, optional[CGetAllWorkerInfoReply]&& c_data) with gil:
+    # -> gcs_service_pb2.GetAllWorkerInfoReply
+    cdef c_string serialized_reply
+    try:
+        check_status_timeout_as_rpc_error(status)
+        with nogil:
+            serialized_reply = c_data.value().SerializeAsString()
+        proto = gcs_service_pb2.GetAllWorkerInfoReply()
+        proto.ParseFromString(serialized_reply)
+        return proto, None
+    except Exception as e:
+        return None, e
 
 cdef convert_get_all_node_info(
         CRayStatus status, c_vector[CGcsNodeInfo]&& c_data) with gil:

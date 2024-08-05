@@ -1,13 +1,11 @@
 from math import ceil
 import sys
 import time
+from typing import Dict
 
 import pytest
 
 import ray
-from ray._private import (
-    ray_constants,
-)
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import wait_for_condition, raw_metrics
 
@@ -17,6 +15,7 @@ from ray._private.utils import get_used_memory
 from ray._private.state_api_test_utils import verify_failed_task
 
 from ray.util.state.state_manager import StateDataSourceClient
+from ray.core.generated.gcs_pb2 import ActorTableData
 
 
 memory_usage_threshold = 0.5
@@ -30,12 +29,8 @@ expected_worker_eviction_message = (
 def get_local_state_client():
     hostname = ray.worker._global_node.gcs_address
 
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
-    )
-
     gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    client = StateDataSourceClient(gcs_aio_client)
     for node in ray.nodes():
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]
@@ -351,9 +346,11 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
             verified = True
     assert verified
 
-    result = await state_api_client.get_all_actor_info(timeout=5, limit=10)
+    result: Dict[
+        ray.ActorID, ActorTableData
+    ] = await state_api_client.get_all_actor_info(timeout=5, limit=10)
     verified = False
-    for actor in result.actor_table_data:
+    for actor in result.values():
         if actor.actor_id.hex() == actor_id:
             assert actor.death_cause
             assert actor.death_cause.oom_context

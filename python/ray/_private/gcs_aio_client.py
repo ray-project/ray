@@ -74,6 +74,11 @@ class NewGcsAioClient:
         self.get_all_actor_info = self.inner.async_get_all_actor_info
         self.get_all_node_info = self.inner.async_get_all_node_info
         self.kill_actor = self.inner.async_kill_actor
+        self.raw_get_all_actor_info = self.inner.raw_get_all_actor_info
+        self.raw_get_task_events = self.inner.raw_get_task_events
+        self.raw_get_all_placement_group = self.inner.raw_get_all_placement_group
+        self.raw_get_all_node_info = self.inner.raw_get_all_node_info
+        self.raw_get_all_worker_info = self.inner.raw_get_all_worker_info
 
 
 class AsyncProxy:

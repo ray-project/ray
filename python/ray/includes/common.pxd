@@ -190,7 +190,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CNodeLabelSchedulingStrategy* mutable_node_label_scheduling_strategy()
     cdef cppclass CAddress "ray::rpc::Address":
         CAddress()
-        const c_string &SerializeAsString() const
+        c_string SerializeAsString() const
         void ParseFromString(const c_string &serialized)
         void CopyFrom(const CAddress& address)
         const c_string &worker_id()
@@ -392,6 +392,7 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const optional[CActorID] &actor_id,
             const optional[CJobID] &job_id,
             const optional[c_string] &actor_state_name,
+            int64_t limit,
             const MultiItemPyCallback[CActorTableData] &callback,
             int64_t timeout_ms)
 
@@ -400,6 +401,14 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
                                   c_bool no_restart,
                                   const StatusPyCallback &callback,
                                   int64_t timeout_ms)
+
+        CRayStatus AsyncRawGetAllActorInfo(
+            const optional[CActorID] &actor_id,
+            const optional[CJobID] &job_id,
+            const optional[c_string] &actor_state_name,
+            int64_t limit,
+            const OptionalItemPyCallback[CGetAllActorInfoReply] &callback,
+            int64_t timeout_ms)
 
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus GetAll(
@@ -434,10 +443,38 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
             int64_t timeout_ms)
 
+        CRayStatus AsyncRawGetAllNodeInfo(
+            const OptionalItemPyCallback[CGetAllNodeInfoReply] &callback,
+            int64_t timeout_ms)
+
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(
             int64_t timeout_ms,
             CGetAllResourceUsageReply &serialized_reply)
+
+    cdef cppclass CTaskInfoAccessor "ray::gcs::TaskInfoAccessor":
+        CRayStatus AsyncRawGetTaskEvents(
+            const optional[CActorID] &actor_id,
+            const optional[CJobID] &job_id,
+            const optional[CTaskID] &task_id,
+            const optional[c_string] &name,
+            const optional[c_string] &state,
+            c_bool exclude_driver,
+            int64_t limit,
+            const OptionalItemPyCallback[CGetTaskEventsReply] &callback,
+            int64_t timeout_ms)
+
+    cdef cppclass CWorkerInfoAccessor "ray::gcs::WorkerInfoAccessor":
+        CRayStatus AsyncRawGetAllWorkerInfo(
+            int64_t limit,
+            const OptionalItemPyCallback[CGetAllWorkerInfoReply] &callback,
+            int64_t timeout_ms)
+
+    cdef cppclass CPlacementGroupInfoAccessor "ray::gcs::PlacementGroupInfoAccessor":
+        CRayStatus AsyncRawGetAllPlacementGroup(
+            int64_t limit,
+            const OptionalItemPyCallback[CGetAllPlacementGroupReply] &callback,
+            int64_t timeout_ms)
 
     cdef cppclass CInternalKVAccessor "ray::gcs::InternalKVAccessor":
         CRayStatus Keys(
@@ -582,6 +619,9 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CInternalKVAccessor& InternalKV()
         CNodeInfoAccessor& Nodes()
         CNodeResourceInfoAccessor& NodeResources()
+        CTaskInfoAccessor &Tasks()
+        CWorkerInfoAccessor &Workers()
+        CPlacementGroupInfoAccessor &PlacementGroups()
         CRuntimeEnvAccessor& RuntimeEnvs()
         CAutoscalerStateAccessor& Autoscaler()
 
@@ -708,7 +748,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
-        const c_string &SerializeAsString() const
+        c_string SerializeAsString() const
 
     cdef cppclass CNodeDeathInfo "ray::rpc::NodeDeathInfo":
         int reason() const
@@ -728,7 +768,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         int runtime_env_agent_port() const
         CNodeDeathInfo death_info() const
         void ParseFromString(const c_string &serialized)
-        const c_string& SerializeAsString() const
+        c_string SerializeAsString() const
 
     cdef enum CGcsNodeState "ray::rpc::GcsNodeInfo_GcsNodeState":
         ALIVE "ray::rpc::GcsNodeInfo_GcsNodeState_ALIVE",
@@ -737,10 +777,25 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string job_id() const
         c_bool is_dead() const
         CJobConfig config() const
-        const c_string &SerializeAsString() const
+        c_string SerializeAsString() const
 
     cdef cppclass CGetAllResourceUsageReply "ray::rpc::GetAllResourceUsageReply":
-        const c_string& SerializeAsString() const
+        c_string SerializeAsString() const
+
+    cdef cppclass CGetAllActorInfoReply "ray::rpc::GetAllActorInfoReply":
+        c_string SerializeAsString() const
+
+    cdef cppclass CGetTaskEventsReply "ray::rpc::GetTaskEventsReply":
+        c_string SerializeAsString() const
+
+    cdef cppclass CGetAllPlacementGroupReply "ray::rpc::GetAllPlacementGroupReply":
+        c_string SerializeAsString() const
+
+    cdef cppclass CGetAllNodeInfoReply "ray::rpc::GetAllNodeInfoReply":
+        c_string SerializeAsString() const
+
+    cdef cppclass CGetAllWorkerInfoReply "ray::rpc::GetAllWorkerInfoReply":
+        c_string SerializeAsString() const
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
         void set_key(const c_string &key)
@@ -776,7 +831,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef cppclass CActorTableData "ray::rpc::ActorTableData":
         CAddress address() const
         void ParseFromString(const c_string &serialized)
-        const c_string &SerializeAsString() const
+        c_string SerializeAsString() const
 
 cdef extern from "ray/common/task/task_spec.h" nogil:
     cdef cppclass CConcurrencyGroup "ray::ConcurrencyGroup":

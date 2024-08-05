@@ -15,7 +15,7 @@ import ray
 from ray.actor import ActorHandle
 from ray.util.state import list_workers
 
-from ray._private.gcs_utils import GcsAioClient, GcsChannel
+from ray._private.gcs_utils import GcsAioClient
 from ray.util.state.state_manager import StateDataSourceClient
 from ray.dashboard.state_aggregator import (
     StateAPIManager,
@@ -319,11 +319,7 @@ def periodic_invoke_state_apis_with_actor(*args, **kwargs) -> ActorHandle:
 
 def get_state_api_manager(gcs_address: str) -> StateAPIManager:
     gcs_aio_client = GcsAioClient(address=gcs_address)
-    gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
-    gcs_channel.connect()
-    state_api_data_source_client = StateDataSourceClient(
-        gcs_channel.channel(), gcs_aio_client
-    )
+    state_api_data_source_client = StateDataSourceClient(gcs_aio_client)
     return StateAPIManager(state_api_data_source_client)
 
 

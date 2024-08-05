@@ -171,7 +171,26 @@ Status ActorInfoAccessor::AsyncGetAllByFilter(
     const std::optional<ActorID> &actor_id,
     const std::optional<JobID> &job_id,
     const std::optional<std::string> &actor_state_name,
+    int64_t limit,
     const MultiItemCallback<rpc::ActorTableData> &callback,
+    int64_t timeout_ms) {
+  return AsyncRawGetAllActorInfo(
+      actor_id,
+      job_id,
+      actor_state_name,
+      limit,
+      [callback](const Status &status, std::optional<rpc::GetAllActorInfoReply> &&reply) {
+        callback(status, VectorFromProtobuf(reply->actor_table_data()));
+      },
+      timeout_ms);
+}
+
+Status ActorInfoAccessor::AsyncRawGetAllActorInfo(
+    const std::optional<ActorID> &actor_id,
+    const std::optional<JobID> &job_id,
+    const std::optional<std::string> &actor_state_name,
+    int64_t limit,
+    const OptionalItemCallback<rpc::GetAllActorInfoReply> &callback,
     int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
   rpc::GetAllActorInfoRequest request;
@@ -186,11 +205,13 @@ Status ActorInfoAccessor::AsyncGetAllByFilter(
         StringToActorState(actor_state_name.value());
     request.mutable_filters()->set_state(actor_state);
   }
-
+  if (limit > 0) {
+    request.set_limit(limit);
+  }
   client_impl_->GetGcsRpcClient().GetAllActorInfo(
       request,
       [callback](const Status &status, rpc::GetAllActorInfoReply &&reply) {
-        callback(status, VectorFromProtobuf(reply.actor_table_data()));
+        callback(status, std::make_optional(std::move(reply)));
         RAY_LOG(DEBUG) << "Finished getting all actor info, status = " << status;
       },
       timeout_ms);
@@ -593,6 +614,20 @@ Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callb
   return Status::OK();
 }
 
+Status NodeInfoAccessor::AsyncRawGetAllNodeInfo(
+    const OptionalItemCallback<rpc::GetAllNodeInfoReply> &callback, int64_t timeout_ms) {
+  RAY_LOG(DEBUG) << "Getting all node info.";
+  rpc::GetAllNodeInfoRequest request;
+  client_impl_->GetGcsRpcClient().GetAllNodeInfo(
+      request,
+      [callback](const Status &status, rpc::GetAllNodeInfoReply &&reply) {
+        callback(status, std::make_optional(std::move(reply)));
+        RAY_LOG(DEBUG) << "Finished getting all node info, status = " << status;
+      },
+      timeout_ms);
+  return Status::OK();
+}
+
 Status NodeInfoAccessor::AsyncSubscribeToNodeChange(
     const SubscribeCallback<NodeID, GcsNodeInfo> &subscribe, const StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
@@ -860,6 +895,46 @@ Status TaskInfoAccessor::AsyncGetTaskEvents(
   return Status::OK();
 }
 
+Status TaskInfoAccessor::AsyncRawGetTaskEvents(
+    const std::optional<ActorID> &actor_id,
+    const std::optional<JobID> &job_id,
+    const std::optional<TaskID> &task_id,
+    const std::optional<std::string> &name,
+    const std::optional<std::string> &state,
+    bool exclude_driver,
+    int64_t limit,
+    const OptionalItemCallback<rpc::GetTaskEventsReply> &callback,
+    int64_t timeout_ms) {
+  RAY_LOG(DEBUG) << "Getting task events.";
+  rpc::GetTaskEventsRequest request;
+  if (actor_id) {
+    request.mutable_filters()->set_actor_id(actor_id.value().Binary());
+  }
+  if (job_id) {
+    request.mutable_filters()->set_job_id(job_id.value().Binary());
+  }
+  if (task_id) {
+    request.mutable_filters()->add_task_ids(task_id.value().Binary());
+  }
+  if (name) {
+    request.mutable_filters()->set_name(name.value());
+  }
+  if (state) {
+    request.mutable_filters()->set_state(state.value());
+  }
+  request.mutable_filters()->set_exclude_driver(exclude_driver);
+  if (limit > 0) {
+    request.set_limit(limit);
+  }
+  client_impl_->GetGcsRpcClient().GetTaskEvents(
+      request,
+      [callback](const Status &status, rpc::GetTaskEventsReply &&reply) {
+        callback(status, std::make_optional(std::move(reply)));
+      },
+      timeout_ms);
+  return Status::OK();
+}
+
 ErrorInfoAccessor::ErrorInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
@@ -951,6 +1026,25 @@ Status WorkerInfoAccessor::AsyncGetAll(
         callback(status, VectorFromProtobuf(reply.worker_table_data()));
         RAY_LOG(DEBUG) << "Finished getting all worker info, status = " << status;
       });
+  return Status::OK();
+}
+
+Status WorkerInfoAccessor::AsyncRawGetAllWorkerInfo(
+    int64_t limit,
+    const OptionalItemCallback<rpc::GetAllWorkerInfoReply> &callback,
+    int64_t timeout_ms) {
+  RAY_LOG(DEBUG) << "Getting all worker info.";
+  rpc::GetAllWorkerInfoRequest request;
+  if (limit > 0) {
+    request.set_limit(limit);
+  }
+  client_impl_->GetGcsRpcClient().GetAllWorkerInfo(
+      request,
+      [callback](const Status &status, rpc::GetAllWorkerInfoReply &&reply) {
+        callback(status, std::make_optional(std::move(reply)));
+        RAY_LOG(DEBUG) << "Finished getting all worker info, status = " << status;
+      },
+      timeout_ms);
   return Status::OK();
 }
 
@@ -1090,6 +1184,26 @@ Status PlacementGroupInfoAccessor::AsyncGetAll(
         RAY_LOG(DEBUG) << "Finished getting all placement group info, status = "
                        << status;
       });
+  return Status::OK();
+}
+
+Status PlacementGroupInfoAccessor::AsyncRawGetAllPlacementGroup(
+    int64_t limit,
+    const OptionalItemCallback<rpc::GetAllPlacementGroupReply> &callback,
+    int64_t timeout_ms) {
+  RAY_LOG(DEBUG) << "Getting all placement group info.";
+  rpc::GetAllPlacementGroupRequest request;
+  if (limit > 0) {
+    request.set_limit(limit);
+  }
+  client_impl_->GetGcsRpcClient().GetAllPlacementGroup(
+      request,
+      [callback](const Status &status, rpc::GetAllPlacementGroupReply &&reply) {
+        callback(status, std::make_optional(std::move(reply)));
+        RAY_LOG(DEBUG) << "Finished getting all placement group info, status = "
+                       << status;
+      },
+      timeout_ms);
   return Status::OK();
 }
 

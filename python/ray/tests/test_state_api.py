@@ -135,18 +135,8 @@ def state_api_manager():
 
 
 def state_source_client(gcs_address):
-    GRPC_CHANNEL_OPTIONS = (
-        *ray_constants.GLOBAL_GRPC_OPTIONS,
-        ("grpc.max_send_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-        ("grpc.max_receive_message_length", ray_constants.GRPC_CPP_MAX_MESSAGE_SIZE),
-    )
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        gcs_address, GRPC_CHANNEL_OPTIONS, asynchronous=True
-    )
     gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
-    client = StateDataSourceClient(
-        gcs_channel=gcs_channel, gcs_aio_client=gcs_aio_client
-    )
+    client = StateDataSourceClient(gcs_aio_client)
     return client
 
 
@@ -612,14 +602,14 @@ del b
 @pytest.mark.asyncio
 async def test_api_manager_list_actors(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    actor_id = b"1234"
-    data_source_client.get_all_actor_info.return_value = GetAllActorInfoReply(
-        actor_table_data=[
-            generate_actor_data(actor_id),
-            generate_actor_data(b"12345", state=ActorTableData.ActorState.DEAD),
-        ],
-        total=2,
-    )
+    good_actor_id = ActorID.from_random()
+    dead_actor_id = ActorID.from_random()
+    data_source_client.get_all_actor_info.return_value = {
+        good_actor_id: generate_actor_data(good_actor_id.hex()),
+        dead_actor_id: generate_actor_data(
+            dead_actor_id.hex(), state=ActorTableData.ActorState.DEAD
+        ),
+    }
     result = await state_api_manager.list_actors(option=create_api_options())
     data = result.result
 
@@ -2869,10 +2859,12 @@ def test_network_partial_failures_timeout(monkeypatch, ray_start_cluster):
 @pytest.mark.asyncio
 async def test_cli_format_print(state_api_manager):
     data_source_client = state_api_manager.data_source_client
-    actor_id = b"1234"
-    data_source_client.get_all_actor_info.return_value = GetAllActorInfoReply(
-        actor_table_data=[generate_actor_data(actor_id), generate_actor_data(b"12345")]
-    )
+    actor_id_1 = ActorID.from_random()
+    actor_id_2 = ActorID.from_random()
+    data_source_client.get_all_actor_info.return_value = {
+        actor_id_1: generate_actor_data(actor_id_1.hex()),
+        actor_id_2: generate_actor_data(actor_id_2.hex()),
+    }
     result = await state_api_manager.list_actors(option=create_api_options())
     print(result)
     result = [ActorState(**d) for d in result.result]
