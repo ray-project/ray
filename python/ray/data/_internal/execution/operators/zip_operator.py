@@ -53,6 +53,16 @@ class ZipOperator(PhysicalOperator):
         else:
             return right_num_outputs
 
+    def num_output_rows_total(self) -> Optional[int]:
+        left_num_rows = self.input_dependencies[0].num_output_rows_total()
+        right_num_rows = self.input_dependencies[1].num_output_rows_total()
+        if left_num_rows is not None and right_num_rows is not None:
+            return max(left_num_rows, right_num_rows)
+        elif left_num_rows is not None:
+            return left_num_rows
+        else:
+            return right_num_rows
+
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert input_index == 0 or input_index == 1, input_index

@@ -418,7 +418,7 @@ def read_datasource(
     import uuid
 
     stats = DatasetStats(
-        metadata={"Read": [read_task.get_metadata() for read_task in read_tasks]},
+        metadata={"Read": [read_task.metadata for read_task in read_tasks]},
         parent=None,
         needs_stats_actor=True,
         stats_uuid=uuid.uuid4(),
