@@ -184,7 +184,7 @@ cdef class NewGcsClient:
                 self.inner.get().InternalKV().AsyncInternalKVGet(
                     ns, key, timeout_ms,
                     OptionalItemPyCallback[c_string](
-                        convert_optional_str_none_for_not_found,
+                        &convert_optional_str_none_for_not_found,
                         assign_and_decrement_fut,
                         fut_ptr)))
         return asyncio.wrap_future(fut)
@@ -203,7 +203,7 @@ cdef class NewGcsClient:
                 self.inner.get().InternalKV().AsyncInternalKVMultiGet(
                     ns, c_keys, timeout_ms,
                     OptionalItemPyCallback[unordered_map[c_string, c_string]](
-                        convert_optional_multi_get,
+                        &convert_optional_multi_get,
                         assign_and_decrement_fut,
                         fut_ptr)))
         return asyncio.wrap_future(fut)
@@ -224,7 +224,7 @@ cdef class NewGcsClient:
                 self.inner.get().InternalKV().AsyncInternalKVPut(
                     ns, key, value, overwrite, timeout_ms,
                     OptionalItemPyCallback[int](
-                        convert_optional_int,
+                        &convert_optional_int,
                         assign_and_decrement_fut,
                         fut_ptr)))
         return asyncio.wrap_future(fut)
@@ -241,7 +241,7 @@ cdef class NewGcsClient:
                 self.inner.get().InternalKV().AsyncInternalKVDel(
                     ns, key, del_by_prefix, timeout_ms,
                     OptionalItemPyCallback[int](
-                        convert_optional_int,
+                        &convert_optional_int,
                         assign_and_decrement_fut,
                         fut_ptr)))
         return asyncio.wrap_future(fut)
@@ -258,7 +258,7 @@ cdef class NewGcsClient:
                 self.inner.get().InternalKV().AsyncInternalKVKeys(
                     ns, prefix, timeout_ms,
                     OptionalItemPyCallback[c_vector[c_string]](
-                        convert_optional_vector_str,
+                        &convert_optional_vector_str,
                         assign_and_decrement_fut,
                         fut_ptr)))
         return asyncio.wrap_future(fut)
@@ -275,7 +275,7 @@ cdef class NewGcsClient:
                 self.inner.get().InternalKV().AsyncInternalKVExists(
                     ns, key, timeout_ms,
                     OptionalItemPyCallback[c_bool](
-                        convert_optional_bool,
+                        &convert_optional_bool,
                         assign_and_decrement_fut,
                         fut_ptr)))
         return asyncio.wrap_future(fut)
@@ -408,7 +408,7 @@ cdef class NewGcsClient:
                 self.inner.get().Actors().AsyncGetAllByFilter(
                     c_actor_id, c_job_id, c_actor_state_name,
                     MultiItemPyCallback[CActorTableData](
-                        convert_get_all_actor_info,
+                        &convert_get_all_actor_info,
                         assign_and_decrement_fut,
                         fut_ptr),
                     timeout_ms))
@@ -465,7 +465,7 @@ cdef class NewGcsClient:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Jobs().AsyncGetAll(
                     MultiItemPyCallback[CJobTableData](
-                        convert_get_all_job_info,
+                        &convert_get_all_job_info,
                         assign_and_decrement_fut,
                         fut_ptr),
                     timeout_ms))
@@ -652,14 +652,17 @@ cdef convert_get_all_job_info(
         return None, e
 
 cdef convert_get_all_actor_info(
-        CRayStatus status, c_vector[CActorTableData]&& c_data):
+        CRayStatus status, c_vector[CActorTableData]&& c_data) with gil:
     # -> Dict[ActorID, gcs_pb2.ActorTableData]
-    cdef c_string b
+    cdef c_vector[c_string] serialized_reply
     try:
         check_status_timeout_as_rpc_error(status)
+        with nogil:
+            serialized_reply.reserve(c_data.size())
+            for c_proto in c_data:
+                serialized_reply.push_back(c_proto.SerializeAsString())
         actor_table_data = {}
-        for c_proto in c_data:
-            b = c_proto.SerializeAsString()
+        for b in serialized_reply:
             proto = gcs_pb2.ActorTableData()
             proto.ParseFromString(b)
             actor_table_data[ActorID.from_binary(proto.actor_id)] = proto
@@ -667,7 +670,7 @@ cdef convert_get_all_actor_info(
     except Exception as e:
         return None, e
 
-cdef convert_status(CRayStatus status):
+cdef convert_status(CRayStatus status) with gil:
     # -> None
     try:
         check_status_timeout_as_rpc_error(status)

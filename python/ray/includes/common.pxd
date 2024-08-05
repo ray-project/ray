@@ -382,8 +382,9 @@ cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
 
     cdef cppclass StatusPyCallback:
         StatusPyCallback(
-            object (*)(CRayStatus),
-            void (object, void*), void*) nogil
+            object (*)(CRayStatus) nogil,
+            void (object, void*) nogil,
+            void*) nogil
 
 cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
