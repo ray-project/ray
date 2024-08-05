@@ -115,6 +115,8 @@ class RouterMetricsManager:
         self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
         self.deployment_config: Optional[DeploymentConfig] = None
+        # Track whether the metrics manager has been shutdown
+        self._shutdown: bool = False
 
     @contextmanager
     def wrap_request_assignment(self, request_meta: RequestMetadata):
@@ -175,6 +177,9 @@ class RouterMetricsManager:
         self, deployment_config: DeploymentConfig, curr_num_replicas: int
     ):
         """Update the config for the deployment this router sends requests to."""
+
+        if self._shutdown:
+            return
 
         self.deployment_config = deployment_config
 
@@ -307,6 +312,8 @@ class RouterMetricsManager:
 
         if self.metrics_pusher:
             await self.metrics_pusher.graceful_shutdown()
+
+        self._shutdown = True
 
 
 class Router:
