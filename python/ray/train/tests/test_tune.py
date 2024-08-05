@@ -1,4 +1,5 @@
 import logging
+import sys
 
 import pytest
 
@@ -12,10 +13,6 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.examples.pytorch.torch_fashion_mnist_example import (
     train_func_per_worker as fashion_mnist_train_func,
 )
-from ray.train.examples.tf.tensorflow_mnist_example import (
-    train_func as tensorflow_mnist_train_func,
-)
-from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.torch.torch_trainer import TorchTrainer
 from ray.tune.tune_config import TuneConfig
@@ -81,7 +78,15 @@ def test_tune_torch_fashion_mnist(ray_start_8_cpus):
     torch_fashion_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="tensorflow is not installed in python 3.12+"
+)
 def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
+    from ray.train.examples.tf.tensorflow_mnist_example import (
+        train_func as tensorflow_mnist_train_func,
+    )
+    from ray.train.tensorflow.tensorflow_trainer import TensorflowTrainer
+
     trainer = TensorflowTrainer(
         tensorflow_mnist_train_func,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
@@ -106,6 +111,9 @@ def tune_tensorflow_mnist(num_workers, use_gpu, num_samples):
         assert df.loc[1, "loss"] < df.loc[0, "loss"]
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="tensorflow is not installed in python 3.12+"
+)
 def test_tune_tensorflow_mnist(ray_start_8_cpus):
     tune_tensorflow_mnist(num_workers=2, use_gpu=False, num_samples=2)
 
