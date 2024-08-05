@@ -14,13 +14,13 @@
 
 #include "ray/util/event.h"
 
+#include <google/protobuf/struct.pb.h>
+#include <google/protobuf/util/json_util.h>
+
 #include <filesystem>
 
 #include "absl/base/call_once.h"
 #include "absl/time/time.h"
-
-#include <google/protobuf/struct.pb.h>
-#include <google/protobuf/util/json_util.h>
 
 namespace ray {
 ///
@@ -45,7 +45,7 @@ LogEventReporter::LogEventReporter(rpc::Event_SourceType source_type,
   // event_CORE_WOREKER_{pid}.log
   file_name_ = "event_" + Event_SourceType_Name(source_type);
   if (source_type == rpc::Event_SourceType::Event_SourceType_CORE_WORKER ||
-      source_type == rpc::Event_SourceType::Event_SourceType_COMMON || 
+      source_type == rpc::Event_SourceType::Event_SourceType_COMMON ||
       source_type == rpc::Event_SourceType::Event_SourceType_EXPORT_TASK) {
     file_name_ += "_" + std::to_string(getpid());
   }
@@ -116,7 +116,9 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   j["event_id"] = export_event.event_id();
   j["source_type"] = ExportEvent_SourceType_Name(export_event.source_type());
   std::string event_data_as_string;
-  RAY_CHECK(google::protobuf::util::MessageToJsonString(export_event.event_data(), &event_data_as_string).ok());
+  RAY_CHECK(google::protobuf::util::MessageToJsonString(export_event.event_data(),
+                                                        &event_data_as_string)
+                .ok());
   json event_data_as_json = json::parse(event_data_as_string);
   j["event_data"] = event_data_as_json;
   return j.dump();
@@ -312,8 +314,6 @@ RayEvent::~RayEvent() { SendMessage(osstream_.str()); }
 bool RayEvent::IsExportEvent(rpc::Event_SourceType source_type) {
   std::string source_type_as_str = Event_SourceType_Name(source_type);
   rpc::ExportEvent_SourceType source_type_ele;
-  // RAY_CHECK(
-  //       rpc::ExportEvent_SourceType_Parse(source_type_as_str, &source_type_ele))
   return (rpc::ExportEvent_SourceType_Parse(source_type_as_str, &source_type_ele));
 }
 
@@ -367,8 +367,7 @@ void RayEvent::SendMessage(const std::string &message) {
 
     std::string source_type_as_str = Event_SourceType_Name(context.GetSourceType());
     rpc::ExportEvent_SourceType source_type_ele;
-    RAY_CHECK(
-          rpc::ExportEvent_SourceType_Parse(source_type_as_str, &source_type_ele));
+    RAY_CHECK(rpc::ExportEvent_SourceType_Parse(source_type_as_str, &source_type_ele));
     export_event.set_source_type(source_type_ele);
     export_event.set_timestamp(current_sys_time_s());
 
@@ -378,15 +377,13 @@ void RayEvent::SendMessage(const std::string &message) {
     }
     std::string export_event_data_str = custom_fields_["event_data"];
     google::protobuf::Struct event_data_struct_field;
-    RAY_CHECK(google::protobuf::util::JsonStringToMessage(export_event_data_str, &event_data_struct_field).ok());
+    RAY_CHECK(google::protobuf::util::JsonStringToMessage(export_event_data_str,
+                                                          &event_data_struct_field)
+                  .ok());
     export_event.mutable_event_data()->CopyFrom(event_data_struct_field);
 
-    // json event_data_as_json = json::parse(export_event_data_str);
-    // export_event.set_event_data(export_event_data_str);
-
     EventManager::Instance().PublishExportEvent(export_event);
-  }
-  else {
+  } else {
     event_id = kEmptyEventIdHex;
   }
   if (EmitToLogFile()) {

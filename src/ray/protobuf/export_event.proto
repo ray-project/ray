@@ -20,9 +20,7 @@ package ray.rpc;
 import "google/protobuf/struct.proto";
 
 message ExportEvent {
-  enum SourceType {
-    EXPORT_TASK = 0;
-  }
+  enum SourceType { EXPORT_TASK = 0; }
 
   // event_id is the unique ID of this event
   string event_id = 1;

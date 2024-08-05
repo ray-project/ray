@@ -315,7 +315,7 @@ class RayEvent {
   RayEvent() = default;
 
   bool IsExportEvent(rpc::Event_SourceType source_type);
-  
+
   void SendMessage(const std::string &message);
 
   RayEvent(const RayEvent &event) = delete;
