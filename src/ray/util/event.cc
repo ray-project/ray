@@ -312,6 +312,7 @@ RayLogLevel RayEvent::EventLevelToLogLevel(const rpc::Event_Severity &severity) 
 RayEvent::~RayEvent() { SendMessage(osstream_.str()); }
 
 bool RayEvent::IsExportEvent(rpc::Event_SourceType source_type) {
+  // Checks if event source type is a valid ExportEvent_SourceType
   std::string source_type_as_str = Event_SourceType_Name(source_type);
   rpc::ExportEvent_SourceType source_type_ele;
   return (rpc::ExportEvent_SourceType_Parse(source_type_as_str, &source_type_ele));
@@ -337,7 +338,6 @@ void RayEvent::SendMessage(const std::string &message) {
     std::string event_id_buffer = std::string(kEventIDSize, ' ');
     FillRandom(&event_id_buffer);
     event_id = StringToHex(event_id_buffer);
-
     rpc::Event event;
     event.set_event_id(event_id);
 

@@ -286,6 +286,8 @@ class RayEvent {
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   event_data, &export_event_data_str, options)
                   .ok());
+    // Store event data as JSON string. It will be converted to google::protobuf::Struct
+    // when creating the ExportEvent message.
     custom_fields_["event_data"] = export_event_data_str;
     return *this;
   }

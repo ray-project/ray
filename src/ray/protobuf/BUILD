@@ -249,9 +249,6 @@ proto_library(
     name = "export_event_proto",
     srcs = ["export_event.proto"],
     deps = ["@com_google_protobuf//:struct_proto"],
-    # deps = [
-    #     ":gcs_proto",
-    # ],
 )
 
 cc_proto_library(
