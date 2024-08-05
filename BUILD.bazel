@@ -856,9 +856,9 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "direct_task_transport_test",
+    name = "normal_task_submitter_test",
     size = "small",
-    srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
+    srcs = ["src/ray/core_worker/test/normal_task_submitter_test.cc"],
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",

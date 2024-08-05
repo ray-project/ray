@@ -56,8 +56,14 @@ class RLModuleSpec:
             one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
         inference_only: Whether the RLModule should be configured in its inference-only
-            state, in which any components not needed for pure action computing (such as
-            a value function or a target network) might be missing.
+            state, in which those components not needed for action computing (for
+            example a value function or a target network) might be missing.
+            Note that `inference_only=True` AND `learner_only=True` is not allowed.
+        learner_only: Whether this RLModule should only be built on Learner workers, but
+            NOT on EnvRunners. Useful for RLModules inside a MultiRLModule that are only
+            used for training, for example a shared value function in a multi-agent
+            setup or a world model in a curiosity-learning setup.
+            Note that `inference_only=True` AND `learner_only=True` is not allowed.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
         load_state_path: The path to the module state to load from. NOTE: This must be
@@ -68,6 +74,7 @@ class RLModuleSpec:
     observation_space: Optional[gym.Space] = None
     action_space: Optional[gym.Space] = None
     inference_only: bool = False
+    learner_only: bool = False
     model_config_dict: Optional[Dict[str, Any]] = None
     catalog_class: Optional[Type["Catalog"]] = None
     load_state_path: Optional[str] = None
@@ -78,6 +85,7 @@ class RLModuleSpec:
             observation_space=self.observation_space,
             action_space=self.action_space,
             inference_only=self.inference_only,
+            learner_only=self.learner_only,
             model_config_dict=self.model_config_dict or {},
             catalog_class=self.catalog_class,
         )
@@ -107,6 +115,7 @@ class RLModuleSpec:
             observation_space=module.config.observation_space,
             action_space=module.config.action_space,
             inference_only=module.config.inference_only,
+            learner_only=module.config.learner_only,
             model_config_dict=module.config.model_config_dict,
             catalog_class=module.config.catalog_class,
         )
@@ -130,6 +139,7 @@ class RLModuleSpec:
             observation_space=module_config.observation_space,
             action_space=module_config.action_space,
             inference_only=module_config.inference_only,
+            learner_only=module_config.learner_only,
             model_config_dict=module_config.model_config_dict,
             catalog_class=module_config.catalog_class,
         )
@@ -153,10 +163,12 @@ class RLModuleSpec:
             self.observation_space = other.observation_space or self.observation_space
             self.action_space = other.action_space or self.action_space
             self.inference_only = other.inference_only or self.inference_only
+            self.learner_only = other.learner_only and self.learner_only
             self.model_config_dict = other.model_config_dict or self.model_config_dict
             self.catalog_class = other.catalog_class or self.catalog_class
             self.load_state_path = other.load_state_path or self.load_state_path
         # Only override, if the field is None in `self`.
+        # Do NOT override the boolean settings: `inference_only` and `learner_only`.
         else:
             self.module_class = self.module_class or other.module_class
             self.observation_space = self.observation_space or other.observation_space
@@ -191,8 +203,14 @@ class RLModuleConfig:
             one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
         inference_only: Whether the RLModule should be configured in its inference-only
-            state, in which any components not needed for pure action computing (such as
-            a value function or a target network) might be missing.
+            state, in which those components not needed for action computing (for
+            example a value function or a target network) might be missing.
+            Note that `inference_only=True` AND `learner_only=True` is not allowed.
+        learner_only: Whether this RLModule should only be built on Learner workers, but
+            NOT on EnvRunners. Useful for RLModules inside a MultiRLModule that are only
+            used for training, for example a shared value function in a multi-agent
+            setup or a world model in a curiosity-learning setup.
+            Note that `inference_only=True` AND `learner_only=True` is not allowed.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
     """
@@ -200,6 +218,7 @@ class RLModuleConfig:
     observation_space: gym.Space = None
     action_space: gym.Space = None
     inference_only: bool = False
+    learner_only: bool = False
     model_config_dict: Dict[str, Any] = field(default_factory=dict)
     catalog_class: Type["Catalog"] = None
 
@@ -225,6 +244,7 @@ class RLModuleConfig:
             "observation_space": gym_space_to_dict(self.observation_space),
             "action_space": gym_space_to_dict(self.action_space),
             "inference_only": self.inference_only,
+            "learner_only": self.learner_only,
             "model_config_dict": self.model_config_dict,
             "catalog_class_path": catalog_class_path,
         }
@@ -241,6 +261,7 @@ class RLModuleConfig:
             observation_space=gym_space_from_dict(d["observation_space"]),
             action_space=gym_space_from_dict(d["action_space"]),
             inference_only=d["inference_only"],
+            learner_only=d["learner_only"],
             model_config_dict=d["model_config_dict"],
             catalog_class=catalog_class,
         )
