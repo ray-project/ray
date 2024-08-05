@@ -164,6 +164,7 @@ from ray.anyscale.data.api.read_api import (  # noqa: E402, F811, isort:skip
     read_images,
     read_json,
     read_numpy,
+    read_parquet,
     read_snowflake,
     read_text,
     read_videos,

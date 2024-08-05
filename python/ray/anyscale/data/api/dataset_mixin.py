@@ -1,5 +1,5 @@
 import functools
-from typing import Any, Dict, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 
 from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
     ExpandPaths,
@@ -87,7 +87,7 @@ class DatasetMixin:
         return Dataset(plan, logical_plan)
 
     @functools.wraps(Dataset.input_files)
-    def input_files(self) -> int:
+    def input_files(self) -> List[str]:
         if isinstance(self._logical_plan.dag, ReadFiles):
             input_dependencies = self._logical_plan.dag.input_dependencies
             assert len(input_dependencies) == 1
@@ -98,7 +98,7 @@ class DatasetMixin:
             dataset = Dataset(execution_plan, logical_plan)
             return list({row["path"] for row in dataset.take_all()})
         else:
-            return list(set(self._plan.input_files()))
+            return self._plan.input_files() or []
 
     def write_snowflake(
         self,

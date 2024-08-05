@@ -1,7 +1,10 @@
 import functools
 import inspect
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+
+import numpy as np
+import pyarrow as pa
 
 import ray
 import ray.data.read_api as oss_read_api
@@ -9,7 +12,13 @@ from ray._private.auto_init_hook import wrap_auto_init
 from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
     ExpandPaths,
 )
+from ray.anyscale.data._internal.logical.operators.partition_parquet_fragments_operator import (  # noqa: E501
+    PartitionParquetFragments,
+)
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
+from ray.anyscale.data._internal.logical.operators.read_parquet_fragments_operator import (  # noqa: E501
+    ReadParquetFragments,
+)
 from ray.anyscale.data._internal.readers import (
     AudioReader,
     AvroReader,
@@ -27,12 +36,23 @@ from ray.anyscale.data.datasource.snowflake_datasource import SnowflakeDatasourc
 from ray.data._internal.datasource.image_datasource import ImageDatasource
 from ray.data._internal.datasource.json_datasource import JSONDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
+from ray.data._internal.datasource.parquet_datasource import (
+    SerializedFragment,
+    check_for_legacy_tensor_type,
+    estimate_default_read_batch_size_rows,
+    estimate_files_encoding_ratio,
+    get_parquet_dataset,
+    sample_fragments,
+)
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
+from ray.data._internal.util import _is_local_scheme
 from ray.data.dataset import Dataset
 from ray.data.datasource import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+from ray.data.read_api import _resolve_parquet_args
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -65,6 +85,104 @@ def _try_fallback_to_oss(runtime_func):
 
 
 # TODO(@bveeramani): Add `read_tfrecords`.
+
+
+@_try_fallback_to_oss
+def read_parquet(
+    paths: Union[str, List[str]],
+    *,
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    columns: Optional[List[str]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    shuffle: Union[Literal["files"], None] = None,
+    include_paths: bool = False,
+    concurrency: Optional[int] = None,
+    **arrow_parquet_args,
+) -> Dataset:
+    if ray_remote_args is None:
+        ray_remote_args = {}
+
+    if _is_local_scheme(paths):
+        if "scheduling_strategy" in ray_remote_args:
+            warnings.warn(
+                "You specified the 'scheduling_strategy' remote argument and "
+                "a 'local://' path. To read local files, Ray Data will override the "
+                "your specified 'scheduling_strategy'."
+            )
+
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the Ray "
+                "cluster can't access your local files. To fix this issue, store "
+                "files in cloud storage or a distributed filesystem like NFS."
+            )
+
+        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(), soft=False
+        )
+
+    ctx = ray.data.DataContext.get_current()
+    if "scheduling_strategy" not in ray_remote_args:
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+
+    arrow_parquet_args = _resolve_parquet_args(
+        tensor_column_schema,
+        **arrow_parquet_args,
+    )
+    block_udf = arrow_parquet_args.pop("_block_udf", None)
+    dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", {})
+    schema = arrow_parquet_args.pop("schema", None)
+    to_batches_kwargs = arrow_parquet_args
+
+    paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+    parquet_dataset = get_parquet_dataset(paths, filesystem, dataset_kwargs)
+
+    if schema is None:
+        schema = parquet_dataset.schema
+    if columns is not None:
+        schema = pa.schema(
+            [schema.field(column) for column in columns], schema.metadata
+        )
+
+    check_for_legacy_tensor_type(schema)
+
+    serialized_fragments = [SerializedFragment(f) for f in parquet_dataset.fragments]
+    sample_infos = sample_fragments(
+        serialized_fragments,
+        to_batches_kwargs=to_batches_kwargs,
+        columns=columns,
+        schema=schema,
+    )
+    encoding_ratio = estimate_files_encoding_ratio(sample_infos)
+    batch_size = estimate_default_read_batch_size_rows(sample_infos)
+
+    partition_parquet_fragments_op = PartitionParquetFragments(
+        serialized_fragments=serialized_fragments,
+        encoding_ratio=encoding_ratio,
+        shuffle=shuffle,
+        filesystem=filesystem,
+        partition_filter=partition_filter,
+    )
+    read_parquet_fragments_op = ReadParquetFragments(
+        partition_parquet_fragments_op,
+        block_udf=block_udf,
+        to_batches_kwargs=to_batches_kwargs,
+        default_read_batch_size_rows=batch_size,
+        columns=columns,
+        schema=schema,
+        include_paths=include_paths,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+    )
+    logical_plan = LogicalPlan(read_parquet_fragments_op)
+    return Dataset(
+        plan=ExecutionPlan(
+            DatasetStats(metadata={"ReadParquetFragments": []}, parent=None),
+        ),
+        logical_plan=logical_plan,
+    )
 
 
 @_try_fallback_to_oss
