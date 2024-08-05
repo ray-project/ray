@@ -55,6 +55,15 @@ class UnionOperator(NAryOperator):
             num_outputs += input_num_outputs
         return num_outputs
 
+    def num_output_rows_total(self) -> Optional[int]:
+        total_rows = 0
+        for input_op in self.input_dependencies:
+            input_num_rows = input_op.num_output_rows_total()
+            if input_num_rows is None:
+                return None
+            total_rows += input_num_rows
+        return total_rows
+
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
