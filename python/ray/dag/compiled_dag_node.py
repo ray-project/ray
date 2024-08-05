@@ -1134,7 +1134,7 @@ class CompiledDAG:
 
         #1  Divide a DAG node into three GraphNodes: READ, COMPUTE, and WRITE. Each
             GraphNode has a DAGNodeOperation.
-        #2  Add edges between READ and COMPUTE, and between COMPUTE and WRITE, which
+        #2  Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
             belong to the same task.
         #3  Add an edge between COMPUTE with bind_index i and COMPUTE with bind_index
             i+1 if they belong to the same actor.
@@ -1149,10 +1149,10 @@ class CompiledDAG:
             `bind_index`. If there are multiple candidate nodes with the smallest
             `bind_index` of the actors that they belong to, any one of them is
             acceptable. For the implementation details, we maintain a priority queue
-            for each actor, where the peek of the priority queue is the node with the
+            for each actor, where the head of the priority queue is the node with the
             smallest `bind_index`.
         #2  If the node is an NCCL write node, select it only if all of its downstream
-            nodes are also the peeks of their priority queues.
+            nodes are also the heads of their priority queues.
         #3  If #1 and #2 cannot be satisfied, it means that all candidate nodes are
             NCCL write nodes. In this case, select the one that is the peek of the
             priority queue and its downstream nodes, regardless of whether the
@@ -1263,7 +1263,7 @@ class CompiledDAG:
             """
             Select the next nodes for topological sort. This function may return
             multiple nodes if they are NCCL nodes. In that case, this function only
-            removes the NCCL write node, which is also the peek of a priority queue.
+            removes the NCCL write node, which is also the head of a priority queue.
             Other nodes will be removed in the following iterations. Additionally,
             visited_nodes ensures that the same node will not be scheduled more than
             once.
