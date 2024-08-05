@@ -38,7 +38,7 @@
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
 #include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
@@ -1112,11 +1112,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &event_name);
 
   int64_t GetNumTasksSubmitted() const {
-    return direct_task_submitter_->GetNumTasksSubmitted();
+    return normal_task_submitter_->GetNumTasksSubmitted();
   }
 
   int64_t GetNumLeasesRequested() const {
-    return direct_task_submitter_->GetNumLeasesRequested();
+    return normal_task_submitter_->GetNumLeasesRequested();
   }
 
  public:
@@ -1725,7 +1725,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// See params in CancelTaskOnExecutor.
   /// For the actor task cancel protocol, see the docstring of
-  /// direct_actor_task_submitter.h::CancelTask.
+  /// actor_task_submitter.h::CancelTask.
   void CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                                  TaskID intended_task_id,
                                  bool force_kill,
@@ -1838,7 +1838,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Interface to submit tasks directly to other actors.
-  std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+  std::shared_ptr<ActorTaskSubmitter> actor_task_submitter_;
 
   // A class to publish object status from other raylets/workers.
   std::unique_ptr<pubsub::Publisher> object_info_publisher_;
@@ -1851,7 +1851,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
   // Interface to submit non-actor tasks directly to leased workers.
-  std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
+  std::unique_ptr<NormalTaskSubmitter> normal_task_submitter_;
 
   /// Manages recovery of objects stored in remote plasma nodes.
   std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;

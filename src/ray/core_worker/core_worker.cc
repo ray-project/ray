@@ -448,9 +448,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
               auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
               actor_handle->SetResubmittedActorTaskSpec(spec);
             }
-            RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
+            RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
           } else {
-            RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+            RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
           }
         }
       },
@@ -515,13 +515,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
-  direct_actor_submitter_ = std::shared_ptr<CoreWorkerDirectActorTaskSubmitter>(
-      new CoreWorkerDirectActorTaskSubmitter(*core_worker_client_pool_,
-                                             *memory_store_,
-                                             *task_manager_,
-                                             *actor_creator_,
-                                             on_excess_queueing,
-                                             io_service_));
+  actor_task_submitter_ = std::shared_ptr<ActorTaskSubmitter>(
+      new ActorTaskSubmitter(*core_worker_client_pool_,
+                             *memory_store_,
+                             *task_manager_,
+                             *actor_creator_,
+                             on_excess_queueing,
+                             io_service_));
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -541,7 +541,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                           : std::shared_ptr<LeasePolicyInterface>(
                                 std::make_shared<LocalLeasePolicy>(rpc_address_));
 
-  direct_task_submitter_ = std::make_unique<CoreWorkerDirectTaskSubmitter>(
+  normal_task_submitter_ = std::make_unique<NormalTaskSubmitter>(
       rpc_address_,
       local_raylet_client_,
       core_worker_client_pool_,
@@ -576,7 +576,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   }
 
   actor_manager_ = std::make_unique<ActorManager>(
-      gcs_client_, direct_actor_submitter_, reference_counter_);
+      gcs_client_, actor_task_submitter_, reference_counter_);
 
   std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_fn;
@@ -1075,22 +1075,22 @@ void CoreWorker::InternalHeartbeat() {
         auto actor_handle = actor_manager_->GetActorHandle(spec.ActorId());
         actor_handle->SetResubmittedActorTaskSpec(spec);
       }
-      RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(spec));
+      RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
     } else {
-      RAY_CHECK_OK(direct_task_submitter_->SubmitTask(spec));
+      RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
     }
   }
 
   // Check timeout tasks that are waiting for death info.
-  if (direct_actor_submitter_ != nullptr) {
-    direct_actor_submitter_->CheckTimeoutTasks();
+  if (actor_task_submitter_ != nullptr) {
+    actor_task_submitter_->CheckTimeoutTasks();
   }
 
   // Periodically report the lastest backlog so that
   // local raylet will have the eventually consistent view of worker backlogs
-  // even in cases where backlog reports from direct_task_transport
+  // even in cases where backlog reports from normal_task_submitter
   // are lost or reordered.
-  direct_task_submitter_->ReportWorkerBacklog();
+  normal_task_submitter_->ReportWorkerBacklog();
 
   // Check for unhandled exceptions to raise after a timeout on the driver.
   // Only do this for TTY, since shells like IPython sometimes save references
@@ -2231,7 +2231,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 
     io_service_.post(
         [this, task_spec]() {
-          RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+          RAY_UNUSED(normal_task_submitter_->SubmitTask(task_spec));
         },
         "CoreWorker.SubmitTask");
   }
@@ -2386,7 +2386,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                         << "Failed to register actor. Error message: "
                         << status.ToString();
                   } else {
-                    RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+                    RAY_UNUSED(normal_task_submitter_->SubmitTask(task_spec));
                   }
                 }));
           },
@@ -2401,7 +2401,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       }
       io_service_.post(
           [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
+            RAY_UNUSED(normal_task_submitter_->SubmitTask(task_spec));
           },
           "CoreWorker.SubmitTask");
     }
@@ -2496,20 +2496,20 @@ Status CoreWorker::SubmitActorTask(
     const TaskID current_task_id) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
   task_returns.clear();
-  if (!direct_actor_submitter_->CheckActorExists(actor_id)) {
+  if (!actor_task_submitter_->CheckActorExists(actor_id)) {
     std::string err_msg = absl::StrFormat(
         "Can't find actor %s. It might be dead or it's from a different cluster",
         actor_id.Hex());
     return Status::NotFound(std::move(err_msg));
   }
   /// Check whether backpressure may happen at the very beginning of submitting a task.
-  if (direct_actor_submitter_->PendingTasksFull(actor_id)) {
+  if (actor_task_submitter_->PendingTasksFull(actor_id)) {
     RAY_LOG(DEBUG).WithField(actor_id)
         << "Back pressure occurred while submitting the actor task. "
-        << direct_actor_submitter_->DebugString(actor_id);
+        << actor_task_submitter_->DebugString(actor_id);
     return Status::OutOfResource(absl::StrFormat(
         "Too many tasks (%d) pending to be executed for actor %s. Please try later",
-        direct_actor_submitter_->NumPendingTasks(actor_id),
+        actor_task_submitter_->NumPendingTasks(actor_id),
         actor_id.Hex()));
   }
 
@@ -2581,7 +2581,7 @@ Status CoreWorker::SubmitActorTask(
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), max_retries);
 
-    RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
+    RAY_CHECK_OK(actor_task_submitter_->SubmitTask(task_spec));
   }
   task_returns = std::move(returned_refs);
   return Status::OK();
@@ -2596,12 +2596,12 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
   }
 
   if (obj_addr.SerializeAsString() != rpc_address_.SerializeAsString()) {
-    // We don't have CancelRemoteTask for direct_actor_submitter_
+    // We don't have CancelRemoteTask for actor_task_submitter_
     // because it requires the same implementation.
     RAY_LOG(DEBUG).WithField(object_id)
         << "Request to cancel a task of object to an owner "
         << obj_addr.SerializeAsString();
-    return direct_task_submitter_->CancelRemoteTask(
+    return normal_task_submitter_->CancelRemoteTask(
         object_id, obj_addr, force_kill, recursive);
   }
 
@@ -2623,9 +2623,9 @@ Status CoreWorker::CancelTask(const ObjectID &object_id,
       return Status::InvalidArgument("force=True is not supported for actor tasks.");
     }
 
-    return direct_actor_submitter_->CancelTask(task_spec.value(), recursive);
+    return actor_task_submitter_->CancelTask(task_spec.value(), recursive);
   } else {
-    return direct_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
+    return normal_task_submitter_->CancelTask(task_spec.value(), force_kill, recursive);
   }
 }
 
@@ -2641,11 +2641,11 @@ Status CoreWorker::CancelChildren(const TaskID &task_id, bool force_kill) {
                          Status::UnknownError(
                              "Recursive task cancellation failed--check warning logs.")));
     } else if (child_spec->IsActorTask()) {
-      auto result = direct_actor_submitter_->CancelTask(child_spec.value(), true);
+      auto result = actor_task_submitter_->CancelTask(child_spec.value(), true);
       recursive_cancellation_status.push_back(std::make_pair(child_id, result));
     } else {
       auto result =
-          direct_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
+          normal_task_submitter_->CancelTask(child_spec.value(), force_kill, true);
       recursive_cancellation_status.push_back(std::make_pair(child_id, result));
     }
   }
