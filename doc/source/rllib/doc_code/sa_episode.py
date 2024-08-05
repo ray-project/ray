@@ -1,9 +1,6 @@
 # flake8: noqa
 
 # __rllib-sa-episode-01-begin__
-import gymnasium as gym
-import numpy as np
-
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.test_utils import check
 
@@ -57,7 +54,6 @@ check(episode.get_actions(0), "act_0")
 # ... which is the same as using the indexing operator on the `actions` property:
 check(episode.actions[0], "act_0")
 
-
 # __rllib-sa-episode-02-end__
 
 
@@ -71,6 +67,9 @@ episode.get_rewards(slice(-4, 0), neg_index_as_lookback=True, fill=0.0)
 # value) AND the argument `neg_index_as_lookback=True`, which interprets
 # negative indices as being left of ts=0 (e.g. -1 being the timestep before
 # ts=0).
+
+import gymnasium as gym
+import numpy as np
 
 # Assuming we had a complex action space (nested gym.spaces.Dict) with one or
 # more elements being Discrete or MultiDiscrete spaces:
