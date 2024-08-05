@@ -34,6 +34,7 @@
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
+#include "src/ray/protobuf/export_event.pb.h"
 
 using json = nlohmann::json;
 
@@ -98,6 +99,8 @@ class BaseEventReporter {
 
   virtual void Report(const rpc::Event &event, const json &custom_fields) = 0;
 
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) = 0;
+
   virtual void Close() = 0;
 
   virtual std::string GetReporterKey() = 0;
@@ -118,14 +121,15 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual std::string EventToString(const rpc::Event &event, const json &custom_fields);
 
-  virtual std::string ExportEventToString(const rpc::Event &event,
-                                          const json &custom_fields);
+  virtual std::string ExportEventToString(const rpc::ExportEvent &export_event);
 
-  virtual bool IsExportEvent(const rpc::Event &event, const json &custom_fields);
+  // virtual bool IsExportEvent(const rpc::Event &event, const json &custom_fields);
 
   virtual void Init() override {}
 
   virtual void Report(const rpc::Event &event, const json &custom_fields) override;
+
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
 
   virtual void Close() override {}
 
@@ -156,6 +160,8 @@ class EventManager final {
   // TODO(SongGuyang): Remove the protobuf `rpc::Event` and use an internal struct
   // instead.
   void Publish(const rpc::Event &event, const json &custom_fields);
+
+  void PublishExportEvent(const rpc::ExportEvent &export_event);
 
   // NOTE(ruoqiu) AddReporters, ClearPeporters (along with the Pushlish function) would
   // not be thread-safe. But we assume default initialization and shutdown are placed in
@@ -282,8 +288,7 @@ class RayEvent {
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   event_data, &export_event_data_str, options)
                   .ok());
-    json event_data_as_json = json::parse(export_event_data_str);
-    custom_fields_["event_data"] = event_data_as_json;
+    custom_fields_["event_data"] = export_event_data_str;
     return *this;
   }
 
@@ -311,6 +316,8 @@ class RayEvent {
  private:
   RayEvent() = default;
 
+  bool IsExportEvent(rpc::Event_SourceType source_type);
+  
   void SendMessage(const std::string &message);
 
   RayEvent(const RayEvent &event) = delete;

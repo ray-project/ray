@@ -19,6 +19,9 @@
 #include "absl/base/call_once.h"
 #include "absl/time/time.h"
 
+#include <google/protobuf/struct.pb.h>
+#include <google/protobuf/util/json_util.h>
+
 namespace ray {
 ///
 /// LogEventReporter
@@ -42,7 +45,8 @@ LogEventReporter::LogEventReporter(rpc::Event_SourceType source_type,
   // event_CORE_WOREKER_{pid}.log
   file_name_ = "event_" + Event_SourceType_Name(source_type);
   if (source_type == rpc::Event_SourceType::Event_SourceType_CORE_WORKER ||
-      source_type == rpc::Event_SourceType::Event_SourceType_COMMON) {
+      source_type == rpc::Event_SourceType::Event_SourceType_COMMON || 
+      source_type == rpc::Event_SourceType::Event_SourceType_EXPORT_TASK) {
     file_name_ += "_" + std::to_string(getpid());
   }
   file_name_ += ".log";
@@ -103,41 +107,35 @@ std::string LogEventReporter::EventToString(const rpc::Event &event,
   return j.dump();
 }
 
-std::string LogEventReporter::ExportEventToString(const rpc::Event &event,
-                                                  const json &custom_fields) {
+std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export_event) {
   json j;
 
-  auto timestamp = event.timestamp();
+  auto timestamp = export_event.timestamp();
 
   j["timestamp"] = timestamp;
-  j["event_id"] = event.event_id();
-  j["source_type"] = Event_SourceType_Name(event.source_type());
-  j["event_data"] = custom_fields["event_data"].get<json>();
+  j["event_id"] = export_event.event_id();
+  j["source_type"] = ExportEvent_SourceType_Name(export_event.source_type());
+  std::string event_data_as_string;
+  RAY_CHECK(google::protobuf::util::MessageToJsonString(export_event.event_data(), &event_data_as_string).ok());
+  json event_data_as_json = json::parse(event_data_as_string);
+  j["event_data"] = event_data_as_json;
   return j.dump();
-}
-
-bool LogEventReporter::IsExportEvent(const rpc::Event &event, const json &custom_fields) {
-  /* Determine if the given event is an export event based on the source_type
-    field. For export events, validate if event_data is populated in the
-    custom_fields.
-    Raises an error if the given event is an invalid export event. Otherwise,
-    returns True if event is a valid export event and false if it is not an export event.
-   */
-
-  // TODO: Validate export event per the source_type field once export event
-  // sources are added to the Event_SourceType_Name enum
-  return custom_fields.contains("event_data");
 }
 
 void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields) {
   RAY_CHECK(Event_SourceType_IsValid(event.source_type()));
   RAY_CHECK(Event_Severity_IsValid(event.severity()));
-  std::string result;
-  if (IsExportEvent(event, custom_fields)) {
-    result = ExportEventToString(event, custom_fields);
-  } else {
-    result = EventToString(event, custom_fields);
+  std::string result = EventToString(event, custom_fields);
+
+  log_sink_->info(result);
+  if (force_flush_) {
+    Flush();
   }
+}
+
+void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
+  RAY_CHECK(ExportEvent_SourceType_IsValid(export_event.source_type()));
+  std::string result = ExportEventToString(export_event);
 
   log_sink_->info(result);
   if (force_flush_) {
@@ -164,6 +162,12 @@ bool EventManager::IsEmpty() { return reporter_map_.empty(); }
 void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
   for (const auto &element : reporter_map_) {
     (element.second)->Report(event, custom_fields);
+  }
+}
+
+void EventManager::PublishExportEvent(const rpc::ExportEvent &export_event) {
+  for (const auto &element : reporter_map_) {
+    (element.second)->ReportExportEvent(export_event);
   }
 }
 
@@ -305,6 +309,14 @@ RayLogLevel RayEvent::EventLevelToLogLevel(const rpc::Event_Severity &severity) 
 
 RayEvent::~RayEvent() { SendMessage(osstream_.str()); }
 
+bool RayEvent::IsExportEvent(rpc::Event_SourceType source_type) {
+  std::string source_type_as_str = Event_SourceType_Name(source_type);
+  rpc::ExportEvent_SourceType source_type_ele;
+  // RAY_CHECK(
+  //       rpc::ExportEvent_SourceType_Parse(source_type_as_str, &source_type_ele))
+  return (rpc::ExportEvent_SourceType_Parse(source_type_as_str, &source_type_ele));
+}
+
 void RayEvent::SendMessage(const std::string &message) {
   RAY_CHECK(rpc::Event_SourceType_IsValid(RayEventContext::Instance().GetSourceType()));
   RAY_CHECK(rpc::Event_Severity_IsValid(severity_));
@@ -320,10 +332,12 @@ void RayEvent::SendMessage(const std::string &message) {
   static const int kEventIDSize = 18;
   static const std::string kEmptyEventIdHex = "disabled";
   std::string event_id;
-  if (IsLevelEnabled(severity_)) {
+  bool is_export_event = IsExportEvent(context.GetSourceType());
+  if (IsLevelEnabled(severity_) && !is_export_event) {
     std::string event_id_buffer = std::string(kEventIDSize, ' ');
     FillRandom(&event_id_buffer);
     event_id = StringToHex(event_id_buffer);
+
     rpc::Event event;
     event.set_event_id(event_id);
 
@@ -343,7 +357,36 @@ void RayEvent::SendMessage(const std::string &message) {
     event.mutable_custom_fields()->insert(mp.begin(), mp.end());
 
     EventManager::Instance().Publish(event, custom_fields_);
-  } else {
+  } else if (is_export_event) {
+    std::string event_id_buffer = std::string(kEventIDSize, ' ');
+    FillRandom(&event_id_buffer);
+    event_id = StringToHex(event_id_buffer);
+
+    rpc::ExportEvent export_event;
+    export_event.set_event_id(event_id);
+
+    std::string source_type_as_str = Event_SourceType_Name(context.GetSourceType());
+    rpc::ExportEvent_SourceType source_type_ele;
+    RAY_CHECK(
+          rpc::ExportEvent_SourceType_Parse(source_type_as_str, &source_type_ele));
+    export_event.set_source_type(source_type_ele);
+    export_event.set_timestamp(current_sys_time_s());
+
+    auto mp = context.GetCustomFields();
+    for (const auto &pair : mp) {
+      custom_fields_[pair.first] = pair.second;
+    }
+    std::string export_event_data_str = custom_fields_["event_data"];
+    google::protobuf::Struct event_data_struct_field;
+    RAY_CHECK(google::protobuf::util::JsonStringToMessage(export_event_data_str, &event_data_struct_field).ok());
+    export_event.mutable_event_data()->CopyFrom(event_data_struct_field);
+
+    // json event_data_as_json = json::parse(export_event_data_str);
+    // export_event.set_event_data(export_event_data_str);
+
+    EventManager::Instance().PublishExportEvent(export_event);
+  }
+  else {
     event_id = kEmptyEventIdHex;
   }
   if (EmitToLogFile()) {

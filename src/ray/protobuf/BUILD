@@ -245,6 +245,25 @@ python_grpc_compile(
     deps = [":event_proto"],
 )
 
+proto_library(
+    name = "export_event_proto",
+    srcs = ["export_event.proto"],
+    deps = ["@com_google_protobuf//:struct_proto"],
+    # deps = [
+    #     ":gcs_proto",
+    # ],
+)
+
+cc_proto_library(
+    name = "export_event_cc_proto",
+    deps = [":export_event_proto"],
+)
+
+python_grpc_compile(
+    name = "export_event_py_proto",
+    deps = [":export_event_proto"],
+)
+
 # Job agent.
 proto_library(
     name = "job_agent_proto",

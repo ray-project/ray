@@ -34,6 +34,9 @@ class TestEventReporter : public BaseEventReporter {
   virtual void Report(const rpc::Event &event, const json &custom_fields) override {
     event_list.push_back(event);
   }
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override {
+    std::cout << "DEBUG ReportExportEvent";
+  }
   virtual void Close() override {}
   virtual ~TestEventReporter() {}
   virtual std::string GetReporterKey() override { return "test.event.reporter"; }
@@ -473,10 +476,10 @@ TEST_F(EventTest, TestEventJSON) {
   // TODO: The source_type should be updated to an export event type when
   // those events are added to pass validation checks.
   RayEventContext::Instance().SetEventContext(
-      rpc::Event_SourceType::Event_SourceType_RAYLET);
+      rpc::Event_SourceType::Event_SourceType_EXPORT_TASK);
 
   EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
-      rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir));
+      rpc::Event_SourceType::Event_SourceType_EXPORT_TASK, log_dir));
 
   rpc::TaskEvents task_event;
   task_event.set_task_id("task_id0");
@@ -492,13 +495,13 @@ TEST_F(EventTest, TestEventJSON) {
   RAY_EXPORT_EVENT().WithExportEventData<rpc::TaskEvents>(task_event);
 
   std::vector<std::string> vc;
-  ReadContentFromFile(vc, log_dir + "/event_RAYLET.log");
+  ReadContentFromFile(vc, log_dir + "/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
 
   EXPECT_EQ((int)vc.size(), 1);
 
   std::cout << vc[0];
   json export_event_as_json = json::parse(vc[0]);
-  EXPECT_EQ(export_event_as_json["source_type"].get<std::string>(), "RAYLET");
+  EXPECT_EQ(export_event_as_json["source_type"].get<std::string>(), "EXPORT_TASK");
   EXPECT_EQ(export_event_as_json.contains("event_id"), true);
   EXPECT_EQ(export_event_as_json.contains("timestamp"), true);
   EXPECT_EQ(export_event_as_json.contains("event_data"), true);

@@ -25,6 +25,7 @@ cc_library(
         "//:aligned_alloc",
         "//:sha256",
         "//src/ray/protobuf:event_cc_proto",
+        "//src/ray/protobuf:export_event_cc_proto",
         "@boost//:asio",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:flat_hash_map",
