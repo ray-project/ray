@@ -10,6 +10,7 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_PREDS,
     TD_ERROR_MEAN_KEY,
 )
+from ray.rllib.algorithms.cql.cql import CQLConfig
 from ray.rllib.algorithms.sac.torch.sac_torch_learner import SACTorchLearner
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import (
@@ -122,8 +123,6 @@ class CQLTorchLearner(CQLLearner, SACTorchLearner):
             if not config._deterministic_loss
             else action_dist_next.to_deterministic().sample()
         )
-        # Compute the log probabilities for the next actions.
-        logps_next = action_dist_next.logp(actions_next)
 
         # Get the Q-values for the actually selected actions in the offline data.
         # In the critic loss we use these as predictions.
