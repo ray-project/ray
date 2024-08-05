@@ -1136,9 +1136,9 @@ class CompiledDAG:
             GraphNode has a DAGNodeOperation.
         #2  Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
             belong to the same task.
-        #3  Add an edge between COMPUTE with bind_index i and COMPUTE with bind_index
+        #3  Add an edge from COMPUTE with bind_index i to COMPUTE with bind_index
             i+1 if they belong to the same actor.
-        #4  Add an edge between WRITE of the writer task and READ of the reader task.
+        #4  Add an edge from WRITE of the writer task to READ of the reader task.
 
         Step 2: Topological sort
 
