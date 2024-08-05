@@ -109,6 +109,6 @@ def check_wheels_exist_on_s3(commit_hash: str, ray_version: str) -> bool:
         try:
             s3_client.head_object(Bucket=RAY_WHEELS_BUCKET, Key=wheel_s3_key)
         except Exception as e:
-            logger.error(f"Wheel {wheel_s3_key} does not exist on S3: {e}")
+            logger.info(f"Wheel {wheel_s3_key} does not exist on S3: {e}")
             return False
     return True

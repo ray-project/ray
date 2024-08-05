@@ -209,6 +209,16 @@ py_binary(
     ],
 )
 
+py_binary(
+    name = "check_s3_wheels_exist",
+    srcs = ["check_s3_wheels_exist.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    deps = [
+        ":ray_wheels_lib",
+        ci_require("click"),
+    ],
+)
+
 py_test(
     name = "test_determine_microcheck_tests",
     srcs = ["test_determine_microcheck_tests.py"],
