@@ -40,6 +40,7 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from enum import Enum
+import heapq
 
 
 @DeveloperAPI
@@ -1249,8 +1250,6 @@ class CompiledDAG:
                     graph[idx][DAGNodeOperationType.WRITE],
                     graph[downstream_idx][DAGNodeOperationType.READ],
                 )
-
-        import heapq
 
         actor_to_candidates = defaultdict(list)
         for idx, node_dict in graph.items():
