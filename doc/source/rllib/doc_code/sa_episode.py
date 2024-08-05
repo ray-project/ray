@@ -2,7 +2,6 @@
 
 # __rllib-sa-episode-01-begin__
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils.test_utils import check
 
 # Construct a new episode (without any data in it yet).
 episode = SingleAgentEpisode()
@@ -29,30 +28,41 @@ assert len(episode) == 5
 # __rllib-sa-episode-02-begin__
 # We can now access information from the episode via its getter APIs.
 
+from ray.rllib.utils.test_utils import check
+
 # Get the very first observation ("reset observation"). Note that a single observation
 # is returned here (not a list of size 1 or a batch of size 1).
 check(episode.get_observations(0), "obs_0")
-# ... which is the same as using the indexing operator on the `observations` property:
+# ... which is the same as using the indexing operator on the Episode's
+# `observations` property:
 check(episode.observations[0], "obs_0")
 
-# You can also get several indices at once:
+# You can also get several observations at once by providing a list of indices:
 check(episode.get_observations([1, 2]), ["obs_1", "obs_2"])
-# .. or a slice of observations.
+# .. or a slice of observations by providing a python slice object:
 check(episode.get_observations(slice(1, 3)), ["obs_1", "obs_2"])
 
-# Note that when only a single index is requested, a single item is returned.
-# When a list of indices or a slice is requested, a list of items is returned.
+# Note that when passing only a single index, a single item is returned.
+# Whereas when passing a list of indices or a slice, a list of items is returned.
 
+# Similarly for getting rewards:
 # Get the last reward.
 check(episode.get_rewards(-1), "rew_4")
 # ... which is the same as using the slice operator on the `rewards` property:
 check(episode.rewards[-1], "rew_4")
 
+# Similarly for getting actions:
 # Get the first action in the episode (single item, not batched).
 # This works regardless of the action space.
 check(episode.get_actions(0), "act_0")
 # ... which is the same as using the indexing operator on the `actions` property:
 check(episode.actions[0], "act_0")
+
+# Finally, you can slice the entire episode using the []-operator with a slice notation:
+sliced_episode = episode[3:4]
+check(list(sliced_episode.observations), ["obs_3", "obs_4"])
+check(list(sliced_episode.actions), ["act_3"])
+check(list(sliced_episode.rewards), ["rew_3"])
 
 # __rllib-sa-episode-02-end__
 
