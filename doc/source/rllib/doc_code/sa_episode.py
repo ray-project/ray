@@ -11,24 +11,19 @@ from ray.rllib.utils.test_utils import check
 episode = SingleAgentEpisode()
 assert len(episode) == 0
 
-# Create a gym.Env to fill the episode with data.
-env = gym.make("CartPole-v1")
-reset_obs, reset_infos = env.reset()
-episode.add_env_reset(reset_obs, reset_infos)
+episode.add_env_reset(observation="obs_0", infos="info_0")
 # Even with the initial obs/infos, the episode is still considered len=0.
 assert len(episode) == 0
 
-# Fill the episode with some data (5 timesteps) using random action.
-for _ in range(5):
-    action = env.action_space.sample()
-    obs, reward, term, trunc, infos = env.step(action)
+# Fill the episode with some fake data (5 timesteps).
+for i in range(5):
     episode.add_env_step(
-        observation=obs,
-        action=action,
-        reward=reward,
-        terminated=term,
-        truncated=trunc,
-        infos=infos,
+        observation=f"obs_{i+1}",
+        action=f"act_{i}",
+        reward=f"rew_{i}",
+        terminated=False,
+        truncated=False,
+        infos=f"info_{i+1}",
     )
 assert len(episode) == 5
 # __rllib-sa-episode-01-end__
@@ -39,24 +34,29 @@ assert len(episode) == 5
 
 # Get the very first observation ("reset observation"). Note that a single observation
 # is returned here (not a list of size 1 or a batch of size 1).
-check(episode.get_observations(0), reset_obs)
+check(episode.get_observations(0), "obs_0")
 # ... which is the same as using the indexing operator on the `observations` property:
-check(episode.observations[0], reset_obs)
+check(episode.observations[0], "obs_0")
 
-# Get the last 3 rewards. Note that a list of len 3 is returned.
-check(episode.get_rewards(slice(-3, None)), [1.0, 1.0, 1.0])
+# You can also get several indices at once:
+check(episode.get_observations([1, 2]), ["obs_1", "obs_2"])
+# .. or a slice of observations.
+check(episode.get_observations(slice(1, 3)), ["obs_1", "obs_2"])
+
+# Note that when only a single index is requested, a single item is returned.
+# When a list of indices or a slice is requested, a list of items is returned.
+
+# Get the last reward.
+check(episode.get_rewards(-1), "rew_4")
 # ... which is the same as using the slice operator on the `rewards` property:
-check(episode.rewards[-3:], [1.0, 1.0, 1.0])
-# To get a single reward, use a single index:
-episode.get_rewards(0)  # return the first reward (after taking the first action)
-# .. or, equivalently:
-episode.rewards[0]
+check(episode.rewards[-1], "rew_4")
 
-# Get the most recent action (single item, not batched).
+# Get the first action in the episode (single item, not batched).
 # This works regardless of the action space.
-check(episode.get_actions(-1), action)
+check(episode.get_actions(0), "act_0")
 # ... which is the same as using the indexing operator on the `actions` property:
-check(episode.actions[-1], action)
+check(episode.actions[0], "act_0")
+
 
 # __rllib-sa-episode-02-end__
 
@@ -65,10 +65,10 @@ check(episode.actions[-1], action)
 # in case we go over the beginning (ts=0). So we would expect
 # [0.0, 0.0, 0.0, r0] to be returned here, where r0 is the very first received
 # reward in the episode:
-episode.get_rewards(slice(-4, 0), neg_indices_left_of_zero=True, fill=0.0)
+episode.get_rewards(slice(-4, 0), neg_index_as_lookback=True, fill=0.0)
 
 # Note the use of fill=0.0 here (fill everything that's out of range with this
-# value) AND the argument `neg_indices_left_of_zero=True`, which interprets
+# value) AND the argument `neg_index_as_lookback=True`, which interprets
 # negative indices as being left of ts=0 (e.g. -1 being the timestep before
 # ts=0).
 
@@ -106,7 +106,7 @@ for ts in range(len(episode)):
             indices=slice(ts - 4, ts),
             # Make sure negative indices are interpreted as
             # "into lookback buffer"
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
             # Zero-out everything even further before the lookback buffer.
             fill=0.0,
             # Take care of discrete components (get ready as NN input).

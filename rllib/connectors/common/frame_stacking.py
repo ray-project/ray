@@ -98,7 +98,7 @@ class _FrameStacking(ConnectorV2):
                         _map_fn,
                         sa_episode.get_observations(
                             indices=slice(-self.num_frames + 1, len(sa_episode)),
-                            neg_indices_left_of_zero=True,
+                            neg_index_as_lookback=True,
                             fill=0.0,
                         ),
                     ),
