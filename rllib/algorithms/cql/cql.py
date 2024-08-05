@@ -1,7 +1,8 @@
 import logging
-from typing import Optional, Type
+from typing import Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.core.learner.learner import Learner
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
 from ray.rllib.algorithms.sac.sac import (
@@ -169,6 +170,18 @@ class CQL(SAC):
         else:
             return CQLTFPolicy
 
+
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.cql.torch.cql_torch_learner import CQLTorchLearner
+
+            return CQLTorchLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use `'torch'` instead."
+            )
+
     @override(SAC)
     def training_step(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
@@ -214,3 +227,62 @@ class CQL(SAC):
 
         # Return all collected metrics for the iteration.
         return train_results
+
+
+    def _training_step_new_api_stack(self) -> ResultDict:
+
+        with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
+            # Sampling from offline data.
+            batch = self.offline_data.sample(
+                num_samples=self.config.train_batch_size_per_learner,
+                num_shards=self.config.num_learners,
+                return_iterator=True if self.config.num_learners > 1 else False,
+            )
+        
+        with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
+            # Updating the policy.
+            # TODO (simon, sven): Check, if we should execute directly s.th. like
+            # update_from_iterator.
+            learner_results = self.learner_group.update_from_batch(
+                batch,
+                minibatch_size=self.config.train_batch_size_per_learner,
+                num_iters=self.config.dataset_num_iters_per_learner,
+            )
+
+            # Log training results.
+            self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+            self.metrics.log_value(
+                NUM_ENV_STEPS_TRAINED_LIFETIME,
+                self.metrics.peek(
+                    (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
+                ),
+                reduce="sum",
+            )
+            self.metrics.log_dict(
+                {
+                    (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (
+                        stats[NUM_MODULE_STEPS_TRAINED]
+                    )
+                    for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
+                },
+                reduce="sum",
+            )
+
+        # Synchronize weights.
+        # As the results contain for each policy the loss and in addition the
+        # total loss over all policies is returned, this total loss has to be
+        # removed.
+        modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
+
+        # Update weights - after learning on the local worker -
+        # on all remote workers. Note, we only have the local `EnvRunner`,
+        # but from this `EnvRunner` the evaulation `EnvRunner`s get updated.
+        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+            self.env_runner_group.sync_weights(
+                # Sync weights from learner_group to all EnvRunners.
+                from_worker_or_learner_group=self.learner_group,
+                policies=modules_to_update,
+                inference_only=True,
+            )
+
+        return self.metrics.reduce()
