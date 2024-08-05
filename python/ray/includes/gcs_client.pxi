@@ -586,7 +586,8 @@ cdef convert_optional_str_none_for_not_found(
         return None, e
 
 cdef convert_optional_multi_get(
-        CRayStatus status, const optional[unordered_map[c_string, c_string]]& c_map) with gil:
+        CRayStatus status,
+        const optional[unordered_map[c_string, c_string]]& c_map) with gil:
     # -> Dict[str, str]
     cdef unordered_map[c_string, c_string].const_iterator it
     try:
