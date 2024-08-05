@@ -170,7 +170,6 @@ class CQL(SAC):
         else:
             return CQLTFPolicy
 
-
     def get_default_learner_class(self) -> Union[Type["Learner"], str]:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.cql.torch.cql_torch_learner import CQLTorchLearner
@@ -228,7 +227,6 @@ class CQL(SAC):
         # Return all collected metrics for the iteration.
         return train_results
 
-
     def _training_step_new_api_stack(self) -> ResultDict:
 
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
@@ -238,7 +236,7 @@ class CQL(SAC):
                 num_shards=self.config.num_learners,
                 return_iterator=True if self.config.num_learners > 1 else False,
             )
-        
+
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             # Updating the policy.
             # TODO (simon, sven): Check, if we should execute directly s.th. like
