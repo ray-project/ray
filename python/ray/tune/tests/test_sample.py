@@ -1551,10 +1551,6 @@ class SearchSpaceTest(unittest.TestCase):
 
         return self._testPointsToEvaluate(TuneBOHB, config)
 
-    @pytest.mark.skipif(
-        sys.version_info >= (3, 12),
-        reason="hyperoprt not yet supported for python 3.12+",
-    )
     def testPointsToEvaluateHyperOpt(self):
         config = {
             "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
@@ -1585,10 +1581,6 @@ class SearchSpaceTest(unittest.TestCase):
 
         return self._testPointsToEvaluate(HyperOptSearch, config)
 
-    @pytest.mark.skipif(
-        sys.version_info >= (3, 12),
-        reason="hyperoprt not yet supported for python 3.12+",
-    )
     def testPointsToEvaluateHyperOptNested(self):
         space = {
             "nested": [
