@@ -123,8 +123,6 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual std::string ExportEventToString(const rpc::ExportEvent &export_event);
 
-  // virtual bool IsExportEvent(const rpc::Event &event, const json &custom_fields);
-
   virtual void Init() override {}
 
   virtual void Report(const rpc::Event &event, const json &custom_fields) override;

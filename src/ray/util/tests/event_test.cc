@@ -472,9 +472,7 @@ TEST_F(EventTest, TestWithField) {
   EXPECT_EQ(bool_value, true);
 }
 
-TEST_F(EventTest, TestEventJSON) {
-  // TODO: The source_type should be updated to an export event type when
-  // those events are added to pass validation checks.
+TEST_F(EventTest, TestExportEvent) {
   RayEventContext::Instance().SetEventContext(
       rpc::Event_SourceType::Event_SourceType_EXPORT_TASK);
 
