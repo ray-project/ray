@@ -10,6 +10,7 @@ from ci.ray_ci.automation.ray_wheels_lib import (
     download_wheel_from_s3,
     download_ray_wheels_from_s3,
     _check_downloaded_wheels,
+    check_wheels_exist_on_s3,
     PYTHON_VERSIONS,
     ALL_PLATFORMS,
     RAY_TYPES,
@@ -229,6 +230,34 @@ def test_download_ray_wheels_from_s3_fail_download(
                 commit_hash=commit_hash, ray_version=ray_version, directory_path=tmp_dir
             )
     assert mock_check_wheels.call_count == 0
+
+
+@mock.patch("boto3.client")
+def test_check_wheels_exist_on_s3(mock_boto3_client):
+    wheel_names = _get_wheel_names(ray_version="1.0.0")
+    wheel_keys = [f"releases/1.0.0/1234567/{wheel}.whl" for wheel in wheel_names]
+    result = check_wheels_exist_on_s3(commit_hash="1234567", ray_version="1.0.0")
+    assert mock_boto3_client.return_value.head_object.call_count == len(wheel_keys)
+    for call in mock_boto3_client.return_value.head_object.call_args_list:
+        key = call[1]["Key"]
+        assert key in wheel_keys
+        wheel_keys.remove(key)  # Remove wheel from list after checking
+    assert len(wheel_keys) == 0  # All wheels were checked
+    assert result is True
+
+
+@mock.patch("boto3.client")
+def test_check_wheels_exist_on_s3_fail(mock_boto3_client):
+    mock_boto3_client.return_value.head_object.side_effect = ClientError(
+        {
+            "Error": {
+                "Code": "404",
+                "Message": "Not Found",
+            }
+        },
+        "head_object",
+    )
+    assert check_wheels_exist_on_s3(commit_hash="1234567", ray_version="1.0.0") is False
 
 
 if __name__ == "__main__":
