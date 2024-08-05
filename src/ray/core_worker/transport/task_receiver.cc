@@ -25,19 +25,17 @@ using namespace ray::gcs;
 namespace ray {
 namespace core {
 
-void TaskReceiver::Init(
-    std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
-    rpc::Address rpc_address,
-    std::shared_ptr<DependencyWaiter> dependency_waiter) {
+void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
+                        rpc::Address rpc_address,
+                        std::shared_ptr<DependencyWaiter> dependency_waiter) {
   waiter_ = std::move(dependency_waiter);
   rpc_address_ = rpc_address;
   client_pool_ = client_pool;
 }
 
-void TaskReceiver::HandleTask(
-    const rpc::PushTaskRequest &request,
-    rpc::PushTaskReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
+                              rpc::PushTaskReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   // Use `mutable_task_spec()` here as `task_spec()` returns a const reference
   // which doesn't work with std::move.
@@ -300,7 +298,7 @@ void TaskReceiver::RunNormalTasksFromQueue() {
 }
 
 bool TaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
-                                                         const TaskID &task_id) {
+                                         const TaskID &task_id) {
   auto it = actor_scheduling_queues_.find(caller_worker_id);
   if (it != actor_scheduling_queues_.end()) {
     return it->second->CancelTaskIfFound(task_id);
@@ -318,8 +316,8 @@ bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
 
 /// Note that this method is only used for asyncio actor.
 void TaskReceiver::SetupActor(bool is_asyncio,
-                                              int fiber_max_concurrency,
-                                              bool execute_out_of_order) {
+                              int fiber_max_concurrency,
+                              bool execute_out_of_order) {
   RAY_CHECK(fiber_max_concurrency_ == 0)
       << "SetupActor should only be called at most once.";
   is_asyncio_ = is_asyncio;
