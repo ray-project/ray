@@ -34,9 +34,6 @@ FileSystemMonitor::FileSystemMonitor(std::vector<std::string> paths,
         io_context_.run();
       }),
       runner_(io_context_) {
-  if (!paths_.empty()) {
-    InitializeInitialCapacity(paths_[0]);
-  }
   runner_.RunFnPeriodically([this] { over_capacity_ = CheckIfAnyPathOverCapacity(); },
                             monitor_interval_ms,
                             "FileSystemMonitor.CheckIfAnyPathOverCapacity");
@@ -95,25 +92,19 @@ bool FileSystemMonitor::OverCapacityImpl(
   if (!space_info.has_value()) {
     return false;
   }
-
   if (space_info->capacity <= 0) {
     RAY_LOG_EVERY_MS(ERROR, 60 * 1000)
         << path << " has no capacity, object creation will fail if spilling is required.";
     return true;
   }
 
-  uint64_t capacity = initial_capacity_.load();
-  if (capacity == 0) {
-    capacity = space_info->capacity;
-  }
-
-  if ((1 - 1.0f * space_info->available / capacity) < capacity_threshold_) {
+  if ((1 - 1.0f * space_info->available / space_info->capacity) < capacity_threshold_) {
     return false;
   }
 
   // Convert bytes to GB
   double available_gb = static_cast<double>(space_info->available) / (1024 * 1024 * 1024);
-  double capacity_gb = static_cast<double>(capacity) / (1024 * 1024 * 1024);
+  double capacity_gb = static_cast<double>(space_info->capacity) / (1024 * 1024 * 1024);
 
   std::ostringstream ostr;
   ostr << path << " is over " << capacity_threshold_ * 100
@@ -123,13 +114,6 @@ bool FileSystemMonitor::OverCapacityImpl(
   RAY_EVENT_EVERY_MS(ERROR, "Out of Disk", 10 * 1000) << ostr.str();
   RAY_LOG_EVERY_MS(ERROR, 10 * 1000) << ostr.str();
   return true;
-}
-
-void FileSystemMonitor::InitializeInitialCapacity(const std::string &path) {
-  auto space_info = Space(path);
-  if (space_info.has_value()) {
-    initial_capacity_.store(space_info->available);
-  }
 }
 
 std::vector<std::string> ParseSpillingPaths(const std::string &spilling_config) {
