@@ -1146,9 +1146,12 @@ class CompiledDAG:
             MultiOutputNode,
         )
 
+        # Step 1: Build a graph
         for _, executable_tasks in self.actor_to_executable_tasks.items():
             prev_compute_node = None
             for local_idx, exec_task in enumerate(executable_tasks):
+                # Divide a DAG node into three DAGOperationGraphNodes: READ, COMPUTE,
+                # and WRITE. Each DAGOperationGraphNode has a DAGNodeOperation.
                 idx = exec_task.idx
                 read_node = DAGOperationGraphNode(
                     DAGNodeOperation(local_idx, DAGNodeOperationType.READ),
@@ -1165,8 +1168,12 @@ class CompiledDAG:
                     idx,
                     self.idx_to_task[idx].dag_node,
                 )
+                # Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
+                # belong to the same task.
                 read_node.add_edge(compute_node)
                 compute_node.add_edge(write_node)
+                # Add an edge from COMPUTE with `bind_index` i to COMPUTE with
+                # `bind_index` i+1 if they belong to the same actor.
                 if prev_compute_node is not None:
                     prev_compute_node.add_edge(compute_node)
                 prev_compute_node = compute_node
@@ -1176,6 +1183,7 @@ class CompiledDAG:
                     DAGNodeOperationType.WRITE: write_node,
                 }
 
+        # Add an edge from WRITE of the writer task to READ of the reader task.
         for idx, task in self.idx_to_task.items():
             if not isinstance(task.dag_node, ClassMethodNode):
                 continue
@@ -1248,6 +1256,7 @@ class CompiledDAG:
                 next_nodes.append(downstream_node)
             return next_nodes
 
+        # Step 2: Topological sort
         while actor_to_candidates:
             nodes = _select_next_nodes()
             for node in nodes:
