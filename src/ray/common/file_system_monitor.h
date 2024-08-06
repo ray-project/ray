@@ -63,14 +63,11 @@ class FileSystemMonitor {
   bool OverCapacityImpl(const std::string &path,
                         const std::optional<std::filesystem::space_info> &info) const;
 
-  void InitializeInitialCapacity(const std::string &path);
-
  private:
   FRIEND_TEST(FileSystemTest, TestOverCapacity);
   const std::vector<std::string> paths_;
   const double capacity_threshold_;
   std::atomic<bool> over_capacity_;
-  std::atomic<uint64_t> initial_capacity_{0};
   instrumented_io_context io_context_;
   std::thread monitor_thread_;
   PeriodicalRunner runner_;
