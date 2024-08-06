@@ -9,49 +9,49 @@ class _SerializationContext:
     def __init__(self):
         self.use_external_transport: bool = False
         self.tensors: List["torch.Tensor"] = []
-        # Buffer for transferring data between tasks in the same worker process or
-        # transferring data between READ, COMPUTE, and WRITE operations of the same
-        # DAG node. We don't use a lock when reading/writing the buffer because a DAG
-        # node actor will only execute one task at a time in `do_exec_tasks`. It will
-        # not execute multiple Ray tasks on a single actor simultaneously.
-        self.intra_process_buffers: Dict[str, Any] = {}
-        # The number of readers for each key. When the number of readers
+        # Buffer for transferring data between tasks in the same worker process.
+        # The key is the channel ID, and the value is the data. We don't use a
+        # lock when reading/writing the buffer because a DAG node actor will only
+        # execute one task at a time in `do_exec_tasks`. It will not execute multiple
+        # Ray tasks on a single actor simultaneously.
+        self.intra_process_channel_buffers: Dict[str, Any] = {}
+        # The number of readers for each channel. When the number of readers
         # reaches 0, remove the data from the buffer.
-        self.key_to_num_readers: Dict[str, int] = {}
+        self.channel_id_to_num_readers: Dict[str, int] = {}
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport
 
-    def set_data(self, key, value: Any, num_readers: int = 1) -> None:
+    def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
         assert num_readers > 0, "num_readers must be greater than 0."
         assert (
-            key not in self.intra_process_buffers
-        ), f"Key {key} already exists in the buffer."
+            channel_id not in self.intra_process_channel_buffers
+        ), f"Channel {channel_id} already exists in the buffer."
         assert (
-            key not in self.key_to_num_readers
-        ), f"Key {key} already exists in the key_to_num_readers."
+            channel_id not in self.channel_id_to_num_readers
+        ), f"Channel {channel_id} already exists in the channel_id_to_num_readers."
 
-        self.intra_process_buffers[key] = value
-        self.key_to_num_readers[key] = num_readers
+        self.intra_process_channel_buffers[channel_id] = value
+        self.channel_id_to_num_readers[channel_id] = num_readers
 
-    def get_data(self, key: str) -> Any:
+    def get_data(self, channel_id: str) -> Any:
         assert (
-            key in self.intra_process_buffers
-        ), f"Key {key} does not exist in the buffer."
+            channel_id in self.intra_process_channel_buffers
+        ), f"Channel {channel_id} does not exist in the buffer."
         assert (
-            key in self.key_to_num_readers
-        ), f"Key {key} does not exist in the key_to_num_readers."
+            channel_id in self.channel_id_to_num_readers
+        ), f"Channel {channel_id} does not exist in the channel_id_to_num_readers."
 
-        self.key_to_num_readers[key] -= 1
-        if self.key_to_num_readers[key] == 0:
+        self.channel_id_to_num_readers[channel_id] -= 1
+        if self.channel_id_to_num_readers[channel_id] == 0:
             # All readers have read the data, so we can remove it.
-            self.key_to_num_readers.pop(key)
-            return self.intra_process_buffers.pop(key)
-        return self.intra_process_buffers[key]
+            self.channel_id_to_num_readers.pop(channel_id)
+            return self.intra_process_channel_buffers.pop(channel_id)
+        return self.intra_process_channel_buffers[channel_id]
 
-    def reset_data(self, key: str) -> None:
-        self.intra_process_buffers.pop(key, None)
-        self.key_to_num_readers.pop(key, None)
+    def reset_data(self, channel_id: str) -> None:
+        self.intra_process_channel_buffers.pop(channel_id, None)
+        self.channel_id_to_num_readers.pop(channel_id, None)
 
     def reset_tensors(self, tensors: List["torch.Tensor"]) -> List["torch.Tensor"]:
         prev_tensors = self.tensors
