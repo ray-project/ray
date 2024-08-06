@@ -120,6 +120,8 @@ class RouterMetricsManager:
         self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
         self.deployment_config: Optional[DeploymentConfig] = None
+        # Track whether the metrics manager has been shutdown
+        self._shutdown: bool = False
 
     @contextmanager
     def wrap_request_assignment(self, request_meta: RequestMetadata):
@@ -180,6 +182,9 @@ class RouterMetricsManager:
         self, deployment_config: DeploymentConfig, curr_num_replicas: int
     ):
         """Update the config for the deployment this router sends requests to."""
+
+        if self._shutdown:
+            return
 
         self.deployment_config = deployment_config
 
@@ -312,6 +317,8 @@ class RouterMetricsManager:
 
         if self.metrics_pusher:
             await self.metrics_pusher.graceful_shutdown()
+
+        self._shutdown = True
 
 
 class Router:
@@ -454,6 +461,13 @@ class Router:
                     )
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
+                    if obj not in request_args and obj not in request_kwargs.values():
+                        logger.warning(
+                            "Passing `DeploymentResponse` objects in nested objects to "
+                            "downstream handle calls is deprecated and will not be "
+                            "supported in the future. Pass them as top-level "
+                            "args or kwargs instead."
+                        )
 
                 # This is no-op replacing the object with itself. The purpose is to make
                 # sure both object refs and object ref generator are not getting pinned

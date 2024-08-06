@@ -1,5 +1,6 @@
 import math
 import os
+import sys
 import tempfile
 import time
 from unittest.mock import patch
@@ -28,7 +29,6 @@ from ray.train.constants import (
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
-from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
 from ray.util.placement_group import get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -311,7 +311,12 @@ def test_single_worker_actor_failure(ray_start_2_cpus):
         e.get_next_results()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="tensorflow is not supported in python 3.12+"
+)
 def test_tensorflow_start(ray_start_2_cpus):
+    from ray.train.tensorflow import TensorflowConfig
+
     num_workers = 2
     tensorflow_config = TensorflowConfig()
     e = BackendExecutor(tensorflow_config, num_workers=num_workers)
