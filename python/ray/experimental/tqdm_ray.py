@@ -110,8 +110,8 @@ class tqdm:
     def close(self):
         """Implements tqdm.tqdm.close."""
         # Don't bother if ray is shutdown (in __del__ hook).
-        if ray is not None and not self._closed:
-            self._closed = True
+        self._closed = True
+        if ray is not None:
             self._dump_state(force_flush=True)
 
     def refresh(self):
@@ -241,8 +241,10 @@ class _BarGroup:
     def close_bar(self, state: ProgressBarState) -> None:
         """Remove a bar from this group."""
         bar = self.bars_by_uuid[state["uuid"]]
+        instance().hide_bars()
         bar.close()
         del self.bars_by_uuid[state["uuid"]]
+        instance().unhide_bars()
 
     def slots_required(self):
         """Return the number of pos slots we need to accomodate bars in this group."""
