@@ -294,6 +294,8 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
+        pd = lazy_import_pandas()
+
         def get_deep_size(obj):
             """Calculates the memory size of objects,
             including nested objects using an iterative approach."""
@@ -311,7 +313,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
                 if isinstance(current, np.ndarray):
                     total_size += current.nbytes - size  # Avoid double counting
-                elif isinstance(current, pandas.DataFrame):
+                elif isinstance(current, pd.DataFrame):
                     total_size += (
                         current.memory_usage(index=True, deep=True).sum() - size
                     )
