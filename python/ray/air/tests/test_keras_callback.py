@@ -1,21 +1,28 @@
 import os
+import sys
 from typing import Dict, Tuple
 from unittest.mock import patch
 
 import numpy as np
 import pytest
-import tensorflow as tf
 
 import ray
 from ray import train
-from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.tensorflow import (
-    TensorflowCheckpoint,
-    TensorflowPredictor,
-    TensorflowTrainer,
-)
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    import tensorflow as tf
+
+    from ray.air.integrations.keras import ReportCheckpointCallback
+    from ray.train.tensorflow import (
+        TensorflowCheckpoint,
+        TensorflowPredictor,
+        TensorflowTrainer,
+    )
 
 
 class TestReportCheckpointCallback:

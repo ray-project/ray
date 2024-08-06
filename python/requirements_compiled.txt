@@ -551,7 +551,7 @@ fqdn==1.5.1
     # via jsonschema
 freezegun==1.1.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-frozenlist==1.4.0
+frozenlist==1.4.1
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   aiohttp
@@ -579,8 +579,8 @@ fugue==0.8.7
     # via statsforecast
 fugue-sql-antlr==0.2.0
     # via fugue
-future==0.18.3
-    # via hyperopt
+future==1.0.0
+    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 gast==0.4.0
     # via
     #   tensorflow
@@ -760,7 +760,7 @@ humanfriendly==10.0
     # via
     #   azure-cli-core
     #   coloredlogs
-hyperopt==0.2.7
+hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2961b15d12775529c
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 idna==3.7
     # via
@@ -772,7 +772,7 @@ idna==3.7
     #   snowflake-connector-python
     #   trustme
     #   yarl
-imageio==2.31.1 ; python_version < "3.12"
+imageio==2.34.2 ; python_version < "3.12"
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   moviepy
@@ -979,7 +979,7 @@ kubernetes==24.2.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
-lazy-loader==0.3
+lazy-loader==0.4
     # via scikit-image
 lazy-object-proxy==1.9.0
     # via openapi-spec-validator
@@ -1007,7 +1007,7 @@ lxml==4.9.4
     #   dm-control
     #   nbconvert
     #   vsphere-automation-sdk
-lz4==4.3.2
+lz4==4.3.3
     # via -r /ray/ci/../python/requirements.txt
 mako==1.3.0
     # via alembic
@@ -1120,7 +1120,7 @@ mujoco==2.3.6 ; python_version < "3.12"
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   dm-control
-multidict==6.0.4
+multidict==6.0.5
     # via
     #   aiohttp
     #   yarl
@@ -1278,7 +1278,6 @@ numpy==1.26.4
     #   pymars
     #   pyro-ppl
     #   pytorch-lightning
-    #   pywavelets
     #   raydp
     #   recsim
     #   scikit-image
@@ -1404,6 +1403,7 @@ packaging==23.0
     #   jupyterlab-server
     #   jupytext
     #   knack
+    #   lazy-loader
     #   lightning-utilities
     #   matplotlib
     #   mlflow
@@ -1591,9 +1591,7 @@ py-spy==0.3.14
 py3nvml==0.2.7
     # via aim
 py4j==0.10.9.7
-    # via
-    #   hyperopt
-    #   pyspark
+    # via pyspark
 pyarrow==14.0.2
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -1793,8 +1791,6 @@ pyu2f==0.1.5
     # via google-reauth
 pyvmomi==8.0.3.0.1
     # via vsphere-automation-sdk
-pywavelets==1.6.0
-    # via scikit-image
 pyyaml==6.0.1
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -1961,7 +1957,7 @@ safetensors==0.4.3
     #   transformers
 sarif-om==1.0.4
     # via cfn-lint
-scikit-image==0.21.0
+scikit-image==0.24.0
     # via -r /ray/ci/../python/requirements.txt
 scikit-learn==1.3.2
     # via
@@ -2058,7 +2054,6 @@ six==1.16.0
     #   google-pasta
     #   gpy
     #   gsutil
-    #   hyperopt
     #   isodate
     #   junit-xml
     #   kubernetes
