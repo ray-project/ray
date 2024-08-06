@@ -226,6 +226,15 @@ py_test(
 )
 
 py_test(
+    name = "test_hudi",
+    size = "small",
+    srcs = ["tests/test_hudi.py"],
+    data = ["examples/data/hudi-tables/0.x_cow_partitioned.zip"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_image",
     size = "small",
     srcs = ["tests/test_image.py"],
