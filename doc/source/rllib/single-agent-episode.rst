@@ -8,11 +8,29 @@
 Episodes
 ========
 
-RLlib stores and transports all trajectory data in the form of episode objects, which come in two
-different flavors: :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` for single-agent setups
+RLlib stores and transports all trajectory data in the form of `Episodes`, which come in two
+different classes, :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` for single-agent setups
 and :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` for multi-agent setups.
-RLlib translates from Episodes to tensor batches (including a possible move to the GPU)
+The data is translated from `Episode` format to tensor batches (including a possible move to the GPU)
 only immediately before a neural network forward pass.
+
+.. figure:: images/episodes/usages_of_episodes.svg
+    :width: 750
+
+    **Episodes in RLlib:** Episodes are the main vehicle to store and transport trajectory data across the different components
+    of RLlib. One of the main design principles of RLlib's new API stack is that all trajectory data is kept in the form of episodes
+    for as long as possible. Only directly before the neural network forward passes, "connectors" translate lists of Episodes into tensor
+    batches. See the the :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` class for more details (documentation is work in progress).
+
+
+The main advantage of collecting and moving around data in such a trajectory-as-a-whole format
+as opposed to keeping data in tensor batches is that episodes offer 360° visibility and full access
+to the RL environment's history. This means users can extract arbitrary pieces of information from episodes to be further
+processed by their custom pipelines and models. Think of an attention model requiring not
+only the current observation, but the whole sequence of the last n observations or an
+(IMPALA-style) LSTM requiring the last reward and action in addition to the current observation.
+
+
 
 .. figure:: images/episodes/sa_episode.svg
     :width: 750
@@ -24,12 +42,6 @@ only immediately before a neural network forward pass.
     See further below for a detailed description of the different APIs the :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class
     exposes to the user.
 
-The main advantage of collecting and moving around data in such a trajectory-as-a-whole format
-as opposed to keeping data in tensor batches is that episodes offer 360° visibility and full access
-to the RL environment's history. This means users can extract arbitrary pieces of information from episodes to be further
-processed by their custom pipelines and models. Think of an attention model requiring not
-only the current observation, but the whole sequence of the last n observations or an
-(IMPALA-style) LSTM requiring the last reward and action in addition to the current observation.
 
 Another advantage of episodes over batches is the more efficient memory footprint.
 For example, an algorithm like DQN needs to have both observations and
@@ -39,9 +51,12 @@ a single observation-track containing all observations from reset to terminal.
 
 This page explains in detail what working with RLlib's Episode APIs looks like.
 
-
 SingleAgentEpisode
 ==================
+
+This page describes the single-agent case only.
+See here for a detailed description of the multi-agent case (wip).
+
 
 Creating a SingleAgentEpisode
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
