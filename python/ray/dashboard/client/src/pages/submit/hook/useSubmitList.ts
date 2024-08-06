@@ -1,20 +1,20 @@
 import { useRef, useState } from "react";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
-import { getJobList } from "../../../service/job";
+import { getSubmitList } from "../../../service/submit";
 
-export const useJobList = (submitId?: string) => {
+export const useSubmitList = () => {
   const [page, setPage] = useState({ pageSize: 10, pageNo: 1 });
-  const [msg, setMsg] = useState("Loading the job list...");
+  const [msg, setMsg] = useState("Loading the submit list...");
   const [isRefreshing, setRefresh] = useState(true);
   const [filter, setFilter] = useState<
     {
-      key: "job_id" | "status";
+      key: "submission_id" | "status";
       val: string;
     }[]
   >([]);
   const refreshRef = useRef(isRefreshing);
-  const changeFilter = (key: "job_id" | "status", val: string) => {
+  const changeFilter = (key: "submission_id" | "status", val: string) => {
     const f = filter.find((e) => e.key === key);
     if (f) {
       f.val = val;
@@ -29,12 +29,12 @@ export const useJobList = (submitId?: string) => {
   refreshRef.current = isRefreshing;
 
   const { data, isLoading } = useSWR(
-    "useJobList",
+    "useSubmissionList",
     async () => {
-      const rsp = await getJobList(submitId);
+      const rsp = await getSubmitList();
 
       if (rsp) {
-        setMsg("Fetched jobs");
+        setMsg("Fetched submissions");
         return rsp.data.sort(
           (a, b) => (b.start_time ?? 0) - (a.start_time ?? 0),
         );
@@ -43,10 +43,10 @@ export const useJobList = (submitId?: string) => {
     { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
-  const jobList = data ?? [];
+  const submitList = data ?? [];
 
   return {
-    jobList: jobList.filter((node) =>
+    submitList: submitList.filter((node) =>
       filter.every((f) => node[f.key] && (node[f.key] ?? "").includes(f.val)),
     ),
     msg,
@@ -55,7 +55,7 @@ export const useJobList = (submitId?: string) => {
     onSwitchChange,
     changeFilter,
     page,
-    originalJobs: jobList,
+    originalJobs: submitList,
     setPage: (key: string, val: number) => setPage({ ...page, [key]: val }),
   };
 };

@@ -2,20 +2,20 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
-import { getJobDetail } from "../../../service/job";
+import { getSubmitDetail } from "../../../service/submit";
 
-export const useJobDetail = () => {
-  const params = useParams() as { jobId: string };
+export const useSubmitDetail = () => {
+  const params = useParams() as { submitId: string };
   const [msg, setMsg] = useState("Loading the job detail");
   const [refreshing, setRefresh] = useState(true);
-  const { data: job, isLoading } = useSWR(
-    ["useJobDetail", params.jobId],
-    async ([_, jobId]) => {
+  const { data: submit, isLoading } = useSWR(
+    ["useSubmitDetail", params.submitId],
+    async ([_, submitId]) => {
       try {
-        const rsp = await getJobDetail(jobId);
+        const rsp = await getSubmitDetail(submitId);
         return rsp.data;
       } catch (e) {
-        setMsg("Job Query Error Please Check JobId");
+        setMsg("Submit Query Error Please Check submitId");
         setRefresh(false);
       }
     },
@@ -23,7 +23,7 @@ export const useJobDetail = () => {
   );
 
   return {
-    job,
+    submit,
     isLoading,
     msg,
     params,

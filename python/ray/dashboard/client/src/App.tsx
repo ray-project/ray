@@ -49,6 +49,13 @@ import {
   ServeSystemDetailLayout,
   ServeSystemDetailPage,
 } from "./pages/serve/ServeSystemDetailPage";
+import SubmissionList, { SubmissionLayout } from "./pages/submit";
+import { SubmitDetailChartsPage } from "./pages/submit/SubmitDetail";
+import { SubmitDetailInfoPage } from "./pages/submit/SubmitDetailInfoPage";
+import {
+  SubmitDetailLayout,
+  SubmitPage,
+} from "./pages/submit/SubmitDetailLayout";
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
@@ -192,9 +199,72 @@ const App = () => {
                     </Route>
                     <Route element={<NodeDetailPage />} path="nodes/:id" />
                   </Route>
+                  <Route element={<SubmissionLayout />} path="submit">
+                    <Route element={<SubmissionList />} path="" />
+                    <Route element={<SubmitPage />} path=":submitId">
+                      <Route element={<SubmitDetailLayout />} path="">
+                        <Route
+                          element={
+                            <SideTabPage tabId="info">
+                              <SubmitDetailInfoPage />
+                            </SideTabPage>
+                          }
+                          path="info"
+                        />
+                        <Route
+                          element={
+                            <SideTabPage tabId="charts">
+                              <SubmitDetailChartsPage />
+                            </SideTabPage>
+                          }
+                          path=""
+                        />
+                      </Route>
+                      <Route element={<JobPage />} path=":jobId">
+                        <Route element={<JobDetailLayout />} path="">
+                          <Route
+                            element={
+                              <SideTabPage tabId="info">
+                                <JobDetailInfoPage />
+                              </SideTabPage>
+                            }
+                            path="info"
+                          />
+                          <Route
+                            element={
+                              <SideTabPage tabId="charts">
+                                <JobDetailChartsPage />
+                              </SideTabPage>
+                            }
+                            path=""
+                          />
+                          <Route
+                            element={
+                              <SideTabPage tabId="actors">
+                                <JobDetailActorsPage />
+                              </SideTabPage>
+                            }
+                            path="actors"
+                          />
+                        </Route>
+                        <Route
+                          element={
+                            <JobDetailActorDetailWrapper>
+                              <ActorDetailLayout />
+                            </JobDetailActorDetailWrapper>
+                          }
+                          path="actors/:actorId"
+                        >
+                          <Route element={<ActorDetailPage />} path="" />
+                          <Route element={<TaskPage />} path="tasks/:taskId" />
+                        </Route>
+                        <Route element={<TaskPage />} path="tasks/:taskId" />
+                      </Route>
+                    </Route>
+                  </Route>
                   <Route element={<JobsLayout />} path="jobs">
                     <Route element={<JobList />} path="" />
-                    <Route element={<JobPage />} path=":id">
+                    <Route element={<JobPage />} path=":jobId">
                       <Route element={<JobDetailLayout />} path="">
                         <Route
                           element={

@@ -104,7 +104,81 @@ if PYDANTIC_INSTALLED:
             "Return None if driver doesn't finish executing.",
         )
 
+    @PublicAPI(stability="beta")
+    class SubmitDetails(BaseModel):
+        """
+        Submit data with extra details about its driver and its submission.
+        """
+
+        submission_id: Optional[str] = Field(
+            None,
+            description="A submission ID is an ID created for every job submitted via"
+            "the Ray Jobs API. It can "
+            "be used to fetch data about jobs using the Ray Jobs API.",
+        )
+        status: JobStatus = Field(..., description="The status of the job.")
+        entrypoint: str = Field(..., description="The entrypoint command for this job.")
+        message: Optional[str] = Field(
+            None, description="A message describing the status in more detail."
+        )
+        error_type: Optional[str] = Field(
+            None, description="Internal error or user script error."
+        )
+        start_time: Optional[int] = Field(
+            None,
+            description="The time when the job was started. " "A Unix timestamp in ms.",
+        )
+        end_time: Optional[int] = Field(
+            None,
+            description="The time when the job moved into a terminal state. "
+            "A Unix timestamp in ms.",
+        )
+        metadata: Optional[Dict[str, str]] = Field(
+            None, description="Arbitrary user-provided metadata for the job."
+        )
+        entrypoint_num_cpus: Optional[float] = Field(
+            None,
+            description="the quantity of CPU cores to reserve for the entrypoint "
+            "command, separately from any tasks or actors that are launched by it",
+        )
+        entrypoint_num_gpus: Optional[float] = Field(
+            None,
+            description="the quantity of GPUs to reserve for the entrypoint command,"
+            " separately from any tasks or actors that are launched by it",
+        )
+        entrypoint_memory: Optional[float] = Field(
+            None,
+            description="the amount of memory to reserve for the entrypoint command,"
+            " separately from any tasks or actors that are launched by it",
+        )
+        entrypoint_resources: Optional[Dict[str, Any]] = Field(
+            None,
+            description="Describing resources to reserve for the entrypoint command,"
+            " separately from any tasks or actors that are launched by it",
+        )
+        runtime_env: Optional[Dict[str, Any]] = Field(
+            None, description="The runtime environment for the job."
+        )
+        # the node info where the driver running on.
+        #     - driver_agent_http_address: this node's agent http address
+        #     - driver_node_id: this node's id.
+        driver_agent_http_address: Optional[str] = Field(
+            None,
+            description="The HTTP address of the JobAgent on the node the job "
+            "entrypoint command is running on.",
+        )
+        driver_node_id: Optional[str] = Field(
+            None,
+            description="The ID of the node the job entrypoint command is running on.",
+        )
+        driver_exit_code: Optional[int] = Field(
+            None,
+            description="The driver process exit code after the driver executed. "
+            "Return None if driver doesn't finish executing.",
+        )
+
 else:
     DriverInfo = None
     JobType = None
     JobDetails = None
+    SubmitDetails = None

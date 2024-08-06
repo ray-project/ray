@@ -72,6 +72,11 @@ const NAV_ITEMS = [
     id: "overview",
   },
   {
+    title: "Submit",
+    path: "/submit",
+    id: "submit",
+  },
+  {
     title: "Jobs",
     path: "/jobs",
     id: "jobs",

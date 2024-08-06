@@ -53,7 +53,7 @@ export const JobDetailChartsPage = () => {
     return (
       <Box sx={{ padding: 2, backgroundColor: "white" }}>
         <Loading loading={isLoading} />
-        <TitleCard title={`JOB - ${params.id}`}>
+        <TitleCard title={`JOB - ${params.jobId}`}>
           <StatusChip type="job" status="LOADING" />
           <br />
           Request Status: {msg} <br />

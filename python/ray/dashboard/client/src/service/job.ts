@@ -6,8 +6,12 @@ import {
 } from "../type/job";
 import { get } from "./requestHandlers";
 
-export const getJobList = () => {
-  return get<JobListRsp>("api/jobs/");
+export const getJobList = (submission_id?: string) => {
+  let url = "api/job/list";
+  if (submission_id) {
+    url += `?submission_id=${submission_id}`;
+  }
+  return get<JobListRsp>(url);
 };
 
 export const getJobDetail = (id: string) => {
