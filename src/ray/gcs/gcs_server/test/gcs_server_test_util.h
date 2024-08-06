@@ -49,7 +49,7 @@ struct GcsServerMocker {
       if (exit) {
         reply.set_worker_exiting(true);
       }
-      callback(status, reply);
+      callback(status, std::move(reply));
       callbacks.pop_front();
       return true;
     }
@@ -78,7 +78,7 @@ struct GcsServerMocker {
         const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
         override {
       ray::rpc::GetTaskFailureCauseReply reply;
-      callback(Status::OK(), reply);
+      callback(Status::OK(), std::move(reply));
       num_get_task_failure_causes += 1;
     }
 
@@ -170,7 +170,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = callbacks.front();
-        callback(status, reply);
+        callback(status, std::move(reply));
         callbacks.pop_front();
         return true;
       }
@@ -183,7 +183,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = cancel_callbacks.front();
-        callback(Status::OK(), reply);
+        callback(Status::OK(), std::move(reply));
         cancel_callbacks.pop_front();
         return true;
       }
@@ -195,7 +195,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = release_callbacks.front();
-        callback(Status::OK(), reply);
+        callback(Status::OK(), std::move(reply));
         release_callbacks.pop_front();
         return true;
       }
@@ -208,7 +208,7 @@ struct GcsServerMocker {
         rpc::DrainRayletReply reply;
         reply.set_is_accepted(true);
         auto callback = drain_raylet_callbacks.front();
-        callback(Status::OK(), reply);
+        callback(Status::OK(), std::move(reply));
         drain_raylet_callbacks.pop_front();
         return true;
       }
@@ -256,7 +256,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = lease_callbacks.front();
-        callback(status, reply);
+        callback(status, std::move(reply));
         lease_callbacks.pop_front();
         return true;
       }
@@ -269,7 +269,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = commit_callbacks.front();
-        callback(status, reply);
+        callback(status, std::move(reply));
         commit_callbacks.pop_front();
         return true;
       }
@@ -283,7 +283,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = return_callbacks.front();
-        callback(status, reply);
+        callback(status, std::move(reply));
         return_callbacks.pop_front();
         return true;
       }
