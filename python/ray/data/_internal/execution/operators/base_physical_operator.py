@@ -81,8 +81,6 @@ class AllToAllOperator(PhysicalOperator):
         )
 
     def num_output_rows_total(self) -> Optional[int]:
-        if self._num_outputs:
-            return sum(bundle.num_rows() for bundle in self._output_buffer)
         return self.input_dependencies[0].num_output_rows_total()
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
