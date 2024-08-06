@@ -25,6 +25,7 @@ from ray.experimental.channel import (
     SynchronousWriter,
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
+    ChannelContext,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -38,6 +39,40 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from enum import Enum
+
+
+@DeveloperAPI
+class DAGNodeOperationType(Enum):
+    """
+    There are three types of operations that a DAG node can perform:
+    1. READ: Read from an input channel.
+    2. COMPUTE: Execute the method corresponding to the node.
+    3. WRITE: Write to an output channel.
+    """
+
+    READ = "READ"
+    COMPUTE = "COMPUTE"
+    WRITE = "WRITE"
+
+
+@DeveloperAPI
+class DAGNodeOperation:
+    def __init__(
+        self,
+        idx: int,
+        operation_type: DAGNodeOperationType,
+    ):
+        """
+        Args:
+            idx: The index of the task that this operation belongs to
+                in the actor's ExecutableTask list. The index is not
+                the same as bind_index, but there are positive correlations
+                between the two.
+            operation_type: The type of operation to perform.
+        """
+        self.idx = idx
+        self.type = operation_type
 
 
 # Holds the input arguments for an accelerated DAG node.
@@ -84,6 +119,7 @@ def do_allocate_channel(
 def do_exec_tasks(
     self,
     tasks: List["ExecutableTask"],
+    schedule: List[DAGNodeOperation],
 ) -> None:
     """Generic actor method to begin executing the tasks belonging to an actor.
     This runs an infinite loop to run each task in turn (following the order specified
@@ -103,11 +139,11 @@ def do_exec_tasks(
         while True:
             if done:
                 break
-            for idx, task in enumerate(tasks):
-                done = _exec_task(self, task, idx)
+            for operation in schedule:
+                task = tasks[operation.idx]
+                done = _exec_operation(self, task, operation)
                 if done:
                     break
-
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
         raise
@@ -150,53 +186,60 @@ def _wrap_exception(exc):
     return wrapped
 
 
-def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
+def _exec_operation(self, task: "ExecutableTask", operation: DAGNodeOperation) -> bool:
     """
-    Execute the task.
+    Execute the `operation` which belongs to `task`.
     Args:
         task: The task to execute.
-        idx: The index of the task in the list of tasks of the actor.
+        operation: The operation to execute.
     Returns:
-        True if we are done executing all tasks of this actor, False otherwise.
+        True if we are done executing all operations of this actor, False otherwise.
     """
-    # TODO: for cases where output is passed as input to a task on
-    # the same actor, introduce a "IntraProcessChannel" to avoid the overhead
-    # of serialization/deserialization and synchronization.
-    method = getattr(self, task.method_name)
+    idx = operation.idx
+    op_type = operation.type
+
     input_reader = self._input_readers[idx]
     output_writer = self._output_writers[idx]
-    res = None
-    try:
-        res = input_reader.read()
-    except RayChannelError:
-        # Channel closed. Exit the loop.
-        return True
+    ctx = ChannelContext.get_current().serialization_context
 
-    try:
-        _process_return_vals(res, return_single_output=False)
-    except Exception as exc:
-        # Previous task raised an application-level exception.
-        # Propagate it and skip the actual task. We don't need to wrap the
-        # exception in a RayTaskError here because it has already been wrapped
-        # by the previous task.
-        output_writer.write(exc)
-        return False
+    if op_type == DAGNodeOperationType.READ:
+        try:
+            res = input_reader.read()
+            ctx.set_intermediate_result(idx, op_type.value, res)
+        except RayChannelError:
+            # Channel closed. Exit the loop.
+            return True
+    elif op_type == DAGNodeOperationType.COMPUTE:
+        res = ctx.get_intermediate_result(idx, DAGNodeOperationType.READ.value)
+        method = getattr(self, task.method_name)
+        try:
+            _process_return_vals(res, return_single_output=False)
+        except Exception as exc:
+            # Previous task raised an application-level exception.
+            # Propagate it and skip the actual task. We don't need to wrap the
+            # exception in a RayTaskError here because it has already been wrapped
+            # by the previous task.
+            ctx.set_intermediate_result(idx, op_type.value, exc)
+            return False
 
-    resolved_inputs = []
-    for task_input in task.task_inputs:
-        resolved_inputs.append(task_input.resolve(res))
+        resolved_inputs = []
+        for task_input in task.task_inputs:
+            resolved_inputs.append(task_input.resolve(res))
 
-    try:
-        output_val = method(*resolved_inputs, **task.resolved_kwargs)
-    except Exception as exc:
-        output_val = _wrap_exception(exc)
-
-    try:
-        output_writer.write(output_val)
-    except RayChannelError:
-        # Channel closed. Exit the loop.
-        return True
-
+        try:
+            output_val = method(*resolved_inputs, **task.resolved_kwargs)
+        except Exception as exc:
+            output_val = _wrap_exception(exc)
+        ctx.set_intermediate_result(idx, op_type.value, output_val)
+    elif op_type == DAGNodeOperationType.WRITE:
+        output_val = ctx.get_intermediate_result(
+            idx, DAGNodeOperationType.COMPUTE.value
+        )
+        try:
+            output_writer.write(output_val)
+        except RayChannelError:
+            # Channel closed. Exit the loop.
+            return True
     return False
 
 
@@ -354,6 +397,7 @@ class ExecutableTask:
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
         self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
+        self.idx = task.idx
 
         # Reverse map for input_channels: maps an input channel to
         # its index in input_channels.
@@ -522,6 +566,11 @@ class CompiledDAG:
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
+        # Mapping from the actor handle to the execution schedule which is a list
+        # of operations to be executed.
+        self.actor_to_execution_schedule: Dict[
+            "ray.actor.ActorHandle", List[DAGNodeOperation]
+        ] = defaultdict(list)
         # Mapping from the actor handle to the node ID that the actor is on.
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
@@ -990,7 +1039,6 @@ class CompiledDAG:
         # Create executable tasks for each actor
         for actor_handle, tasks in self.actor_to_tasks.items():
             executable_tasks = []
-            worker_fn = None
             for task in tasks:
                 resolved_args = []
                 has_at_least_one_channel_input = False
@@ -1024,19 +1072,20 @@ class CompiledDAG:
                     task.kwargs,
                 )
                 executable_tasks.append(executable_task)
-                if worker_fn is None:
-                    worker_fn = task.dag_node._get_remote_method("__ray_call__")
             # Sort executable tasks based on their bind index, i.e., submission order
             # so that they will be executed in that order.
             executable_tasks.sort(key=lambda task: task.bind_index)
-
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
-            # Assign the task with the correct input and output buffers.
-            self.worker_task_refs[
-                task.dag_node._get_actor_handle()
-            ] = worker_fn.options(concurrency_group="_ray_system").remote(
+
+        # Build an execution schedule for each actor
+        self._build_execution_schedule()
+        for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
+            self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
+                concurrency_group="_ray_system"
+            ).remote(
                 do_exec_tasks,
                 executable_tasks,
+                self.actor_to_execution_schedule[actor_handle],
             )
 
         self.dag_output_channels = []
@@ -1074,6 +1123,221 @@ class CompiledDAG:
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
+
+    def _build_execution_schedule(self):
+        """
+        Generate an execution schedule for each actor. The schedule is a list of
+        DAGNodeOperation.
+
+        Step 1: Generate a graph based on the following rules:
+
+        #1  Divide a DAG node into three GraphNodes: READ, COMPUTE, and WRITE. Each
+            GraphNode has a DAGNodeOperation.
+        #2  Add edges between READ and COMPUTE, and between COMPUTE and WRITE, which
+            belong to the same task.
+        #3  Add an edge between COMPUTE with bind_index i and COMPUTE with bind_index
+            i+1 if they belong to the same actor.
+        #4  Add an edge between WRITE of the writer task and READ of the reader task.
+
+        Step 2: Topological sort
+
+        If there are multiple GraphNodes with zero in-degree, select one based on
+        the following rules:
+
+        #1  If the nodes are not NCCL write nodes, select the one with the smallest
+            `bind_index`. If there are multiple candidate nodes with the smallest
+            `bind_index` of the actors that they belong to, any one of them is
+            acceptable. For the implementation details, we maintain a priority queue
+            for each actor, where the peek of the priority queue is the node with the
+            smallest `bind_index`.
+        #2  If the node is an NCCL write node, select it only if all of its downstream
+            nodes are also the peeks of their priority queues.
+        #3  If #1 and #2 cannot be satisfied, it means that all candidate nodes are
+            NCCL write nodes. In this case, select the one that is the peek of the
+            priority queue and its downstream nodes, regardless of whether the
+            downstream nodes are peeks of their priority queues or not.
+
+        Then, put the selected nodes into the corresponding actors' schedules.
+
+        [Example]:
+
+        See `test_execution_schedule` for more examples.
+        """
+        assert self.idx_to_task
+        assert self.actor_to_executable_tasks
+        assert not self.actor_to_execution_schedule
+
+        from functools import total_ordering
+
+        @total_ordering
+        class GraphNode:
+            def __init__(self, operation: DAGNodeOperation, idx, dag_node):
+                self.operation = operation
+                self.idx = idx
+                assert isinstance(dag_node, ClassMethodNode)
+                self.actor_handle = dag_node._get_actor_handle()
+                self.requires_nccl = dag_node.type_hint.requires_nccl()
+                self.in_edges = set()
+                self.out_edges = set()
+
+            @property
+            def in_degree(self) -> int:
+                return len(self.in_edges)
+
+            def __lt__(self, other):
+                assert self.actor_handle == other.actor_handle
+                return self.operation.idx < other.operation.idx
+
+            def __eq__(self, other):
+                assert self.actor_handle == other.actor_handle
+                if self.operation.idx == other.operation.idx:
+                    return self.operation.type == other.operation.type
+                return False
+
+            def __hash__(self):
+                return hash((self.operation, self.idx))
+
+        def _add_edge(in_node: GraphNode, out_node: GraphNode):
+            in_node.out_edges.add((out_node.idx, out_node.operation.type))
+            out_node.in_edges.add((in_node.idx, in_node.operation.type))
+
+        graph: Dict[int, Dict[DAGNodeOperationType, GraphNode]] = {}
+
+        from ray.dag import (
+            ClassMethodNode,
+            MultiOutputNode,
+        )
+
+        for _, executable_tasks in self.actor_to_executable_tasks.items():
+            prev_compute_node = None
+            for local_idx, exec_task in enumerate(executable_tasks):
+                idx = exec_task.idx
+                read_node = GraphNode(
+                    DAGNodeOperation(local_idx, DAGNodeOperationType.READ),
+                    idx,
+                    self.idx_to_task[idx].dag_node,
+                )
+                compute_node = GraphNode(
+                    DAGNodeOperation(local_idx, DAGNodeOperationType.COMPUTE),
+                    idx,
+                    self.idx_to_task[idx].dag_node,
+                )
+                write_node = GraphNode(
+                    DAGNodeOperation(local_idx, DAGNodeOperationType.WRITE),
+                    idx,
+                    self.idx_to_task[idx].dag_node,
+                )
+                _add_edge(read_node, compute_node)
+                _add_edge(compute_node, write_node)
+                if prev_compute_node is not None:
+                    _add_edge(prev_compute_node, compute_node)
+                prev_compute_node = compute_node
+                graph[idx] = {
+                    DAGNodeOperationType.READ: read_node,
+                    DAGNodeOperationType.COMPUTE: compute_node,
+                    DAGNodeOperationType.WRITE: write_node,
+                }
+
+        for idx, task in self.idx_to_task.items():
+            if not isinstance(task.dag_node, ClassMethodNode):
+                continue
+            for downstream_idx in task.downstream_node_idxs:
+                downstream_dag_node = self.idx_to_task[downstream_idx].dag_node
+                if isinstance(downstream_dag_node, MultiOutputNode):
+                    continue
+                _add_edge(
+                    graph[idx][DAGNodeOperationType.WRITE],
+                    graph[downstream_idx][DAGNodeOperationType.READ],
+                )
+
+        import heapq
+
+        actor_to_candidates = defaultdict(list)
+        for idx, node_dict in graph.items():
+            for _, node in node_dict.items():
+                if node.in_degree == 0:
+                    heapq.heappush(actor_to_candidates[node.actor_handle], node)
+
+        visited_nodes = set()
+
+        def _select_next_nodes():
+            """
+            Select the next nodes for topological sort. This function may return
+            multiple nodes if they are NCCL nodes. In that case, this function only
+            removes the NCCL write node, which is also the peek of a priority queue.
+            Other nodes will be removed in the following iterations. Additionally,
+            visited_nodes ensures that the same node will not be scheduled more than
+            once.
+            """
+            next_nodes = []
+            first_nccl_node = None
+            for _, candidates in actor_to_candidates.items():
+                if (
+                    not candidates[0].requires_nccl
+                    or candidates[0].operation.type != DAGNodeOperationType.WRITE
+                ):
+                    next_nodes.append(heapq.heappop(candidates))
+                    return next_nodes
+                if first_nccl_node is None:
+                    first_nccl_node = candidates[0]
+                is_next_node = True
+                for downstream_node_metadata in candidates[0].out_edges:
+                    downstream_node = graph[downstream_node_metadata[0]][
+                        downstream_node_metadata[1]
+                    ]
+                    downstream_node_actor = downstream_node.actor_handle
+                    if (
+                        downstream_node_actor not in actor_to_candidates
+                        or downstream_node
+                        != actor_to_candidates[downstream_node_actor][0]
+                    ):
+                        is_next_node = False
+                        break
+                if is_next_node:
+                    next_nodes.append(heapq.heappop(candidates))
+                    for downstream_node_metadata in next_nodes[0].out_edges:
+                        downstream_node = graph[downstream_node_metadata[0]][
+                            downstream_node_metadata[1]
+                        ]
+                        next_nodes.append(downstream_node)
+                    return next_nodes
+
+            assert first_nccl_node is not None
+            next_nodes.append(
+                heapq.heappop(actor_to_candidates[first_nccl_node.actor_handle])
+            )
+            for downstream_node_metadata in first_nccl_node.out_edges:
+                downstream_node = graph[downstream_node_metadata[0]][
+                    downstream_node_metadata[1]
+                ]
+                next_nodes.append(downstream_node)
+            return next_nodes
+
+        while actor_to_candidates:
+            nodes = _select_next_nodes()
+            for node in nodes:
+                if node in visited_nodes:
+                    continue
+                self.actor_to_execution_schedule[node.actor_handle].append(
+                    node.operation
+                )
+                visited_nodes.add(node)
+                for out_node_idx, out_node_type in node.out_edges:
+                    out_node = graph[out_node_idx][out_node_type]
+                    out_node.in_edges.remove((node.idx, node.operation.type))
+                    if out_node.in_degree == 0:
+                        heapq.heappush(
+                            actor_to_candidates[out_node.actor_handle], out_node
+                        )
+
+            delete_keys = []
+            for actor_handle, candidates in actor_to_candidates.items():
+                if len(candidates) == 0:
+                    delete_keys.append(actor_handle)
+            for key in delete_keys:
+                del actor_to_candidates[key]
+
+        # TODO: Check whether topological sort exists or not.
 
     def _detect_deadlock(self) -> bool:
         """
