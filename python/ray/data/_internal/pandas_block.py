@@ -339,7 +339,49 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        return int(calculate_accurate_memory_usage(self._table))
+        def get_deep_size(obj):
+            """Calculates the memory size of objects,
+            including nested objects using an iterative approach."""
+            seen = set()
+            total_size = 0
+            objects = collections.deque([obj])
+
+            while objects:
+                current = objects.pop()
+                if id(current) in seen:
+                    continue
+                seen.add(id(current))
+                size = sys.getsizeof(current)
+                total_size += size
+
+                if isinstance(current, np.ndarray):
+                    total_size += current.nbytes - size  # Avoid double counting
+                elif isinstance(current, pandas.DataFrame):
+                    total_size += (
+                        current.memory_usage(index=True, deep=True).sum() - size
+                    )
+                elif isinstance(current, (list, tuple, set)):
+                    objects.extend(current)
+                elif isinstance(current, dict):
+                    objects.extend(current.keys())
+                    objects.extend(current.values())
+
+            return total_size
+
+        # Get initial memory usage including deep introspection
+        memory_usage = self._table.memory_usage(index=True, deep=True)
+
+        # Handle object columns separately
+        for column in self._table.select_dtypes(include=["object"]).columns:
+            column_memory = 0
+            for element in self._table[column]:
+                column_memory += get_deep_size(element)
+            memory_usage[column] = column_memory
+
+        # Sum up total memory usage
+        total_memory_usage = memory_usage.sum()
+
+        return int(total_memory_usage)
 
     def _zip(self, acc: BlockAccessor) -> "pandas.DataFrame":
         r = self.to_pandas().copy(deep=False)
