@@ -138,8 +138,7 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                task = tasks[operation.idx]
-                done = _exec_operation(self, task, operation)
+                done = tasks[operation.idx].exec_operation(self, operation.type)
                 if done:
                     break
     except Exception:
@@ -164,56 +163,6 @@ def _wrap_exception(exc):
         cause=exc,
     )
     return wrapped
-
-
-def _exec_operation(self, task: "ExecutableTask", operation: DAGNodeOperation) -> bool:
-    """
-    Execute the `operation` which belongs to `task`.
-    Args:
-        task: The task to execute.
-        operation: The operation to execute.
-    Returns:
-        True if we are done executing all operations of this actor, False otherwise.
-    """
-    op_type = operation.type
-
-    if op_type == DAGNodeOperationType.READ:
-        try:
-            res = task.input_reader.read()
-            task.set_cache(res)
-        except RayChannelError:
-            # Channel closed. Exit the loop.
-            return True
-    elif op_type == DAGNodeOperationType.COMPUTE:
-        res = task.reset_cache()
-        method = getattr(self, task.method_name)
-        try:
-            _process_return_vals(res, return_single_output=False)
-        except Exception as exc:
-            # Previous task raised an application-level exception.
-            # Propagate it and skip the actual task. We don't need to wrap the
-            # exception in a RayTaskError here because it has already been wrapped
-            # by the previous task.
-            task.set_cache(exc)
-            return False
-
-        resolved_inputs = []
-        for task_input in task.task_inputs:
-            resolved_inputs.append(task_input.resolve(res))
-
-        try:
-            output_val = method(*resolved_inputs, **task.resolved_kwargs)
-        except Exception as exc:
-            output_val = _wrap_exception(exc)
-        task.set_cache(output_val)
-    elif op_type == DAGNodeOperationType.WRITE:
-        output_val = task.reset_cache()
-        try:
-            task.output_writer.write(output_val)
-        except RayChannelError:
-            # Channel closed. Exit the loop.
-            return True
-    return False
 
 
 @DeveloperAPI
@@ -425,6 +374,56 @@ class ExecutableTask:
         data = self._cache
         self._cache = None
         return data
+
+    def _read(self):
+        try:
+            res = self.input_reader.read()
+            self.set_cache(res)
+            return False
+        except RayChannelError:
+            # Channel closed. Exit the loop.
+            return True
+
+    def _compute(self, actor_handle):
+        res = self.reset_cache()
+        method = getattr(actor_handle, self.method_name)
+        try:
+            _process_return_vals(res, return_single_output=False)
+        except Exception as exc:
+            # Previous task raised an application-level exception.
+            # Propagate it and skip the actual task. We don't need to wrap the
+            # exception in a RayTaskError here because it has already been wrapped
+            # by the previous task.
+            self.set_cache(exc)
+            return False
+
+        resolved_inputs = []
+        for task_input in self.task_inputs:
+            resolved_inputs.append(task_input.resolve(res))
+
+        try:
+            output_val = method(*resolved_inputs, **self.resolved_kwargs)
+        except Exception as exc:
+            output_val = _wrap_exception(exc)
+        self.set_cache(output_val)
+        return False
+
+    def _write(self):
+        output_val = self.reset_cache()
+        try:
+            self.output_writer.write(output_val)
+            return False
+        except RayChannelError:
+            # Channel closed. Exit the loop.
+            return True
+
+    def exec_operation(self, actor_handle, op_type):
+        if op_type == DAGNodeOperationType.READ:
+            return self._read()
+        elif op_type == DAGNodeOperationType.COMPUTE:
+            return self._compute(actor_handle)
+        elif op_type == DAGNodeOperationType.WRITE:
+            return self._write()
 
 
 @DeveloperAPI
