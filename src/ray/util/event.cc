@@ -377,8 +377,11 @@ void RayEvent::SendMessage(const std::string &message) {
 
     std::string source_type_as_str = Event_SourceType_Name(context.GetSourceType());
     rpc::ExportEvent_SourceType source_type_ele;
-    RAY_CHECK(rpc::ExportEvent_SourceType_Parse(source_type_as_str, &source_type_ele));
-    export_event.set_source_type(source_type_ele);
+    if (rpc::ExportEvent_SourceType_Parse(source_type_as_str, &source_type_ele)) {
+      export_event.set_source_type(source_type_ele);
+    } else {
+      throw std::invalid_argument("Invalid source_type type: " + source_type_as_str);
+    }
     export_event.set_timestamp(current_sys_time_s());
 
     std::string event_data_type_name = export_event_data_ptr_->GetTypeName();
