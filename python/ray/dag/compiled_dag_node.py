@@ -25,7 +25,6 @@ from ray.experimental.channel import (
     SynchronousWriter,
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
-    ChannelContext,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -176,22 +175,17 @@ def _exec_operation(self, task: "ExecutableTask", operation: DAGNodeOperation) -
     Returns:
         True if we are done executing all operations of this actor, False otherwise.
     """
-    idx = operation.idx
     op_type = operation.type
-
-    input_reader = task._input_reader
-    output_writer = task._output_writer
-    ctx = ChannelContext.get_current().serialization_context
 
     if op_type == DAGNodeOperationType.READ:
         try:
-            res = input_reader.read()
-            ctx.set_data(idx, res)
+            res = task.input_reader.read()
+            task.set_cache(res)
         except RayChannelError:
             # Channel closed. Exit the loop.
             return True
     elif op_type == DAGNodeOperationType.COMPUTE:
-        res = ctx.get_data(idx)
+        res = task.reset_cache()
         method = getattr(self, task.method_name)
         try:
             _process_return_vals(res, return_single_output=False)
@@ -200,7 +194,7 @@ def _exec_operation(self, task: "ExecutableTask", operation: DAGNodeOperation) -
             # Propagate it and skip the actual task. We don't need to wrap the
             # exception in a RayTaskError here because it has already been wrapped
             # by the previous task.
-            ctx.set_data(idx, exc)
+            task.set_cache(exc)
             return False
 
         resolved_inputs = []
@@ -211,11 +205,11 @@ def _exec_operation(self, task: "ExecutableTask", operation: DAGNodeOperation) -
             output_val = method(*resolved_inputs, **task.resolved_kwargs)
         except Exception as exc:
             output_val = _wrap_exception(exc)
-        ctx.set_data(idx, output_val)
+        task.set_cache(output_val)
     elif op_type == DAGNodeOperationType.WRITE:
-        output_val = ctx.get_data(idx)
+        output_val = task.reset_cache()
         try:
-            output_writer.write(output_val)
+            task.output_writer.write(output_val)
         except RayChannelError:
             # Channel closed. Exit the loop.
             return True
@@ -409,19 +403,28 @@ class ExecutableTask:
             assert not isinstance(val, ChannelInterface)
             assert not isinstance(val, DAGInputAdapter)
 
-        self._input_reader: ReaderInterface = SynchronousReader(self.input_channels)
-        self._output_writer: WriterInterface = SynchronousWriter(self.output_channel)
+        self.input_reader: ReaderInterface = SynchronousReader(self.input_channels)
+        self.output_writer: WriterInterface = SynchronousWriter(self.output_channel)
+        self._cache = None
 
     def cancel(self):
-        self._input_reader.close()
-        self._output_writer.close()
+        self.input_reader.close()
+        self.output_writer.close()
 
     def prepare(self):
         for typ_hint in self.input_type_hints:
             typ_hint.register_custom_serializer()
         self.output_type_hint.register_custom_serializer()
-        self._input_reader.start()
-        self._output_writer.start()
+        self.input_reader.start()
+        self.output_writer.start()
+
+    def set_cache(self, data):
+        self._cache = data
+
+    def reset_cache(self):
+        data = self._cache
+        self._cache = None
+        return data
 
 
 @DeveloperAPI
