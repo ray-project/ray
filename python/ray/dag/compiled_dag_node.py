@@ -131,10 +131,8 @@ def do_exec_tasks(
         tasks: the executable tasks corresponding to the actor methods.
     """
     try:
-        self._input_readers = []
-        self._output_writers = []
         for task in tasks:
-            _prep_task(self, task)
+            task.prepare()
 
         done = False
         while True:
@@ -152,26 +150,8 @@ def do_exec_tasks(
 
 @DeveloperAPI
 def do_cancel_executable_tasks(self, tasks: List["ExecutableTask"]) -> None:
-    for idx in range(len(tasks)):
-        self._input_readers[idx].close()
-        self._output_writers[idx].close()
-
-
-def _prep_task(self, task: "ExecutableTask") -> None:
-    """
-    Prepare the task for execution.
-    """
-    for typ_hint in task.input_type_hints:
-        typ_hint.register_custom_serializer()
-    task.output_type_hint.register_custom_serializer()
-
-    input_reader: ReaderInterface = SynchronousReader(task.input_channels)
-    output_writer: WriterInterface = SynchronousWriter(task.output_channel)
-    self._input_readers.append(input_reader)
-    self._output_writers.append(output_writer)
-
-    input_reader.start()
-    output_writer.start()
+    for task in tasks:
+        task.cancel()
 
 
 def _wrap_exception(exc):
@@ -199,8 +179,8 @@ def _exec_operation(self, task: "ExecutableTask", operation: DAGNodeOperation) -
     idx = operation.idx
     op_type = operation.type
 
-    input_reader = self._input_readers[idx]
-    output_writer = self._output_writers[idx]
+    input_reader = task._input_reader
+    output_writer = task._output_writer
     ctx = ChannelContext.get_current().serialization_context
 
     if op_type == DAGNodeOperationType.READ:
@@ -428,6 +408,20 @@ class ExecutableTask:
         for val in self.resolved_kwargs.values():
             assert not isinstance(val, ChannelInterface)
             assert not isinstance(val, DAGInputAdapter)
+
+        self._input_reader: ReaderInterface = SynchronousReader(self.input_channels)
+        self._output_writer: WriterInterface = SynchronousWriter(self.output_channel)
+
+    def cancel(self):
+        self._input_reader.close()
+        self._output_writer.close()
+
+    def prepare(self):
+        for typ_hint in self.input_type_hints:
+            typ_hint.register_custom_serializer()
+        self.output_type_hint.register_custom_serializer()
+        self._input_reader.start()
+        self._output_writer.start()
 
 
 @DeveloperAPI
