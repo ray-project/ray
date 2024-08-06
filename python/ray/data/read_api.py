@@ -1847,7 +1847,9 @@ def read_tfrecords(
         and tfx_read
         and not tf_schema
     ):
-        from ray.data.datasource.tfrecords_datasource import _infer_schema_and_transform
+        from ray.data._internal.datasource.tfrecords_datasource import (
+            _infer_schema_and_transform,
+        )
 
         return _infer_schema_and_transform(ds)
 
