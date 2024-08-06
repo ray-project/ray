@@ -15,10 +15,12 @@ import { ServeDeploymentRow } from "./ServeDeploymentRow";
 export type ServeApplicationRowsProps = {
   application: ServeApplication;
   startExpanded?: boolean;
+  publicUrl?: string;
 };
 
 export const ServeApplicationRows = ({
   application,
+  publicUrl,
   startExpanded = true,
 }: ServeApplicationRowsProps) => {
   const [isExpanded, setExpanded] = useState(startExpanded);
@@ -31,6 +33,7 @@ export const ServeApplicationRows = ({
     last_deployed_time_s,
     deployments,
     deployed_app_config,
+    docs_path,
   } = application;
 
   const deploymentsList = Object.values(deployments);
@@ -38,6 +41,11 @@ export const ServeApplicationRows = ({
   const onExpandButtonClick = () => {
     setExpanded(!isExpanded);
   };
+
+  const docsPath =
+    publicUrl && docs_path
+      ? `${publicUrl}${route_prefix !== "/" ? route_prefix : ""}${docs_path}`
+      : undefined;
 
   // TODO(aguo): Add duration and end time once available in the API
   return (
@@ -92,6 +100,21 @@ export const ServeApplicationRows = ({
           -
         </TableCell>
         <TableCell align="center">
+          {docsPath && (
+            <React.Fragment>
+              <Link
+                sx={{
+                  whiteSpace: "nowrap",
+                }}
+                href={docsPath}
+                target="_blank"
+                rel="noreferrer"
+              >
+                View docs
+              </Link>
+              {deployed_app_config && <br />}
+            </React.Fragment>
+          )}
           {deployed_app_config ? (
             <CodeDialogButton
               title={
