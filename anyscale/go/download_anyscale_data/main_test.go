@@ -12,12 +12,15 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"path/filepath"
 )
 
 type fakeService struct {
 	addr     string
 	dataPath string
+
+	downloadDisabled bool
 }
 
 func (s *fakeService) handleDataplane(
@@ -73,6 +76,11 @@ func (s *fakeService) handleDataplane(
 }
 
 func (s *fakeService) handleDownload(w http.ResponseWriter, req *http.Request) {
+	if s.downloadDisabled {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return
+	}
+
 	if req.Method != http.MethodGet {
 		w.WriteHeader(http.StatusMethodNotAllowed)
 		return
@@ -123,6 +131,50 @@ func TestDownloadAnyscaleData(t *testing.T) {
 	if err := downloadAnyscaleData(
 		ctx, sock, "foobar", io.Discard,
 	); err == nil {
-		t.Error("expected error, got nil")
+		t.Error("got no error, want error")
+	}
+
+	s.downloadDisabled = true
+	if err := downloadAnyscaleData(
+		ctx, sock, "ray-opt.tgz", io.Discard,
+	); err == nil {
+		t.Error("got nil error when download is disabled, want error")
+	}
+}
+
+func TestPipeDownload(t *testing.T) {
+	handler := func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		if req.URL.Path != "/data" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		if _, err := io.WriteString(w, "hello"); err != nil {
+			log.Print("respond error: ", err)
+		}
+	}
+
+	s := httptest.NewServer(http.HandlerFunc(handler))
+	defer s.Close()
+
+	client := http.DefaultClient
+	ctx := context.Background()
+	buf := new(bytes.Buffer)
+	u, err := url.Parse(s.URL)
+	if err != nil {
+		t.Fatal("parse url: ", err)
+	}
+
+	u.Path = "/data"
+	if err := pipeDownload(ctx, client, u, buf); err != nil {
+		t.Error("got error: ", err)
+	}
+
+	u.Path = "/not-exist"
+	if err := pipeDownload(ctx, client, u, io.Discard); err == nil {
+		t.Error("got no error when path not-exist, want error")
 	}
 }
