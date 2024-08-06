@@ -78,13 +78,14 @@ class LanceDatasource(Datasource):
             )
             scanner_options = self.scanner_options
             lance_ds = self.lance_ds
+            retry_params = self._retry_params
 
             read_task = ReadTask(
                 lambda f=fragment_ids: _read_fragments_with_retry(
                     f,
                     lance_ds,
                     scanner_options,
-                    self._retry_params,
+                    retry_params,
                 ),
                 metadata,
             )
@@ -98,7 +99,10 @@ class LanceDatasource(Datasource):
 
 
 def _read_fragments_with_retry(
-    fragment_ids, lance_ds, scanner_options, retry_params
+    fragment_ids,
+    lance_ds,
+    scanner_options,
+    retry_params,
 ) -> Iterator["pyarrow.Table"]:
     return call_with_retry(
         lambda: _read_fragments(fragment_ids, lance_ds, scanner_options),
