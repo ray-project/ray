@@ -50,7 +50,7 @@ class LanceDatasource(Datasource):
         match.extend(self.READ_FRAGMENTS_ERRORS_TO_RETRY)
         match.extend(DataContext.get_current().retried_io_errors)
         self._retry_params = {
-            "description": f"read lance fragments",
+            "description": "read lance fragments",
             "match": match,
             "max_attempts": self.READ_FRAGMENTS_MAX_ATTEMPTS,
             "max_backoff_s": self.READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS,
