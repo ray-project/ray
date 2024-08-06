@@ -139,12 +139,29 @@ def _wrap_exception(exc):
 
 def _select_next_nodes(actor_to_candidates, graph):
     """
-    Select the next nodes for topological sort. This function may return
-    multiple nodes if they are NCCL nodes. In that case, this function only
-    removes the NCCL write node, which is also the head of a priority queue.
-    Other nodes will be removed in the following iterations. Additionally,
-    visited_nodes ensures that the same node will not be scheduled more than
-    once.
+    This function selects the next nodes for topological sort. If there are
+    multiple DAGOperationGraphNodes with zero in-degree, select nodes based on
+    the following rules:
+
+    #1  If the nodes are not NCCL write nodes, select the one with the smallest
+        `bind_index`. If there are multiple candidate nodes with the smallest
+        `bind_index` of the actors that they belong to, any one of them is
+        acceptable. For the implementation details, we maintain a priority queue
+        for each actor, where the head of the priority queue is the node with the
+        smallest `bind_index`.
+    #2  If the node is an NCCL write node, select it only if all of its downstream
+        nodes are also the heads of their priority queues. That is, the NCCL write
+        node and all its NCCL read nodes are selected simultaneously.
+    #3  If #1 and #2 cannot be satisfied, it means that all candidate nodes are
+        NCCL write nodes. In this case, select the one that is the head of the
+        priority queue and its downstream nodes, regardless of whether the
+        downstream nodes are heads of their priority queues or not.
+
+    This function may return multiple nodes if they are NCCL nodes. In that case,
+    this function only removes the NCCL write node, which is also the head of a
+    priority queue. Other nodes will be removed in the following iterations.
+    Additionally, visited_nodes ensures that the same node will not be scheduled
+    more than once.
     """
     next_nodes = []
     first_nccl_node = None
@@ -1159,22 +1176,8 @@ class CompiledDAG:
 
         Step 2: Topological sort
 
-        If there are multiple DAGOperationGraphNodes with zero in-degree, select
-        one based on the following rules:
-
-        #1  If the nodes are not NCCL write nodes, select the one with the smallest
-            `bind_index`. If there are multiple candidate nodes with the smallest
-            `bind_index` of the actors that they belong to, any one of them is
-            acceptable. For the implementation details, we maintain a priority queue
-            for each actor, where the head of the priority queue is the node with the
-            smallest `bind_index`.
-        #2  If the node is an NCCL write node, select it only if all of its downstream
-            nodes are also the heads of their priority queues. That is, the NCCL write
-            node and all its NCCL read nodes are selected simultaneously.
-        #3  If #1 and #2 cannot be satisfied, it means that all candidate nodes are
-            NCCL write nodes. In this case, select the one that is the head of the
-            priority queue and its downstream nodes, regardless of whether the
-            downstream nodes are heads of their priority queues or not.
+        It is possible to have multiple DAGOperationGraphNodes with zero in-degree.
+        Refer to the function `_select_next_nodes` for the logic of selecting nodes.
 
         Then, put the selected nodes into the corresponding actors' schedules.
 
