@@ -1,6 +1,7 @@
 from functools import total_ordering
 from enum import Enum
 from ray.util.annotations import DeveloperAPI
+import ray
 
 
 @DeveloperAPI
@@ -39,7 +40,20 @@ class DAGNodeOperation:
 @DeveloperAPI
 @total_ordering
 class DAGOperationGraphNode:
-    def __init__(self, operation: DAGNodeOperation, idx, dag_node):
+    def __init__(
+        self, operation: DAGNodeOperation, idx: int, dag_node: "ray.dag.DAGNode"
+    ):
+        """
+        DAGOperationGraphNode represents a node in the DAG operation graph.
+        It contains information about the node's in-degree, out-degree, edges,
+        and the operation it performs.
+
+        Args:
+            operation: The operation that this node performs. The operation
+                can be a READ, COMPUTE, or WRITE operation.
+            idx: A unique index into the original DAG.
+            dag_node: The DAGNode that this operation belongs to.
+        """
         self.operation = operation
         self.idx = idx
         from ray.dag import ClassMethodNode

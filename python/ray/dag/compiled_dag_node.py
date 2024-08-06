@@ -138,7 +138,10 @@ def _wrap_exception(exc):
     return wrapped
 
 
-def _select_next_nodes(actor_to_candidates, graph):
+def _select_next_nodes(
+    actor_to_candidates: Dict["ray.actor.ActorHandle", List[DAGOperationGraphNode]],
+    graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]],
+):
     """
     This function selects the next nodes for topological sort to generate execution
     schedule. If there are multiple DAGOperationGraphNodes with zero in-degree,
@@ -163,6 +166,12 @@ def _select_next_nodes(actor_to_candidates, graph):
     priority queue. Other nodes will be removed in the following iterations.
     Additionally, visited_nodes ensures that the same node will not be scheduled
     more than once.
+
+    Args:
+        actor_to_candidates: A dictionary mapping an actor handle to a list of
+            candidate nodes with zero in-degree.
+        graph: A dictionary mapping the index of a task to a dictionary of its
+            DAGOperationGraphNodes for different operations.
     """
     next_nodes = []
     first_nccl_node = None
