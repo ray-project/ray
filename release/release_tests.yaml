@@ -2921,6 +2921,9 @@
     - __suffix__: aws.py311
       frequency: weekly
       python: "3.11"
+    - __suffix__: aws.py312
+      frequency: weekly
+      python: "3.12"
 
 - name: microbenchmark_unstable
   group: core-daily-test
