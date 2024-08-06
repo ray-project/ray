@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Any, List, Dict
+from typing import Optional, List, Dict, Generic, TypeVar
 from collections.abc import Iterable
 
 import ray
@@ -16,8 +16,11 @@ class Full(Exception):
     pass
 
 
+T = TypeVar("T")
+
+
 @PublicAPI(stability="beta")
-class Queue:
+class Queue(Generic[T]):
     """A first-in, first-out queue implementation on Ray.
 
     The behavior and use cases are similar to those of the asyncio.Queue class.
@@ -81,9 +84,7 @@ class Queue:
         """Whether the queue is full."""
         return ray.get(self.actor.full.remote())
 
-    def put(
-        self, item: Any, block: bool = True, timeout: Optional[float] = None
-    ) -> None:
+    def put(self, item: T, block: bool = True, timeout: Optional[float] = None) -> None:
         """Adds an item to the queue.
 
         If block is True and the queue is full, blocks until the queue is no
@@ -109,7 +110,7 @@ class Queue:
                 ray.get(self.actor.put.remote(item, timeout))
 
     async def put_async(
-        self, item: Any, block: bool = True, timeout: Optional[float] = None
+        self, item: T, block: bool = True, timeout: Optional[float] = None
     ) -> None:
         """Adds an item to the queue.
 
@@ -135,7 +136,7 @@ class Queue:
             else:
                 await self.actor.put.remote(item, timeout)
 
-    def get(self, block: bool = True, timeout: Optional[float] = None) -> Any:
+    def get(self, block: bool = True, timeout: Optional[float] = None) -> T:
         """Gets an item from the queue.
 
         If block is True and the queue is empty, blocks until the queue is no
@@ -163,9 +164,7 @@ class Queue:
             else:
                 return ray.get(self.actor.get.remote(timeout))
 
-    async def get_async(
-        self, block: bool = True, timeout: Optional[float] = None
-    ) -> Any:
+    async def get_async(self, block: bool = True, timeout: Optional[float] = None) -> T:
         """Gets an item from the queue.
 
         There is no guarantee of order if multiple consumers get from the
@@ -189,7 +188,7 @@ class Queue:
             else:
                 return await self.actor.get.remote(timeout)
 
-    def put_nowait(self, item: Any) -> None:
+    def put_nowait(self, item: T) -> None:
         """Equivalent to put(item, block=False).
 
         Raises:
@@ -197,7 +196,7 @@ class Queue:
         """
         return self.put(item, block=False)
 
-    def put_nowait_batch(self, items: Iterable) -> None:
+    def put_nowait_batch(self, items: Iterable[T]) -> None:
         """Takes in a list of items and puts them into the queue in order.
 
         Raises:
@@ -208,7 +207,7 @@ class Queue:
 
         ray.get(self.actor.put_nowait_batch.remote(items))
 
-    def get_nowait(self) -> Any:
+    def get_nowait(self) -> T:
         """Equivalent to get(block=False).
 
         Raises:
@@ -216,7 +215,7 @@ class Queue:
         """
         return self.get(block=False)
 
-    def get_nowait_batch(self, num_items: int) -> List[Any]:
+    def get_nowait_batch(self, num_items: int) -> List[T]:
         """Gets items from the queue and returns them in a
         list in order.
 
