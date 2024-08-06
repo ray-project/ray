@@ -81,7 +81,11 @@ class AllToAllOperator(PhysicalOperator):
         )
 
     def num_output_rows_total(self) -> Optional[int]:
-        return self.input_dependencies[0].num_output_rows_total()
+        return (
+            self._output_rows
+            if self._output_rows
+            else self.input_dependencies[0].num_outputs_total()
+        )
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
