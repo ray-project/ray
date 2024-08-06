@@ -556,8 +556,10 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ = std::make_unique<UsageStatsClient>(
-      "127.0.0.1:" + std::to_string(GetPort()), main_service_);
+  usage_stats_client_ =
+      std::make_unique<UsageStatsClient>("127.0.0.1:" + std::to_string(GetPort()),
+                                         rpc_server_.GetClusterId(),
+                                         main_service_);
 }
 
 void GcsServer::InitKVManager() {
@@ -810,7 +812,8 @@ void GcsServer::DumpDebugStateToFile() const {
 
 std::string GcsServer::GetDebugState() const {
   std::ostringstream stream;
-  stream << gcs_node_manager_->DebugString() << "\n\n"
+  stream << "Gcs Debug state:\n\n"
+         << gcs_node_manager_->DebugString() << "\n\n"
          << gcs_actor_manager_->DebugString() << "\n\n"
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"

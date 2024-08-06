@@ -119,7 +119,7 @@ class TestCallbacks(unittest.TestCase):
                 )
                 config.environment("multi_cart")
             algo = config.build()
-            callback_obj = algo.workers.local_worker()._callbacks
+            callback_obj = algo.env_runner._callbacks
 
             # We must have had exactly one env creation event (already before training).
             self.assertEqual(callback_obj.counts["env_created"], 1)
@@ -172,7 +172,7 @@ class TestCallbacks(unittest.TestCase):
                 config.environment("multi_cart")
 
             algo = config.build()
-            callback_obj = algo.workers.local_worker()._callbacks
+            callback_obj = algo.env_runner._callbacks
 
             # We must have had exactly one env creation event (already before training).
             self.assertEqual(callback_obj.counts["env_created"], 1)

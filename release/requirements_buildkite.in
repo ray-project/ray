@@ -9,7 +9,6 @@ freezegun
 google-cloud-storage
 jinja2
 protobuf >= 3.15.3, != 3.19.5
-pydantic < 1.10.0
 pytest
 pyyaml
 pybuildkite
@@ -23,3 +22,4 @@ docker == 7.0.0
 tzdata
 aws_requests_auth
 requests
+-r requirements-doc.txt

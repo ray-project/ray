@@ -22,7 +22,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
@@ -260,6 +260,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
   task_resubmitter_->AddTask(object_id.TaskId(), {});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_TRUE(ref_counter_->IsObjectPendingCreation(object_id));
   ASSERT_TRUE(object_directory_->Flush() == 1);
 
   ASSERT_TRUE(failed_reconstructions_.empty());
