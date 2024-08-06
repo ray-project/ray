@@ -12,6 +12,7 @@ from typing import List
 import pytest
 
 import ray
+from ray._private import ray_constants
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import enable_external_redis, wait_for_condition
@@ -233,7 +234,7 @@ def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
 
     def condition():
         good_fun_num = 0
-        fault_fun_num = 0
+        bad_fun_num = 0
         for ref in refs:
             try:
                 res = ray.get(ref, timeout=1)
@@ -242,8 +243,8 @@ def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
                     good_fun_num += 1
                 return True
             except RuntimeEnvSetupError:
-                fault_fun_num += 1
-        return fault_fun_num == 1 and good_fun_num == 2
+                bad_fun_num += 1
+        return bad_fun_num == 1 and good_fun_num == 2
 
     wait_for_condition(condition, timeout=60)
 
@@ -266,9 +267,8 @@ class FaultPlugin(DummyPlugin):
         action = os.environ.get(FAULT_PLUGIN_KEY, "raise")
         if action == "raise":
             raise RuntimeError(
-                "Ever tried. Ever failed. No matter. Try again. "
-                "Fail again. Fail better. -- Waiting for Godot, "
-                "Samuel Beckett"
+                "Ever tried. Ever failed. No matter. Try again. Fail again. Fail "
+                "better. -- Waiting for Godot, Samuel Beckett"
             )
         elif action == "sleep":
             await asyncio.sleep(3600)
@@ -285,7 +285,7 @@ class FaultPlugin(DummyPlugin):
     ],
     indirect=True,
 )
-def test_task_fail_reschedule(
+def test_task_fails_on_rt_env_failure(
     set_runtime_env_plugins,
     monkeypatch,
     ray_start_cluster,
@@ -316,16 +316,82 @@ def test_task_fail_reschedule(
     with pytest.raises(RuntimeEnvSetupError) as e:
         ray.get(mortal)
     assert "Samuel Beckett" in str(e.value)
+    # TODO(ryw): make it consume a count in max_retries, and retry. After that, we
+    # can test by adding a node with FAULT_PLUGIN_KEY=ok and get immortal to get 5.
+    with pytest.raises(RuntimeEnvSetupError) as e:
+        ray.get(immortal)
+    assert "Samuel Beckett" in str(e.value)
+
+    # Assert that the raylet is still alive.
+    for _ in range(5):
+        time.sleep(1)
+        assert (
+            fault_node.all_processes[ray_constants.PROCESS_TYPE_RAYLET][
+                0
+            ].process.poll()
+            is None
+        )
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + FAULT_PLUGIN_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+def test_actor_fails_on_rt_env_failure(
+    set_runtime_env_plugins,
+    monkeypatch,
+    ray_start_cluster,
+):
+    """
+    Simulate runtime env failure on a node. The actor should be dead, but the raylet
+    should not die.
+    """
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
 
     with monkeypatch.context() as m:
-        m.setenv(FAULT_PLUGIN_KEY, "ok")
-        # good_node = \
-        cluster.add_node(num_cpus=1)
-        cluster.remove_node(fault_node)
+        m.setenv(FAULT_PLUGIN_KEY, "raise")
+        fault_node = cluster.add_node(num_cpus=1)
 
-    # the immortal one keeps retrying and failing on fault_node, until it's removed and
-    # the task is rescheduled on good_node
-    assert ray.get(immortal) == 5
+    @ray.remote(num_cpus=0.1, runtime_env={FAULT_PLUGIN_NAME: {}})
+    class Actor:
+        def __init__(self, a, b):
+            self.a = a
+            self.b = b
+
+        def ping(self):
+            return self.a + self.b
+
+    two = ray.put(2)
+    three = ray.put(3)
+
+    mortal = Actor.remote(two, three)
+    immortal = Actor.options(max_restarts=-1).remote(two, three)
+
+    with pytest.raises(RuntimeEnvSetupError) as e:
+        ray.get(mortal.ping.remote())
+    assert "Samuel Beckett" in str(e.value)
+
+    # TODO(ryw): make it consume a count in max_restarts, and restart. After that, we
+    # can test by adding a node with FAULT_PLUGIN_KEY=ok and ping immortal to get 5.
+    with pytest.raises(RuntimeEnvSetupError) as e:
+        ray.get(immortal.ping.remote())
+    assert "Samuel Beckett" in str(e.value)
+
+    # Assert that the raylet is still alive.
+    for _ in range(5):
+        time.sleep(1)
+        assert (
+            fault_node.all_processes[ray_constants.PROCESS_TYPE_RAYLET][
+                0
+            ].process.poll()
+            is None
+        )
 
 
 PRIORITY_TEST_PLUGIN1_CLASS_PATH = (
