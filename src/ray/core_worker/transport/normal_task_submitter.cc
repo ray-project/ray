@@ -574,6 +574,14 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                 rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED,
                 &error_status,
                 &error_info));
+          } else if (error_type == rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED) {
+            // Runtime env setup failed, don't fail immediately, instead consumes 1
+            // retry attempt.
+            task_finisher_->FailOrRetryPendingTask(
+                task_spec.TaskId(),
+                rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED,
+                &error_status,
+                &error_info);
           } else {
             RAY_UNUSED(task_finisher_->FailPendingTask(
                 task_spec.TaskId(), error_type, &error_status, &error_info));

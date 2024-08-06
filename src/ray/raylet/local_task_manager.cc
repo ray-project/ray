@@ -587,6 +587,8 @@ bool LocalTaskManager::PoppedWorkerHandler(
     return false;
   }
 
+  bool remove_task_dependencies = false;
+
   if (!worker || not_detached_with_owner_failed) {
     // There are two cases that will not dispatch the task at this time:
     // Case 1: Empty worker popped.
@@ -618,11 +620,15 @@ bool LocalTaskManager::PoppedWorkerHandler(
             task_id,
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
             /*scheduling_failure_message*/ runtime_env_setup_error_message);
+        // NOT removing dependencies because it's already removed in `CancelTask`.
+        remove_task_dependencies = false;
       } else if (status == PopWorkerStatus::JobFinished) {
         // The task job finished.
         // Just remove the task from dispatch queue.
         RAY_LOG(DEBUG) << "Call back to a job finished task, task id = " << task_id;
         erase_from_dispatch_queue_fn(work, scheduling_class);
+        // Remove task dependencies because the job finished and hence won't be run.
+        remove_task_dependencies = true;
       } else {
         // In other cases, set the work status `WAITING` to make this task
         // could be re-dispatched.
@@ -637,16 +643,18 @@ bool LocalTaskManager::PoppedWorkerHandler(
                          << status;
         }
         work->SetStateWaiting(cause);
-        // Return here because we shouldn't remove task dependencies.
-        return dispatched;
+        // NOT removing task dependencies because it will be re-dispatched.
+        remove_task_dependencies = false;
       }
     } else if (not_detached_with_owner_failed) {
       // The task owner failed.
       // Just remove the task from dispatch queue.
       RAY_LOG(DEBUG) << "Call back to an owner failed task, task id = " << task_id;
       erase_from_dispatch_queue_fn(work, scheduling_class);
-    }
 
+      // Remove task dependencies because the task owner failed and hence won't be run.
+      remove_task_dependencies = true;
+    }
   } else {
     // A worker has successfully popped for a valid task. Dispatch the task to
     // the worker.
@@ -656,10 +664,13 @@ bool LocalTaskManager::PoppedWorkerHandler(
     Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
     erase_from_dispatch_queue_fn(work, scheduling_class);
     dispatched = true;
+
+    // Remove task dependencies because the task is dispatched, indicating dependencies
+    // are ready.
+    remove_task_dependencies = true;
   }
 
-  // Remove task dependencies.
-  if (!spec.GetDependencies().empty()) {
+  if (remove_task_dependencies && !spec.GetDependencies().empty()) {
     task_dependency_manager_.RemoveTaskDependencies(task.GetTaskSpecification().TaskId());
   }
 
