@@ -34,9 +34,7 @@ class TestEventReporter : public BaseEventReporter {
   virtual void Report(const rpc::Event &event, const json &custom_fields) override {
     event_list.push_back(event);
   }
-  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override {
-    std::cout << "DEBUG ReportExportEvent";
-  }
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override {}
   virtual void Close() override {}
   virtual ~TestEventReporter() {}
   virtual std::string GetReporterKey() override { return "test.event.reporter"; }

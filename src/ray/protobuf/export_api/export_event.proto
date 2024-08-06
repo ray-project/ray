@@ -30,7 +30,6 @@ message ExportEvent {
   // timestamp is the report milliseconds since 00:00, Jan 1 1970 UTC
   int64 timestamp = 8;
   // event_data follows the schema associated with the source_type
-  // google.protobuf.Struct event_data = 9;
   oneof event_data {
     ExportTaskEventData task_event_data = 10;
   }
