@@ -1032,9 +1032,6 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2 = ray.data.read_parquet(path, override_num_blocks=2, filesystem=fs)
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
-    # Test metadata ops.
-    for block, meta in ds2._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     if fs is None:
         shutil.rmtree(path)
     else:

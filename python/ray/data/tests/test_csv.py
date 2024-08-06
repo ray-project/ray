@@ -93,9 +93,6 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     dsdf = ds.to_pandas()
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
-    # Test metadata ops.
-    for block, meta in ds._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, override_num_blocks=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
@@ -728,9 +725,6 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2 = ray.data.read_csv([file_path], filesystem=fs)
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
-    # Test metadata ops.
-    for block, meta in ds2._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -740,9 +734,6 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2 = ray.data.read_csv(data_path, override_num_blocks=2, filesystem=fs)
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
-    # Test metadata ops.
-    for block, meta in ds2._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the

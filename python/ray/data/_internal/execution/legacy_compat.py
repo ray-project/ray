@@ -97,35 +97,6 @@ def execute_to_legacy_bundle_iterator(
     return bundle_iter
 
 
-def execute_to_legacy_block_list(
-    executor: Executor,
-    plan: ExecutionPlan,
-    dataset_uuid: str,
-    preserve_order: bool,
-) -> BlockList:
-    """Execute a plan with the new executor and translate it into a legacy block list.
-
-    Args:
-        executor: The executor to use.
-        plan: The legacy plan to execute.
-        dataset_uuid: UUID of the dataset for this execution.
-        preserve_order: Whether to preserve order in execution.
-
-    Returns:
-        The output as a legacy block list.
-    """
-    dag, stats = _get_execution_dag(
-        executor,
-        plan,
-        preserve_order,
-    )
-    bundles = executor.execute(dag, initial_stats=stats)
-    block_list = _bundles_to_block_list(bundles)
-    # Set the stats UUID after execution finishes.
-    _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
-    return block_list
-
-
 def _get_execution_dag(
     executor: Executor,
     plan: ExecutionPlan,
@@ -149,7 +120,7 @@ def _get_execution_dag(
 
 
 def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
-    if plan._snapshot_bundle is not None:
+    if plan._snapshot_bundles is not None:
         return plan._snapshot_stats
     # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
     # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
@@ -161,21 +132,3 @@ def _get_initial_stats_from_plan(plan: ExecutionPlan) -> DatasetStats:
         return DatasetStats(metadata={}, parent=None)
     else:
         return plan._in_stats
-
-
-def _bundles_to_block_list(bundles: Iterator[RefBundle]) -> BlockList:
-    blocks, metadata = [], []
-    owns_blocks = True
-    for ref_bundle in bundles:
-        if not ref_bundle.owns_blocks:
-            owns_blocks = False
-        blocks.extend(ref_bundle.block_refs)
-        metadata.extend(ref_bundle.metadata)
-    return BlockList(blocks, metadata, owned_by_consumer=owns_blocks)
-
-
-def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:
-    if not stats.dataset_uuid:
-        stats.dataset_uuid = dataset_uuid
-    for parent in stats.parents or []:
-        _set_stats_uuid_recursive(parent, dataset_uuid)

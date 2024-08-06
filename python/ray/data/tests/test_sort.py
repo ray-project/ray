@@ -1,3 +1,4 @@
+import itertools
 import logging
 import random
 from collections import defaultdict
@@ -178,14 +179,10 @@ def test_sort_arrow_with_empty_blocks(
 
         # Test empty dataset.
         ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
-        assert (
-            len(
-                SortTaskSpec.sample_boundaries(
-                    ds._plan.execute().block_refs, SortKey("id"), 3
-                )
-            )
-            == 2
+        block_refs = itertools.chain.from_iterable(
+            bundle.block_refs for bundle in ds.iter_internal_ref_bundles()
         )
+        assert len(SortTaskSpec.sample_boundaries(block_refs, SortKey("id"), 3)) == 2
         assert ds.sort("id").count() == 0
     finally:
         ctx.use_polars = original_use_polars
@@ -279,14 +276,10 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
 
     # Test empty dataset.
     ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
-    assert (
-        len(
-            SortTaskSpec.sample_boundaries(
-                ds._plan.execute().block_refs, SortKey("id"), 3
-            )
-        )
-        == 2
+    block_refs = itertools.chain.from_iterable(
+        bundle.block_refs for bundle in ds.iter_internal_ref_bundles()
     )
+    assert len(SortTaskSpec.sample_boundaries(block_refs, SortKey("id"), 3)) == 2
     assert ds.sort("id").count() == 0
 
 

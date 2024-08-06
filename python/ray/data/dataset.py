@@ -1406,10 +1406,13 @@ class Dataset:
                     "locality_hints must not contain duplicate actor handles"
                 )
 
-        bundle = self._plan.execute()
+        bundles = self._plan.execute()
+        blocks_with_metadata = list(
+            itertools.chain.from_iterable(bundle.blocks for bundle in bundles)
+        )
         owned_by_consumer = bundle.owns_blocks
         stats = self._plan.stats()
-        block_refs, metadata = zip(*bundle.blocks)
+        block_refs, metadata = zip(*blocks_with_metadata)
 
         if locality_hints is None:
             block_refs_splits = np.array_split(block_refs, n)
@@ -1599,9 +1602,12 @@ class Dataset:
         if indices[0] < 0:
             raise ValueError("indices must be positive")
         start_time = time.perf_counter()
-        bundle = self._plan.execute()
+        bundles = self._plan.execute()
+        blocks_with_metadata = list(
+            itertools.chain.from_iterable(bundle.blocks for bundle in bundles)
+        )
         blocks, metadata = _split_at_indices(
-            bundle.blocks,
+            blocks_with_metadata,
             indices,
             False,
         )
@@ -2657,10 +2663,14 @@ class Dataset:
         if self._logical_plan.dag.aggregate_output_metadata().size_bytes is not None:
             return self._logical_plan.dag.aggregate_output_metadata().size_bytes
 
-        metadata = self._plan.execute().metadata
-        if not metadata or metadata[0].size_bytes is None:
-            return None
-        return sum(m.size_bytes for m in metadata)
+        bundles = self._plan.execute()
+        total_size = 0
+        for bundle in bundles:
+            for metadata in bundle.metadata:
+                if metadata.size_bytes is None:
+                    return None
+                total_size += metadata.size_bytes
+        return total_size
 
     @ConsumptionAPI
     @PublicAPI(api_group=IM_API_GROUP)
@@ -3609,8 +3619,11 @@ class Dataset:
 
             datasink.on_write_start()
 
-            self._write_ds = Dataset(plan, logical_plan).materialize()
-            blocks = ray.get(self._write_ds._plan.execute().block_refs)
+            bundles = Dataset(plan, logical_plan)._plan.execute()
+            block_refs = list(
+                itertools.chain.from_iterable(bundle.block_refs for bundle in bundles)
+            )
+            blocks = ray.get(block_refs)
             assert all(
                 isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
             )
@@ -4597,10 +4610,11 @@ class Dataset:
             A MaterializedDataset holding the materialized data blocks.
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
-        copy._plan.execute()
+        bundles = copy._plan.execute()
 
-        bundle = copy._plan._snapshot_bundle
-        blocks_with_metadata = bundle.blocks
+        blocks_with_metadata = list(
+            itertools.chain.from_iterable(bundle.blocks for bundle in bundles)
+        )
         # TODO(hchen): Here we generate the same number of blocks as
         # the original Dataset. Because the old code path does this, and
         # some unit tests implicily depend on this behavior.
@@ -4708,7 +4722,10 @@ class Dataset:
             "`Dataset.get_internal_block_refs()` is deprecated. Use "
             "`Dataset.iter_internal_ref_bundles()` instead.",
         )
-        block_refs = self._plan.execute().block_refs
+        bundles = self._plan.execute()
+        block_refs = list(
+            itertools.chain.from_iterable(bundle.block_refs for bundle in bundles)
+        )
         self._synchronize_progress_bar()
         return block_refs
 
