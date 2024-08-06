@@ -1146,13 +1146,18 @@ class CompiledDAG:
             for each actor, where the head of the priority queue is the node with the
             smallest `bind_index`.
         #2  If the node is an NCCL write node, select it only if all of its downstream
-            nodes are also the heads of their priority queues.
+            nodes are also the heads of their priority queues. That is, the NCCL write
+            node and all its NCCL read nodes are selected simultaneously.
         #3  If #1 and #2 cannot be satisfied, it means that all candidate nodes are
-            NCCL write nodes. In this case, select the one that is the peek of the
+            NCCL write nodes. In this case, select the one that is the head of the
             priority queue and its downstream nodes, regardless of whether the
-            downstream nodes are peeks of their priority queues or not.
+            downstream nodes are heads of their priority queues or not.
 
         Then, put the selected nodes into the corresponding actors' schedules.
+
+        The goal of the above rules is to build a schedule with fewer bubbles. The
+        schedule should be intuitive to users, meaning that the execution should
+        perform operations in ascending order of `bind_index` as much as possible.
 
         [Example]:
 
