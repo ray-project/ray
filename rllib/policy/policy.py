@@ -405,7 +405,7 @@ class Policy(metaclass=ABCMeta):
         Otherwise, RLlib will error out.
         """
         # if imported on top it creates circular dependency
-        from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
         if self.__policy_id is None:
             raise ValueError(
@@ -414,17 +414,17 @@ class Policy(metaclass=ABCMeta):
                 "bug, please file a github issue."
             )
 
-        spec = self.config["__marl_module_spec"]
-        if isinstance(spec, SingleAgentRLModuleSpec):
+        spec = self.config["__multi_rl_module_spec"]
+        if isinstance(spec, RLModuleSpec):
             module = spec.build()
         else:
             # filter the module_spec to only contain the policy_id of this policy
             marl_spec = type(spec)(
-                marl_module_class=spec.marl_module_class,
+                multi_rl_module_class=spec.multi_rl_module_class,
                 module_specs={self.__policy_id: spec.module_specs[self.__policy_id]},
             )
-            marl_module = marl_spec.build()
-            module = marl_module[self.__policy_id]
+            multi_rl_module = marl_spec.build()
+            module = multi_rl_module[self.__policy_id]
 
         return module
 

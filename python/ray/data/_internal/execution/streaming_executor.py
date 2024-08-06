@@ -112,7 +112,11 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
-        self._resource_manager = ResourceManager(self._topology, self._options)
+        self._resource_manager = ResourceManager(
+            self._topology,
+            self._options,
+            lambda: self._autoscaler.get_total_resources(),
+        )
         self._backpressure_policies = get_backpressure_policies(self._topology)
         self._autoscaler = create_autoscaler(
             self._topology,
@@ -124,8 +128,10 @@ class StreamingExecutor(Executor, threading.Thread):
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
+            # TODO(zhilong): Implement num_output_rows_total for all
+            # AllToAllOperators
             self._global_info = ProgressBar(
-                "Running", dag.num_outputs_total(), unit="bundle"
+                "Running", dag.num_output_rows_total(), unit="row"
             )
 
         self._output_node: OpState = self._topology[dag]

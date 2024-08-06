@@ -172,7 +172,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         # Create our RLModule to compute actions with.
         policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
-        self.marl_module_spec = self.config.get_marl_module_spec(
+        self.multi_rl_module_spec = self.config.get_multi_rl_module_spec(
             policy_dict=policy_dict
         )
         if self.config.share_module_between_env_runner_and_learner:
@@ -182,7 +182,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # weight-synched each iteration).
         else:
             # TODO (sven): DreamerV3 is currently single-agent only.
-            self.module = self.marl_module_spec.build()[DEFAULT_MODULE_ID]
+            self.module = self.multi_rl_module_spec.build()[DEFAULT_MODULE_ID]
 
         self.metrics = MetricsLogger()
 
@@ -483,6 +483,15 @@ class DreamerV3EnvRunner(EnvRunner):
         self._increase_sampled_metrics(ts)
 
         return done_episodes_to_return
+
+    def get_spaces(self):
+        return {
+            "__env__": (self.env.observation_space, self.env.action_space),
+            DEFAULT_MODULE_ID: (
+                self.env.single_observation_space,
+                self.env.single_action_space,
+            ),
+        }
 
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).

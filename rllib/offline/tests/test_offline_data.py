@@ -9,8 +9,8 @@ from pathlib import Path
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.offline.offline_data import OfflineData
-from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
+from ray.rllib.offline.offline_data import OfflineData, OfflinePreLearner
+from ray.rllib.offline.offline_prelearner import SCHEMA
 
 
 class TestOfflineData(unittest.TestCase):

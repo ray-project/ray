@@ -123,6 +123,7 @@ class DashboardHead:
         self.http_port = http_port
         self.http_port_retries = http_port_retries
         self._modules_to_load = modules_to_load
+        self._modules_loaded = False
 
         self.gcs_address = None
         assert gcs_address is not None
@@ -153,7 +154,7 @@ class DashboardHead:
     async def _configure_http_server(self, modules):
         from ray.dashboard.http_server_head import HttpServerDashboardHead
 
-        http_server = HttpServerDashboardHead(
+        self.http_server = HttpServerDashboardHead(
             self.ip,
             self.http_host,
             self.http_port,
@@ -162,11 +163,18 @@ class DashboardHead:
             self.session_name,
             self.metrics,
         )
-        await http_server.run(modules)
-        return http_server
+        await self.http_server.run(modules)
 
     @property
     def http_session(self):
+        if not self._modules_loaded and not self.http_server:
+            # When the dashboard is still starting up, this property gets
+            # called as part of the method_route_table_factory magic. In
+            # this case, the property is not actually used but the magic
+            # method calls every property to look for a route to add to
+            # the global route table. It should be okay for http_server
+            # to still be None at this point.
+            return None
         assert self.http_server, "Accessing unsupported API in a minimal ray."
         return self.http_server.http_session
 
@@ -233,6 +241,7 @@ class DashboardHead:
                 "to load, {}".format(loaded_modules, modules_to_load)
             )
 
+        self._modules_loaded = True
         logger.info("Loaded %d modules. %s", len(modules), modules)
         return modules
 
@@ -286,6 +295,7 @@ class DashboardHead:
             self.gcs_aio_client = GcsAioClient(
                 address=gcs_address, nums_reconnect_retry=0
             )
+            # TODO(ryw): once we removed the old gcs client, also remove this.
             gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
             gcs_channel.connect()
             self.aiogrpc_gcs_channel = gcs_channel.channel()
@@ -324,7 +334,7 @@ class DashboardHead:
         http_host, http_port = self.http_host, self.http_port
         if self.serve_frontend:
             logger.info("Initialize the http server.")
-            self.http_server = await self._configure_http_server(modules)
+            await self._configure_http_server(modules)
             http_host, http_port = self.http_server.get_address()
             logger.info(f"http server initialized at {http_host}:{http_port}")
         else:

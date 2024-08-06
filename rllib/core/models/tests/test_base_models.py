@@ -8,7 +8,7 @@ from ray.rllib.core.models.specs.checker import SpecCheckingError
 from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
@@ -245,7 +245,7 @@ class TestModelBase(unittest.TestCase):
     def test_torch_compile_forwards(self):
         """Test if logic around TorchCompileConfig works as intended."""
 
-        spec = SingleAgentRLModuleSpec(
+        spec = RLModuleSpec(
             module_class=PPOTorchRLModule,
             observation_space=gym.spaces.Box(low=0, high=1, shape=(32,)),
             action_space=gym.spaces.Box(low=0, high=1, shape=(1,)),
