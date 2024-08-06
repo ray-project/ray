@@ -34,7 +34,7 @@
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
-#include "src/ray/protobuf/export_event.pb.h"
+#include "src/ray/protobuf/export_api/export_event.pb.h"
 
 using json = nlohmann::json;
 
@@ -278,17 +278,8 @@ class RayEvent {
     return *this;
   }
 
-  template <typename T>
-  RayEvent &WithExportEventData(const T &event_data) {
-    std::string export_event_data_str;
-    google::protobuf::util::JsonPrintOptions options;
-    options.preserve_proto_field_names = true;
-    RAY_CHECK(google::protobuf::util::MessageToJsonString(
-                  event_data, &export_event_data_str, options)
-                  .ok());
-    // Store event data as JSON string. It will be converted to google::protobuf::Struct
-    // when creating the ExportEvent message.
-    custom_fields_["event_data"] = export_event_data_str;
+  RayEvent &WithExportEventData(std::unique_ptr<google::protobuf::Message> event_data_ptr) {
+    export_event_data_ptr_ = std::move(event_data_ptr);
     return *this;
   }
 
@@ -340,6 +331,7 @@ class RayEvent {
   const char *file_name_;
   int line_number_;
   json custom_fields_;
+  std::unique_ptr<google::protobuf::Message> export_event_data_ptr_;
   std::ostringstream osstream_;
 };
 

@@ -116,9 +116,18 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   j["event_id"] = export_event.event_id();
   j["source_type"] = ExportEvent_SourceType_Name(export_event.source_type());
   std::string event_data_as_string;
-  RAY_CHECK(google::protobuf::util::MessageToJsonString(export_event.event_data(),
-                                                        &event_data_as_string)
-                .ok());
+  google::protobuf::util::JsonPrintOptions options;
+  options.preserve_proto_field_names = true;
+  if (export_event.has_task_event_data()) {
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(export_event.task_event_data(),
+                                                      &event_data_as_string, options)
+              .ok());
+  } else {
+    RAY_LOG(ERROR) << "event_data missing from export event with id " << export_event.event_id()
+                     << "and type " << ExportEvent_SourceType_Name(export_event.source_type())
+                     << ". An empty event will be written, and this indicates a bug in the code.";
+    event_data_as_string = "{}";
+  }
   json event_data_as_json = json::parse(event_data_as_string);
   j["event_data"] = event_data_as_json;
   return j.dump();
@@ -371,16 +380,13 @@ void RayEvent::SendMessage(const std::string &message) {
     export_event.set_source_type(source_type_ele);
     export_event.set_timestamp(current_sys_time_s());
 
-    auto mp = context.GetCustomFields();
-    for (const auto &pair : mp) {
-      custom_fields_[pair.first] = pair.second;
+    std::string event_data_type_name = export_event_data_ptr_->GetTypeName();
+    if (event_data_type_name == "ray.rpc.ExportTaskEventData") {
+      rpc::ExportTaskEventData *task_event_data_ptr = dynamic_cast<rpc::ExportTaskEventData*>(export_event_data_ptr_.get());
+      export_event.mutable_task_event_data()->CopyFrom(*task_event_data_ptr);
+    } else {
+      throw std::invalid_argument("Invalid event_data type: " + event_data_type_name);
     }
-    std::string export_event_data_str = custom_fields_["event_data"];
-    google::protobuf::Struct event_data_struct_field;
-    RAY_CHECK(google::protobuf::util::JsonStringToMessage(export_event_data_str,
-                                                          &event_data_struct_field)
-                  .ok());
-    export_event.mutable_event_data()->CopyFrom(event_data_struct_field);
 
     EventManager::Instance().PublishExportEvent(export_event);
   } else {
