@@ -699,7 +699,7 @@ def test_intra_process_channel_single_reader(ray_start_cluster):
 
         def get_ctx_buffer_size(self):
             ctx = ray_channel.ChannelContext.get_current().serialization_context
-            return len(ctx.intra_process_channel_buffers)
+            return len(ctx.intra_process_buffers)
 
     actor = Actor.remote()
     channel = ray_channel.IntraProcessChannel(num_readers=1)
@@ -753,7 +753,7 @@ def test_intra_process_channel_multi_readers(ray_start_cluster):
 
         def get_ctx_buffer_size(self):
             ctx = ray_channel.ChannelContext.get_current().serialization_context
-            return len(ctx.intra_process_channel_buffers)
+            return len(ctx.intra_process_buffers)
 
     actor = Actor.remote()
     channel = ray_channel.IntraProcessChannel(num_readers=2)

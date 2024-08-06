@@ -9,68 +9,49 @@ class _SerializationContext:
     def __init__(self):
         self.use_external_transport: bool = False
         self.tensors: List["torch.Tensor"] = []
-        # Buffer for transferring data between tasks in the same worker process.
-        # The key is the channel ID, and the value is the data. We don't use a
-        # lock when reading/writing the buffer because a DAG node actor will only
-        # execute one task at a time in `do_exec_tasks`. It will not execute multiple
-        # Ray tasks on a single actor simultaneously.
-        self.intra_process_channel_buffers: Dict[str, Any] = {}
-        # The number of readers for each channel. When the number of readers
+        # Buffer for transferring data between tasks in the same worker process or
+        # transferring data between READ, COMPUTE, and WRITE operations of the same
+        # DAG node. We don't use a lock when reading/writing the buffer because a DAG
+        # node actor will only execute one task at a time in `do_exec_tasks`. It will
+        # not execute multiple Ray tasks on a single actor simultaneously.
+        self.intra_process_buffers: Dict[str, Any] = {}
+        # The number of readers for each key. When the number of readers
         # reaches 0, remove the data from the buffer.
-        self.channel_id_to_num_readers: Dict[str, int] = {}
-        # The key is the order of the task on the actor, which follows the ascending
-        # order of bind_index, and the value is a dictionary of intermediate results.
-        # The dictionary maps the operation type, such as "READ", "COMPUTE", and "WRITE"
-        # , to the intermediate result.
-        self.intermediate_results_buffer: Dict[int, Dict[str, Any]] = {}
+        self.key_to_num_readers: Dict[str, int] = {}
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport
 
-    def set_intermediate_result(self, idx: int, op_type: str, value: Any) -> None:
-        if idx not in self.intermediate_results_buffer:
-            self.intermediate_results_buffer[idx] = {}
-        self.intermediate_results_buffer[idx][op_type] = value
-
-    def get_intermediate_result(self, idx: int, op_type: str) -> Any:
-        assert (
-            idx in self.intermediate_results_buffer
-        ), f"Index {idx} does not exist in the buffer."
-        assert (
-            op_type in self.intermediate_results_buffer[idx]
-        ), f"Operation type {op_type} does not exist in the buffer."
-        return self.intermediate_results_buffer[idx].pop(op_type)
-
-    def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
+    def set_data(self, key, value: Any, num_readers: int = 1) -> None:
         assert num_readers > 0, "num_readers must be greater than 0."
         assert (
-            channel_id not in self.intra_process_channel_buffers
-        ), f"Channel {channel_id} already exists in the buffer."
+            key not in self.intra_process_buffers
+        ), f"Key {key} already exists in the buffer."
         assert (
-            channel_id not in self.channel_id_to_num_readers
-        ), f"Channel {channel_id} already exists in the channel_id_to_num_readers."
+            key not in self.key_to_num_readers
+        ), f"Key {key} already exists in the key_to_num_readers."
 
-        self.intra_process_channel_buffers[channel_id] = value
-        self.channel_id_to_num_readers[channel_id] = num_readers
+        self.intra_process_buffers[key] = value
+        self.key_to_num_readers[key] = num_readers
 
-    def get_data(self, channel_id: str) -> Any:
+    def get_data(self, key: str) -> Any:
         assert (
-            channel_id in self.intra_process_channel_buffers
-        ), f"Channel {channel_id} does not exist in the buffer."
+            key in self.intra_process_buffers
+        ), f"Key {key} does not exist in the buffer."
         assert (
-            channel_id in self.channel_id_to_num_readers
-        ), f"Channel {channel_id} does not exist in the channel_id_to_num_readers."
+            key in self.key_to_num_readers
+        ), f"Key {key} does not exist in the key_to_num_readers."
 
-        self.channel_id_to_num_readers[channel_id] -= 1
-        if self.channel_id_to_num_readers[channel_id] == 0:
+        self.key_to_num_readers[key] -= 1
+        if self.key_to_num_readers[key] == 0:
             # All readers have read the data, so we can remove it.
-            self.channel_id_to_num_readers.pop(channel_id)
-            return self.intra_process_channel_buffers.pop(channel_id)
-        return self.intra_process_channel_buffers[channel_id]
+            self.key_to_num_readers.pop(key)
+            return self.intra_process_buffers.pop(key)
+        return self.intra_process_buffers[key]
 
-    def reset_data(self, channel_id: str) -> None:
-        self.intra_process_channel_buffers.pop(channel_id, None)
-        self.channel_id_to_num_readers.pop(channel_id, None)
+    def reset_data(self, key: str) -> None:
+        self.intra_process_buffers.pop(key, None)
+        self.key_to_num_readers.pop(key, None)
 
     def reset_tensors(self, tensors: List["torch.Tensor"]) -> List["torch.Tensor"]:
         prev_tensors = self.tensors

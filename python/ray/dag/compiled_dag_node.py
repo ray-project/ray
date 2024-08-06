@@ -206,12 +206,12 @@ def _exec_operation(self, task: "ExecutableTask", operation: DAGNodeOperation) -
     if op_type == DAGNodeOperationType.READ:
         try:
             res = input_reader.read()
-            ctx.set_intermediate_result(idx, op_type.value, res)
+            ctx.set_data(idx, res)
         except RayChannelError:
             # Channel closed. Exit the loop.
             return True
     elif op_type == DAGNodeOperationType.COMPUTE:
-        res = ctx.get_intermediate_result(idx, DAGNodeOperationType.READ.value)
+        res = ctx.get_data(idx)
         method = getattr(self, task.method_name)
         try:
             _process_return_vals(res, return_single_output=False)
@@ -220,7 +220,7 @@ def _exec_operation(self, task: "ExecutableTask", operation: DAGNodeOperation) -
             # Propagate it and skip the actual task. We don't need to wrap the
             # exception in a RayTaskError here because it has already been wrapped
             # by the previous task.
-            ctx.set_intermediate_result(idx, op_type.value, exc)
+            ctx.set_data(idx, exc)
             return False
 
         resolved_inputs = []
@@ -231,11 +231,9 @@ def _exec_operation(self, task: "ExecutableTask", operation: DAGNodeOperation) -
             output_val = method(*resolved_inputs, **task.resolved_kwargs)
         except Exception as exc:
             output_val = _wrap_exception(exc)
-        ctx.set_intermediate_result(idx, op_type.value, output_val)
+        ctx.set_data(idx, output_val)
     elif op_type == DAGNodeOperationType.WRITE:
-        output_val = ctx.get_intermediate_result(
-            idx, DAGNodeOperationType.COMPUTE.value
-        )
+        output_val = ctx.get_data(idx)
         try:
             output_writer.write(output_val)
         except RayChannelError:

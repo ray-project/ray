@@ -185,6 +185,9 @@ class PipelineModel:
     def step(self, input_batches):
         return ray.get(self.dag.execute(input_batches))
 
+    def teardown(self):
+        self.dag.teardown()
+
 
 @ray.remote(num_cpus=0, num_gpus=1)
 class Worker:
@@ -327,6 +330,7 @@ def test_simulate_pp_4workers_8batches_1f1b(ray_start_regular, monkeypatch):
     assert len(tensors) == num_batch
     for t in tensors:
         assert torch.equal(t, tensor_cuda)
+    model.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
