@@ -21,9 +21,9 @@ class LanceDatasource(Datasource):
     # Errors to retry when reading Lance fragments.
     READ_FRAGMENTS_ERRORS_TO_RETRY = ["LanceError(IO)"]
     # Maximum number of attempts to read Lance fragments.
-    READ_FRAGMENTS_MAX_ATTEMPTS = 3
+    READ_FRAGMENTS_MAX_ATTEMPTS = 10
     # Maximum backoff seconds between attempts to read Lance fragments.
-    READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS = 10
+    READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS = 32
 
     def __init__(
         self,
