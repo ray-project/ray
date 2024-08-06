@@ -1,16 +1,17 @@
-from typing import Set, Dict, Any
+import logging
+import os
+import pathlib
+import sys
 from datetime import datetime
 from importlib import import_module
-import os
-import sys
-from jinja2.filters import FILTERS
+from typing import Any, Dict
+
 import sphinx
+from docutils import nodes
+from jinja2.filters import FILTERS
 from sphinx.ext import autodoc
 from sphinx.ext.autosummary import generate
 from sphinx.util.inspect import safe_getattr
-from docutils import nodes
-import pathlib
-import logging
 
 DEFAULT_API_GROUP = "Others"
 
@@ -24,6 +25,7 @@ from custom_directives import (  # noqa
     parse_navbar_config,
     setup_context,
     pregenerate_example_rsts,
+    generate_versions_json,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -234,7 +236,6 @@ if os.environ.get("LINKCHECK_ALL"):
         "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
         # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
         "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
-        # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
         "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
         "https://speakerdeck.com/*",  # forbidden for bots
         r"https://huggingface.co/*",  # seems to be flaky
@@ -293,6 +294,7 @@ html_theme_options = {
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "version-switcher",
         "navbar-icon-links",
         "navbar-anyscale",
     ],
@@ -304,7 +306,7 @@ html_theme_options = {
     ],
     "secondary_sidebar_items": [
         "page-toc",
-        "edit-this-page",
+        "edit-on-github",
     ],
     "content_footer_items": [
         "csat",
@@ -312,6 +314,10 @@ html_theme_options = {
     "navigation_depth": 4,
     "pygment_light_style": "stata-dark",
     "pygment_dark_style": "stata-dark",
+    "switcher": {
+        "json_url": "https://docs.ray.io/en/master/_static/versions.json",
+        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
+    },
 }
 
 html_context = {
@@ -322,7 +328,11 @@ html_context = {
 }
 
 html_sidebars = {
-    "**": ["main-sidebar"],
+    "**": [
+        "main-sidebar-readthedocs"
+        if os.getenv("READTHEDOCS") == "True"
+        else "main-sidebar"
+    ],
     "ray-overview/examples": [],
 }
 
@@ -483,6 +493,10 @@ def _autogen_apis(app: sphinx.application.Sphinx):
 
 
 def setup(app):
+    # Only generate versions JSON during RTD build
+    if os.getenv("READTHEDOCS") == "True":
+        generate_versions_json()
+
     pregenerate_example_rsts(app)
 
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since

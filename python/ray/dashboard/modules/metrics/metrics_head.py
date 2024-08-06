@@ -66,11 +66,8 @@ class PrometheusQueryError(Exception):
 
 
 class MetricsHead(dashboard_utils.DashboardHeadModule):
-    def __init__(
-        self, dashboard_head, http_session: Optional[aiohttp.ClientSession] = None
-    ):
+    def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        self.http_session = http_session or aiohttp.ClientSession()
         self.grafana_host = os.environ.get(GRAFANA_HOST_ENV_VAR, DEFAULT_GRAFANA_HOST)
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
@@ -92,7 +89,6 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # To be set later when dashboards gets generated
         self._dashboard_uids = {}
 
-        self._session = aiohttp.ClientSession()
         self._ip = dashboard_head.ip
         self._pid = os.getpid()
         self._component = "dashboard"
@@ -120,7 +116,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         )
         path = f"{self.grafana_host}/{GRAFANA_HEALTHCHECK_PATH}"
         try:
-            async with self._session.get(path) as resp:
+            async with self.http_session.get(path) as resp:
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
                         success=False,
@@ -160,7 +156,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         try:
             path = f"{self.prometheus_host}/{PROMETHEUS_HEALTHCHECK_PATH}"
 
-            async with self._session.get(path) as resp:
+            async with self.http_session.get(path) as resp:
                 if resp.status != 200:
                     return dashboard_optional_utils.rest_response(
                         success=False,

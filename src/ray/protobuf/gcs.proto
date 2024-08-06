@@ -75,11 +75,6 @@ message GcsEntry {
   repeated bytes entries = 3;
 }
 
-message ObjectTableData {
-  // The node manager ID that this object appeared on or was evicted by.
-  bytes manager = 1;
-}
-
 message ActorTableData {
   // State of an actor.
   enum ActorState {

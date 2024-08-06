@@ -11,7 +11,7 @@ from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import ResultDict
 
@@ -22,9 +22,9 @@ class BCConfigTest(AlgorithmConfig):
 
     def get_default_rl_module_spec(self):
         if self.framework_str == "torch":
-            return SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule)
+            return RLModuleSpec(module_class=DiscreteBCTorchModule)
         elif self.framework_str == "tf2":
-            return SingleAgentRLModuleSpec(module_class=DiscreteBCTFModule)
+            return RLModuleSpec(module_class=DiscreteBCTFModule)
 
     def get_default_learner_class(self):
         if self.framework_str == "torch":

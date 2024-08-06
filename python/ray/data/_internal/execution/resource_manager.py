@@ -3,9 +3,8 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
-import ray
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -39,9 +38,15 @@ class ResourceManager:
     # when `ReservationOpResourceAllocator` is not enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION = 0.25
 
-    def __init__(self, topology: "Topology", options: ExecutionOptions):
+    def __init__(
+        self,
+        topology: "Topology",
+        options: ExecutionOptions,
+        get_total_resources: Callable[[], ExecutionResources],
+    ):
         self._topology = topology
         self._options = options
+        self._get_total_resources = get_total_resources
         self._global_limits = ExecutionResources.zero()
         self._global_limits_last_update_time = 0
         self._global_usage = ExecutionResources.zero()
@@ -155,20 +160,14 @@ class ResourceManager:
         self._global_limits_last_update_time = time.time()
         default_limits = self._options.resource_limits
         exclude = self._options.exclude_resources
-        cluster = ray.cluster_resources()
+        total_resources = self._get_total_resources()
         default_mem_fraction = (
             self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
             if self.op_resource_allocator_enabled()
             else self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION
         )
-        cluster_resources = ExecutionResources(
-            cpu=cluster.get("CPU", 0.0),
-            gpu=cluster.get("GPU", 0.0),
-            object_store_memory=round(
-                default_mem_fraction * cluster.get("object_store_memory", 0.0)
-            ),
-        )
-        self._global_limits = default_limits.min(cluster_resources).subtract(exclude)
+        total_resources.object_store_memory *= default_mem_fraction
+        self._global_limits = default_limits.min(total_resources).subtract(exclude)
         return self._global_limits
 
     def get_op_usage(self, op: PhysicalOperator) -> ExecutionResources:

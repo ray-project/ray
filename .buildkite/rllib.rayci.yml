@@ -45,7 +45,7 @@ steps:
 
   - label: ":brain: rllib: learning tests pytorch"
     tags: rllib
-    parallelism: 4
+    parallelism: 5
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
@@ -63,7 +63,7 @@ steps:
 
   - label: ":brain: rllib: examples"
     tags: rllib
-    parallelism: 3
+    parallelism: 4
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
@@ -151,16 +151,6 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib --only-tags torch_2.x_only_benchmark
-    depends_on: rllibbuild
-
-  - label: ":brain: rllib: memory leak tf2-eager-tracing tests"
-    tags: rllib
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
-        --only-tags memory_leak_tests
-        --except-tags flaky
-        --test-arg --framework=tf2
     depends_on: rllibbuild
 
   - label: ":brain: rllib: memory leak pytorch tests"

@@ -40,11 +40,11 @@ template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Get(const Key &key,
                                 const OptionalItemCallback<Data> &callback) {
   auto on_done = [callback](const Status &status,
-                            const boost::optional<std::string> &result) {
+                            const std::optional<std::string> &result) {
     if (!callback) {
       return;
     }
-    boost::optional<Data> value;
+    std::optional<Data> value;
     if (result) {
       Data data;
       data.ParseFromString(*result);

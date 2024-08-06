@@ -49,7 +49,7 @@ Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto iter = table->records_.find(key);
-  boost::optional<std::string> data;
+  std::optional<std::string> data;
   if (iter != table->records_.end()) {
     data = iter->second;
   }
