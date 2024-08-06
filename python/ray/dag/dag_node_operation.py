@@ -36,6 +36,7 @@ class DAGNodeOperation:
         self.type = operation_type
 
 
+@DeveloperAPI
 @total_ordering
 class DAGOperationGraphNode:
     def __init__(self, operation: DAGNodeOperation, idx, dag_node):
