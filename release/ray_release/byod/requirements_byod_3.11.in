@@ -1,1 +1,3 @@
 # Python requirements to run release tests from anyscale byod (cpu type)
+
+dask[complete]
