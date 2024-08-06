@@ -100,6 +100,7 @@ def do_exec_tasks(
 
     Args:
         tasks: the executable tasks corresponding to the actor methods.
+        schedule: A list of `DAGNodeOperations` that should be executed in order.
     """
     try:
         for task in tasks:
