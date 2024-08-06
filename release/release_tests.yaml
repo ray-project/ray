@@ -2302,8 +2302,8 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py311
-      python: "3.11"
+    - __suffix__: aws.py312
+      python: "3.12"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -2918,9 +2918,6 @@
       frequency: manual
       cluster:
         cluster_compute: tpl_64_gce.yaml
-    - __suffix__: aws.py311
-      frequency: weekly
-      python: "3.11"
     - __suffix__: aws.py312
       frequency: weekly
       python: "3.12"
@@ -3106,9 +3103,9 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py311
+    - __suffix__: aws.py312
       frequency: manual
-      python: "3.11"
+      python: "3.12"
       smoke_test:
         frequency: nightly-3x
     - __suffix__: gce
