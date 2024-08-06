@@ -1,3 +1,4 @@
 # Python requirements to run release tests from anyscale byod (cpu type)
 
 dask[complete]
+pandas==1.5.3
