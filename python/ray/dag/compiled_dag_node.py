@@ -37,42 +37,14 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
     _destroy_nccl_group,
 )
 
+from ray.dag.dag_node_operation import (
+    DAGNodeOperation,
+    DAGNodeOperationType,
+    DAGOperationGraphNode,
+)
+
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from enum import Enum
 import heapq
-
-
-@DeveloperAPI
-class DAGNodeOperationType(Enum):
-    """
-    There are three types of operations that a DAG node can perform:
-    1. READ: Read from an input channel.
-    2. COMPUTE: Execute the method corresponding to the node.
-    3. WRITE: Write to an output channel.
-    """
-
-    READ = "READ"
-    COMPUTE = "COMPUTE"
-    WRITE = "WRITE"
-
-
-@DeveloperAPI
-class DAGNodeOperation:
-    def __init__(
-        self,
-        idx: int,
-        operation_type: DAGNodeOperationType,
-    ):
-        """
-        Args:
-            idx: The index of the task that this operation belongs to
-                in the actor's ExecutableTask list. The index is not
-                the same as bind_index, but there are positive correlations
-                between the two.
-            operation_type: The type of operation to perform.
-        """
-        self.idx = idx
-        self.type = operation_type
 
 
 # Holds the input arguments for an accelerated DAG node.
@@ -1126,8 +1098,8 @@ class CompiledDAG:
 
         Step 1: Generate a graph based on the following rules:
 
-        #1  Divide a DAG node into three GraphNodes: READ, COMPUTE, and WRITE. Each
-            GraphNode has a DAGNodeOperation.
+        #1  Divide a DAG node into three DAGOperationGraphNodes: READ, COMPUTE,
+            and WRITE. Each DAGOperationGraphNode has a DAGNodeOperation.
         #2  Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
             belong to the same task.
         #3  Add an edge from COMPUTE with bind_index i to COMPUTE with bind_index
@@ -1136,8 +1108,8 @@ class CompiledDAG:
 
         Step 2: Topological sort
 
-        If there are multiple GraphNodes with zero in-degree, select one based on
-        the following rules:
+        If there are multiple DAGOperationGraphNodes with zero in-degree, select
+        one based on the following rules:
 
         #1  If the nodes are not NCCL write nodes, select the one with the smallest
             `bind_index`. If there are multiple candidate nodes with the smallest
@@ -1167,41 +1139,7 @@ class CompiledDAG:
         assert self.actor_to_executable_tasks
         assert not self.actor_to_execution_schedule
 
-        from functools import total_ordering
-
-        @total_ordering
-        class GraphNode:
-            def __init__(self, operation: DAGNodeOperation, idx, dag_node):
-                self.operation = operation
-                self.idx = idx
-                assert isinstance(dag_node, ClassMethodNode)
-                self.actor_handle = dag_node._get_actor_handle()
-                self.requires_nccl = dag_node.type_hint.requires_nccl()
-                self.in_edges = set()
-                self.out_edges = set()
-
-            @property
-            def in_degree(self) -> int:
-                return len(self.in_edges)
-
-            def __lt__(self, other):
-                assert self.actor_handle == other.actor_handle
-                return self.operation.idx < other.operation.idx
-
-            def __eq__(self, other):
-                assert self.actor_handle == other.actor_handle
-                if self.operation.idx == other.operation.idx:
-                    return self.operation.type == other.operation.type
-                return False
-
-            def __hash__(self):
-                return hash((self.operation, self.idx))
-
-        def _add_edge(in_node: GraphNode, out_node: GraphNode):
-            in_node.out_edges.add((out_node.idx, out_node.operation.type))
-            out_node.in_edges.add((in_node.idx, in_node.operation.type))
-
-        graph: Dict[int, Dict[DAGNodeOperationType, GraphNode]] = {}
+        graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]] = {}
 
         from ray.dag import (
             ClassMethodNode,
@@ -1212,25 +1150,25 @@ class CompiledDAG:
             prev_compute_node = None
             for local_idx, exec_task in enumerate(executable_tasks):
                 idx = exec_task.idx
-                read_node = GraphNode(
+                read_node = DAGOperationGraphNode(
                     DAGNodeOperation(local_idx, DAGNodeOperationType.READ),
                     idx,
                     self.idx_to_task[idx].dag_node,
                 )
-                compute_node = GraphNode(
+                compute_node = DAGOperationGraphNode(
                     DAGNodeOperation(local_idx, DAGNodeOperationType.COMPUTE),
                     idx,
                     self.idx_to_task[idx].dag_node,
                 )
-                write_node = GraphNode(
+                write_node = DAGOperationGraphNode(
                     DAGNodeOperation(local_idx, DAGNodeOperationType.WRITE),
                     idx,
                     self.idx_to_task[idx].dag_node,
                 )
-                _add_edge(read_node, compute_node)
-                _add_edge(compute_node, write_node)
+                read_node.add_edge(compute_node)
+                compute_node.add_edge(write_node)
                 if prev_compute_node is not None:
-                    _add_edge(prev_compute_node, compute_node)
+                    prev_compute_node.add_edge(compute_node)
                 prev_compute_node = compute_node
                 graph[idx] = {
                     DAGNodeOperationType.READ: read_node,
@@ -1245,9 +1183,8 @@ class CompiledDAG:
                 downstream_dag_node = self.idx_to_task[downstream_idx].dag_node
                 if isinstance(downstream_dag_node, MultiOutputNode):
                     continue
-                _add_edge(
-                    graph[idx][DAGNodeOperationType.WRITE],
-                    graph[downstream_idx][DAGNodeOperationType.READ],
+                graph[idx][DAGNodeOperationType.WRITE].add_edge(
+                    graph[downstream_idx][DAGNodeOperationType.READ]
                 )
 
         actor_to_candidates = defaultdict(list)
