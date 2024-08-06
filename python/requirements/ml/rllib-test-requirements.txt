@@ -4,7 +4,7 @@
 # ---------------------
 # Atari
 gymnasium==0.28.1; python_version < "3.12"
-imageio==2.31.1; python_version < "3.12"
+imageio; python_version < "3.12"
 ale_py==0.8.1; python_version < "3.12"
 # For testing MuJoCo envs with gymnasium.
 mujoco==2.3.6; python_version < "3.12"

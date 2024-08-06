@@ -8,7 +8,7 @@ import pytest
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
-from ray.data.datasource.tfrecords_datasource import TFXReadOptions
+from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.tests.conftest import *  # noqa: F401,F403
 
 if TYPE_CHECKING:
