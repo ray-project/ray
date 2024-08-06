@@ -137,6 +137,57 @@ def _wrap_exception(exc):
     return wrapped
 
 
+def _select_next_nodes(actor_to_candidates, graph):
+    """
+    Select the next nodes for topological sort. This function may return
+    multiple nodes if they are NCCL nodes. In that case, this function only
+    removes the NCCL write node, which is also the head of a priority queue.
+    Other nodes will be removed in the following iterations. Additionally,
+    visited_nodes ensures that the same node will not be scheduled more than
+    once.
+    """
+    next_nodes = []
+    first_nccl_node = None
+    for _, candidates in actor_to_candidates.items():
+        if (
+            not candidates[0].requires_nccl
+            or candidates[0].operation.type != DAGNodeOperationType.WRITE
+        ):
+            next_nodes.append(heapq.heappop(candidates))
+            return next_nodes
+        if first_nccl_node is None:
+            first_nccl_node = candidates[0]
+        is_next_node = True
+        for downstream_node_metadata in candidates[0].out_edges:
+            downstream_node = graph[downstream_node_metadata[0]][
+                downstream_node_metadata[1]
+            ]
+            downstream_node_actor = downstream_node.actor_handle
+            if (
+                downstream_node_actor not in actor_to_candidates
+                or downstream_node != actor_to_candidates[downstream_node_actor][0]
+            ):
+                is_next_node = False
+                break
+        if is_next_node:
+            next_nodes.append(heapq.heappop(candidates))
+            for downstream_node_metadata in next_nodes[0].out_edges:
+                downstream_node = graph[downstream_node_metadata[0]][
+                    downstream_node_metadata[1]
+                ]
+                next_nodes.append(downstream_node)
+            return next_nodes
+
+    assert first_nccl_node is not None
+    next_nodes.append(heapq.heappop(actor_to_candidates[first_nccl_node.actor_handle]))
+    for downstream_node_metadata in first_nccl_node.out_edges:
+        downstream_node = graph[downstream_node_metadata[0]][
+            downstream_node_metadata[1]
+        ]
+        next_nodes.append(downstream_node)
+    return next_nodes
+
+
 @DeveloperAPI
 class CompiledTask:
     """Wraps the normal Ray DAGNode with some metadata."""
@@ -1203,62 +1254,9 @@ class CompiledDAG:
 
         visited_nodes = set()
 
-        def _select_next_nodes():
-            """
-            Select the next nodes for topological sort. This function may return
-            multiple nodes if they are NCCL nodes. In that case, this function only
-            removes the NCCL write node, which is also the head of a priority queue.
-            Other nodes will be removed in the following iterations. Additionally,
-            visited_nodes ensures that the same node will not be scheduled more than
-            once.
-            """
-            next_nodes = []
-            first_nccl_node = None
-            for _, candidates in actor_to_candidates.items():
-                if (
-                    not candidates[0].requires_nccl
-                    or candidates[0].operation.type != DAGNodeOperationType.WRITE
-                ):
-                    next_nodes.append(heapq.heappop(candidates))
-                    return next_nodes
-                if first_nccl_node is None:
-                    first_nccl_node = candidates[0]
-                is_next_node = True
-                for downstream_node_metadata in candidates[0].out_edges:
-                    downstream_node = graph[downstream_node_metadata[0]][
-                        downstream_node_metadata[1]
-                    ]
-                    downstream_node_actor = downstream_node.actor_handle
-                    if (
-                        downstream_node_actor not in actor_to_candidates
-                        or downstream_node
-                        != actor_to_candidates[downstream_node_actor][0]
-                    ):
-                        is_next_node = False
-                        break
-                if is_next_node:
-                    next_nodes.append(heapq.heappop(candidates))
-                    for downstream_node_metadata in next_nodes[0].out_edges:
-                        downstream_node = graph[downstream_node_metadata[0]][
-                            downstream_node_metadata[1]
-                        ]
-                        next_nodes.append(downstream_node)
-                    return next_nodes
-
-            assert first_nccl_node is not None
-            next_nodes.append(
-                heapq.heappop(actor_to_candidates[first_nccl_node.actor_handle])
-            )
-            for downstream_node_metadata in first_nccl_node.out_edges:
-                downstream_node = graph[downstream_node_metadata[0]][
-                    downstream_node_metadata[1]
-                ]
-                next_nodes.append(downstream_node)
-            return next_nodes
-
         # Step 2: Topological sort
         while actor_to_candidates:
-            nodes = _select_next_nodes()
+            nodes = _select_next_nodes(actor_to_candidates, graph)
             for node in nodes:
                 if node in visited_nodes:
                     continue
