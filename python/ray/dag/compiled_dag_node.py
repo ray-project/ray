@@ -140,9 +140,9 @@ def _wrap_exception(exc):
 
 def _select_next_nodes(actor_to_candidates, graph):
     """
-    This function selects the next nodes for topological sort. If there are
-    multiple DAGOperationGraphNodes with zero in-degree, select nodes based on
-    the following rules:
+    This function selects the next nodes for topological sort to generate execution
+    schedule. If there are multiple DAGOperationGraphNodes with zero in-degree,
+    select nodes based on the following rules:
 
     #1  If the nodes are not NCCL write nodes, select the one with the smallest
         `bind_index`. If there are multiple candidate nodes with the smallest
