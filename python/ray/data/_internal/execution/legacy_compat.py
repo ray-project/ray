@@ -5,7 +5,6 @@ It should be deleted once we fully move to the new executor backend.
 
 from typing import Iterator, Optional, Tuple
 
-from ray.data._internal.block_list import BlockList
 from ray.data._internal.execution.interfaces import (
     Executor,
     PhysicalOperator,

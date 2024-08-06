@@ -1410,7 +1410,7 @@ class Dataset:
         blocks_with_metadata = list(
             itertools.chain.from_iterable(bundle.blocks for bundle in bundles)
         )
-        owned_by_consumer = bundle.owns_blocks
+        owned_by_consumer = any(bundle.owns_blocks for bundle in bundles)
         stats = self._plan.stats()
         block_refs, metadata = zip(*blocks_with_metadata)
 

@@ -21,7 +21,6 @@ from ray.data._internal.datasource.parquet_datasource import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
-from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD

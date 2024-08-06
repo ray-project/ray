@@ -11,7 +11,6 @@ from packaging.version import Version
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
