@@ -1206,12 +1206,9 @@ class CompiledDAG:
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
 
-    def _build_execution_schedule(self):
+    def _build_dag_node_operation_graph(self):
         """
-        Generate an execution schedule for each actor. The schedule is a list of
-        DAGNodeOperation.
-
-        Step 1: Generate a graph based on the following rules:
+        Generate a DAG node operation graph based on the following rules:
 
         #1  Divide a DAG node into three DAGOperationGraphNodes: READ, COMPUTE,
             and WRITE. Each DAGOperationGraphNode has a DAGNodeOperation.
@@ -1221,20 +1218,10 @@ class CompiledDAG:
             i+1 if they belong to the same actor.
         #4  Add an edge from WRITE of the writer task to READ of the reader task.
 
-        Step 2: Topological sort
+        This is the step one of building an execution schedule for each actor.
 
-        It is possible to have multiple DAGOperationGraphNodes with zero in-degree.
-        Refer to the function `_select_next_nodes` for the logic of selecting nodes.
-
-        Then, put the selected nodes into the corresponding actors' schedules.
-
-        The goal of the above rules is to build a schedule with fewer bubbles. The
-        schedule should be intuitive to users, meaning that the execution should
-        perform operations in ascending order of `bind_index` as much as possible.
-
-        [Example]:
-
-        See `test_execution_schedule` for more examples.
+        Returns:
+            A graph that each node is a DAGOperationGraphNode.
         """
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
@@ -1295,6 +1282,32 @@ class CompiledDAG:
                 graph[idx][DAGNodeOperationType.WRITE].add_edge(
                     graph[downstream_idx][DAGNodeOperationType.READ]
                 )
+        return graph
+
+    def _build_execution_schedule(self):
+        """
+        Generate an execution schedule for each actor. The schedule is a list of
+        DAGNodeOperation.
+
+        Step 1: Generate a DAG node operation graph. Refer to the function
+        `_build_dag_node_operation_graph` for more details.
+
+        Step 2: Topological sort
+
+        It is possible to have multiple DAGOperationGraphNodes with zero in-degree.
+        Refer to the function `_select_next_nodes` for the logic of selecting nodes.
+
+        Then, put the selected nodes into the corresponding actors' schedules.
+
+        The goal of the above rules is to build a schedule with fewer bubbles. The
+        schedule should be intuitive to users, meaning that the execution should
+        perform operations in ascending order of `bind_index` as much as possible.
+
+        [Example]:
+
+        See `test_execution_schedule` for more examples.
+        """
+        graph = self._build_dag_node_operation_graph()
 
         actor_to_candidates = defaultdict(list)
         for idx, node_dict in graph.items():
@@ -1328,8 +1341,6 @@ class CompiledDAG:
                     delete_keys.append(actor_handle)
             for key in delete_keys:
                 del actor_to_candidates[key]
-
-        # TODO: Check whether topological sort exists or not.
 
     def _detect_deadlock(self) -> bool:
         """
