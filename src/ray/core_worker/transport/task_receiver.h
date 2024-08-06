@@ -48,7 +48,7 @@
 namespace ray {
 namespace core {
 
-class CoreWorkerDirectTaskReceiver {
+class TaskReceiver {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec,
@@ -63,10 +63,10 @@ class CoreWorkerDirectTaskReceiver {
 
   using OnActorCreationTaskDone = std::function<Status()>;
 
-  CoreWorkerDirectTaskReceiver(WorkerContext &worker_context,
-                               instrumented_io_context &main_io_service,
-                               const TaskHandler &task_handler,
-                               const OnActorCreationTaskDone &actor_creation_task_done_)
+  TaskReceiver(WorkerContext &worker_context,
+               instrumented_io_context &main_io_service,
+               const TaskHandler &task_handler,
+               const OnActorCreationTaskDone &actor_creation_task_done_)
       : worker_context_(worker_context),
         task_handler_(task_handler),
         task_main_io_service_(main_io_service),
