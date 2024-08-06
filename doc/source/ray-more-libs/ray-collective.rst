@@ -18,7 +18,7 @@ Ray collective communication library
 
 * enables 10x more efficient out-of-band collective communication between Ray actor and task processes,
 * operates on both distributed CPUs and GPUs,
-* uses NCCL and GLOO as the optional high-performance communication backends,
+* uses NCCL as the optional high-performance communication backends,
 * is suitable for distributed ML programs on Ray.
 
 Collective Primitives Support Matrix
@@ -30,68 +30,42 @@ See below the current support matrix for all collective calls with different bac
    :header-rows: 1
 
    * - Backend
-     - `gloo <https://github.com/ray-project/pygloo>`_
-     -
      - `nccl <https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/index.html>`_
      -
    * - Device
      - CPU
      - GPU
-     - CPU
-     - GPU
    * - send
-     - ✔
-     - ✘
      - ✘
      - ✔
    * - recv
-     - ✔
-     - ✘
      - ✘
      - ✔
    * - broadcast
-     - ✔
-     - ✘
      - ✘
      - ✔
    * - allreduce
-     - ✔
-     - ✘
      - ✘
      - ✔
    * - reduce
-     - ✔
-     - ✘
      - ✘
      - ✔
    * - allgather
-     - ✔
-     - ✘
      - ✘
      - ✔
    * - gather
      - ✘
      - ✘
-     - ✘
-     - ✘
    * - scatter
      - ✘
      - ✘
-     - ✘
-     - ✘
    * - reduce_scatter
-     - ✔
-     - ✘
      - ✘
      - ✔
    * - all-to-all
      - ✘
      - ✘
-     - ✘
-     - ✘
    * - barrier
-     - ✔
-     - ✘
      - ✘
      - ✔
 
@@ -110,12 +84,10 @@ Usage
 Installation and Importing
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Ray collective library is bundled with the released Ray wheel. Besides Ray, users need to install either `pygloo <https://github.com/ray-project/pygloo>`_
-or `cupy <https://docs.cupy.dev/en/stable/install.html>`_ in order to use collective communication with the GLOO and NCCL backend, respectively.
+Ray collective library is bundled with the released Ray wheel. Besides Ray, users also need to install `cupy <https://docs.cupy.dev/en/stable/install.html>`_ in order to use collective communication with the NCCL backend.
 
 .. code-block:: python
 
-   pip install pygloo
    pip install cupy-cudaxxx # replace xxx with the right cuda version in your environment
 
 To use these APIs, import the collective package in your actor/task or driver code via:

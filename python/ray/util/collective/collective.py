@@ -9,7 +9,6 @@ import ray
 from ray.util.collective import types
 
 _NCCL_AVAILABLE = True
-_GLOO_AVAILABLE = True
 
 logger = logging.getLogger(__name__)
 
@@ -23,18 +22,14 @@ except ImportError:
         "https://docs.cupy.dev/en/stable/install.html."
     )
 
-try:
-    from ray.util.collective.collective_group.gloo_collective_group import GLOOGroup
-except ImportError:
-    _GLOO_AVAILABLE = False
-
 
 def nccl_available():
     return _NCCL_AVAILABLE
 
 
 def gloo_available():
-    return _GLOO_AVAILABLE
+    # pygloo has no release on Python 3.9+ anymore.
+    return False
 
 
 class GroupManager(object):
@@ -59,16 +54,7 @@ class GroupManager(object):
         if backend == types.Backend.MPI:
             raise RuntimeError("Ray does not support MPI.")
         elif backend == types.Backend.GLOO:
-            logger.debug("Creating GLOO group: '{}'...".format(group_name))
-            g = GLOOGroup(
-                world_size,
-                rank,
-                group_name,
-                store_type="ray_internal_kv",
-                device_type="tcp",
-            )
-            self._name_group_map[group_name] = g
-            self._group_name_map[g] = group_name
+            raise RuntimeError("Ray does not support pygloo any more.")
         elif backend == types.Backend.NCCL:
             logger.debug("Creating NCCL group: '{}'...".format(group_name))
             g = NCCLGroup(world_size, rank, group_name)
