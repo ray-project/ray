@@ -448,6 +448,7 @@ def _is_api_group(obj, group):
 FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
 FILTERS["get_api_groups"] = get_api_groups
 FILTERS["select_api_group"] = select_api_group
+FILTERS["has_public_constructor"] = has_public_constructor
 
 
 def add_custom_assets(

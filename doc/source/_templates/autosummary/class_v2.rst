@@ -1,9 +1,9 @@
-{{ name }}
-{{ '-' * name | length }}
-
 .. currentmodule:: {{ module }}
 
 {% if name | has_public_constructor(module) %}
+{{ name }}
+{{ '-' * name | length }}
+
 .. autoclass:: {{ objname }}
 {% endif %}
 
