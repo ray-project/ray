@@ -100,15 +100,11 @@ ERROR_TYPE = [
     "OUT_OF_MEMORY",
     "NODE_DIED",
     "END_OF_STREAMING_GENERATOR",
-    "ACTOR_UNAVAILABLE"
+    "ACTOR_UNAVAILABLE",
 ]
 # The Language enum is used in the export API so it is public
 # and any modifications must be backward compatible.
-LANGUAGE = [
-    "PYTHON",
-    "JAVA,
-    "CPP"
-]
+LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
