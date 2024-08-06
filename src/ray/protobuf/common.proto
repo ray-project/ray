@@ -22,6 +22,8 @@ import "src/ray/protobuf/runtime_env_common.proto";
 option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
+// Note: The Language enum is used in the export API so it is public
+// and any modifications must be backward compatible.
 enum Language {
   PYTHON = 0;
   JAVA = 1;

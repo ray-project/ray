@@ -4,6 +4,7 @@ from ray.core.generated.common_pb2 import (
     WorkerExitType,
     WorkerType,
     ErrorType,
+    Language,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
@@ -101,6 +102,13 @@ ERROR_TYPE = [
     "END_OF_STREAMING_GENERATOR",
     "ACTOR_UNAVAILABLE"
 ]
+# The Language enum is used in the export API so it is public
+# and any modifications must be backward compatible.
+LANGUAGE = [
+    "PYTHON",
+    "JAVA,
+    "CPP"
+]
 
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
@@ -125,3 +133,4 @@ validate_protobuf_enum(WorkerType, WORKER_TYPE)
 validate_protobuf_enum(WorkerExitType, WORKER_EXIT_TYPE)
 validate_protobuf_enum(TaskType, TASK_TYPE)
 validate_protobuf_enum(ErrorType, ERROR_TYPE)
+validate_protobuf_enum(Language, LANGUAGE)
