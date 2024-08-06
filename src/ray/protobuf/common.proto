@@ -178,6 +178,8 @@ message ConcurrencyGroup {
 // TODO(hchen): We may want to make these errors more specific. E.g., we may
 // want to distinguish between intentional and expected actor failures, and
 // between worker process failure and node failure.
+// Note: The ErrorType enum is used in the export API so it is public
+// and any modifications must be backward compatible.
 enum ErrorType {
   // Indicates that a task failed because the worker died unexpectedly while
   // executing it.
