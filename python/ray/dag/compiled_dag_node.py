@@ -393,8 +393,13 @@ class ExecutableTask:
             assert not isinstance(val, ChannelInterface)
             assert not isinstance(val, DAGInputAdapter)
 
+        # Input reader to read input data from upstream DAG nodes.
         self.input_reader: ReaderInterface = SynchronousReader(self.input_channels)
+        # Output writer to write output data to downstream DAG nodes.
         self.output_writer: WriterInterface = SynchronousWriter(self.output_channel)
+        # Store the intermediate result of a READ or COMPUTE operation.
+        # The result of a READ operation will be used by a COMPUTE operation,
+        # and the result of a COMPUTE operation will be used by a WRITE operation.
         self._cache = None
 
     def cancel(self):
@@ -402,6 +407,10 @@ class ExecutableTask:
         self.output_writer.close()
 
     def prepare(self):
+        """
+        Prepare the task for execution. The `exec_operation` function can only
+        be called after `prepare` has been called.
+        """
         for typ_hint in self.input_type_hints:
             typ_hint.register_custom_serializer()
         self.output_type_hint.register_custom_serializer()
@@ -417,6 +426,9 @@ class ExecutableTask:
         return data
 
     def _read(self):
+        """
+        Read input data from upstream DAG nodes and cache the intermediate result.
+        """
         try:
             res = self.input_reader.read()
             self.set_cache(res)
@@ -425,9 +437,15 @@ class ExecutableTask:
             # Channel closed. Exit the loop.
             return True
 
-    def _compute(self, actor_handle):
+    def _compute(self, class_handle):
+        """
+        Retrieve the intermediate result from the READ operation and perform the
+        computation. Then, cache the new intermediate result. The caller must ensure
+        that the last operation executed is READ so that the function retrieves the
+        correct intermediate result.
+        """
         res = self.reset_cache()
-        method = getattr(actor_handle, self.method_name)
+        method = getattr(class_handle, self.method_name)
         try:
             _process_return_vals(res, return_single_output=False)
         except Exception as exc:
@@ -450,6 +468,11 @@ class ExecutableTask:
         return False
 
     def _write(self):
+        """
+        Retrieve the intermediate result from the COMPUTE operation and write to its
+        downstream DAG nodes. The caller must ensure that the last operation executed
+        is COMPUTE so that the function retrieves the correct intermediate result.
+        """
         output_val = self.reset_cache()
         try:
             self.output_writer.write(output_val)
@@ -458,11 +481,25 @@ class ExecutableTask:
             # Channel closed. Exit the loop.
             return True
 
-    def exec_operation(self, actor_handle, op_type):
+    def exec_operation(self, class_handle, op_type: DAGNodeOperationType):
+        """
+        An ExecutableTask corresponds to a DAGNode. It consists of three
+        operations: READ, COMPUTE, and WRITE, which should be executed in
+        order to ensure that each operation can read the correct intermediate
+        result.
+
+        Args:
+            class_handle: The handle of the class to which the actor belongs.
+            op_type: The type of the operation. Possible types are READ,
+                COMPUTE, and WRITE.
+
+        Returns:
+            True if the next operation should not be executed; otherwise, False.
+        """
         if op_type == DAGNodeOperationType.READ:
             return self._read()
         elif op_type == DAGNodeOperationType.COMPUTE:
-            return self._compute(actor_handle)
+            return self._compute(class_handle)
         elif op_type == DAGNodeOperationType.WRITE:
             return self._write()
 
