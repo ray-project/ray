@@ -16,5 +16,3 @@ accelerate==0.28.0
 
 # Cloud storage tools
 s3fs==2023.5.0
-
-nvidia-nccl-cu12==2.20.5
