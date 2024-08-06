@@ -54,10 +54,20 @@ class DAGOperationGraphNode:
         return len(self.in_edges)
 
     def __lt__(self, other):
+        """
+        Two DAGOperationGraphNodes are comparable only when they belong to
+        the same actor. For operations on the same actor, if idx is smaller,
+        the DAGNode to which this operation belongs has a smaller `bind_index`.
+        """
         assert self.actor_handle == other.actor_handle
         return self.operation.idx < other.operation.idx
 
     def __eq__(self, other):
+        """
+        Two DAGOperationGraphNodes are comparable only when they belong to the
+        same actor. For operations on the same actor, two operations are equal
+        only when they have the same `idx` and `type`.
+        """
         assert self.actor_handle == other.actor_handle
         if self.operation.idx == other.operation.idx:
             return self.operation.type == other.operation.type
