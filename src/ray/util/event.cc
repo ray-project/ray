@@ -119,13 +119,14 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
   if (export_event.has_task_event_data()) {
-    RAY_CHECK(google::protobuf::util::MessageToJsonString(export_event.task_event_data(),
-                                                      &event_data_as_string, options)
-              .ok());
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  export_event.task_event_data(), &event_data_as_string, options)
+                  .ok());
   } else {
-    RAY_LOG(ERROR) << "event_data missing from export event with id " << export_event.event_id()
-                     << "and type " << ExportEvent_SourceType_Name(export_event.source_type())
-                     << ". An empty event will be written, and this indicates a bug in the code.";
+    RAY_LOG(ERROR)
+        << "event_data missing from export event with id " << export_event.event_id()
+        << "and type " << ExportEvent_SourceType_Name(export_event.source_type())
+        << ". An empty event will be written, and this indicates a bug in the code.";
     event_data_as_string = "{}";
   }
   json event_data_as_json = json::parse(event_data_as_string);
@@ -382,7 +383,8 @@ void RayEvent::SendMessage(const std::string &message) {
 
     std::string event_data_type_name = export_event_data_ptr_->GetTypeName();
     if (event_data_type_name == "ray.rpc.ExportTaskEventData") {
-      rpc::ExportTaskEventData *task_event_data_ptr = dynamic_cast<rpc::ExportTaskEventData*>(export_event_data_ptr_.get());
+      rpc::ExportTaskEventData *task_event_data_ptr =
+          dynamic_cast<rpc::ExportTaskEventData *>(export_event_data_ptr_.get());
       export_event.mutable_task_event_data()->CopyFrom(*task_event_data_ptr);
     } else {
       throw std::invalid_argument("Invalid event_data type: " + event_data_type_name);

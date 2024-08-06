@@ -19,7 +19,6 @@ package ray.rpc;
 
 /// The runtime env information which is transferred between ray core processes.
 message ExportRuntimeEnvInfo {
-
   message RuntimeEnvUris {
     /// working dir uri
     string working_dir_uri = 1;

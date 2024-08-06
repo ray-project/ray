@@ -278,7 +278,8 @@ class RayEvent {
     return *this;
   }
 
-  RayEvent &WithExportEventData(std::unique_ptr<google::protobuf::Message> event_data_ptr) {
+  RayEvent &WithExportEventData(
+      std::unique_ptr<google::protobuf::Message> event_data_ptr) {
     export_event_data_ptr_ = std::move(event_data_ptr);
     return *this;
   }

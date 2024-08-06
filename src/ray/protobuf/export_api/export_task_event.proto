@@ -20,9 +20,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/export_api/export_runtime_env.proto";
 
-
 message ExportTaskEventData {
-
   /// The information per ray error type.
   message RayErrorInfo {
     string error_message = 5;
@@ -59,7 +57,8 @@ message ExportTaskEventData {
     // Is task paused by debugger.
     optional bool is_debugger_paused = 13;
     // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
-    // Value is the timestamp when status changes to the target status indicated by the key.
+    // Value is the timestamp when status changes to the target status indicated by the
+    // key.
     map<int32, int64> state_ts_ns = 14;
   }
 
@@ -111,7 +110,6 @@ message ExportTaskEventData {
     // Events.
     repeated ProfileEventEntry events = 4;
   }
-
 
   // Metadata shared by all event types.
   bytes task_id = 1;
