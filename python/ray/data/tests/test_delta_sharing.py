@@ -92,7 +92,7 @@ class TestDeltaSharingDatasource(unittest.TestCase):
         self.assertTrue(all(isinstance(task, ReadTask) for task in read_tasks))
 
         for task in read_tasks:
-            metadata = task.get_metadata()
+            metadata = task.metadata
             self.assertIsInstance(metadata, BlockMetadata)
             self.assertEqual(len(metadata.input_files), 1)
             self.assertTrue(metadata.input_files[0]["url"] in ["file1", "file2"])

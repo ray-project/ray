@@ -37,8 +37,8 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/transport/normal_task_submitter.h"
+#include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
@@ -1112,11 +1112,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &event_name);
 
   int64_t GetNumTasksSubmitted() const {
-    return direct_task_submitter_->GetNumTasksSubmitted();
+    return normal_task_submitter_->GetNumTasksSubmitted();
   }
 
   int64_t GetNumLeasesRequested() const {
-    return direct_task_submitter_->GetNumLeasesRequested();
+    return normal_task_submitter_->GetNumLeasesRequested();
   }
 
  public:
@@ -1851,7 +1851,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
   // Interface to submit non-actor tasks directly to leased workers.
-  std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
+  std::unique_ptr<NormalTaskSubmitter> normal_task_submitter_;
 
   /// Manages recovery of objects stored in remote plasma nodes.
   std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
@@ -1906,7 +1906,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<DependencyWaiterImpl> task_argument_waiter_;
 
   // Interface that receives tasks from direct actor calls.
-  std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
+  std::unique_ptr<TaskReceiver> task_receiver_;
 
   /// Event loop where tasks are processed.
   /// task_execution_service_ should be destructed first to avoid

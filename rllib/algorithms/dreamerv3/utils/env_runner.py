@@ -484,6 +484,15 @@ class DreamerV3EnvRunner(EnvRunner):
 
         return done_episodes_to_return
 
+    def get_spaces(self):
+        return {
+            "__env__": (self.env.observation_space, self.env.action_space),
+            DEFAULT_MODULE_ID: (
+                self.env.single_observation_space,
+                self.env.single_action_space,
+            ),
+        }
+
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
         for eps in self._done_episodes_for_metrics:

@@ -177,5 +177,37 @@ def test_is_deprecated():
     ).is_deprecated()
 
 
+def test_split_good_and_bad_apis():
+    good_apis, bad_apis = API.split_good_and_bad_apis(
+        {
+            "a.b.public_function": API(
+                name="a.b.public_function",
+                annotation_type=AnnotationType.PUBLIC_API,
+                code_type=CodeType.FUNCTION,
+            ),
+            "a.b._private_function": API(
+                name="a.b._private_function",
+                annotation_type=AnnotationType.PUBLIC_API,
+                code_type=CodeType.FUNCTION,
+            ),
+            "a.b.deprecated_function_01": API(
+                name="a.b.deprecated_function_01",
+                annotation_type=AnnotationType.PUBLIC_API,
+                code_type=CodeType.FUNCTION,
+            ),
+            "a.b.deprecated_function_02": API(
+                name="a.b.deprecated_function_02",
+                annotation_type=AnnotationType.PUBLIC_API,
+                code_type=CodeType.FUNCTION,
+            ),
+        },
+        {"a.b.public_function"},
+        {"a.b._private_function"},
+    )
+
+    assert good_apis == ["a.b.public_function"]
+    assert bad_apis == ["a.b.deprecated_function_01", "a.b.deprecated_function_02"]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
