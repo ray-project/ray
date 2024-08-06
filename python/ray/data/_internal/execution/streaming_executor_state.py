@@ -254,7 +254,8 @@ class OpState:
         """Update the console with the latest operator progress."""
         if self.progress_bar:
             self.progress_bar.set_description(self.summary_str(resource_manager))
-            self.progress_bar._bar.refresh()
+            if self.progress_bar._bar:
+                self.progress_bar._bar.refresh()
 
     def summary_str(self, resource_manager: ResourceManager) -> str:
         queued = self.num_queued() + self.op.internal_queue_size()
