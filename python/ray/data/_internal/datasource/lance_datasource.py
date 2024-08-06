@@ -3,8 +3,9 @@ from typing import TYPE_CHECKING, Dict, Iterator, List, Optional
 
 import numpy as np
 
-from ray.data._internal.util import _check_import
+from ray.data._internal.util import _check_import, call_with_retry
 from ray.data.block import BlockMetadata
+from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
@@ -16,6 +17,13 @@ logger = logging.getLogger(__name__)
 
 class LanceDatasource(Datasource):
     """Lance datasource, for reading Lance dataset."""
+
+    # Errors to retry when reading Lance fragments.
+    READ_FRAGMENTS_ERRORS_TO_RETRY = ["LanceError(IO)"]
+    # Maximum number of attempts to read Lance fragments.
+    READ_FRAGMENTS_MAX_ATTEMPTS = 3
+    # Maximum backoff seconds between attempts to read Lance fragments.
+    READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS = 10
 
     def __init__(
         self,
@@ -33,6 +41,16 @@ class LanceDatasource(Datasource):
         self.filter = filter
         self.storage_options = storage_options
         self.lance_ds = lance.dataset(uri=uri, storage_options=storage_options)
+
+        match = []
+        match.extend(self.READ_FRAGMENTS_ERRORS_TO_RETRY)
+        match.extend(DataContext.get_current().retried_io_errors)
+        self._retry_params = {
+            "description": f"read lance fragments",
+            "match": match,
+            "max_attempts": self.READ_FRAGMENTS_MAX_ATTEMPTS,
+            "max_backoff_s": self.READ_FRAGMENTS_RETRY_MAX_BACKOFF_SECONDS,
+        }
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         read_tasks = []
@@ -59,8 +77,8 @@ class LanceDatasource(Datasource):
             lance_ds = self.lance_ds
 
             read_task = ReadTask(
-                lambda f=fragment_ids: _read_fragments(
-                    f, lance_ds, columns, row_filter
+                lambda f=fragment_ids: _read_fragments_with_retry(
+                    f, lance_ds, columns, row_filter, self._retry_params
                 ),
                 metadata,
             )
@@ -71,6 +89,15 @@ class LanceDatasource(Datasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         # TODO(chengsu): Add memory size estimation to improve auto-tune of parallelism.
         return None
+
+
+def _read_fragments_with_retry(
+    fragment_ids, lance_ds, columns, row_filter, retry_params
+) -> Iterator["pyarrow.Table"]:
+    return call_with_retry(
+        lambda: _read_fragments(fragment_ids, lance_ds, columns, row_filter),
+        **retry_params,
+    )
 
 
 def _read_fragments(
