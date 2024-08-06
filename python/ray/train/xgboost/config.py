@@ -49,7 +49,11 @@ class XGBoostConfig(BackendConfig):
     @property
     def backend_cls(self):
         if self.xgboost_communicator == "rabit":
-            return _XGBoostRabitBackend
+            return (
+                _XGBoostRabitBackend
+                if Version(xgboost.__version__) >= Version("2.1.0")
+                else _XGBoostRabitBackend_pre_xgb210
+            )
 
         raise NotImplementedError(f"Unsupported backend: {self.xgboost_communicator}")
 
@@ -59,46 +63,7 @@ class _XGBoostRabitBackend(Backend):
         self._tracker: Optional[RabitTracker] = None
         self._wait_thread: Optional[threading.Thread] = None
 
-    def _setup_xgboost_less_than_210(self, worker_group: WorkerGroup):
-        # Set up the rabit tracker on the Train driver.
-        num_workers = len(worker_group)
-        rabit_args = {"DMLC_NUM_WORKER": num_workers}
-        train_driver_ip = ray.util.get_node_ip_address()
-
-        # NOTE: sortby="task" is needed to ensure that the xgboost worker ranks
-        # align with Ray Train worker ranks.
-        # The worker ranks will be sorted by `DMLC_TASK_ID`,
-        # which is defined below.
-        self._tracker = RabitTracker(
-            n_workers=num_workers, host_ip=train_driver_ip, sortby="task"
-        )
-        self._tracker.start(n_workers=num_workers)
-
-        worker_args = self._tracker.worker_envs()
-        rabit_args.update(worker_args)
-
-        start_log = (
-            "RabitTracker coordinator started with parameters:\n"
-            f"{json.dumps(rabit_args, indent=2)}"
-        )
-        logger.debug(start_log)
-
-        def set_xgboost_env_vars():
-            import ray.train
-
-            for k, v in rabit_args.items():
-                os.environ[k] = str(v)
-
-            # Ranks are assigned in increasing order of the worker's task id.
-            # This task id will be sorted by increasing world rank.
-            os.environ["DMLC_TASK_ID"] = (
-                f"[xgboost.ray-rank={ray.train.get_context().get_world_rank():08}]:"
-                f"{ray.get_runtime_context().get_actor_id()}"
-            )
-
-        worker_group.execute(set_xgboost_env_vars)
-
-    def _setup_xgboost(self, worker_group: WorkerGroup):
+    def _setup_xgboost_distributed_backend(self, worker_group: WorkerGroup):
         # Set up the rabit tracker on the Train driver.
         num_workers = len(worker_group)
         rabit_args = {"n_workers": num_workers}
@@ -142,11 +107,7 @@ class _XGBoostRabitBackend(Backend):
         self, worker_group: WorkerGroup, backend_config: XGBoostConfig
     ):
         assert backend_config.xgboost_communicator == "rabit"
-
-        if Version(xgboost.__version__) < Version("2.1.0"):
-            self._setup_xgboost_less_than_210(worker_group)
-        else:
-            self._setup_xgboost(worker_group)
+        self._setup_xgboost_distributed_backend(worker_group)
 
     def on_shutdown(self, worker_group: WorkerGroup, backend_config: XGBoostConfig):
         timeout = 5
@@ -160,6 +121,70 @@ class _XGBoostRabitBackend(Backend):
                     f"within {timeout} seconds. "
                     "The process will still be terminated as part of Ray actor cleanup."
                 )
+
+
+class _XGBoostRabitBackend_pre_xgb210(Backend):
+    def __init__(self):
+        self._tracker: Optional[RabitTracker] = None
+
+    def _setup_xgboost_distributed_backend(self, worker_group: WorkerGroup):
+        # Set up the rabit tracker on the Train driver.
+        num_workers = len(worker_group)
+        rabit_args = {"DMLC_NUM_WORKER": num_workers}
+        train_driver_ip = ray.util.get_node_ip_address()
+
+        # NOTE: sortby="task" is needed to ensure that the xgboost worker ranks
+        # align with Ray Train worker ranks.
+        # The worker ranks will be sorted by `DMLC_TASK_ID`,
+        # which is defined below.
+        self._tracker = RabitTracker(
+            n_workers=num_workers, host_ip=train_driver_ip, sortby="task"
+        )
+        self._tracker.start(n_workers=num_workers)
+
+        worker_args = self._tracker.worker_envs()
+        rabit_args.update(worker_args)
+
+        start_log = (
+            "RabitTracker coordinator started with parameters:\n"
+            f"{json.dumps(rabit_args, indent=2)}"
+        )
+        logger.debug(start_log)
+
+        def set_xgboost_env_vars():
+            import ray.train
+
+            for k, v in rabit_args.items():
+                os.environ[k] = str(v)
+
+            # Ranks are assigned in increasing order of the worker's task id.
+            # This task id will be sorted by increasing world rank.
+            os.environ["DMLC_TASK_ID"] = (
+                f"[xgboost.ray-rank={ray.train.get_context().get_world_rank():08}]:"
+                f"{ray.get_runtime_context().get_actor_id()}"
+            )
+
+        worker_group.execute(set_xgboost_env_vars)
+
+    def on_training_start(
+        self, worker_group: WorkerGroup, backend_config: XGBoostConfig
+    ):
+        assert backend_config.xgboost_communicator == "rabit"
+        self._setup_xgboost_distributed_backend(worker_group)
+
+    def on_shutdown(self, worker_group: WorkerGroup, backend_config: XGBoostConfig):
+        if not self._tracker:
+            return
+
+        timeout = 5
+        self._tracker.thread.join(timeout=timeout)
+
+        if self._tracker.thread.is_alive():
+            logger.warning(
+                "During shutdown, the RabitTracker thread failed to join "
+                f"within {timeout} seconds. "
+                "The process will still be terminated as part of Ray actor cleanup."
+            )
 
 
 _xgboost_args: dict = {}
