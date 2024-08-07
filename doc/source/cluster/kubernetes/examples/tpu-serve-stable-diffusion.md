@@ -32,7 +32,7 @@ kubectl get rayservice
 # stable-diffusion-tpu-serve-svc   Running          2
 ```
 
-Port-forward the Ray dashboard from the Ray head service. To view the dashboard, open http://localhost:8265/ on your local machine.
+Port-forward the Ray Dashboard from the Ray head service. To view the dashboard, open http://localhost:8265/ on your local machine.
 
 ```sh
 kubectl port-forward svc/stable-diffusion-tpu-head-svc 8265:8265 &
