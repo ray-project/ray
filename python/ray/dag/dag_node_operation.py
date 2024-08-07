@@ -41,7 +41,11 @@ class DAGNodeOperation:
 @total_ordering
 class DAGOperationGraphNode:
     def __init__(
-        self, operation: DAGNodeOperation, idx: int, dag_node: "ray.dag.DAGNode"
+        self,
+        operation: DAGNodeOperation,
+        idx: int,
+        actor_handle: "ray.actor.ActorHandle",
+        requires_nccl: bool,
     ):
         """
         DAGOperationGraphNode represents a node in the DAG operation graph.
@@ -56,11 +60,8 @@ class DAGOperationGraphNode:
         """
         self.operation = operation
         self.idx = idx
-        from ray.dag import ClassMethodNode
-
-        assert isinstance(dag_node, ClassMethodNode)
-        self.actor_handle = dag_node._get_actor_handle()
-        self.requires_nccl = dag_node.type_hint.requires_nccl()
+        self.actor_handle = actor_handle
+        self.requires_nccl = requires_nccl
         self.in_edges = set()
         self.out_edges = set()
 

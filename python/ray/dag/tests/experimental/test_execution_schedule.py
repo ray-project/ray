@@ -9,7 +9,12 @@ import ray.cluster_utils
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode, MultiOutputNode
-from ray.dag.dag_node_operation import DAGNodeOperationType
+from ray.dag.dag_node_operation import (
+    DAGNodeOperationType,
+    DAGOperationGraphNode,
+    DAGNodeOperation,
+)
+from ray.dag.compiled_dag_node import _select_next_nodes
 import torch
 from typing import List
 from dataclasses import dataclass, field
@@ -477,6 +482,190 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
         assert torch.equal(t, tensor_cuda)
 
     compiled_dag.teardown()
+
+
+def generate_dag_graph_nodes(local_idx, global_idx, actor_handle, requires_nccl):
+    graph_nodes = {}
+    for op_type in DAGNodeOperationType:
+        graph_nodes[op_type] = DAGOperationGraphNode(
+            DAGNodeOperation(local_idx, op_type),
+            global_idx,
+            actor_handle,
+            requires_nccl,
+        )
+    return graph_nodes
+
+
+class TestSelectNextNodes:
+    """
+    Test whether `_select_next_nodes` function selects the next nodes for
+    topological sort to generate execution schedule correctly.
+
+    global_idx: Each DAG node has a unique global index.
+    local_idx: The DAG node's index in the actor's `executable_tasks` list.
+    """
+
+    def test_two_candidates_on_same_actor(self):
+        """
+        Simulate the case where there are two candidates on the same actor.
+        The candidate with the smaller index in the `executable_tasks` list
+        should be selected.
+
+        driver -> fake_actor.op -> fake_actor.op -> driver
+
+        In the example above, both READ operations on the fake_actor have zero
+        in-degree. The operation with the smaller index in the executable_tasks
+        list should be selected first; therefore, the one on the left side will
+        be selected first.
+        """
+        fake_actor = "fake_actor"
+        # The DAG node has a global index of 1, and its index in the
+        # actor's `executable_tasks` list is 0.
+        global_idx_1 = 1
+        dag_node_1 = DAGOperationGraphNode(
+            DAGNodeOperation(0, DAGNodeOperationType.READ),
+            global_idx_1,
+            fake_actor,
+            False,
+        )
+        # The DAG node has a global index of 2, and its index in the
+        # actor's `executable_tasks` list is 1.
+        global_idx_2 = 2
+        dag_node_2 = DAGOperationGraphNode(
+            DAGNodeOperation(1, DAGNodeOperationType.READ),
+            global_idx_2,
+            fake_actor,
+            False,
+        )
+        mock_actor_to_candidates = {
+            fake_actor: [
+                dag_node_1,
+                dag_node_2,
+            ],
+        }
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, None)
+        assert len(next_nodes) == 1
+        assert next_nodes[0] == dag_node_1
+
+    def test_only_one_nccl_write(self):
+        """
+        Simulate the case where there is only one candidate which is a NCCL
+        WRITE operation. In this case, `_select_next_nodes` should return both
+        the NCCL WRITE operation and the corresponding READ operation.
+
+        driver -> fake_actor_1.op -> fake_actor_2.op -> driver
+
+        In the example above, communication between fake_actor_1 and fake_actor_2
+        is done using NCCL. The following test case simulates a scenario where the
+        READ and COMPUTE operations on fake_actor_1 have already been added to the
+        execution schedule.
+        """
+        fake_actor_1, global_idx_1, local_idx_1 = "fake_actor_1", 1, 0
+        fake_actor_2, global_idx_2, local_idx_2 = "fake_actor_2", 2, 0
+        mock_graph = {
+            global_idx_1: generate_dag_graph_nodes(
+                local_idx_1, global_idx_1, fake_actor_1, True
+            ),
+            global_idx_2: generate_dag_graph_nodes(
+                local_idx_2, global_idx_2, fake_actor_2, False
+            ),
+        }
+        del mock_graph[global_idx_1][DAGNodeOperationType.READ]
+        del mock_graph[global_idx_1][DAGNodeOperationType.COMPUTE]
+        mock_graph[global_idx_1][DAGNodeOperationType.WRITE].add_edge(
+            mock_graph[global_idx_2][DAGNodeOperationType.READ]
+        )
+        mock_graph[global_idx_2][DAGNodeOperationType.READ].add_edge(
+            mock_graph[global_idx_2][DAGNodeOperationType.COMPUTE]
+        )
+        mock_graph[global_idx_2][DAGNodeOperationType.COMPUTE].add_edge(
+            mock_graph[global_idx_2][DAGNodeOperationType.WRITE]
+        )
+        mock_actor_to_candidates = {
+            fake_actor_1: [mock_graph[global_idx_1][DAGNodeOperationType.WRITE]],
+        }
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        assert len(next_nodes) == 2
+        assert next_nodes[0] == mock_graph[global_idx_1][DAGNodeOperationType.WRITE]
+        assert next_nodes[1] == mock_graph[global_idx_2][DAGNodeOperationType.READ]
+
+    def test_two_nccl_writes(self):
+        """
+        Simulate a scenario where there are two candidates that are NCCL WRITE
+        operations. In this case, _select_next_nodes can choose either of the
+        two NCCL WRITE operations and their corresponding READ operations.
+
+        driver -> fake_actor_1.op -> fake_actor_2.op -> driver
+               |                                     |
+               -> fake_actor_2.op -> fake_actor_1.op -
+
+        In the example above, communication between fake_actor_1 and fake_actor_2 is
+        done using NCCL. The following test case simulates a scenario where the READ
+        and COMPUTE operations on both the DAG nodes with smaller bind_index on
+        fake_actor_1 and fake_actor_2 have already been added to the execution schedule.
+        """
+        fake_actor_1 = "fake_actor_1"
+        global_idx_1_0, local_idx_1_0 = 1, 0
+        global_idx_1_1, local_idx_1_1 = 3, 1
+        fake_actor_2 = "fake_actor_2"
+        global_idx_2_0, local_idx_2_0 = 2, 0
+        global_idx_2_1, local_idx_2_1 = 4, 1
+        mock_graph = {
+            global_idx_1_0: generate_dag_graph_nodes(
+                local_idx_1_0, global_idx_1_0, fake_actor_1, True
+            ),
+            global_idx_1_1: generate_dag_graph_nodes(
+                local_idx_1_1, global_idx_1_1, fake_actor_1, False
+            ),
+            global_idx_2_0: generate_dag_graph_nodes(
+                local_idx_2_0, global_idx_2_0, fake_actor_2, True
+            ),
+            global_idx_2_1: generate_dag_graph_nodes(
+                local_idx_2_1, global_idx_2_1, fake_actor_2, False
+            ),
+        }
+        del mock_graph[global_idx_1_0][DAGNodeOperationType.READ]
+        del mock_graph[global_idx_1_0][DAGNodeOperationType.COMPUTE]
+        del mock_graph[global_idx_2_0][DAGNodeOperationType.READ]
+        del mock_graph[global_idx_2_0][DAGNodeOperationType.COMPUTE]
+
+        mock_graph[global_idx_1_0][DAGNodeOperationType.WRITE].add_edge(
+            mock_graph[global_idx_2_1][DAGNodeOperationType.READ]
+        )
+        mock_graph[global_idx_2_0][DAGNodeOperationType.WRITE].add_edge(
+            mock_graph[global_idx_1_1][DAGNodeOperationType.READ]
+        )
+        mock_graph[global_idx_2_1][DAGNodeOperationType.READ].add_edge(
+            mock_graph[global_idx_2_1][DAGNodeOperationType.COMPUTE]
+        )
+        mock_graph[global_idx_2_1][DAGNodeOperationType.COMPUTE].add_edge(
+            mock_graph[global_idx_2_1][DAGNodeOperationType.WRITE]
+        )
+        mock_graph[global_idx_1_1][DAGNodeOperationType.READ].add_edge(
+            mock_graph[global_idx_1_1][DAGNodeOperationType.COMPUTE]
+        )
+        mock_graph[global_idx_1_1][DAGNodeOperationType.COMPUTE].add_edge(
+            mock_graph[global_idx_1_1][DAGNodeOperationType.WRITE]
+        )
+        mock_actor_to_candidates = {
+            fake_actor_1: [mock_graph[global_idx_1_0][DAGNodeOperationType.WRITE]],
+            fake_actor_2: [mock_graph[global_idx_2_0][DAGNodeOperationType.WRITE]],
+        }
+
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        assert len(next_nodes) == 2
+        assert next_nodes[0] in [
+            mock_graph[global_idx_1_0][DAGNodeOperationType.WRITE],
+            mock_graph[global_idx_2_0][DAGNodeOperationType.WRITE],
+        ]
+        if next_nodes[0] == mock_graph[global_idx_1_0][DAGNodeOperationType.WRITE]:
+            assert (
+                next_nodes[1] == mock_graph[global_idx_2_1][DAGNodeOperationType.READ]
+            )
+        elif next_nodes[0] == mock_graph[global_idx_2_0][DAGNodeOperationType.WRITE]:
+            assert (
+                next_nodes[1] == mock_graph[global_idx_1_1][DAGNodeOperationType.READ]
+            )
 
 
 if __name__ == "__main__":

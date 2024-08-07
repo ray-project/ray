@@ -153,10 +153,7 @@ def _select_next_nodes(
         acceptable. For the implementation details, we maintain a priority queue
         for each actor, where the head of the priority queue is the node with the
         smallest `bind_index`.
-    #2  If the node is an NCCL write node, select it only if all of its downstream
-        nodes are also the heads of their priority queues. That is, the NCCL write
-        node and all its NCCL read nodes are selected simultaneously.
-    #3  If #1 and #2 cannot be satisfied, it means that all candidate nodes are
+    #2  If #1 cannot be satisfied, it means that all candidate nodes are
         NCCL write nodes. In this case, select the one that is the head of the
         priority queue and its downstream nodes, regardless of whether the
         downstream nodes are heads of their priority queues or not.
@@ -184,26 +181,6 @@ def _select_next_nodes(
             return next_nodes
         if first_nccl_node is None:
             first_nccl_node = candidates[0]
-        is_next_node = True
-        for downstream_node_metadata in candidates[0].out_edges:
-            downstream_node = graph[downstream_node_metadata[0]][
-                downstream_node_metadata[1]
-            ]
-            downstream_node_actor = downstream_node.actor_handle
-            if (
-                downstream_node_actor not in actor_to_candidates
-                or downstream_node != actor_to_candidates[downstream_node_actor][0]
-            ):
-                is_next_node = False
-                break
-        if is_next_node:
-            next_nodes.append(heapq.heappop(candidates))
-            for downstream_node_metadata in next_nodes[0].out_edges:
-                downstream_node = graph[downstream_node_metadata[0]][
-                    downstream_node_metadata[1]
-                ]
-                next_nodes.append(downstream_node)
-            return next_nodes
 
     assert first_nccl_node is not None
     next_nodes.append(heapq.heappop(actor_to_candidates[first_nccl_node.actor_handle]))
@@ -1241,20 +1218,27 @@ class CompiledDAG:
                 # Divide a DAG node into three DAGOperationGraphNodes: READ, COMPUTE,
                 # and WRITE. Each DAGOperationGraphNode has a DAGNodeOperation.
                 idx = exec_task.idx
+                dag_node = self.idx_to_task[idx].dag_node
+                actor_handle = dag_node._get_actor_handle()
+                requires_nccl = dag_node.type_hint.requires_nccl()
+
                 read_node = DAGOperationGraphNode(
                     DAGNodeOperation(local_idx, DAGNodeOperationType.READ),
                     idx,
-                    self.idx_to_task[idx].dag_node,
+                    actor_handle,
+                    requires_nccl,
                 )
                 compute_node = DAGOperationGraphNode(
                     DAGNodeOperation(local_idx, DAGNodeOperationType.COMPUTE),
                     idx,
-                    self.idx_to_task[idx].dag_node,
+                    actor_handle,
+                    requires_nccl,
                 )
                 write_node = DAGOperationGraphNode(
                     DAGNodeOperation(local_idx, DAGNodeOperationType.WRITE),
                     idx,
-                    self.idx_to_task[idx].dag_node,
+                    actor_handle,
+                    requires_nccl,
                 )
                 # Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
                 # belong to the same task.
@@ -1310,7 +1294,7 @@ class CompiledDAG:
         graph = self._build_dag_node_operation_graph()
 
         actor_to_candidates = defaultdict(list)
-        for idx, node_dict in graph.items():
+        for _, node_dict in graph.items():
             for _, node in node_dict.items():
                 if node.in_degree == 0:
                     heapq.heappush(actor_to_candidates[node.actor_handle], node)
