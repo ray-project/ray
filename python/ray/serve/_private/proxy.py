@@ -239,10 +239,6 @@ class GenericProxy(ABC):
         """Whether is proxy actor is in the draining status or not."""
         return self._draining_start_time is not None
 
-    def _has_nonzero_replicas(self) -> bool:
-        """Whether"""
-        for handle in self.proxy_router.handles:
-
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.route_info: Dict[str, DeploymentID] = dict()
         for deployment_id, info in endpoints.items():

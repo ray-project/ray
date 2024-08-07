@@ -63,7 +63,6 @@ class LongestPrefixRouter(ProxyRouter):
         # Flipped to `True` once the route table has been updated at least once.
         # The proxy router is not ready for traffic until the route table is populated
         self._route_table_populated = False
-        self._is_head_node = ray._private.worker.global_worker.node.is_head()
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]) -> None:
         logger.info(
@@ -150,9 +149,8 @@ class LongestPrefixRouter(ProxyRouter):
 
         The first return value will be false if any of the following hold:
         - The route table has not been populated yet
-        - The route table has been populated, but all handles
-          corresponding to the route table have zero replicas
-          AND the current node is not the head node
+        - The route table has been populated, but none of the handles
+          have received running replicas yet
 
         Otherwise, the first return value will be true.
         """
@@ -160,11 +158,8 @@ class LongestPrefixRouter(ProxyRouter):
         if not self._route_table_populated:
             return False, NO_ROUTES_MESSAGE
 
-        if self._is_head_node:
-            return True, ""
-
         for handle in self.handles.values():
-            if handle._has_nonzero_replicas():
+            if handle._running_replicas_populated():
                 return True, ""
 
         return False, NO_REPLICAS_MESSAGE
@@ -185,7 +180,6 @@ class EndpointRouter(ProxyRouter):
         # Flipped to `True` once the route table has been updated at least once.
         # The proxy router is not ready for traffic until the route table is populated
         self._route_table_populated = False
-        self._is_head_node = ray._private.worker.global_worker.node.is_head()
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         logger.info(
@@ -225,9 +219,8 @@ class EndpointRouter(ProxyRouter):
 
         The first return value will be false if any of the following hold:
         - The route table has not been populated yet
-        - The route table has been populated, but all handles
-          corresponding to the route table have zero replicas,
-          AND the current node is not the head node
+        - The route table has been populated, but none of the handles
+          have received running replicas yet
 
         Otherwise, the first return value will be true.
         """
@@ -235,11 +228,8 @@ class EndpointRouter(ProxyRouter):
         if not self._route_table_populated:
             return False, NO_ROUTES_MESSAGE
 
-        if self._is_head_node:
-            return True, ""
-
         for handle in self.handles.values():
-            if handle._has_nonzero_replicas():
+            if handle._running_replicas_populated():
                 return True, ""
 
         return False, NO_REPLICAS_MESSAGE

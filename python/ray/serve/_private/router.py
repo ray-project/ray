@@ -366,6 +366,9 @@ class Router:
             )
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
+        # Flipped to `True` once the router has received a non-empty set
+        # of running replicas at least once.
+        self.running_replicas_populated: bool = False
 
         # The config for the deployment this router sends requests to will be broadcast
         # by the controller. That means it is not available until we get the first
@@ -419,15 +422,14 @@ class Router:
         self._replica_scheduler.update_running_replicas(running_replicas)
         self._metrics_manager.update_running_replicas(running_replicas)
 
+        if running_replicas:
+            self.running_replicas_populated = True
+
     def update_deployment_config(self, deployment_config: DeploymentConfig):
         self._metrics_manager.update_deployment_config(
             deployment_config,
             curr_num_replicas=len(self._replica_scheduler.curr_replicas),
         )
-
-    @property
-    def curr_replicas(self) -> List[ReplicaID]:
-        return list(self._replica_scheduler.curr_replicas)
 
     async def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]

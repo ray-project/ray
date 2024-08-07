@@ -200,11 +200,11 @@ class _DeploymentHandleBase:
             }
         )
 
-    def _has_nonzero_replicas(self) -> bool:
+    def _running_replicas_populated(self) -> bool:
         if self._router is None:
             return False
 
-        return len(self._router.curr_replicas) > 0
+        return self._router.running_replicas_populated
 
     @property
     def deployment_name(self) -> str:
