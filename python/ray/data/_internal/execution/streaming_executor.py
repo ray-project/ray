@@ -320,6 +320,9 @@ class StreamingExecutor(Executor, threading.Thread):
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():
             op_state.refresh_progress_bar(self._resource_manager)
+        # Refresh the global progress bar to update elapsed time progress.
+        if self._global_info:
+            self._global_info.refresh()
 
         self._update_stats_metrics(state="RUNNING")
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
