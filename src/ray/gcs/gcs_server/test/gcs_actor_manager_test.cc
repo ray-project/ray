@@ -96,7 +96,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
         [this, status, &promise]() {
           auto callback = callbacks_.front();
           auto reply = rpc::WaitForActorOutOfScopeReply();
-          callback(status, reply);
+          callback(status, std::move(reply));
           promise.set_value(false);
         },
         "test");
