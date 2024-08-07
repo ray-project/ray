@@ -18,3 +18,4 @@ delta-sharing
 pytest-mock
 decord
 snowflake-connector-python
+pyiceberg==0.7.0

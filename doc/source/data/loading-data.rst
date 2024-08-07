@@ -922,8 +922,10 @@ run against the collection.
 Reading Iceberg
 ~~~~~~~~~~~~~~~
 
-To read data from Iceberg, call :func:`~ray.data.read_iceberg` and specify the catalog ID, namespace (database), and table.
-Please install the `Python Client for Iceberg <https://py.iceberg.apache.org/>`_ to use this function.
+To read data from Iceberg, call :func:`~ray.data.read_iceberg` and specify the catalog ID,
+namespace (database), and table.
+Please install the `Python Client for Iceberg <https://py.iceberg.apache.org/>`_ to use this
+function.
 
 .. code-block:: console
 

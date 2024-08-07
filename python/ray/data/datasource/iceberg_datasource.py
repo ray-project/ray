@@ -2,8 +2,9 @@
 Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource API.
 """
 
+import itertools
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
 
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
@@ -12,6 +13,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
     from pyiceberg.expressions import BooleanExpression
+    from pyiceberg.manifest import DataFile, DataFileContent
     from pyiceberg.table import DataScan, FileScanTask, Schema
 
 logger = logging.getLogger(__name__)
@@ -103,7 +105,8 @@ class IcebergDatasource(Datasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         # Approximate the size by using the plan files - this will not
         # incorporate the deletes, but that's a reasonable approximation
-        return sum(task.length for task in self.plan_files)
+        # task
+        return sum(task.file.file_size_in_bytes for task in self.plan_files)
 
     @staticmethod
     def _distribute_tasks_into_equal_chunks(
@@ -148,7 +151,8 @@ class IcebergDatasource(Datasource):
             # must use the PyIceberg API for the projection.
             yield pyi_pa_io.project_table(
                 tasks=tasks,
-                table=tbl,
+                table_metadata=tbl.metadata,
+                io=tbl.io,
                 row_filter=self._row_filter,
                 projected_schema=schema,
                 case_sensitive=self._scan_kwargs.get("case_sensitive", True),
@@ -170,18 +174,22 @@ class IcebergDatasource(Datasource):
         # requested n_chunks, so that there are no empty tasks
         if parallelism > len(list(plan_files)):
             parallelism = len(list(plan_files))
-            logger.warning(
-                f"Reducing the parallelism to {parallelism}, as that is the"
-                "number of files"
-            )
+            logger.warning(f"Reducing the parallelism to {parallelism}, as that is the" "number of files")
 
         read_tasks = []
         # Chunk the plan files based on the requested parallelism
-        for chunk_tasks in IcebergDatasource._distribute_tasks_into_equal_chunks(
-            plan_files, parallelism
-        ):
+        for chunk_tasks in IcebergDatasource._distribute_tasks_into_equal_chunks(plan_files, parallelism):
+            unique_deletes: Set[DataFile] = set(
+                itertools.chain.from_iterable([task.delete_files for task in chunk_tasks])
+            )
+            # Get a rough estimate of the number of deletes by just looking at
+            # position deletes. Equality deletes are harder to estimate, as they
+            # can delete multiple rows.
+            position_delete_count = sum(
+                delete.record_count for delete in unique_deletes if delete.content == DataFileContent.POSITION_DELETES
+            )
             metadata = BlockMetadata(
-                num_rows=None,
+                num_rows=sum(task.file.record_count for task in chunk_tasks) - position_delete_count,
                 size_bytes=sum(task.length for task in chunk_tasks),
                 schema=pya_schema,
                 input_files=[task.file.file_path for task in chunk_tasks],
