@@ -1183,37 +1183,28 @@ class CompiledDAG:
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
 
-    def _build_dag_node_operation_graph(self):
+    def _generate_dag_operation_graph_node(
+        self,
+    ) -> Dict["ray.actor.ActorHandle", List[List[DAGOperationGraphNode]]]:
         """
-        Generate a DAG node operation graph based on the following rules:
-
-        #1  Divide a DAG node into three DAGOperationGraphNodes: READ, COMPUTE,
-            and WRITE. Each DAGOperationGraphNode has a DAGNodeOperation.
-        #2  Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
-            belong to the same task.
-        #3  Add an edge from COMPUTE with bind_index i to COMPUTE with bind_index
-            i+1 if they belong to the same actor.
-        #4  Add an edge from WRITE of the writer task to READ of the reader task.
-
-        This is the step one of building an execution schedule for each actor.
+        Generate READ, COMPUTE, and WRITE operations for each DAG node.
 
         Returns:
-            A graph that each node is a DAGOperationGraphNode.
+            A dictionary that maps an actor handle to a list of lists of
+            DAGOperationGraphNode. For the same actor, the index of the
+            outer list corresponds to the index of the ExecutableTask in
+            the list of `executable_tasks` in `actor_to_executable_tasks`.
+            In the inner list, the order of operations is READ, COMPUTE,
+            and WRITE.
         """
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
-        assert not self.actor_to_execution_schedule
 
-        graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]] = {}
+        operation_nodes: Dict[
+            "ray.actor.ActorHandle", List[List[DAGOperationGraphNode]]
+        ] = defaultdict(list)
 
-        from ray.dag import (
-            ClassMethodNode,
-            MultiOutputNode,
-        )
-
-        # Step 1: Build a graph
-        for _, executable_tasks in self.actor_to_executable_tasks.items():
-            prev_compute_node = None
+        for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             for local_idx, exec_task in enumerate(executable_tasks):
                 # Divide a DAG node into three DAGOperationGraphNodes: READ, COMPUTE,
                 # and WRITE. Each DAGOperationGraphNode has a DAGNodeOperation.
@@ -1240,6 +1231,49 @@ class CompiledDAG:
                     actor_handle,
                     requires_nccl,
                 )
+                if operation_nodes[actor_handle] is None:
+                    operation_nodes[actor_handle] = []
+                operation_nodes[actor_handle].append(
+                    [read_node, compute_node, write_node]
+                )
+        return operation_nodes
+
+    def _build_dag_node_operation_graph(
+        self,
+        actor_to_operation_nodes: Dict[
+            "ray.actor.ActorHandle", List[List[DAGOperationGraphNode]]
+        ],
+    ):
+        """
+        Generate a DAG node operation graph by adding edges based on the
+        following rules:
+
+        #1  Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
+            belong to the same task.
+        #2  Add an edge from COMPUTE with bind_index i to COMPUTE with bind_index
+            i+1 if they belong to the same actor.
+        #3  Add an edge from WRITE of the writer task to READ of the reader task.
+
+        This is the step one of building an execution schedule for each actor.
+
+        Returns:
+            A graph that each node is a DAGOperationGraphNode.
+        """
+        assert self.idx_to_task
+        assert self.actor_to_executable_tasks
+        assert not self.actor_to_execution_schedule
+
+        graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]] = {}
+
+        for _, operation_nodes_list in actor_to_operation_nodes.items():
+            for operation_nodes in operation_nodes_list:
+                prev_compute_node = None
+                idx = operation_nodes[0].idx
+                read_node, compute_node, write_node = (
+                    operation_nodes[0],
+                    operation_nodes[1],
+                    operation_nodes[2],
+                )
                 # Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
                 # belong to the same task.
                 read_node.add_edge(compute_node)
@@ -1249,11 +1283,17 @@ class CompiledDAG:
                 if prev_compute_node is not None:
                     prev_compute_node.add_edge(compute_node)
                 prev_compute_node = compute_node
+                assert idx not in graph
                 graph[idx] = {
                     DAGNodeOperationType.READ: read_node,
                     DAGNodeOperationType.COMPUTE: compute_node,
                     DAGNodeOperationType.WRITE: write_node,
                 }
+
+        from ray.dag import (
+            ClassMethodNode,
+            MultiOutputNode,
+        )
 
         # Add an edge from WRITE of the writer task to READ of the reader task.
         for idx, task in self.idx_to_task.items():
@@ -1273,8 +1313,9 @@ class CompiledDAG:
         Generate an execution schedule for each actor. The schedule is a list of
         DAGNodeOperation.
 
-        Step 1: Generate a DAG node operation graph. Refer to the function
-        `_build_dag_node_operation_graph` for more details.
+        Step 1: Generate a DAG node operation graph. Refer to the functions
+        `_generate_dag_operation_graph_node` and `_build_dag_node_operation_graph`
+        for more details.
 
         Step 2: Topological sort
 
@@ -1291,7 +1332,9 @@ class CompiledDAG:
 
         See `test_execution_schedule` for more examples.
         """
-        graph = self._build_dag_node_operation_graph()
+        # Step 1: Build a graph of DAGOperationGraphNode
+        actor_to_operation_nodes = self._generate_dag_operation_graph_node()
+        graph = self._build_dag_node_operation_graph(actor_to_operation_nodes)
 
         actor_to_candidates = defaultdict(list)
         for _, node_dict in graph.items():
