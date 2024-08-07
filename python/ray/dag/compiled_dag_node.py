@@ -1200,7 +1200,7 @@ class CompiledDAG:
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
 
-        operation_nodes: Dict[
+        actor_to_operation_nodes: Dict[
             "ray.actor.ActorHandle", List[List[DAGOperationGraphNode]]
         ] = defaultdict(list)
 
@@ -1231,12 +1231,10 @@ class CompiledDAG:
                     actor_handle,
                     requires_nccl,
                 )
-                if operation_nodes[actor_handle] is None:
-                    operation_nodes[actor_handle] = []
-                operation_nodes[actor_handle].append(
+                actor_to_operation_nodes[actor_handle].append(
                     [read_node, compute_node, write_node]
                 )
-        return operation_nodes
+        return actor_to_operation_nodes
 
     def _build_dag_node_operation_graph(
         self,
@@ -1256,12 +1254,17 @@ class CompiledDAG:
 
         This is the step one of building an execution schedule for each actor.
 
+        Args:
+            actor_to_operation_nodes: A dictionary that maps an actor handle to
+                a list of lists of DAGOperationGraphNode. For the same actor, the
+                index of the outer list corresponds to the index of the ExecutableTask
+                in the list of `executable_tasks` in `actor_to_executable_tasks`. In
+                the inner list, the order of operations is READ, COMPUTE, and WRITE.
+
         Returns:
             A graph that each node is a DAGOperationGraphNode.
         """
         assert self.idx_to_task
-        assert self.actor_to_executable_tasks
-        assert not self.actor_to_execution_schedule
 
         graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]] = {}
 
