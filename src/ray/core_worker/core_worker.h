@@ -1167,9 +1167,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// of the object that wraps the dynamically created ObjectRefs in a
   /// generator. We use this to notify the owner of the dynamically created
   /// objects.
+  /// \param[in] caller_address The address of the caller who is also the owner
   bool PinExistingReturnObject(const ObjectID &return_id,
                                std::shared_ptr<RayObject> *return_object,
-                               const ObjectID &generator_id);
+                               const ObjectID &generator_id,
+                               const rpc::Address &caller_address);
 
   /// Dynamically allocate an object.
   ///

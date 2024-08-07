@@ -24,6 +24,9 @@ from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource.delta_sharing_datasource import (
+    DeltaSharingDatasource,
+)
 from ray.data._internal.datasource.image_datasource import ImageDatasource
 from ray.data._internal.datasource.json_datasource import JSONDatasource
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
@@ -64,7 +67,6 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     Connection,
     Datasource,
-    DeltaSharingDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
 )
@@ -80,7 +82,6 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
 )
 from ray.data.datasource.partitioning import Partitioning
-from ray.data.datasource.tfrecords_datasource import TFXReadOptions
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -97,6 +98,8 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from tensorflow_metadata.proto.v0 import schema_pb2
+
+    from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 
 
 T = TypeVar("T")
@@ -1702,7 +1705,7 @@ def read_tfrecords(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    tfx_read_options: Optional[TFXReadOptions] = None,
+    tfx_read_options: Optional["TFXReadOptions"] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1844,7 +1847,9 @@ def read_tfrecords(
         and tfx_read
         and not tf_schema
     ):
-        from ray.data.datasource.tfrecords_datasource import _infer_schema_and_transform
+        from ray.data._internal.datasource.tfrecords_datasource import (
+            _infer_schema_and_transform,
+        )
 
         return _infer_schema_and_transform(ds)
 
@@ -2229,7 +2234,9 @@ def read_databricks_tables(
     Returns:
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
-    from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
+    from ray.data._internal.datasource.databricks_uc_datasource import (
+        DatabricksUCDatasource,
+    )
     from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
     def get_dbutils():
@@ -2829,7 +2836,9 @@ def from_huggingface(
     import datasets
     from aiohttp.client_exceptions import ClientResponseError
 
-    from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
+    from ray.data._internal.datasource.huggingface_datasource import (
+        HuggingFaceDatasource,
+    )
 
     if isinstance(dataset, (datasets.IterableDataset, datasets.Dataset)):
         try:
