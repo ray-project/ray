@@ -544,7 +544,14 @@ Ray Data interoperates with distributed data processing frameworks like
         .. testcode::
             :skipif: True
 
-            import ray
+            >>> import ray
+            >>> from pyiceberg.expressions import EqualTo
+            >>> ds = ray.data.read_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     row_filter=EqualTo("column_name", "literal_value"),
+            ...     catalog_kwargs={"name": "default", "type": "glue"}
+            ... )
+
 
         .. testoutput::
 

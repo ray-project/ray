@@ -3024,12 +3024,14 @@ def read_iceberg(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from an Iceberg table. The table to read
-    from is specified using a fully qualified ``table_identifier``. Using PyIceberg,
-    any intended row filters, snapshot IDs, etc. are applied, and the files that
-    satisfy the query are distributed across Ray read tasks. The number of output
-    blocks is determined by ``override_num_blocks`` which can be requested from
-    this interface or automatically chosen if unspecified.
+    """Create a :class:`~ray.data.Dataset` from an Iceberg table.
+
+    The table to read from is specified using a fully qualified ``table_identifier``.
+    Using PyIceberg, any intended row filters, snapshot IDs, etc. are applied,
+    and the files that satisfy the query are distributed across Ray read tasks.
+    The number of output blocks is determined by ``override_num_blocks``
+    which can be requested from this interface or automatically chosen if
+    unspecified.
 
     .. tip::
 
@@ -3060,9 +3062,10 @@ def read_iceberg(
         scan_kwargs: Optional arguments to pass to PyIceberg's Table.scan() function
              (e.g., case_sensitive, limit, etc.)
         catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
-         function (e.g., name, type, etc.). For the function definition, see
-         `pyiceberg catalog <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
-         #pyiceberg.catalog.load_catalog>`_.
+             function (e.g., name, type, etc.). For the function definition, see
+             `pyiceberg catalog
+             <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
+             #pyiceberg.catalog.load_catalog>`_.
         ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
