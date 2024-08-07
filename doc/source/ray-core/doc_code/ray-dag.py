@@ -169,10 +169,10 @@ class Worker:
     def forward(self, input_data: int):
         self.forwarded += 1
         return input_data + 1
-    
+
     def num_forwarded(self):
         return self.forwarded
-    
+
 # Create an actor via ``remote`` API not ``bind`` API to avoid
 # killing actors when a DAG is finished.
 worker = Worker.remote()
