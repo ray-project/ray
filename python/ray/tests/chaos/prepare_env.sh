@@ -5,7 +5,7 @@
 # - a KubeRay cluster, port-forwarded to localhost:8265.
 # - a chaos-mesh operator ready to inject faults.
 
-set -euo pipefail
+set -exuo pipefail
 
 bash python/ray/tests/chaos/install_deps.sh
 

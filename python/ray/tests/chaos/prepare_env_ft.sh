@@ -6,7 +6,7 @@
 # - a KubeRay cluster with Fault Tolerance enabled on the Redis service, port-forwarded
 #     to localhost:8265.
 
-set -euo pipefail
+set -exuo pipefail
 
 bash python/ray/tests/chaos/install_deps.sh
 

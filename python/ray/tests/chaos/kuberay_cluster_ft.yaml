@@ -130,16 +130,14 @@ spec:
             volumeMounts:
               - mountPath: /tmp/ray
                 name: ray-logs
-              - mountPath: /home/ray/samples
-                name: ray-example-configmap
         volumes:
           - name: ray-logs
             emptyDir: {}
   workerGroupSpecs:
     # the pod replicas in this group typed worker
     - replicas: 2
-      minReplicas: 1
-      maxReplicas: 10
+      minReplicas: 2
+      maxReplicas: 2
       groupName: small-group
       # The `rayStartParams` are used to configure the `ray start` command.
       # See https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayStartParams.md for the default settings of `rayStartParams` in KubeRay.
