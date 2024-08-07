@@ -218,6 +218,7 @@ class DataOrganizer:
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         actor_process_stats = None
         actor_process_gpu_stats = []
+        actor_process_npu_stats = []
         if pid:
             for process_stats in node_physical_stats.get("workers", []):
                 if process_stats["pid"] == pid:
@@ -231,8 +232,14 @@ class DataOrganizer:
                     if process["pid"] == pid:
                         actor_process_gpu_stats.append(gpu_stats)
                         break
+            for npu_stats in node_physical_stats.get("npus", []):
+                for process in npu_stats.get("processes") or []:
+                    if process["pid"] == pid:
+                        actor_process_npu_stats.append(npu_stats)
+                        break
 
         actor["gpus"] = actor_process_gpu_stats
+        actor["npus"] = actor_process_npu_stats
         actor["processStats"] = actor_process_stats
         actor["mem"] = node_physical_stats.get("mem", [])
         return actor
