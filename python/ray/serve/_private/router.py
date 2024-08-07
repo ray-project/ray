@@ -365,7 +365,7 @@ class Router:
                 use_replica_queue_len_cache=enable_queue_len_cache,
             )
 
-        self._replica_scheduler = replica_scheduler
+        self._replica_scheduler: ReplicaScheduler = replica_scheduler
 
         # The config for the deployment this router sends requests to will be broadcast
         # by the controller. That means it is not available until we get the first
@@ -424,6 +424,10 @@ class Router:
             deployment_config,
             curr_num_replicas=len(self._replica_scheduler.curr_replicas),
         )
+
+    @property
+    def curr_replicas(self) -> List[ReplicaID]:
+        return list(self._replica_scheduler.curr_replicas)
 
     async def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]

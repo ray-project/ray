@@ -125,7 +125,6 @@ MAX_BACKOFF_PERIOD_SEC = 5
 
 HEALTHY_MESSAGE = "success"
 DRAINING_MESSAGE = "This node is being drained."
-NO_ROUTES_MESSAGE = "Route table is not populated yet."
 
 
 class GenericProxy(ABC):
@@ -153,10 +152,6 @@ class GenericProxy(ABC):
             self.request_timeout_s = None
 
         self._node_id = node_id
-
-        # Flipped to `True` once the route table has been updated at least once.
-        # Health checks will not pass until the route table is populated.
-        self._route_table_populated = False
 
         # Used only for displaying the route table.
         self.route_info: Dict[str, DeploymentID] = dict()
@@ -244,9 +239,11 @@ class GenericProxy(ABC):
         """Whether is proxy actor is in the draining status or not."""
         return self._draining_start_time is not None
 
-    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        self._route_table_populated = True
+    def _has_nonzero_replicas(self) -> bool:
+        """Whether"""
+        for handle in self.proxy_router.handles:
 
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         self.route_info: Dict[str, DeploymentID] = dict()
         for deployment_id, info in endpoints.items():
             route = info.route
@@ -334,9 +331,10 @@ class GenericProxy(ABC):
         If the proxy is draining or has not yet received a route table update from the
         controller, both will return a non-OK status.
         """
-        if not self._route_table_populated:
+        router_ready_for_traffic, router_msg = self.proxy_router.ready_for_traffic()
+        if not router_ready_for_traffic:
             healthy = False
-            message = NO_ROUTES_MESSAGE
+            message = router_msg
         elif self._is_draining():
             healthy = False
             message = DRAINING_MESSAGE
