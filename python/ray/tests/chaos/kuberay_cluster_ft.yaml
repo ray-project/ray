@@ -1,0 +1,164 @@
+# Adapted from https://github.com/ray-project/kuberay/blob/dea87fff2c3d83800f5f35df73bfb3e8b7adcfb1/helm-chart/ray-cluster/templates/raycluster-cluster.yaml
+kind: ConfigMap
+apiVersion: v1
+metadata:
+  name: redis-config
+  labels:
+    app: redis
+data:
+  redis.conf: |-
+    dir /data
+    port 6379
+    bind 0.0.0.0
+    appendonly yes
+    protected-mode no
+    requirepass 5241590000000000
+    pidfile /data/redis-6379.pid
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+  selector:
+    app: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  labels:
+    app: redis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: redis
+  template:
+    metadata:
+      labels:
+        app: redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:5.0.8
+          command:
+            - "sh"
+            - "-c"
+            - "redis-server /usr/local/etc/redis/redis.conf"
+          ports:
+            - containerPort: 6379
+          volumeMounts:
+            - name: config
+              mountPath: /usr/local/etc/redis/redis.conf
+              subPath: redis.conf
+      volumes:
+        - name: config
+          configMap:
+            name: redis-config
+---
+# Redis password
+apiVersion: v1
+kind: Secret
+metadata:
+  name: redis-password-secret
+type: Opaque
+data:
+  # echo -n "5241590000000000" | base64
+  password: NTI0MTU5MDAwMDAwMDAwMA==
+---
+apiVersion: ray.io/v1
+kind: RayCluster
+metadata:
+  annotations:
+    ray.io/ft-enabled: "true" # enable Ray GCS FT
+    # In most cases, you don't need to set `ray.io/external-storage-namespace` because KubeRay will
+    # automatically set it to the UID of RayCluster. Only modify this annotation if you fully understand
+    # the behaviors of the Ray GCS FT and RayService to avoid misconfiguration.
+    # [Example]:
+    # ray.io/external-storage-namespace: "my-raycluster-storage"
+  name: raycluster-kuberay
+spec:
+  rayVersion: '3.0.0master'
+  headGroupSpec:
+    # The `rayStartParams` are used to configure the `ray start` command.
+    # See https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayStartParams.md for the default settings of `rayStartParams` in KubeRay.
+    # See https://docs.ray.io/en/latest/cluster/cli.html#ray-start for all available options in `rayStartParams`.
+    rayStartParams:
+      # Setting "num-cpus: 0" to avoid any Ray actors or tasks being scheduled on the Ray head Pod.
+      num-cpus: "0"
+      # redis-password should match "requirepass" in redis.conf in the ConfigMap above.
+      # Ray 2.3.0 changes the default redis password from "5241590000000000" to "".
+      redis-password: $REDIS_PASSWORD
+    # Pod template
+    template:
+      spec:
+        containers:
+          - name: ray-head
+            image: ray-ci:kuberay-test
+            resources:
+              limits:
+                cpu: "500m"
+              requests:
+                cpu: "500m"
+            env:
+              # Ray will read the RAY_REDIS_ADDRESS environment variable to establish
+              # a connection with the Redis server. In this instance, we use the "redis"
+              # Kubernetes ClusterIP service name, also created by this YAML, as the
+              # connection point to the Redis server.
+              - name: RAY_REDIS_ADDRESS
+                value: redis:6379
+              # This environment variable is used in the `rayStartParams` above.
+              - name: REDIS_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: redis-password-secret
+                    key: password
+            ports:
+              - containerPort: 6379
+                name: redis
+              - containerPort: 8265
+                name: dashboard
+              - containerPort: 10001
+                name: client
+            volumeMounts:
+              - mountPath: /tmp/ray
+                name: ray-logs
+              - mountPath: /home/ray/samples
+                name: ray-example-configmap
+        volumes:
+          - name: ray-logs
+            emptyDir: {}
+  workerGroupSpecs:
+    # the pod replicas in this group typed worker
+    - replicas: 2
+      minReplicas: 1
+      maxReplicas: 10
+      groupName: small-group
+      # The `rayStartParams` are used to configure the `ray start` command.
+      # See https://github.com/ray-project/kuberay/blob/master/docs/guidance/rayStartParams.md for the default settings of `rayStartParams` in KubeRay.
+      # See https://docs.ray.io/en/latest/cluster/cli.html#ray-start for all available options in `rayStartParams`.
+      rayStartParams: {}
+      # Pod template
+      template:
+        spec:
+          containers:
+            - name: ray-worker
+              image: ray-ci:kuberay-test
+              volumeMounts:
+                - mountPath: /tmp/ray
+                  name: ray-logs
+              resources:
+                limits:
+                  cpu: "500m"
+                requests:
+                  cpu: "500m"
+          volumes:
+            - name: ray-logs
+              emptyDir: {}
