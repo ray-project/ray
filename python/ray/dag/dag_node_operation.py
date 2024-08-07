@@ -85,9 +85,10 @@ class DAGOperationGraphNode:
         only when they have the same `idx` and `type`.
         """
         assert self.actor_handle == other.actor_handle
-        if self.operation.idx == other.operation.idx:
-            return self.operation.type == other.operation.type
-        return False
+        return (
+            self.operation.idx == other.operation.idx
+            and self.operation.type == other.operation.type
+        )
 
     def __hash__(self):
         return hash((self.operation, self.idx))
