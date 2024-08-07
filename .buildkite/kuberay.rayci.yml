@@ -20,7 +20,7 @@ steps:
       - raycpubase
 
   - label: ":kubernetes: chaos {{matrix.workload}} under {{matrix.fault}}"
-    key: kuberay_tests
+    key: kuberay_chaos_tests
     tags:
       - python
       - docker
@@ -45,7 +45,7 @@ steps:
       - raycpubase
 
   - label: ":kubernetes: FT chaos {{matrix.workload}} under {{matrix.fault}}"
-    key: kuberay_tests
+    key: kuberay_chaos_ft_tests
     tags:
       - python
       - docker
