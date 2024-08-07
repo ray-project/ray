@@ -8,7 +8,7 @@ See the [GKE documentation](<https://cloud.google.com/kubernetes-engine/docs/how
 
 Run all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
-Create a Standard GKE cluster with the Ray Operator enabled in the us-central2-b compute region:
+Create a Standard GKE cluster and enable the Ray Operator in the us-central2-b compute region:
 
 ```sh
 gcloud container clusters create kuberay-tpu-cluster \
