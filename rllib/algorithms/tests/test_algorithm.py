@@ -12,7 +12,7 @@ import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
     AssertEvalCallback,
@@ -93,7 +93,7 @@ class TestAlgorithm(unittest.TestCase):
             print(f"Adding new RLModule {mid} ...")
             new_marl_spec = algo.add_module(
                 module_id=mid,
-                module_spec=SingleAgentRLModuleSpec.from_module(mod0),
+                module_spec=RLModuleSpec.from_module(mod0),
                 # Test changing the mapping fn.
                 new_agent_to_module_mapping_fn=new_mapping_fn,
                 # Change the list of modules to train.
@@ -111,11 +111,11 @@ class TestAlgorithm(unittest.TestCase):
 
             # Assert new policy is part of local worker (eval worker set does NOT
             # have a local worker, only the main EnvRunnerGroup does).
-            marl_module = algo.env_runner.module
+            multi_rl_module = algo.env_runner.module
             self.assertTrue(new_module is not mod0)
             for j in range(i + 1):
-                self.assertTrue(f"p{j}" in marl_module)
-            self.assertTrue(len(marl_module) == i + 1)
+                self.assertTrue(f"p{j}" in multi_rl_module)
+            self.assertTrue(len(multi_rl_module) == i + 1)
             algo.train()
             checkpoint = algo.save_to_path()
 
