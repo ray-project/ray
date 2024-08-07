@@ -111,6 +111,9 @@ class StreamingExecutor(Executor, threading.Thread):
             logger.debug("Execution config: %s", self._options)
 
             # Note: DAG must be initialized in order to query num_outputs_total.
+            # Note: Initialize global progress bar before building the streaming
+            # topology so bars are created in the same order as they should be
+            # displayed. This is done to ensure correct ordering within notebooks.
             self._global_info = ProgressBar(
                 "Running", dag.num_outputs_total(), unit="bundle"
             )

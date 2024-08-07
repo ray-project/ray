@@ -109,8 +109,8 @@ class tqdm:
 
     def close(self):
         """Implements tqdm.tqdm.close."""
-        # Don't bother if ray is shutdown (in __del__ hook).
         self._closed = True
+        # Don't bother if ray is shutdown (in __del__ hook).
         if ray is not None:
             self._dump_state(force_flush=True)
 
@@ -241,6 +241,8 @@ class _BarGroup:
     def close_bar(self, state: ProgressBarState) -> None:
         """Remove a bar from this group."""
         bar = self.bars_by_uuid[state["uuid"]]
+        # Note: Hide and then unhide bars to prevent flashing of the
+        # last bar when we are closing multiple bars sequentially.
         instance().hide_bars()
         bar.close()
         del self.bars_by_uuid[state["uuid"]]
