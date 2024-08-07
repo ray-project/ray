@@ -149,7 +149,6 @@ class ProgressBar:
         # raylet will persist these fetch requests even after ray.wait returns.
         # See https://github.com/ray-project/ray/issues/30375.
         fetch_local = True
-
         while remaining:
             done, remaining = ray.wait(
                 remaining,
