@@ -78,7 +78,7 @@
         },
         "evictionPolicy": {
             "type": "string",
-            "defaultValue": "Delete",
+            "defaultValue": "json('null')",
             "metadata": {
                 "description": "Specifies the eviction policy for the virtual machine."
             }
@@ -253,7 +253,7 @@
                     }
                 },
                 "priority": "[parameters('priority')]",
-                "evictionPolicy": "[if(equals(parameters('priority'), 'Spot'), 'Delete', json('null'))]",
+                "evictionPolicy": "[if(and(equals(parameters('priority'), 'Spot'), or(equals(parameters('evictionPolicy'), ''), equals(parameters('evictionPolicy'), json('null')))), 'Delete', parameters('evictionPolicy'))]",
                 "billingProfile": "[parameters('billingProfile')]"
             },
             "identity": {
