@@ -14,6 +14,11 @@ echo "--- Installing KubeRay FT cluster and port forward."
 
 kubectl apply -f python/ray/tests/chaos/kuberay_cluster_ft.yaml
 
-kubectl wait pod -l ray.io/cluster=raycluster-kuberay \
-    --for=condition=Ready=True --timeout=5m
+if ! kubectl wait pod -l ray.io/cluster=raycluster-kuberay \
+    --for=condition=Ready=True --timeout=5m; then
+    echo "Failed to wait for pods to be ready. Printing pod status and error reasons:"
+    kubectl get pods
+    kubectl describe pod -l ray.io/cluster=raycluster-kuberay | grep -i 'reason\|message\|status'
+    exit 1
+fi
 kubectl port-forward service/raycluster-kuberay-head-svc 8265:8265 &

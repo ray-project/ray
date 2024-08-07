@@ -1,4 +1,5 @@
 # Adapted from https://github.com/ray-project/kuberay/blob/dea87fff2c3d83800f5f35df73bfb3e8b7adcfb1/helm-chart/ray-cluster/templates/raycluster-cluster.yaml
+# Notes: there are only 500m CPU for redis, head pod, and each worker pod.
 kind: ConfigMap
 apiVersion: v1
 metadata:
@@ -52,6 +53,11 @@ spec:
             - "sh"
             - "-c"
             - "redis-server /usr/local/etc/redis/redis.conf"
+          resources:
+            limits:
+              cpu: "500m"
+            requests:
+              cpu: "500m"
           ports:
             - containerPort: 6379
           volumeMounts:
