@@ -85,7 +85,7 @@ void GcsJobManager::HandleDeleteJob(rpc::DeleteJobRequest request,
   };
   auto get_job_callback = [this, job_id, reply, send_reply_callback, del_job_callback](
                               const Status &status,
-                              const boost::optional<JobTableData> &job_item) {
+                              const std::optional<JobTableData> &job_item) {
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Failed to get job info, job id = " << job_id
                        << ", status = " << status;
@@ -107,7 +107,7 @@ void GcsJobManager::HandleDeleteJob(rpc::DeleteJobRequest request,
 
   Status get_status = gcs_table_storage_->JobTable().Get(job_id, get_job_callback);
   if (!get_status.ok()) {
-    get_job_callback(get_status, boost::none);
+    get_job_callback(get_status, std::nullopt);
   }
 }
 
