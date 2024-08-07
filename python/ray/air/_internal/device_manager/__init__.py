@@ -4,6 +4,7 @@ from typing import Optional, Type
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
+from ray.air._internal.device_manager.cpu import CPUTorchDeviceManager
 from ray.air._internal.device_manager.hpu import HPUTorchDeviceManager
 from ray.air._internal.device_manager.npu import (
     NPU_TORCH_PACKAGE_AVAILABLE,
@@ -15,7 +16,7 @@ from ray.air._internal.device_manager.torch_device_manager import TorchDeviceMan
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_TORCH_DEVICE_MANAGER_CLS = CUDATorchDeviceManager
+DEFAULT_TORCH_DEVICE_MANAGER_CLS = CPUTorchDeviceManager
 
 
 SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER = {
@@ -87,6 +88,7 @@ def init_torch_device_manager() -> None:
 
 __all__ = [
     TorchDeviceManager,
+    CPUTorchDeviceManager,
     CUDATorchDeviceManager,
     HPUTorchDeviceManager,
     NPUTorchDeviceManager,

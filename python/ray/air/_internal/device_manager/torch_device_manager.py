@@ -1,4 +1,5 @@
 from abc import ABC
+from contextlib import contextmanager
 from typing import List, Union
 
 import torch
@@ -30,8 +31,17 @@ class TorchDeviceManager(ABC):
         ...
 
     def get_stream_context(self, stream):
-        """Get a stream context like torch.cuda.stream"""
-        ...
+        """Get a stream context.
+
+        This should be override by subclass using a api like `torch.cuda.stream()`
+        if subclass support stream like api.
+        """
+
+        @contextmanager
+        def empty_context_managr():
+            yield
+
+        return empty_context_managr()
 
     def get_current_stream(self):
         """Get current stream on accelerators like torch.cuda.current_stream"""
