@@ -346,7 +346,7 @@ def test_actor_fails_on_rt_env_failure(
 ):
     """
     Simulate runtime env failure on a node. The actor should be dead, but the raylet
-    should not die.
+    should not die. See https://github.com/ray-project/ray/pull/46991
     """
 
     cluster = ray_start_cluster
@@ -376,8 +376,7 @@ def test_actor_fails_on_rt_env_failure(
         ray.get(mortal.ping.remote())
     assert "Samuel Beckett" in str(e.value)
 
-    # TODO(ryw): make it consume a count in max_restarts, and restart. After that, we
-    # can test by adding a node with FAULT_PLUGIN_KEY=ok and ping immortal to get 5.
+    # Note: even immortal actor will die because a rt env failure cancels tasks.
     with pytest.raises(RuntimeEnvSetupError) as e:
         ray.get(immortal.ping.remote())
     assert "Samuel Beckett" in str(e.value)
