@@ -15,7 +15,7 @@ RLlib stores and transports all trajectory data in the form of `Episodes`, in pa
 :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` for single-agent setups
 and :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` for multi-agent setups.
 The data is translated from this `Episode` format to tensor batches (including a possible move to the GPU)
-only immediately before a neural network forward pass.
+only immediately before a neural network forward pass by so called "connector pipelines".
 
 .. figure:: images/episodes/usage_of_episodes.svg
     :width: 750
@@ -24,9 +24,9 @@ only immediately before a neural network forward pass.
     **Episodes** are the main vehicle to store and transport trajectory data across the different components
     of RLlib (for example from `EnvRunner` to `Learner` or from `ReplayBuffer` to `Learner`).
     One of the main design principles of RLlib's new API stack is that all trajectory data is kept in such episodic form
-    for as long as possible. Only immediately before the neural network passes, "connectors" translate lists of Episodes into tensor
-    batches. See the :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` class for more details (documentation
-    of which is still work in progress).
+    for as long as possible. Only immediately before the neural network passes, "connector pipelines" translate lists
+    of Episodes into tensor batches. See the :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` class for
+    more details (documentation of which is still work in progress).
 
 
 The main advantage of collecting and moving around data in such a trajectory-as-a-whole format
@@ -95,6 +95,9 @@ and extract information from this episode using its different "getter" methods:
     (in the non-finalized case; see further below) when provided with a list of indices or a slice (range) of indices.
 
 
+Note that for `extra_model_outputs`, the getter is slightly more complicated as there exist sub-keys in this data (for example:
+`action_logp`). See :py:meth:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode.get_extra_model_outputs` for more information.
+
 The following code snippet summarizes the various capabilities of the different getter methods:
 
 .. literalinclude:: doc_code/sa_episode.py
@@ -107,8 +110,8 @@ Finalized and Non-Finalized Episodes
 ------------------------------------
 
 The data in a :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` can exist in two states:
-non-finalized and finalized. A non-finalized episode stores its observations and other data items in
-plain python lists and appends new timestep data to these. In a finalized episode,
+non-finalized and finalized. A non-finalized episode stores its data items in plain python lists
+and appends new timestep data to these. In a finalized episode,
 these lists have been converted into (possibly complex) structures that have NumPy arrays at their leafs.
 Note that a "finalized" episode doesn't necessarily have to be terminated or truncated yet
 in the sense that the underlying RL environment declared the episode to be over (or has reached some
@@ -129,9 +132,9 @@ state (data stored in python lists), making it very fast to append data from an 
     :end-before: rllib-sa-episode-03-end
 
 
-To illustrate the differences between the data stored in a non-finalized episode vs the same data stored in
+To illustrate the differences between the data stored in a non-finalized episode vs. the same data stored in
 a finalized one, take a look at this complex observation example here, showing the exact same observation data in two
-episodes (one not finalized the other finalized):
+episodes (one non-finalized the other finalized):
 
 .. figure:: images/episodes/sa_episode_non_finalized.svg
     :width: 800
@@ -145,7 +148,7 @@ episodes (one not finalized the other finalized):
     :align: left
 
     **Complex observations in a finalized episode**: The entire observation record is a single (complex) dict matching the
-    gym environment's observation space. At the leafs of the structure are `np.NDArrays` holding the individual values of the leaf.
+    gym environment's observation space. At the leafs of the structure are `NDArrays` holding the individual values of the leaf.
     Note that these `NDArrays` have an extra batch dim (axis=0), whose length matches the length of the episode stored (here 3).
 
 
