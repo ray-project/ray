@@ -21,7 +21,7 @@ We collect a few helpful links for users who are getting started with a managed 
 - {ref}`kuberay-gke-tpu-cluster-setup`
 
 (eks-setup)=
-# Setting up an EKS cluster (AWS)
+# Set up an EKS cluster (AWS)
 
 - {ref}`kuberay-eks-gpu-cluster-setup`
 
