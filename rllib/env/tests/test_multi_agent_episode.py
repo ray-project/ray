@@ -586,12 +586,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two observations in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         obs = episode.get_observations(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             obs,
@@ -603,7 +603,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill
-        obs = episode.get_observations(indices=[-2, -1], neg_indices_left_of_zero=True)
+        obs = episode.get_observations(indices=[-2, -1], neg_index_as_lookback=True)
         check(
             obs,
             {"agent_1": [0, 1], "agent_2": [0], "agent_3": [0, 1], "agent_4": [1]},
@@ -663,7 +663,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             slice(-1, 1),
             return_list=True,
             fill=-8,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             obs,
@@ -809,12 +809,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two infos in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         inf = episode.get_infos(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             inf,
@@ -826,7 +826,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill
-        inf = episode.get_infos(indices=[-2, -1], neg_indices_left_of_zero=True)
+        inf = episode.get_infos(indices=[-2, -1], neg_index_as_lookback=True)
         check(
             inf,
             {
@@ -901,7 +901,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             slice(-1, 1),
             return_list=True,
             fill=-8,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             inf,
@@ -1166,12 +1166,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two actions in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         act = episode.get_actions(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             act,
@@ -1183,7 +1183,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill.
-        act = episode.get_actions(indices=[-2, -1], neg_indices_left_of_zero=True)
+        act = episode.get_actions(indices=[-2, -1], neg_index_as_lookback=True)
         check(
             act,
             {
@@ -1235,7 +1235,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # From the last ts in lookback buffer to first actual ts (empty as all data is
         # in lookback buffer, but we fill).
         act = episode.get_actions(
-            slice(-1, 1), return_list=True, fill=-8, neg_indices_left_of_zero=True
+            slice(-1, 1), return_list=True, fill=-8, neg_index_as_lookback=True
         )
         check(
             act,
@@ -1406,12 +1406,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two rewards in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         rew = episode.get_rewards(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             rew,
@@ -1423,7 +1423,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill.
-        episode.get_rewards(indices=[-2, -1], neg_indices_left_of_zero=True)
+        episode.get_rewards(indices=[-2, -1], neg_index_as_lookback=True)
 
         # Get last rewards for each individual agent.
         rew = episode.get_rewards(indices=-1, env_steps=False)
@@ -1475,7 +1475,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             slice(-1, 1),
             return_list=True,
             fill=-8,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             rew,
@@ -2548,7 +2548,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                     agent_obs,
                     episode_2.get_observations(
                         -1,
-                        neg_indices_left_of_zero=True,
+                        neg_index_as_lookback=True,
                         env_steps=False,
                         agent_ids=agent_id,
                     ),

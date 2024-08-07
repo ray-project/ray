@@ -114,8 +114,10 @@ class StreamingExecutor(Executor, threading.Thread):
             # Note: Initialize global progress bar before building the streaming
             # topology so bars are created in the same order as they should be
             # displayed. This is done to ensure correct ordering within notebooks.
+            # TODO(zhilong): Implement num_output_rows_total for all
+            # AllToAllOperators
             self._global_info = ProgressBar(
-                "Running", dag.num_outputs_total(), unit="bundle"
+                "Running", dag.num_output_rows_total(), unit="row"
             )
 
         # Setup the streaming DAG topology and start the runner thread.
@@ -320,6 +322,9 @@ class StreamingExecutor(Executor, threading.Thread):
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():
             op_state.refresh_progress_bar(self._resource_manager)
+        # Refresh the global progress bar to update elapsed time progress.
+        if self._global_info:
+            self._global_info.refresh()
 
         self._update_stats_metrics(state="RUNNING")
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:

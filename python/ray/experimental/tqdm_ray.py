@@ -197,6 +197,7 @@ class _Bar:
         delta = state["x"] - self.state["x"]
         if delta:
             self.bar.update(delta)
+        self.bar.refresh()
         self.state = state
 
     def close(self):

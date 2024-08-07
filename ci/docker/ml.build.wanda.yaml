@@ -20,5 +20,6 @@ srcs:
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=$IMAGE_FROM
   - RAYCI_IS_GPU_BUILD
+  - PYTHON
 tags:
   - cr.ray.io/rayproject/$IMAGE_TO

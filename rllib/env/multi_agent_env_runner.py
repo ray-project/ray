@@ -101,8 +101,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # required in the learning step.
         self._cached_to_module = None
 
-        # Construct the RLModule.
-        self.module = self._make_module()
+        # Construct the MultiRLModule.
+        try:
+            module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
+                env=self.env, spaces=self.get_spaces(), inference_only=True
+            )
+            # Build the module from its spec.
+            self.module = module_spec.build()
+        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
+        # will not have an RLModule, but might still be usable with random actions.
+        except NotImplementedError:
+            self.module = None
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
@@ -589,6 +598,18 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         return done_episodes_to_return
 
+    @override(EnvRunner)
+    def get_spaces(self):
+        return {
+            "__env__": (self.env.observation_space, self.env.action_space),
+            # Use the already agent-to-module translated spaces from our connector
+            # pipeline.
+            **{
+                mid: (o, self._env_to_module.action_space[mid])
+                for mid, o in self._env_to_module.observation_space.spaces.items()
+            },
+        }
+
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
         for eps in self._done_episodes_for_metrics:
@@ -842,31 +863,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     def stop(self):
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         self.env.close()
-
-    def _make_module(self):
-        # Create our own instance of the (single-agent) `RLModule` (which
-        # the needs to be weight-synched) each iteration.
-        # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
-        #  `RLModule`s and not `Policy`s. Like here `policies`->`modules`.
-        try:
-            policy_dict, _ = self.config.get_multi_agent_setup(
-                spaces={
-                    mid: (o, self._env_to_module.action_space[mid])
-                    for mid, o in self._env_to_module.observation_space.spaces.items()
-                },
-            )
-            ma_rlm_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-                policy_dict=policy_dict,
-                # Built only a light version of the module in sampling and inference.
-                inference_only=True,
-            )
-
-            # Build the module from its spec.
-            return ma_rlm_spec.build()
-
-        # This error could be thrown, when only random actions are used.
-        except NotImplementedError:
-            return None
 
     def _setup_metrics(self):
         self.metrics = MetricsLogger()
