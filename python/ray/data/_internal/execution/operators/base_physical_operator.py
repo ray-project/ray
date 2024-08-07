@@ -84,7 +84,7 @@ class AllToAllOperator(PhysicalOperator):
         return (
             self._output_rows
             if self._output_rows
-            else self.input_dependencies[0].num_outputs_total()
+            else self.input_dependencies[0].num_output_rows_total()
         )
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
