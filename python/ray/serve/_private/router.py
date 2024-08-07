@@ -366,8 +366,8 @@ class Router:
             )
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
-        # Flipped to `True` once the router has received a non-empty set
-        # of running replicas at least once.
+        # Flipped to `True` once the router has received a non-empty
+        # replica set at least once.
         self.running_replicas_populated: bool = False
 
         # The config for the deployment this router sends requests to will be broadcast

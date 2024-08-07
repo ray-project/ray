@@ -72,7 +72,11 @@ from ray.serve._private.proxy_router import (
     ProxyRouter,
 )
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import call_function_from_import_path, generate_request_id
+from ray.serve._private.utils import (
+    call_function_from_import_path,
+    generate_request_id,
+    get_head_node_id,
+)
 from ray.serve.config import gRPCOptions
 from ray.serve.exceptions import BackPressureError
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
@@ -144,20 +148,26 @@ class GenericProxy(ABC):
         self,
         node_id: NodeId,
         node_ip_address: str,
+        is_head: bool,
         proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
+        get_handle_override: Optional[Callable] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
             self.request_timeout_s = None
 
         self._node_id = node_id
+        # print("cindy is head node", node_id == get_head_node_id())
+        self._is_head = is_head
 
         # Used only for displaying the route table.
         self.route_info: Dict[str, DeploymentID] = dict()
 
         self.proxy_router = proxy_router_class(
-            partial(serve.get_deployment_handle, _record_telemetry=False), self.protocol
+            get_handle_override
+            or partial(serve.get_deployment_handle, _record_telemetry=False),
+            self.protocol,
         )
         self.request_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_requests",
@@ -327,7 +337,9 @@ class GenericProxy(ABC):
         If the proxy is draining or has not yet received a route table update from the
         controller, both will return a non-OK status.
         """
-        router_ready_for_traffic, router_msg = self.proxy_router.ready_for_traffic()
+        router_ready_for_traffic, router_msg = self.proxy_router.ready_for_traffic(
+            self._is_head
+        )
         if not router_ready_for_traffic:
             healthy = False
             message = router_msg
@@ -759,15 +771,19 @@ class HTTPProxy(GenericProxy):
         self,
         node_id: NodeId,
         node_ip_address: str,
+        is_head: bool,
         proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
         proxy_actor: Optional[ActorHandle] = None,
+        get_handle_override: Optional[Callable] = None,
     ):
         super().__init__(
             node_id,
             node_ip_address,
+            is_head,
             proxy_router_class,
             request_timeout_s=request_timeout_s,
+            get_handle_override=get_handle_override,
         )
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
@@ -1204,6 +1220,7 @@ class ProxyActor:
         self.http_proxy = HTTPProxy(
             node_id=node_id,
             node_ip_address=node_ip_address,
+            is_head=self._node_id == get_head_node_id(),
             proxy_router_class=LongestPrefixRouter,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
@@ -1213,6 +1230,7 @@ class ProxyActor:
             gRPCProxy(
                 node_id=node_id,
                 node_ip_address=node_ip_address,
+                is_head=self._node_id == get_head_node_id(),
                 proxy_router_class=EndpointRouter,
                 request_timeout_s=(
                     request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S

@@ -2,6 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional, Tuple
 
+import ray
 from ray.serve._private.common import (
     ApplicationName,
     DeploymentHandleSource,
@@ -13,6 +14,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.utils import get_head_node_id
 from ray.serve.handle import DeploymentHandle
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -29,7 +31,7 @@ class ProxyRouter(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def ready_for_traffic(self) -> Tuple[bool, str]:
+    def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
         """Whether the proxy router is ready to serve traffic or not.
 
         If the proxy router is not ready to serve traffic, the second
@@ -86,6 +88,7 @@ class LongestPrefixRouter(ProxyRouter):
                     _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
                     _source=DeploymentHandleSource.PROXY,
                 )
+                print("cindy the handle that we got!!", handle)
                 handle._set_request_protocol(self._protocol)
                 # Eagerly instantiate the router for each handle so it can receive
                 # the replica set from the controller.
@@ -143,7 +146,7 @@ class LongestPrefixRouter(ProxyRouter):
 
         return None
 
-    def ready_for_traffic(self) -> Tuple[bool, str]:
+    def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
         """Whether the proxy router is ready to serve traffic.
 
         The first return value will be false if any of the following hold:
@@ -156,6 +159,9 @@ class LongestPrefixRouter(ProxyRouter):
 
         if not self._route_table_populated:
             return False, NO_ROUTES_MESSAGE
+
+        if is_head:
+            return True, ""
 
         for handle in self.handles.values():
             if handle._running_replicas_populated():
@@ -213,7 +219,7 @@ class EndpointRouter(ProxyRouter):
         for endpoint in existing_handles:
             del self.handles[endpoint]
 
-    def ready_for_traffic(self) -> Tuple[bool, str]:
+    def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
         """Whether the proxy router is ready to serve traffic.
 
         The first return value will be false if any of the following hold:
@@ -226,6 +232,9 @@ class EndpointRouter(ProxyRouter):
 
         if not self._route_table_populated:
             return False, NO_ROUTES_MESSAGE
+
+        if is_head:
+            return True, ""
 
         for handle in self.handles.values():
             if handle._running_replicas_populated():
