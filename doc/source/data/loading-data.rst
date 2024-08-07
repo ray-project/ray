@@ -919,33 +919,6 @@ run against the collection.
         collection="my_collection",
     )
 
-Reading Iceberg
-~~~~~~~~~~~~~~~
-
-To read data from Iceberg, call :func:`~ray.data.read_iceberg` and specify the catalog ID,
-namespace (database), and table.
-Please install the `Python Client for Iceberg <https://py.iceberg.apache.org/>`_ to use this
-function.
-
-.. code-block:: console
-
-    pip install pyiceberg
-
-.. testcode::
-    :skipif: True
-
-    import ray
-    from pyiceberg.expressions import BoolExpression, EqualTo
-
-    # Read an iceberg table
-    ds = ray.data.read_iceberg(
-        table_identifier="db_name.table_name",
-        row_filter=BooleanExpression(EqualTo("column_name", "literal_value")),
-        catalog_kwargs={"name": "default", "type": "glue"},
-    )
-
-Writes are currently not supported.
-
 Creating synthetic data
 =======================
 
