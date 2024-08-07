@@ -21,7 +21,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ra
 
 KubeRay operator v1.1.0 adds a new `NumOfHosts` field to the RayCluster CR, supporting multi-host worker groups. This field specifies the number of workers to create per replica, with each replica representing a multi-host Pod slice. The value for `NumOfHosts` should match the number of TPU VM hosts that the given `cloud.google.com/gke-tpu-topology` node selector expects. For this example, the Stable Diffusion model is small enough to run on a single TPU host, so `numOfHosts` is set to 1 in the RayService manifest.
 
-## Step 4: View the Serve deployment in the Ray dashboard
+## Step 4: View the Serve deployment in the Ray Dashboard
 
 Verify the RayService CR is deployed and running
 
