@@ -65,7 +65,7 @@ class _MockWandbAPI:
 
         return mock
 
-    def log(self, data, step=None):
+    def log(self, data):
         try:
             json_dumps_safer(data)
         except Exception:

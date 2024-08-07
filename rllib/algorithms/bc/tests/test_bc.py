@@ -3,11 +3,7 @@ import unittest
 import ray
 
 from ray.rllib.algorithms.bc import BCConfig
-from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
-    EVALUATION_RESULTS,
-)
+from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EPISODE_RETURN_MEAN
 
 
 class TestBC(unittest.TestCase):
@@ -63,7 +59,7 @@ class TestBC(unittest.TestCase):
             results = algo.train()
             print(results)
 
-            eval_results = results.get(EVALUATION_RESULTS, {})
+            eval_results = results.get("evaluation", {})
             if eval_results:
                 episode_return_mean = eval_results[ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN

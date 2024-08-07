@@ -21,6 +21,3 @@ source/data/api/ray.data.*.rst
 source/data/examples.rst
 source/train/examples.rst
 source/serve/examples.rst
-
-# Ignore generated versions
-source/_static/versions.json

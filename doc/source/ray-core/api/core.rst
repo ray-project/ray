@@ -30,12 +30,7 @@ Actors
     :toctree: doc/
 
     ray.remote
-    ray.actor.ActorClass
     ray.actor.ActorClass.options
-    ray.actor.ActorMethod
-    ray.actor.ActorHandle
-    ray.actor.ActorClassInheritanceException
-    ray.actor.exit_actor
     ray.method
     ray.get_actor
     ray.kill

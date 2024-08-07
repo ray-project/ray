@@ -1,5 +1,4 @@
 import functools
-import sys
 import time
 from contextlib import nullcontext
 from unittest.mock import patch
@@ -17,6 +16,9 @@ from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
+)
+from ray.train.examples.tf.tensorflow_mnist_example import (
+    train_func as tensorflow_mnist_train_func,
 )
 from ray.train.tests.util import mock_storage_context
 from ray.train.trainer import TrainingIterator
@@ -283,10 +285,7 @@ class KillCallback:
         self.counter += 1
 
 
-@pytest.mark.parametrize(
-    "backend",
-    ["test", "torch", "tf"] if sys.version_info < (3, 12) else ["test", "torch"],
-)
+@pytest.mark.parametrize("backend", ["test", "torch", "tf"])
 def test_worker_kill(ray_start_4_cpus, backend):
     if backend == "test":
         test_config = BackendConfig()
@@ -326,17 +325,11 @@ def test_worker_kill(ray_start_4_cpus, backend):
     assert kill_callback.counter == 4
 
 
-@pytest.mark.skipif(
-    sys.version_info >= (3, 12), reason="tensorflow is not installed in python 3.12+"
-)
 def test_tensorflow_mnist_fail(ray_start_4_cpus):
     """Tests if tensorflow example works even with worker failure."""
     epochs = 3
     num_workers = 2
 
-    from ray.train.examples.tf.tensorflow_mnist_example import (
-        train_func as tensorflow_mnist_train_func,
-    )
     from ray.train.tensorflow import TensorflowConfig
 
     test_config = TensorflowConfig()

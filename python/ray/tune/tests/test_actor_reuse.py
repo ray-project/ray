@@ -474,6 +474,8 @@ def test_detect_reuse_mixins():
         func.__mixins__ = (DummyMixin,)
         return func
 
+    assert not _check_mixin("PPO")
+
     def train_fn(config):
         pass
 

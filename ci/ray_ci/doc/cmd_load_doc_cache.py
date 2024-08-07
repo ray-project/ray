@@ -7,12 +7,12 @@ import click
 from botocore import UNSIGNED
 from botocore.client import Config
 import time
+from ci.ray_ci.doc.build_cache import ENVIRONMENT_PICKLE
 
 S3_BUCKET = "ray-ci-results"
 DOC_BUILD_DIR_S3 = "doc_build"
 LAST_BUILD_CUTOFF = 3  # how many days ago to consider a build outdated
 PENDING_FILES_PATH = "pending_files.txt"
-ENVIRONMENT_PICKLE = "_build/doctrees/environment.pickle"
 
 
 def find_latest_master_commit():

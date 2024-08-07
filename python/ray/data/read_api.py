@@ -16,8 +16,6 @@ from typing import (
 )
 
 import numpy as np
-from datasource import IcebergDatasource
-
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
@@ -25,9 +23,6 @@ from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
-from ray.data._internal.datasource.delta_sharing_datasource import (
-    DeltaSharingDatasource,
-)
 from ray.data._internal.datasource.image_datasource import ImageDatasource
 from ray.data._internal.datasource.json_datasource import JSONDatasource
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
@@ -68,6 +63,7 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     Connection,
     Datasource,
+    DeltaSharingDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
 )
@@ -83,6 +79,7 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
 )
 from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.tfrecords_datasource import TFXReadOptions
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -99,8 +96,6 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
     from tensorflow_metadata.proto.v0 import schema_pb2
-
-    from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 
 
 T = TypeVar("T")
@@ -200,9 +195,7 @@ def from_items(
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
-        metadata.append(
-            BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
-        )
+        metadata.append(BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build()))
 
     from_items_op = FromItems(blocks, metadata)
     logical_plan = LogicalPlan(from_items_op)
@@ -312,9 +305,7 @@ def range_tensor(
                     Call this method to create synthetic datasets of integer data.
 
     """
-    datasource = RangeDatasource(
-        n=n, block_format="tensor", column_name="data", tensor_shape=tuple(shape)
-    )
+    datasource = RangeDatasource(n=n, block_format="tensor", column_name="data", tensor_shape=tuple(shape))
     return read_datasource(
         datasource,
         parallelism=parallelism,
@@ -422,7 +413,7 @@ def read_datasource(
     import uuid
 
     stats = DatasetStats(
-        metadata={"Read": [read_task.metadata for read_task in read_tasks]},
+        metadata={"Read": [read_task.get_metadata() for read_task in read_tasks]},
         parent=None,
         needs_stats_actor=True,
         stats_uuid=uuid.uuid4(),
@@ -1706,7 +1697,7 @@ def read_tfrecords(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    tfx_read_options: Optional["TFXReadOptions"] = None,
+    tfx_read_options: Optional[TFXReadOptions] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1818,9 +1809,7 @@ def read_tfrecords(
             )
 
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(
-            TFRecordDatasource._FILE_EXTENSIONS
-        )
+        meta_provider = get_generic_metadata_provider(TFRecordDatasource._FILE_EXTENSIONS)
 
     datasource = TFRecordDatasource(
         paths,
@@ -1842,15 +1831,8 @@ def read_tfrecords(
         override_num_blocks=override_num_blocks,
     )
 
-    if (
-        tfx_read_options
-        and tfx_read_options.auto_infer_schema
-        and tfx_read
-        and not tf_schema
-    ):
-        from ray.data._internal.datasource.tfrecords_datasource import (
-            _infer_schema_and_transform,
-        )
+    if tfx_read_options and tfx_read_options.auto_infer_schema and tfx_read and not tf_schema:
+        from ray.data.datasource.tfrecords_datasource import _infer_schema_and_transform
 
         return _infer_schema_and_transform(ds)
 
@@ -1923,9 +1905,7 @@ def read_webdataset(
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(
-            WebDatasetDatasource._FILE_EXTENSIONS
-        )
+        meta_provider = get_generic_metadata_provider(WebDatasetDatasource._FILE_EXTENSIONS)
 
     datasource = WebDatasetDatasource(
         paths,
@@ -2235,9 +2215,7 @@ def read_databricks_tables(
     Returns:
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
-    from ray.data._internal.datasource.databricks_uc_datasource import (
-        DatabricksUCDatasource,
-    )
+    from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
     from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
     def get_dbutils():
@@ -2257,17 +2235,12 @@ def read_databricks_tables(
     token = os.environ.get("DATABRICKS_TOKEN")
 
     if not token:
-        raise ValueError(
-            "Please set environment variable 'DATABRICKS_TOKEN' to "
-            "databricks workspace access token."
-        )
+        raise ValueError("Please set environment variable 'DATABRICKS_TOKEN' to " "databricks workspace access token.")
 
     host = os.environ.get("DATABRICKS_HOST")
     if not host:
         if is_in_databricks_runtime():
-            ctx = (
-                get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
-            )
+            ctx = get_dbutils().notebook.entry_point.getDbutils().notebook().getContext()
             host = ctx.tags().get("browserHostName").get()
         else:
             raise ValueError(
@@ -2316,19 +2289,17 @@ def read_iceberg(
     parallelism: int = -1,
     selected_fields: Tuple[str, ...] = ("*",),
     snapshot_id: Optional[int] = None,
-    scan_kwargs: Optional[dict[str, str]] = None,
-    catalog_kwargs: Optional[dict[str, str]] = None,
+    scan_kwargs: Optional[Dict[str, str]] = None,
+    catalog_kwargs: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
+    override_num_blocks: Optional[int] = None,
 ) -> Dataset:
-    """
-    Create a :class:`~ray.data.Dataset` from an Iceberg table. The table to read from
-    is specified using a fully qualified ```table_identifier```. Using PyIceberg, any
-    intended row filters, snapshot IDs, etc. are applied, and the files that satisfy
-    the query are distributed across Ray read tasks. The number of tasks is
+    """Create a :class:`~ray.data.Dataset` from an Iceberg table. The table to read
+    from is specified using a fully qualified ``table_identifier``. Using PyIceberg,
+    any intended row filters, snapshot IDs, etc. are applied, and the files that
+    satisfy the query are distributed across Ray read tasks. The number of tasks is
     determined by ``parallelism`` which can be requested from this interface or
     automatically chosen if unspecified (see the``parallelism`` arg below).
-
-    A catalog must be chosen for Iceberg, and we currently only support Glue.
 
     .. tip::
 
@@ -2336,18 +2307,22 @@ def read_iceberg(
         - URI: https://py.iceberg.apache.org/
 
     Examples:
-        >>> import ray
-        >>> from pyiceberg.expressions import BooleanExpression, EqualTo
-        >>> ds = ray.data.read_iceberg(
-        ...     table_identifier="db_name.table_name",
-        ...     row_filter=BooleanExpression(EqualTo("column_name", "literal_value")),
-        ...     parallelism=64
-        ... )
+        .. testcode::
+            :skipif: True
+
+            >>> import ray
+            >>> from pyiceberg.expressions import EqualTo
+            >>> ds = ray.data.read_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     row_filter=EqualTo("column_name", "literal_value"),
+            ...     catalog_kwargs={"name": "default", "type": "glue"}
+            ... )
 
     Args:
-        table_identifier: Fully qualified table identifier (i.e., "db_name.table_name")
-        row_filter: A PyIceberg BooleanExpression to use to filter the data *prior*
-            to reading
+        table_identifier: Fully qualified table identifier (``db_name.table_name``)
+        row_filter: A PyIceberg :class:`~pyiceberg.expressions.BooleanExpression`
+            to use to filter the data *prior* to reading
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         selected_fields: Which columns from the data to read, passed directly to
             PyIceberg's load functions
         snapshot_id: Optional snapshot ID for the Iceberg table, by default the latest
@@ -2356,13 +2331,18 @@ def read_iceberg(
              (e.g., case_sensitive, limit, etc.)
         catalog_kwargs: Optional arguments to pass to PyIceberg's Catalog.load_catalog()
          function (e.g., name, type, etc.)
-        parallelism: Degree of parallelism to use for the Dataset
         ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources, and capped at the number of
+            physical files to be read. You shouldn't manually set this value in most
+            cases.
 
     Returns:
-        :class:`~ray.data.Dataset` producing rows from the results of executing the
-            pipeline on the specified Iceberg table.
+        :class:`~ray.data.Dataset` with rows from the Iceberg table.
     """
+    from ray.data.datasource.iceberg_datasource import IcebergDatasource
+
     # Setup the Datasource
     datasource = IcebergDatasource(
         table_identifier=table_identifier,
@@ -2374,7 +2354,10 @@ def read_iceberg(
     )
 
     dataset = read_datasource(
-        datasource=datasource, parallelism=parallelism, ray_remote_args=ray_remote_args
+        datasource=datasource,
+        parallelism=parallelism,
+        override_num_blocks=override_num_blocks,
+        ray_remote_args=ray_remote_args,
     )
 
     return dataset
@@ -2392,7 +2375,6 @@ def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
         A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
     import dask
-
     from ray.util.dask import ray_dask_get
 
     partitions = df.to_delayed()
@@ -2406,9 +2388,7 @@ def from_dask(df: "dask.dataframe.DataFrame") -> MaterializedDataset:
         elif isinstance(df, ray.ObjectRef):
             return df
         else:
-            raise ValueError(
-                "Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}"
-            )
+            raise ValueError("Expected a Ray object ref or a Pandas DataFrame, " f"got {type(df)}")
 
     ds = from_pandas_refs(
         [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions],
@@ -2536,14 +2516,9 @@ def from_pandas_refs(
     elif isinstance(dfs, list):
         for df in dfs:
             if not isinstance(df, ray.ObjectRef):
-                raise ValueError(
-                    "Expected list of Ray object refs, "
-                    f"got list containing {type(df)}"
-                )
+                raise ValueError("Expected list of Ray object refs, " f"got list containing {type(df)}")
     else:
-        raise ValueError(
-            "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
-        )
+        raise ValueError("Expected Ray object ref or list of Ray object refs, " f"got {type(df)}")
 
     context = DataContext.get_current()
     if context.enable_pandas_block:
@@ -2626,14 +2601,9 @@ def from_numpy_refs(
     elif isinstance(ndarrays, list):
         for ndarray in ndarrays:
             if not isinstance(ndarray, ray.ObjectRef):
-                raise ValueError(
-                    "Expected list of Ray object refs, "
-                    f"got list containing {type(ndarray)}"
-                )
+                raise ValueError("Expected list of Ray object refs, " f"got list containing {type(ndarray)}")
     else:
-        raise ValueError(
-            f"Expected Ray object ref or list of Ray object refs, got {type(ndarray)}"
-        )
+        raise ValueError(f"Expected Ray object ref or list of Ray object refs, got {type(ndarray)}")
 
     ctx = DataContext.get_current()
     ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
@@ -2908,10 +2878,7 @@ def from_huggingface(
     """  # noqa: E501
     import datasets
     from aiohttp.client_exceptions import ClientResponseError
-
-    from ray.data._internal.datasource.huggingface_datasource import (
-        HuggingFaceDatasource,
-    )
+    from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
 
     if isinstance(dataset, (datasets.IterableDataset, datasets.Dataset)):
         try:
@@ -2932,14 +2899,11 @@ def from_huggingface(
                     filesystem=http,
                     concurrency=concurrency,
                     override_num_blocks=override_num_blocks,
-                    ray_remote_args={
-                        "retry_exceptions": [FileNotFoundError, ClientResponseError]
-                    },
+                    ray_remote_args={"retry_exceptions": [FileNotFoundError, ClientResponseError]},
                 )
         except (FileNotFoundError, ClientResponseError):
             logger.warning(
-                "Distrubuted read via Hugging Face Hub parquet files failed, "
-                "falling back on single node read."
+                "Distrubuted read via Hugging Face Hub parquet files failed, " "falling back on single node read."
             )
 
     if isinstance(dataset, datasets.IterableDataset):
@@ -2965,9 +2929,7 @@ def from_huggingface(
             f"Available splits are {available_keys}."
         )
     else:
-        raise TypeError(
-            f"`dataset` must be a `datasets.Dataset`, but got {type(dataset)}"
-        )
+        raise TypeError(f"`dataset` must be a `datasets.Dataset`, but got {type(dataset)}")
 
 
 @PublicAPI
@@ -3089,7 +3051,6 @@ def read_lance(
     columns: Optional[List[str]] = None,
     filter: Optional[str] = None,
     storage_options: Optional[Dict[str, str]] = None,
-    scanner_options: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -3116,10 +3077,6 @@ def read_lance(
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https\
                 ://lancedb.github.io/lance/read_and_write.html#object-store-configuration>`_.
-        scanner_options: Additional options to configure the `LanceDataset.scanner()`
-            method, such as `batch_size`. For more information,
-            see `LanceDB API doc <https://lancedb.github.io\
-            /lance/api/python/lance.html#lance.dataset.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -3138,7 +3095,6 @@ def read_lance(
         columns=columns,
         filter=filter,
         storage_options=storage_options,
-        scanner_options=scanner_options,
     )
 
     return read_datasource(
@@ -3197,12 +3153,9 @@ def _resolve_parquet_args(
                 # NOTE(Clark): We use NumPy to consolidate these potentially
                 # non-contiguous buffers, and to do buffer bookkeeping in
                 # general.
-                np_col = _create_possibly_ragged_ndarray(
-                    [
-                        np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
-                        for buf in block.column(tensor_col_name)
-                    ]
-                )
+                np_col = _create_possibly_ragged_ndarray([
+                    np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype) for buf in block.column(tensor_col_name)
+                ])
 
                 block = block.set_column(
                     block._ensure_integer_index(tensor_col_name),

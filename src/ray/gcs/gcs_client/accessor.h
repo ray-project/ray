@@ -59,14 +59,12 @@ class ActorInfoAccessor {
   /// \param  job_id To filter actors by job_id.
   /// \param  actor_state_name To filter actors based on actor state.
   /// \param callback Callback that will be called after lookup finishes.
-  /// \param timeout_ms -1 means infinite.
   /// \return Status
   virtual Status AsyncGetAllByFilter(
       const std::optional<ActorID> &actor_id,
       const std::optional<JobID> &job_id,
       const std::optional<std::string> &actor_state_name,
-      const MultiItemCallback<rpc::ActorTableData> &callback,
-      int64_t timeout_ms = -1);
+      const MultiItemCallback<rpc::ActorTableData> &callback);
 
   /// Get actor specification for a named actor from the GCS asynchronously.
   ///
@@ -144,13 +142,11 @@ class ActorInfoAccessor {
   /// \param force_kill Whether to force kill an actor by killing the worker.
   /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   /// \param callback Callback that will be called after the actor is destroyed.
-  /// \param timeout_ms RPC timeout in milliseconds. -1 means infinite.
   /// \return Status
   virtual Status AsyncKillActor(const ActorID &actor_id,
                                 bool force_kill,
                                 bool no_restart,
-                                const StatusCallback &callback,
-                                int64_t timeout_ms = -1);
+                                const StatusCallback &callback);
 
   /// Asynchronously request GCS to create the actor.
   ///

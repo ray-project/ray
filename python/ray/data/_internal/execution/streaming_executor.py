@@ -128,10 +128,8 @@ class StreamingExecutor(Executor, threading.Thread):
 
         if not isinstance(dag, InputDataBuffer):
             # Note: DAG must be initialized in order to query num_outputs_total.
-            # TODO(zhilong): Implement num_output_rows_total for all
-            # AllToAllOperators
             self._global_info = ProgressBar(
-                "Running", dag.num_output_rows_total(), unit="row"
+                "Running", dag.num_outputs_total(), unit="bundle"
             )
 
         self._output_node: OpState = self._topology[dag]

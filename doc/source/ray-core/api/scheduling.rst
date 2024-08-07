@@ -21,7 +21,6 @@ Placement Group
     :toctree: doc/
 
     ray.util.placement_group
-    ray.util.placement_group.get_placement_group
     ray.util.placement_group.PlacementGroup
     ray.util.placement_group_table
     ray.util.remove_placement_group

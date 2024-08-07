@@ -172,8 +172,7 @@ Status ActorInfoAccessor::AsyncGetAllByFilter(
     const std::optional<ActorID> &actor_id,
     const std::optional<JobID> &job_id,
     const std::optional<std::string> &actor_state_name,
-    const MultiItemCallback<rpc::ActorTableData> &callback,
-    int64_t timeout_ms) {
+    const MultiItemCallback<rpc::ActorTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting all actor info.";
   rpc::GetAllActorInfoRequest request;
   if (actor_id) {
@@ -189,12 +188,10 @@ Status ActorInfoAccessor::AsyncGetAllByFilter(
   }
 
   client_impl_->GetGcsRpcClient().GetAllActorInfo(
-      request,
-      [callback](const Status &status, const rpc::GetAllActorInfoReply &reply) {
+      request, [callback](const Status &status, const rpc::GetAllActorInfoReply &reply) {
         callback(status, VectorFromProtobuf(reply.actor_table_data()));
         RAY_LOG(DEBUG) << "Finished getting all actor info, status = " << status;
-      },
-      timeout_ms);
+      });
   return Status::OK();
 }
 
@@ -314,8 +311,7 @@ Status ActorInfoAccessor::SyncRegisterActor(const ray::TaskSpecification &task_s
 Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id,
                                          bool force_kill,
                                          bool no_restart,
-                                         const ray::gcs::StatusCallback &callback,
-                                         int64_t timeout_ms) {
+                                         const ray::gcs::StatusCallback &callback) {
   rpc::KillActorViaGcsRequest request;
   request.set_actor_id(actor_id.Binary());
   request.set_force_kill(force_kill);
@@ -330,8 +326,7 @@ Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id,
                   : Status(StatusCode(reply.status().code()), reply.status().message());
           callback(status);
         }
-      },
-      timeout_ms);
+      });
   return Status::OK();
 }
 

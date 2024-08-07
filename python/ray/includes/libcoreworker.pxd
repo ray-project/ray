@@ -166,8 +166,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool PinExistingReturnObject(
             const CObjectID& return_id,
             shared_ptr[CRayObject] *return_object,
-            const CObjectID& generator_id,
-            const CAddress &caller_address)
+            const CObjectID& generator_id)
         void AsyncDelObjectRefStream(const CObjectID &generator_id)
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,

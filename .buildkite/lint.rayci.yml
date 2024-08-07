@@ -32,7 +32,6 @@ steps:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
       - api_annotations
-      - api_policy_check core
       - api_policy_check serve
       - api_policy_check data
 

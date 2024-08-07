@@ -101,7 +101,7 @@ TFRecords
 
    read_tfrecords
    Dataset.write_tfrecords
-   TFXReadOptions
+   datasource.tfrecords_datasource.TFXReadOptions
 
 Pandas
 ------
@@ -187,7 +187,7 @@ Delta Sharing
    read_delta_sharing_tables
 
 Iceberg
--------
+--------
 
 .. autosummary::
    :nosignatures:

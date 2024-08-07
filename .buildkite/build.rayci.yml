@@ -70,7 +70,6 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
-      - "3.12"
 
   - label: ":tapioca: build: ray-ml py{{matrix}} docker (x86_64)"
     tags:

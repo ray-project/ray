@@ -2,8 +2,9 @@ import numpy as np
 import random
 import ray
 from ray.actor import ActorHandle
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Union
 
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -16,9 +17,6 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
-
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 # This is the default schema used if no `input_read_schema` is set in
 # the config. If a user passes in a schema into `input_read_schema`
@@ -78,7 +76,7 @@ class OfflinePreLearner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(
         self,
-        config: "AlgorithmConfig",
+        config: AlgorithmConfig,
         learner: Union[Learner, list[ActorHandle]],
         locality_hints: Optional[list] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
@@ -207,7 +205,6 @@ class OfflinePreLearner:
         is_multi_agent: bool,
         batch: Dict[str, np.ndarray],
         schema: Dict[str, str] = SCHEMA,
-        finalize: bool = False,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 
@@ -271,9 +268,6 @@ class OfflinePreLearner:
                     },
                     len_lookback_buffer=0,
                 )
-
-            if finalize:
-                episode.finalize()
             episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}

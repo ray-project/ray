@@ -148,10 +148,6 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
-    @pytest.mark.skipif(
-        sys.version_info >= (3, 12),
-        reason="BOHB not yet supported for python 3.12+",
-    )
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -540,10 +536,6 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = BayesOptSearch()
         self._restore(searcher)
 
-    @pytest.mark.skipif(
-        sys.version_info >= (3, 12),
-        reason="BOHB not yet supported for python 3.12+",
-    )
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 

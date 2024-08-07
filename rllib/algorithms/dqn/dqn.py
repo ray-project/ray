@@ -67,11 +67,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
-from ray.rllib.utils.typing import (
-    LearningRateOrSchedule,
-    RLModuleSpecType,
-    SampleBatchType,
-)
+from ray.rllib.utils.typing import RLModuleSpecType, SampleBatchType
 
 logger = logging.getLogger(__name__)
 
@@ -226,7 +222,6 @@ class DQNConfig(AlgorithmConfig):
         replay_buffer_config: Optional[dict] = NotProvided,
         store_buffer_in_checkpoints: Optional[bool] = NotProvided,
         lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
-        epsilon: Optional[LearningRateOrSchedule] = NotProvided,
         adam_epsilon: Optional[float] = NotProvided,
         grad_clip: Optional[int] = NotProvided,
         num_steps_sampled_before_learning_starts: Optional[int] = NotProvided,
@@ -294,14 +289,14 @@ class DQNConfig(AlgorithmConfig):
                 data.
                 - This is False AND restoring from a checkpoint that does contain
                 buffer data.
-            epsilon: Epsilon exploration schedule. In the format of [[timestep, value],
-                [timestep, value], ...]. A schedule must start from
+            lr_schedule: Learning rate schedule. In the format of [[timestep, value],
+                [timestep, value], ...]. A schedule should normally start from
                 timestep 0.
             adam_epsilon: Adam optimizer's epsilon hyper parameter.
             grad_clip: If not None, clip gradients during optimization at this value.
             num_steps_sampled_before_learning_starts: Number of timesteps to collect
                 from rollout workers before we start sampling from replay buffers for
-                learning. Whether we count this in agent steps or environment steps
+                learning. Whether we count this in agent steps  or environment steps
                 depends on config.multi_agent(count_steps_by=..).
             tau: Update the target by \tau * policy + (1-\tau) * target_policy.
             num_atoms: Number of atoms for representing the distribution of return.
@@ -372,8 +367,6 @@ class DQNConfig(AlgorithmConfig):
             self.store_buffer_in_checkpoints = store_buffer_in_checkpoints
         if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
-        if epsilon is not NotProvided:
-            self.epsilon = epsilon
         if adam_epsilon is not NotProvided:
             self.adam_epsilon = adam_epsilon
         if grad_clip is not NotProvided:
@@ -732,7 +725,6 @@ class DQN(Algorithm):
                                 stats[NUM_MODULE_STEPS_TRAINED]
                             )
                             for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
-                            if NUM_MODULE_STEPS_TRAINED in stats
                         },
                         reduce="sum",
                     )

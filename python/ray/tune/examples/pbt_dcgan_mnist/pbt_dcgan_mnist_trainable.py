@@ -13,11 +13,7 @@ import torch.nn as nn
 import torch.nn.parallel
 import torch.optim as optim
 import torch.utils.data
-from filelock import FileLock
-
-import ray
-from ray import train, tune
-from ray.tune.examples.pbt_dcgan_mnist.common import (
+from common import (
     MODEL_PATH,
     Discriminator,
     Generator,
@@ -29,6 +25,10 @@ from ray.tune.examples.pbt_dcgan_mnist.common import (
     train_func,
     weights_init,
 )
+from filelock import FileLock
+
+import ray
+from ray import train, tune
 from ray.tune.schedulers import PopulationBasedTraining
 
 

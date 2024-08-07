@@ -48,20 +48,14 @@ def get_trainable_cls(trainable_name):
 
 
 @DeveloperAPI
-def validate_trainable(trainable_name: str):
-    if not _has_trainable(trainable_name) and not _has_rllib_trainable(trainable_name):
-        raise TuneError(f"Unknown trainable: {trainable_name}")
-
-
-def _has_rllib_trainable(trainable_name: str) -> bool:
-    try:
+def validate_trainable(trainable_name):
+    if not _has_trainable(trainable_name):
         # Make sure everything rllib-related is registered.
         from ray.rllib import _register_all
-    except (ImportError, ModuleNotFoundError):
-        return False
 
-    _register_all()
-    return _has_trainable(trainable_name)
+        _register_all()
+        if not _has_trainable(trainable_name):
+            raise TuneError("Unknown trainable: " + trainable_name)
 
 
 @DeveloperAPI

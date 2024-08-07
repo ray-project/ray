@@ -8,25 +8,30 @@ import pytest
 import ray
 from ray import tune
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.train import CheckpointConfig
 from ray.train.tests.util import mock_storage_context
-from ray.tune import Experiment, PlacementGroupFactory, ResumeConfig
+from ray.tune import Experiment, PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.search import BasicVariantGenerator
-from ray.tune.utils.mock_trainable import (
-    MOCK_ERROR_KEY,
-    MOCK_TRAINABLE_NAME,
-    register_mock_trainable,
-)
 
 STORAGE = mock_storage_context()
 
 
-@pytest.fixture(autouse=True)
-def register_test_trainable():
-    register_mock_trainable()
+class _MyCallbacks(DefaultCallbacks):
+    def on_episode_start(
+        self,
+        *,
+        worker,
+        base_env,
+        policies,
+        episode,
+        env_index,
+        **kwargs,
+    ):
+        print("in callback")
 
 
 @pytest.fixture(scope="function")
@@ -67,7 +72,7 @@ def test_controller_restore_dataset_references(
     def create_searcher():
         search_alg = BasicVariantGenerator()
         experiment_spec = {
-            "run": MOCK_TRAINABLE_NAME,
+            "run": "__fake",
             "stop": {"training_iteration": 2},
             "config": config,
         }
@@ -133,9 +138,9 @@ def test_controller_restore_no_error_resume(
         "storage": STORAGE,
     }
     trials = [
-        Trial(MOCK_TRAINABLE_NAME, config={MOCK_ERROR_KEY: True}, **kwargs),
-        Trial(MOCK_TRAINABLE_NAME, **kwargs),
-        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+        Trial("__fake", config={"mock_error": True}, **kwargs),
+        Trial("__fake", **kwargs),
+        Trial("__fake", **kwargs),
     ]
     for t in trials:
         runner.add_trial(t)
@@ -151,11 +156,7 @@ def test_controller_restore_no_error_resume(
     new_runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=STORAGE,
-        resume_config=ResumeConfig(
-            unfinished=ResumeConfig.ResumeType.RESUME,
-            errored=ResumeConfig.ResumeType.SKIP,
-            finished=ResumeConfig.ResumeType.SKIP,
-        ),
+        resume=True,
     )
 
     assert len(new_runner.get_trials()) == 3
@@ -182,9 +183,9 @@ def test_controller_restore_error_only_resume(
         "storage": STORAGE,
     }
     trials = [
-        Trial(MOCK_TRAINABLE_NAME, config={MOCK_ERROR_KEY: True}, **kwargs),
-        Trial(MOCK_TRAINABLE_NAME, **kwargs),
-        Trial(MOCK_TRAINABLE_NAME, **kwargs),
+        Trial("__fake", config={"mock_error": True}, **kwargs),
+        Trial("__fake", **kwargs),
+        Trial("__fake", **kwargs),
     ]
     for t in trials:
         runner.add_trial(t)
@@ -200,11 +201,7 @@ def test_controller_restore_error_only_resume(
     new_runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=STORAGE,
-        resume_config=ResumeConfig(
-            unfinished=ResumeConfig.ResumeType.SKIP,
-            errored=ResumeConfig.ResumeType.RESUME,
-            finished=ResumeConfig.ResumeType.SKIP,
-        ),
+        resume="ERRORED_ONLY",
     )
 
     assert len(new_runner.get_trials()) == 3
@@ -212,8 +209,8 @@ def test_controller_restore_error_only_resume(
     # The below is just a check for standard behavior.
     disable_error = False
     for t in new_runner.get_trials():
-        if t.config.get(MOCK_ERROR_KEY):
-            t.config[MOCK_ERROR_KEY] = False
+        if t.config.get("mock_error"):
+            t.config["mock_error"] = False
             disable_error = True
     assert disable_error
 
@@ -239,7 +236,7 @@ def test_controller_restore_trial_save_restore(
     )
     trials = [
         Trial(
-            MOCK_TRAINABLE_NAME,
+            "__fake",
             trial_id="trial_terminate",
             stopping_criterion={"training_iteration": 1},
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
@@ -254,11 +251,11 @@ def test_controller_restore_trial_save_restore(
 
     trials += [
         Trial(
-            MOCK_TRAINABLE_NAME,
+            "__fake",
             trial_id="trial_fail",
             stopping_criterion={"training_iteration": 3},
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
-            config={MOCK_ERROR_KEY: True},
+            config={"mock_error": True},
             storage=STORAGE,
         )
     ]
@@ -269,7 +266,7 @@ def test_controller_restore_trial_save_restore(
 
     trials += [
         Trial(
-            MOCK_TRAINABLE_NAME,
+            "__fake",
             trial_id="trial_succ",
             stopping_criterion={"training_iteration": 2},
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
@@ -285,11 +282,7 @@ def test_controller_restore_trial_save_restore(
     runner2 = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=STORAGE,
-        resume_config=ResumeConfig(
-            unfinished=ResumeConfig.ResumeType.RESUME,
-            errored=ResumeConfig.ResumeType.SKIP,
-            finished=ResumeConfig.ResumeType.SKIP,
-        ),
+        resume="LOCAL",
     )
     for tid in ["trial_terminate", "trial_fail"]:
         original_trial = runner.get_trial(tid)
@@ -323,7 +316,7 @@ def test_controller_restore_trial_no_checkpoint_save(
 
         runner.add_trial(
             Trial(
-                MOCK_TRAINABLE_NAME,
+                "__fake",
                 trial_id="non_checkpoint",
                 stopping_criterion={"training_iteration": 2},
                 storage=STORAGE,
@@ -335,7 +328,7 @@ def test_controller_restore_trial_no_checkpoint_save(
 
         runner.add_trial(
             Trial(
-                MOCK_TRAINABLE_NAME,
+                "__fake",
                 trial_id="checkpoint",
                 checkpoint_config=CheckpointConfig(
                     checkpoint_at_end=True,
@@ -350,7 +343,7 @@ def test_controller_restore_trial_no_checkpoint_save(
 
         runner.add_trial(
             Trial(
-                MOCK_TRAINABLE_NAME,
+                "__fake",
                 trial_id="pending",
                 stopping_criterion={"training_iteration": 2},
                 storage=STORAGE,
@@ -364,11 +357,7 @@ def test_controller_restore_trial_no_checkpoint_save(
         runner2 = TuneController(
             resource_manager_factory=lambda: resource_manager_cls(),
             storage=STORAGE,
-            resume_config=ResumeConfig(
-                unfinished=ResumeConfig.ResumeType.RESUME,
-                errored=ResumeConfig.ResumeType.SKIP,
-                finished=ResumeConfig.ResumeType.SKIP,
-            ),
+            resume="LOCAL",
         )
         new_trials = runner2.get_trials()
         assert len(new_trials) == 3
@@ -377,6 +366,41 @@ def test_controller_restore_trial_no_checkpoint_save(
         assert runner2.get_trial("pending").status == Trial.PENDING
         assert runner2.get_trial("pending").has_reported_at_least_once
         runner2.step()
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+def test_controller_restore_rllib_callbacks(
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
+):
+    """Check that rllib callbacks are serialized and restored correctly.
+
+    Legacy test: test_trial_runner_3.py::TrialRunnerTest::testCheckpointWithFunction
+    """
+    trial = Trial(
+        "__fake",
+        config={"callbacks": _MyCallbacks},
+        checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
+        storage=STORAGE,
+    )
+    runner = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
+        checkpoint_period=0,
+    )
+    runner.add_trial(trial)
+    for _ in range(5):
+        runner.step()
+    # force checkpoint
+    runner.checkpoint()
+    runner2 = TuneController(
+        resource_manager_factory=lambda: resource_manager_cls(),
+        storage=STORAGE,
+        resume="LOCAL",
+    )
+    new_trial = runner2.get_trials()[0]
+    assert "callbacks" in new_trial.config
 
 
 @pytest.mark.parametrize(
@@ -403,7 +427,8 @@ def test_controller_restore_checkpoint_overwrite(
     # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`
     # for more details.
     trial = Trial(
-        MOCK_TRAINABLE_NAME,
+        "__fake",
+        experiment_path=tmpdir,
         checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
         storage=storage,
     )
@@ -423,11 +448,7 @@ def test_controller_restore_checkpoint_overwrite(
     runner2 = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         storage=storage,
-        resume_config=ResumeConfig(
-            unfinished=ResumeConfig.ResumeType.RESUME,
-            errored=ResumeConfig.ResumeType.SKIP,
-            finished=ResumeConfig.ResumeType.SKIP,
-        ),
+        resume="LOCAL",
     )
     trial = runner2.get_trials()[0]
     while not trial.status == Trial.RUNNING:
@@ -439,12 +460,11 @@ def test_controller_restore_checkpoint_overwrite(
     assert count_checkpoints(tmpdir) == 2
 
 
-@pytest.mark.skip("TODO(justinvyu): Data lineage serialization context is broken.")
 @pytest.mark.parametrize(
     "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
 )
 def test_controller_restore_with_dataset(
-    ray_start_4_cpus_2_gpus_extra, resource_manager_cls, tmp_path
+    ray_start_4_cpus_2_gpus_extra, resource_manager_cls
 ):
     """Test trial runner checkpointing where trials contain Datasets.
     When possible, a dataset plan should be saved (for read_* APIs).
@@ -457,8 +477,10 @@ def test_controller_restore_with_dataset(
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::
         testExperimentCheckpointWithDatasets
     """
+    storage = mock_storage_context()
+
     # Save some test data to load
-    data_filepath = os.path.join(tmp_path, "test.csv")
+    data_filepath = os.path.join(storage.storage_local_path, "test.csv")
     pd.DataFrame({"x": list(range(10))}).to_csv(data_filepath)
 
     def create_trial_config():
@@ -472,14 +494,14 @@ def test_controller_restore_with_dataset(
     resolvers = create_resolvers_map()
     config_with_placeholders = inject_placeholders(create_trial_config(), resolvers)
     trial = Trial(
-        MOCK_TRAINABLE_NAME,
+        "__fake",
         config=config_with_placeholders,
         storage=STORAGE,
     )
     trial.init_local_path()
     runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
-        storage=STORAGE,
+        storage=storage,
         placeholder_resolvers=resolvers,
     )
     runner.add_trial(trial)
@@ -490,12 +512,11 @@ def test_controller_restore_with_dataset(
     ray.shutdown()
     ray.init(num_cpus=2)
 
-    register_mock_trainable()
     new_runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
-        storage=STORAGE,
+        storage=storage,
     )
-    new_runner.resume(resume_config=ResumeConfig())
+    new_runner.resume()
     [loaded_trial] = new_runner.get_trials()
     loaded_datasets = loaded_trial.config["datasets"]
 
@@ -507,10 +528,10 @@ def test_controller_restore_with_dataset(
 
     respecified_config_runner = TuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
-        storage=STORAGE,
+        storage=storage,
         placeholder_resolvers=replaced_resolvers,
     )
-    respecified_config_runner.resume(resume_config=ResumeConfig())
+    respecified_config_runner.resume()
     [loaded_trial] = respecified_config_runner.get_trials()
     ray_ds_no_lineage = loaded_trial.config["datasets"]["no_lineage"]
 

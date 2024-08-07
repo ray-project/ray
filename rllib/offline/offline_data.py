@@ -22,7 +22,9 @@ class OfflineData:
         self.config = config
         self.is_multi_agent = config.is_multi_agent()
         self.path = (
-            config.input_ if isinstance(config.input_, list) else Path(config.input_)
+            config.get("input_")
+            if isinstance(config.get("input_"), list)
+            else Path(config.get("input_"))
         )
         # Use `read_json` as default data read method.
         self.data_read_method = config.input_read_method

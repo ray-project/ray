@@ -1,19 +1,13 @@
 import argparse
-import sys
+
+import tensorflow as tf
 
 import ray
 from ray import train
+from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.data.preprocessors import Concatenator
 from ray.train import Result, ScalingConfig
-
-if sys.version_info >= (3, 12):
-    # Skip this test in Python 3.12+ because TensorFlow is not supported.
-    sys.exit(0)
-else:
-    import tensorflow as tf
-
-    from ray.air.integrations.keras import ReportCheckpointCallback
-    from ray.train.tensorflow import TensorflowTrainer
+from ray.train.tensorflow import TensorflowTrainer
 
 
 def build_model() -> tf.keras.Model:
