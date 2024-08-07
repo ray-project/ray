@@ -174,32 +174,22 @@ class IcebergDatasource(Datasource):
         # requested n_chunks, so that there are no empty tasks
         if parallelism > len(list(plan_files)):
             parallelism = len(list(plan_files))
-            logger.warning(
-                f"Reducing the parallelism to {parallelism}, as that is the"
-                "number of files"
-            )
+            logger.warning(f"Reducing the parallelism to {parallelism}, as that is the" "number of files")
 
         read_tasks = []
         # Chunk the plan files based on the requested parallelism
-        for chunk_tasks in IcebergDatasource._distribute_tasks_into_equal_chunks(
-            plan_files, parallelism
-        ):
+        for chunk_tasks in IcebergDatasource._distribute_tasks_into_equal_chunks(plan_files, parallelism):
             unique_deletes: Set[DataFile] = set(
-                itertools.chain.from_iterable(
-                    [task.delete_files for task in chunk_tasks]
-                )
+                itertools.chain.from_iterable([task.delete_files for task in chunk_tasks])
             )
             # Get a rough estimate of the number of deletes by just looking at
             # position deletes. Equality deletes are harder to estimate, as they
             # can delete multiple rows.
             position_delete_count = sum(
-                delete.record_count
-                for delete in unique_deletes
-                if delete.content == DataFileContent.POSITION_DELETES
+                delete.record_count for delete in unique_deletes if delete.content == DataFileContent.POSITION_DELETES
             )
             metadata = BlockMetadata(
-                num_rows=sum(task.file.record_count for task in chunk_tasks)
-                - position_delete_count,
+                num_rows=sum(task.file.record_count for task in chunk_tasks) - position_delete_count,
                 size_bytes=sum(task.length for task in chunk_tasks),
                 schema=pya_schema,
                 input_files=[task.file.file_path for task in chunk_tasks],
