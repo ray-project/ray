@@ -165,6 +165,7 @@ class ProgressBar:
                     result.num_rows if hasattr(result, "num_rows") else 1
                 )  # Default to 1 if no row count is available
                 total_rows_processed += num_rows
+            # TODO(zhilong): Change the total to total_row when init progress bar
             self.update(total_rows_processed)
 
             with _canceled_threads_lock:
