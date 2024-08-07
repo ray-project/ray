@@ -1,6 +1,9 @@
+import math
+import tree
 from typing import Dict
 
-from ray.rllib.cql.cql_learner import CQLLearner
+from ray.air.constants import TRAINING_ITERATION
+from ray.rllib.algorithms.cql.cql_learner import CQLLearner
 from ray.rllib.algorithms.sac.sac_learner import (
     LOGPS_KEY,
     QF_LOSS_KEY,
@@ -17,13 +20,14 @@ from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
 )
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 
 torch, nn = try_import_torch()
 
 
-class CQLTorchLearner(CQLLearner, SACTorchLearner):
+class CQLTorchLearner(SACTorchLearner, CQLLearner):
     @override(SACTorchLearner)
     def compute_loss_for_module(
         self,
@@ -34,6 +38,15 @@ class CQLTorchLearner(CQLLearner, SACTorchLearner):
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
 
+        # TODO (simon, sven): Add upstream information pieces into this timesteps
+        # call arg to Learner.update_...().
+        self.metrics.log_value(
+            (ALL_MODULES, TRAINING_ITERATION),
+            0
+            if math.isnan(self.metrics.peek((ALL_MODULES, TRAINING_ITERATION)))
+            else self.metrics.peek((ALL_MODULES, TRAINING_ITERATION)) + 1,
+            window=1,
+        )
         # Get the train action distribution for the current policy and current state.
         # This is needed for the policy (actor) loss and the `alpha`` loss.
         action_dist_class = self.module[module_id].get_train_action_dist_cls()
@@ -86,11 +99,22 @@ class CQLTorchLearner(CQLLearner, SACTorchLearner):
 
         # Get the current alpha.
         alpha = torch.exp(self.curr_log_alpha[module_id])
-        if self.metrics.peek("current_iteration") >= config.bc_iterations:
-            q_selected = fwd_out[QF_PREDS]
+        # Start training with behavior cloning and turn to the classic Soft-Actor Critic
+        # after `bc_iters` of training iterations.
+        if self.metrics.peek((ALL_MODULES, TRAINING_ITERATION)) >= config.bc_iters:
+            # Calculate current Q-values.
+            batch_curr = {
+                Columns.OBS: batch[Columns.OBS],
+                # Use the actions sampled from the current policy.
+                Columns.ACTIONS: actions_curr,
+            }
+            q_curr = self.module[module_id].compute_q_values(batch_curr)
             # TODO (simon): Add twin Q
-            actor_loss = torch.mean(alpha.detach() * logps_curr - q_selected)
+            actor_loss = torch.mean(alpha.detach() * logps_curr - q_curr)
         else:
+            # Use log-probabilities of the current action distribution to clone
+            # the behavior policy (selected actions in data) in the first `bc_iters`
+            # training iterations.
             bc_logps_curr = action_dist_curr.logp(batch[Columns.ACTIONS])
             actor_loss = torch.mean(alpha.detach() * logps_curr - bc_logps_curr)
 
@@ -98,7 +122,8 @@ class CQLTorchLearner(CQLLearner, SACTorchLearner):
         if batch_size == config.train_batch_size_per_learner:
             optim = self.get_optimizer(module_id=module_id, optimizer_name="policy")
             optim.zero_grad()
-            actor_loss.backward()
+            # Retain the graph b/c we want to step a nother time through it.
+            actor_loss.backward(retain_graph=True)
             # Add the gradients to the gradient buffer that is used
             # in `self.apply_gradients`.
             self.grads.update(
@@ -111,7 +136,7 @@ class CQLTorchLearner(CQLLearner, SACTorchLearner):
             )
 
         # The critic loss is composed of the standard SAC Critic L2 loss and the
-        # CQL Entropy loss.
+        # CQL entropy loss.
         action_dist_next = action_dist_class.from_logits(
             fwd_out["action_dist_inputs_next"]
         )
@@ -133,7 +158,7 @@ class CQLTorchLearner(CQLLearner, SACTorchLearner):
         # sampled actions for the next state.
         q_batch_next = {
             Columns.OBS: batch[Columns.NEXT_OBS],
-            Columns.ATIONS: actions_next,
+            Columns.ACTIONS: actions_next,
         }
         q_target_next = self.module[module_id].forward_target(q_batch_next)
         # TODO (simon): Apply twin Q
@@ -147,7 +172,8 @@ class CQLTorchLearner(CQLLearner, SACTorchLearner):
         q_selected_target = (
             # TODO (simon): Add an `n_step` option to the `AddNextObsToBatch` connector.
             batch[Columns.REWARDS]
-            + (config.gamma ** batch["n_step"]) * q_next_masked
+            # TODO (simon): Implement n_step.
+            + (config.gamma) * q_next_masked
         ).detach()
 
         # Calculate the TD error.
@@ -165,85 +191,88 @@ class CQLTorchLearner(CQLLearner, SACTorchLearner):
 
         # Now calculate the CQL loss (we use the entropy version of the CQL algorithm).
         # Note, the entropy version performs best in shown experiments.
-        actions_rand_repeat = torch.FloatTensor(
-            batch[Columns.ACTIONS].shape[0] * config.num_actions,
+        # Generate random actions (from the mu distribution as named in Kumar et
+        # al. (2020))
+        low = torch.tensor(
+            self.module[module_id].config.action_space.low,
             device=fwd_out[QF_PREDS].device,
-        ).uniform_(
-            self.module.config.action_space.low, self.module.config.action_space.high
         )
-        # TODO (simon): Check, if we can repeat these like this or if we need to
-        # backpropagate through these actions.
-        # actions_curr_repeat = actions_curr[actions_curr.
-        # multinomial(config.num_actions, replacement=True).view(-1)]
-        # actions_next_repeat = actions_curr[actions_next.
-        # multinomial(config.num_actions, replacement=True).view(-1)]
-        actions_curr_repeat = (
-            action_dist_curr.rsample()
-            if not config._deterministic_loss
-            else action_dist_curr.to_deterministic().sample()
+        high = torch.tensor(
+            self.module[module_id].config.action_space.high,
+            device=fwd_out[QF_PREDS].device,
         )
-        logps_curr_repeat = action_dist_curr.logp(actions_curr_repeat)
-        random_idx = actions_curr_repeat.multinomial(
-            config.num_actions, replacement=True
-        ).view(-1)
-        actions_curr_repeat = actions_curr_repeat[random_idx]
-        logps_curr_repeat = logps_curr_repeat[random_idx]
-        q_batch_curr_repeat = {
-            Columns.OBS: batch[Columns.OBS][random_idx],
-            Columns.ACTIONS: actions_curr_repeat,
-        }
-        q_curr_repeat = self.module.compute_q_values(q_batch_curr_repeat)
-        del q_batch_curr_repeat
-        # Sample actions for the next state.
-        actions_next_repeat = (
-            action_dist_next.rsample()
-            if not config._deterministic_loss
-            else action_dist_next.to_deterministic().sample()
+        num_samples = batch[Columns.ACTIONS].shape[0] * config.num_actions
+        actions_rand_repeat = low + (high - low) * torch.rand(
+            (num_samples, low.shape[0]), device=fwd_out[QF_PREDS].device
         )
-        logps_next_repeat = action_dist_next.logp(actions_next_repeat)
-        random_idx = actions_next_repeat.multinomial(
-            config.num_actions, replacement=True
-        ).view(-1)
-        actions_next_repeat = actions_next_repeat[random_idx]
-        logps_next_repeat = logps_next_repeat[random_idx]
-        q_batch_next_repeat = {
-            Columns.OBS: batch[Columns.NEXT_OBS][random_idx],
-            Columns.ACTIONS: actions_next_repeat,
-        }
-        q_next_repeat = self.module.compute_q_values(q_batch_next_repeat)
-        del q_batch_next_repeat
 
-        q_batch_random_repeat = {
-            # Note, we can use here simply the same random index
-            # as within the last batch.
-            Columns.OBS: batch[Columns.OBS][random_idx],
+        # Sample current and next actions (from the pi distribution as named in Kumar
+        # et al. (2020)) using repeated observations.
+        actions_curr_repeat, logps_curr_repeat, obs_curr_repeat = self._repeat_actions(
+            action_dist_class, batch[Columns.OBS], config.num_actions, module_id
+        )
+        actions_next_repeat, logps_next_repeat, obs_next_repeat = self._repeat_actions(
+            action_dist_class, batch[Columns.NEXT_OBS], config.num_actions, module_id
+        )
+
+        # Calculate the Q-values for all actions.
+        batch_rand_repeat = {
+            Columns.OBS: obs_curr_repeat,
             Columns.ACTIONS: actions_rand_repeat,
         }
-        # Compute the Q-values for the random actions (from the mu-distribution).
-        q_random_repeat = self.module.compute_q_values(q_batch_random_repeat)
-        del q_batch_random_repeat
-        # TODO (simon): Check, if this should be `actions_random_repeat`.
-        logps_random_repeat = torch.logp(0.5**actions_curr_repeat)
+        q_rand_repeat = (
+            self.module[module_id]
+            .compute_q_values(batch_rand_repeat)
+            .view(batch_size, config.num_actions, 1)
+        )
+        del batch_rand_repeat
+        batch_curr_repeat = {
+            Columns.OBS: obs_curr_repeat,
+            Columns.ACTIONS: actions_curr_repeat,
+        }
+        q_curr_repeat = (
+            self.module[module_id]
+            .compute_q_values(batch_curr_repeat)
+            .view(batch_size, config.num_actions, 1)
+        )
+        del batch_curr_repeat
+        batch_next_repeat = {
+            Columns.OBS: obs_curr_repeat,
+            Columns.ACTIONS: actions_next_repeat,
+        }
+        q_next_repeat = (
+            self.module[module_id]
+            .compute_q_values(batch_next_repeat)
+            .view(batch_size, config.num_actions, 1)
+        )
+        del batch_next_repeat
+
+        # Compute the log-probabilities for the random actions.
+        random_density = torch.log(
+            torch.pow(
+                torch.tensor(
+                    actions_curr_repeat.shape[-1], device=actions_curr_repeat.device
+                ),
+                0.5,
+            )
+        )
+        # Merge all Q-values and subtract the log-probabilities (note, we use the
+        # entropy version of CQL).
         q_repeat = torch.cat(
             [
-                q_random_repeat - logps_random_repeat,
-                q_curr_repeat - logps_curr_repeat,
-                q_next_repeat - logps_next_repeat,
+                q_rand_repeat - random_density,
+                q_next_repeat - logps_next_repeat.detach(),
+                q_curr_repeat - logps_curr_repeat.detach(),
             ],
             dim=1,
         )
-        # TODO (simon): Also run the twin Q here.
 
-        # Compute the entropy version of the CQL loss (see eq. (4) in Kumar et al.
-        # (2020)). Note that we use here the softmax with a temperature parameter.
         cql_loss = (
             torch.logsumexp(q_repeat / config.temperature, dim=1).mean()
             * config.min_q_weight
             * config.temperature
         )
-        # The actual minimum Q-loss subtracts the value V (i.e. the expected Q-value)
-        # evaluated at the actually selected actions.
-        cql_loss = cql_loss - q_selected.mean() * config.min_q_weight
+        cql_loss = cql_loss - (q_selected.mean() * config.min_q_weight)
         # TODO (simon): Implement CQL twin-Q loss here
 
         # TODO (simon): Check, if we need to implement here also a Lagrangian
@@ -261,9 +290,11 @@ class CQLTorchLearner(CQLLearner, SACTorchLearner):
             # in `self.apply_gradients` later.
             self.grads.update(
                 {
-                    pid: p.grad.clone()
+                    pid: self.grads[pid] + p.grad.clone()
+                    if pid in self.grads
+                    else p.grad.clone()
                     for pid, p in self.filter_param_dict_for_optimizer(
-                        self._params, optim
+                        self._params, critic_optim
                     ).items()
                 }
             )
@@ -303,12 +334,95 @@ class CQLTorchLearner(CQLLearner, SACTorchLearner):
 
     @override(SACTorchLearner)
     def compute_gradients(
-        self, loss_per_module: Dict[str, TensorType], **kwargs
+        self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
+        """Returns the collected gradients from loss computation.
 
+        Note, the gradients for each module are collected in the
+        `compute_loss_for_module` method. CQL uses similar to SAC multiple learners
+        and multiple passes through the networks which need to be recorded
+        step-wise.
+
+        Dict mapping module IDs to their individual total loss
+                terms, computed by the individual `compute_loss_for_module()` calls.
+                The overall total loss (sum of loss terms over all modules) is stored
+                under `loss_per_module[ALL_MODULES]`.
+            **kwargs: Forward compatibility kwargs.
+
+        Returns:
+            Returns:
+            The gradients in the same (flat) format as self._params. Note that all
+            top-level structures, such as module IDs, will not be present anymore in
+            the returned dict. It will merely map parameter tensor references to their
+            respective gradient tensors.
+        """
+        # TODO (simon): Check, if we can use a similar setup to SAC and also make the
+        # backward passes all here.
         # Return here simply the buffered gradients from `compute_loss_for_module`.
         grads = self.grads
         # Reset the gradient buffer.
         self.grads = {}
         # Finally, return the gradients.
         return grads
+
+    def _repeat_tensor(self, tensor, repeat):
+        """Generates a repeated version of a tensor.
+
+        The repetition is done similar `np.repeat` and repeats each value
+        instead of the complete vector.
+
+        Args:
+            tensor: The tensor to be repeated.
+            repeat: How often each value in the tensor should be repeated.
+
+        Returns:
+            A tensor holding `repeat`  repeated values of the input `tensor`
+        """
+        # Insert the new dimension at axis 1 into the tensor.
+        t_repeat = tensor.unsqueeze(1)
+        # Repeat the tensor along the new dimension.
+        t_repeat = torch.repeat_interleave(t_repeat, repeat, dim=1)
+        # Stack the repeated values into the batch dimension.
+        t_repeat = t_repeat.view(-1, *tensor.shape[1:])
+        # Return the repeated tensor.
+        return t_repeat
+
+    def _repeat_actions(self, action_dist_class, obs, num_actions, module_id):
+        """Generated actions for repeated observations.
+
+        The `num_actions` define a multiplier used for generating `num_actions`
+        as many actions as the batch size. Observations are repeated and then a
+        model forward pass is made.
+
+        Args:
+            action_dist_class: The action distribution class to be sued for sampling
+                actions.
+            obs: A batched observation tensor.
+            num_actions: The multiplier for actions, i.e. how much more actions
+                than the batch size should be generated.
+            module_id: The module ID to be used when calling the forward pass.
+
+        Returns:
+            A tuple containing the sampled actions, their log-probabilities and the
+            repeated observations.
+        """
+        # Receive the batch size.
+        batch_size = obs.shape[0]
+        # Repeat the observations `num_actions` times.
+        obs_repeat = tree.map_structure(
+            lambda t: self._repeat_tensor(t, num_actions), obs
+        )
+        # Generate a batch for the forward pass.
+        temp_batch = {Columns.OBS: obs_repeat}
+        # Run the forward pass in inference mode.
+        fwd_out = self.module[module_id].forward_inference(temp_batch)
+        # Generate the squashed Gaussian from the model's logits.
+        action_dist = action_dist_class.from_logits(fwd_out[Columns.ACTION_DIST_INPUTS])
+        # Sample the actions. Note, we want to make a backward pass through
+        # these actions.
+        actions = action_dist.rsample()
+        # Compute the action log-probabilities.
+        action_logps = action_dist.logp(actions).view(batch_size, num_actions, 1)
+
+        # Return
+        return actions, action_logps, obs_repeat
