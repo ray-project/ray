@@ -161,12 +161,17 @@ class TestReadIceberg:
         ray_ds = read_iceberg(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
             row_filter=pyi_expr.In("col_c", {1, 2, 3, 4}),
-            selected_fields=("col_a", "col_b", "col_c",),
+            selected_fields=(
+                "col_a",
+                "col_b",
+            ),
             catalog_kwargs={"name": _CATALOG_NAME, "type": "sql"},
         )
-        table = pa.concat_tables([ray.get(ar) for ar in ray_ds.to_arrow_refs()])
-        # expected_schema = pa.schema([pa.field("col_b", pa.string())])
-        # assert all(rt.metadata.schema.equals(expected_schema) for rt in read_tasks), (
-        #     [rt.metadata.schema for rt in read_tasks],
-        #     expected_schema,
-        # )
+        table: pa.Table = pa.concat_tables(
+            (ray.get(ref) for ref in ray_ds.to_arrow_refs())
+        )
+
+        expected_schema = pa.schema(
+            [pa.field("col_b", pa.int32()), pa.field("col_b", pa.string())]
+        )
+        assert table.schema.equals(expected_schema)
