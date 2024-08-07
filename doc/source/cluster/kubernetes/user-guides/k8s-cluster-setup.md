@@ -10,7 +10,7 @@ gcp-gke-gpu-cluster
 gcp-gke-tpu-cluster
 ```
 
-Most KubeRay documentation only requires a local Kubernetes cluster such as [Kind](https://kind.sigs.k8s.io/).
+Most KubeRay documentation examples only require a local Kubernetes cluster such as [Kind](https://kind.sigs.k8s.io/).
 Some KubeRay examples require GPU nodes, which can be provided by a managed Kubernetes service.
 We collect a few helpful links for users who are getting started with a managed Kubernetes service to launch a Kubernetes cluster equipped with GPUs.
 
