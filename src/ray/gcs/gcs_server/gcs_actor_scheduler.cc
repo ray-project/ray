@@ -547,7 +547,7 @@ bool GcsActorScheduler::KillActorOnWorker(const rpc::Address &worker_address,
   request.set_intended_actor_id(actor_id.Binary());
   request.set_force_kill(true);
   request.set_no_restart(true);
-  cli->KillActor(request, [actor_id](auto &status, auto &) {
+  cli->KillActor(request, [actor_id](auto &status, auto &&) {
     RAY_LOG(DEBUG) << "Killing actor " << actor_id
                    << " with return status: " << status.ToString();
   });
