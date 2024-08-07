@@ -646,7 +646,7 @@ class _WrappedDataLoader(DataLoader):
             self.device_manager.set_device(device)
 
         # disable auto transfer (host->device) if cpu is used
-        if device.type != "cpu" and self.device_manager.is_support_stream():
+        if device.type != "cpu" and self.device_manager.supports_stream():
             self._auto_transfer = auto_transfer
         else:
             self._auto_transfer = False
