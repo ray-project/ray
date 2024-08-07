@@ -535,7 +535,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
   const auto &callback = work->callback;
   bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
   const auto &task = work->task;
-  const auto &spec = task.GetTaskSpecification();
   bool dispatched = false;
 
   // Check whether owner worker or owner node dead.
@@ -558,6 +557,14 @@ bool LocalTaskManager::PoppedWorkerHandler(
     }
   }
 
+  // Erases the work from task_to_dispatch_ queue, also removes the task dependencies.
+  //
+  // IDEA(ryw): Make an RAII class to wrap the a shared_ptr<internal::Work> and
+  // requests task dependency upon ctor, and remove task dependency upon dtor.
+  // I tried this, it works, but we expose the map via GetTaskToDispatch() used in
+  // scheduler_resource_reporter.cc. Maybe we can use `boost::any_range` to only expose
+  // a view of the Work ptrs, but I got dependency issues
+  // (can't include boost/range/any_range.hpp).
   auto erase_from_dispatch_queue_fn = [this](const std::shared_ptr<internal::Work> &work,
                                              const SchedulingClass &scheduling_class) {
     auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
@@ -576,6 +583,12 @@ bool LocalTaskManager::PoppedWorkerHandler(
       tasks_to_dispatch_.erase(shapes_it);
     }
     RAY_CHECK(erased);
+
+    const auto &task = work->task;
+    if (!task.GetDependencies().empty()) {
+      task_dependency_manager_.RemoveTaskDependencies(
+          task.GetTaskSpecification().TaskId());
+    }
   };
 
   if (canceled) {
@@ -586,8 +599,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
     // false without doing anything.
     return false;
   }
-
-  bool remove_task_dependencies = false;
 
   if (!worker || not_detached_with_owner_failed) {
     // There are two cases that will not dispatch the task at this time:
@@ -620,15 +631,11 @@ bool LocalTaskManager::PoppedWorkerHandler(
             task_id,
             rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_RUNTIME_ENV_SETUP_FAILED,
             /*scheduling_failure_message*/ runtime_env_setup_error_message);
-        // NOT removing dependencies because it's already removed in `CancelTask`.
-        remove_task_dependencies = false;
       } else if (status == PopWorkerStatus::JobFinished) {
         // The task job finished.
         // Just remove the task from dispatch queue.
         RAY_LOG(DEBUG) << "Call back to a job finished task, task id = " << task_id;
         erase_from_dispatch_queue_fn(work, scheduling_class);
-        // Remove task dependencies because the job finished and hence won't be run.
-        remove_task_dependencies = true;
       } else {
         // In other cases, set the work status `WAITING` to make this task
         // could be re-dispatched.
@@ -643,17 +650,12 @@ bool LocalTaskManager::PoppedWorkerHandler(
                          << status;
         }
         work->SetStateWaiting(cause);
-        // NOT removing task dependencies because it will be re-dispatched.
-        remove_task_dependencies = false;
       }
     } else if (not_detached_with_owner_failed) {
       // The task owner failed.
       // Just remove the task from dispatch queue.
       RAY_LOG(DEBUG) << "Call back to an owner failed task, task id = " << task_id;
       erase_from_dispatch_queue_fn(work, scheduling_class);
-
-      // Remove task dependencies because the task owner failed and hence won't be run.
-      remove_task_dependencies = true;
     }
   } else {
     // A worker has successfully popped for a valid task. Dispatch the task to
@@ -664,14 +666,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
     Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
     erase_from_dispatch_queue_fn(work, scheduling_class);
     dispatched = true;
-
-    // Remove task dependencies because the task is dispatched, indicating dependencies
-    // are ready.
-    remove_task_dependencies = true;
-  }
-
-  if (remove_task_dependencies && !spec.GetDependencies().empty()) {
-    task_dependency_manager_.RemoveTaskDependencies(task.GetTaskSpecification().TaskId());
   }
 
   return dispatched;
