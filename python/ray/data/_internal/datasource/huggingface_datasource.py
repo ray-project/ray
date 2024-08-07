@@ -6,7 +6,6 @@ from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource, ReadTask
-from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import datasets
@@ -47,7 +46,6 @@ except ImportError as e:
     TRANSFORMERS_IMPORT_ERROR = e
 
 
-@DeveloperAPI
 class HuggingFaceDatasource(Datasource):
     """Hugging Face Dataset datasource, for reading from a
     `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_.

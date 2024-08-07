@@ -28,7 +28,7 @@
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/stats/metric_defs.h"
@@ -181,7 +181,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_6,
                                   std::placeholders::_7,
                                   std::placeholders::_8);
-    direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
+    task_receiver_ = std::make_unique<TaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
           return local_raylet_client_->ActorCreationTaskDone();
         });
@@ -569,10 +569,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                             rpc_address_));
 
   // Unfortunately the raylet client has to be constructed after the receivers.
-  if (direct_task_receiver_ != nullptr) {
+  if (task_receiver_ != nullptr) {
     task_argument_waiter_.reset(new DependencyWaiterImpl(*local_raylet_client_));
-    direct_task_receiver_->Init(
-        core_worker_client_pool_, rpc_address_, task_argument_waiter_);
+    task_receiver_->Init(core_worker_client_pool_, rpc_address_, task_argument_waiter_);
   }
 
   actor_manager_ = std::make_unique<ActorManager>(
@@ -729,7 +728,7 @@ void CoreWorker::Shutdown() {
     if (worker_context_.CurrentActorIsAsync()) {
       options_.terminate_asyncio_thread();
     }
-    direct_task_receiver_->Stop();
+    task_receiver_->Stop();
     task_execution_service_.stop();
   }
   if (options_.on_worker_shutdown) {
@@ -3191,13 +3190,13 @@ std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
 
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                                          std::shared_ptr<RayObject> *return_object,
-                                         const ObjectID &generator_id) {
+                                         const ObjectID &generator_id,
+                                         const rpc::Address &owner_address) {
   // TODO(swang): If there is already an existing copy of this object, then it
   // might not have the same value as the new copy. It would be better to evict
   // the existing copy here.
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   bool got_exception;
-  rpc::Address owner_address(worker_context_.GetCurrentTask()->CallerAddress());
 
   // Temporarily set the return object's owner's address. This is needed to retrieve the
   // value from plasma.
@@ -3516,13 +3515,13 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                           << " won't be executed because the worker already exited.";
             return;
           }
-          direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
+          task_receiver_->HandleTask(request, reply, send_reply_callback);
         },
         "CoreWorker.HandlePushTaskActor");
   } else {
     // Normal tasks are enqueued here, and we post a RunNormalTasksFromQueue instance to
     // the task execution service.
-    direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
+    task_receiver_->HandleTask(request, reply, send_reply_callback);
     task_execution_service_.post(
         [this, func_name] {
           // We have posted an exit task onto the main event loop,
@@ -3532,7 +3531,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                           << " won't be executed because the worker already exited.";
             return;
           }
-          direct_task_receiver_->RunNormalTasksFromQueue();
+          task_receiver_->RunNormalTasksFromQueue();
         },
         "CoreWorker.HandlePushTask");
   }
@@ -4059,7 +4058,7 @@ void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
         << "Cancelling a task that's not running. Tasks will be removed from a queue.";
     // If the task is not currently running, check if it is in the worker's queue of
     // normal tasks, and remove it if found.
-    success = direct_task_receiver_->CancelQueuedNormalTask(task_id);
+    success = task_receiver_->CancelQueuedNormalTask(task_id);
   }
   if (recursive) {
     auto recursive_cancel = CancelChildren(task_id, force_kill);
@@ -4090,7 +4089,7 @@ void CoreWorker::CancelActorTaskOnExecutor(WorkerID caller_worker_id,
     std::string concurrency_group_name;
 
     bool is_task_queued_or_executing =
-        direct_task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
+        task_receiver_->CancelQueuedActorTask(caller_worker_id, task_id);
 
     // If a task is already running, we send a cancel request.
     // Right now, we can only cancel async actor tasks.
@@ -4565,8 +4564,8 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 }
 
 void CoreWorker::SetActorReprName(const std::string &repr_name) {
-  RAY_CHECK(direct_task_receiver_ != nullptr);
-  direct_task_receiver_->SetActorReprName(repr_name);
+  RAY_CHECK(task_receiver_ != nullptr);
+  task_receiver_->SetActorReprName(repr_name);
 
   absl::MutexLock lock(&mutex_);
   actor_repr_name_ = repr_name;
