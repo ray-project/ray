@@ -946,9 +946,7 @@ class MultiAgentEpisode:
             assert self.env_t_to_agent_t[agent_id].get(-1) == self.SKIP_ENV_TS_TAG
             for i in range(1, self.env_t_to_agent_t[agent_id].lookback + 1):
                 if (
-                    self.env_t_to_agent_t[agent_id].get(
-                        -i, neg_index_as_lookback=True
-                    )
+                    self.env_t_to_agent_t[agent_id].get(-i, neg_index_as_lookback=True)
                     != self.SKIP_ENV_TS_TAG
                 ):
                     len_lookback_buffer = max(len_lookback_buffer, i)

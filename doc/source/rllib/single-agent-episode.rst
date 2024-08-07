@@ -5,6 +5,9 @@
 .. include:: /_includes/rllib/new_api_stack_component.rst
 
 
+.. _single-agent-episode-docs:
+
+
 Episodes
 ========
 

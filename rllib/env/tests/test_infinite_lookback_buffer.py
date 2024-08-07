@@ -350,9 +350,7 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
                 [11, 11, 11, 11, 11, 11],
             )
             # Both start stop on left side.
-            check(
-                buffer.get(slice(-10, -9), fill=0, neg_index_as_lookback=True), [0]
-            )
+            check(buffer.get(slice(-10, -9), fill=0, neg_index_as_lookback=True), [0])
             check(
                 buffer.get(slice(-20, -15), fill=0, neg_index_as_lookback=True),
                 [0, 0, 0, 0, 0],
@@ -366,9 +364,7 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
                 buffer.get(slice(10, 15), fill=0, neg_index_as_lookback=True),
                 [0, 0, 0, 0, 0],
             )
-            check(
-                buffer.get(slice(15, 17), fill=0, neg_index_as_lookback=True), [0, 0]
-            )
+            check(buffer.get(slice(15, 17), fill=0, neg_index_as_lookback=True), [0, 0])
             check(
                 buffer.get(slice(1000, 1001), fill=6, neg_index_as_lookback=True),
                 [6],
@@ -559,9 +555,7 @@ class TestInfiniteLookbackBuffer(unittest.TestCase):
         check(buffer.data, [0, 1, 2, 3, 4, 5, 6, 7])
 
         # Via the `set` method with going into the lookback buffer.
-        buffer.set(
-            [100, 200, 300], at_indices=slice(-1, 2), neg_index_as_lookback=True
-        )
+        buffer.set([100, 200, 300], at_indices=slice(-1, 2), neg_index_as_lookback=True)
         check(buffer.data, [0, 100, 200, 300, 4, 5, 6, 7])
         buffer.set(-999, at_indices=-2, neg_index_as_lookback=True)
         check(buffer.data, [-999, 100, 200, 300, 4, 5, 6, 7])

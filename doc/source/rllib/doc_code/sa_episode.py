@@ -155,16 +155,29 @@ last_5_rewards = episode.get_rewards(slice(-5, None), fill=0.0)
 # Construct a new episode (len=3 and lookback buffer=3).
 episode = SingleAgentEpisode(
     observations=[
-        "o-3", "o-2", "o-1",     # <- lookback
-        "o0", "o1", "o2", "o3",  # <- actual episode data
+        "o-3",
+        "o-2",
+        "o-1",  # <- lookback  # noqa
+        "o0",
+        "o1",
+        "o2",
+        "o3",  # <- actual episode data  # noqa
     ],
     actions=[
-        "a-3", "a-2", "a-1",  # <- lookback
-        "a0", "a1", "a2",     # <- actual episode data
+        "a-3",
+        "a-2",
+        "a-1",  # <- lookback  # noqa
+        "a0",
+        "a1",
+        "a2",  # <- actual episode data  # noqa
     ],
     rewards=[
-        -3.0, -2.0, -1.0,     # <- lookback
-        0.0, 1.0, 2.0,        # <- actual episode data
+        -3.0,
+        -2.0,
+        -1.0,  # <- lookback  # noqa
+        0.0,
+        1.0,
+        2.0,  # <- actual episode data  # noqa
     ],
     len_lookback_buffer=3,
 )
@@ -188,7 +201,6 @@ for global_ts in [0, 1, 2]:
 # [0.0, 1.0, 2.0]    # global ts=2 (plus looking back 2 ts)
 
 # __rllib-sa-episode-06-end__
-
 
 
 # Looking back from ts=1, get the previous 4 rewards AND fill with 0.0
@@ -215,18 +227,22 @@ import numpy as np
 # partially discrete/multi-discrete) actions for each timestep within a training
 # batch, thereby filling timesteps before the episode started with 0.0s and
 # one-hot'ing the discrete/multi-discrete components in these actions:
-episode = SingleAgentEpisode(action_space=gym.spaces.Dict({
-    "a": gym.spaces.Discrete(3),
-    "b": gym.spaces.MultiDiscrete([2, 3]),
-    "c": gym.spaces.Box(-1.0, 1.0, (2,)),
-}))
+episode = SingleAgentEpisode(
+    action_space=gym.spaces.Dict(
+        {
+            "a": gym.spaces.Discrete(3),
+            "b": gym.spaces.MultiDiscrete([2, 3]),
+            "c": gym.spaces.Box(-1.0, 1.0, (2,)),
+        }
+    )
+)
 
 # ... fill episode with data ...
 episode.add_env_reset(observation=0)
 # ... from a few steps.
 episode.add_env_step(
     observation=1,
-    action={"a": 0, "b": np.array([1, 2]), "c": np.array([.5, -.5], np.float32)},
+    action={"a": 0, "b": np.array([1, 2]), "c": np.array([0.5, -0.5], np.float32)},
     reward=1.0,
 )
 
