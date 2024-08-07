@@ -12,7 +12,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
-    from ray.data._internal.datasource.parquet_datasource import _SerializedFragment
+    from ray.data._internal.datasource.parquet_datasource import SerializedFragment
 
 
 FRAGMENTS_PER_META_FETCH = 6
@@ -131,11 +131,11 @@ class ParquetMetadataProvider(FileMetadataProvider):
             must be returned in the same order as all input file fragments, such
             that `metadata[i]` always contains the metadata for `fragments[i]`.
         """
-        from ray.data._internal.datasource.parquet_datasource import _SerializedFragment
+        from ray.data._internal.datasource.parquet_datasource import SerializedFragment
 
         if len(fragments) > PARALLELIZE_META_FETCH_THRESHOLD:
             # Wrap Parquet fragments in serialization workaround.
-            fragments = [_SerializedFragment(fragment) for fragment in fragments]
+            fragments = [SerializedFragment(fragment) for fragment in fragments]
             # Fetch Parquet metadata in parallel using Ray tasks.
 
             def fetch_func(fragments):
@@ -162,7 +162,7 @@ class ParquetMetadataProvider(FileMetadataProvider):
 
 
 def _fetch_metadata_serialization_wrapper(
-    fragments: List["_SerializedFragment"],
+    fragments: List["SerializedFragment"],
     retry_match: Optional[List[str]],
     retry_max_attempts: int,
     retry_max_interval: int,

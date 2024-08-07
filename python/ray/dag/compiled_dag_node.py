@@ -1504,7 +1504,9 @@ class CompiledDAG:
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
 
-        return CompiledDAGFuture(self, self._execution_index, fut)
+        fut = CompiledDAGFuture(self, self._execution_index, fut)
+        self._execution_index += 1
+        return fut
 
     def teardown(self):
         """Teardown and cancel all actor tasks for this DAG. After this

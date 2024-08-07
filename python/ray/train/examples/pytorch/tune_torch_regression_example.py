@@ -1,10 +1,9 @@
 import argparse
 
-from torch_regression_example import get_datasets, train_func
-
 import ray
 from ray import tune
 from ray.train import DataConfig, ScalingConfig
+from ray.train.examples.pytorch.torch_regression_example import get_datasets, train_func
 from ray.train.torch import TorchTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
