@@ -890,6 +890,82 @@ class TestBuildDAGNodeOperationGraph:
         self.check_edge_between_writer_and_reader(graph, global_idx_1, global_idx_2)
         self.check_edge_between_compute_nodes(graph, global_idx_1, global_idx_2)
 
+    def test_two_actors(self, monkeypatch):
+        """
+        driver -> fake_actor_1.op -> fake_actor_2.op -> driver
+               |                                     |
+               -> fake_actor_2.op -> fake_actor_1.op -
+
+        This test includes two actors, each with two tasks. The
+        test case covers all three rules for adding edges between
+        operation nodes in the operation graph.
+        """
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
+
+        fake_actor_1, global_idx_1, global_idx_3 = "fake_actor_1", 1, 3
+        fake_actor_2, global_idx_2, global_idx_4 = "fake_actor_2", 2, 4
+
+        compiled_dag = CompiledDAG()
+        compiled_dag.idx_to_task = {
+            0: CompiledTask(0, InputNode()),
+            global_idx_1: CompiledTask(global_idx_1, ClassMethodNode()),
+            global_idx_2: CompiledTask(global_idx_2, ClassMethodNode()),
+            global_idx_3: CompiledTask(global_idx_3, ClassMethodNode()),
+            global_idx_4: CompiledTask(global_idx_4, ClassMethodNode()),
+            5: CompiledTask(5, MultiOutputNode()),
+        }
+        compiled_dag.idx_to_task[global_idx_1].downstream_node_idxs = {
+            global_idx_4: fake_actor_2
+        }
+        compiled_dag.idx_to_task[global_idx_2].downstream_node_idxs = {
+            global_idx_3: fake_actor_1
+        }
+
+        actor_to_operation_nodes = {
+            fake_actor_1: [
+                list(
+                    generate_dag_graph_nodes(
+                        0, global_idx_1, fake_actor_1, False
+                    ).values()
+                ),
+                list(
+                    generate_dag_graph_nodes(
+                        1, global_idx_3, fake_actor_1, False
+                    ).values()
+                ),
+            ],
+            fake_actor_2: [
+                list(
+                    generate_dag_graph_nodes(
+                        0, global_idx_2, fake_actor_2, False
+                    ).values()
+                ),
+                list(
+                    generate_dag_graph_nodes(
+                        1, global_idx_4, fake_actor_2, False
+                    ).values()
+                ),
+            ],
+        }
+        graph = compiled_dag._build_dag_node_operation_graph(actor_to_operation_nodes)
+        assert len(graph) == 4
+
+        self.check_edges_between_read_compute_write(
+            graph, global_idx_1, [(0, 1), (1, 2), (1, 1)]
+        )
+        self.check_edges_between_read_compute_write(
+            graph, global_idx_2, [(0, 1), (1, 2), (1, 1)]
+        )
+        self.check_edges_between_read_compute_write(
+            graph, global_idx_3, [(1, 1), (2, 1), (1, 0)]
+        )
+        self.check_edges_between_read_compute_write(
+            graph, global_idx_4, [(1, 1), (2, 1), (1, 0)]
+        )
+        self.check_edge_between_writer_and_reader(graph, global_idx_1, global_idx_4)
+        self.check_edge_between_writer_and_reader(graph, global_idx_2, global_idx_3)
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
