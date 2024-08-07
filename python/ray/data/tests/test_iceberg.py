@@ -161,7 +161,7 @@ class TestReadIceberg:
         expected_schema = pa.schema([pa.field("col_a", pa.int32()), pa.field("col_b", pa.large_string())])
         assert table.schema.equals(expected_schema)
 
-        # Actually compare the tables now
+        # Read the raw table from PyIceberg
         sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
         orig_table_p = (
             sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
@@ -171,5 +171,6 @@ class TestReadIceberg:
             .reset_index(drop=True)
         )
 
+        # Actually compare the tables now
         table_p = ray_ds.to_pandas().sort_values(["col_a", "col_b"]).reset_index(drop=True)
         assert orig_table_p.equals(table_p)
