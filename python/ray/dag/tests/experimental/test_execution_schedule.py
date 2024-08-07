@@ -29,12 +29,24 @@ USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 
 @dataclass
 class PipelineConfig:
+    """
+    pp_size: Number of pipeline parallel workers.
+    num_micro_batches: Number of micro-batches.
+    """
+
     pp_size: int
     num_micro_batches: int
 
 
 @dataclass
 class PipelineUnit:
+    """
+    op: Operation type (FWD or BWD).
+    pp_rank: Pipeline parallel rank.
+    batch_id: Batch ID.
+    uid: Unique ID for the pipeline unit.
+    """
+
     op: str
     pp_rank: int
     batch_id: int
@@ -47,7 +59,14 @@ class PipelineUnit:
         return self.uid
 
 
-def generate_1f1b_schedule(config) -> List[List[PipelineUnit]]:
+def generate_1f1b_schedule(config: PipelineConfig) -> List[List[PipelineUnit]]:
+    """
+    Args:
+        config: Pipeline configuration.
+    Returns:
+        schedule: List of pipeline units for 1F1B pipeline parallelism. Each
+            inner list represents the schedule for a pipeline parallel worker.
+    """
     pp_size = config.pp_size
     num_micro_batches = config.num_micro_batches
 
@@ -83,15 +102,27 @@ class PipelineModel:
         config: PipelineConfig,
         schedule: List[List[PipelineUnit]],
         blocks: List[ActorHandle],
-        compile_dag: bool = True,
     ) -> None:
+        """
+        Args:
+            config: Pipeline configuration.
+            schedule: List of pipeline units. Each inner list represents the
+                schedule for a pipeline parallel worker.
+            blocks: List of actors representing pipeline parallel workers.
+        """
         self.config = config
         self.blocks = blocks
         self.generate_pipeline_schedules(schedule)
-        self.compile_dag = compile_dag
         self.dag = self.build_dag()
 
-    def generate_pipeline_schedules(self, schedule):
+    def generate_pipeline_schedules(self, schedule: List[List[PipelineUnit]]):
+        """
+        Convert per-worker schedule to per-batch schedule.
+
+        Args:
+            schedule: List of pipeline units. Each inner list represents the
+                schedule for a pipeline parallel worker.
+        """
         self.id_to_unit = dict()
         self.stage_schedules = defaultdict(list)
         self.batch_schedules = defaultdict(list)
@@ -115,6 +146,10 @@ class PipelineModel:
             self.batch_schedules[batch_id] = fwd_units + bwd_units
 
     def build_dependency_graph(self):
+        """
+        Add dependencies between pipeline units based on:
+        (1) Per-batch schedule and (2) Per-worker schedule.
+        """
         graph = defaultdict(set)
         reversed_graph = defaultdict(set)
 
@@ -129,6 +164,9 @@ class PipelineModel:
         return graph, reversed_graph
 
     def build_dag(self):
+        """
+        Build accelerated DAG for the pipeline model.
+        """
         graph, reversed_graph = self.build_dependency_graph()
         dag_nodes = dict()  # Cache DAG Node for each unit
 
@@ -182,10 +220,8 @@ class PipelineModel:
                         queue.append(target_uid)
 
             dag = MultiOutputNode(output_nodes)
-
-            if self.compile_dag:
-                dag = dag.experimental_compile()
-        return dag
+            compiled_dag = dag.experimental_compile()
+        return compiled_dag
 
     def step(self, input_batches):
         return ray.get(self.dag.execute(input_batches))
