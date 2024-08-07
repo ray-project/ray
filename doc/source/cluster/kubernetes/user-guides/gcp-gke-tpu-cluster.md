@@ -6,7 +6,7 @@ See the [GKE documentation](<https://cloud.google.com/kubernetes-engine/docs/how
 
 ## Step 1: Create a Kubernetes cluster on GKE
 
-Run all following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, you need to install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
+Run the following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
 
 Create a Standard GKE cluster and enable the Ray Operator in the us-central2-b compute region:
 
