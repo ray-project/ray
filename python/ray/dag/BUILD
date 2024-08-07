@@ -129,7 +129,7 @@ py_test_module_list(
     deps = ["//:ray_lib"],
 )
 
-py_test(
+py_test_module_list(
     name = "Accelerated DAG GPU tests",
     size = "medium",
     files = [
