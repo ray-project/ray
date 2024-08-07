@@ -8,12 +8,6 @@ from ray.rllib.algorithms.marwil.marwil_offline_prelearner import (
 )
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
-from ray.rllib.algorithms.marwil.marwil_offline_prelearner import (
-    MARWILOfflinePreLearner,
-)
-from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )

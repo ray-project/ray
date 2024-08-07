@@ -2386,6 +2386,7 @@ class AlgorithmConfig(_Config):
         input_read_method: Optional[Union[str, Callable]] = NotProvided,
         input_read_method_kwargs: Optional[Dict] = NotProvided,
         input_read_schema: Optional[Dict[str, str]] = NotProvided,
+        input_read_episodes: Optional[bool] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
         prelearner_class: Optional[Type] = NotProvided,
