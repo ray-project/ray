@@ -25,7 +25,6 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.serialization import serialize_type, deserialize_type
 from ray.rllib.utils.typing import ModuleID, StateDict, T
@@ -208,7 +207,7 @@ class MultiAgentRLModule(RLModule):
             `func([module_id, module, **kwargs])`.
         """
         return [
-            func(module_id, module, **kwargs)
+            func(module_id, module.unwrapped(), **kwargs)
             for module_id, module in self._rl_modules.items()
         ]
 
@@ -368,7 +367,7 @@ class MultiAgentRLModule(RLModule):
     def _run_forward_pass(
         self,
         forward_fn_name: str,
-        batch: Union[NestedDict[Any], Dict[ModuleID, Any]],
+        batch: Dict[ModuleID, Any],
         **kwargs,
     ) -> Dict[ModuleID, Dict[ModuleID, Any]]:
         """This is a helper method that runs the forward pass for the given module.
@@ -387,15 +386,8 @@ class MultiAgentRLModule(RLModule):
             mapping from module ID to the output of the forward pass.
         """
 
-        # if isinstance(batch, NestedDict):
-        #    module_ids = list(batch.shallow_keys())
-        # else:
-        #    module_ids = list(batch.keys())
-
         outputs = {}
-        for module_id in (
-            batch.shallow_keys() if isinstance(batch, NestedDict) else batch.keys()
-        ):
+        for module_id in batch.keys():
             self._check_module_exists(module_id)
             rl_module = self._rl_modules[module_id]
             forward_fn = getattr(rl_module, forward_fn_name)

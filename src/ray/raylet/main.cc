@@ -270,11 +270,10 @@ int main(int argc, char *argv[]) {
   };
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
-      [&](::ray::Status status,
-          const boost::optional<std::string> &stored_raylet_config) {
+      [&](::ray::Status status, const std::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
-        RayConfig::instance().initialize(stored_raylet_config.get());
+        RayConfig::instance().initialize(*stored_raylet_config);
         ray::asio::testing::init();
 
         // Core worker tries to kill child processes when it exits. But they can't do
@@ -312,7 +311,7 @@ int main(int argc, char *argv[]) {
                            ? static_cast<int>(num_cpus_it->second)
                            : 0;
 
-        node_manager_config.raylet_config = stored_raylet_config.get();
+        node_manager_config.raylet_config = *stored_raylet_config;
         node_manager_config.resource_config = ray::ResourceSet(static_resource_conf);
         RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                        << node_manager_config.resource_config.DebugString();

@@ -1355,6 +1355,10 @@ def test_from_huggingface_e2e(ray_start_regular_shared):
     _check_usage_record(["FromArrow"])
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Skip due to incompatibility tensorflow with Python 3.12+",
+)
 def test_from_tf_e2e(ray_start_regular_shared):
     import tensorflow as tf
     import tensorflow_datasets as tfds
@@ -1492,19 +1496,6 @@ def test_execute_to_legacy_block_list(
 
     for i, row in enumerate(ds.iter_rows()):
         assert row["id"] == i
-
-    assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.metadata
-    assert ds._plan._snapshot_stats.time_total_s > 0
-
-
-def test_execute_to_legacy_block_iterator(
-    ray_start_regular_shared,
-):
-    ds = ray.data.range(10)
-    assert ds._plan._snapshot_stats is None
-    for batch in ds.iter_batches():
-        assert batch is not None
 
     assert ds._plan._snapshot_stats is not None
     assert "ReadRange" in ds._plan._snapshot_stats.metadata

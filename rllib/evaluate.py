@@ -322,8 +322,8 @@ def rollout(
 
     # Normal case: Agent was setup correctly with an evaluation EnvRunnerGroup,
     # which we will now use to rollout.
-    if hasattr(agent, "evaluation_workers") and isinstance(
-        agent.evaluation_workers, EnvRunnerGroup
+    if hasattr(agent, "eval_env_runner_group") and isinstance(
+        agent.eval_env_runner_group, EnvRunnerGroup
     ):
         steps = 0
         episodes = 0
@@ -344,12 +344,14 @@ def rollout(
         return
 
     # Agent has no evaluation workers, but RolloutWorkers.
-    elif hasattr(agent, "workers") and isinstance(agent.workers, EnvRunnerGroup):
-        env = agent.workers.local_worker().env
+    elif hasattr(agent, "env_runner_group") and isinstance(
+        agent.env_runner_group, EnvRunnerGroup
+    ):
+        env = agent.env_runner.env
         multiagent = isinstance(env, MultiAgentEnv)
-        if agent.workers.local_worker().multiagent:
+        if agent.env_runner.multiagent:
             policy_agent_mapping = agent.config.policy_mapping_fn
-        policy_map = agent.workers.local_worker().policy_map
+        policy_map = agent.env_runner.policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
 

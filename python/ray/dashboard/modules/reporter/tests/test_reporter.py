@@ -5,14 +5,12 @@ import sys
 import time
 from collections import defaultdict
 from multiprocessing import Process
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
 import requests
 from google.protobuf import text_format
-
-from mock import patch
 
 import ray
 from ray._private import ray_constants

@@ -100,7 +100,7 @@ class TestCQL(unittest.TestCase):
             # using the data from CQL's global replay buffer.
             # Get a sample (MultiAgentBatch).
 
-            batch = algo.workers.local_worker().input_reader.next()
+            batch = algo.env_runner.input_reader.next()
             multi_agent_batch = batch.as_multi_agent()
             # All experiences have been buffered for `default_policy`
             batch = multi_agent_batch.policy_batches["default_policy"]

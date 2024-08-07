@@ -1,4 +1,7 @@
+from typing import Any, Dict
+
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.misc import (
@@ -9,6 +12,7 @@ from ray.rllib.models.torch.misc import (
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
@@ -142,13 +146,10 @@ class TinyAtariCNN(TorchRLModule):
             Columns.VF_PREDS: values,
         }
 
-    # TODO (sven): In order for this RLModule to work with PPO, we must define
-    #  our own `_compute_values()` method. This would become more obvious, if we simply
-    #  subclassed the `PPOTorchRLModule` directly here (which we didn't do for
-    #  simplicity and to keep some generality). We might even get rid of algo-
-    #  specific RLModule subclasses altogether in the future and replace them
-    #  by mere algo-specific APIs (w/o any actual implementations).
-    def _compute_values(self, batch):
+    # We implement this RLModule as a ValueFunctionAPI RLModule, so it can be used
+    # by value-based methods like PPO or IMPALA.
+    @override(ValueFunctionAPI)
+    def compute_values(self, batch: Dict[str, Any]) -> TensorType:
         obs = batch[Columns.OBS]
         features = self._base_cnn_stack(obs.permute(0, 3, 1, 2))
         features = torch.squeeze(features, dim=[-1, -2])
