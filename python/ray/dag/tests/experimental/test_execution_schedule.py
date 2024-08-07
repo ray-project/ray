@@ -8,13 +8,13 @@ import ray
 import ray.cluster_utils
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
-from ray.dag import InputNode, MultiOutputNode
+from ray.dag import InputNode, MultiOutputNode, ClassMethodNode
 from ray.dag.dag_node_operation import (
     DAGNodeOperationType,
     DAGOperationGraphNode,
     DAGNodeOperation,
 )
-from ray.dag.compiled_dag_node import _select_next_nodes
+from ray.dag.compiled_dag_node import _select_next_nodes, CompiledDAG, CompiledTask
 import torch
 from typing import List
 from dataclasses import dataclass, field
@@ -666,6 +666,179 @@ class TestSelectNextNodes:
             assert (
                 next_nodes[1] == mock_graph[global_idx_1_1][DAGNodeOperationType.READ]
             )
+
+
+def mock_init(self):
+    pass
+
+
+class TestBuildDAGNodeOperationGraph:
+    """
+    Test whether `_build_dag_node_operation_graph` function adds the correct
+    edges between the nodes in the operation graph.
+    """
+
+    def check_edges_between_read_compute_write(
+        self, graph, global_idx, expected_num_edges
+    ):
+        read_node = graph[global_idx][DAGNodeOperationType.READ]
+        compute_node = graph[global_idx][DAGNodeOperationType.COMPUTE]
+        write_node = graph[global_idx][DAGNodeOperationType.WRITE]
+
+        for idx, node in enumerate([read_node, compute_node, write_node]):
+            assert node.in_degree == expected_num_edges[idx][0]
+            assert len(node.out_edges) == expected_num_edges[idx][1]
+
+        assert (global_idx, DAGNodeOperationType.COMPUTE) in read_node.out_edges
+        assert (global_idx, DAGNodeOperationType.READ) in compute_node.in_edges
+        assert (global_idx, DAGNodeOperationType.WRITE) in compute_node.out_edges
+        assert (global_idx, DAGNodeOperationType.COMPUTE) in write_node.in_edges
+
+    def check_edge_between_writer_and_reader(self, graph, writer_idx, reader_idx):
+        write_node = graph[writer_idx][DAGNodeOperationType.WRITE]
+        read_node = graph[reader_idx][DAGNodeOperationType.READ]
+
+        assert (reader_idx, DAGNodeOperationType.READ) in write_node.out_edges
+        assert (writer_idx, DAGNodeOperationType.WRITE) in read_node.in_edges
+
+    def check_edge_between_compute_nodes(self, graph, global_idx_1, global_idx_2):
+        compute_node_1 = graph[global_idx_1][DAGNodeOperationType.COMPUTE]
+        compute_node_2 = graph[global_idx_2][DAGNodeOperationType.COMPUTE]
+
+        assert (global_idx_2, DAGNodeOperationType.COMPUTE) in compute_node_1.out_edges
+        assert (global_idx_1, DAGNodeOperationType.COMPUTE) in compute_node_2.in_edges
+
+    def test_edges_between_read_compute_write(self, monkeypatch):
+        """
+        driver -> fake_actor.op -> driver
+
+        This test case aims to verify whether the function correctly adds edges
+        between READ/COMPUTE and COMPUTE/WRITE operations on the same actor.
+        """
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
+
+        compiled_dag = CompiledDAG()
+        compiled_dag.idx_to_task = {
+            0: CompiledTask(0, InputNode()),
+            1: CompiledTask(1, ClassMethodNode()),
+            2: CompiledTask(2, MultiOutputNode()),
+        }
+
+        fake_actor = "fake_actor"
+        global_idx = 1
+        actor_to_operation_nodes = {
+            fake_actor: [
+                list(
+                    generate_dag_graph_nodes(0, global_idx, fake_actor, False).values()
+                )
+            ]
+        }
+        graph = compiled_dag._build_dag_node_operation_graph(actor_to_operation_nodes)
+        assert len(graph) == 1
+        assert len(graph[global_idx]) == 3
+
+        self.check_edges_between_read_compute_write(
+            graph, global_idx, [(0, 1), (1, 1), (1, 0)]
+        )
+
+    def test_edge_between_writer_and_reader(self, monkeypatch):
+        """
+        driver -> fake_actor_1.op -> fake_actor_2.op -> driver
+
+        This test case aims to verify whether the function correctly adds an edge
+        from the writer's WRITE operation to the reader's READ operation.
+        """
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
+
+        fake_actor_1, global_idx_1 = "fake_actor_1", 1
+        fake_actor_2, global_idx_2 = "fake_actor_2", 2
+        compiled_dag = CompiledDAG()
+        compiled_dag.idx_to_task = {
+            0: CompiledTask(0, InputNode()),
+            1: CompiledTask(1, ClassMethodNode()),
+            2: CompiledTask(2, ClassMethodNode()),
+            3: CompiledTask(3, MultiOutputNode()),
+        }
+        compiled_dag.idx_to_task[1].downstream_node_idxs = {2: fake_actor_2}
+
+        actor_to_operation_nodes = {
+            fake_actor_1: [
+                list(
+                    generate_dag_graph_nodes(
+                        0, global_idx_1, fake_actor_1, False
+                    ).values()
+                )
+            ],
+            fake_actor_2: [
+                list(
+                    generate_dag_graph_nodes(
+                        0, global_idx_2, fake_actor_2, False
+                    ).values()
+                )
+            ],
+        }
+        graph = compiled_dag._build_dag_node_operation_graph(actor_to_operation_nodes)
+        assert len(graph) == 2
+        assert len(graph[global_idx_1]) == 3
+        assert len(graph[global_idx_2]) == 3
+
+        self.check_edges_between_read_compute_write(
+            graph, global_idx_1, [(0, 1), (1, 1), (1, 1)]
+        )
+        self.check_edges_between_read_compute_write(
+            graph, global_idx_2, [(1, 1), (1, 1), (1, 0)]
+        )
+        self.check_edge_between_writer_and_reader(graph, global_idx_1, global_idx_2)
+
+    def test_edge_between_compute_nodes(self, monkeypatch):
+        """
+        driver -> fake_actor.op -> fake_actor.op -> driver
+        """
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
+
+        fake_actor = "fake_actor"
+        global_idx_1, global_idx_2 = 1, 2
+        compiled_dag = CompiledDAG()
+        compiled_dag.idx_to_task = {
+            0: CompiledTask(0, InputNode()),
+            global_idx_1: CompiledTask(global_idx_1, ClassMethodNode()),
+            global_idx_2: CompiledTask(global_idx_2, ClassMethodNode()),
+            3: CompiledTask(3, MultiOutputNode()),
+        }
+        compiled_dag.idx_to_task[global_idx_1].downstream_node_idxs = {
+            global_idx_2: fake_actor
+        }
+
+        actor_to_operation_nodes = {
+            fake_actor: [
+                list(
+                    generate_dag_graph_nodes(
+                        0, global_idx_1, fake_actor, False
+                    ).values()
+                ),
+                list(
+                    generate_dag_graph_nodes(
+                        1, global_idx_2, fake_actor, False
+                    ).values()
+                ),
+            ],
+        }
+        graph = compiled_dag._build_dag_node_operation_graph(actor_to_operation_nodes)
+        assert len(graph) == 2
+        assert len(graph[global_idx_1]) == 3
+        assert len(graph[global_idx_2]) == 3
+
+        self.check_edges_between_read_compute_write(
+            graph, global_idx_1, [(0, 1), (1, 2), (1, 1)]
+        )
+        self.check_edges_between_read_compute_write(
+            graph, global_idx_2, [(1, 1), (2, 1), (1, 0)]
+        )
+        self.check_edge_between_writer_and_reader(graph, global_idx_1, global_idx_2)
+        self.check_edge_between_compute_nodes(graph, global_idx_1, global_idx_2)
 
 
 if __name__ == "__main__":

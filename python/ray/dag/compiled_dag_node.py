@@ -1269,8 +1269,8 @@ class CompiledDAG:
         graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]] = {}
 
         for _, operation_nodes_list in actor_to_operation_nodes.items():
+            prev_compute_node = None
             for operation_nodes in operation_nodes_list:
-                prev_compute_node = None
                 idx = operation_nodes[0].idx
                 read_node, compute_node, write_node = (
                     operation_nodes[0],
