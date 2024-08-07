@@ -149,6 +149,7 @@ class ProgressBar:
         # raylet will persist these fetch requests even after ray.wait returns.
         # See https://github.com/ray-project/ray/issues/30375.
         fetch_local = True
+
         while remaining:
             done, remaining = ray.wait(
                 remaining,
@@ -158,9 +159,14 @@ class ProgressBar:
             )
             if fetch_local:
                 fetch_local = False
+            total_rows_processed = 0
             for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
-            self.update(len(done))
+                num_rows = (
+                    result.num_rows if hasattr(result, "num_rows") else 1
+                )  # Default to 1 if no row count is available
+                total_rows_processed += num_rows
+            self.update(total_rows_processed)
 
             with _canceled_threads_lock:
                 if t in _canceled_threads:
