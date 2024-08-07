@@ -103,7 +103,6 @@ py_test_module_list(
     size = "medium",
     files = [
         "tests/experimental/test_detect_deadlock_dag.py",
-        "tests/experimental/test_execution_schedule.py",
         "tests/experimental/test_multi_node_dag.py",
         "tests/experimental/test_torch_tensor_dag.py",
     ],
@@ -138,6 +137,24 @@ py_test(
     ],
     env = {"RAY_PYTEST_USE_GPU": "1"},
     main = "tests/experimental/test_torch_tensor_dag.py",
+    tags = [
+        "accelerated_dag",
+        "exclusive",
+        "multi_gpu",
+        "no_windows",
+        "team:core",
+    ],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_execution_schedule",
+    size = "medium",
+    srcs = [
+        "tests/experimental/test_execution_schedule.py",
+    ],
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    main = "tests/experimental/test_execution_schedule.py",
     tags = [
         "accelerated_dag",
         "exclusive",
