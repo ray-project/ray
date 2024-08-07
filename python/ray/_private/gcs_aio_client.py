@@ -70,6 +70,10 @@ class NewGcsAioClient:
         # Forwarded Properties.
         self.address = self.inner.address
         self.cluster_id = self.inner.cluster_id
+        # Note: these only exists in the new client.
+        self.get_all_actor_info = self.inner.async_get_all_actor_info
+        self.get_all_node_info = self.inner.async_get_all_node_info
+        self.kill_actor = self.inner.async_kill_actor
 
 
 class AsyncProxy:

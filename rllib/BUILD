@@ -15,7 +15,6 @@
 #    actions vs continuous actions.
 # -- "crashing_cartpole" and "stateless_cartpole" to distinguish between
 #    simple CartPole and more advanced variants of it.
-# -- "fake_gpus": Tests that run using 2 fake GPUs.
 # -- "ray_data": Tests that rely on ray_data.
 # -- "learning_tests_with_ray_data": Learning tests that rely on ray_data.
 
@@ -254,17 +253,6 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_appo_fake_gpus_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-appo-fake-gpus.yaml"],
-    args = ["--dir=tuned_examples/appo"]
-)
-
-#@OldAPIStack
-py_test(
     name = "learning_tests_stateless_cartpole_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
@@ -380,17 +368,6 @@ py_test(
     args = ["--dir=tuned_examples/dqn"]
 )
 
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_dqn_fake_gpus_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/dqn/cartpole-dqn-fake-gpus.yaml"],
-    args = ["--dir=tuned_examples/dqn"]
-)
-
 # IMPALA
 py_test(
     name = "learning_tests_cartpole_impala",
@@ -479,15 +456,19 @@ py_test(
     data = ["tuned_examples/impala/multi_agent_cartpole_impala_old_api_stack.py"],
     args = ["--dir=tuned_examples/impala"]
 )
-#@OldAPIStack
+
+# MARWIL
 py_test(
-    name = "learning_tests_cartpole_impala_fake_gpus_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/impala/cartpole-impala-fake-gpus.yaml"],
-    args = ["--dir=tuned_examples/impala"]
+    name = "learning_tests_cartpole_marwil",
+    main = "tuned_examples/marwil/cartpole_marwil.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "medium",
+    srcs = ["tuned_examples/marwil/cartpole_marwil.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    args = ["--as-test", "--enable-new-api-stack"]
 )
 
 # MARWIL
@@ -2563,13 +2544,23 @@ py_test(
 )
 
 py_test(
-    name = "examples/curiosity/inverse_dynamics_model_based_curiosity",
-    main = "examples/curiosity/inverse_dynamics_model_based_curiosity.py",
+    name = "examples/curiosity/intrinsic_curiosity_model_based_curiosity_ppo",
+    main = "examples/curiosity/intrinsic_curiosity_model_based_curiosity.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
-    srcs = ["examples/curiosity/inverse_dynamics_model_based_curiosity.py"],
-    args = ["--enable-new-api-stack", "--as-test"]
+    srcs = ["examples/curiosity/intrinsic_curiosity_model_based_curiosity.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--algo=PPO"]
 )
+
+# TODO (sven): Learns, but very slowly. Needs further tuning.
+# py_test(
+#    name = "examples/curiosity/intrinsic_curiosity_model_based_curiosity_dqn",
+#    main = "examples/curiosity/intrinsic_curiosity_model_based_curiosity.py",
+#    tags = ["team:rllib", "exclusive", "examples"],
+#    size = "large",
+#    srcs = ["examples/curiosity/intrinsic_curiosity_model_based_curiosity.py"],
+#    args = ["--enable-new-api-stack", "--as-test", "--algo=DQN"]
+# )
 
 
 # subdirectory: curriculum/

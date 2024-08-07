@@ -48,7 +48,6 @@ DATASET_METRICS = {
 class DataHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        self.http_session = aiohttp.ClientSession()
         self._session_name = dashboard_head.session_name
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
