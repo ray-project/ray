@@ -1089,7 +1089,7 @@ class SingleAgentEpisode:
                 `get_extra_model_outputs("b", slice(-7, -2), fill=0.0)` with
                 `[0.0, 0.0, 10, 11, 12]`.
                 TODO (sven): This would require a space being provided. Maybe we can
-                 automatically infer the space from existing data?
+                automatically infer the space from existing data?
 
         Examples:
 
