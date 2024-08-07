@@ -708,7 +708,13 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
         DeleteReferenceInternal(inner_it, deleted);
       }
     }
+
     // Perform the deletion.
+    if (it->second.on_out_of_scope) {
+      RAY_LOG(DEBUG) << "Calling on_out_of_scope for object " << it->first;
+      it->second.on_out_of_scope(it->first);
+      it->second.on_out_of_scope = nullptr;
+    }
     ReleasePlasmaObject(it);
     if (deleted) {
       deleted->push_back(id);
@@ -770,14 +776,9 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
 }
 
 void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
-  if (it->second.on_delete) {
-    RAY_LOG(DEBUG) << "Calling on_delete for object " << it->first;
-    it->second.on_delete(it->first);
-    it->second.on_delete = nullptr;
-  }
   it->second.pinned_at_raylet_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
-    // The spilled copy of the object should get deleted during the on_delete
+    // The spilled copy of the object should get deleted during the on_out_of_scope
     // callback, so reset the spill location metadata here.
     // NOTE(swang): Spilled copies in cloud storage are not GCed, so we do not
     // reset the spilled metadata.
@@ -787,7 +788,7 @@ void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
   }
 }
 
-bool ReferenceCounter::SetDeleteCallback(
+bool ReferenceCounter::SetOutOfScopeCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -810,7 +811,7 @@ bool ReferenceCounter::SetDeleteCallback(
   // will resend the registration request after GCS restarts.
   // 2.After GCS restarts, GCS will send `WaitForActorOutOfScope` request to owned actors
   // again.
-  it->second.on_delete = callback;
+  it->second.on_out_of_scope = callback;
   return true;
 }
 
