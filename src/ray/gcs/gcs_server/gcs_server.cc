@@ -20,7 +20,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
@@ -235,10 +234,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // data.
   rpc_server_.Run();
 
-  // Init usage stats client
-  // This is done after the RPC server starts
-  // since we need to know the port the rpc server listens on.
+  // Init usage stats client.
   InitUsageStatsClient();
+
   gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
@@ -556,10 +554,7 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ =
-      std::make_unique<UsageStatsClient>("127.0.0.1:" + std::to_string(GetPort()),
-                                         rpc_server_.GetClusterId(),
-                                         main_service_);
+  usage_stats_client_ = std::make_unique<UsageStatsClient>(kv_manager_->GetInstance());
 }
 
 void GcsServer::InitKVManager() {
