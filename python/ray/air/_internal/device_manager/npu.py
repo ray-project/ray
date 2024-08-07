@@ -6,7 +6,7 @@ from typing import List, Union
 import torch
 
 import ray
-from ray._private.accelerators.npu import ASCEND_RT_VISIBLE_DEVICES_ENV_VAR
+import ray._private.ray_constants as ray_constants
 from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
 
 
@@ -42,13 +42,18 @@ class NPUTorchDeviceManager(TorchDeviceManager):
         """
         if NPU_TORCH_PACKAGE_AVAILABLE and torch.npu.is_available():
             npu_ids = [
-                str(id) for id in ray.get_runtime_context().get_accelerator_ids()["NPU"]
+                str(id)
+                for id in ray.get_runtime_context().get_accelerator_ids()[
+                    ray_constants.NPU
+                ]
             ]
 
             device_ids = []
 
             if len(npu_ids) > 0:
-                npu_visible_str = os.environ.get(ASCEND_RT_VISIBLE_DEVICES_ENV_VAR, "")
+                npu_visible_str = os.environ.get(
+                    ray_constants.NPU_RT_VISIBLE_DEVICES_ENV_VAR, ""
+                )
                 if npu_visible_str and npu_visible_str != "NoDevFiles":
                     npu_visible_list = npu_visible_str.split(",")
                 else:
@@ -80,7 +85,7 @@ class NPUTorchDeviceManager(TorchDeviceManager):
     def set_device(self, device: Union[torch.device, int]):
         torch.npu.set_device(device)
 
-    def is_support_stream(self) -> bool:
+    def supports_stream(self) -> bool:
         """Validate if the device type support to create a stream"""
         return True
 

@@ -2,6 +2,7 @@ import logging
 from typing import Optional, Type
 
 import ray
+import ray._private.ray_constants as ray_constants
 from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
 from ray.air._internal.device_manager.hpu import HPUTorchDeviceManager
 from ray.air._internal.device_manager.npu import (
@@ -18,19 +19,23 @@ DEFAULT_TORCH_DEVICE_MANAGER_CLS = CUDATorchDeviceManager
 
 
 SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER = {
-    "GPU": CUDATorchDeviceManager,
-    "HPU": HPUTorchDeviceManager,
-    "NPU": NPUTorchDeviceManager,
+    ray_constants.GPU: CUDATorchDeviceManager,
+    ray_constants.HPU: HPUTorchDeviceManager,
+    ray_constants.NPU: NPUTorchDeviceManager,
 }
 
 
-def try_register_torch_accelerator_module() -> None:
+def try_register_torch_accelerator_module(backend=None) -> None:
     try:
+        if HPU_PACKAGE_AVAILABLE:
+            import habana_frameworks.torch.hpu  # noqa: F401
+
+        if HPU_PACKAGE_AVAILABLE and backend == "hccl":
+            import habana_frameworks.torch.core  # noqa: F401
+            import habana_frameworks.torch.distributed.hccl  # noqa: F401
+
         if NPU_TORCH_PACKAGE_AVAILABLE:
             import torch_npu  # noqa: F401
-
-        if HPU_PACKAGE_AVAILABLE:
-            import habana_frameworks.torch.hpu as torch_hpu  # noqa: F401
 
     except ImportError:
         raise ImportError(

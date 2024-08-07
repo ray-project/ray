@@ -21,7 +21,7 @@ class TorchDeviceManager(ABC):
         """Set the correct device for this process"""
         ...
 
-    def is_support_stream(self) -> bool:
+    def supports_stream(self) -> bool:
         """Validate if the device type support create a stream"""
         ...
 

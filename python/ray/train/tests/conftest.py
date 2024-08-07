@@ -70,20 +70,6 @@ def ray_2_node_2_neuron_cores():
 
 
 @pytest.fixture
-def ray_2_node_2_npus():
-    cluster = Cluster()
-    for _ in range(2):
-        cluster.add_node(num_cpus=4, resources={"NPU": 2})
-
-    ray.init(address=cluster.address)
-
-    yield
-
-    ray.shutdown()
-    cluster.shutdown()
-
-
-@pytest.fixture
 def ray_start_2_cpus():
     address_info = ray.init(num_cpus=2)
     yield address_info

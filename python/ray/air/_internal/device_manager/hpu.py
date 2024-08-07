@@ -29,6 +29,6 @@ class HPUTorchDeviceManager(TorchDeviceManager):
     def set_device(self, device: Union[torch.device, int, str, None]):
         torch_hpu.set_device(device)
 
-    def is_support_stream(self) -> bool:
+    def supports_stream(self) -> bool:
         """Validate if the device type support create a stream"""
         return False

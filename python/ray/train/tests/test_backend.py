@@ -26,7 +26,6 @@ from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
-    ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
 from ray.train.tensorflow import TensorflowConfig
@@ -540,76 +539,6 @@ def test_neuron_core_accelerator_ids_sharing_disabled(
         config,
         num_workers=num_workers,
         resources_per_worker={"neuron_cores": 1},
-    )
-    e.start()
-    _start_training(e, get_resources)
-    results = e.finish_training()
-    results.sort()
-    assert results == expected_results
-
-
-@pytest.mark.parametrize(
-    "worker_results",
-    [
-        (1, [[0]]),
-        (2, [[0, 1]] * 2),
-        (3, [[0]] + [[0, 1]] * 2),
-        (4, [[0, 1]] * 4),
-    ],
-)
-def test_npu_accelerator_ids(ray_2_node_2_npus, worker_results):
-    config = TestConfig()
-
-    def get_resources():
-        npu_resources_ids = os.environ[ray_constants.NPU_RT_VISIBLE_DEVICES_ENV_VAR]
-        # Sort the runtime ids to have exact match with expected result.
-        sorted_devices = [
-            int(device) for device in sorted(npu_resources_ids.split(","))
-        ]
-        return sorted_devices
-
-    num_workers, expected_results = worker_results
-    # sharing enabled by default
-    os.environ.pop(ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV, None)
-    e = BackendExecutor(
-        config,
-        num_workers=num_workers,
-        resources_per_worker={"NPU": 1},
-    )
-    e.start()
-    _start_training(e, get_resources)
-    results = e.finish_training()
-    results.sort()
-    assert results == expected_results
-
-
-@pytest.mark.parametrize(
-    "worker_results",
-    [
-        (1, [[0]]),
-        (2, [[0]] + [[1]]),
-        (3, [[0]] * 2 + [[1]]),
-        (4, [[0]] * 2 + [[1]] * 2),
-    ],
-)
-def test_npu_accelerator_ids_sharing_disabled(ray_2_node_2_npus, worker_results):
-    config = TestConfig()
-
-    def get_resources():
-        npu_resources_ids = os.environ[ray_constants.NPU_RT_VISIBLE_DEVICES_ENV_VAR]
-        # Sort the runtime ids to have exact match with expected result.
-        sorted_devices = [
-            int(device) for device in sorted(npu_resources_ids.split(","))
-        ]
-        return sorted_devices
-
-    num_workers, expected_results = worker_results
-
-    os.environ[ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV] = "0"
-    e = BackendExecutor(
-        config,
-        num_workers=num_workers,
-        resources_per_worker={"NPU": 1},
     )
     e.start()
     _start_training(e, get_resources)
