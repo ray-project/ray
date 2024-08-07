@@ -129,14 +129,32 @@ py_test_module_list(
     deps = ["//:ray_lib"],
 )
 
-py_test_module_list(
-    name = "Accelerated DAG GPU tests",
+py_test(
+    name = "test_torch_tensor_dag_gpu",
     size = "medium",
-    files = [
+    srcs = [
         "tests/experimental/test_torch_tensor_dag.py",
+    ],
+    env = {"RAY_PYTEST_USE_GPU": "1"},
+    main = "tests/experimental/test_torch_tensor_dag.py",
+    tags = [
+        "accelerated_dag",
+        "exclusive",
+        "multi_gpu",
+        "no_windows",
+        "team:core",
+    ],
+    deps = ["//:ray_lib"],
+)
+
+py_test(
+    name = "test_execution_schedule",
+    size = "medium",
+    srcs = [
         "tests/experimental/test_execution_schedule.py",
     ],
     env = {"RAY_PYTEST_USE_GPU": "1"},
+    main = "tests/experimental/test_execution_schedule.py",
     tags = [
         "accelerated_dag",
         "exclusive",
