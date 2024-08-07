@@ -291,8 +291,8 @@ def test_task_fails_on_rt_env_failure(
     ray_start_cluster,
 ):
     """
-    Simulate runtime env failure on a node. The task should be rescheduled on a
-    different node.
+    Simulate runtime env failure on a node. The task should fail but the raylet should
+    not die. See https://github.com/ray-project/ray/pull/46991
     """
 
     cluster = ray_start_cluster
@@ -316,8 +316,7 @@ def test_task_fails_on_rt_env_failure(
     with pytest.raises(RuntimeEnvSetupError) as e:
         ray.get(mortal)
     assert "Samuel Beckett" in str(e.value)
-    # TODO(ryw): make it consume a count in max_retries, and retry. After that, we
-    # can test by adding a node with FAULT_PLUGIN_KEY=ok and get immortal to get 5.
+    # Note: even immortal task will fail because a rt env failure cancels tasks.
     with pytest.raises(RuntimeEnvSetupError) as e:
         ray.get(immortal)
     assert "Samuel Beckett" in str(e.value)
