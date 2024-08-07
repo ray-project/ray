@@ -253,12 +253,14 @@ struct Mocker {
       const JobID &job_id,
       const std::string &ray_namespace,
       const std::optional<std::string> &submission_id = std::nullopt,
-      const std::optional<rpc::Address> &address = std::nullopt) {
+      const std::optional<rpc::Address> &address = std::nullopt,
+      bool is_dead = false) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);
 
     auto job_table_data = std::make_shared<rpc::JobTableData>();
     job_table_data->set_job_id(job_id.Binary());
+    job_table_data->set_is_dead(is_dead);
     job_table_data->mutable_config()->CopyFrom(*job_config_data);
     if (address.has_value()) {
       job_table_data->mutable_driver_address()->CopyFrom(address.value());

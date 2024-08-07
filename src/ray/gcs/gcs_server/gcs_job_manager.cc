@@ -79,7 +79,6 @@ void GcsJobManager::HandleDeleteJob(rpc::DeleteJobRequest request,
       RAY_LOG(ERROR) << "Failed to delete job, job_id = " << job_id
                      << ", status = " << status;
     } else {
-      RAY_LOG(DEBUG) << "Successfully deleted job. job_id = " << job_id;
       reply->set_success(true);
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);

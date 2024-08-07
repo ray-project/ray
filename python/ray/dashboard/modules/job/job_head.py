@@ -361,7 +361,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 text=f"Job {job_or_submission_id} does not exist",
                 status=aiohttp.web.HTTPNotFound.status_code,
             )
-        if job.type is not JobType.SUBMISSION and job.type is not JobType.DRIVER:
+        if job.type not in {JobType.SUBMISSION, JobType.DRIVER}:
             return Response(
                 text="Can only delete submission and driver type jobs",
                 status=aiohttp.web.HTTPBadRequest.status_code,

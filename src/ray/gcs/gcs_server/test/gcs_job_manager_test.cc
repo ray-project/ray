@@ -165,6 +165,78 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
   }
 }
 
+TEST_F(GcsJobManagerTest, TestDeleteJob) {
+  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
+                                     gcs_publisher_,
+                                     runtime_env_manager_,
+                                     *function_manager_,
+                                     *fake_kv_,
+                                     client_factory_);
+
+  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+
+  // Add 100 jobs.
+  int num_jobs = 100;
+  for (int i = 0; i < num_jobs; ++i) {
+    auto job_id = JobID::FromInt(i);
+    // Create an address with port equal to the number of running tasks. We use the mock
+    // client factory to create a core worker client with number of running tasks
+    // equal to the address port.
+    rpc::Address address;
+    // Set the number of running tasks to 0 for even jobs and i for odd jobs.
+    address.set_port(i % 2 == 0 ? 0 : i);
+
+    // Populate other fields, the value is not important.
+    address.set_raylet_id(NodeID::FromRandom().Binary());
+    address.set_ip_address("123.456.7.8");
+    address.set_worker_id(WorkerID::FromRandom().Binary());
+
+    auto add_job_request = Mocker::GenAddJobRequest(
+        job_id, std::to_string(i), std::to_string(i), address, true);
+    rpc::AddJobReply empty_reply;
+    std::promise<bool> promise;
+    gcs_job_manager.HandleAddJob(
+        *add_job_request,
+        &empty_reply,
+        [&promise](Status, std::function<void()>, std::function<void()>) {
+          promise.set_value(true);
+        });
+    promise.get_future().get();
+  }
+
+  // Delete 50 jobs.
+  int num_del_jobs = 50;
+  for (int i = 0; i < num_del_jobs; ++i) {
+    rpc::DeleteJobRequest del_job_request;
+    del_job_request.set_job_id(JobID::FromInt(i).Binary());
+    rpc::DeleteJobReply empty_reply;
+    std::promise<bool> promise;
+    gcs_job_manager.HandleDeleteJob(
+        del_job_request,
+        &empty_reply,
+        [&promise](Status, std::function<void()>, std::function<void()>) {
+          promise.set_value(true);
+        });
+    promise.get_future().get();
+  }
+
+  // Get all jobs.
+  rpc::GetAllJobInfoRequest all_job_info_request;
+  rpc::GetAllJobInfoReply all_job_info_reply;
+  std::promise<bool> all_job_info_promise;
+
+  gcs_job_manager.HandleGetAllJobInfo(
+      all_job_info_request,
+      &all_job_info_reply,
+      [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
+        all_job_info_promise.set_value(true);
+      });
+  all_job_info_promise.get_future().get();
+
+  ASSERT_EQ(all_job_info_reply.job_info_list().size(), num_jobs - num_del_jobs);
+}
+
 TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
   gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
                                      gcs_publisher_,
