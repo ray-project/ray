@@ -15,7 +15,7 @@ Some KubeRay examples require GPU nodes, which can be provided by a managed Kube
 We collect a few helpful links for users who are getting started with a managed Kubernetes service to launch a Kubernetes cluster equipped with GPUs.
 
 (gke-setup)=
-# Setting up a GKE cluster (Google Cloud)
+# Set up a GKE cluster (Google Cloud)
 
 - {ref}`kuberay-gke-gpu-cluster-setup`
 - {ref}`kuberay-gke-tpu-cluster-setup`
