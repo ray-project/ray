@@ -1,6 +1,6 @@
 (kuberay-tpu)=
 
-# Using TPUs with KubeRay
+# Use TPUs with KubeRay
 
 This document provides tips on TPU usage with KubeRay.
 
