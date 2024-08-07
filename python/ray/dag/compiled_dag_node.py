@@ -93,10 +93,10 @@ def do_exec_tasks(
     tasks: List["ExecutableTask"],
     schedule: List[DAGNodeOperation],
 ) -> None:
-    """Generic actor method to begin executing the tasks belonging to an actor.
-    This runs an infinite loop to run each task in turn (following the order specified
-    in the list): reading input channel(s), executing the given taks, and writing output
-    channel(s). It only exits if the actor dies or an exception is thrown.
+    """A generic actor method to begin executing the operations belonging to an
+    actor. This runs an infinite loop to execute each DAGNodeOperation in the
+    order specified by the schedule. It exits only if the actor dies or an
+    exception is thrown.
 
     Args:
         tasks: the executable tasks corresponding to the actor methods.
@@ -1241,7 +1241,7 @@ class CompiledDAG:
         actor_to_operation_nodes: Dict[
             "ray.actor.ActorHandle", List[List[DAGOperationGraphNode]]
         ],
-    ):
+    ) -> Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]]:
         """
         Generate a DAG node operation graph by adding edges based on the
         following rules:
@@ -1262,7 +1262,10 @@ class CompiledDAG:
                 the inner list, the order of operations is READ, COMPUTE, and WRITE.
 
         Returns:
-            A graph that each node is a DAGOperationGraphNode.
+            A graph where each node is a DAGOperationGraphNode. The key is the index
+            of the task in idx_to_task, and the value is a dictionary that maps the
+            DAGNodeOperationType (READ, COMPUTE, or WRITE) to the corresponding
+            DAGOperationGraphNode.
         """
         assert self.idx_to_task
 
@@ -1327,8 +1330,7 @@ class CompiledDAG:
 
         Then, put the selected nodes into the corresponding actors' schedules.
 
-        The goal of the above rules is to build a schedule with fewer bubbles. The
-        schedule should be intuitive to users, meaning that the execution should
+        The schedule should be intuitive to users, meaning that the execution should
         perform operations in ascending order of `bind_index` as much as possible.
 
         [Example]:

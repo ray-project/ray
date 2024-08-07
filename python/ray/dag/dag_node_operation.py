@@ -93,5 +93,9 @@ class DAGOperationGraphNode:
         return hash((self.operation, self.idx))
 
     def add_edge(self, out_node: "DAGOperationGraphNode"):
+        """
+        Add an edge from this node to `out_node`. An edge is a tuple of
+        the operation's index and type.
+        """
         self.out_edges.add((out_node.idx, out_node.operation.type))
         out_node.in_edges.add((self.idx, self.operation.type))
