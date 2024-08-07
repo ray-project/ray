@@ -2,6 +2,12 @@ import logging
 from typing import Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
+    AddObservationsFromEpisodesToBatch,
+)
+from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
+    AddNextObservationsFromEpisodesToTrainBatch,
+)
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
 from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
@@ -24,15 +30,23 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    LEARNER_RESULTS,
+    LEARNER_UPDATE_TIMER,
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+    NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     NUM_TARGET_UPDATES,
+    OFFLINE_SAMPLING_TIMER,
     TARGET_NET_UPDATE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
+    TIMERS,
 )
 from ray.rllib.utils.typing import ResultDict
 
@@ -124,6 +138,38 @@ class CQLConfig(SACConfig):
         return self
 
     @override(SACConfig)
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.cql.torch.cql_torch_learner import CQLTorchLearner
+
+            return CQLTorchLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use `'torch'` instead."
+            )
+
+    @override(AlgorithmConfig)
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
+        pipeline = super().build_learner_connector(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            device=device,
+        )
+
+        pipeline.insert_after(
+            AddObservationsFromEpisodesToBatch,
+            AddNextObservationsFromEpisodesToTrainBatch(),
+        )
+
+        return pipeline
+
+    @override(SACConfig)
     def validate(self) -> None:
         # First check, whether old `timesteps_per_iteration` is used.
         if self.timesteps_per_iteration != DEPRECATED_VALUE:
@@ -151,6 +197,12 @@ class CQLConfig(SACConfig):
             )
             try_import_tfp(error=True)
 
+        # Assert that for a local learner the number of iterations is 1. Note,
+        # this is needed because we have no iterators, but instead a single
+        # batch returned directly from the `OfflineData.sample` method.
+        if self.num_learners == 0 and not self.dataset_num_iters_per_learner:
+            self.dataset_num_iters_per_learner = 1
+
 
 class CQL(SAC):
     """CQL (derived from SAC)."""
@@ -170,62 +222,19 @@ class CQL(SAC):
         else:
             return CQLTFPolicy
 
-    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
-        if self.framework_str == "torch":
-            from ray.rllib.algorithms.cql.torch.cql_torch_learner import CQLTorchLearner
-
-            return CQLTorchLearner
-        else:
-            raise ValueError(
-                f"The framework {self.framework_str} is not supported. "
-                "Use `'torch'` instead."
-            )
-
     @override(SAC)
     def training_step(self) -> ResultDict:
-        # Collect SampleBatches from sample workers.
-        with self._timers[SAMPLE_TIMER]:
-            train_batch = synchronous_parallel_sample(worker_set=self.env_runner_group)
-        train_batch = train_batch.as_multi_agent()
-        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
-
-        # Postprocess batch before we learn on it.
-        post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
-        train_batch = post_fn(train_batch, self.env_runner_group, self.config)
-
-        # Learn on training batch.
-        # Use simple optimizer (only for multi-agent or tf-eager; all other
-        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
-        if self.config.get("simple_optimizer") is True:
-            train_results = train_one_step(self, train_batch)
+        if self.config.enable_env_runner_and_connector_v2:
+            return self._training_step_new_api_stack()
+        elif self.config.enable_rl_module_and_learner:
+            raise ValueError(
+                "Hybrid API stack is not supported. Either set "
+                "`enable_rl_module_and_learner=True` and "
+                "`enable_env_runner_and_connector_v2=True` or set both "
+                "attributed to `False`."
+            )
         else:
-            train_results = multi_gpu_train_one_step(self, train_batch)
-
-        # Update target network every `target_network_update_freq` training steps.
-        cur_ts = self._counters[
-            NUM_AGENT_STEPS_TRAINED
-            if self.config.count_steps_by == "agent_steps"
-            else NUM_ENV_STEPS_TRAINED
-        ]
-        last_update = self._counters[LAST_TARGET_UPDATE_TS]
-        if cur_ts - last_update >= self.config.target_network_update_freq:
-            with self._timers[TARGET_NET_UPDATE_TIMER]:
-                to_update = self.env_runner.get_policies_to_train()
-                self.env_runner.foreach_policy_to_train(
-                    lambda p, pid: pid in to_update and p.update_target()
-                )
-            self._counters[NUM_TARGET_UPDATES] += 1
-            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
-
-        # Update remote workers's weights after learning on local worker
-        # (only those policies that were actually trained).
-        if self.env_runner_group.num_remote_workers() > 0:
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.env_runner_group.sync_weights(policies=list(train_results.keys()))
-
-        # Return all collected metrics for the iteration.
-        return train_results
+            return self._training_step_old_api_stack()
 
     def _training_step_new_api_stack(self) -> ResultDict:
 
@@ -284,3 +293,48 @@ class CQL(SAC):
             )
 
         return self.metrics.reduce()
+
+    def _training_step_old_api_stack(self) -> ResultDict:
+        # Collect SampleBatches from sample workers.
+        with self._timers[SAMPLE_TIMER]:
+            train_batch = synchronous_parallel_sample(worker_set=self.env_runner_group)
+        train_batch = train_batch.as_multi_agent()
+        self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
+        self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+
+        # Postprocess batch before we learn on it.
+        post_fn = self.config.get("before_learn_on_batch") or (lambda b, *a: b)
+        train_batch = post_fn(train_batch, self.env_runner_group, self.config)
+
+        # Learn on training batch.
+        # Use simple optimizer (only for multi-agent or tf-eager; all other
+        # cases should use the multi-GPU optimizer, even if only using 1 GPU)
+        if self.config.get("simple_optimizer") is True:
+            train_results = train_one_step(self, train_batch)
+        else:
+            train_results = multi_gpu_train_one_step(self, train_batch)
+
+        # Update target network every `target_network_update_freq` training steps.
+        cur_ts = self._counters[
+            NUM_AGENT_STEPS_TRAINED
+            if self.config.count_steps_by == "agent_steps"
+            else NUM_ENV_STEPS_TRAINED
+        ]
+        last_update = self._counters[LAST_TARGET_UPDATE_TS]
+        if cur_ts - last_update >= self.config.target_network_update_freq:
+            with self._timers[TARGET_NET_UPDATE_TIMER]:
+                to_update = self.env_runner.get_policies_to_train()
+                self.env_runner.foreach_policy_to_train(
+                    lambda p, pid: pid in to_update and p.update_target()
+                )
+            self._counters[NUM_TARGET_UPDATES] += 1
+            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+
+        # Update remote workers's weights after learning on local worker
+        # (only those policies that were actually trained).
+        if self.env_runner_group.num_remote_workers() > 0:
+            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
+                self.env_runner_group.sync_weights(policies=list(train_results.keys()))
+
+        # Return all collected metrics for the iteration.
+        return train_results
