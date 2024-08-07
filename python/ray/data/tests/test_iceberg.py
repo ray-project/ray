@@ -3,15 +3,14 @@ import random
 
 import pyarrow as pa
 import pytest
-import ray
-from pyiceberg import (
-    catalog as pyi_catalog,
-    expressions as pyi_expr,
-    schema as pyi_schema,
-    types as pyi_types,
-)
+from pyiceberg import catalog as pyi_catalog
+from pyiceberg import expressions as pyi_expr
+from pyiceberg import schema as pyi_schema
+from pyiceberg import types as pyi_types
 from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.transforms import IdentityTransform
+
+import ray
 from ray.data import read_iceberg
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 
@@ -35,11 +34,13 @@ def pyiceberg_full_mock(monkeypatch):
         },
     )
 
-    schema = pa.schema([
-        pa.field("col_a", pa.int32()),
-        pa.field("col_b", pa.string()),
-        pa.field("col_c", pa.int16()),
-    ])
+    schema = pa.schema(
+        [
+            pa.field("col_a", pa.int32()),
+            pa.field("col_b", pa.string()),
+            pa.field("col_c", pa.int16()),
+        ]
+    )
     pya_table = pa.Table.from_pydict(
         mapping={
             "col_a": list(range(120)),
@@ -78,7 +79,9 @@ def pyiceberg_full_mock(monkeypatch):
             ),
         ),
         partition_spec=PartitionSpec(
-            PartitionField(source_id=3, field_id=3, transform=IdentityTransform(), name="col_c")
+            PartitionField(
+                source_id=3, field_id=3, transform=IdentityTransform(), name="col_c"
+            )
         ),
     )
     table.append(pya_table)
@@ -118,11 +121,18 @@ class TestReadIceberg:
             catalog_kwargs={"name": _CATALOG_NAME},
         )
 
-        chunks = iceberg_ds._distribute_tasks_into_equal_chunks(iceberg_ds.plan_files, 5)
+        chunks = iceberg_ds._distribute_tasks_into_equal_chunks(
+            iceberg_ds.plan_files, 5
+        )
         assert (len(c) == 2 for c in chunks)
 
-        chunks = iceberg_ds._distribute_tasks_into_equal_chunks(iceberg_ds.plan_files, 20)
-        assert sum(len(c) == 1 for c in chunks) == 10 and sum(len(c) == 0 for c in chunks) == 10
+        chunks = iceberg_ds._distribute_tasks_into_equal_chunks(
+            iceberg_ds.plan_files, 20
+        )
+        assert (
+            sum(len(c) == 1 for c in chunks) == 10
+            and sum(len(c) == 0 for c in chunks) == 10
+        )
 
     def test_get_read_tasks(self):
         iceberg_ds = IcebergDatasource(
@@ -160,5 +170,7 @@ def test_read_basic(pyiceberg_full_mock):
     )
     table: pa.Table = pa.concat_tables((ray.get(ref) for ref in ray_ds.to_arrow_refs()))
 
-    expected_schema = pa.schema([pa.field("col_b", pa.int32()), pa.field("col_b", pa.string())])
+    expected_schema = pa.schema(
+        [pa.field("col_b", pa.int32()), pa.field("col_b", pa.string())]
+    )
     assert table.schema.equals(expected_schema)
