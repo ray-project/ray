@@ -839,7 +839,8 @@ class EnvRunnerGroup:
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
+        # Deprecated args.
         local_worker=DEPRECATED_VALUE,
     ) -> List[T]:
         """Calls the given function with each EnvRunner as its argument.
@@ -913,6 +914,9 @@ class EnvRunnerGroup:
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+        # Deprecated args.
         local_worker=DEPRECATED_VALUE,
     ) -> List[T]:
         """Calls the given function with each EnvRunner and its ID as its arguments.
@@ -924,6 +928,16 @@ class EnvRunnerGroup:
             healthy_only: Apply `func` on known-to-be healthy workers only.
             remote_worker_ids: Apply `func` on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
+            return_obj_refs: whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of this WorkerSet.
+            mark_healthy: Whether to mark all those workers healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that workers are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also not that this setting is ignored if `healthy_only=True` (b/c this
+                setting only affects workers that are currently tagged as unhealthy).
 
         Returns:
              The list of return values of all calls to `func([worker, id])`.
@@ -948,6 +962,8 @@ class EnvRunnerGroup:
             healthy_only=healthy_only,
             remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
         _handle_remote_call_result_errors(

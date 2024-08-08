@@ -1640,23 +1640,23 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # Count the restored workers.
             self._counters["total_num_restored_workers"] += len(restored)
 
-            from_worker = (
-                workers.local_env_runner or self.env_runner_group.local_env_runner
-            )
+            #from_worker = (
+            #    workers.local_env_runner or self.env_runner_group.local_env_runner
+            #)
             # Get the state of the correct (reference) worker. For example the local
             # worker of an EnvRunnerGroup.
-            state_ref = ray.put(from_worker.get_state())
+            #state_ref = ray.put(from_worker.get_state())
 
             # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
-            workers.foreach_worker(
-                func=lambda w: w.set_state(ray.get(state_ref)),
-                remote_worker_ids=restored,
-                # Don't update the local EnvRunner, b/c it's the one we are synching
-                # from.
-                local_env_runner=False,
-                timeout_seconds=self.config.env_runner_restore_timeout_s,
-            )
+            #workers.foreach_worker(
+            #    func=lambda w: w.set_state(ray.get(state_ref)),
+            #    remote_worker_ids=restored,
+            #    # Don't update the local EnvRunner, b/c it's the one we are synching
+            #    # from.
+            #    local_env_runner=False,
+            #    timeout_seconds=self.config.env_runner_restore_timeout_s,
+            #)
 
             # Fire the callback for re-created workers.
             self.callbacks.on_workers_recreated(

@@ -228,6 +228,7 @@ class EpisodeV2:
             values["agent_id"] = agent_id
 
         # Add action/reward/next-obs (and other data) to Trajectory.
+        assert "vf_preds" in values, f"worker-idx={self.worker.worker_index}"
         self._agent_collectors[agent_id].add_action_reward_next_obs(values)
 
         # Keep track of agent reward history.
