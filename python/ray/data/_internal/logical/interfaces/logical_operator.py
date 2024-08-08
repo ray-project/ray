@@ -77,3 +77,7 @@ class LogicalOperator(Operator):
         objects aren't available on the deserialized machine.
         """
         return True
+
+    def is_read(self) -> bool:
+        """Returns whether this operator is a read operator."""
+        return False
