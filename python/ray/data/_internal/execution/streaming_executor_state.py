@@ -205,13 +205,16 @@ class OpState:
         """
         is_all_to_all = isinstance(self.op, AllToAllOperator)
         # Only show 1:1 ops when in verbose progress mode.
-        progress_bar_enabled = DataContext.get_current().enable_progress_bars and (
-            is_all_to_all or verbose_progress
+        ctx = DataContext.get_current()
+        progress_bar_enabled = (
+            ctx.enable_progress_bars
+            and ctx.enable_operator_progress_bars
+            and (is_all_to_all or verbose_progress)
         )
         self.progress_bar = ProgressBar(
             "- " + self.op.name,
-            self.op.num_outputs_total(),
-            unit="bundle",
+            self.op.num_output_rows_total(),
+            unit="row",
             position=index,
             enabled=progress_bar_enabled,
         )
@@ -242,12 +245,16 @@ class OpState:
         self.outqueue.append(ref)
         self.num_completed_tasks += 1
         if self.progress_bar:
-            self.progress_bar.update(1, self.op.num_outputs_total())
+            assert (
+                ref.num_rows() is not None
+            ), "RefBundle must have a valid number of rows"
+            self.progress_bar.update(ref.num_rows(), self.op.num_output_rows_total())
 
     def refresh_progress_bar(self, resource_manager: ResourceManager) -> None:
         """Update the console with the latest operator progress."""
         if self.progress_bar:
             self.progress_bar.set_description(self.summary_str(resource_manager))
+            self.progress_bar.refresh()
 
     def summary_str(self, resource_manager: ResourceManager) -> str:
         queued = self.num_queued() + self.op.internal_queue_size()

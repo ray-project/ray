@@ -27,7 +27,7 @@ from ray.rllib.core.models.configs import (
     CNNEncoderConfig,
 )
 from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.tf.tf_distributions import (
     TfCategorical,
@@ -390,7 +390,7 @@ class TestCatalog(unittest.TestCase):
             PPOConfig()
             .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
-                rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyCatalog),
+                rl_module_spec=RLModuleSpec(catalog_class=MyCatalog),
             )
             .framework("torch")
         )
@@ -405,7 +405,7 @@ class TestCatalog(unittest.TestCase):
         config = (
             PPOConfig()
             .rl_module(
-                rl_module_spec=SingleAgentRLModuleSpec(
+                rl_module_spec=RLModuleSpec(
                     module_class=PPOTorchRLModule, catalog_class=MyCatalog
                 )
             )
@@ -455,7 +455,7 @@ class TestCatalog(unittest.TestCase):
                     input_dims=self.observation_space.shape,
                 )
 
-        spec = SingleAgentRLModuleSpec(
+        spec = RLModuleSpec(
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
@@ -465,7 +465,7 @@ class TestCatalog(unittest.TestCase):
         module = spec.build()
 
         module.forward_inference(
-            input_data={"obs": torch.ones((32, *env.observation_space.shape))}
+            batch={"obs": torch.ones((32, *env.observation_space.shape))}
         )
 
 

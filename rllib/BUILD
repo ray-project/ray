@@ -15,7 +15,6 @@
 #    actions vs continuous actions.
 # -- "crashing_cartpole" and "stateless_cartpole" to distinguish between
 #    simple CartPole and more advanced variants of it.
-# -- "fake_gpus": Tests that run using 2 fake GPUs.
 # -- "ray_data": Tests that rely on ray_data.
 # -- "learning_tests_with_ray_data": Learning tests that rely on ray_data.
 
@@ -147,7 +146,7 @@ py_test(
 #
 # Tag: learning_tests
 #
-# This will test all yaml files (via `rllib train`)
+# This will test python/yaml config files
 # inside rllib/tuned_examples/[algo-name] for actual learning success.
 # --------------------------------------------------------------------
 
@@ -254,17 +253,6 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "learning_tests_cartpole_appo_fake_gpus_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-appo-fake-gpus.yaml"],
-    args = ["--dir=tuned_examples/appo"]
-)
-
-#@OldAPIStack
-py_test(
     name = "learning_tests_stateless_cartpole_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
@@ -320,6 +308,20 @@ py_test(
     args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
 )
 
+# BC
+py_test(
+    name = "learning_tests_cartpole_bc",
+    main = "tuned_examples/bc/cartpole_bc.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "medium",
+    srcs = ["tuned_examples/bc/cartpole_bc.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    args = ["--as-test", "--enable-new-api-stack"]
+)
+
 # CQL
 #@OldAPIStack
 py_test(
@@ -363,17 +365,6 @@ py_test(
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/dqn/cartpole-dqn-softq.yaml"],
-    args = ["--dir=tuned_examples/dqn"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_dqn_fake_gpus_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/dqn/cartpole-dqn-fake-gpus.yaml"],
     args = ["--dir=tuned_examples/dqn"]
 )
 
@@ -465,15 +456,19 @@ py_test(
     data = ["tuned_examples/impala/multi_agent_cartpole_impala_old_api_stack.py"],
     args = ["--dir=tuned_examples/impala"]
 )
-#@OldAPIStack
+
+# MARWIL
 py_test(
-    name = "learning_tests_cartpole_impala_fake_gpus_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete", "fake_gpus"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/impala/cartpole-impala-fake-gpus.yaml"],
-    args = ["--dir=tuned_examples/impala"]
+    name = "learning_tests_cartpole_marwil",
+    main = "tuned_examples/marwil/cartpole_marwil.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "medium",
+    srcs = ["tuned_examples/marwil/cartpole_marwil.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+    ],
+    args = ["--as-test", "--enable-new-api-stack"]
 )
 
 # PPO
@@ -840,12 +835,12 @@ py_test(
 
 # BC
 py_test(
-    name = "test_bc_old_stack",
+    name = "test_bc_old_api_stack",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     # Include the json data file.
     data = ["tests/data/cartpole/large.json"],
-    srcs = ["algorithms/bc/tests/test_bc_old_stack.py"]
+    srcs = ["algorithms/bc/tests/test_bc_old_api_stack.py"]
 )
 py_test(
     name = "test_bc",
@@ -909,7 +904,7 @@ py_test(
 
 # MARWIL
 py_test(
-    name = "test_marwil",
+    name = "test_marwil_old_api_stack",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     # Include the json data file.
@@ -917,6 +912,27 @@ py_test(
         "tests/data/cartpole/large.json",
         "tests/data/pendulum/large.json",
         "tests/data/cartpole/small.json",
+    ],
+    srcs = ["algorithms/marwil/tests/test_marwil_old_api_stack.py"]
+)
+py_test(
+    name = "test_marwil_rl_module",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    # Include the json data file.
+    data = [
+        "tests/data/cartpole/large.json",
+    ],
+    srcs = ["algorithms/marwil/tests/test_marwil_rl_module.py"]
+)
+py_test(
+    name = "test_marwil",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    # Include the parquet data folder.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+        "tests/data/pendulum/pendulum-v1_large",
     ],
     srcs = ["algorithms/marwil/tests/test_marwil.py"]
 )
@@ -1384,10 +1400,10 @@ py_test(
 )
 
 py_test(
-    name = "test_marl_module",
+    name = "test_multi_rl_module",
     tags = ["team:rllib", "core"],
     size = "medium",
-    srcs = ["core/rl_module/tests/test_marl_module.py"]
+    srcs = ["core/rl_module/tests/test_multi_rl_module.py"]
 )
 
 py_test(
@@ -1974,14 +1990,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_model_imports",
-    tags = ["team:rllib", "tests_dir", "model_imports"],
-    size = "medium",
-    data = glob(["tests/data/model_weights/**"]),
-    srcs = ["tests/test_model_imports.py"]
-)
-
-py_test(
     name = "tests/test_nested_observation_spaces",
     main = "tests/test_nested_observation_spaces.py",
     tags = ["team:rllib", "tests_dir"],
@@ -2022,49 +2030,6 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
     srcs = ["tests/test_reproducibility.py"]
-)
-
-# Test [train|evaluate].py scripts (w/o confirming evaluation performance).
-py_test(
-    name = "test_rllib_evaluate_1",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestEvaluate1"]
-)
-
-py_test(
-    name = "test_rllib_evaluate_2",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestEvaluate2"]
-)
-
-py_test(
-    name = "test_rllib_evaluate_3",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestEvaluate3"]
-)
-
-# Test [train|evaluate].py scripts (and confirm `rllib evaluate` performance is same
-# as the final one from the `rllib train` run).
-py_test(
-    name = "test_rllib_train_and_evaluate",
-    main = "tests/test_rllib_train_and_evaluate.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    data = ["train.py", "evaluate.py"],
-    srcs = ["tests/test_rllib_train_and_evaluate.py"],
-    args = ["TestTrainAndEvaluate"]
 )
 
 py_test(
@@ -2543,6 +2508,46 @@ py_test(
 #    srcs = ["examples/connectors/mean_std_filtering.py"],
 #    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=-600.0", "--framework=torch", "--algo=IMPALA", "--num-env-runners=5", "--num-cpus=6"]
 # )
+
+# subdirectory: curiosity/
+# ....................................
+py_test(
+    name = "examples/curiosity/count_based_curiosity",
+    main = "examples/curiosity/count_based_curiosity.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/curiosity/count_based_curiosity.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
+py_test(
+    name = "examples/curiosity/euclidian_distance_based_curiosity",
+    main = "examples/curiosity/euclidian_distance_based_curiosity.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/curiosity/euclidian_distance_based_curiosity.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
+py_test(
+    name = "examples/curiosity/intrinsic_curiosity_model_based_curiosity_ppo",
+    main = "examples/curiosity/intrinsic_curiosity_model_based_curiosity.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/curiosity/intrinsic_curiosity_model_based_curiosity.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--algo=PPO"]
+)
+
+# TODO (sven): Learns, but very slowly. Needs further tuning.
+# py_test(
+#    name = "examples/curiosity/intrinsic_curiosity_model_based_curiosity_dqn",
+#    main = "examples/curiosity/intrinsic_curiosity_model_based_curiosity.py",
+#    tags = ["team:rllib", "exclusive", "examples"],
+#    size = "large",
+#    srcs = ["examples/curiosity/intrinsic_curiosity_model_based_curiosity.py"],
+#    args = ["--enable-new-api-stack", "--as-test", "--algo=DQN"]
+# )
+
 
 # subdirectory: curriculum/
 # ....................................

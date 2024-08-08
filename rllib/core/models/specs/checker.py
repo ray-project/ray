@@ -167,7 +167,7 @@ def check_input_specs(
     This is a stateful decorator
     (https://realpython.com/primer-on-python-decorators/#stateful-decorators) to
     enforce input specs for any instance method that has an argument named
-    `input_data` in its args.
+    `batch` in its args.
 
     See more examples in ../tests/test_specs_dict.py)
 
@@ -183,7 +183,7 @@ def check_input_specs(
                 return {"obs": TensorSpec("b, d", d=64)}
 
             @check_input_specs("input_specs", only_check_on_retry=False)
-            def forward(self, input_data, return_loss=False):
+            def forward(self, batch, return_loss=False):
                 ...
 
         model = MyModel()
@@ -194,11 +194,11 @@ def check_input_specs(
 
     Args:
         func: The instance method to decorate. It should be a callable that takes
-            `self` as the first argument, `input_data` as the second argument and any
+            `self` as the first argument, `batch` as the second argument and any
             other keyword argument thereafter.
         input_specs: `self` should have an instance attribute whose name matches the
             string in input_specs and returns the `SpecDict`, `Spec`, or simply the
-            `Type` that the `input_data` should comply with. It can also be None or
+            `Type` that the `batch` should comply with. It can also be None or
             empty list / dict to enforce no input spec.
         only_check_on_retry: If True, the spec will not be checked. Only if the
             decorated method raises an Exception, we check the spec to provide a more
@@ -220,7 +220,7 @@ def check_input_specs(
 
     def decorator(func):
         @functools.wraps(func)
-        def wrapper(self, input_data, **kwargs):
+        def wrapper(self, batch, **kwargs):
             if cache and not hasattr(self, "__checked_input_specs_cache__"):
                 self.__checked_input_specs_cache__ = {}
 
@@ -228,7 +228,7 @@ def check_input_specs(
             if only_check_on_retry:
                 # Attempt to run the function without spec checking
                 try:
-                    return func(self, input_data, **kwargs)
+                    return func(self, batch, **kwargs)
                 except SpecCheckingError as e:
                     raise e
                 except Exception as e:
@@ -242,7 +242,7 @@ def check_input_specs(
                     )
 
             # If the function was not executed successfully yet, we check specs
-            checked_data = input_data
+            checked_data = batch
 
             if input_specs and (
                 initial_exception
@@ -262,7 +262,7 @@ def check_input_specs(
                     checked_data = _validate(
                         cls_instance=self,
                         method=func,
-                        data=input_data,
+                        data=batch,
                         spec=spec,
                         tag="input",
                     )
@@ -312,17 +312,17 @@ def check_output_specs(
                 return {"obs": TensorSpec("b, d", d=64)}
 
             @check_output_specs("output_specs")
-            def forward(self, input_data, return_loss=False):
+            def forward(self, batch, return_loss=False):
                 return {"obs": torch.randn(32, 64)}
 
     Args:
         func: The instance method to decorate. It should be a callable that takes
-            `self` as the first argument, `input_data` as the second argument and any
+            `self` as the first argument, `batch` as the second argument and any
             other keyword argument thereafter. It should return a single dict-like
             object (i.e. not a tuple).
         output_specs: `self` should have an instance attribute whose name matches the
             string in output_specs and returns the `SpecDict`, `Spec`, or simply the
-            `Type` that the `input_data` should comply with. It can alos be None or
+            `Type` that the `batch` should comply with. It can alos be None or
             empty list / dict to enforce no input spec.
         cache: If True, only checks the data validation for the first time the
             instance method is called.
@@ -338,11 +338,11 @@ def check_output_specs(
 
     def decorator(func):
         @functools.wraps(func)
-        def wrapper(self, input_data, **kwargs):
+        def wrapper(self, batch, **kwargs):
             if cache and not hasattr(self, "__checked_output_specs_cache__"):
                 self.__checked_output_specs_cache__ = {}
 
-            output_data = func(self, input_data, **kwargs)
+            output_data = func(self, batch, **kwargs)
 
             if output_specs and (
                 not cache or func.__name__ not in self.__checked_output_specs_cache__
