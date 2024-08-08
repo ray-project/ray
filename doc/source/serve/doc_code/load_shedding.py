@@ -36,11 +36,11 @@ serve.run(SlowDeployment.bind())
 # Send 4 requests first.
 # 2 of these will be sent to the replica. These requests take a few seconds to execute.
 first_refs = [r.do_request.remote() for _ in range(2)]
-done, pending = ray.wait(first_refs, timeout=1)
+_, pending = ray.wait(first_refs, timeout=1)
 assert len(pending) == 2
 # 2 will be queued in the proxy. 
 queued_refs = [r.do_request.remote() for _ in range(2)]
-done, pending = ray.wait(queued_refs, timeout=0.1)
+_, pending = ray.wait(queued_refs, timeout=0.1)
 assert len(pending) == 2
 
 # Send an additional 5 requests. These will be rejected immediately because
