@@ -577,7 +577,7 @@ class TestAssignRequest:
         assert fake_obj_ref.replica_id == r1_id
         # Cache should have R1:5
         assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 5
-        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == None
+        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) is None
 
         # Second request is sent to r2, cache should be populated with r2:10
         fake_replica_scheduler.set_replica_to_return(
@@ -605,7 +605,7 @@ class TestAssignRequest:
         with pytest.raises(ActorUnavailableError):
             await router.assign_request(dummy_request_metadata())
         # R1 should be REMOVED from cache, cache should now be R2:10
-        assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == None
+        assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) is None
         assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 10
 
 
