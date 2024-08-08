@@ -42,9 +42,12 @@ class PythonGilHolder {
 // who are translated to C++ functions, and use their function pointers.
 //
 // Because we can only work with stateless Cython functions, we need to keep the Future
-// as a void* in this functor. This functor does not manage its lifetime: it assumes the
-// void* is always valid. We Py_INCREF the Future in `incremented_fut` before passing it
+// as a ptr in this functor. This functor does not manage its lifetime: it assumes the
+// ptr is always valid. We Py_INCREF the Future in `incremented_fut` before passing it
 // to PyCallback, and Py_DECREF it in `assign_and_decrement_fut` after the completion.
+//
+// Note that `Converter` returns a PyObject* as a new reference. We must DECREF it, but
+// we don't wanna do it here in the functor, so `Assigner` must do it.
 //
 // Different APIs have different type signatures, but the code of completing the future
 // is the same. So we ask 2 Cython function pointers: `Converter` and `Assigner`.
@@ -61,7 +64,7 @@ class PythonGilHolder {
 // 2. The functor calls the Cython function `Converter` with C++ types. It returns
 //  `Tuple[result, exception]`.
 // 3. The functor calls the Cython function `Assigner` with the tuple and the
-//  Future (as void*). It assign the result or the exception to the Python future.
+//  Future (as ptr). It assign the result or the exception to the Python future.
 template <typename... Args>
 class PyCallback {
  public:
@@ -70,9 +73,9 @@ class PyCallback {
   // The return PyObject* is passed to the Assigner.
   using Converter = PyObject *(*)(Args...);
   // It must not raise exceptions.
-  using Assigner = void (*)(PyObject *, void *);
+  using Assigner = void (*)(PyObject *, PyObject *);
 
-  PyCallback(Converter converter, Assigner assigner, void *context)
+  PyCallback(Converter converter, Assigner assigner, PyObject *context)
       : converter(converter), assigner(assigner), context(context) {}
 
   void operator()(Args &&...args) {
@@ -95,7 +98,7 @@ class PyCallback {
  private:
   Converter converter = nullptr;
   Assigner assigner = nullptr;
-  void *context = nullptr;
+  PyObject *context = nullptr;
 };
 
 template <typename T>
