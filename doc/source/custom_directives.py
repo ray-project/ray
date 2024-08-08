@@ -29,6 +29,7 @@ from pygments.lexers import PythonLexer
 from pygments.formatters import HtmlFormatter
 
 
+import subprocess
 import json
 from packaging.version import Version
 
