@@ -28,9 +28,9 @@ message ExportEvent {
   SourceType source_type = 2;
   // source_hostname is the hostname of the source
   // timestamp is the report milliseconds since 00:00, Jan 1 1970 UTC
-  int64 timestamp = 8;
+  int64 timestamp = 3;
   // event_data follows the schema associated with the source_type
   oneof event_data {
-    ExportTaskEventData task_event_data = 10;
+    ExportTaskEventData task_event_data = 4;
   }
 }

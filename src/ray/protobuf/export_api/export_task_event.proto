@@ -23,9 +23,9 @@ import "src/ray/protobuf/export_api/export_runtime_env.proto";
 message ExportTaskEventData {
   /// The information per ray error type.
   message RayErrorInfo {
-    string error_message = 5;
+    string error_message = 1;
     // The type of error that caused the exception.
-    ErrorType error_type = 11;
+    ErrorType error_type = 2;
   }
 
   message TaskLogInfo {
@@ -47,43 +47,43 @@ message ExportTaskEventData {
     // Node that runs the task.
     optional bytes node_id = 1;
     // Worker that runs the task.
-    optional bytes worker_id = 8;
+    optional bytes worker_id = 2;
     // Task failure info.
-    optional RayErrorInfo error_info = 9;
+    optional RayErrorInfo error_info = 3;
     // Task logs info.
-    optional TaskLogInfo task_log_info = 10;
+    optional TaskLogInfo task_log_info = 4;
     // Worker Pid.
-    optional int32 worker_pid = 12;
+    optional int32 worker_pid = 5;
     // Is task paused by debugger.
-    optional bool is_debugger_paused = 13;
+    optional bool is_debugger_paused = 6;
     // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
     // Value is the timestamp when status changes to the target status indicated by the
     // key.
-    map<int32, int64> state_ts_ns = 14;
+    map<int32, int64> state_ts_ns = 7;
   }
 
   message TaskInfoEntry {
     // Type of this task. TaskType is already public enum
     TaskType type = 1;
     // Language of this task.
-    Language language = 3;
-    string func_or_class_name = 4;
+    Language language = 2;
+    string func_or_class_name = 3;
     // Task ID of the task.
-    bytes task_id = 7;
+    bytes task_id = 4;
     // Task ID of the parent task.
-    bytes parent_task_id = 8;
+    bytes parent_task_id = 5;
     // Quantities of the different resources required by this task.
-    map<string, double> required_resources = 13;
+    map<string, double> required_resources = 6;
     // Runtime environment for this task.
-    ExportRuntimeEnvInfo runtime_env_info = 23;
+    ExportRuntimeEnvInfo runtime_env_info = 7;
     // The actor id for this task.
     // If the task type is Actor creation task or Actor task
     // this is set. Otherwise, it is empty.
-    optional bytes actor_id = 25;
+    optional bytes actor_id = 8;
     // The placement group id of this task.
     // If the task/actor is created within a placement group,
     // this value is configured.
-    optional bytes placement_group_id = 26;
+    optional bytes placement_group_id = 9;
   }
 
   message ProfileEventEntry {
