@@ -15,6 +15,8 @@ from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.env.wrappers.unity3d_env import Unity3DEnv
 
+INPUT_ENV_SPACES = "__env__"
+
 __all__ = [
     "BaseEnv",
     "DMEnv",
