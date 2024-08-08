@@ -49,7 +49,7 @@ class ReferenceCounterInterface {
       bool is_reconstructable,
       bool add_local_ref,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>()) = 0;
-  virtual bool SetOutOfScopeCallback(
+  virtual bool SetDeleteCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
 
@@ -317,8 +317,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Sets the callback that will be run when the object goes out of scope.
   /// Returns true if the object was in scope and the callback was added, else false.
-  bool SetOutOfScopeCallback(const ObjectID &object_id,
-                             const std::function<void(const ObjectID &)> callback)
+  bool SetDeleteCallback(const ObjectID &object_id,
+                         const std::function<void(const ObjectID &)> callback)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void ResetDeleteCallbacks(const std::vector<ObjectID> &object_ids)
@@ -771,8 +771,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Metadata related to borrowing.
     std::unique_ptr<BorrowInfo> borrow_info;
 
-    /// Callback that will be called when this ObjectID no longer in scope.
-    std::function<void(const ObjectID &)> on_out_of_scope;
+    /// Callback that will be called when this ObjectID no longer has
+    /// references.
+    std::function<void(const ObjectID &)> on_delete;
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
     std::function<void(const ObjectID &)> on_ref_removed;
