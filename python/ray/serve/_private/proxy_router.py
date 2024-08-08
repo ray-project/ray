@@ -70,6 +70,9 @@ class LongestPrefixRouter(ProxyRouter):
                     _source=DeploymentHandleSource.PROXY,
                 )
                 handle._set_request_protocol(self._protocol)
+                # Eagerly instantiate the router for each handle so it can receive
+                # the replica set from the controller.
+                handle._get_or_create_router()
                 self.handles[endpoint] = handle
 
         # Clean up any handles that are no longer used.
@@ -154,6 +157,9 @@ class EndpointRouter(ProxyRouter):
                     _source=DeploymentHandleSource.PROXY,
                 )
                 handle._set_request_protocol(self._protocol)
+                # Eagerly instantiate the router for each handle so it can receive
+                # the replica set from the controller.
+                handle._get_or_create_router()
                 self.handles[endpoint] = handle
 
         # Clean up any handles that are no longer used.
