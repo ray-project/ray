@@ -110,6 +110,16 @@ class StreamingExecutor(Executor, threading.Thread):
 
             logger.debug("Execution config: %s", self._options)
 
+            # Note: DAG must be initialized in order to query num_outputs_total.
+            # Note: Initialize global progress bar before building the streaming
+            # topology so bars are created in the same order as they should be
+            # displayed. This is done to ensure correct ordering within notebooks.
+            # TODO(zhilong): Implement num_output_rows_total for all
+            # AllToAllOperators
+            self._global_info = ProgressBar(
+                "Running", dag.num_output_rows_total(), unit="row"
+            )
+
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
         self._resource_manager = ResourceManager(
@@ -125,14 +135,6 @@ class StreamingExecutor(Executor, threading.Thread):
         )
 
         self._has_op_completed = {op: False for op in self._topology}
-
-        if not isinstance(dag, InputDataBuffer):
-            # Note: DAG must be initialized in order to query num_outputs_total.
-            # TODO(zhilong): Implement num_output_rows_total for all
-            # AllToAllOperators
-            self._global_info = ProgressBar(
-                "Running", dag.num_output_rows_total(), unit="row"
-            )
 
         self._output_node: OpState = self._topology[dag]
         StatsManager.register_dataset_to_stats_actor(
