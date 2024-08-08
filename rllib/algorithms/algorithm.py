@@ -1645,12 +1645,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
             # Get the state of the correct (reference) worker. For example the local
             # worker of an EnvRunnerGroup.
-            state_ref = ray.put(from_worker.get_state())
+            state = from_worker.get_state()
+            # Take out connector states from local worker's state.
+            for pol_states in state["policy_states"].values():
+                pol_states.pop("connector_configs", None)
+            state_ref = ray.put(state)
 
             # By default, entire local worker state is synced after restoration
             # to bring these workers up to date.
             workers.foreach_worker(
-                func=lambda w: 1.0,#w.set_state(ray.get(state_ref)),
+                func=lambda w: w.set_state(ray.get(state_ref)),
                 remote_worker_ids=restored,
                 # Don't update the local EnvRunner, b/c it's the one we are synching
                 # from.

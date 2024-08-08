@@ -168,8 +168,6 @@ def synchronous_parallel_sample(
 
     if _return_metrics:
         return sample_batches_or_episodes, all_stats_dicts
-    print(f"Collected batch of size={len(sample_batches_or_episodes)}")
-    print(f"\tlen vf-preds={len(sample_batches_or_episodes['default_policy']['vf_preds'])}")
     return sample_batches_or_episodes
 
 

@@ -863,8 +863,9 @@ class EnvRunnerGroup:
                 call (within the given `timeout_seconds`).
                 Note that workers are NOT set unhealthy, if they simply time out
                 (only if they return a RayActorError).
-                Also not that this setting is ignored if `healthy_only=True` (b/c this
-                setting only affects workers that are currently tagged as unhealthy).
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
              The list of return values of all calls to `func([worker])`.
@@ -936,8 +937,9 @@ class EnvRunnerGroup:
                 call (within the given `timeout_seconds`).
                 Note that workers are NOT set unhealthy, if they simply time out
                 (only if they return a RayActorError).
-                Also not that this setting is ignored if `healthy_only=True` (b/c this
-                setting only affects workers that are currently tagged as unhealthy).
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
              The list of return values of all calls to `func([worker, id])`.
@@ -1025,10 +1027,9 @@ class EnvRunnerGroup:
                 call (within the given `timeout_seconds`).
                 Note that workers are NOT set unhealthy, if they simply time out
                 (only if they return a RayActorError).
-                Also not that this setting is ignored if `healthy_only=True` was set
-                in the preceding `self.foreach_worker_asyn()` call, b/c the
-                `mark_healthy` setting only affects workers that are currently tagged as
-                unhealthy.
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
             A list of results successfully returned from outstanding remote calls,
@@ -1152,6 +1153,7 @@ class EnvRunnerGroup:
         """
         return self._worker_manager.probe_unhealthy_actors(
             timeout_seconds=self._remote_config.env_runner_health_probe_timeout_s,
+            mark_healthy=True,
         )
 
     def _make_worker(

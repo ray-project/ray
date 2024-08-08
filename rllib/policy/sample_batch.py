@@ -477,10 +477,7 @@ class SampleBatch(dict):
         permutation = np.random.permutation(self.count)
 
         self_as_dict = dict(self)
-        try:
-            shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
-        except Exception as e:
-            print(e)
+        shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
         self.update(shuffled)
         # Flush cache such that intercepted values are recalculated after the
         # shuffling.

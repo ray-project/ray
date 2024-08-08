@@ -639,8 +639,6 @@ class EnvRunnerV2:
                 # For all agents mapped to policy_id, run their data
                 # through agent_connectors.
                 processed = policy.agent_connectors(acd_list)
-                rd = processed[0].data.raw_dict
-                assert rd["t"] < 0 or "vf_preds" in rd, rd
 
                 for d in processed:
                     # Record transition info if applicable.
@@ -794,8 +792,6 @@ class EnvRunnerV2:
             ]
             # Call agent connectors on these initial obs.
             processed = policy.agent_connectors(acd_list)
-
-            assert "vf_preds" not in processed[0].data.raw_dict
 
             for d in processed:
                 episode.add_init_obs(
@@ -1158,7 +1154,6 @@ class EnvRunnerV2:
                 fetches: Dict = tree.map_structure(
                     lambda x, i=i: x[i], extra_action_out
                 )
-                assert "vf_preds" in fetches, f"worker-index={self._worker.worker_index}"
 
                 # Post-process policy output by running them through action connectors.
                 ac_data = ActionConnectorDataType(
@@ -1168,7 +1163,6 @@ class EnvRunnerV2:
                 action_to_send, rnn_states, fetches = policy.action_connectors(
                     ac_data
                 ).output
-                assert "vf_preds" in fetches, f"worker-index={self._worker.worker_index}"
 
                 # The action we want to buffer is the direct output of
                 # compute_actions_from_input_dict() here. This is because we want to
