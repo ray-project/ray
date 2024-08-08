@@ -5,7 +5,9 @@ import warnings
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
+import ray
 from ray._private.ray_constants import env_bool, env_integer
+from ray._private.worker import WORKER_MODE
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 from ray.util.scheduling_strategies import SchedulingStrategyT
@@ -328,7 +330,10 @@ class DataContext:
 
         is_ray_job = os.environ.get("RAY_JOB_ID") is not None
         if is_ray_job:
-            if log_once("ray_data_disable_operator_progress_bars_in_ray_jobs"):
+            is_driver = ray.get_runtime_context().worker.mode != WORKER_MODE
+            if is_driver and log_once(
+                "ray_data_disable_operator_progress_bars_in_ray_jobs"
+            ):
                 logger.info(
                     "Disabling operator-level progress bars by default in Ray Jobs. "
                     "To enable progress bars for all operators, set "
