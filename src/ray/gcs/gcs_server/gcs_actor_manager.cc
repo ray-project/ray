@@ -1529,7 +1529,7 @@ void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor
   auto actor_client = worker_client_factory_(actor->GetAddress());
   RAY_LOG(DEBUG) << "Send request to kill actor " << actor->GetActorID() << " to worker "
                  << actor->GetWorkerID() << " at node " << actor->GetNodeID();
-  actor_client->KillActor(request, [](auto &status, auto &) {
+  actor_client->KillActor(request, [](auto &status, auto &&) {
     RAY_LOG(DEBUG) << "Killing status: " << status.ToString();
   });
 }
