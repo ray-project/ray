@@ -178,7 +178,6 @@ cdef class NewGcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
-            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVGet(
@@ -186,7 +185,7 @@ cdef class NewGcsClient:
                     OptionalItemPyCallback[c_string](
                         &convert_optional_str_none_for_not_found,
                         assign_and_decrement_fut,
-                        fut_ptr)))
+                        fut)))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_multi_get(
@@ -197,7 +196,6 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] c_keys = [key for key in keys]
             fut = incremented_fut()
-            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVMultiGet(
@@ -205,7 +203,7 @@ cdef class NewGcsClient:
                     OptionalItemPyCallback[unordered_map[c_string, c_string]](
                         &convert_optional_multi_get,
                         assign_and_decrement_fut,
-                        fut_ptr)))
+                        fut)))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_put(
@@ -218,7 +216,6 @@ cdef class NewGcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
-            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVPut(
@@ -226,7 +223,7 @@ cdef class NewGcsClient:
                     OptionalItemPyCallback[int](
                         &convert_optional_int,
                         assign_and_decrement_fut,
-                        fut_ptr)))
+                        fut)))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_del(self, c_string key, c_bool del_by_prefix,
@@ -235,7 +232,6 @@ cdef class NewGcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
-            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVDel(
@@ -243,7 +239,7 @@ cdef class NewGcsClient:
                     OptionalItemPyCallback[int](
                         &convert_optional_int,
                         assign_and_decrement_fut,
-                        fut_ptr)))
+                        fut)))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_keys(self, c_string prefix, namespace=None, timeout=None
@@ -252,7 +248,6 @@ cdef class NewGcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
-            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVKeys(
@@ -260,7 +255,7 @@ cdef class NewGcsClient:
                     OptionalItemPyCallback[c_vector[c_string]](
                         &convert_optional_vector_str,
                         assign_and_decrement_fut,
-                        fut_ptr)))
+                        fut)))
         return asyncio.wrap_future(fut)
 
     def async_internal_kv_exists(self, c_string key, namespace=None, timeout=None
@@ -269,7 +264,6 @@ cdef class NewGcsClient:
             c_string ns = namespace or b""
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
-            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().InternalKV().AsyncInternalKVExists(
@@ -277,7 +271,7 @@ cdef class NewGcsClient:
                     OptionalItemPyCallback[c_bool](
                         &convert_optional_bool,
                         assign_and_decrement_fut,
-                        fut_ptr)))
+                        fut)))
         return asyncio.wrap_future(fut)
 
     #############################################################
@@ -303,7 +297,6 @@ cdef class NewGcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] c_node_ips = [ip for ip in node_ips]
             fut = incremented_fut()
-            void* fut_ptr = <void*>fut
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Nodes().AsyncCheckAlive(
@@ -311,7 +304,7 @@ cdef class NewGcsClient:
                     MultiItemPyCallback[c_bool](
                         &convert_multi_bool,
                         assign_and_decrement_fut,
-                        fut_ptr)))
+                        fut)))
         return asyncio.wrap_future(fut)
 
     def drain_nodes(
@@ -346,7 +339,6 @@ cdef class NewGcsClient:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
-            void* fut_ptr = <void*>fut
 
         with nogil:
             check_status_timeout_as_rpc_error(
@@ -354,7 +346,7 @@ cdef class NewGcsClient:
                     MultiItemPyCallback[CGcsNodeInfo](
                         convert_get_all_node_info,
                         assign_and_decrement_fut,
-                        fut_ptr),
+                        fut),
                     timeout_ms))
         return asyncio.wrap_future(fut)
 
@@ -395,7 +387,6 @@ cdef class NewGcsClient:
             optional[CJobID] c_job_id
             optional[c_string] c_actor_state_name
             fut = incremented_fut()
-            void* fut_ptr = <void*>fut
         if actor_id is not None:
             c_actor_id = (<ActorID>actor_id).native()
         if job_id is not None:
@@ -410,7 +401,7 @@ cdef class NewGcsClient:
                     MultiItemPyCallback[CActorTableData](
                         &convert_get_all_actor_info,
                         assign_and_decrement_fut,
-                        fut_ptr),
+                        fut),
                     timeout_ms))
         return asyncio.wrap_future(fut)
 
@@ -425,7 +416,6 @@ cdef class NewGcsClient:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
-            void* fut_ptr = <void*>fut
             CActorID c_actor_id = actor_id.native()
 
         with nogil:
@@ -434,7 +424,7 @@ cdef class NewGcsClient:
                     c_actor_id,
                     force_kill,
                     no_restart,
-                    StatusPyCallback(convert_status, assign_and_decrement_fut, fut_ptr),
+                    StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
                     timeout_ms
                 )
             )
@@ -459,7 +449,6 @@ cdef class NewGcsClient:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
-            void* fut_ptr = <void*>fut
 
         with nogil:
             check_status_timeout_as_rpc_error(
@@ -467,7 +456,7 @@ cdef class NewGcsClient:
                     MultiItemPyCallback[CJobTableData](
                         &convert_get_all_job_info,
                         assign_and_decrement_fut,
-                        fut_ptr),
+                        fut),
                     timeout_ms))
         return asyncio.wrap_future(fut)
 
@@ -577,8 +566,7 @@ cdef incremented_fut():
     cpython.Py_INCREF(fut)
     return fut
 
-cdef void assign_and_decrement_fut(result, void* fut_ptr) with gil:
-    cdef fut = <object>fut_ptr
+cdef void assign_and_decrement_fut(result, fut) with gil:
     assert isinstance(fut, concurrent.futures.Future)
 
     assert not fut.done()

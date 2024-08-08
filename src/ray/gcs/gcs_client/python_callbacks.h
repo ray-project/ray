@@ -70,9 +70,9 @@ class PyCallback {
   // The return PyObject* is passed to the Assigner.
   using Converter = PyObject *(*)(Args...);
   // It must not raise exceptions.
-  using Assigner = void (*)(PyObject *, void *);
+  using Assigner = void (*)(PyObject *, PyObject *);
 
-  PyCallback(Converter converter, Assigner assigner, void *context)
+  PyCallback(Converter converter, Assigner assigner, PyObject *context)
       : converter(converter), assigner(assigner), context(context) {}
 
   void operator()(Args &&...args) {
@@ -95,7 +95,7 @@ class PyCallback {
  private:
   Converter converter = nullptr;
   Assigner assigner = nullptr;
-  void *context = nullptr;
+  PyObject *context = nullptr;
 };
 
 template <typename T>
