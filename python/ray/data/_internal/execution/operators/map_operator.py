@@ -316,17 +316,25 @@ class MapOperator(OneToOneOperator, ABC):
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
             self._metrics.on_task_finished(task_index, exception)
 
-            # Estimate number of tasks from inputs received and tasks submitted so far
-            estimated_num_tasks = (
-                self.input_dependencies[0].num_outputs_total()
-                / self._metrics.num_inputs_received
-                * self._next_data_task_idx
-            )
-            self._estimated_num_output_bundles = round(
-                estimated_num_tasks
-                * self._metrics.num_outputs_of_finished_tasks
-                / self._metrics.num_tasks_finished
-            )
+            # Estimate number of tasks and rows from inputs received and tasks
+            # submitted so far
+            upstream_op_num_outputs = self.input_dependencies[0].num_outputs_total()
+            if upstream_op_num_outputs:
+                estimated_num_tasks = (
+                    upstream_op_num_outputs
+                    / self._metrics.num_inputs_received
+                    * self._next_data_task_idx
+                )
+                self._estimated_num_output_bundles = round(
+                    estimated_num_tasks
+                    * self._metrics.num_outputs_of_finished_tasks
+                    / self._metrics.num_tasks_finished
+                )
+                self._estimated_num_output_rows = round(
+                    estimated_num_tasks
+                    * self._metrics.rows_task_outputs_generated
+                    / self._metrics.num_tasks_finished
+                )
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.

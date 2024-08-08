@@ -185,6 +185,7 @@ class PhysicalOperator(Operator):
         self._in_task_submission_backpressure = False
         self._metrics = OpRuntimeMetrics(self)
         self._estimated_num_output_bundles = None
+        self._estimated_output_num_rows = None
         self._execution_completed = False
 
     def __reduce__(self):
@@ -263,17 +264,31 @@ class PhysicalOperator(Operator):
         """
         return ""
 
-    def num_outputs_total(self) -> int:
-        """Returns the total number of output bundles of this operator.
+    def num_outputs_total(self) -> Optional[int]:
+        """Returns the total number of output bundles of this operator,
+        or ``None`` if unable to provide a reasonable estimate (for example,
+        if no tasks have finished yet).
 
         The value returned may be an estimate based off the consumption so far.
         This is useful for reporting progress.
+
+        Subclasses should either override this method, or update
+        ``self._estimated_num_output_bundles`` appropriately.
         """
-        if self._estimated_num_output_bundles is not None:
-            return self._estimated_num_output_bundles
-        if len(self.input_dependencies) == 1:
-            return self.input_dependencies[0].num_outputs_total()
-        raise AttributeError
+        return self._estimated_num_output_bundles
+
+    def num_output_rows_total(self) -> Optional[int]:
+        """Returns the total number of output rows of this operator,
+        or ``None`` if unable to provide a reasonable estimate (for example,
+        if no tasks have finished yet).
+
+        The value returned may be an estimate based off the consumption so far.
+        This is useful for reporting progress.
+
+        Subclasses should either override this method, or update
+        ``self._estimated_output_num_rows`` appropriately.
+        """
+        return self._estimated_output_num_rows
 
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.

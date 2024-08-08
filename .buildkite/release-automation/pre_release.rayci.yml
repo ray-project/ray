@@ -2,6 +2,11 @@ group: Pre-release checks
 depends_on:
   - forge
 steps:
+  - block: "Run pre-release checks"
+    if: build.env("RAY_VERSION") != null
+    key: block-pre-release-checks
+    depends_on: []
+
   - label: "Check release blockers"
     key: check-release-blockers
     instance_type: small_branch
@@ -18,7 +23,7 @@ steps:
     instance_type: default
     commands:
       - bazel build --build_python_zip --incompatible_use_python_toolchains=false --python_path=python //ci/ray_ci/automation:update_version
-      - cp bazel-bin/ci/ray_ci/automation/update_version.zip /artifact-mount/
+      - cp bazel-bin/ci/ray_ci/automation/update_version /artifact-mount/
 
   - label: "Trigger Postmerge test"
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") != "1"

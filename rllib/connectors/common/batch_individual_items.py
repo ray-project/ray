@@ -5,7 +5,7 @@ import gymnasium as gym
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch
@@ -45,7 +45,7 @@ class BatchIndividualItems(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        is_marl_module = isinstance(rl_module, MultiAgentRLModule)
+        is_multi_rl_module = isinstance(rl_module, MultiRLModule)
 
         # Convert lists of individual items into properly batched data.
         for column, column_data in data.copy().items():
@@ -53,13 +53,13 @@ class BatchIndividualItems(ConnectorV2):
             # the AgentToModuleMapping connector has already been applied, leading
             # to a batch structure of:
             # [module_id] -> [col0] -> [list of items]
-            if is_marl_module and column in rl_module:
+            if is_multi_rl_module and column in rl_module:
                 # Case, in which a column has already been properly batched before this
                 # connector piece is called.
                 if not self._multi_agent:
                     continue
-                # If MA Off-Policy and independent sampling we need to overcome
-                # this check.
+                # If MA Off-Policy and independent sampling we need to overcome this
+                # check.
                 module_data = column_data
                 for col, col_data in module_data.copy().items():
                     if isinstance(col_data, list) and col != Columns.INFOS:
@@ -98,7 +98,7 @@ class BatchIndividualItems(ConnectorV2):
                         individual_items_already_have_batch_dim="auto",
                     )
                 )
-                if is_marl_module:
+                if is_multi_rl_module:
                     if DEFAULT_MODULE_ID not in data:
                         data[DEFAULT_MODULE_ID] = {}
                     data[DEFAULT_MODULE_ID][column] = data.pop(column)

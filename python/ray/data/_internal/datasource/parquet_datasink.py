@@ -23,7 +23,7 @@ class ParquetDatasink(_FileDatasink):
         self,
         path: str,
         *,
-        arrow_parquet_args_fn: Callable[[], Dict[str, Any]] = lambda: {},
+        arrow_parquet_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         arrow_parquet_args: Optional[Dict[str, Any]] = None,
         num_rows_per_file: Optional[int] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
@@ -32,6 +32,9 @@ class ParquetDatasink(_FileDatasink):
         filename_provider: Optional[FilenameProvider] = None,
         dataset_uuid: Optional[str] = None,
     ):
+        if arrow_parquet_args_fn is None:
+            arrow_parquet_args_fn = lambda: {}  # noqa: E731
+
         if arrow_parquet_args is None:
             arrow_parquet_args = {}
 
@@ -78,7 +81,7 @@ class ParquetDatasink(_FileDatasink):
         call_with_retry(
             write_blocks_to_path,
             description=f"write '{write_path}'",
-            match=DataContext.get_current().write_file_retry_on_errors,
+            match=DataContext.get_current().retried_io_errors,
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )

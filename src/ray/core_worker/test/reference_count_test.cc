@@ -264,7 +264,8 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
       if (it != subscription_callback_map_->end()) {
         const auto callback_it = it->second.find(oid);
         RAY_CHECK(callback_it != it->second.end());
-        callback_it->second(pub_message);
+        rpc::PubMessage copied = pub_message;
+        callback_it->second(std::move(copied));
       }
     }
   }
@@ -2462,7 +2463,8 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
 
   // Unreconstructable objects go out of scope once their lineage ref count
   // reaches 0.
-  rc->UpdateResubmittedTaskReferences({return_id}, {id});
+  rc->UpdateResubmittedTaskReferences({id});
+  rc->UpdateObjectPendingCreation(return_id, true);
   ASSERT_TRUE(rc->IsObjectPendingCreation(return_id));
   rc->UpdateFinishedTaskReferences(
       {return_id}, {id}, true, empty_borrower, empty_refs, &out);
@@ -2634,7 +2636,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
   ASSERT_TRUE(rc->HasReference(id));
 
   // Simulate retrying the task.
-  rc->UpdateResubmittedTaskReferences({}, {id});
+  rc->UpdateResubmittedTaskReferences({id});
   rc->UpdateFinishedTaskReferences({}, {id}, true, empty_borrower, empty_refs, &out);
   ASSERT_FALSE(rc->HasReference(id));
   ASSERT_EQ(lineage_deleted.size(), 1);

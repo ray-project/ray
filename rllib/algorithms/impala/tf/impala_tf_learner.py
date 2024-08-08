@@ -1,8 +1,8 @@
 from typing import Dict
 
 import tree
-from ray.rllib.algorithms.impala.impala import ImpalaConfig
-from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
+from ray.rllib.algorithms.impala.impala import IMPALAConfig
+from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
@@ -11,13 +11,12 @@ from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.core.models.base import CRITIC, ENCODER_OUT
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
 
 
-class ImpalaTfLearner(ImpalaLearner, TfLearner):
+class IMPALATfLearner(IMPALALearner, TfLearner):
     """Implements the IMPALA loss function in tensorflow."""
 
     @override(TfLearner)
@@ -25,8 +24,8 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         self,
         *,
         module_id: ModuleID,
-        config: ImpalaConfig,
-        batch: NestedDict,
+        config: IMPALAConfig,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         action_dist_class_train = self.module[module_id].get_train_action_dist_cls()
@@ -151,3 +150,6 @@ class ImpalaTfLearner(ImpalaLearner, TfLearner):
         vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
         # Squeeze out last dimension (single node value head).
         return tf.squeeze(vf_out, -1)
+
+
+ImpalaTfLearner = IMPALATfLearner

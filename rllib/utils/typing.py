@@ -19,8 +19,8 @@ import gymnasium as gym
 from ray.rllib.utils.annotations import OldAPIStack
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-    from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+    from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
     from ray.rllib.env.env_context import EnvContext
     from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
     from ray.rllib.utils import try_import_jax, try_import_tf, try_import_torch
-    from ray.rllib.utils.nested_dict import NestedDict
 
     _, tf, _ = try_import_tf()
     torch, _ = try_import_torch()
@@ -53,7 +52,7 @@ TensorShape = Union[Tuple[int], List[int]]
 NetworkType = Union["torch.nn.Module", "tf.keras.Model"]
 
 # An RLModule spec (single-agent or multi-agent).
-RLModuleSpec = Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"]
+RLModuleSpecType = Union["RLModuleSpec", "MultiRLModuleSpec"]
 
 # A state dict of an RLlib component (e.g. EnvRunner, Learner, RLModule).
 StateDict = Dict[str, Any]
@@ -161,7 +160,7 @@ ViewRequirementsDict = Dict[str, "ViewRequirement"]  # @OldAPIStack
 # such as EnvRunners, LearnerGroup, etc.. Also, the MetricsLogger used by all these
 # components returns this upon its `reduce()` method call, so a ResultDict can further
 # be accumulated (and reduced again) by downstream components.
-ResultDict = Union[dict, "NestedDict"]
+ResultDict = Dict
 
 # A tf or torch local optimizer object.
 LocalOptimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
