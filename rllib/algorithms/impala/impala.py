@@ -1073,6 +1073,7 @@ class IMPALA(Algorithm):
         if self._aggregator_actor_manager:
             self._aggregator_actor_manager.probe_unhealthy_actors(
                 timeout_seconds=self.config.env_runner_health_probe_timeout_s,
+                mark_healthy=True,
             )
 
         return train_results

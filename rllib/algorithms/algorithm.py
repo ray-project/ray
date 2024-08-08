@@ -1646,9 +1646,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # Get the state of the correct (reference) worker. For example the local
             # worker of an EnvRunnerGroup.
             state = from_worker.get_state()
-            # Take out connector states from local worker's state.
-            for pol_states in state["policy_states"].values():
-                pol_states.pop("connector_configs", None)
+            # Take out (old) connector states from local worker's state.
+            if (
+                self.config.enable_connectors
+                and not self.config.enable_env_runner_and_connector_v2
+            ):
+                for pol_states in state["policy_states"].values():
+                    pol_states.pop("connector_configs", None)
             state_ref = ray.put(state)
 
             # By default, entire local worker state is synced after restoration

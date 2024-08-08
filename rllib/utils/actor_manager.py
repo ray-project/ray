@@ -828,7 +828,7 @@ class FaultTolerantActorManager:
     def probe_unhealthy_actors(
         self,
         timeout_seconds: Optional[float] = None,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
     ) -> List[int]:
         """Ping all unhealthy actors to try bringing them back.
 
