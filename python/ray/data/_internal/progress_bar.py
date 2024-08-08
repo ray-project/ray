@@ -187,6 +187,10 @@ class ProgressBar:
             self._desc = name
             self._bar.set_description(self._desc)
 
+    def refresh(self):
+        if self._bar:
+            self._bar.refresh()
+
     def update(self, i: int = 0, total: Optional[int] = None) -> None:
         if self._bar and (i != 0 or self._bar.total != total):
             self._progress += i

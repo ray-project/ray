@@ -176,9 +176,8 @@ void ActorTaskSubmitter::FailInflightTasks(
   // network issue. We don't call `task_finisher_.FailOrRetryPendingTask` directly because
   // there's much more work to do in the callback.
   auto status = Status::IOError("Fail all inflight tasks due to actor state change.");
-  rpc::PushTaskReply reply;
   for (const auto &[_, callback] : inflight_task_callbacks) {
-    callback(status, reply);
+    callback(status, rpc::PushTaskReply());
   }
 }
 
@@ -484,7 +483,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
 
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
-      [this, task_id, actor_id](const Status &status, const rpc::PushTaskReply &reply) {
+      [this, task_id, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
         rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
         {
           absl::MutexLock lock(&mu_);
@@ -500,7 +499,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           reply_callback = std::move(callback_it->second);
           queue.inflight_task_callbacks.erase(callback_it);
         }
-        reply_callback(status, reply);
+        reply_callback(status, std::move(reply));
       };
 
   task_finisher_.MarkTaskWaitingForExecution(task_id,
