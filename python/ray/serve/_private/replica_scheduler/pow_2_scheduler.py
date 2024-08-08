@@ -576,7 +576,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             # Populate available queue lens from the cache.
             for r in candidates:
                 queue_len = self._replica_queue_len_cache.get(r.replica_id)
-                print(f"queue len for {r.replica_id} is", queue_len)
                 # Include replicas whose queues are full as not in the cache so we will
                 # actively probe them. Otherwise we may end up in "deadlock" until their
                 # cache entries expire.
