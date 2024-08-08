@@ -251,6 +251,14 @@ class Worker:
         return value1, value2
 
 
+def mock_actor_handle_init(self, actor_id: str):
+    self._ray_actor_id = actor_id
+
+
+def mock_init(self):
+    pass
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_simulate_pp_2workers_2batches_1f1b(ray_start_regular, monkeypatch):
     """
@@ -583,7 +591,7 @@ class TestSelectNextNodes:
         assert len(next_nodes) == 1
         assert next_nodes[0] == dag_node_1
 
-    def test_only_one_nccl_write(self):
+    def test_only_one_nccl_write(self, monkeypatch):
         """
         Simulate the case where there is only one candidate which is a NCCL
         WRITE operation. In this case, `_select_next_nodes` should return both
@@ -596,8 +604,9 @@ class TestSelectNextNodes:
         READ and COMPUTE operations on fake_actor_1 have already been added to the
         execution schedule.
         """
-        fake_actor_1, global_idx_1, local_idx_1 = "fake_actor_1", 1, 0
-        fake_actor_2, global_idx_2, local_idx_2 = "fake_actor_2", 2, 0
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+        fake_actor_1, global_idx_1, local_idx_1 = ActorHandle("fake_actor_1"), 1, 0
+        fake_actor_2, global_idx_2, local_idx_2 = ActorHandle("fake_actor_2"), 2, 0
         mock_graph = {
             global_idx_1: generate_dag_graph_nodes(
                 local_idx_1, global_idx_1, fake_actor_1, True
@@ -625,7 +634,7 @@ class TestSelectNextNodes:
         assert next_nodes[0] == mock_graph[global_idx_1][DAGNodeOperationType.WRITE]
         assert next_nodes[1] == mock_graph[global_idx_2][DAGNodeOperationType.READ]
 
-    def test_two_nccl_writes(self):
+    def test_two_nccl_writes(self, monkeypatch):
         """
         Simulate a scenario where there are two candidates that are NCCL WRITE
         operations. In this case, _select_next_nodes can choose either of the
@@ -640,10 +649,12 @@ class TestSelectNextNodes:
         and COMPUTE operations on both the DAG nodes with smaller bind_index on
         fake_actor_1 and fake_actor_2 have already been added to the execution schedule.
         """
-        fake_actor_1 = "fake_actor_1"
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+
+        fake_actor_1 = ActorHandle("fake_actor_1")
         global_idx_1_0, local_idx_1_0 = 1, 0
         global_idx_1_1, local_idx_1_1 = 3, 1
-        fake_actor_2 = "fake_actor_2"
+        fake_actor_2 = ActorHandle("fake_actor_2")
         global_idx_2_0, local_idx_2_0 = 2, 0
         global_idx_2_1, local_idx_2_1 = 4, 1
         mock_graph = {
@@ -702,10 +713,6 @@ class TestSelectNextNodes:
             assert (
                 next_nodes[1] == mock_graph[global_idx_1_1][DAGNodeOperationType.READ]
             )
-
-
-def mock_init(self):
-    pass
 
 
 class TestBuildDAGNodeOperationGraph:

@@ -139,7 +139,7 @@ def _wrap_exception(exc):
 
 
 def _select_next_nodes(
-    actor_to_candidates: Dict["ray.actor.ActorHandle", List[DAGOperationGraphNode]],
+    actor_to_candidates: Dict["ray._raylet.ActorID", List[DAGOperationGraphNode]],
     graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]],
 ):
     """
@@ -153,10 +153,10 @@ def _select_next_nodes(
         acceptable. For the implementation details, we maintain a priority queue
         for each actor, where the head of the priority queue is the node with the
         smallest `bind_index`.
-    #2  If #1 cannot be satisfied, it means that all candidate nodes are
-        NCCL write nodes. In this case, select the one that is the head of the
-        priority queue and its downstream nodes, regardless of whether the
-        downstream nodes are heads of their priority queues or not.
+    #2  If #1 cannot be satisfied, it means that all candidate nodes are NCCL write
+        nodes. In this case, select the one at the head of the priority queue and
+        its downstream nodes, which are NCCL read nodes, regardless of whether the
+        downstream nodes are heads of their own priority queues.
 
     This function may return multiple nodes if they are NCCL nodes. In that case,
     this function only removes the NCCL write node, which is also the head of a
@@ -165,7 +165,7 @@ def _select_next_nodes(
     more than once.
 
     Args:
-        actor_to_candidates: A dictionary mapping an actor handle to a list of
+        actor_to_candidates: A dictionary mapping an actor id to a list of
             candidate nodes with zero in-degree.
         graph: A dictionary mapping the index of a task to a dictionary of its
             DAGOperationGraphNodes for different operations.
@@ -183,7 +183,9 @@ def _select_next_nodes(
             first_nccl_node = candidates[0]
 
     assert first_nccl_node is not None
-    next_nodes.append(heapq.heappop(actor_to_candidates[first_nccl_node.actor_handle]))
+    next_nodes.append(
+        heapq.heappop(actor_to_candidates[first_nccl_node.actor_handle._actor_id])
+    )
     for downstream_node_metadata in first_nccl_node.out_edges:
         downstream_node = graph[downstream_node_metadata[0]][
             downstream_node_metadata[1]
@@ -1341,11 +1343,15 @@ class CompiledDAG:
         actor_to_operation_nodes = self._generate_dag_operation_graph_node()
         graph = self._build_dag_node_operation_graph(actor_to_operation_nodes)
 
-        actor_to_candidates = defaultdict(list)
+        actor_to_candidates: Dict[
+            "ray._raylet.ActorID", List[DAGOperationGraphNode]
+        ] = defaultdict(list)
         for _, node_dict in graph.items():
             for _, node in node_dict.items():
                 if node.in_degree == 0:
-                    heapq.heappush(actor_to_candidates[node.actor_handle], node)
+                    heapq.heappush(
+                        actor_to_candidates[node.actor_handle._actor_id], node
+                    )
 
         visited_nodes = set()
 
@@ -1364,13 +1370,14 @@ class CompiledDAG:
                     out_node.in_edges.remove((node.idx, node.operation.type))
                     if out_node.in_degree == 0:
                         heapq.heappush(
-                            actor_to_candidates[out_node.actor_handle], out_node
+                            actor_to_candidates[out_node.actor_handle._actor_id],
+                            out_node,
                         )
 
             delete_keys = []
-            for actor_handle, candidates in actor_to_candidates.items():
+            for actor_id, candidates in actor_to_candidates.items():
                 if len(candidates) == 0:
-                    delete_keys.append(actor_handle)
+                    delete_keys.append(actor_id)
             for key in delete_keys:
                 del actor_to_candidates[key]
 
