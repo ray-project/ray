@@ -472,9 +472,9 @@ class _ActorClassMethodMetadata(object):
                 self.decorators[method_name] = method.__ray_invocation_decorator__
 
             if hasattr(method, "__ray_concurrency_group__"):
-                self.concurrency_group_for_methods[method_name] = (
-                    method.__ray_concurrency_group__
-                )
+                self.concurrency_group_for_methods[
+                    method_name
+                ] = method.__ray_concurrency_group__
 
             if hasattr(method, "__ray_enable_task_events__"):
                 self.enable_task_events[method_name] = method.__ray_enable_task_events__
@@ -485,9 +485,9 @@ class _ActorClassMethodMetadata(object):
             self.method_is_generator[method_name] = is_generator
 
             if hasattr(method, "__ray_generator_backpressure_num_objects__"):
-                self.generator_backpressure_num_objects[method_name] = (
-                    method.__ray_generator_backpressure_num_objects__
-                )
+                self.generator_backpressure_num_objects[
+                    method_name
+                ] = method.__ray_generator_backpressure_num_objects__
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self

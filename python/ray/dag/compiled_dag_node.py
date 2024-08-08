@@ -131,6 +131,7 @@ def _prep_task(self, task: "ExecutableTask") -> None:
     input_reader: ReaderInterface = SynchronousReader(
         task.input_channels, task.input_idxs
     )
+    assert task.output_channel is not None
     output_writer: WriterInterface = SynchronousWriter(task.output_channel)
     self._input_readers.append(input_reader)
     self._output_writers.append(output_writer)
@@ -216,7 +217,7 @@ class CompiledTask:
         self.dag_node = dag_node
 
         self.downstream_node_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
-        self.output_channel = None
+        self.output_channel: Optional[ChannelInterface] = None
         self.arg_type_hints: List["ChannelOutputType"] = []
 
     @property
@@ -540,9 +541,9 @@ class CompiledDAG:
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
         # Set of actors present in the DAG.
         self.actor_refs = set()
-        self.actor_to_tasks: Dict["ray.actor.ActorHandle", List["CompiledTask"]] = (
-            defaultdict(list)
-        )
+        self.actor_to_tasks: Dict[
+            "ray.actor.ActorHandle", List["CompiledTask"]
+        ] = defaultdict(list)
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
@@ -629,6 +630,7 @@ class CompiledDAG:
         from ray.dag import (
             DAGNode,
             ClassMethodNode,
+            TaskReturnNode,
             FunctionNode,
             InputAttributeNode,
             InputNode,
@@ -669,6 +671,7 @@ class CompiledDAG:
                 or isinstance(dag_node, InputAttributeNode)
                 or isinstance(dag_node, MultiOutputNode)
                 or isinstance(dag_node, ClassMethodNode)
+                or isinstance(dag_node, TaskReturnNode)
             ):
                 if isinstance(dag_node, FunctionNode):
                     # TODO(swang): Support non-actor tasks.
@@ -688,11 +691,11 @@ class CompiledDAG:
                         "that is already created with Actor.remote()"
                     )
 
-                if dag_node.num_returns != 1:
-                    raise ValueError(
-                        "Compiled DAGs only supports actor methods with "
-                        "num_returns=1"
-                    )
+                # if dag_node.num_returns != 1:
+                #     raise ValueError(
+                #         "Compiled DAGs only supports actor methods with "
+                #         "num_returns=1"
+                #     )
 
                 self.actor_task_count[actor_handle._actor_id] += 1
 
@@ -853,10 +856,12 @@ class CompiledDAG:
             InputAttributeNode,
             MultiOutputNode,
             ClassMethodNode,
+            TaskReturnNode,
         )
 
         if self.input_task_idx is None:
             self._preprocess()
+        assert self.input_task_idx is not None
 
         if self._dag_submitter is not None:
             assert self._dag_output_fetcher is not None
@@ -882,7 +887,23 @@ class CompiledDAG:
             if isinstance(task.dag_node, ClassMethodNode):
                 # `readers` is the nodes that are ordered after the current one (`task`)
                 # in the DAG.
-                readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
+                # readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
+                # """
+                readers = []
+                for idx in task.downstream_node_idxs:
+                    downstream_task = self.idx_to_task[idx]
+                    readers.append(downstream_task)
+                    if isinstance(downstream_task.dag_node, TaskReturnNode):
+                        readers.extend(
+                            self.idx_to_task[idx]
+                            for idx in downstream_task.downstream_node_idxs
+                        )
+                readers = [
+                    reader
+                    for reader in readers
+                    if not isinstance(reader.dag_node, TaskReturnNode)
+                ]
+                # """
                 reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                 dag_nodes = [reader.dag_node for reader in readers]
                 read_by_multi_output_node = False
@@ -941,8 +962,15 @@ class CompiledDAG:
                     )
                 )
                 actor_handle = task.dag_node._get_actor_handle()
+                assert actor_handle is not None
                 self.actor_refs.add(actor_handle)
                 self.actor_to_tasks[actor_handle].append(task)
+            elif isinstance(task.dag_node, TaskReturnNode):
+                class_method_node = task.dag_node.class_method_node
+                class_method_node_task = self.idx_to_task[
+                    self.dag_node_to_idx[class_method_node]
+                ]
+                task.output_channel = class_method_node_task.output_channel
             elif isinstance(task.dag_node, InputNode):
                 reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                 # TODO (kevin85421): Currently, the shared memory channel doesn't
@@ -1010,13 +1038,14 @@ class CompiledDAG:
         # Register custom serializers for inputs provided to dag.execute().
         input_task.dag_node.type_hint.register_custom_serializer()
         self.dag_input_channel = input_task.output_channel
+        assert self.dag_input_channel is not None
 
         # Create executable tasks for each actor
         for actor_handle, tasks in self.actor_to_tasks.items():
             executable_tasks = []
             worker_fn = None
             for task in tasks:
-                resolved_args = []
+                resolved_args: List[Any] = []
                 has_at_least_one_channel_input = False
                 for arg in task.args:
                     if isinstance(arg, InputNode):
@@ -1032,13 +1061,11 @@ class CompiledDAG:
                         arg_channel = self.idx_to_task[arg_idx].output_channel
                         assert arg_channel is not None
                         # resolved_args.append(arg_channel)
-                        """
+                        input_idx = None
                         if isinstance(arg, TaskReturnNode):
-                            # [TODO]
-                            print("TaskReturnNode")
-                        """
+                            input_idx = arg.input_idx
                         resolved_args.append(
-                            InputArg(input_channel=arg_channel, input_idx=None)
+                            InputArg(input_channel=arg_channel, input_idx=input_idx)
                         )
                         has_at_least_one_channel_input = True
                     else:
@@ -1427,9 +1454,9 @@ class CompiledDAG:
                 )
             self._max_execution_index += 1
             start_time = time.monotonic()
-            self._result_buffer[self._max_execution_index] = (
-                self._dag_output_fetcher.read(timeout)
-            )
+            self._result_buffer[
+                self._max_execution_index
+            ] = self._dag_output_fetcher.read(timeout)
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)

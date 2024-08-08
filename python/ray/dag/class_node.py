@@ -157,9 +157,9 @@ class ClassMethodNode(DAGNode):
         ] = other_args_to_resolve.get(PARENT_CLASS_NODE_KEY)
         # Used to track lineage of ClassMethodCall to preserve deterministic
         # submission and execution order.
-        self._prev_class_method_call: Optional[ClassMethodNode] = (
-            other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
-        )
+        self._prev_class_method_call: Optional[
+            ClassMethodNode
+        ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
         # The index/order when bind() is called on this class method
         self._bind_index: Optional[int] = other_args_to_resolve.get(
             BIND_INDEX_KEY, None
@@ -232,16 +232,8 @@ class ClassMethodNode(DAGNode):
         return num_returns
 
 
-"""
-class TaskReturnNode(DAGNode):
-    _class_method_node: ClassMethodNode
-    _output_idx: Union[int, None]
-"""
-
-
 @DeveloperAPI
 class TaskReturnNode(DAGNode):
-
     def __init__(
         self,
         method_name: str,
@@ -261,18 +253,18 @@ class TaskReturnNode(DAGNode):
         ] = other_args_to_resolve.get(PARENT_CLASS_NODE_KEY)
         # Used to track lineage of ClassMethodCall to preserve deterministic
         # submission and execution order.
-        self._prev_class_method_call: Optional[ClassMethodNode] = (
-            other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
-        )
+        self._prev_class_method_call: Optional[
+            ClassMethodNode
+        ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
         # The index/order when bind() is called on this class method
         self._bind_index: Optional[int] = other_args_to_resolve.get(
             BIND_INDEX_KEY, None
         )
 
-        self._class_method_node: ClassMethodNode = other_args_to_resolve.get(
+        self.class_method_node: ClassMethodNode = other_args_to_resolve.get(
             "class_method_node"
         )
-        self._output_idx: Optional[int] = other_args_to_resolve.get("output_idx", None)
+        self.output_idx: Optional[int] = other_args_to_resolve.get("output_idx", None)
 
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
@@ -334,8 +326,4 @@ class TaskReturnNode(DAGNode):
 
     @property
     def num_returns(self) -> int:
-        num_returns = self._bound_options.get("num_returns", None)
-        if num_returns is None:
-            method = self._get_remote_method(self._method_name)
-            num_returns = method.__getstate__()["num_returns"]
-        return num_returns
+        return self.class_method_node.num_returns
