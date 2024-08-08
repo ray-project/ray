@@ -54,20 +54,21 @@ class SynchronizationActor:
         method  with the their data. The data from the worker with rank 0 will
         be returned.
         """
-        if not self._world_size:
-            self._world_size = world_size
-        elif world_size != self._world_size:
-            raise ValueError(
-                f"Expects all callers to provide the same world size. \
-                Got {world_size} and expected {self._world_size}."
-            )
-
-        if world_rank == 0:
-            self._reduced_data = data
-
-        if self._counter < self._world_size:
-            self._counter += 1
+        # Ensures that all global states manipulation is done within the async context
+        # manager which makes the condition variable awaiting and the counter
+        # incrementing an atomic operation.
         async with self._condition:
+            if not self._world_size:
+                self._world_size = world_size
+            elif world_size != self._world_size:
+                raise ValueError(
+                    f"Expects all callers to provide the same world size. \
+                    Got {world_size} and expected {self._world_size}."
+                )
+            if world_rank == 0:
+                self._reduced_data = data
+            if self._counter < self._world_size:
+                self._counter += 1
             if self._counter == self._world_size:
                 self._condition.notify_all()
             else:

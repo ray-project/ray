@@ -12,7 +12,7 @@ def ray_start_4_cpus():
     ray.shutdown()
 
 
-@pytest.mark.parametrize("world_size", [1, 10])
+@pytest.mark.parametrize("world_size", [1, 10, 1000])
 def test_broadcast_from_rank_0(world_size):
     """The test checks if all workers can reach a consensus on a data.
     Every worker sends data with a string "data-{rank}" that is unique
