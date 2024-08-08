@@ -178,6 +178,7 @@ def _select_next_nodes(
             or candidates[0].operation.type != DAGNodeOperationType.WRITE
         ):
             next_nodes.append(heapq.heappop(candidates))
+            assert len(next_nodes) == 1
             return next_nodes
         if first_nccl_node is None:
             first_nccl_node = candidates[0]
@@ -191,6 +192,7 @@ def _select_next_nodes(
             downstream_node_metadata[1]
         ]
         next_nodes.append(downstream_node)
+    assert len(next_nodes) == 1 + len(first_nccl_node.out_edges)
     return next_nodes
 
 
@@ -388,7 +390,7 @@ class ExecutableTask:
         # Store the intermediate result of a READ or COMPUTE operation.
         # The result of a READ operation will be used by a COMPUTE operation,
         # and the result of a COMPUTE operation will be used by a WRITE operation.
-        self._intermediate_buffer = None
+        self._intermediate_buffer: Any = None
 
     def cancel(self):
         self.input_reader.close()
