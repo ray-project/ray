@@ -18,4 +18,4 @@ delta-sharing
 pytest-mock
 decord
 snowflake-connector-python
-pyiceberg[sql-sqlite]==0.7.0
+#pyiceberg[sql-sqlite]==0.7.0
