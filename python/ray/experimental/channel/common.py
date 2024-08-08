@@ -235,12 +235,17 @@ class ChannelInterface:
 # Interfaces for channel I/O.
 @DeveloperAPI
 class ReaderInterface:
-    def __init__(self, input_channels: List[ChannelInterface]):
+    def __init__(
+        self,
+        input_channels: List[ChannelInterface],
+        input_idxs: Optional[List[Optional[int]]],
+    ):
         assert isinstance(input_channels, list)
         for chan in input_channels:
             assert isinstance(chan, ChannelInterface)
 
         self._input_channels = input_channels
+        self._input_idxs = input_idxs
         self._closed = False
         self._num_reads = 0
 
@@ -288,17 +293,30 @@ class ReaderInterface:
 
 @DeveloperAPI
 class SynchronousReader(ReaderInterface):
-    def __init__(self, input_channels: List[ChannelInterface]):
-        super().__init__(input_channels)
+    def __init__(
+        self,
+        input_channels: List[ChannelInterface],
+        input_idxs: Optional[List[Optional[int]]],
+    ):
+        super().__init__(input_channels, input_idxs)
 
     def start(self):
         pass
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
         results = []
-        for c in self._input_channels:
+        for i, c in enumerate(self._input_channels):
             start_time = time.monotonic()
-            results.append(c.read(timeout))
+            # results.append(c.read(timeout))
+            # """
+            result = c.read(timeout)
+            if self._input_idxs:
+                idx = self._input_idxs[i]
+                if idx:
+                    assert isinstance(result, tuple)
+                    result = result[idx]
+            results.append(result)
+            # """
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
@@ -316,9 +334,12 @@ class AwaitableBackgroundReader(ReaderInterface):
     """
 
     def __init__(
-        self, input_channels: List[ChannelInterface], fut_queue: asyncio.Queue
+        self,
+        input_channels: List[ChannelInterface],
+        input_idxs: Optional[List[Optional[int]]],
+        fut_queue: asyncio.Queue,
     ):
-        super().__init__(input_channels)
+        super().__init__(input_channels, input_idxs)
         self._fut_queue = fut_queue
         self._background_task = None
         self._background_task_executor = concurrent.futures.ThreadPoolExecutor(

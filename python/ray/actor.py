@@ -241,6 +241,7 @@ class ActorMethod:
             PARENT_CLASS_NODE_KEY,
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
+            TaskReturnNode,
         )
 
         # TODO(sang): unify option passing
@@ -271,7 +272,25 @@ class ActorMethod:
             options,
             other_args_to_resolve=other_args_to_resolve,
         )
-        return node
+
+        if node.num_returns > 1:
+            task_nodes: List[TaskReturnNode] = []
+            for i in range(node.num_returns):
+                other_args_to_resolve = {
+                    "class_method_node": node,
+                    "output_idx": i,
+                }
+                task_node = TaskReturnNode(
+                    None,
+                    None,
+                    None,
+                    None,
+                    other_args_to_resolve,
+                )
+                task_nodes.append(task_node)
+            return tuple(task_nodes)
+        else:
+            return node
 
     @wrap_auto_init
     @_tracing_actor_method_invocation
@@ -453,9 +472,9 @@ class _ActorClassMethodMetadata(object):
                 self.decorators[method_name] = method.__ray_invocation_decorator__
 
             if hasattr(method, "__ray_concurrency_group__"):
-                self.concurrency_group_for_methods[
-                    method_name
-                ] = method.__ray_concurrency_group__
+                self.concurrency_group_for_methods[method_name] = (
+                    method.__ray_concurrency_group__
+                )
 
             if hasattr(method, "__ray_enable_task_events__"):
                 self.enable_task_events[method_name] = method.__ray_enable_task_events__
@@ -466,9 +485,9 @@ class _ActorClassMethodMetadata(object):
             self.method_is_generator[method_name] = is_generator
 
             if hasattr(method, "__ray_generator_backpressure_num_objects__"):
-                self.generator_backpressure_num_objects[
-                    method_name
-                ] = method.__ray_generator_backpressure_num_objects__
+                self.generator_backpressure_num_objects[method_name] = (
+                    method.__ray_generator_backpressure_num_objects__
+                )
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self

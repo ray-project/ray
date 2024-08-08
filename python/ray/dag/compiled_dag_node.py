@@ -128,7 +128,9 @@ def _prep_task(self, task: "ExecutableTask") -> None:
         typ_hint.register_custom_serializer()
     task.output_type_hint.register_custom_serializer()
 
-    input_reader: ReaderInterface = SynchronousReader(task.input_channels)
+    input_reader: ReaderInterface = SynchronousReader(
+        task.input_channels, task.input_idxs
+    )
     output_writer: WriterInterface = SynchronousWriter(task.output_channel)
     self._input_readers.append(input_reader)
     self._output_writers.append(output_writer)
@@ -168,6 +170,7 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     res = None
     try:
         res = input_reader.read()
+        # print(f"[DEBUG] reader read {res}")
     except RayChannelError:
         # Channel closed. Exit the loop.
         return True
@@ -235,6 +238,16 @@ Node: {self.dag_node}
 Arguments: {self.args}
 Output: {self.output_channel}
 """
+
+
+@DeveloperAPI
+class InputArg:
+    input_channel: ChannelInterface
+    input_idx: Optional[int]
+
+    def __init__(self, input_channel: ChannelInterface, input_idx: Optional[int]):
+        self.input_channel = input_channel
+        self.input_idx = input_idx
 
 
 @DeveloperAPI
@@ -352,6 +365,9 @@ class ExecutableTask:
         self.output_type_hint: "ChannelOutputType" = task.dag_node.type_hint
 
         self.input_channels: List[ChannelInterface] = []
+        # """
+        self.input_idxs: List[Optional[int]] = []
+        # """
         self.task_inputs: List[_ExecutableTaskInput] = []
         self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
 
@@ -360,6 +376,12 @@ class ExecutableTask:
         input_channel_to_idx: dict[ChannelInterface, int] = {}
 
         for arg in resolved_args:
+            # """
+            input_idx = None
+            if isinstance(arg, InputArg):
+                input_idx = arg.input_idx
+                arg = arg.input_channel
+            # """
             if isinstance(arg, ChannelInterface) or isinstance(arg, DAGInputAdapter):
                 if isinstance(arg, ChannelInterface):
                     channel = arg
@@ -373,6 +395,9 @@ class ExecutableTask:
                 else:
                     # Add a new channel to the list of input channels.
                     self.input_channels.append(channel)
+                    # """
+                    self.input_idxs.append(input_idx)
+                    # """
                     channel_idx = len(self.input_channels) - 1
                     input_channel_to_idx[channel] = channel_idx
 
@@ -516,9 +541,9 @@ class CompiledDAG:
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
         # Set of actors present in the DAG.
         self.actor_refs = set()
-        self.actor_to_tasks: Dict[
-            "ray.actor.ActorHandle", List["CompiledTask"]
-        ] = defaultdict(list)
+        self.actor_to_tasks: Dict["ray.actor.ActorHandle", List["CompiledTask"]] = (
+            defaultdict(list)
+        )
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
@@ -1007,7 +1032,15 @@ class CompiledDAG:
                         arg_idx = self.dag_node_to_idx[arg]
                         arg_channel = self.idx_to_task[arg_idx].output_channel
                         assert arg_channel is not None
-                        resolved_args.append(arg_channel)
+                        # resolved_args.append(arg_channel)
+                        """
+                        if isinstance(arg, TaskReturnNode):
+                            # [TODO]
+                            print("TaskReturnNode")
+                        """
+                        resolved_args.append(
+                            InputArg(input_channel=arg_channel, input_idx=None)
+                        )
                         has_at_least_one_channel_input = True
                     else:
                         resolved_args.append(arg)
@@ -1066,11 +1099,12 @@ class CompiledDAG:
             )
             self._dag_output_fetcher = AwaitableBackgroundReader(
                 self.dag_output_channels,
+                None,
                 self._fut_queue,
             )
         else:
             self._dag_submitter = SynchronousWriter(self.dag_input_channel)
-            self._dag_output_fetcher = SynchronousReader(self.dag_output_channels)
+            self._dag_output_fetcher = SynchronousReader(self.dag_output_channels, None)
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
@@ -1394,9 +1428,9 @@ class CompiledDAG:
                 )
             self._max_execution_index += 1
             start_time = time.monotonic()
-            self._result_buffer[
-                self._max_execution_index
-            ] = self._dag_output_fetcher.read(timeout)
+            self._result_buffer[self._max_execution_index] = (
+                self._dag_output_fetcher.read(timeout)
+            )
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
