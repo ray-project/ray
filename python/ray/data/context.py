@@ -93,23 +93,6 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
     "RAY_DATA_ENABLE_PROGRESS_BAR_NAME_TRUNCATION", True
 )
 
-is_ray_job = os.environ.get("RAY_JOB_ID") is not None
-if is_ray_job:
-    if log_once("ray_data_disable_operator_progress_bars_in_ray_jobs"):
-        logger.info(
-            "Disabling operator-level progress bars by default in Ray Jobs. "
-            "To enable progress bars for all operators, set "
-            "`ray.data.DataContext.get_current().enable_operator_progress_bars = True`."
-        )
-    # Disable operator-level progress bars by default in Ray jobs.
-    # The global progress bar for the overall Dataset execution will
-    # still be enabled, unless the user also sets
-    # `ray.data.DataContext.get_current().enable_progress_bars = False`.
-    DEFAULT_ENABLE_OPERATOR_PROGRESS_BARS = False
-else:
-    # When not running in Ray job, operator-level progress bars are enabled by default.
-    DEFAULT_ENABLE_OPERATOR_PROGRESS_BARS = True
-
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
@@ -300,7 +283,10 @@ class DataContext:
     )
     use_ray_tqdm: bool = DEFAULT_USE_RAY_TQDM
     enable_progress_bars: bool = DEFAULT_ENABLE_PROGRESS_BARS
-    enable_operator_progress_bars: bool = DEFAULT_ENABLE_OPERATOR_PROGRESS_BARS
+    # By default, enable the progress bar for operator-level progress.
+    # In __post_init__(), we disable operator-level progress
+    # bars when running in a Ray job.
+    enable_operator_progress_bars: bool = True
     enable_progress_bar_name_truncation: bool = (
         DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION
     )
@@ -339,6 +325,25 @@ class DataContext:
         self._max_num_blocks_in_streaming_gen_buffer = (
             DEFAULT_MAX_NUM_BLOCKS_IN_STREAMING_GEN_BUFFER
         )
+
+        is_ray_job = os.environ.get("RAY_JOB_ID") is not None
+        if is_ray_job:
+            if log_once("ray_data_disable_operator_progress_bars_in_ray_jobs"):
+                logger.info(
+                    "Disabling operator-level progress bars by default in Ray Jobs. "
+                    "To enable progress bars for all operators, set "
+                    "`ray.data.DataContext.get_current()"
+                    ".enable_operator_progress_bars = True`."
+                )
+            # Disable operator-level progress bars by default in Ray jobs.
+            # The global progress bar for the overall Dataset execution will
+            # still be enabled, unless the user also sets
+            # `ray.data.DataContext.get_current().enable_progress_bars = False`.
+            self.enable_operator_progress_bars = False
+        else:
+            # When not running in Ray job, operator-level progress
+            # bars are enabled by default.
+            self.enable_operator_progress_bars = True
 
     def __setattr__(self, name: str, value: Any) -> None:
         if (
