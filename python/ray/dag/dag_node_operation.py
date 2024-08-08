@@ -5,6 +5,7 @@ from ray.util.annotations import DeveloperAPI
 import ray
 
 
+@DeveloperAPI
 class DAGNodeOperationType(Enum):
     """
     There are three types of operations that a DAG node can perform:

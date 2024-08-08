@@ -388,7 +388,7 @@ class ExecutableTask:
         # Store the intermediate result of a READ or COMPUTE operation.
         # The result of a READ operation will be used by a COMPUTE operation,
         # and the result of a COMPUTE operation will be used by a WRITE operation.
-        self._cache = None
+        self._intermediate_buffer = None
 
     def cancel(self):
         self.input_reader.close()
@@ -405,12 +405,12 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-    def set_cache(self, data: Any):
-        self._cache = data
+    def set_intermediate_buffer(self, data: Any):
+        self._intermediate_buffer = data
 
-    def reset_cache(self) -> Any:
-        data = self._cache
-        self._cache = None
+    def reset_intermediate_buffer(self) -> Any:
+        data = self._intermediate_buffer
+        self._intermediate_buffer = None
         return data
 
     def _read(self) -> bool:
@@ -419,7 +419,7 @@ class ExecutableTask:
         """
         try:
             res = self.input_reader.read()
-            self.set_cache(res)
+            self.set_intermediate_buffer(res)
             return False
         except RayChannelError:
             # Channel closed. Exit the loop.
@@ -432,7 +432,7 @@ class ExecutableTask:
         that the last operation executed is READ so that the function retrieves the
         correct intermediate result.
         """
-        res = self.reset_cache()
+        res = self.reset_intermediate_buffer()
         method = getattr(class_handle, self.method_name)
         try:
             _process_return_vals(res, return_single_output=False)
@@ -441,7 +441,7 @@ class ExecutableTask:
             # Propagate it and skip the actual task. We don't need to wrap the
             # exception in a RayTaskError here because it has already been wrapped
             # by the previous task.
-            self.set_cache(exc)
+            self.set_intermediate_buffer(exc)
             return False
 
         resolved_inputs = []
@@ -452,7 +452,7 @@ class ExecutableTask:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
         except Exception as exc:
             output_val = _wrap_exception(exc)
-        self.set_cache(output_val)
+        self.set_intermediate_buffer(output_val)
         return False
 
     def _write(self) -> bool:
@@ -461,7 +461,7 @@ class ExecutableTask:
         downstream DAG nodes. The caller must ensure that the last operation executed
         is COMPUTE so that the function retrieves the correct intermediate result.
         """
-        output_val = self.reset_cache()
+        output_val = self.reset_intermediate_buffer()
         try:
             self.output_writer.write(output_val)
             return False
