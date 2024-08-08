@@ -243,8 +243,7 @@ class ReplicaQueueLengthCache:
         )
 
     def invalidate_key(self, replica_id: ReplicaID):
-        if replica_id in self._cache:
-            self._cache.pop(replica_id)
+        self._cache.pop(replica_id, None)
 
     def remove_inactive_replicas(self, *, active_replica_ids: Set[ReplicaID]):
         """Removes entries for all replica IDs not in the provided active set."""

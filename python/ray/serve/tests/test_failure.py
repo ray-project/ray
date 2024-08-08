@@ -12,7 +12,7 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.exceptions import ActorDiedError
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.test_utils import Counter, get_deployment_details, log
+from ray.serve._private.test_utils import Counter, get_deployment_details, test_log
 
 
 def request_with_retries(endpoint, timeout=30):
@@ -281,16 +281,16 @@ def test_replica_actor_died(serve_instance):
     replicas = [r["actor_name"] for r in deployment_details["replicas"]]
 
     # Wait for controller to health check both replicas
-    ray.get(counter.wait.remote())
-    log("Controller has health checked both replicas")
+    ray.get(counter.wait.remote(), timeout=1)
+    test_log("Controller has health checked both replicas")
 
     # Send some requests, both replicas should be up and running
     assert len({h.remote().result() for _ in range(10)}) == 2
-    log("Sent 10 warmup requests.")
+    test_log("Sent 10 warmup requests.")
 
     # Kill one replica.
     replica_to_kill = random.choice(replicas)
-    log(f"Killing replica {replica_to_kill}")
+    test_log(f"Killing replica {replica_to_kill}")
     ray.kill(ray.get_actor(replica_to_kill, namespace="serve"))
 
     # The controller just health checked both of them, so it should not
@@ -302,7 +302,7 @@ def test_replica_actor_died(serve_instance):
             pids_returned.add(h.remote().result())
         except ActorDiedError:
             if not actor_died_error_encountered:
-                log(
+                test_log(
                     "Received ActorDiedError for one request. This is expected, "
                     "but should not happen again."
                 )
