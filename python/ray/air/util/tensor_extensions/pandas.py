@@ -32,12 +32,12 @@
 
 import numbers
 import os
-from packaging.version import Version
 from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+from packaging.version import Version
 from pandas._typing import Dtype
 from pandas.compat import set_function_name
 from pandas.core.dtypes.generic import ABCDataFrame, ABCSeries

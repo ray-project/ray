@@ -277,6 +277,7 @@ class ReplicaActor:
         # Guards against calling the user's callable constructor multiple times.
         self._user_callable_initialized = False
         self._user_callable_initialized_lock = asyncio.Lock()
+        self._initialization_latency: Optional[float] = None
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
@@ -338,11 +339,11 @@ class ReplicaActor:
         """
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
-                request_metadata.route,
-                request_metadata.request_id,
-                self._deployment_id.app_name,
-                request_metadata.multiplexed_model_id,
-                request_metadata.grpc_context,
+                route=request_metadata.route,
+                request_id=request_metadata.request_id,
+                app_name=self._deployment_id.app_name,
+                multiplexed_model_id=request_metadata.multiplexed_model_id,
+                grpc_context=request_metadata.grpc_context,
             )
         )
 
@@ -551,15 +552,16 @@ class ReplicaActor:
 
         proto = RequestMetadataProto.FromString(proto_request_metadata)
         request_metadata: RequestMetadata = RequestMetadata(
-            proto.request_id,
-            proto.endpoint,
+            request_id=proto.request_id,
+            internal_request_id=proto.internal_request_id,
+            endpoint=proto.endpoint,
             call_method=proto.call_method,
             multiplexed_model_id=proto.multiplexed_model_id,
             route=proto.route,
         )
         with self._wrap_user_method_call(request_metadata):
             return await self._user_callable_wrapper.call_user_method(
-                request_metadata, request_args[0], request_kwargs
+                request_metadata, request_args, request_kwargs
             )
 
     async def is_allocated(self) -> str:
@@ -588,13 +590,21 @@ class ReplicaActor:
         self,
         deployment_config: DeploymentConfig = None,
         _after: Optional[Any] = None,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
+        """Handles initializing the replica.
+
+        Returns: 3-tuple containing
+            1. DeploymentConfig of the replica
+            2. DeploymentVersion of the replica
+            3. Initialization duration in seconds
+        """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
         try:
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
             async with self._user_callable_initialized_lock:
+                initialization_start_time = time.time()
                 if not self._user_callable_initialized:
                     await self._user_callable_wrapper.initialize_callable()
                     self._user_callable_initialized = True
@@ -610,6 +620,12 @@ class ReplicaActor:
             # an initial health check. If an initial health check fails,
             # consider it an initialization failure.
             await self.check_health()
+
+            # Save the initialization latency if the replica is initializing
+            # for the first time.
+            if self._initialization_latency is None:
+                self._initialization_latency = time.time() - initialization_start_time
+
             return self._get_metadata()
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
@@ -617,7 +633,7 @@ class ReplicaActor:
     async def reconfigure(
         self,
         deployment_config: DeploymentConfig,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -654,10 +670,11 @@ class ReplicaActor:
 
     def _get_metadata(
         self,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
         return (
             self._version.deployment_config,
             self._version,
+            self._initialization_latency,
         )
 
     def _save_cpu_profile_data(self) -> str:
@@ -710,7 +727,19 @@ class ReplicaActor:
         # can skip the wait period.
         if self._user_callable_initialized:
             await self._drain_ongoing_requests()
+
+        try:
             await self._user_callable_wrapper.call_destructor()
+        except:  # noqa: E722
+            # We catch a blanket exception since the constructor may still be
+            # running, so instance variables used by the destructor may not exist.
+            if self._user_callable_initialized:
+                logger.exception(
+                    "__del__ ran before replica finished initializing, and "
+                    "raised an exception."
+                )
+            else:
+                logger.exception("__del__ raised an exception.")
 
         await self._metrics_manager.shutdown()
 
@@ -947,7 +976,7 @@ class UserCallableWrapper:
         scope = pickle.loads(request.pickled_asgi_scope)
         receive = ASGIReceiveProxy(
             scope,
-            request_metadata.request_id,
+            request_metadata,
             request.receive_asgi_messages,
         )
         receive_task = self._user_code_event_loop.create_task(
@@ -1142,10 +1171,15 @@ class UserCallableWrapper:
     async def call_destructor(self):
         """Explicitly call the `__del__` method of the user callable.
 
-        Calling this multiple times has no effect; only the first call will actually
-        call the destructor.
+        Calling this multiple times has no effect; only the first call will
+        actually call the destructor.
         """
-        self._raise_if_not_initialized("call_destructor")
+        if self._callable is None:
+            logger.info(
+                "This replica has not yet started running user code. "
+                "Skipping __del__."
+            )
+            return
 
         # Only run the destructor once. This is safe because there is no `await` between
         # checking the flag here and flipping it to `True` below.

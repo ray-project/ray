@@ -27,15 +27,13 @@ async def fetch(session, data):
 
 @ray.remote
 class Client:
-    def __init__(self):
-        self.session = aiohttp.ClientSession()
-
     def ready(self):
         return "ok"
 
     async def do_queries(self, num, data):
-        for _ in range(num):
-            await fetch(self.session, data)
+        async with aiohttp.ClientSession() as session:
+            for _ in range(num):
+                await fetch(session, data)
 
 
 def build_app(

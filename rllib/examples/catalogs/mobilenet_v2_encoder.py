@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 """
 This example shows two modifications:
@@ -14,7 +14,7 @@ import numpy as np
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples._old_api_stack.models.mobilenet_v2_encoder import (
     MobileNetV2EncoderConfig,
     MOBILENET_INPUT_SHAPE,
@@ -44,13 +44,12 @@ class MobileNetEnhancedPPOCatalog(PPOCatalog):
 # Create a generic config with our enhanced Catalog
 ppo_config = (
     PPOConfig()
-    .experimental(_enable_new_api_stack=True)
-    .rl_module(
-        rl_module_spec=SingleAgentRLModuleSpec(
-            catalog_class=MobileNetEnhancedPPOCatalog
-        )
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
     )
-    .rollouts(num_rollout_workers=0)
+    .rl_module(rl_module_spec=RLModuleSpec(catalog_class=MobileNetEnhancedPPOCatalog))
+    .env_runners(num_env_runners=0)
     # The following training settings make it so that a training iteration is very
     # quick. This is just for the sake of this example. PPO will not learn properly
     # with these settings!

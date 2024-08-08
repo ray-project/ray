@@ -9,9 +9,9 @@ import numpy as np
 import ray
 from ray import train
 from ray.air.config import DatasetConfig, ScalingConfig
-from ray.data import Dataset, DataIterator, Preprocessor
-from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.data import DataIterator, Dataset, Preprocessor
 from ray.train import DataConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 MAKE_LOCAL_DATA_ITERATOR_DEPRECATION_MSG = """

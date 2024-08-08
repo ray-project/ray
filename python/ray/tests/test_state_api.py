@@ -8,6 +8,7 @@ from typing import List, Tuple
 from unittest.mock import MagicMock, AsyncMock
 
 import pytest
+import pytest_asyncio
 from ray._private.state_api_test_utils import get_state_api_manager
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
@@ -27,6 +28,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     async_wait_for_condition_async_predicate,
     find_free_port,
+    SignalActor,
 )
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
@@ -148,8 +150,8 @@ def state_source_client(gcs_address):
     return client
 
 
-@pytest.fixture
-def state_api_manager_e2e(ray_start_with_dashboard):
+@pytest_asyncio.fixture
+async def state_api_manager_e2e(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
     gcs_address = address_info["gcs_address"]
     manager = get_state_api_manager(gcs_address)
@@ -249,8 +251,8 @@ def generate_task_event(
     )
     state_updates = TaskStateUpdate(
         node_id=node_id,
+        state_ts_ns={state: 1},
     )
-    setattr(state_updates, TaskStatus.Name(state).lower() + "_ts", 1)
     return TaskEvents(
         task_id=id,
         job_id=job_id,
@@ -1006,10 +1008,12 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     second = int(1e9)
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
-        running_ts=current + (2 * second),
-        finished_ts=current + (3 * second),
+        state_ts_ns={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+            TaskStatus.RUNNING: current + (2 * second),
+            TaskStatus.FINISHED: current + (3 * second),
+        },
     )
 
     """
@@ -1055,9 +1059,11 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     """
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
-        running_ts=current + (2 * second),
+        state_ts_ns={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+            TaskStatus.RUNNING: current + (2 * second),
+        },
     )
     events = TaskEvents(
         task_id=id,
@@ -1076,8 +1082,10 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     Test None of start & end time is updated.
     """
     state_updates = TaskStateUpdate(
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
+        state_ts_ns={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+        },
     )
     events = TaskEvents(
         task_id=id,
@@ -2153,19 +2161,23 @@ def test_list_get_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1, node_name="worker_node")
+    worker_node = cluster.add_node(num_cpus=1, node_name="worker_node")
+
+    cluster.remove_node(worker_node)
 
     def verify():
         nodes = list_nodes(detail=True)
         for node in nodes:
-            assert node["state"] == "ALIVE"
             assert is_hex(node["node_id"])
-            assert (
-                node["is_head_node"]
-                if node["node_name"] == "head_node"
-                else not node["is_head_node"]
-            )
             assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            if node["node_name"] == "head_node":
+                assert node["is_head_node"]
+                assert node["state"] == "ALIVE"
+                assert node["state_message"] is None
+            else:
+                assert not node["is_head_node"]
+                assert node["state"] == "DEAD"
+                assert node["state_message"] == "Expected termination: received SIGTERM"
 
         # Check with legacy API
         check_nodes = ray.nodes()
@@ -2419,7 +2431,11 @@ def test_list_get_tasks(shutdown_only):
         for task in tasks:
             assert task["job_id"] == job_id
 
-        tasks = list_tasks(filters=[("name", "=", "f_0")])
+        tasks = list_tasks(filters=[("name", "=", "f_0")], limit=1)
+        assert len(tasks) == 1
+
+        # using limit to make sure state filtering is done on the gcs side
+        tasks = list_tasks(filters=[("STATE", "=", "PENDING_ARGS_AVAIL")], limit=1)
         assert len(tasks) == 1
 
         return True
@@ -3559,9 +3575,58 @@ def test_core_state_api_usage_tags(shutdown_only):
     )
 
 
-if __name__ == "__main__":
-    import sys
+# Tests fix for https://github.com/ray-project/ray/issues/44459
+def test_job_info_is_running_task(shutdown_only):
+    ray.init()
 
+    # To reliably know a job has a long running task, we need to wait a SignalActor
+    # to know the task has started.
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def f(signal):
+        ray.get(signal.send.remote())
+        import time
+
+        while True:
+            time.sleep(10000)
+
+    long_running = f.remote(signal)  # noqa: F841
+    ray.get(signal.wait.remote())
+
+    client = ray.worker.global_worker.gcs_client
+    job_id = ray.worker.global_worker.current_job_id
+    all_job_info = client.get_all_job_info()
+    assert len(all_job_info) == 1
+    assert job_id in all_job_info
+    assert all_job_info[job_id].is_running_tasks is True
+
+
+def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
+    """
+    When there's a call to JobInfoGcsService.GetAllJobInfo, GCS sends RPC
+    CoreWorkerService.NumPendingTasks to all drivers for "is_running_task". Our driver
+    however has trouble serving such RPC, and GCS should timeout that RPC and unsest the
+    field.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=10)
+    address = cluster.address
+
+    monkeypatch.setenv(
+        "RAY_testing_asio_delay_us",
+        "CoreWorkerService.grpc_server.NumPendingTasks=2000000:2000000",
+    )
+    ray.init(address=address)
+
+    client = ray.worker.global_worker.gcs_client
+    my_job_id = ray.worker.global_worker.current_job_id
+    all_job_info = client.get_all_job_info()
+    assert list(all_job_info.keys()) == [my_job_id]
+    assert not all_job_info[my_job_id].HasField("is_running_tasks")
+
+
+if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

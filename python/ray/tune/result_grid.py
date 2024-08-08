@@ -1,6 +1,7 @@
+from typing import Optional, Union
+
 import pandas as pd
 import pyarrow
-from typing import Optional, Union
 
 from ray.air.result import Result
 from ray.exceptions import RayTaskError

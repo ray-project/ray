@@ -12,12 +12,13 @@ class GlobalConfig(TypedDict):
     byod_ecr: str
     byod_aws_cr: str
     byod_gcp_cr: str
-    state_machine_aws_bucket: str
     state_machine_pr_aws_bucket: str
     state_machine_branch_aws_bucket: str
+    state_machine_disabled: bool
     aws2gce_credentials: str
     ci_pipeline_premerge: List[str]
     ci_pipeline_postmerge: List[str]
+    ci_pipeline_buildkite_secret: str
 
 
 config = None
@@ -73,9 +74,6 @@ def _init_global_config(config_file: str):
             config_content.get("credentials", {}).get("aws2gce")
             or config_content.get("release_byod", {}).get("aws2gce_credentials")
         ),
-        state_machine_aws_bucket=config_content.get("state_machine", {}).get(
-            "aws_bucket",
-        ),
         state_machine_pr_aws_bucket=config_content.get("state_machine", {})
         .get("pr", {})
         .get(
@@ -86,9 +84,16 @@ def _init_global_config(config_file: str):
         .get(
             "aws_bucket",
         ),
+        state_machine_disabled=config_content.get("state_machine", {}).get(
+            "disabled", 0
+        )
+        == 1,
         ci_pipeline_premerge=config_content.get("ci_pipeline", {}).get("premerge", []),
         ci_pipeline_postmerge=config_content.get("ci_pipeline", {}).get(
             "postmerge", []
+        ),
+        ci_pipeline_buildkite_secret=config_content.get("ci_pipeline", {}).get(
+            "buildkite_secret"
         ),
     )
     # setup GCP workload identity federation

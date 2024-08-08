@@ -1,6 +1,6 @@
 import time
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.tune.schedulers.pb2 import PB2
 from ray import train, tune
 
@@ -18,27 +18,27 @@ from ray import train, tune
 #   AgileRL: https://github.com/AgileRL/AgileRL?tab=readme-ov-file#benchmarks
 benchmark_envs = {
     "HalfCheetah-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "Hopper-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "InvertedPendulum-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
     "InvertedDoublePendulum-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
-    "Reacher-v4": {"timesteps_total": 1000000},
-    "Swimmer-v4": {"timesteps_total": 1000000},
+    "Reacher-v4": {f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000},
+    "Swimmer-v4": {f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000},
     "Walker2d-v4": {
-        "timesteps_total": 1000000,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 1000000,
     },
 }
 
 pb2_scheduler = PB2(
-    time_attr="timesteps_total",
-    metric="episode_reward_mean",
+    time_attr=f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}",
+    metric="env_runners/episode_return_mean",
     mode="max",
     perturbation_interval=50000,
     # Copy bottom % with top % weights.
@@ -70,20 +70,22 @@ for env, stop_criteria in benchmark_envs.items():
         PPOConfig()
         .environment(env=env)
         # Enable new API stack and use EnvRunner.
-        .experimental(_enable_new_api_stack=True)
-        .rollouts(
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        .env_runners(
             rollout_fragment_length=1,
-            env_runner_cls=SingleAgentEnvRunner,
-            num_rollout_workers=num_rollout_workers,
+            num_env_runners=num_rollout_workers,
             # TODO (sven, simon): Add resources.
         )
-        .resources(
+        .learners(
             # Let's start with a small number of learner workers and
             # add later a tune grid search for these resources.
             # TODO (simon): Either add tune grid search here or make
             # an extra script to only test scalability.
-            num_learner_workers=1,
-            num_gpus_per_learner_worker=1,
+            num_learners=1,
+            num_gpus_per_learner=1,
         )
         # TODO (simon): Adjust to new model_config_dict.
         .training(
@@ -117,7 +119,7 @@ for env, stop_criteria in benchmark_envs.items():
         .evaluation(
             evaluation_duration="auto",
             evaluation_interval=1,
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             evaluation_parallel_to_training=True,
             evaluation_config={
                 # PPO learns stochastic policy.

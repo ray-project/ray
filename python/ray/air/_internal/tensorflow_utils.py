@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Dict, List, Optional, Union, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
 
 import numpy as np
 import pyarrow
@@ -80,7 +80,8 @@ def get_type_spec(
     columns: Union[str, List[str]],
 ) -> Union[tf.TypeSpec, Dict[str, tf.TypeSpec]]:
     import pyarrow as pa
-    from ray.data.extensions import TensorDtype, ArrowTensorType
+
+    from ray.data.extensions import ArrowTensorType, TensorDtype
 
     assert not isinstance(schema, type)
 

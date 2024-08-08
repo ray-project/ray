@@ -134,6 +134,9 @@ class OperatorFusionRule(Rule):
             AbstractUDFMap,
         )
 
+        if not up_op.supports_fusion() or not down_op.supports_fusion():
+            return False
+
         # We currently only support fusing for the following cases:
         # - TaskPoolMapOperator -> TaskPoolMapOperator/ActorPoolMapOperator
         # - TaskPoolMapOperator -> AllToAllOperator
@@ -201,6 +204,13 @@ class OperatorFusionRule(Rule):
         if not _are_remote_args_compatible(
             getattr(up_logical_op, "_ray_remote_args", {}),
             getattr(down_logical_op, "_ray_remote_args", {}),
+        ):
+            return False
+
+        # Do not fuse if either op specifies a `_ray_remote_args_fn`,
+        # since it is not known whether the generated args will be compatible.
+        if getattr(up_logical_op, "_ray_remote_args_fn", None) or getattr(
+            down_logical_op, "_ray_remote_args_fn", None
         ):
             return False
 
@@ -296,6 +306,9 @@ class OperatorFusionRule(Rule):
         if isinstance(down_logical_op, AbstractUDFMap):
             compute = get_compute(down_logical_op._compute)
         ray_remote_args = up_logical_op._ray_remote_args
+        ray_remote_args_fn = (
+            up_logical_op._ray_remote_args_fn or down_logical_op._ray_remote_args_fn
+        )
         # Make the upstream operator's inputs the new, fused operator's inputs.
         input_deps = up_op.input_dependencies
         assert len(input_deps) == 1
@@ -310,6 +323,7 @@ class OperatorFusionRule(Rule):
             compute_strategy=compute,
             min_rows_per_bundle=min_rows_per_bundled_input,
             ray_remote_args=ray_remote_args,
+            ray_remote_args_fn=ray_remote_args_fn,
         )
 
         # Build a map logical operator to be used as a reference for further fusion.
@@ -331,6 +345,7 @@ class OperatorFusionRule(Rule):
                 down_logical_op._fn_constructor_kwargs,
                 min_rows_per_bundled_input,
                 compute,
+                ray_remote_args_fn,
                 ray_remote_args,
             )
         else:
@@ -341,6 +356,7 @@ class OperatorFusionRule(Rule):
                 name,
                 input_op,
                 min_rows_per_bundled_input=min_rows_per_bundled_input,
+                ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
         self._op_map[op] = logical_op

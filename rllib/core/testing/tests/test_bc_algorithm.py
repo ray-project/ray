@@ -12,8 +12,8 @@ from ray.rllib.core.testing.tf.bc_module import (
     BCTfRLModuleWithSharedGlobalEncoder,
     BCTfMultiAgentModuleWithSharedEncoder,
 )
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
@@ -33,8 +33,8 @@ class TestLearner(unittest.TestCase):
 
         config = (
             BCConfigTest()
+            .api_stack(enable_rl_module_and_learner=True)
             .training(model={"fcnet_hiddens": [32, 32]})
-            .experimental(_enable_new_api_stack=True)
         )
 
         # TODO (Kourosh): Add tf2 support
@@ -54,7 +54,7 @@ class TestLearner(unittest.TestCase):
         policies = {"policy_1", "policy_2"}
         config = (
             BCConfigTest()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .training(model={"fcnet_hiddens": [32, 32]})
             .multi_agent(
                 policies=policies,
@@ -75,30 +75,30 @@ class TestLearner(unittest.TestCase):
                 elif fw == "tf2":
                     assert isinstance(rl_module, DiscreteBCTFModule)
 
-    def test_bc_algorithm_w_custom_marl_module(self):
+    def test_bc_algorithm_w_custom_multi_rl_module(self):
         """Tests the independent multi-agent case with shared encoders."""
 
         policies = {"policy_1", "policy_2"}
 
         for fw in ["torch"]:
             if fw == "torch":
-                spec = MultiAgentRLModuleSpec(
-                    marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
-                    module_specs=SingleAgentRLModuleSpec(
+                spec = MultiRLModuleSpec(
+                    multi_rl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
+                    module_specs=RLModuleSpec(
                         module_class=BCTorchRLModuleWithSharedGlobalEncoder
                     ),
                 )
             else:
-                spec = MultiAgentRLModuleSpec(
-                    marl_module_class=BCTfMultiAgentModuleWithSharedEncoder,
-                    module_specs=SingleAgentRLModuleSpec(
+                spec = MultiRLModuleSpec(
+                    multi_rl_module_class=BCTfMultiAgentModuleWithSharedEncoder,
+                    module_specs=RLModuleSpec(
                         module_class=BCTfRLModuleWithSharedGlobalEncoder
                     ),
                 )
 
             config = (
                 BCConfigTest()
-                .experimental(_enable_new_api_stack=True)
+                .api_stack(enable_rl_module_and_learner=True)
                 .framework(fw)
                 .rl_module(rl_module_spec=spec)
                 .training(

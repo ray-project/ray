@@ -44,6 +44,17 @@ class DQNRainbowCatalog(Catalog):
     All heads can optionally use distributional learning. In this case the
     number of output neurons corresponds to the number of actions times the
     number of support atoms of the discrete distribution.
+
+    Any module built for exploration or inference is built with the flag
+    `ìnference_only=True` and does not contain any target networks. This flag can
+    be set in a `SingleAgentModuleSpec` through the `inference_only` boolean flag.
+    Whenever the default configuration or build methods are overridden, the
+    `inference_only` flag must be used with
+    care to ensure that the module synching works correctly.
+    The module classes contain a `_inference_only_state_dict_keys` attribute that
+    contains the keys to be taken care of when synching the state. The method
+    `__set_inference_only_state_dict_keys` has to be overridden to define these keys
+    and `_inference_only_get_state_hook`.
     """
 
     @override(Catalog)
@@ -73,10 +84,10 @@ class DQNRainbowCatalog(Catalog):
         )
 
         # Is a noisy net used.
-        self.uses_noisy = self._model_config_dict["noisy"]
+        self.uses_noisy: bool = self._model_config_dict["noisy"]
 
         # The number of atoms to be used for distributional Q-learning.
-        self.num_atoms = self._model_config_dict["num_atoms"]
+        self.num_atoms: bool = self._model_config_dict["num_atoms"]
 
         # Advantage and value streams have MLP heads. Note, the advantage
         # stream will has an output dimension that is the product of the
@@ -84,8 +95,7 @@ class DQNRainbowCatalog(Catalog):
         # return distribution in distributional reinforcement learning.
         if self.uses_noisy:
             # Define the standard deviation to be used in the layers.
-            # TODO (simon): Once the old stack is gone, rename to `std_init`.
-            self.std_init = self._model_config_dict["sigma0"]
+            self.std_init: float = self._model_config_dict["std_init"]
 
         # In case of noisy networks we need to provide the intial standard
         # deviation and use the corresponding `NoisyMLPHeadConfig`.
@@ -163,9 +173,9 @@ class DQNRainbowCatalog(Catalog):
             `self._encoder_config` defined by the parent class.
         """
         # Check, if we use
-        use_noisy = model_config_dict["noisy"]
-        use_lstm = model_config_dict["use_lstm"]
-        use_attention = model_config_dict["use_attention"]
+        use_noisy = model_config_dict.get("noisy", False)
+        use_lstm = model_config_dict.get("use_lstm", False)
+        use_attention = model_config_dict.get("use_attention", False)
 
         # In cases of LSTM or Attention, fall back to the basic encoder.
         if use_noisy and not use_lstm and not use_attention:
@@ -210,7 +220,7 @@ class DQNRainbowCatalog(Catalog):
                     # output_layer_use_bias=self._model_config_dict[
                     #     "output_layer_use_bias"
                     # ],
-                    # TODO (sven, simon): Should these initializers rather the fcnet
+                    # TODO (sven, simon): Should these initializers be rather the fcnet
                     # ones?
                     output_layer_weights_initializer=model_config_dict[
                         "post_fcnet_weights_initializer"
@@ -224,9 +234,7 @@ class DQNRainbowCatalog(Catalog):
                     output_layer_bias_initializer_config=model_config_dict[
                         "post_fcnet_bias_initializer_config"
                     ],
-                    # TODO (simon): Set parameters via config dict when we have fixed
-                    # the `model_config_dict` in `AlgorithmConfig`.
-                    std_init=0.1,  # model_config_dict.get("sigma0", 0.02),
+                    std_init=model_config_dict["std_init"],
                 )
         # Otherwise return the base encoder config chosen by the parent.
         # This will choose a CNN for 3D Box and LSTM for 'use_lstm=True'.<

@@ -3,7 +3,6 @@
 # __reproducible_start__
 import numpy as np
 from ray import train, tune
-from ray.train import ScalingConfig
 
 
 def train_func(config):

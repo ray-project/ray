@@ -1,6 +1,7 @@
 import math
 import random
 import time
+from typing import Optional
 from unittest.mock import patch
 
 import numpy as np
@@ -9,7 +10,11 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Quantile, Std, Sum
+from ray.data._internal.aggregate import Count, Max, Mean, Min, Quantile, Std, Sum
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
+from ray.data.aggregate import AggregateFn
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
@@ -138,8 +143,73 @@ def test_groupby_errors(ray_start_regular_shared):
         ds.groupby("foo").count().show()
 
 
+def test_map_groups_with_gpus(shutdown_only):
+    ray.shutdown()
+    ray.init(num_gpus=1)
+
+    rows = (
+        ray.data.range(1).groupby("id").map_groups(lambda x: x, num_gpus=1).take_all()
+    )
+
+    assert rows == [{"id": 0}]
+
+
+def test_map_groups_with_actors(ray_start_regular_shared):
+    class Identity:
+        def __call__(self, batch):
+            return batch
+
+    rows = (
+        ray.data.range(1).groupby("id").map_groups(Identity, concurrency=1).take_all()
+    )
+
+    assert rows == [{"id": 0}]
+
+
+def test_map_groups_with_actors_and_args(ray_start_regular_shared):
+    class Fn:
+        def __init__(self, x: int, y: Optional[int] = None):
+            self.x = x
+            self.y = y
+
+        def __call__(self, batch, q: int, r: Optional[int] = None):
+            return {"x": [self.x], "y": [self.y], "q": [q], "r": [r]}
+
+    rows = (
+        ray.data.range(1)
+        .groupby("id")
+        .map_groups(
+            Fn,
+            concurrency=1,
+            fn_constructor_args=[0],
+            fn_constructor_kwargs={"y": 1},
+            fn_args=[2],
+            fn_kwargs={"r": 3},
+        )
+        .take_all()
+    )
+
+    assert rows == [{"x": 0, "y": 1, "q": 2, "r": 3}]
+
+
+def test_groupby_large_udf_returns(ray_start_regular_shared):
+    # Test for https://github.com/ray-project/ray/issues/44861.
+
+    # Each UDF return is 128 MiB. If Ray Data doesn't incrementally yield outputs, the
+    # combined output size is 128 MiB * 1024 = 128 GiB and Arrow errors.
+    def create_large_data(group):
+        return {"item": np.zeros((1, 128 * 1024 * 1024), dtype=np.uint8)}
+
+    ds = (
+        ray.data.range(1024, override_num_blocks=1)
+        .groupby(key="id")
+        .map_groups(create_large_data)
+    )
+    ds.take(1)
+
+
 def test_agg_errors(ray_start_regular_shared):
-    from ray.data.aggregate import Max
+    from ray.data._internal.aggregate import Max
 
     ds = ray.data.range(100)
     ds.aggregate(Max("id"))  # OK
@@ -1184,7 +1254,8 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
     ds = ray.data.range(100, override_num_blocks=2).random_shuffle()
-    blocks = ds.get_internal_block_refs()
+    bundles = ds.iter_internal_ref_bundles()
+    blocks = _ref_bundles_iterator_to_block_refs_list(bundles)
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
     locations = []

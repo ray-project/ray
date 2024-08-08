@@ -231,18 +231,18 @@ class ImpalaTorchPolicy(
     ValueNetworkMixin,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with Impala."""
+    """PyTorch policy class used with IMPALA."""
 
     def __init__(self, observation_space, action_space, config):
         config = dict(
-            ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
+            ray.rllib.algorithms.impala.impala.IMPALAConfig().to_dict(), **config
         )
 
         # If Learner API is used, we don't need any loss-specific mixins.
         # However, we also would like to avoid creating special Policy-subclasses
         # for this as the entire Policy concept will soon not be used anymore with
         # the new Learner- and RLModule APIs.
-        if not config.get("_enable_new_api_stack"):
+        if not config.get("enable_rl_module_and_learner"):
             VTraceOptimizer.__init__(self)
             # Need to initialize learning rate variable before calling
             # TorchPolicyV2.__init__.

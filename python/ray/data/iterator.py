@@ -18,20 +18,12 @@ from typing import (
 import numpy as np
 
 from ray.data._internal.block_batching.iter_batches import iter_batches
-from ray.data._internal.block_list import BlockList
-from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats, StatsManager
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-    DataBatch,
-    _apply_batch_format,
-)
-from ray.types import ObjectRef
+from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -85,24 +77,21 @@ class DataIterator(abc.ABC):
     """
 
     @abc.abstractmethod
-    def _to_block_iterator(
+    def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-        Optional[DatasetStats],
-        bool,
-    ]:
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
         """Returns the iterator to use for `iter_batches`.
 
         Returns:
-            A tuple. The first item of the tuple is an iterator over pairs of Block
-            object references and their corresponding metadata. The second item of the
-            tuple is a DatasetStats object used for recording stats during iteration.
+            A tuple. The first item of the tuple is an iterator over RefBundles.
+            The second item of the tuple is a DatasetStats object used for recording
+            stats during iteration.
             The third item is a boolean indicating if the blocks can be safely cleared
             after use.
         """
         raise NotImplementedError
 
+    @PublicAPI(stability="beta")
     def iter_batches(
         self,
         *,
@@ -159,11 +148,15 @@ class DataIterator(abc.ABC):
             # _iterator_gen is called.
             # This allows multiple iterations of the dataset without
             # needing to explicitly call `iter_batches()` multiple times.
-            block_iterator, stats, blocks_owned_by_consumer = self._to_block_iterator()
+            (
+                ref_bundles_iterator,
+                stats,
+                blocks_owned_by_consumer,
+            ) = self._to_ref_bundle_iterator()
 
             iterator = iter(
                 iter_batches(
-                    block_iterator,
+                    ref_bundles_iterator,
                     stats=stats,
                     clear_block_after_read=blocks_owned_by_consumer,
                     batch_size=batch_size,
@@ -196,7 +189,7 @@ class DataIterator(abc.ABC):
         return "unknown_dataset"
 
     def iter_rows(
-        self, *, prefetch_batches: int = 0, prefetch_blocks: int = 0
+        self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
     ) -> Iterable[Dict[str, Any]]:
         """Return a local row iterable over the dataset.
 
@@ -234,6 +227,10 @@ class DataIterator(abc.ABC):
                 DeprecationWarning,
             )
             iter_batch_args["prefetch_batches"] = prefetch_blocks
+        if prefetch_batches != 1:
+            warnings.warn(
+                "`prefetch_batches` is deprecated in Ray 2.12.", DeprecationWarning
+            )
 
         batch_iterable = self.iter_batches(**iter_batch_args)
 
@@ -246,6 +243,7 @@ class DataIterator(abc.ABC):
         return _IterableFromIterator(_wrapped_iterator)
 
     @abc.abstractmethod
+    @PublicAPI(stability="beta")
     def stats(self) -> str:
         """Returns a string containing execution timing information."""
         raise NotImplementedError
@@ -255,6 +253,7 @@ class DataIterator(abc.ABC):
         """Return the schema of the dataset iterated over."""
         raise NotImplementedError
 
+    @PublicAPI(stability="beta")
     def iter_torch_batches(
         self,
         *,
@@ -271,7 +270,7 @@ class DataIterator(abc.ABC):
 
         This iterable yields a dictionary of column-tensors. If you are looking for
         more flexibility in the tensor conversion (e.g. casting dtypes) or the batch
-        format, try using :meth:`~ray.data.iterator.DataIterator.iter_batches` directly.
+        format, try using :meth:`~ray.data.DataIterator.iter_batches` directly.
 
         Examples:
             >>> import ray
@@ -671,11 +670,13 @@ class DataIterator(abc.ABC):
 
         return TorchIterableDataset(make_generator)
 
+    @PublicAPI(stability="beta")
     def to_tf(
         self,
         feature_columns: Union[str, List[str]],
         label_columns: Union[str, List[str]],
         *,
+        additional_columns: Union[Optional[str], Optional[List[str]]] = None,
         prefetch_batches: int = 1,
         batch_size: int = 1,
         drop_last: bool = False,
@@ -683,6 +684,9 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        additional_type_spec: Union[
+            Optional["tf.TypeSpec"], Optional[Dict[str, "tf.TypeSpec"]]
+        ] = None,
     ) -> "tf.data.Dataset":
         """Return a TF Dataset over this dataset.
 
@@ -697,7 +701,7 @@ class DataIterator(abc.ABC):
             ... )
             >>> it = ds.iterator(); it
             DataIterator(Dataset(
-               num_rows=150,
+               num_rows=?,
                schema={
                   sepal length (cm): double,
                   sepal width (cm): double,
@@ -709,12 +713,12 @@ class DataIterator(abc.ABC):
 
             If your model accepts a single tensor as input, specify a single feature column.
 
-            >>> it.to_tf(feature_columns="sepal length (cm)", label_columns="target")  # doctest: +SKIP
+            >>> it.to_tf(feature_columns="sepal length (cm)", label_columns="target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your model accepts a dictionary as input, specify a list of feature columns.
 
-            >>> it.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")  # doctest: +SKIP
+            >>> it.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")
             <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your dataset contains multiple features but your model accepts a single
@@ -727,7 +731,7 @@ class DataIterator(abc.ABC):
             >>> it
             DataIterator(Concatenator
             +- Dataset(
-                  num_rows=150,
+                  num_rows=?,
                   schema={
                      sepal length (cm): double,
                      sepal width (cm): double,
@@ -736,16 +740,49 @@ class DataIterator(abc.ABC):
                      target: int64
                   }
                ))
-            >>> it.to_tf("features", "target")  # doctest: +SKIP
+            >>> it.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
+
+            If your model accepts different types, shapes, or names of tensors as input, specify the type spec.
+            If type specs are not specified, they are automatically inferred from the schema of the iterator.
+
+            >>> import tensorflow as tf
+            >>> it.to_tf(
+            ...     feature_columns="features",
+            ...     label_columns="target",
+            ...     feature_type_spec=tf.TensorSpec(shape=(None, 4), dtype=tf.float32, name="features"),
+            ...     label_type_spec=tf.TensorSpec(shape=(None,), dtype=tf.float32, name="label")
+            ... )
+            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float32, name='features'), TensorSpec(shape=(None,), dtype=tf.float32, name='label'))>
+
+            If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
+            A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
+
+            >>> ds = ds.add_column("sample weights", lambda df: 1)
+            >>> it = ds.iterator()
+            >>> it.to_tf(feature_columns="sepal length (cm)", label_columns="target", additional_columns="sample weights")
+            <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
+
+            If your model accepts different types, shapes, or names for the additional metadata, specify the type spec of the additional column.
+
+            >>> it.to_tf(
+            ...     feature_columns="sepal length (cm)",
+            ...     label_columns="target",
+            ...     additional_columns="sample weights",
+            ...     additional_type_spec=tf.TensorSpec(shape=(None,), dtype=tf.float32, name="weight")
+            ... )
+            <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.float32, name='weight'))>
 
         Args:
             feature_columns: Columns that correspond to model inputs. If this is a
                 string, the input data is a tensor. If this is a list, the input data
                 is a ``dict`` that maps column names to their tensor representation.
-            label_column: Columns that correspond to model targets. If this is a
+            label_columns: Columns that correspond to model targets. If this is a
                 string, the target data is a tensor. If this is a list, the target data
                 is a ``dict`` that maps column names to their tensor representation.
+            additional_columns: Columns that correspond to sample weights or other metadata.
+                If this is a string, the weight data is a tensor. If this is a list, the
+                weight data is a ``dict`` that maps column names to their tensor representation.
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
                 to fetch the objects to the local node, format the batches, and apply
@@ -772,6 +809,10 @@ class DataIterator(abc.ABC):
                 only one column, specify a `tf.TypeSpec`. If there are multiple columns,
                 specify a ``dict`` that maps column names to their `tf.TypeSpec`.
                 Default is `None` to automatically infer the type of each column.
+            additional_type_spec: The `tf.TypeSpec` of `additional_columns`. If there
+                is only one column, specify a `tf.TypeSpec`. If there are multiple
+                columns, specify a ``dict`` that maps column names to their `tf.TypeSpec`.
+                Default is `None` to automatically infer the type of each column.
 
         Returns:
             A ``tf.data.Dataset`` that yields inputs and targets.
@@ -790,9 +831,10 @@ class DataIterator(abc.ABC):
         def validate_column(column: str) -> None:
             if column not in valid_columns:
                 raise ValueError(
-                    f"You specified '{column}' in `feature_columns` or "
-                    f"`label_columns`, but there's no column named '{column}' in the "
-                    f"dataset. Valid column names are: {valid_columns}."
+                    f"You specified '{column}' in `feature_columns`, "
+                    f"`label_columns`, or `additional_columns`, but there's no "
+                    f"column named '{column}' in the dataset. "
+                    f"Valid column names are: {valid_columns}."
                 )
 
         def validate_columns(columns: Union[str, List]) -> None:
@@ -832,19 +874,44 @@ class DataIterator(abc.ABC):
                 labels = convert_batch_to_tensors(
                     batch, columns=label_columns, type_spec=label_type_spec
                 )
-                yield features, labels
+
+                if additional_columns is None:
+                    yield features, labels
+                else:
+                    additional_metadata = convert_batch_to_tensors(
+                        batch,
+                        columns=additional_columns,
+                        type_spec=additional_type_spec,
+                    )
+                    yield features, labels, additional_metadata
 
         if feature_type_spec is None or label_type_spec is None:
             schema = self.schema()
-            valid_columns = schema.names
+            valid_columns = set(schema.names)
             validate_columns(feature_columns)
             validate_columns(label_columns)
             feature_type_spec = get_type_spec(schema, columns=feature_columns)
             label_type_spec = get_type_spec(schema, columns=label_columns)
 
-        dataset = tf.data.Dataset.from_generator(
-            generator, output_signature=(feature_type_spec, label_type_spec)
-        )
+        if additional_columns is not None and additional_type_spec is None:
+            schema = self.schema()
+            valid_columns = set(schema.names)
+            validate_columns(additional_columns)
+            additional_type_spec = get_type_spec(schema, columns=additional_columns)
+
+        if additional_columns is not None:
+            dataset = tf.data.Dataset.from_generator(
+                generator,
+                output_signature=(
+                    feature_type_spec,
+                    label_type_spec,
+                    additional_type_spec,
+                ),
+            )
+        else:
+            dataset = tf.data.Dataset.from_generator(
+                generator, output_signature=(feature_type_spec, label_type_spec)
+            )
 
         options = tf.data.Options()
         options.experimental_distribute.auto_shard_policy = (
@@ -852,6 +919,7 @@ class DataIterator(abc.ABC):
         )
         return dataset.with_options(options)
 
+    @PublicAPI(stability="beta")
     def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this data iterator into object store memory.
 
@@ -863,23 +931,12 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        block_iter, stats, owned_by_consumer = self._to_block_iterator()
+        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
 
-        block_refs_and_metadata = list(block_iter)
-        block_refs = [block_ref for block_ref, _ in block_refs_and_metadata]
-        metadata = [metadata for _, metadata in block_refs_and_metadata]
-
-        block_list = BlockList(
-            block_refs, metadata, owned_by_consumer=owned_by_consumer
-        )
-        ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
+        ref_bundles = list(ref_bundles_iter)
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
         return MaterializedDataset(
-            ExecutionPlan(
-                block_list,
-                stats,
-                run_by_consumer=owned_by_consumer,
-            ),
+            ExecutionPlan(stats),
             logical_plan,
         )
 

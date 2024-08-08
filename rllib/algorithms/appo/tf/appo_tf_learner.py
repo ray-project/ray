@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.algorithms.appo.appo import (
     APPOConfig,
@@ -6,29 +6,29 @@ from ray.rllib.algorithms.appo.appo import (
     LEARNER_RESULTS_KL_KEY,
     OLD_ACTION_DIST_LOGITS_KEY,
 )
-from ray.rllib.algorithms.appo.appo_learner import AppoLearner
-from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
+from ray.rllib.algorithms.appo.appo_learner import APPOLearner
+from ray.rllib.algorithms.impala.tf.impala_tf_learner import IMPALATfLearner
 from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import make_time_major, vtrace_tf2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
 
 
-class APPOTfLearner(AppoLearner, ImpalaTfLearner):
-    """Implements APPO loss / update logic on top of ImpalaTfLearner."""
+class APPOTfLearner(APPOLearner, IMPALATfLearner):
+    """Implements APPO loss / update logic on top of IMPALATfLearner."""
 
-    @override(ImpalaTfLearner)
+    @override(IMPALATfLearner)
     def compute_loss_for_module(
         self,
         *,
         module_id: ModuleID,
         config: APPOConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         values = fwd_out[Columns.VF_PREDS]
@@ -72,7 +72,7 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )
-        if self.config.uses_new_env_runners:
+        if config.enable_env_runner_and_connector_v2:
             bootstrap_values = batch[Columns.VALUES_BOOTSTRAPPED]
         else:
             bootstrap_values_time_major = make_time_major(
@@ -159,9 +159,11 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
             + (mean_kl_loss * self.curr_kl_coeffs_per_module[module_id])
         )
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Register all important loss stats.
+        # Note that our MetricsLogger (self.metrics) is currently in tensor-mode,
+        # meaning that it allows us to even log in-graph/compiled tensors through
+        # its `log_...()` APIs.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: mean_pi_loss,
                 VF_LOSS_KEY: mean_vf_loss,
@@ -171,39 +173,28 @@ class APPOTfLearner(AppoLearner, ImpalaTfLearner):
                     self.curr_kl_coeffs_per_module[module_id]
                 ),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss
 
-    @override(AppoLearner)
-    def _update_module_target_networks(
-        self,
-        module_id: ModuleID,
-        config: APPOConfig,
-    ) -> None:
-        module = self.module[module_id]
-
-        target_current_network_pairs = module.get_target_network_pairs()
-        for target_network, current_network in target_current_network_pairs:
-            for old_var, current_var in zip(
-                target_network.variables, current_network.variables
-            ):
-                updated_var = config.tau * current_var + (1.0 - config.tau) * old_var
-                old_var.assign(updated_var)
-
-    @override(AppoLearner)
-    def _update_module_kl_coeff(
-        self, module_id: ModuleID, config: APPOConfig, sampled_kl: float
-    ) -> Dict[str, Any]:
+    @override(APPOLearner)
+    def _update_module_kl_coeff(self, module_id: ModuleID, config: APPOConfig) -> None:
         # Update the current KL value based on the recently measured value.
         # Increase.
+        kl = convert_to_numpy(self.metrics.peek((module_id, LEARNER_RESULTS_KL_KEY)))
         kl_coeff_var = self.curr_kl_coeffs_per_module[module_id]
 
-        if sampled_kl > 2.0 * config.kl_target:
+        if kl > 2.0 * config.kl_target:
             # TODO (Kourosh) why not *2.0?
             kl_coeff_var.assign(kl_coeff_var * 1.5)
         # Decrease.
-        elif sampled_kl < 0.5 * config.kl_target:
+        elif kl < 0.5 * config.kl_target:
             kl_coeff_var.assign(kl_coeff_var * 0.5)
 
-        return {LEARNER_RESULTS_CURR_KL_COEFF_KEY: kl_coeff_var.numpy()}
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+            kl_coeff_var.numpy(),
+            window=1,
+        )

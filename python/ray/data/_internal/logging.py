@@ -78,6 +78,8 @@ class SessionFileHandler(logging.Handler):
         if log_directory is None:
             return
 
+        os.makedirs(log_directory, exist_ok=True)
+
         self._path = os.path.join(log_directory, self._filename)
         self._handler = logging.FileHandler(self._path)
         if self._formatter is not None:
@@ -117,4 +119,4 @@ def get_log_directory() -> Optional[str]:
         return None
 
     session_dir = global_node.get_session_dir_path()
-    return os.path.join(session_dir, "logs")
+    return os.path.join(session_dir, "logs", "ray-data")

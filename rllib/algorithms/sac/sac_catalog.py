@@ -19,7 +19,41 @@ from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 # This should work as we need a qf and qf_target.
 # TODO (simon): Add CNNEnocders for Image observations.
 class SACCatalog(Catalog):
-    """The catalog class used to build models for SAC."""
+    """The catalog class used to build models for SAC.
+
+    SACCatalog provides the following models:
+        - Encoder: The encoder used to encode the observations for the actor
+            network (`pi`). For this we use the default encoder from the Catalog.
+        - Q-Function Encoder: The encoder used to encode the observations and
+            actions for the soft Q-function network.
+        - Target Q-Function Encoder: The encoder used to encode the observations
+            and actions for the target soft Q-function network.
+        - Pi Head: The head used to compute the policy logits. This network outputs
+            the mean and log-std for the action distribution (a Squashed Gaussian).
+        - Q-Function Head: The head used to compute the soft Q-values.
+        - Target Q-Function Head: The head used to compute the target soft Q-values.
+
+    Any custom Encoder to be used for the policy network can be built by overriding
+    the build_encoder() method. Alternatively the `encoder_config` can be overridden
+    by using the `model_config_dict`.
+
+    Any custom Q-Function Encoder can be built by overriding the build_qf_encoder().
+    Important: The Q-Function Encoder must encode both the state and the action. The
+    same holds true for the target Q-Function Encoder.
+
+    Any custom head can be built by overriding the build_pi_head() and build_qf_head().
+
+    Any module built for exploration or inference is built with the flag
+    `ìnference_only=True` and does not contain any Q-function. This flag can be set
+    in the `model_config_dict` with the key `ray.rllib.core.rl_module.INFERENCE_ONLY`.
+    Whenever the default configuration or build methods are overridden, the
+    `inference_only` flag must be used with care to ensure that the module synching
+    works correctly.
+    The module classes contain a `_inference_only_state_dict_keys` attribute that
+    contains the keys to be taken care of when synching the state. The method
+    `__set_inference_only_state_dict_keys` has to be overridden to define these keys
+    and `_inference_only_get_state_hook`.
+    """
 
     def __init__(
         self,

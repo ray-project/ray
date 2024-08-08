@@ -1,13 +1,20 @@
 import argparse
 import os
+import sys
 
 from filelock import FileLock
-from tensorflow.keras.datasets import mnist
 
 import ray
 from ray import train, tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.air.integrations.keras import ReportCheckpointCallback
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    from tensorflow.keras.datasets import mnist
+
+    from ray.air.integrations.keras import ReportCheckpointCallback
 
 
 def train_mnist(config):

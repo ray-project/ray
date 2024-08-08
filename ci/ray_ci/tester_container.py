@@ -16,6 +16,9 @@ from ray_release.test_automation.ci_state_machine import CITestStateMachine
 from ray_release.configs.global_config import get_global_config
 
 
+RUN_PER_FLAKY_TEST = 2
+
+
 class TesterContainer(Container):
     """
     A wrapper for running tests in ray ci docker container
@@ -72,6 +75,8 @@ class TesterContainer(Container):
         team: str,
         test_targets: List[str],
         test_arg: Optional[str] = None,
+        is_bisect_run: bool = False,
+        run_flaky_tests: bool = False,
     ) -> bool:
         """
         Run tests parallelly in docker.  Return whether all tests pass.
@@ -95,21 +100,33 @@ class TesterContainer(Container):
         bazel_log_dir_host, bazel_log_dir_container = self._create_bazel_log_mount()
         runs = [
             self._run_tests_in_docker(
-                chunks[i], gpu_ids[i], bazel_log_dir_host, self.test_envs, test_arg
+                chunks[i],
+                gpu_ids[i],
+                bazel_log_dir_host,
+                self.test_envs,
+                test_arg,
+                run_flaky_tests,
             )
             for i in range(len(chunks))
         ]
         exits = [run.wait() for run in runs]
-        self._persist_test_results(team, bazel_log_dir_container)
+        self._persist_test_results(team, bazel_log_dir_container, is_bisect_run)
         self._cleanup_bazel_log_mount(bazel_log_dir_container)
 
         return all(exit == 0 for exit in exits)
 
-    def _persist_test_results(self, team: str, bazel_log_dir: str) -> None:
+    def _persist_test_results(
+        self, team: str, bazel_log_dir: str, is_bisect_run: bool = False
+    ) -> None:
         pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
         branch = os.environ.get("BUILDKITE_BRANCH")
         branch_pipelines = get_global_config()["ci_pipeline_postmerge"]
         pr_pipelines = get_global_config()["ci_pipeline_premerge"]
+        if is_bisect_run:
+            logger.info(
+                "Skip upload test results. We do not upload results on bisect runs."
+            )
+            return
         if pipeline_id not in branch_pipelines + pr_pipelines:
             logger.info(
                 "Skip upload test results. "
@@ -146,6 +163,9 @@ class TesterContainer(Container):
 
     @classmethod
     def move_test_state(cls, team: str, bazel_log_dir: str) -> None:
+        if get_global_config()["state_machine_disabled"]:
+            return
+
         pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
         branch = os.environ.get("BUILDKITE_BRANCH")
         if (
@@ -181,11 +201,12 @@ class TesterContainer(Container):
                     event = json.loads(line.decode("utf-8"))
                     if "testResult" not in event:
                         continue
+                    run_id = event["id"]["testResult"]["run"]
                     test = Test.from_bazel_event(event, team)
                     test_result = TestResult.from_bazel_event(event)
-                    # Obtain only the final test result for a given test in case
-                    # the test is retried.
-                    tests[test.get_name()] = (test, test_result)
+                    # Obtain only the final test result for a given test and run
+                    # in case the test is retried.
+                    tests[f"{run_id}-{test.get_name()}"] = (test, test_result)
 
         return list(tests.values())
 
@@ -199,6 +220,7 @@ class TesterContainer(Container):
         bazel_log_dir_host: str,
         test_envs: List[str],
         test_arg: Optional[str] = None,
+        run_flaky_tests: bool = False,
     ) -> subprocess.Popen:
         logger.info("Running tests: %s", test_targets)
         commands = [
@@ -233,6 +255,8 @@ class TesterContainer(Container):
             test_cmd += f"--test_env {env} "
         if test_arg:
             test_cmd += f"--test_arg {test_arg} "
+        if run_flaky_tests:
+            test_cmd += f"--runs_per_test {RUN_PER_FLAKY_TEST} "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
         return subprocess.Popen(

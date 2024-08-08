@@ -7,10 +7,10 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import batch, BatchedNdArray
@@ -244,8 +244,8 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     sa_module = rl_module[sa_episode.module_id]
                 else:
                     sa_module = (
-                        rl_module[DEFAULT_POLICY_ID]
-                        if isinstance(rl_module, MultiAgentRLModule)
+                        rl_module[DEFAULT_MODULE_ID]
+                        if isinstance(rl_module, MultiRLModule)
                         else rl_module
                     )
                 # This single-agent RLModule is NOT stateful -> Skip.
@@ -273,7 +273,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     else sa_episode.get_extra_model_outputs(
                         key=Columns.STATE_OUT,
                         indices=-1,
-                        neg_indices_left_of_zero=True,
+                        neg_index_as_lookback=True,
                     )
                 )
                 # state_outs.shape=(T,[state-dim])  T=episode len
@@ -310,7 +310,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 )
                 self.add_n_batch_items(
                     batch=data,
-                    column="loss_mask",
+                    column=Columns.LOSS_MASK,
                     items_to_add=mask,
                     num_items=len(mask),
                     single_agent_episode=sa_episode,

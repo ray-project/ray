@@ -101,6 +101,26 @@ more information.
 
             Flambé Integration
 
+    .. grid-item-card::
+
+        .. figure:: ../images/flowdapt.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/emergentmethods/flowdapt?style=social)]
+                :target: https://github.com/emergentmethods/flowdapt
+
+            Flowdapt is a platform designed to help developers configure, debug, schedule, trigger, deploy and serve adaptive and reactive Artificial Intelligence workflows at large-scale.
+
+        +++
+        .. button-link:: https://github.com/emergentmethods/flowdapt
+            :color: primary
+            :outline:
+            :expand:
+
+            Flowdapt Integration
+
 
     .. grid-item-card::
 

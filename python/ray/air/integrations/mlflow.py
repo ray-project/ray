@@ -3,12 +3,12 @@ from types import ModuleType
 from typing import Dict, Optional, Union
 
 import ray
-from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.air._internal import usage as air_usage
+from ray.air._internal.mlflow import _MLflowLoggerUtil
 from ray.air.constants import TRAINING_ITERATION
+from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
 from ray.tune.result import TIMESTEPS_TOTAL
-from ray.tune.experiment import Trial
 from ray.util.annotations import PublicAPI
 
 try:
@@ -201,7 +201,8 @@ class MLflowLoggerCallback(LoggerCallback):
     Keep in mind that the callback will open an MLflow session on the driver and
     not on the trainable. Therefore, it is not possible to call MLflow functions
     like ``mlflow.log_figure()`` inside the trainable as there is no MLflow session
-    on the trainable. For more fine grained control, use :func:`setup_mlflow`.
+    on the trainable. For more fine grained control, use
+    :func:`ray.air.integrations.mlflow.setup_mlflow`.
 
     Args:
         tracking_uri: The tracking URI for where to manage experiments

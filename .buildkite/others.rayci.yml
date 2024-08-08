@@ -1,13 +1,14 @@
 group: others
 depends_on:
-  - oss-ci-base_build
   - forge
+  - oss-ci-base_build
 steps:
   #build
   - name: doctestbuild
     wanda: ci/docker/doctest.build.wanda.yaml
 
   - label: ":tapioca: build: pip-compile dependencies"
+    key: pip_compile_dependencies
     instance_type: small
     commands:
       # uncomment the following line to update the pinned versions of pip dependencies
@@ -17,10 +18,9 @@ steps:
       - ./ci/ci.sh compile_pip_dependencies
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
     soft_fail: true
-    job_env: oss-ci-base_build-py3.11
+    job_env: oss-ci-base_test-py3.11
     depends_on:
-      - forge
-      - oss-ci-base_build-multipy
+      - oss-ci-base_test-multipy
 
   # test
   - label: doc tests
@@ -52,8 +52,30 @@ steps:
 
   # bot
   - label: ":robot_face: CI weekly green metric"
-    tags: skip-on-premerge
-    if: build.branch == "master" && build.env("RAYCI_CONTINUOUS_BUILD") == "1"
+    tags:
+      - skip-on-premerge
+      - oss
+    if: build.branch == "master"
     instance_type: small
     commands:
       - bazel run //ci/ray_ci/automation:weekly_green_metric -- --production
+
+  - label: ":robot_face: {{matrix}} microcheck test coverage"
+    tags:
+      - skip-on-premerge
+      - oss
+    if: build.branch == "master"
+    instance_type: small
+    commands:
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix linux:__ --production
+      # we use master branch to determine microcheck tests for darwin and windows, because darwin and windows tests do not run on premerge branches
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix darwin:__ --consider-master-branch --production
+      - bazel run //ci/ray_ci/automation:determine_microcheck_tests -- {{matrix}} 100 --test-prefix windows:__ --consider-master-branch --production
+    matrix:
+      - "core"
+      - "serverless"
+      - "serve"
+      - "data"
+      - "ml"
+      - "rllib"
+      - "ci"

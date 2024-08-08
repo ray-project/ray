@@ -634,7 +634,7 @@ You can configure this by setting the `RAY_CHDIR_TO_TRIAL_DIR=0` environment var
 This explicitly tells Tune to not change the working directory
 to the trial directory, giving access to paths relative to the original working directory.
 One caveat is that the working directory is now shared between workers, so the
-:meth:`train.get_context().get_trial_dir() <ray.train.context.TrainContext.get_.get_trial_dir>`
+:meth:`train.get_context().get_trial_dir() <ray.train.context.TrainContext.get_trial_dir>`
 API should be used to get the path for saving trial-specific outputs.
 
 .. literalinclude:: doc_code/faq.py

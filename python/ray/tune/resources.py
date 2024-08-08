@@ -1,18 +1,17 @@
-from collections import namedtuple
-import logging
 import json
+import logging
+from collections import namedtuple
 
 # For compatibility under py2 to consider unicode as str
 from typing import Optional
 
+from ray.tune.error import TuneError
 from ray.tune.execution.placement_groups import (
-    resource_dict_to_pg_factory,
     PlacementGroupFactory,
+    resource_dict_to_pg_factory,
 )
 from ray.tune.utils.resource_updater import _Resources
 from ray.util.annotations import Deprecated, DeveloperAPI
-
-from ray.tune import TuneError
 
 logger = logging.getLogger(__name__)
 

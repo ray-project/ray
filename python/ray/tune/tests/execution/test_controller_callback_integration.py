@@ -1,15 +1,15 @@
+import sys
 from typing import Dict, Optional
 
 import pytest
-import sys
 
 import ray
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.train.tests.util import mock_storage_context
 from ray.tune import Callback, ResumeConfig
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
-
-from ray.train.tests.util import mock_storage_context
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 
 @pytest.fixture(scope="function")
@@ -17,6 +17,11 @@ def ray_start_4_cpus_2_gpus_extra():
     address_info = ray.init(num_cpus=4, num_gpus=2, resources={"a": 2})
     yield address_info
     ray.shutdown()
+
+
+@pytest.fixture(autouse=True)
+def register_test_trainable():
+    register_mock_trainable()
 
 
 class StatefulCallback(Callback):
@@ -47,7 +52,7 @@ def test_callback_save_restore(
     """
     storage = mock_storage_context()
     runner = TuneController(callbacks=[StatefulCallback()], storage=storage)
-    runner.add_trial(Trial("__fake", stub=True, storage=storage))
+    runner.add_trial(Trial(MOCK_TRAINABLE_NAME, stub=True, storage=storage))
     for i in range(3):
         runner._callbacks.on_trial_result(
             iteration=i, trials=None, trial=None, result=None

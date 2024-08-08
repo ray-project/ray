@@ -1,7 +1,7 @@
-from typing import Dict, Callable
+from typing import Callable, Dict
 
-from ray.util.annotations import PublicAPI
 from ray.tune.stopper.stopper import Stopper
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI

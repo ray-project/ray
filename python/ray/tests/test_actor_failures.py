@@ -71,6 +71,101 @@ def test_actor_spilled(ray_start_regular):
     assert num_success == len(objects)
 
 
+def test_async_generator_crash_restart(ray_start_cluster):
+    """
+    Timeline:
+    1. In worker node, creates a generator that generates 2 objects
+    2. Kills worker node, objs exist in ref, but data lost
+    3. In worker node, creates a consumer that consumes 2 objects
+    4. Start a worker node to enable the task and lineage reconstruction
+    5. Lineage reconstruction should be working here.
+        The gen is dead after it only generated 1.
+    6. Verify that the consumer task can still run (it's not)
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1, resources={"head": 1})
+    cluster.wait_for_nodes()
+
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0, resources={"head": 0.1})
+    class Killer:
+        def __init__(self):
+            self.pid = None
+            self.at_num = None
+            self.kill_num = 0
+
+        def set_pid(self, pid):
+            self.pid = pid
+
+        def set_at_num(self, at_num):
+            self.at_num = at_num
+
+        def kill_if_needed(self, num):
+            if self.kill_num > 3:
+                return
+            self.kill_num = self.kill_num + 1
+            if self.pid is not None and self.at_num is not None and num == self.at_num:
+                import os
+                import signal
+
+                print(f"Killing the pid = {self.pid}")
+                os.kill(self.pid, signal.SIGKILL)
+
+    @ray.remote(
+        num_cpus=1, max_restarts=-1, max_task_retries=-1, resources={"worker": 1}
+    )
+    class Generator:
+        async def gen(self, nums, killer):
+            """
+            Generates "value_holder" objects. For each object, it first notifies the
+            killer, and yields the object.
+            """
+            print(f"my pid is {os.getpid()}, telling to killer")
+            await killer.set_pid.remote(os.getpid())
+            print(f"generates total {nums}")
+            for i in range(nums):
+                await killer.kill_if_needed.remote(i)
+
+                print(f"generating {i}")
+                yield np.ones((1000, 1000), dtype=np.uint8) * i
+                print(f"generated {i}")
+            print(f"generated total {nums}")
+
+    @ray.remote(num_cpus=1, resources={"worker": 1})
+    def consumes(objs, expected_num):
+        nums = ray.get(objs)
+        assert len(nums) == expected_num
+        print(f"consumes {len(nums)}")
+        print(nums)
+        return expected_num
+
+    worker_node = cluster.add_node(num_cpus=10, resources={"worker": 10})
+    cluster.wait_for_nodes()
+
+    generator = Generator.remote()
+    killer = Killer.remote()
+
+    # First run, no kills
+    gen = ray.get(generator.gen.remote(2, killer))  # returns ObjectRefGenerator
+    objs = list(gen)  # [ObjectRef, ...]
+    assert len(objs) == 2
+
+    # kill the worker node
+    cluster.remove_node(worker_node, allow_graceful=False)
+
+    # In the lineage reconstruction, the generator is dead after it only generated 5...
+    ray.get(killer.set_at_num.remote(1))
+
+    # ... but a consumer takes all 10
+    consumer = consumes.remote(objs, 2)
+    # start a new worker node
+    worker_node = cluster.add_node(num_cpus=10, resources={"worker": 10})
+    cluster.wait_for_nodes()
+
+    ray.get(consumer)
+
+
 def test_actor_restart(ray_init_with_task_retry_delay):
     """Test actor restart when actor process is killed."""
 
@@ -748,7 +843,7 @@ def test_actor_failure_per_type(ray_start_cluster):
     cluster.remove_node(node_to_kill)
     with pytest.raises(
         ray.exceptions.RayActorError,
-        match="The actor is dead because its node has died.",
+        match="The actor died because its node has died.",
     ) as exc_info:
         ray.get(a.check_alive.remote())
     assert exc_info.value.actor_id == a._actor_id.hex()

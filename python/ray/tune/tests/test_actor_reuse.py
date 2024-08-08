@@ -1,22 +1,22 @@
 import inspect
 import os
-from pathlib import Path
-import tempfile
-from typing import Callable
-import pytest
 import sys
+import tempfile
 import time
+from pathlib import Path
+from typing import Callable
+
+import pytest
 
 import ray
-from ray import train, tune, logger
+from ray import logger, train, tune
 from ray.train import CheckpointConfig
-from ray.tune import Trainable, run_experiments, register_trainable
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
+from ray.tune import Trainable, register_trainable, run_experiments
 from ray.tune.error import TuneError
 from ray.tune.result_grid import ResultGrid
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune import _check_mixin
-
-from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 
 
 @pytest.fixture
@@ -473,8 +473,6 @@ def test_detect_reuse_mixins():
     def dummy_mixin(func: Callable):
         func.__mixins__ = (DummyMixin,)
         return func
-
-    assert not _check_mixin("PPO")
 
     def train_fn(config):
         pass

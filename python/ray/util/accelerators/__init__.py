@@ -10,6 +10,7 @@ from ray.util.accelerators.accelerators import (
     NVIDIA_TESLA_A10G,
     NVIDIA_L4,
     NVIDIA_A100,
+    NVIDIA_H100,
     INTEL_MAX_1550,
     INTEL_MAX_1100,
     INTEL_GAUDI,
@@ -24,6 +25,8 @@ from ray.util.accelerators.accelerators import (
     GOOGLE_TPU_V2,
     GOOGLE_TPU_V3,
     GOOGLE_TPU_V4,
+    GOOGLE_TPU_V5P,
+    GOOGLE_TPU_V5LITEPOD,
 )
 
 __all__ = [
@@ -38,6 +41,7 @@ __all__ = [
     "NVIDIA_A100",
     "NVIDIA_A100_40G",
     "NVIDIA_A100_80G",
+    "NVIDIA_H100",
     "INTEL_MAX_1550",
     "INTEL_MAX_1100",
     "INTEL_GAUDI",
@@ -52,6 +56,8 @@ __all__ = [
     "GOOGLE_TPU_V2",
     "GOOGLE_TPU_V3",
     "GOOGLE_TPU_V4",
+    "GOOGLE_TPU_V5P",
+    "GOOGLE_TPU_V5LITEPOD",
     # Deprecated
     "NVIDIA_TESLA_A100",
 ]

@@ -7,10 +7,9 @@ from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
-    Mapping,
     Optional,
     Tuple,
     Type,
@@ -262,7 +261,7 @@ class Policy(metaclass=ABCMeta):
     @staticmethod
     def from_checkpoint(
         checkpoint: Union[str, Checkpoint],
-        policy_ids: Optional[Container[PolicyID]] = None,
+        policy_ids: Optional[Collection[PolicyID]] = None,
     ) -> Union["Policy", Dict[PolicyID, "Policy"]]:
         """Creates new Policy instance(s) from a given Policy or Algorithm checkpoint.
 
@@ -401,12 +400,12 @@ class Policy(metaclass=ABCMeta):
         """Returns the RL Module (only for when RLModule API is enabled.)
 
         If RLModule API is enabled
-        (self.config.experimental(_enable_new_api_stack=True), this method should be
+        (self.config.api_stack(enable_rl_module_and_learner=True), this method should be
         implemented and should return the RLModule instance to use for this Policy.
         Otherwise, RLlib will error out.
         """
         # if imported on top it creates circular dependency
-        from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
         if self.__policy_id is None:
             raise ValueError(
@@ -415,17 +414,17 @@ class Policy(metaclass=ABCMeta):
                 "bug, please file a github issue."
             )
 
-        spec = self.config["__marl_module_spec"]
-        if isinstance(spec, SingleAgentRLModuleSpec):
+        spec = self.config["__multi_rl_module_spec"]
+        if isinstance(spec, RLModuleSpec):
             module = spec.build()
         else:
             # filter the module_spec to only contain the policy_id of this policy
             marl_spec = type(spec)(
-                marl_module_class=spec.marl_module_class,
+                multi_rl_module_class=spec.multi_rl_module_class,
                 module_specs={self.__policy_id: spec.module_specs[self.__policy_id]},
             )
-            marl_module = marl_spec.build()
-            module = marl_module[self.__policy_id]
+            multi_rl_module = marl_spec.build()
+            module = multi_rl_module[self.__policy_id]
 
         return module
 
@@ -521,7 +520,7 @@ class Policy(metaclass=ABCMeta):
         if input_dict is None:
             input_dict = {SampleBatch.OBS: obs}
             if state is not None:
-                if self.config.get("_enable_new_api_stack", False):
+                if self.config.get("enable_rl_module_and_learner", False):
                     input_dict["state_in"] = state
                 else:
                     for i, s in enumerate(state):
@@ -1202,7 +1201,7 @@ class Policy(metaclass=ABCMeta):
 
         Raises:
             ValueError: If a native DL-framework based model (e.g. a keras Model)
-            cannot be saved to disk for various reasons.
+                cannot be saved to disk for various reasons.
         """
         raise NotImplementedError
 
@@ -1253,16 +1252,16 @@ class Policy(metaclass=ABCMeta):
             num_gpus = 0
         elif worker_idx == 0:
             # If we are on the new RLModule/Learner stack, `num_gpus` is deprecated.
-            # so use `num_gpus_per_worker` for policy sampling
+            # so use `num_gpus_per_env_runner` for policy sampling
             # we need this .get() syntax here to ensure backwards compatibility.
-            if self.config.get("_enable_new_api_stack", False):
-                num_gpus = self.config["num_gpus_per_worker"]
+            if self.config.get("enable_rl_module_and_learner", False):
+                num_gpus = self.config["num_gpus_per_env_runner"]
             else:
                 # If head node, take num_gpus.
                 num_gpus = self.config["num_gpus"]
         else:
-            # If worker node, take num_gpus_per_worker
-            num_gpus = self.config["num_gpus_per_worker"]
+            # If worker node, take `num_gpus_per_env_runner`.
+            num_gpus = self.config["num_gpus_per_env_runner"]
 
         if num_gpus == 0:
             dev = "CPU"
@@ -1283,7 +1282,6 @@ class Policy(metaclass=ABCMeta):
         This method only exists b/c some Algorithms do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTFPolicy.
-        TODO(sven): unify these cases.
 
         Returns:
             Exploration: The Exploration object to be used by this Policy.
@@ -1297,7 +1295,7 @@ class Policy(metaclass=ABCMeta):
             action_space=self.action_space,
             policy_config=self.config,
             model=getattr(self, "model", None),
-            num_workers=self.config.get("num_workers", 0),
+            num_workers=self.config.get("num_env_runners", 0),
             worker_index=self.config.get("worker_index", 0),
             framework=getattr(self, "framework", self.config.get("framework", "tf")),
         )
@@ -1391,12 +1389,12 @@ class Policy(metaclass=ABCMeta):
         self._lazy_tensor_dict(self._dummy_batch)
         # With RL Modules you want the explore flag to be True for initialization
         # of the tensors and placeholder you'd need for training.
-        explore = self.config.get("_enable_new_api_stack", False)
+        explore = self.config.get("enable_rl_module_and_learner", False)
 
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
         )
-        if not self.config.get("_enable_new_api_stack", False):
+        if not self.config.get("enable_rl_module_and_learner", False):
             for key, view_req in self.view_requirements.items():
                 if key not in self._dummy_batch.accessed_keys:
                     view_req.used_for_compute_actions = False
@@ -1446,7 +1444,7 @@ class Policy(metaclass=ABCMeta):
         seq_lens = None
         if state_outs:
             B = 4  # For RNNs, have B=4, T=[depends on sample_batch_size]
-            if self.config.get("_enable_new_api_stack", False):
+            if self.config.get("enable_rl_module_and_learner", False):
                 sub_batch = postprocessed_batch[:B]
                 postprocessed_batch["state_in"] = sub_batch["state_in"]
                 postprocessed_batch["state_out"] = sub_batch["state_out"]
@@ -1466,7 +1464,7 @@ class Policy(metaclass=ABCMeta):
             seq_lens = np.array([seq_len for _ in range(B)], dtype=np.int32)
             postprocessed_batch[SampleBatch.SEQ_LENS] = seq_lens
 
-        if not self.config.get("_enable_new_api_stack"):
+        if not self.config.get("enable_rl_module_and_learner"):
             # Switch on lazy to-tensor conversion on `postprocessed_batch`.
             train_batch = self._lazy_tensor_dict(postprocessed_batch)
             # Calling loss, so set `is_training` to True.
@@ -1506,7 +1504,7 @@ class Policy(metaclass=ABCMeta):
 
         # Add new columns automatically to view-reqs.
         if (
-            not self.config.get("_enable_new_api_stack")
+            not self.config.get("enable_rl_module_and_learner")
             and auto_remove_unneeded_view_reqs
         ):
             # Add those needed for postprocessing and training.
@@ -1607,7 +1605,7 @@ class Policy(metaclass=ABCMeta):
         # We need to check for hasattr(self, "model") because a dummy Policy may not
         # have a model.
         if (
-            self.config.get("_enable_new_api_stack", False)
+            self.config.get("enable_rl_module_and_learner", False)
             and hasattr(self, "model")
             and self.model.is_stateful()
         ):
@@ -1811,7 +1809,7 @@ class Policy(metaclass=ABCMeta):
 
 @OldAPIStack
 def get_gym_space_from_struct_of_tensors(
-    value: Union[Mapping, Tuple, List, TensorType],
+    value: Union[Dict, Tuple, List, TensorType],
     batched_input=True,
 ) -> gym.Space:
     start_idx = 1 if batched_input else 0
@@ -1827,7 +1825,7 @@ def get_gym_space_from_struct_of_tensors(
 
 @OldAPIStack
 def get_gym_space_from_struct_of_spaces(value: Union[Dict, Tuple]) -> gym.spaces.Dict:
-    if isinstance(value, Mapping):
+    if isinstance(value, dict):
         return gym.spaces.Dict(
             {k: get_gym_space_from_struct_of_spaces(v) for k, v in value.items()}
         )

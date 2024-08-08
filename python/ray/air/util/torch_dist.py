@@ -5,18 +5,19 @@ setting up PyTorch DDP process groups outside the context of Ray Train.
 Eventually, these use cases should be consolidated.
 """
 
+import os
 from abc import ABC
 from collections import defaultdict
 from datetime import timedelta
-import os
+from typing import Callable, List, T
+
 import torch
 import torch.distributed as dist
-from typing import Callable, List, T
 
 import ray
 from ray.actor import ActorHandle
-from ray.train._internal.utils import get_address_and_port
 from ray.air._internal.torch_utils import get_devices
+from ray.train._internal.utils import get_address_and_port
 
 
 class TorchDistributedWorker(ABC):

@@ -181,7 +181,7 @@ def _build_multi_agent_batch(
 
         policy = collector.policy
 
-        if policy.config.get("_enable_new_api_stack", False):
+        if policy.config.get("enable_rl_module_and_learner", False):
             # Before we send the collected batch back for training, we may need
             # to add a time dimension for the RLModule.
             seq_lens = batch.get(SampleBatch.SEQ_LENS)
@@ -1072,7 +1072,7 @@ class EnvRunnerV2:
                 # changed (mapping fn not staying constant within one episode).
                 policy: Policy = _try_find_policy_again(eval_data)
 
-            if policy.config.get("_enable_new_api_stack", False):
+            if policy.config.get("enable_rl_module_and_learner", False):
                 # _batch_inference_sample_batches does nothing but concatenating AND
                 # setting SEQ_LENS to ones in the recurrent case. We do not need this
                 # because RLModules do not care about SEQ_LENS anymore. They have an
@@ -1147,11 +1147,13 @@ class EnvRunnerV2:
                 input_dict: TensorStructType = eval_data[i].data.raw_dict
 
                 rnn_states: List[StateBatches] = tree.map_structure(
-                    lambda x: x[i], rnn_out
+                    lambda x, i=i: x[i], rnn_out
                 )
 
                 # extra_action_out could be a nested dict
-                fetches: Dict = tree.map_structure(lambda x: x[i], extra_action_out)
+                fetches: Dict = tree.map_structure(
+                    lambda x, i=i: x[i], extra_action_out
+                )
 
                 # Post-process policy output by running them through action connectors.
                 ac_data = ActionConnectorDataType(

@@ -1,17 +1,13 @@
-from typing import Any, Mapping
+from typing import Any, Dict
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleConfig,
-    MultiAgentRLModule,
-)
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleConfig
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
 
 torch, nn = try_import_torch()
 
@@ -55,17 +51,17 @@ class DiscreteBCTorchModule(TorchRLModule):
         return [Columns.ACTION_DIST_INPUTS]
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         with torch.no_grad():
             return self._forward_train(batch)
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         action_logits = self.policy(batch["obs"])
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 
@@ -131,8 +127,8 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 
 
-class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
-    def __init__(self, config: MultiAgentRLModuleConfig) -> None:
+class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
+    def __init__(self, config: MultiRLModuleConfig) -> None:
         super().__init__(config)
 
     def setup(self):

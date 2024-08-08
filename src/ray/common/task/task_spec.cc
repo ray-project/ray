@@ -159,6 +159,13 @@ TaskID TaskSpecification::ParentTaskId() const {
   return TaskID::FromBinary(message_->parent_task_id());
 }
 
+ActorID TaskSpecification::RootDetachedActorId() const {
+  if (message_->root_detached_actor_id().empty() /* e.g., empty proto default */) {
+    return ActorID::Nil();
+  }
+  return ActorID::FromBinary(message_->root_detached_actor_id());
+}
+
 TaskID TaskSpecification::SubmitterTaskId() const {
   if (message_->submitter_task_id().empty() /* e.g., empty proto default */) {
     return TaskID::Nil();
@@ -198,7 +205,8 @@ int TaskSpecification::GetRuntimeEnvHash() const {
   WorkerCacheKey env = {SerializedRuntimeEnv(),
                         GetRequiredResources().GetResourceMap(),
                         IsActorCreationTask(),
-                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0};
+                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0,
+                        !(RootDetachedActorId().IsNil())};
   return env.IntHash();
 }
 
@@ -438,11 +446,6 @@ ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
       message_->actor_task_spec().actor_creation_dummy_object_id());
 }
 
-ObjectID TaskSpecification::ActorDummyObject() const {
-  RAY_CHECK(IsActorTask() || IsActorCreationTask());
-  return ReturnId(NumReturns() - 1);
-}
-
 int TaskSpecification::MaxActorConcurrency() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().max_concurrency();
@@ -594,13 +597,15 @@ WorkerCacheKey::WorkerCacheKey(
     const std::string serialized_runtime_env,
     const absl::flat_hash_map<std::string, double> &required_resources,
     bool is_actor,
-    bool is_gpu)
+    bool is_gpu,
+    bool is_root_detached_actor)
     : serialized_runtime_env(serialized_runtime_env),
       required_resources(RayConfig::instance().worker_resource_limits_enabled()
                              ? required_resources
                              : absl::flat_hash_map<std::string, double>{}),
       is_actor(is_actor && RayConfig::instance().isolate_workers_across_task_types()),
       is_gpu(is_gpu && RayConfig::instance().isolate_workers_across_resource_types()),
+      is_root_detached_actor(is_root_detached_actor),
       hash_(CalculateHash()) {}
 
 std::size_t WorkerCacheKey::CalculateHash() const {
@@ -617,6 +622,7 @@ std::size_t WorkerCacheKey::CalculateHash() const {
     boost::hash_combine(hash, serialized_runtime_env);
     boost::hash_combine(hash, is_actor);
     boost::hash_combine(hash, is_gpu);
+    boost::hash_combine(hash, is_root_detached_actor);
 
     std::vector<std::pair<std::string, double>> resource_vars(required_resources.begin(),
                                                               required_resources.end());
@@ -637,7 +643,7 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 
 bool WorkerCacheKey::EnvIsEmpty() const {
   return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty() &&
-         !is_gpu;
+         !is_gpu && !is_root_detached_actor;
 }
 
 std::size_t WorkerCacheKey::Hash() const { return hash_; }

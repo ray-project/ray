@@ -41,6 +41,13 @@ Example code of accessing the user exception type when the exception type can *n
   :start-after: __catch_user_final_exceptions_begin__
   :end-before: __catch_user_final_exceptions_end__
 
+If Ray can't serialize the user's exception, it converts the exception to a ``RayError``.
+
+.. literalinclude:: ../doc_code/task_exceptions.py
+  :language: python
+  :start-after: __unserializable_exceptions_begin__
+  :end-before: __unserializable_exceptions_end__
+
 Use `ray list tasks` from :ref:`State API CLI <state-api-overview-ref>` to query task exit details:
 
 .. code-block:: bash

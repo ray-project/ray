@@ -35,7 +35,7 @@ class LearningRateSchedule:
     @override(Policy)
     def on_global_var_update(self, global_vars):
         super().on_global_var_update(global_vars)
-        if not self.config.get("_enable_new_api_stack", False):
+        if not self.config.get("enable_rl_module_and_learner", False):
             if self._lr_schedule:
                 self.cur_lr = self._lr_schedule.value(global_vars["timestep"])
                 for opt in self._optimizers:
@@ -58,7 +58,7 @@ class EntropyCoeffSchedule:
         # Disable any scheduling behavior related to learning if Learner API is active.
         # Schedules are handled by Learner class.
         if entropy_coeff_schedule is None or (
-            self.config.get("_enable_new_api_stack", False)
+            self.config.get("enable_rl_module_and_learner", False)
         ):
             self.entropy_coeff = entropy_coeff
         else:
@@ -210,7 +210,7 @@ class TargetNetworkMixin:
         # Support partial (soft) synching.
         # If tau == 1.0: Full sync from Q-model to target Q-model.
 
-        if self.config.get("_enable_new_api_stack", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             target_current_network_pairs = self.model.get_target_network_pairs()
             for target_network, current_network in target_current_network_pairs:
                 current_state_dict = current_network.state_dict()

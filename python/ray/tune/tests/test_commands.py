@@ -1,25 +1,25 @@
-import click
 import os
-import pytest
 import random
 import subprocess
 import sys
 import time
 from unittest import mock
 
-try:
-    from cStringIO import StringIO
-except ImportError:
-    from io import StringIO
+import click
+import pytest
 
 import ray
 import ray.train
 from ray import tune
-from ray.rllib import _register_all
+from ray.train.tests.util import create_dict_checkpoint
 from ray.tune.cli import commands
 from ray.tune.result import CONFIG_PREFIX
+from ray.tune.utils.mock_trainable import MyTrainableClass
 
-from ray.train.tests.util import create_dict_checkpoint
+try:
+    from cStringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 
 class Capturing:
@@ -38,14 +38,11 @@ class Capturing:
 @pytest.fixture
 def start_ray():
     ray.init(log_to_driver=False, local_mode=True)
-    _register_all()
     yield
     ray.shutdown()
 
 
 def test_time(start_ray, tmpdir, monkeypatch):
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmpdir))
-
     experiment_name = "test_time"
     num_samples = 2
 
@@ -89,7 +86,7 @@ def test_ls(mock_print_format_output, start_ray, tmpdir):
     experiment_path = os.path.join(str(tmpdir), experiment_name)
     num_samples = 3
     tune.run(
-        "__fake",
+        MyTrainableClass,
         name=experiment_name,
         stop={"training_iteration": 1},
         num_samples=num_samples,
@@ -136,7 +133,7 @@ def test_ls_with_cfg(mock_print_format_output, start_ray, tmpdir):
     experiment_name = "test_ls_with_cfg"
     experiment_path = os.path.join(str(tmpdir), experiment_name)
     tune.run(
-        "__fake",
+        MyTrainableClass,
         name=experiment_name,
         stop={"training_iteration": 1},
         config={"test_variable": tune.grid_search(list(range(5)))},
@@ -164,7 +161,7 @@ def test_lsx(start_ray, tmpdir):
     for i in range(num_experiments):
         experiment_name = "test_lsx{}".format(i)
         tune.run(
-            "__fake",
+            MyTrainableClass,
             name=experiment_name,
             stop={"training_iteration": 1},
             num_samples=1,

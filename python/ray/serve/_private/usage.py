@@ -35,6 +35,7 @@ class ServeUsageTag(Enum):
         TagKey.SERVE_DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED
     )
     NUM_NODE_COMPACTIONS = TagKey.SERVE_NUM_NODE_COMPACTIONS
+    AUTO_NUM_REPLICAS_USED = TagKey.SERVE_AUTO_NUM_REPLICAS_USED
 
     def record(self, value: str):
         """Record telemetry value."""
