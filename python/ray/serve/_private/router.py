@@ -526,7 +526,7 @@ class Router:
                 # Don't consider this replica for requests in the future.
                 self._replica_scheduler.drop_replica(replica.replica_id)
                 logger.warning(
-                    f"Replica {replica.replica_id} will not be considered for future "
+                    f"{replica.replica_id} will not be considered for future "
                     "requests because it has died."
                 )
                 raise
