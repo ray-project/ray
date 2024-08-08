@@ -170,7 +170,6 @@ def _exec_task(self, task: "ExecutableTask", idx: int) -> bool:
     res = None
     try:
         res = input_reader.read()
-        # print(f"[DEBUG] reader read {res}")
     except RayChannelError:
         # Channel closed. Exit the loop.
         return True
