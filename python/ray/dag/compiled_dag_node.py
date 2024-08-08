@@ -425,8 +425,8 @@ class ExecutableTask:
         """
         assert self._intermediate_buffer is None
         try:
-            res = self.input_reader.read()
-            self.set_intermediate_buffer(res)
+            input_data = self.input_reader.read()
+            self.set_intermediate_buffer(input_data)
             return False
         except RayChannelError:
             # Channel closed. Exit the loop.
@@ -439,10 +439,10 @@ class ExecutableTask:
         that the last operation executed is READ so that the function retrieves the
         correct intermediate result.
         """
-        res = self.reset_intermediate_buffer()
+        input_data = self.reset_intermediate_buffer()
         method = getattr(class_handle, self.method_name)
         try:
-            _process_return_vals(res, return_single_output=False)
+            _process_return_vals(input_data, return_single_output=False)
         except Exception as exc:
             # Previous task raised an application-level exception.
             # Propagate it and skip the actual task. We don't need to wrap the
@@ -453,7 +453,7 @@ class ExecutableTask:
 
         resolved_inputs = []
         for task_input in self.task_inputs:
-            resolved_inputs.append(task_input.resolve(res))
+            resolved_inputs.append(task_input.resolve(input_data))
 
         try:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
