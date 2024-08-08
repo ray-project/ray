@@ -179,6 +179,4 @@ class TestReadIceberg:
 if __name__ == "__main__":
     import sys
 
-    ray.init(runtime_env={"pip": ["pyiceberg==0.7.0"]})
-
     sys.exit(pytest.main(["-v", __file__]))
