@@ -187,13 +187,13 @@ def _select_next_nodes(
             first_nccl_node = candidates[0]
 
     assert first_nccl_node is not None
+    assert first_nccl_node.operation.type == DAGNodeOperationType.WRITE
     next_nodes.append(
         heapq.heappop(actor_to_candidates[first_nccl_node.actor_handle._actor_id])
     )
     for downstream_node_metadata in first_nccl_node.out_edges:
-        downstream_node = graph[downstream_node_metadata[0]][
-            downstream_node_metadata[1]
-        ]
+        global_idx, op_type = downstream_node_metadata[0], downstream_node_metadata[1]
+        downstream_node = graph[global_idx][op_type]
         next_nodes.append(downstream_node)
     assert len(next_nodes) == 1 + len(first_nccl_node.out_edges)
     return next_nodes
