@@ -34,14 +34,14 @@ class TorchDeviceManager(ABC):
         """Get a stream context.
 
         This should be override by subclass using a api like `torch.cuda.stream()`
-        if subclass support stream like api.
+        if accelerator support stream like api.
         """
 
         @contextmanager
-        def empty_context_managr():
+        def default_context_manager():
             yield
 
-        return empty_context_managr()
+        return default_context_manager()
 
     def get_current_stream(self):
         """Get current stream on accelerators like torch.cuda.current_stream"""

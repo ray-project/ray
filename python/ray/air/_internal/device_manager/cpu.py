@@ -1,4 +1,4 @@
-from typing import List, Union
+from typing import List
 
 import torch
 
@@ -14,9 +14,6 @@ class CPUTorchDeviceManager(TorchDeviceManager):
     def get_devices(self) -> List[torch.device]:
         """Gets the correct torch device list configured for this process."""
         return [torch.device("cpu")]
-
-    def set_device(self, device: Union[torch.device, int, str, None]) -> None:
-        pass
 
     def supports_stream(self) -> bool:
         """Validate if the device type support create a stream"""

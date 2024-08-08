@@ -31,16 +31,16 @@ def try_register_torch_accelerator_module(backend=None) -> None:
         if HPU_PACKAGE_AVAILABLE:
             import habana_frameworks.torch.hpu  # noqa: F401
 
-        if HPU_PACKAGE_AVAILABLE and backend == "hccl":
-            import habana_frameworks.torch.core  # noqa: F401
-            import habana_frameworks.torch.distributed.hccl  # noqa: F401
+            if backend == "hccl":
+                import habana_frameworks.torch.core  # noqa: F401
+                import habana_frameworks.torch.distributed.hccl  # noqa: F401
 
         if NPU_TORCH_PACKAGE_AVAILABLE:
             import torch_npu  # noqa: F401
 
     except ImportError:
         raise ImportError(
-            "PyTorch extension modules for accelerators exits but fails to import."
+            "PyTorch extension modules for accelerators exist but failed to import."
         )
 
 
@@ -59,7 +59,7 @@ def get_torch_device_manager_cls_by_resources(
             resource_type, None
         )
         if resource_value and device_manager:
-            # An error is raised when multiple accelerators are specified.
+            # An error will raise when multiple accelerators are specified.
             if existing_device_manager:
                 raise RuntimeError(
                     "Unable to determine the appropriate DeviceManager "
@@ -75,7 +75,10 @@ _torch_device_manager = None
 
 
 def get_torch_device_manager() -> TorchDeviceManager:
-    return _torch_device_manager or DEFAULT_TORCH_DEVICE_MANAGER_CLS()
+    if not _torch_device_manager:
+        init_torch_device_manager()
+
+    return _torch_device_manager
 
 
 def init_torch_device_manager() -> None:
