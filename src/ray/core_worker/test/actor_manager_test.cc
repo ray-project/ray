@@ -19,7 +19,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 
@@ -50,7 +50,8 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
     auto it = callback_map_.find(actor_id);
     if (it == callback_map_.end()) return false;
     auto actor_state_notification_callback = it->second;
-    actor_state_notification_callback(actor_id, actor_data);
+    auto copied = actor_data;
+    actor_state_notification_callback(actor_id, std::move(copied));
     return true;
   }
 
@@ -66,7 +67,8 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
       return false;
     }
 
-    if (!ActorStateNotificationPublished(actor_id, actor_data)) {
+    auto copied = actor_data;
+    if (!ActorStateNotificationPublished(actor_id, std::move(copied))) {
       return false;
     }
 

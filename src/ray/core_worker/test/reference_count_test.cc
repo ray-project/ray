@@ -264,7 +264,8 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
       if (it != subscription_callback_map_->end()) {
         const auto callback_it = it->second.find(oid);
         RAY_CHECK(callback_it != it->second.end());
-        callback_it->second(pub_message);
+        rpc::PubMessage copied = pub_message;
+        callback_it->second(std::move(copied));
       }
     }
   }

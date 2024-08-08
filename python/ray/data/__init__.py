@@ -5,6 +5,7 @@ from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -150,4 +151,5 @@ __all__ = [
     "read_webdataset",
     "set_progress_bars",
     "Preprocessor",
+    "TFXReadOptions",
 ]

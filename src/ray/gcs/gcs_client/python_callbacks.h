@@ -76,7 +76,6 @@ class PyCallback {
       : converter(converter), assigner(assigner), context(context) {}
 
   void operator()(Args &&...args) {
-    PythonGilHolder gil;
     PyObject *result = converter(std::forward<Args>(args)...);
     CheckNoException();
 
@@ -85,6 +84,7 @@ class PyCallback {
   }
 
   void CheckNoException() {
+    PythonGilHolder gil;
     if (PyErr_Occurred() != nullptr) {
       PyErr_Print();
       PyErr_Clear();
@@ -102,7 +102,7 @@ template <typename T>
 using MultiItemPyCallback = PyCallback<Status, std::vector<T> &&>;
 
 template <typename Data>
-using OptionalItemPyCallback = PyCallback<Status, const std::optional<Data> &>;
+using OptionalItemPyCallback = PyCallback<Status, std::optional<Data> &&>;
 
 using StatusPyCallback = PyCallback<Status>;
 

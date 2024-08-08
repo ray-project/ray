@@ -1,4 +1,4 @@
-"""Example of implementing and running inverse dynamics model (ICM) based curiosity.
+"""Example of implementing and training with an intrinsic curiosity model (ICM).
 
 This type of curiosity-based learning trains a simplified model of the environment
 dynamics based on three networks:
@@ -76,9 +76,25 @@ from collections import defaultdict
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.examples.learners.classes.curiosity_dqn_torch_learner import (
+    DQNConfigWithCuriosity,
+    DQNTorchLearnerWithCuriosity,
+)
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.learners.classes.curiosity_ppo_torch_learner import (
     PPOConfigWithCuriosity,
     PPOTorchLearnerWithCuriosity,
+)
+from ray.rllib.examples.rl_modules.classes.intrinsic_curiosity_model_rlm import (
+    ICM_MODULE_ID,
+    IntrinsicCuriosityModel,
+)
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -86,9 +102,9 @@ from ray.rllib.utils.test_utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_iters=20000,
-    default_timesteps=100000000,
-    default_reward=1.0,
+    default_iters=2000,
+    default_timesteps=10000000,
+    default_reward=0.9,
 )
 parser.set_defaults(enable_new_api_stack=True)
 
@@ -167,8 +183,17 @@ class MeasureMaxDistanceToStart(DefaultCallbacks):
 if __name__ == "__main__":
     args = parser.parse_args()
 
+    if args.algo not in ["DQN", "PPO"]:
+        raise ValueError(
+            "Curiosity example only implemented for either DQN or PPO! See the "
+        )
+
+    config_class = (
+        PPOConfigWithCuriosity if args.algo == "PPO" else DQNConfigWithCuriosity
+    )
+
     base_config = (
-        PPOConfigWithCuriosity()
+        config_class()
         .environment(
             "FrozenLake-v1",
             env_config={
@@ -193,23 +218,93 @@ if __name__ == "__main__":
                 "max_episode_steps": 22,
             },
         )
-        # Use our custom `curiosity` method to set up the ICM and our PPO/ICM-Learner.
+        # Use our custom `curiosity` method to set up the PPO/ICM-Learner.
         .curiosity(
-            # curiosity_feature_net_hiddens=[256, 256],
-            # curiosity_inverse_net_activation="relu",
+            # Intrinsic reward coefficient.
+            curiosity_eta=0.05,
+            # Forward loss weight (vs inverse dynamics loss, which will be `1. - beta`).
+            # curiosity_beta=0.2,
         )
         .callbacks(MeasureMaxDistanceToStart)
         .env_runners(
-            num_envs_per_env_runner=5,
+            num_envs_per_env_runner=5 if args.algo == "PPO" else 1,
             env_to_module_connector=lambda env: FlattenObservations(),
         )
-        .training(
-            learner_class=PPOTorchLearnerWithCuriosity,
-            train_batch_size_per_learner=2000,
-            num_sgd_iter=6,
-            lr=0.0003,
+        .rl_module(
+            rl_module_spec=MultiRLModuleSpec(
+                module_specs={
+                    # The "main" RLModule (policy) to be trained by our algo.
+                    DEFAULT_MODULE_ID: RLModuleSpec(
+                        **(
+                            {"model_config_dict": {"vf_share_layers": True}}
+                            if args.algo == "PPO"
+                            else {}
+                        ),
+                    ),
+                    # The intrinsic curiosity model.
+                    ICM_MODULE_ID: RLModuleSpec(
+                        module_class=IntrinsicCuriosityModel,
+                        # Only create the ICM on the Learner workers, NOT on the
+                        # EnvRunners.
+                        learner_only=True,
+                        # Configure the architecture of the ICM here.
+                        model_config_dict={
+                            "feature_dim": 288,
+                            "feature_net_hiddens": (256, 256),
+                            "feature_net_activation": "relu",
+                            "inverse_net_hiddens": (256, 256),
+                            "inverse_net_activation": "relu",
+                            "forward_net_hiddens": (256, 256),
+                            "forward_net_activation": "relu",
+                        },
+                    ),
+                }
+            ),
+            # Use a different learning rate for training the ICM.
+            algorithm_config_overrides_per_module={
+                ICM_MODULE_ID: config_class.overrides(lr=0.0005)
+            },
         )
-        .rl_module(model_config_dict={"vf_share_layers": True})
     )
 
-    run_rllib_example_script_experiment(base_config, args)
+    # Set PPO-specific hyper-parameters.
+    if args.algo == "PPO":
+        base_config.training(
+            num_sgd_iter=6,
+            # Plug in the correct Learner class.
+            learner_class=PPOTorchLearnerWithCuriosity,
+            train_batch_size_per_learner=2000,
+            lr=0.0003,
+        )
+    elif args.algo == "DQN":
+        base_config.training(
+            # Plug in the correct Learner class.
+            learner_class=DQNTorchLearnerWithCuriosity,
+            train_batch_size_per_learner=128,
+            lr=0.00075,
+            replay_buffer_config={
+                "type": "PrioritizedEpisodeReplayBuffer",
+                "capacity": 500000,
+                "alpha": 0.6,
+                "beta": 0.4,
+            },
+            # Epsilon exploration schedule for DQN.
+            epsilon=[[0, 1.0], [500000, 0.05]],
+            n_step=(3, 5),
+            double_q=True,
+            dueling=True,
+        )
+
+    success_key = f"{ENV_RUNNER_RESULTS}/max_dist_travelled_across_running_episodes"
+    stop = {
+        success_key: 8.0,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+    }
+
+    run_rllib_example_script_experiment(
+        base_config,
+        args,
+        stop=stop,
+        success_metric={success_key: stop[success_key]},
+    )
