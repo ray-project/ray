@@ -134,7 +134,14 @@ class ProgressBar:
             done, remaining = ray.wait(
                 remaining, num_returns=len(remaining), fetch_local=False, timeout=0.1
             )
-            self.update(len(done))
+            total_rows_processed = 0
+            for _, result in zip(done, ray.get(done)):
+                num_rows = (
+                    result.num_rows if hasattr(result, "num_rows") else 1
+                )  # Default to 1 if no row count is available
+                total_rows_processed += num_rows
+            # TODO(zhilong): Change the total to total_row when init progress bar
+            self.update(total_rows_processed)
 
             with _canceled_threads_lock:
                 if t in _canceled_threads:
