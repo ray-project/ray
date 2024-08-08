@@ -95,7 +95,7 @@ cdef class NewGcsClient:
             status = self.inner.get().InternalKV().Get(
                 ns, key, timeout_ms, opt_value.value())
         return raise_or_return(
-            convert_optional_str_none_for_not_found(status, opt_value))
+            convert_optional_str_none_for_not_found(status, move(opt_value)))
 
     def internal_kv_multi_get(
         self, keys: List[bytes], namespace=None, timeout=None
@@ -110,7 +110,7 @@ cdef class NewGcsClient:
         with nogil:
             status = self.inner.get().InternalKV().MultiGet(
                 ns, c_keys, timeout_ms, opt_values.value())
-        return raise_or_return(convert_optional_multi_get(status, opt_values))
+        return raise_or_return(convert_optional_multi_get(status, move(opt_values)))
 
     def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
                         namespace=None, timeout=None) -> int:
@@ -125,7 +125,7 @@ cdef class NewGcsClient:
         with nogil:
             status = self.inner.get().InternalKV().Put(
                 ns, key, value, overwrite, timeout_ms, opt_added.value())
-        added = raise_or_return(convert_optional_bool(status, opt_added))
+        added = raise_or_return(convert_optional_bool(status, move(opt_added)))
         return 1 if added else 0
 
     def internal_kv_del(self, c_string key, c_bool del_by_prefix,
@@ -141,7 +141,7 @@ cdef class NewGcsClient:
         with nogil:
             status = self.inner.get().InternalKV().Del(
                 ns, key, del_by_prefix, timeout_ms, opt_num_deleted.value())
-        return raise_or_return(convert_optional_int(status, opt_num_deleted))
+        return raise_or_return(convert_optional_int(status, move(opt_num_deleted)))
 
     def internal_kv_keys(
         self, c_string prefix, namespace=None, timeout=None
@@ -154,7 +154,7 @@ cdef class NewGcsClient:
         with nogil:
             status = self.inner.get().InternalKV().Keys(
                 ns, prefix, timeout_ms, opt_keys.value())
-        return raise_or_return(convert_optional_vector_str(status, opt_keys))
+        return raise_or_return(convert_optional_vector_str(status, move(opt_keys)))
 
     def internal_kv_exists(self, c_string key, namespace=None, timeout=None) -> bool:
         cdef:
@@ -165,7 +165,7 @@ cdef class NewGcsClient:
         with nogil:
             status = self.inner.get().InternalKV().Exists(
                 ns, key, timeout_ms, opt_exists.value())
-        return raise_or_return(convert_optional_bool(status, opt_exists))
+        return raise_or_return(convert_optional_bool(status, move(opt_exists)))
 
     #############################################################
     # Internal KV async methods
@@ -678,7 +678,7 @@ cdef convert_status(CRayStatus status) with gil:
     except Exception as e:
         return None, e
 cdef convert_optional_str_none_for_not_found(
-        CRayStatus status, const optional[c_string]& c_str) with gil:
+        CRayStatus status, optional[c_string]&& c_str) with gil:
     # If status is NotFound, return None.
     # If status is OK, return the value.
     # Else, raise exception.
@@ -688,31 +688,29 @@ cdef convert_optional_str_none_for_not_found(
             return None, None
         check_status_timeout_as_rpc_error(status)
         assert c_str.has_value()
-        return c_str.value(), None
+        return move(c_str.value()), None
     except Exception as e:
         return None, e
 
 cdef convert_optional_multi_get(
         CRayStatus status,
-        const optional[unordered_map[c_string, c_string]]& c_map) with gil:
+        optional[unordered_map[c_string, c_string]]&& c_map) with gil:
     # -> Dict[str, str]
-    cdef unordered_map[c_string, c_string].const_iterator it
+    cdef unordered_map[c_string, c_string].iterator it
     try:
         check_status_timeout_as_rpc_error(status)
         assert c_map.has_value()
 
         result = {}
-        it = c_map.value().const_begin()
-        while it != c_map.value().const_end():
-            key = dereference(it).first
-            value = dereference(it).second
-            result[key] = value
+        it = c_map.value().begin()
+        while it != c_map.value().end():
+            result[dereference(it).first] = move(dereference(it).second)
             postincrement(it)
         return result, None
     except Exception as e:
         return None, e
 
-cdef convert_optional_int(CRayStatus status, const optional[int]& c_int) with gil:
+cdef convert_optional_int(CRayStatus status, optional[int]&& c_int) with gil:
     # -> int
     try:
         check_status_timeout_as_rpc_error(status)
@@ -722,26 +720,15 @@ cdef convert_optional_int(CRayStatus status, const optional[int]& c_int) with gi
         return None, e
 
 cdef convert_optional_vector_str(
-        CRayStatus status, const optional[c_vector[c_string]]& c_vec) with gil:
-    # -> Dict[str, str]
-    cdef const c_vector[c_string]* vec
-    cdef c_vector[c_string].const_iterator it
+        CRayStatus status, optional[c_vector[c_string]]&& c_vec) with gil:
+    # -> List[bytes]
     try:
         check_status_timeout_as_rpc_error(status)
-
-        assert c_vec.has_value()
-        vec = &c_vec.value()
-        it = vec.const_begin()
-        result = []
-        while it != dereference(vec).const_end():
-            result.append(dereference(it))
-            postincrement(it)
-        return result, None
+        return convert_multi_str(status, move(c_vec.value()))
     except Exception as e:
         return None, e
 
-
-cdef convert_optional_bool(CRayStatus status, const optional[c_bool]& b) with gil:
+cdef convert_optional_bool(CRayStatus status, optional[c_bool]&& b) with gil:
     # -> bool
     try:
         check_status_timeout_as_rpc_error(status)
@@ -758,10 +745,17 @@ cdef convert_multi_bool(CRayStatus status, c_vector[c_bool]&& c_data) with gil:
     except Exception as e:
         return None, e
 
-cdef convert_multi_str(CRayStatus status, c_vector[c_string]&& c_data) with gil:
+cdef convert_multi_str(CRayStatus status, c_vector[c_string]&& vec) with gil:
     # -> List[bytes]
+    cdef c_vector[c_string].iterator it
     try:
         check_status_timeout_as_rpc_error(status)
-        return [datum for datum in c_data], None
+
+        it = vec.begin()
+        result = []
+        while it != vec.end():
+            result.append(move(dereference(it)))
+            postincrement(it)
+        return result, None
     except Exception as e:
         return None, e

@@ -364,7 +364,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
                            << ". Skip this round of pulling for resource load";
           } else {
             // GetResourceLoad will also get usage. Historically it didn't.
-            raylet_client->GetResourceLoad([this](auto &status, auto &load_and_usage) {
+            raylet_client->GetResourceLoad([this](auto &status, auto &&load_and_usage) {
               if (status.ok()) {
                 // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
                 // after verifying that non-autoscaler paths are taken care of.
