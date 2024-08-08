@@ -409,6 +409,7 @@ class ExecutableTask:
         self.output_writer.start()
 
     def set_intermediate_buffer(self, data: Any):
+        assert self._intermediate_buffer is None
         self._intermediate_buffer = data
 
     def reset_intermediate_buffer(self) -> Any:
@@ -420,6 +421,7 @@ class ExecutableTask:
         """
         Read input data from upstream DAG nodes and cache the intermediate result.
         """
+        assert self._intermediate_buffer is None
         try:
             res = self.input_reader.read()
             self.set_intermediate_buffer(res)
