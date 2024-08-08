@@ -114,13 +114,18 @@ def test_all_to_all_operator():
 
 
 def test_num_outputs_total():
+    # The number of outputs is always known for InputDataBuffer.
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    assert input_op.num_outputs_total() == 100
+
+    # Prior to execution, the number of outputs is unknown
+    # for Map/AllToAllOperator operators.
     op1 = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
         name="TestMapper",
     )
-    assert op1.num_outputs_total() == 100
+    assert op1.num_outputs_total() is None
 
     def dummy_all_transform(bundles: List[RefBundle]):
         return make_ref_bundles([[1, 2], [3, 4]]), {"FooStats": []}
@@ -131,7 +136,21 @@ def test_num_outputs_total():
         target_max_block_size=DataContext.get_current().target_max_block_size,
         name="TestAll",
     )
-    assert op2.num_outputs_total() == 100
+    assert op2.num_outputs_total() is None
+
+    # Feed data and implement streaming exec.
+    output = []
+    op1.start(ExecutionOptions(actor_locality_enabled=True))
+    while input_op.has_next():
+        op1.add_input(input_op.get_next(), 0)
+        while not op1.has_next():
+            run_one_op_task(op1)
+        while op1.has_next():
+            ref = op1.get_next()
+            assert ref.owns_blocks, ref
+            _get_blocks(ref, output)
+    # After op finishes, num_outputs_total is known.
+    assert op1.num_outputs_total() == 100
 
 
 @pytest.mark.parametrize("use_actors", [False, True])
@@ -884,7 +903,7 @@ def test_operator_metrics():
         assert metrics.obj_store_mem_freed == metrics.bytes_task_inputs_processed, i
 
 
-def test_map_estimated_output_blocks():
+def test_map_estimated_num_output_bundles():
     # Test map operator estimation
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
 
@@ -906,12 +925,12 @@ def test_map_estimated_output_blocks():
         if op.metrics.num_inputs_received % min_rows_per_bundle == 0:
             # enough inputs for a task bundle
             run_op_tasks_sync(op)
-            assert op._estimated_output_blocks == 50
+            assert op._estimated_num_output_bundles == 50
 
     op.all_inputs_done()
 
     # 100 inputs -> 100 / 10 = 10 tasks -> 10 * 5 = 50 output blocks
-    assert op._estimated_output_blocks == 50
+    assert op._estimated_num_output_bundles == 50
 
 
 def test_map_estimated_blocks_split():
@@ -936,14 +955,14 @@ def test_map_estimated_blocks_split():
         if op.metrics.num_inputs_received % min_rows_per_bundle == 0:
             # enough inputs for a task bundle
             run_op_tasks_sync(op)
-            assert op._estimated_output_blocks == 100
+            assert op._estimated_num_output_bundles == 100
 
     op.all_inputs_done()
     # Each output block is split in 2, so the number of blocks double.
-    assert op._estimated_output_blocks == 100
+    assert op._estimated_num_output_bundles == 100
 
 
-def test_limit_estimated_output_blocks():
+def test_limit_estimated_num_output_bundles():
     # Test limit operator estimation
     input_op = InputDataBuffer(make_ref_bundles([[i, i] for i in range(100)]))
     op = LimitOperator(100, input_op)
@@ -951,12 +970,12 @@ def test_limit_estimated_output_blocks():
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
         run_op_tasks_sync(op)
-        assert op._estimated_output_blocks == 50
+        assert op._estimated_num_output_bundles == 50
 
     op.all_inputs_done()
 
     # 2 rows per bundle, 100 / 2 = 50 blocks output
-    assert op._estimated_output_blocks == 50
+    assert op._estimated_num_output_bundles == 50
 
     # Test limit operator estimation where: limit > # of rows
     input_op = InputDataBuffer(make_ref_bundles([[i, i] for i in range(100)]))
@@ -965,15 +984,15 @@ def test_limit_estimated_output_blocks():
     while input_op.has_next():
         op.add_input(input_op.get_next(), 0)
         run_op_tasks_sync(op)
-        assert op._estimated_output_blocks == 100
+        assert op._estimated_num_output_bundles == 100
 
     op.all_inputs_done()
 
     # all blocks are outputted
-    assert op._estimated_output_blocks == 100
+    assert op._estimated_num_output_bundles == 100
 
 
-def test_all_to_all_estimated_output_blocks():
+def test_all_to_all_estimated_num_output_bundles():
     # Test all to all operator
     input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
 
@@ -1002,7 +1021,7 @@ def test_all_to_all_estimated_output_blocks():
     run_op_tasks_sync(op2)
 
     # estimated output blocks for op2 should fallback to op1
-    assert op2._estimated_output_blocks is None
+    assert op2._estimated_num_output_bundles is None
     assert op2.num_outputs_total() == estimated_output_blocks
 
 

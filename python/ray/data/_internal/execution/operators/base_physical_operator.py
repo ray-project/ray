@@ -72,7 +72,7 @@ class AllToAllOperator(PhysicalOperator):
         self._stats: StatsDict = {}
         super().__init__(name, [input_op], target_max_block_size)
 
-    def num_outputs_total(self) -> int:
+    def num_outputs_total(self) -> Optional[int]:
         return (
             self._num_outputs
             if self._num_outputs
@@ -115,7 +115,12 @@ class AllToAllOperator(PhysicalOperator):
         if self._sub_progress_bar_names is not None:
             self._sub_progress_bar_dict = {}
             for name in self._sub_progress_bar_names:
-                bar = ProgressBar(name, self.num_outputs_total() or 1, position)
+                bar = ProgressBar(
+                    name,
+                    self.num_outputs_total() or 1,
+                    unit="bundle",
+                    position=position,
+                )
                 # NOTE: call `set_description` to trigger the initial print of progress
                 # bar on console.
                 bar.set_description(f"  *- {name}")

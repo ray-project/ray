@@ -96,7 +96,7 @@ class ClientPickler(cloudpickle.CloudPickler):
         elif isinstance(obj, ClientRemoteFunc):
             if obj._ref is None:
                 obj._ensure_ref()
-            if type(obj._ref) == InProgressSentinel:
+            if type(obj._ref) is InProgressSentinel:
                 return PickleStub(
                     type="RemoteFuncSelfReference",
                     client_id=self.client_id,
@@ -114,7 +114,7 @@ class ClientPickler(cloudpickle.CloudPickler):
         elif isinstance(obj, ClientActorClass):
             if obj._ref is None:
                 obj._ensure_ref()
-            if type(obj._ref) == InProgressSentinel:
+            if type(obj._ref) is InProgressSentinel:
                 return PickleStub(
                     type="RemoteActorSelfReference",
                     client_id=self.client_id,

@@ -1,18 +1,19 @@
-from typing import Set, Dict, Any
+import logging
+import os
+import pathlib
+import sys
 from datetime import datetime
 from importlib import import_module
-import os
-import sys
-from jinja2.filters import FILTERS
+from typing import Any, Dict
+
 import sphinx
+from docutils import nodes
+from jinja2.filters import FILTERS
 from sphinx.ext import autodoc
 from sphinx.ext.autosummary import generate
 from sphinx.util.inspect import safe_getattr
-from docutils import nodes
-import pathlib
-import logging
 
-DEFAULT_API_GROUP = "others"
+DEFAULT_API_GROUP = "Others"
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ from custom_directives import (  # noqa
     parse_navbar_config,
     setup_context,
     pregenerate_example_rsts,
+    generate_versions_json,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
@@ -234,7 +236,6 @@ if os.environ.get("LINKCHECK_ALL"):
         "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
         # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
         "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
-        # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
         "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
         "https://speakerdeck.com/*",  # forbidden for bots
         r"https://huggingface.co/*",  # seems to be flaky
@@ -287,12 +288,13 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """<b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=regDocs6_5g">Register</a></b> for Ray Summit 2024 now. Get your early bird pass by June 27th to save $100.""",
+    "announcement": """<b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=regDocs6_5g">Register for Ray Summit 2024</a></b> with keynotes from Mira Murati, Marc Andreessen, and Anastasis Germanidis.""",
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "version-switcher",
         "navbar-icon-links",
         "navbar-anyscale",
     ],
@@ -304,15 +306,18 @@ html_theme_options = {
     ],
     "secondary_sidebar_items": [
         "page-toc",
-        "edit-this-page",
+        "edit-on-github",
     ],
     "content_footer_items": [
         "csat",
     ],
     "navigation_depth": 4,
-    "analytics": {"google_analytics_id": "UA-110413294-1"},
     "pygment_light_style": "stata-dark",
     "pygment_dark_style": "stata-dark",
+    "switcher": {
+        "json_url": "https://docs.ray.io/en/master/_static/versions.json",
+        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
+    },
 }
 
 html_context = {
@@ -323,7 +328,11 @@ html_context = {
 }
 
 html_sidebars = {
-    "**": ["main-sidebar"],
+    "**": [
+        "main-sidebar-readthedocs"
+        if os.getenv("READTHEDOCS") == "True"
+        else "main-sidebar"
+    ],
     "ray-overview/examples": [],
 }
 
@@ -397,12 +406,20 @@ def filter_out_undoc_class_members(member_name, class_name, module_name):
         return ""
 
 
+def has_public_constructor(class_name, module_name):
+    cls = getattr(import_module(module_name), class_name)
+    return _is_public_api(cls)
+
+
 def get_api_groups(method_names, class_name, module_name):
     api_groups = set()
     cls = getattr(import_module(module_name), class_name)
     for method_name in method_names:
         method = getattr(cls, method_name)
-        api_groups.add(safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP))
+        if _is_public_api(method):
+            api_groups.add(
+                safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP)
+            )
 
     return sorted(api_groups)
 
@@ -431,6 +448,7 @@ def _is_api_group(obj, group):
 FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
 FILTERS["get_api_groups"] = get_api_groups
 FILTERS["select_api_group"] = select_api_group
+FILTERS["has_public_constructor"] = has_public_constructor
 
 
 def add_custom_assets(
@@ -481,6 +499,10 @@ def _autogen_apis(app: sphinx.application.Sphinx):
 
 
 def setup(app):
+    # Only generate versions JSON during RTD build
+    if os.getenv("READTHEDOCS") == "True":
+        generate_versions_json()
+
     pregenerate_example_rsts(app)
 
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since

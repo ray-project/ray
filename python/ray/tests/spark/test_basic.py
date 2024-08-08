@@ -1,5 +1,6 @@
 import os
 import shutil
+import signal
 import tempfile
 import socket
 import threading
@@ -8,6 +9,7 @@ import pytest
 import sys
 from unittest import mock
 from abc import ABC
+import subprocess
 
 import ray
 
@@ -506,6 +508,46 @@ class TestSparkLocalCluster:
         assert config["idle_timeout_minutes"] == 3.0
         assert config["provider"]["extra_aa"] == "abc"
         assert config["provider"]["extra_bb"] == 789
+
+    def test_start_ray_node_in_new_process_group(self):
+        def preexec_function():
+            os.setpgrp()
+
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-m",
+                "ray.util.spark.start_ray_node",
+                "--head",
+                "--block",
+                "--port=44335",
+            ],
+            preexec_fn=preexec_function,
+            env={
+                **os.environ,
+                "RAY_ON_SPARK_COLLECT_LOG_TO_PATH": "",
+                "RAY_ON_SPARK_START_RAY_PARENT_PID": str(os.getpid()),
+            },
+        )
+        time.sleep(10)
+
+        ray.init("127.0.0.1:44335")
+
+        # send a SIGINT signal to head process (i.e. the `start_ray_node` process),
+        # then test the Ray node is not killed by the SIGINT signal.
+        # See https://github.com/ray-project/ray/pull/46899 for details
+        os.killpg(os.getpgid(proc.pid), signal.SIGINT)
+        time.sleep(3)
+
+        @ray.remote
+        def f(x):
+            return x * x
+
+        futures = [f.remote(i) for i in range(4)]
+        results = ray.get(futures)
+        assert results == [i * i for i in range(4)]
+
+        proc.terminate()
 
 
 if __name__ == "__main__":

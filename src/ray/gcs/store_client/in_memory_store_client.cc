@@ -49,13 +49,14 @@ Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto iter = table->records_.find(key);
-  boost::optional<std::string> data;
+  std::optional<std::string> data;
   if (iter != table->records_.end()) {
     data = iter->second;
   }
 
   main_io_service_.post(
-      [callback, data = std::move(data)]() { callback(Status::OK(), data); },
+      [callback, data = std::move(data)]() mutable  // allow data to be moved
+      { callback(Status::OK(), std::move(data)); },
       "GcsInMemoryStore.Get");
 
   return Status::OK();

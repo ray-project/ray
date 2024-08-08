@@ -9,10 +9,12 @@ import re
 import sys
 import time
 import numpy as np
+import torch
 
 import pytest
 
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 import ray
 import ray._private
 import ray.cluster_utils
@@ -21,6 +23,7 @@ from ray.tests.conftest import *  # noqa
 from ray._private.utils import (
     get_or_create_event_loop,
 )
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 
 logger = logging.getLogger(__name__)
@@ -1097,9 +1100,117 @@ class TestCompositeChannel:
 
         compiled_dag.teardown()
 
+    def test_intra_process_channel_with_multi_readers(self, ray_start_regular_shared):
+        """
+        In this test, there are three 'echo' tasks on the same Ray actor.
+        The DAG will look like this:
 
-def test_channel_access_after_close(ray_start_regular_shared):
-    # Tests that an access to a channel after accelerated DAG teardown raises a
+        Driver -> a.echo -> a.echo -> Driver
+                         |         |
+                         -> a.echo -
+
+        All communication between the driver and the actor will be done through remote
+        channels, i.e., shared memory channels. All communication between the actor
+        tasks will be conducted through local channels, i.e., IntraProcessChannel in
+        this case.
+        """
+        a = Actor.remote(0)
+        with InputNode() as inp:
+            dag = a.echo.bind(inp)
+            x = a.echo.bind(dag)
+            y = a.echo.bind(dag)
+            dag = MultiOutputNode([x, y])
+
+        compiled_dag = dag.experimental_compile()
+        ref = compiled_dag.execute(1)
+        assert ray.get(ref) == [1, 1]
+
+        ref = compiled_dag.execute(2)
+        assert ray.get(ref) == [2, 2]
+
+        ref = compiled_dag.execute(3)
+        assert ray.get(ref) == [3, 3]
+
+        compiled_dag.teardown()
+
+
+def test_simulate_pipeline_parallelism(ray_start_regular_shared):
+    """
+    This pattern simulates the case of pipeline parallelism training, where `w0_input`
+    reads data from the driver, and the fan-out tasks, `d00`, `d01`, and `d02`, use
+    `IntraProcessChannel` to read the data as the input for the forward pass.
+
+    Compared to reading data from shared memory channels for each forward pass, using
+    `IntraProcessChannel` may be more efficient because it avoids the overhead of
+    deserialization for each forward pass.
+    """
+
+    @ray.remote
+    class Worker:
+        def __init__(self, rank):
+            self.rank = rank
+            self.logs = []
+
+        def forward(self, data, idx):
+            batch_id = data[idx]
+            self.logs.append(f"FWD rank-{self.rank}, batch-{batch_id}")
+            return batch_id
+
+        def backward(self, batch_id):
+            self.logs.append(f"BWD rank-{self.rank}, batch-{batch_id}")
+            return batch_id
+
+        def get_logs(self):
+            return self.logs
+
+        def read_input(self, input):
+            return input
+
+    worker_0 = Worker.remote(0)
+    worker_1 = Worker.remote(1)
+
+    # Worker 0: FFFBBB
+    # Worker 1: BBB
+    with InputNode() as inp:
+        w0_input = worker_0.read_input.bind(inp)
+        d00 = worker_0.forward.bind(w0_input, 0)  # worker_0 FWD
+        d01 = worker_0.forward.bind(w0_input, 1)  # worker_0 FWD
+        d02 = worker_0.forward.bind(w0_input, 2)  # worker_0 FWD
+
+        d10 = worker_1.backward.bind(d00)  # worker_1 BWD
+        d11 = worker_1.backward.bind(d01)  # worker_1 BWD
+        d12 = worker_1.backward.bind(d02)  # worker_1 BWD
+
+        d03 = worker_0.backward.bind(d10)  # worker_0 BWD
+        d04 = worker_0.backward.bind(d11)  # worker_0 BWD
+        d05 = worker_0.backward.bind(d12)  # worker_0 BWD
+
+        output_dag = MultiOutputNode([d03, d04, d05])
+
+    output_dag = output_dag.experimental_compile()
+    res = output_dag.execute([0, 1, 2])
+
+    assert ray.get(res) == [0, 1, 2]
+    # Worker 0: FFFBBB
+    assert ray.get(worker_0.get_logs.remote()) == [
+        "FWD rank-0, batch-0",
+        "FWD rank-0, batch-1",
+        "FWD rank-0, batch-2",
+        "BWD rank-0, batch-0",
+        "BWD rank-0, batch-1",
+        "BWD rank-0, batch-2",
+    ]
+    # Worker 1: BBB
+    assert ray.get(worker_1.get_logs.remote()) == [
+        "BWD rank-1, batch-0",
+        "BWD rank-1, batch-1",
+        "BWD rank-1, batch-2",
+    ]
+    output_dag.teardown()
+
+
+def test_channel_read_after_close(ray_start_regular_shared):
+    # Tests that read to a channel after accelerated DAG teardown raises a
     # RayChannelError exception as the channel is closed (see issue #46284).
     @ray.remote
     class Actor:
@@ -1118,6 +1229,25 @@ def test_channel_access_after_close(ray_start_regular_shared):
         ray.get(ref)
 
 
+def test_channel_write_after_close(ray_start_regular_shared):
+    # Tests that write to a channel after accelerated DAG teardown raises a
+    # RayChannelError exception as the channel is closed.
+    @ray.remote
+    class Actor:
+        def foo(self, arg):
+            return arg
+
+    a = Actor.remote()
+    with InputNode() as inp:
+        dag = a.foo.bind(inp)
+
+    dag = dag.experimental_compile()
+    dag.teardown()
+
+    with pytest.raises(RayChannelError, match="Channel closed."):
+        dag.execute(1)
+
+
 def test_driver_and_actor_as_readers(ray_start_cluster):
     a = Actor.remote(0)
     b = Actor.remote(10)
@@ -1128,10 +1258,252 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
 
     with pytest.raises(
         ValueError,
-        match="DAG outputs currently can only be read by the driver--not the driver "
-        "and actors.",
+        match="DAG outputs currently can only be read by the driver or "
+        "the same actor that is also the InputNode, not by both "
+        "the driver and actors.",
     ):
         dag.experimental_compile()
+
+
+def test_payload_large(ray_start_cluster):
+    cluster = ray_start_cluster
+    # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor).
+    first_node_handle = cluster.add_node(num_cpus=1)
+    # This node is for the reader.
+    second_node_handle = cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
+    # then back to a list to remove duplicates. Then we check that the length of `nodes`
+    # is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote(0)
+
+    def get_node_id(self):
+        return ray.get_runtime_context().get_node_id()
+
+    driver_node = get_node_id(None)
+    nodes.remove(driver_node)
+
+    a = create_actor(nodes[0])
+    a_node = ray.get(a.__ray_call__.remote(get_node_id))
+    assert a_node == nodes[0]
+    # Check that the driver and actor are on different nodes.
+    assert driver_node != a_node
+
+    with InputNode() as i:
+        dag = a.echo.bind(i)
+
+    compiled_dag = dag.experimental_compile()
+
+    # Ray sets the gRPC payload max size to 512 MiB. We choose a size in this test that
+    # is a bit larger.
+    size = 1024 * 1024 * 600
+    val = b"x" * size
+
+    for i in range(3):
+        ref = compiled_dag.execute(val)
+        result = ray.get(ref)
+        assert result == val
+
+    # Note: must teardown before starting a new Ray session, otherwise you'll get
+    # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
+
+
+class TestActorInputOutput:
+    """
+    Accelerated DAGs support the following two cases for the input/output of the graph:
+
+    1. Both the input and output of the graph are the driver process.
+    2. Both the input and output of the graph are the same actor process.
+
+    This test suite covers the second case. The second case is useful when we use
+    Ray Serve to deploy the ADAG as a backend. In this case, the Ray Serve replica,
+    which is an actor, needs to be the input and output of the graph.
+    """
+
+    @ray.remote
+    class Worker:
+        def add_one(self, value):
+            return value + 1
+
+        def add(self, val1, val2):
+            return val1 + val2
+
+        def generate_torch_tensor(self, size) -> torch.Tensor:
+            return torch.zeros(size)
+
+        def add_value_to_tensor(self, value: int, tensor: torch.Tensor) -> torch.Tensor:
+            """
+            Add `value` to all elements of the tensor.
+            """
+            return tensor + value
+
+    def test_shared_memory_channel_only(ray_start_cluster):
+        """
+        Replica -> Worker -> Replica
+
+        This test uses shared memory channels for all communication between actors.
+        """
+
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                self.w = TestActorInputOutput.Worker.remote()
+                with InputNode() as inp:
+                    dag = self.w.add_one.bind(inp)
+                self.compiled_dag = dag.experimental_compile()
+
+            def no_op(self, value):
+                return ray.get(self.compiled_dag.execute(value))
+
+        replica = Replica.remote()
+        ref = replica.no_op.remote(1)
+        assert ray.get(ref) == 2
+
+    def test_intra_process_channel(ray_start_cluster):
+        """
+        Replica -> Worker -> Worker -> Replica
+
+        This test uses IntraProcessChannel between DAG nodes on the Worker actor.
+        Communication between the Replica and Worker actors is done through shared
+        memory channels.
+        """
+
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                self.w = TestActorInputOutput.Worker.remote()
+                with InputNode() as inp:
+                    dag = self.w.add_one.bind(inp)
+                    dag = self.w.add_one.bind(dag)
+                self.compiled_dag = dag.experimental_compile()
+
+            def call(self, value):
+                return ray.get(self.compiled_dag.execute(value))
+
+        replica = Replica.remote()
+        ref = replica.call.remote(1)
+        assert ray.get(ref) == 3
+
+    def test_multiple_readers_multiple_writers(ray_start_cluster):
+        """
+        Replica -> Worker1 -> Replica
+                |          |
+                -> Worker2 -
+
+        All communication in this DAG will be done through shared memory channels.
+        """
+
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                w1 = TestActorInputOutput.Worker.remote()
+                w2 = TestActorInputOutput.Worker.remote()
+                with InputNode() as inp:
+                    dag = MultiOutputNode([w1.add_one.bind(inp), w2.add_one.bind(inp)])
+                self.compiled_dag = dag.experimental_compile()
+
+            def call(self, value):
+                ref = self.compiled_dag.execute(value)
+                return ray.get(ref)
+
+        replica = Replica.remote()
+        ref = replica.call.remote(1)
+        assert ray.get(ref) == [2, 2]
+
+    def test_multiple_readers_single_writer(ray_start_cluster):
+        """
+        Replica -> Worker1 -> Worker1 -> Replica
+                |          |
+                -> Worker2 -
+
+        Communication between DAG nodes on Worker1 is done through IntraProcessChannel.
+        Communication between different actors is done through shared memory channels.
+        """
+
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                w1 = TestActorInputOutput.Worker.remote()
+                w2 = TestActorInputOutput.Worker.remote()
+                with InputNode() as inp:
+                    branch1 = w1.add_one.bind(inp)
+                    branch2 = w2.add_one.bind(inp)
+                    dag = w1.add.bind(branch1, branch2)
+                self.compiled_dag = dag.experimental_compile()
+
+            def call(self, value):
+                return ray.get(self.compiled_dag.execute(value))
+
+        replica = Replica.remote()
+        ref = replica.call.remote(1)
+        assert ray.get(ref) == 4
+
+    def test_single_reader_multiple_writers(ray_start_cluster):
+        """
+        Replica -> Worker1 -> Worker1 -> Replica
+                            |          |
+                            -> Worker2 -
+
+        Communication between DAG nodes on Worker1 is done through IntraProcessChannel.
+        Communication between different actors is done through shared memory channels.
+        """
+
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                w1 = TestActorInputOutput.Worker.remote()
+                w2 = TestActorInputOutput.Worker.remote()
+                with InputNode() as inp:
+                    dag = w1.add_one.bind(inp)
+                    dag = MultiOutputNode([w1.add_one.bind(dag), w2.add_one.bind(dag)])
+                self.compiled_dag = dag.experimental_compile()
+
+            def call(self, value):
+                return ray.get(self.compiled_dag.execute(value))
+
+        replica = Replica.remote()
+        ref = replica.call.remote(1)
+        assert ray.get(ref) == [3, 3]
+
+    def test_torch_tensor_type(ray_start_cluster):
+        """
+        This test simulates the pattern of deploying a stable diffusion model with
+        Ray Serve. The base model takes a prompt and generates an image, which is a
+        tensor. Then, the refiner model takes the image tensor and the prompt to refine
+        the image. This test doesn't use the actual model but simulates the data flow.
+        """
+
+        @ray.remote
+        class Replica:
+            def __init__(self):
+                self._base = TestActorInputOutput.Worker.remote()
+                self._refiner = TestActorInputOutput.Worker.remote()
+
+                with ray.dag.InputNode() as inp:
+                    dag = self._refiner.add_value_to_tensor.bind(
+                        inp,
+                        self._base.generate_torch_tensor.bind(
+                            inp,
+                        ).with_type_hint(TorchTensorType()),
+                    )
+                self._adag = dag.experimental_compile()
+
+            def call(self, value):
+                return ray.get(self._adag.execute(value))
+
+        replica = Replica.remote()
+        ref = replica.call.remote(5)
+        assert torch.equal(ray.get(ref), torch.tensor([5, 5, 5, 5, 5]))
 
 
 if __name__ == "__main__":

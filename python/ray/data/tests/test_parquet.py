@@ -15,8 +15,11 @@ from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDat
 from ray.data._internal.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
     ParquetDatasource,
+    SerializedFragment,
     _deserialize_fragments_with_retry,
-    _SerializedFragment,
+)
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -63,7 +66,7 @@ def test_parquet_deserialize_fragments_with_retry(
     pq_ds = pq.ParquetDataset(
         data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
     )
-    serialized_fragments = [_SerializedFragment(p) for p in pq_ds.fragments]
+    serialized_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
 
     # test 1st attempt succeed
     fragments = _deserialize_fragments_with_retry(serialized_fragments)
@@ -1108,15 +1111,20 @@ def test_parquet_concurrency(ray_start_regular_shared, fs, data_path):
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_parquet_read_spread(ray_start_cluster, tmp_path):
+def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
     ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
         num_cpus=10,
+        object_store_memory=2 * 1024 * 1024 * 1024,
         _system_config={"max_direct_call_object_size": 0},
     )
-    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(
+        resources={"bar:2": 100},
+        num_cpus=10,
+        object_store_memory=2 * 1024 * 1024 * 1024,
+    )
     cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
     ray.init(cluster.address)
@@ -1136,16 +1144,20 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     path2 = os.path.join(data_path, "test2.parquet")
     df2.to_parquet(path2)
 
+    # Minimize the block size to prevent Ray Data from reading multiple fragments in a
+    # single task.
+    ray.data.DataContext.get_current().target_max_block_size = 1
     ds = ray.data.read_parquet(data_path)
 
     # Force reads.
-    blocks = ds.get_internal_block_refs()
-    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-    location_data = ray.experimental.get_object_locations(blocks)
+    bundles = ds.iter_internal_ref_bundles()
+    block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
+    ray.wait(block_refs, num_returns=len(block_refs), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(block_refs)
     locations = []
-    for block in blocks:
+    for block in block_refs:
         locations.extend(location_data[block]["node_ids"])
-    assert set(locations) == {node1_id, node2_id}
+    assert set(locations) == {node1_id, node2_id}, set(locations)
 
 
 def test_parquet_bulk_columns(ray_start_regular_shared):

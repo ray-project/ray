@@ -9,33 +9,36 @@ BAZELISK_VERSION="v1.16.0"
 
 # Check arguments
 if [[ $# -ne 1 ]]; then
-    echo "Missing argument to specify machine architecture."
-    echo "Use: x86_64 or arm64"
+    echo "Missing argument to specify machine architecture." >/dev/stderr
+    echo "Use: x86_64 or arm64" >/dev/stderr
     exit 1
 fi
 
-mac_architecture=$1 # First argument is the architecture of the machine, e.g. x86_64, arm64
+MAC_ARCH="$1" # First argument is the architecture of the machine, e.g. x86_64, arm64
 export USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-6.5.0}"
 
+# Sets RAY_VERSION and RAY_COMMIT
+source .buildkite/release-automation/set-ray-version.sh
+
 install_bazel() {
-    if [[ "${mac_architecture}" = "arm64" ]]; then
+    if [[ "${MAC_ARCH}" == "arm64" ]]; then
         URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-arm64"
-    elif [[ "${mac_architecture}" = "x86_64" ]]; then
+    elif [[ "${MAC_ARCH}" == "x86_64" ]]; then
         URL="https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-darwin-amd64"
     else
-        echo "Could not find matching bazelisk URL for Mac ${mac_architecture}"
+        echo "Could not find matching bazelisk URL for Mac ${MAC_ARCH}" >/dev/stderr
         exit 1
     fi
 
     TARGET="$TMP_DIR/bin/bazel"
-    curl -f -s -L -R -o "${TARGET}" "${URL}"
+    curl -sfL -R -o "${TARGET}" "${URL}"
     chmod +x "${TARGET}"
 }
 
 install_miniconda() {
     # Install miniconda3 based on the architecture used
     mkdir -p "$TMP_DIR/miniconda3"
-    curl https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-MacOSX-"$mac_architecture".sh -o "$TMP_DIR/miniconda3/miniconda.sh"
+    curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-MacOSX-"$MAC_ARCH".sh -o "$TMP_DIR/miniconda3/miniconda.sh"
     bash "$TMP_DIR/miniconda3/miniconda.sh" -b -u -p "$TMP_DIR/miniconda3"
     rm -rf "$TMP_DIR/miniconda3/miniconda.sh"
 
@@ -46,14 +49,6 @@ install_miniconda() {
 
 run_sanity_check() {
     local PYTHON_VERSION="$1"
-
-    if [[ "${RAY_COMMIT:-}" == "" ]]; then
-        if [[ "${BUILDKITE_COMMIT:-}" == "" ]]; then
-            echo "neither BUILDKITE_COMMIT nor RAY_COMMIT is set"
-            exit 1
-        fi
-        RAY_COMMIT="${BUILDKITE_COMMIT:-}"
-    fi
 
     conda create -n "rayio_${PYTHON_VERSION}" python="${PYTHON_VERSION}" -y
     conda activate "rayio_${PYTHON_VERSION}"
@@ -86,6 +81,6 @@ install_miniconda
 install_bazel
 
 # Install Ray & run sanity checks for each python version
-for python_version in "${PYTHON_VERSIONS[@]}"; do
-    run_sanity_check "$python_version"
+for V in "${PYTHON_VERSIONS[@]}"; do
+    run_sanity_check "$V"
 done
