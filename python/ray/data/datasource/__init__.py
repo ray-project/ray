@@ -38,6 +38,7 @@ __all__ = [
     "Connection",
     "Datasink",
     "Datasource",
+    "DeltaSharingDatasource",
     "DefaultFileMetadataProvider",
     "DummyOutputDatasink",
     "FastFileMetadataProvider",

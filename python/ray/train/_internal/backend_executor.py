@@ -152,8 +152,10 @@ class BackendExecutor:
         # for more context.
         # TODO remove passing in trial_driver_ip.
 
-        trial_driver_ip = self._trial_info.driver_ip if self._trial_info else None
-        self.worker_group.sort_workers_by_ip_and_gpu_id(trial_driver_ip)
+        trial_driver_node_id = (
+            self._trial_info.driver_node_id if self._trial_info else None
+        )
+        self.worker_group.sort_workers_by_node_id_and_gpu_id(trial_driver_node_id)
 
         try:
             if initialization_hook:
@@ -366,14 +368,14 @@ class BackendExecutor:
             - node_rank_map, which maps from world rank to node rank
 
         Example:
-            Worker 0: 0.0.0.0
-            Worker 1: 0.0.0.0
-            Worker 2: 0.0.0.1
-            Worker 3: 0.0.0.0
-            Worker 4: 0.0.0.1
+            Worker 0: node 0
+            Worker 1: node 0
+            Worker 2: node 1
+            Worker 3: node 0
+            Worker 4: node 1
 
-            Workers 0, 1, 3 are on 0.0.0.0.
-            Workers 2, 4 are on 0.0.0.1.
+            Workers 0, 1, 3 are on node 0.
+            Workers 2, 4 are on node 1.
 
             Expected local_rank_map:
             {
@@ -406,31 +408,33 @@ class BackendExecutor:
         local_rank_map = {}  # map from world rank to local rank
         local_world_size_map = {}  # map from world rank to local world size
         node_rank_map = {}  # map from world rank to node rank
-        node_ips = {}  # map from node ip to node index
+        node_ids = {}  # map from node id to node index
         node_cnt = 0  # count the number of nodes
 
-        ip_dict = defaultdict(int)  # map from node ip to the number of workers on it.
+        node_id_dict = defaultdict(
+            int
+        )  # map from node id to the number of workers on it.
         for world_rank in range(len(self.worker_group)):
             worker = self.worker_group.workers[world_rank]
-            node_ip = worker.metadata.node_ip
-            local_rank_map[world_rank] = ip_dict[node_ip]
-            ip_dict[node_ip] += 1
+            node_id = worker.metadata.node_id
+            local_rank_map[world_rank] = node_id_dict[node_id]
+            node_id_dict[node_id] += 1
 
-            if node_ip not in node_ips:
-                node_ips[node_ip] = node_cnt
+            if node_id not in node_ids:
+                node_ids[node_id] = node_cnt
                 node_cnt += 1
-            node_rank_map[world_rank] = node_ips[node_ip]
+            node_rank_map[world_rank] = node_ids[node_id]
 
         for world_rank in range(len(self.worker_group)):
             worker = self.worker_group.workers[world_rank]
-            node_ip = worker.metadata.node_ip
-            local_world_size_map[world_rank] = ip_dict[node_ip]
+            node_id = worker.metadata.node_id
+            local_world_size_map[world_rank] = node_id_dict[node_id]
 
         workers_info = "\n".join(
             [
-                f"- (ip={w.metadata.node_ip}, pid={w.metadata.pid}) "
-                f"world_rank={i}, local_rank={local_rank_map[i]}, "
-                f"node_rank={node_rank_map[i]}"
+                f"- (node_id={w.metadata.node_id}, ip={w.metadata.node_ip}, "
+                f"pid={w.metadata.pid}) world_rank={i}, "
+                f"local_rank={local_rank_map[i]}, node_rank={node_rank_map[i]}"
                 for i, w in enumerate(self.worker_group.workers)
             ]
         )

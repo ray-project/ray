@@ -69,6 +69,15 @@ class OutputSplitter(PhysicalOperator):
         self._locality_hits = 0
         self._locality_misses = 0
 
+    def num_outputs_total(self) -> Optional[int]:
+        # OutputSplitter does not change the number of blocks,
+        # so we can return the number of blocks from the input op.
+        return self.input_dependencies[0].num_outputs_total()
+
+    def num_output_rows_total(self) -> Optional[int]:
+        # The total number of rows is the same as the number of input rows.
+        return self.input_dependencies[0].num_output_rows_total()
+
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
         # Force disable locality optimization.

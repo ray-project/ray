@@ -111,7 +111,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
   actor_data.set_state(rpc::ActorTableData::PENDING_CREATION);
   actor_data.set_actor_id(actor_id.Binary());
   auto actor = std::make_shared<GcsActor>(actor_data, rpc::TaskSpec(), counter);
-  std::function<void(const Status &, const rpc::RequestWorkerLeaseReply &)> cb;
+  rpc::ClientCallback<rpc::RequestWorkerLeaseReply> cb;
   EXPECT_CALL(*raylet_client, RequestWorkerLease(An<const rpc::TaskSpec &>(), _, _, _, _))
       .WillOnce(testing::SaveArg<2>(&cb));
   // Ensure actor is killed
@@ -122,7 +122,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
   ray::rpc::RequestWorkerLeaseReply reply;
   reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
   reply.mutable_worker_address()->set_worker_id(worker_id.Binary());
-  cb(Status::OK(), reply);
+  cb(Status::OK(), std::move(reply));
 }
 
 TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
@@ -152,7 +152,7 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   rpc::RequestWorkerLeaseReply reply;
   reply.mutable_worker_address()->set_raylet_id(node_id.Binary());
   reply.mutable_worker_address()->set_worker_id(worker_id.Binary());
-  request_worker_lease_cb(Status::OK(), reply);
+  request_worker_lease_cb(Status::OK(), std::move(reply));
 
   rpc::ClientCallback<rpc::PushTaskReply> push_normal_task_cb;
   // Worker start to run task

@@ -182,6 +182,7 @@ class _Bar:
             unit=state["unit"],
             position=pos_offset + state["pos"],
             dynamic_ncols=True,
+            unit_scale=True,
         )
         if state["x"]:
             self.bar.update(state["x"])
@@ -196,6 +197,7 @@ class _Bar:
         delta = state["x"] - self.state["x"]
         if delta:
             self.bar.update(delta)
+        self.bar.refresh()
         self.state = state
 
     def close(self):

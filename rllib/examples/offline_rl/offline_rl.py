@@ -145,7 +145,7 @@ if __name__ == "__main__":
     # using the data from our buffer.
     # Get a sample (MultiAgentBatch).
 
-    batch = synchronous_parallel_sample(worker_set=cql_algorithm.workers)
+    batch = synchronous_parallel_sample(worker_set=cql_algorithm.env_runner_group)
     batch = convert_ma_batch_to_sample_batch(batch)
     obs = torch.from_numpy(batch["obs"])
     # Pass the observations through our model to get the

@@ -31,7 +31,7 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
 
         from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
         algo = [...]
-        train_batch = synchronous_parallel_sample(algo.workers)
+        train_batch = synchronous_parallel_sample(algo.env_runner_group)
         # This trains the policy on one batch.
         print(train_one_step(algo, train_batch)))
 
@@ -43,8 +43,8 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     the LEARN_ON_BATCH_TIMER timer of the `algorithm` object.
     """
     config = algorithm.config
-    workers = algorithm.workers
-    local_worker = workers.local_worker()
+    workers = algorithm.env_runner_group
+    local_worker = workers.local_env_runner
     num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", 0)
 
@@ -96,7 +96,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
 
         from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
         algo = [...]
-        train_batch = synchronous_parallel_sample(algo.workers)
+        train_batch = synchronous_parallel_sample(algo.env_runner_group)
         # This trains the policy on one batch.
         print(multi_gpu_train_one_step(algo, train_batch)))
 
@@ -112,8 +112,8 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
             old=("ray.rllib.execution.train_ops." "multi_gpu_train_one_step")
         )
     config = algorithm.config
-    workers = algorithm.workers
-    local_worker = workers.local_worker()
+    workers = algorithm.env_runner_group
+    local_worker = workers.local_env_runner
     num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", config["train_batch_size"])
 

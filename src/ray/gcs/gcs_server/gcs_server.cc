@@ -366,7 +366,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
                            << ". Skip this round of pulling for resource load";
           } else {
             // GetResourceLoad will also get usage. Historically it didn't.
-            raylet_client->GetResourceLoad([this](auto &status, auto &load_and_usage) {
+            raylet_client->GetResourceLoad([this](auto &status, auto &&load_and_usage) {
               if (status.ok()) {
                 // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
                 // after verifying that non-autoscaler paths are taken care of.
@@ -812,7 +812,8 @@ void GcsServer::DumpDebugStateToFile() const {
 
 std::string GcsServer::GetDebugState() const {
   std::ostringstream stream;
-  stream << gcs_node_manager_->DebugString() << "\n\n"
+  stream << "Gcs Debug state:\n\n"
+         << gcs_node_manager_->DebugString() << "\n\n"
          << gcs_actor_manager_->DebugString() << "\n\n"
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"
