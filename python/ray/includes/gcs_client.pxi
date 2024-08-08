@@ -575,23 +575,8 @@ cdef void assign_and_decrement_fut(result, fut) with gil:
         else:
             fut.set_result(ret)
     finally:
-        # Refcounting in Cython is really pesky, because Cython makes a bunch of + and -
-        # waltz and we need to play along. Specifically,
-        # 1. (The converter) when a cdef func returns an `object`, it's a new reference,
-        #    and the caller is responsible for DECREFing it.
-        # 2. (This, the assigner) when a cdef func accepts an `object`, it's considered
-        #    a borrowed reference, and the callee does not do anything with it.
-        # 3. (PyCallback) when a func defines a local `object = f()`, the object keeps
-        #    the new reference, until it goes out of scope when the function should
-        #    DECREF it.
-        #
-        # The problem is our (3) is happening in the C++ PyCallback class, where we
-        # don't want to do any DECREFing, since we want most things happen in Cython.
-        # Hence we have to do the DECREFing here. After this DECREF(result), nobody
-        # should touch the result.
-        cpython.Py_DECREF(result)
-        # The fut is an easier story. We INCREF it in `incremented_fut` to keep it alive
-        # during the callback, and we DECREF it here to balance it.
+        # We INCREFed it in `incremented_fut` to keep it alive during the async wait,
+        # and we DECREF it here to balance it.
         cpython.Py_DECREF(fut)
 
 cdef raise_or_return(tup):

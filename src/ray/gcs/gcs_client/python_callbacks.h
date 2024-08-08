@@ -41,18 +41,28 @@ class PythonGilHolder {
 // into a stateful C++ std::function. Instead we have to define Cython `cdef` functions
 // who are translated to C++ functions, and use their function pointers.
 //
+// Different APIs have different type signatures, but the code of completing the future
+// is the same. So we ask 2 Cython function pointers: `Converter` and `Assigner`.
+// `Converter` is unique for each API, converting C++ types to Python types.
+// `Assigner` is shared by all APIs, completing the Python future.
+//
 // Because we can only work with stateless Cython functions, we need to keep the Future
 // as a ptr in this functor. This functor does not manage its lifetime: it assumes the
 // ptr is always valid. We Py_INCREF the Future in `incremented_fut` before passing it
 // to PyCallback, and Py_DECREF it in `assign_and_decrement_fut` after the completion.
 //
-// Note that `Converter` returns a PyObject* as a new reference. We must DECREF it, but
-// we don't wanna do it here in the functor, so `Assigner` must do it.
+// On the other hand, this functor manages the lifetime of the return value of the
+// `Converter`. It returns a PyObject* as a new reference, we use it in `Assigner` and
+// DECREF it at the end of the callback. Recall the rules of Cython conventions [1]:
 //
-// Different APIs have different type signatures, but the code of completing the future
-// is the same. So we ask 2 Cython function pointers: `Converter` and `Assigner`.
-// `Converter` is unique for each API, converting C++ types to Python types.
-// `Assigner` is shared by all APIs, completing the Python future.
+// 1. The function returning `object` returns it with a new reference.
+// 2. The function taking `object` as an argument does NOT increment or decrement its
+//      reference count.
+// 3. The function keeping an `object` as a local variable MUST decrement its reference
+//      count when it's out of scope. (This is our case)
+//
+// [1]
+// https://github.com/cython/cython/blob/9af421163cb8081414be347038dee7a82b29e8dd/Cython/Includes/cpython/__init__.pxd#L36
 //
 // On C++ async API calling:
 // 1. Create a Future.
@@ -80,14 +90,22 @@ class PyCallback {
 
   void operator()(Args &&...args) {
     PyObject *result = converter(std::forward<Args>(args)...);
-    CheckNoException();
+    {
+      PythonGilHolder gil;
+      CheckNoException();
+    }
 
     assigner(result, context);
-    CheckNoException();
+    {
+      PythonGilHolder gil;
+      CheckNoException();
+
+      Py_DECREF(result);
+      CheckNoException();
+    }
   }
 
   void CheckNoException() {
-    PythonGilHolder gil;
     if (PyErr_Occurred() != nullptr) {
       PyErr_Print();
       PyErr_Clear();
