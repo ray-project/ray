@@ -87,7 +87,7 @@ class GetAllActorInfo:
     """
 
     def __new__(cls, *args, **kwargs):
-        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
+        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT", "1") == "1"
         if use_old_client:
             return GetAllActorInfoFromGrpc(*args, **kwargs)
         else:
