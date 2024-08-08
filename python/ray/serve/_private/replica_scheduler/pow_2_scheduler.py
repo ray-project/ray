@@ -442,6 +442,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     self.num_scheduling_tasks_in_backoff
                 )
 
+    def drop_replica(self, replica_id: ReplicaID):
+        self._replicas.pop(replica_id, None)
+        self._replica_id_set.discard(replica_id)
+        for id_set in self._colocated_replica_ids.values():
+            id_set.discard(replica_id)
+
+    def invalidate_cache_entry(self, replica_id: ReplicaID):
+        self._replica_queue_len_cache.invalidate_key(replica_id)
+
     async def _probe_queue_lens(
         self,
         replicas: List[ReplicaWrapper],
@@ -521,12 +530,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 # raised even when a replica is temporarily unavailable.
                 # See https://github.com/ray-project/ray/issues/44185 for details.
                 if isinstance(t.exception(), ActorDiedError):
-                    self._replicas.pop(replica.replica_id, None)
-                    self._replica_id_set.discard(replica.replica_id)
-                    for id_set in self._colocated_replica_ids.values():
-                        id_set.discard(replica.replica_id)
+                    self.drop_replica(replica.replica_id)
                     msg += " This replica will no longer be considered for requests."
+                # Replica is temporarily unavailable because of network issues, or
+                # replica has died but GCS is down so ActorUnavailableError will
+                # be raised until GCS recovers. For the time being, invalidate
+                # the cache entry so that we don't try to send requests to this
+                # replica without actively probing.
                 elif isinstance(t.exception(), ActorUnavailableError):
+                    self.invalidate_cache_entry(replica.replica_id)
                     msg = (
                         "Failed to fetch queue length for "
                         f"{replica.replica_id}. Replica is temporarily "
@@ -564,6 +576,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             # Populate available queue lens from the cache.
             for r in candidates:
                 queue_len = self._replica_queue_len_cache.get(r.replica_id)
+                print(f"queue len for {r.replica_id} is", queue_len)
                 # Include replicas whose queues are full as not in the cache so we will
                 # actively probe them. Otherwise we may end up in "deadlock" until their
                 # cache entries expire.
