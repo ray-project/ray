@@ -525,6 +525,10 @@ class Router:
                 # Replica has died but controller hasn't notified the router yet.
                 # Don't consider this replica for requests in the future.
                 self._replica_scheduler.drop_replica(replica.replica_id)
+                logger.warning(
+                    f"Replica {replica.replica_id} will not be considered for future "
+                    "requests because it has died."
+                )
                 raise
             except ActorUnavailableError:
                 # There are network issues, or replica has died but GCS is down so
