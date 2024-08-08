@@ -403,15 +403,15 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-    def set_cache(self, data):
+    def set_cache(self, data: Any):
         self._cache = data
 
-    def reset_cache(self):
+    def reset_cache(self) -> Any:
         data = self._cache
         self._cache = None
         return data
 
-    def _read(self):
+    def _read(self) -> bool:
         """
         Read input data from upstream DAG nodes and cache the intermediate result.
         """
@@ -423,7 +423,7 @@ class ExecutableTask:
             # Channel closed. Exit the loop.
             return True
 
-    def _compute(self, class_handle):
+    def _compute(self, class_handle) -> bool:
         """
         Retrieve the intermediate result from the READ operation and perform the
         computation. Then, cache the new intermediate result. The caller must ensure
@@ -453,7 +453,7 @@ class ExecutableTask:
         self.set_cache(output_val)
         return False
 
-    def _write(self):
+    def _write(self) -> bool:
         """
         Retrieve the intermediate result from the COMPUTE operation and write to its
         downstream DAG nodes. The caller must ensure that the last operation executed

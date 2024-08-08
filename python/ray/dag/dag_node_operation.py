@@ -1,10 +1,10 @@
 from functools import total_ordering
 from enum import Enum
+from typing import Set, Tuple
 from ray.util.annotations import DeveloperAPI
 import ray
 
 
-@DeveloperAPI
 class DAGNodeOperationType(Enum):
     """
     There are three types of operations that a DAG node can perform:
@@ -62,8 +62,8 @@ class DAGOperationGraphNode:
         self.idx = idx
         self.actor_handle = actor_handle
         self.requires_nccl = requires_nccl
-        self.in_edges = set()
-        self.out_edges = set()
+        self.in_edges: Set[Tuple[int, DAGNodeOperationType]] = set()
+        self.out_edges: Set[Tuple[int, DAGNodeOperationType]] = set()
 
     @property
     def in_degree(self) -> int:
