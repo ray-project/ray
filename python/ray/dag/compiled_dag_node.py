@@ -170,8 +170,8 @@ def _select_next_nodes(
         graph: A dictionary mapping the index of a task to a dictionary of its
             DAGOperationGraphNodes for different operations.
     """
-    next_nodes = []
-    first_nccl_node = None
+    next_nodes: List[DAGOperationGraphNode] = []
+    first_nccl_node: Optional[DAGOperationGraphNode] = None
     for _, candidates in actor_to_candidates.items():
         if (
             not candidates[0].requires_nccl
@@ -181,6 +181,7 @@ def _select_next_nodes(
             assert len(next_nodes) == 1
             return next_nodes
         if first_nccl_node is None:
+            assert candidates[0].requires_nccl
             first_nccl_node = candidates[0]
 
     assert first_nccl_node is not None
