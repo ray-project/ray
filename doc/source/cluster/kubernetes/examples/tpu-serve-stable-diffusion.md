@@ -23,7 +23,7 @@ KubeRay operator v1.1.0 adds a new `NumOfHosts` field to the RayCluster CR, supp
 
 ## Step 4: View the Serve deployment in the Ray Dashboard
 
-Verify the RayService CR is deployed and running
+Verify that you deployed the RayService CR and it's running:
 
 ```sh
 kubectl get rayservice
