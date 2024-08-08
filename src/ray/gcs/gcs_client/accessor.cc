@@ -289,11 +289,7 @@ Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   client_impl_->GetGcsRpcClient().RegisterActor(
       request,
-      [callback](const Status & /*unused*/, rpc::RegisterActorReply &&reply) {
-        auto status =
-            reply.status().code() == (int)StatusCode::OK
-                ? Status()
-                : Status(StatusCode(reply.status().code()), reply.status().message());
+      [callback](const Status &status, rpc::RegisterActorReply &&reply) {
         callback(status);
       },
       timeout_ms);
@@ -321,12 +317,8 @@ Status ActorInfoAccessor::AsyncKillActor(const ActorID &actor_id,
   request.set_no_restart(no_restart);
   client_impl_->GetGcsRpcClient().KillActorViaGcs(
       request,
-      [callback](const Status & /*unused*/, rpc::KillActorViaGcsReply &&reply) {
+      [callback](const Status &status, rpc::KillActorViaGcsReply &&reply) {
         if (callback) {
-          auto status =
-              reply.status().code() == (int)StatusCode::OK
-                  ? Status()
-                  : Status(StatusCode(reply.status().code()), reply.status().message());
           callback(status);
         }
       },
@@ -341,11 +333,7 @@ Status ActorInfoAccessor::AsyncCreateActor(
   rpc::CreateActorRequest request;
   request.mutable_task_spec()->CopyFrom(task_spec.GetMessage());
   client_impl_->GetGcsRpcClient().CreateActor(
-      request, [callback](const Status & /*unused*/, rpc::CreateActorReply &&reply) {
-        auto status =
-            reply.status().code() == (int)StatusCode::OK
-                ? Status()
-                : Status(StatusCode(reply.status().code()), reply.status().message());
+      request, [callback](const Status &status, rpc::CreateActorReply &&reply) {
         callback(status, std::move(reply));
       });
   return Status::OK();
