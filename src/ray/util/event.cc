@@ -110,9 +110,7 @@ std::string LogEventReporter::EventToString(const rpc::Event &event,
 std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export_event) {
   json j;
 
-  auto timestamp = export_event.timestamp();
-
-  j["timestamp"] = timestamp;
+  j["timestamp"] = export_event.timestamp();
   j["event_id"] = export_event.event_id();
   j["source_type"] = ExportEvent_SourceType_Name(export_event.source_type());
   std::string event_data_as_string;
@@ -123,14 +121,13 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
                   export_event.task_event_data(), &event_data_as_string, options)
                   .ok());
   } else {
-    RAY_LOG(ERROR)
+    RAY_LOG(FATAL)
         << "event_data missing from export event with id " << export_event.event_id()
         << "and type " << ExportEvent_SourceType_Name(export_event.source_type())
         << ". An empty event will be written, and this indicates a bug in the code.";
     event_data_as_string = "{}";
   }
-  json event_data_as_json = json::parse(event_data_as_string);
-  j["event_data"] = event_data_as_json;
+  j["event_data"] = json::parse(event_data_as_string);
   return j.dump();
 }
 
@@ -380,7 +377,8 @@ void RayEvent::SendMessage(const std::string &message) {
     if (rpc::ExportEvent_SourceType_Parse(source_type_as_str, &source_type_ele)) {
       export_event.set_source_type(source_type_ele);
     } else {
-      throw std::invalid_argument("Invalid source_type type: " + source_type_as_str);
+      RAY_LOG(FATAL) << "Invalid source_type type: " << source_type_as_str;
+      return;
     }
     export_event.set_timestamp(current_sys_time_s());
 
@@ -390,7 +388,8 @@ void RayEvent::SendMessage(const std::string &message) {
           dynamic_cast<rpc::ExportTaskEventData *>(export_event_data_ptr_.get());
       export_event.mutable_task_event_data()->CopyFrom(*task_event_data_ptr);
     } else {
-      throw std::invalid_argument("Invalid event_data type: " + event_data_type_name);
+      RAY_LOG(FATAL) << "Invalid event_data type: " << event_data_type_name;
+      return;
     }
 
     EventManager::Instance().PublishExportEvent(export_event);
