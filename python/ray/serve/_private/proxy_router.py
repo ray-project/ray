@@ -17,12 +17,25 @@ from ray.serve.handle import DeploymentHandle
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+NO_ROUTES_MESSAGE = "Route table is not populated yet."
+NO_REPLICAS_MESSAGE = "No replicas are available yet."
+
 
 class ProxyRouter(ABC):
     """Router interface for the proxy to use."""
 
     @abstractmethod
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
+        raise NotImplementedError
+
+    @abstractmethod
+    def ready_for_traffic(self) -> Tuple[bool, str]:
+        """Whether the proxy router is ready to serve traffic or not.
+
+        If the proxy router is not ready to serve traffic, the second
+        return value will be a non-empty string detailing the reason.
+        Otherwise, the second return value will be an empty string.
+        """
         raise NotImplementedError
 
 
@@ -46,11 +59,15 @@ class LongestPrefixRouter(ProxyRouter):
         self.handles: Dict[DeploymentID, DeploymentHandle] = dict()
         # Map of application name to is_cross_language.
         self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
+        # Flipped to `True` once the route table has been updated at least once.
+        # The proxy router is not ready for traffic until the route table is populated
+        self._route_table_populated = False
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]) -> None:
         logger.info(
             f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
         )
+        self._route_table_populated = True
 
         existing_handles = set(self.handles.keys())
         routes = []
@@ -70,6 +87,9 @@ class LongestPrefixRouter(ProxyRouter):
                     _source=DeploymentHandleSource.PROXY,
                 )
                 handle._set_request_protocol(self._protocol)
+                # Eagerly instantiate the router for each handle so it can receive
+                # the replica set from the controller.
+                handle._get_or_create_router()
                 self.handles[endpoint] = handle
 
         # Clean up any handles that are no longer used.
@@ -123,6 +143,26 @@ class LongestPrefixRouter(ProxyRouter):
 
         return None
 
+    def ready_for_traffic(self) -> Tuple[bool, str]:
+        """Whether the proxy router is ready to serve traffic.
+
+        The first return value will be false if any of the following hold:
+        - The route table has not been populated yet
+        - The route table has been populated, but none of the handles
+          have received running replicas yet
+
+        Otherwise, the first return value will be true.
+        """
+
+        if not self._route_table_populated:
+            return False, NO_ROUTES_MESSAGE
+
+        for handle in self.handles.values():
+            if handle._running_replicas_populated():
+                return True, ""
+
+        return False, NO_REPLICAS_MESSAGE
+
 
 class EndpointRouter(ProxyRouter):
     """Router that matches endpoint to return the handle."""
@@ -136,12 +176,17 @@ class EndpointRouter(ProxyRouter):
         self.handles: Dict[DeploymentID, DeploymentHandle] = dict()
         # Endpoints info associated with endpoints.
         self.endpoints: Dict[DeploymentID, EndpointInfo] = dict()
+        # Flipped to `True` once the route table has been updated at least once.
+        # The proxy router is not ready for traffic until the route table is populated
+        self._route_table_populated = False
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         logger.info(
             f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
         )
+        self._route_table_populated = True
         self.endpoints = endpoints
+
         existing_handles = set(self.handles.keys())
         for endpoint, info in endpoints.items():
             if endpoint in self.handles:
@@ -154,6 +199,9 @@ class EndpointRouter(ProxyRouter):
                     _source=DeploymentHandleSource.PROXY,
                 )
                 handle._set_request_protocol(self._protocol)
+                # Eagerly instantiate the router for each handle so it can receive
+                # the replica set from the controller.
+                handle._get_or_create_router()
                 self.handles[endpoint] = handle
 
         # Clean up any handles that are no longer used.
@@ -164,6 +212,26 @@ class EndpointRouter(ProxyRouter):
             )
         for endpoint in existing_handles:
             del self.handles[endpoint]
+
+    def ready_for_traffic(self) -> Tuple[bool, str]:
+        """Whether the proxy router is ready to serve traffic.
+
+        The first return value will be false if any of the following hold:
+        - The route table has not been populated yet
+        - The route table has been populated, but none of the handles
+          have received running replicas yet
+
+        Otherwise, the first return value will be true.
+        """
+
+        if not self._route_table_populated:
+            return False, NO_ROUTES_MESSAGE
+
+        for handle in self.handles.values():
+            if handle._running_replicas_populated():
+                return True, ""
+
+        return False, NO_REPLICAS_MESSAGE
 
     def get_handle_for_endpoint(
         self, target_app_name: str
