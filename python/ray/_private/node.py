@@ -293,7 +293,7 @@ class Node:
                 logger.debug(f"Setting node ID to {node_id}")
                 self._node_id = node_id
 
-        # The dashboard agent port is assigned first to avoid 
+        # The dashboard agent port is assigned first to avoid
         # other processes accidentally taking its default port
         self._dashboard_agent_listen_port = self._get_cached_port(
             "dashboard_agent_listen_port",
