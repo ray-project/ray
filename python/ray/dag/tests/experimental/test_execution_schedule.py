@@ -14,8 +14,9 @@ from ray.dag.dag_node_operation import (
     DAGOperationGraphNode,
     DAGNodeOperation,
     _select_next_nodes,
+    _build_dag_node_operation_graph,
 )
-from ray.dag.compiled_dag_node import CompiledDAG, CompiledTask
+from ray.dag.compiled_dag_node import CompiledTask
 import torch
 from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
@@ -811,8 +812,7 @@ class TestBuildDAGNodeOperationGraph:
         monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
         monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
 
-        compiled_dag = CompiledDAG()
-        compiled_dag.idx_to_task = {
+        idx_to_task = {
             0: CompiledTask(0, InputNode()),
             1: CompiledTask(1, ClassMethodNode()),
             2: CompiledTask(2, MultiOutputNode()),
@@ -827,7 +827,7 @@ class TestBuildDAGNodeOperationGraph:
                 )
             ]
         }
-        graph = compiled_dag._build_dag_node_operation_graph(actor_to_operation_nodes)
+        graph = _build_dag_node_operation_graph(idx_to_task, actor_to_operation_nodes)
         assert len(graph) == 1
 
         self.check_edges_between_read_compute_write(
@@ -846,14 +846,13 @@ class TestBuildDAGNodeOperationGraph:
 
         fake_actor_1, global_idx_1 = "fake_actor_1", 1
         fake_actor_2, global_idx_2 = "fake_actor_2", 2
-        compiled_dag = CompiledDAG()
-        compiled_dag.idx_to_task = {
+        idx_to_task = {
             0: CompiledTask(0, InputNode()),
             1: CompiledTask(1, ClassMethodNode()),
             2: CompiledTask(2, ClassMethodNode()),
             3: CompiledTask(3, MultiOutputNode()),
         }
-        compiled_dag.idx_to_task[1].downstream_node_idxs = {2: fake_actor_2}
+        idx_to_task[1].downstream_node_idxs = {2: fake_actor_2}
 
         actor_to_operation_nodes = {
             fake_actor_1: [
@@ -871,7 +870,7 @@ class TestBuildDAGNodeOperationGraph:
                 )
             ],
         }
-        graph = compiled_dag._build_dag_node_operation_graph(actor_to_operation_nodes)
+        graph = _build_dag_node_operation_graph(idx_to_task, actor_to_operation_nodes)
         assert len(graph) == 2
 
         self.check_edges_between_read_compute_write(
@@ -895,16 +894,13 @@ class TestBuildDAGNodeOperationGraph:
 
         fake_actor = "fake_actor"
         global_idx_1, global_idx_2 = 1, 2
-        compiled_dag = CompiledDAG()
-        compiled_dag.idx_to_task = {
+        idx_to_task = {
             0: CompiledTask(0, InputNode()),
             global_idx_1: CompiledTask(global_idx_1, ClassMethodNode()),
             global_idx_2: CompiledTask(global_idx_2, ClassMethodNode()),
             3: CompiledTask(3, MultiOutputNode()),
         }
-        compiled_dag.idx_to_task[global_idx_1].downstream_node_idxs = {
-            global_idx_2: fake_actor
-        }
+        idx_to_task[global_idx_1].downstream_node_idxs = {global_idx_2: fake_actor}
 
         actor_to_operation_nodes = {
             fake_actor: [
@@ -920,7 +916,7 @@ class TestBuildDAGNodeOperationGraph:
                 ),
             ],
         }
-        graph = compiled_dag._build_dag_node_operation_graph(actor_to_operation_nodes)
+        graph = _build_dag_node_operation_graph(idx_to_task, actor_to_operation_nodes)
         assert len(graph) == 2
 
         self.check_edges_between_read_compute_write(
@@ -948,8 +944,7 @@ class TestBuildDAGNodeOperationGraph:
         fake_actor_1, global_idx_1, global_idx_3 = "fake_actor_1", 1, 3
         fake_actor_2, global_idx_2, global_idx_4 = "fake_actor_2", 2, 4
 
-        compiled_dag = CompiledDAG()
-        compiled_dag.idx_to_task = {
+        idx_to_task = {
             0: CompiledTask(0, InputNode()),
             global_idx_1: CompiledTask(global_idx_1, ClassMethodNode()),
             global_idx_2: CompiledTask(global_idx_2, ClassMethodNode()),
@@ -957,12 +952,8 @@ class TestBuildDAGNodeOperationGraph:
             global_idx_4: CompiledTask(global_idx_4, ClassMethodNode()),
             5: CompiledTask(5, MultiOutputNode()),
         }
-        compiled_dag.idx_to_task[global_idx_1].downstream_node_idxs = {
-            global_idx_4: fake_actor_2
-        }
-        compiled_dag.idx_to_task[global_idx_2].downstream_node_idxs = {
-            global_idx_3: fake_actor_1
-        }
+        idx_to_task[global_idx_1].downstream_node_idxs = {global_idx_4: fake_actor_2}
+        idx_to_task[global_idx_2].downstream_node_idxs = {global_idx_3: fake_actor_1}
 
         actor_to_operation_nodes = {
             fake_actor_1: [
@@ -990,7 +981,7 @@ class TestBuildDAGNodeOperationGraph:
                 ),
             ],
         }
-        graph = compiled_dag._build_dag_node_operation_graph(actor_to_operation_nodes)
+        graph = _build_dag_node_operation_graph(idx_to_task, actor_to_operation_nodes)
         assert len(graph) == 4
 
         self.check_edges_between_read_compute_write(

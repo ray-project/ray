@@ -172,3 +172,86 @@ def _select_next_nodes(
         next_nodes.append(downstream_node)
     assert len(next_nodes) == 1 + len(first_nccl_node.out_edges)
     return next_nodes
+
+
+def _build_dag_node_operation_graph(
+    idx_to_task: Dict[int, "ray.dag.compiled_dag_node.CompiledTask"],
+    actor_to_operation_nodes: Dict[
+        "ray.actor.ActorHandle", List[List[DAGOperationGraphNode]]
+    ],
+) -> Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]]:
+    """
+    Generate a DAG node operation graph by adding edges based on the
+    following rules:
+
+    #1  Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
+        belong to the same task.
+    #2  Add an edge from COMPUTE with bind_index i to COMPUTE with bind_index
+        i+1 if they belong to the same actor.
+    #3  Add an edge from WRITE of the writer task to READ of the reader task.
+
+    This is the step one of building an execution schedule for each actor.
+
+    Args:
+        idx_to_task: A dictionary that maps the `dag_index` to the `CompiledTask`.
+            `CompiledTask` contains information about a DAGNode and its downstream
+            nodes.
+
+        actor_to_operation_nodes: A dictionary that maps an actor handle to
+            a list of lists of DAGOperationGraphNode. For the same actor, the
+            index of the outer list corresponds to the index of the ExecutableTask
+            in the list of `executable_tasks` in `actor_to_executable_tasks`. In
+            the inner list, the order of operations is READ, COMPUTE, and WRITE.
+
+    Returns:
+        A graph where each node is a DAGOperationGraphNode. The key is the index
+        of the task in idx_to_task, and the value is a dictionary that maps the
+        _DAGNodeOperationType (READ, COMPUTE, or WRITE) to the corresponding
+        DAGOperationGraphNode.
+    """
+    assert idx_to_task
+    graph: Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]] = {}
+
+    for _, operation_nodes_list in actor_to_operation_nodes.items():
+        prev_compute_node = None
+        for operation_nodes in operation_nodes_list:
+            idx = operation_nodes[0].idx
+            read_node, compute_node, write_node = (
+                operation_nodes[0],
+                operation_nodes[1],
+                operation_nodes[2],
+            )
+            # Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
+            # belong to the same task.
+            read_node.add_edge(compute_node)
+            compute_node.add_edge(write_node)
+            # Add an edge from COMPUTE with `bind_index` i to COMPUTE with
+            # `bind_index` i+1 if they belong to the same actor.
+            if prev_compute_node is not None:
+                prev_compute_node.add_edge(compute_node)
+            prev_compute_node = compute_node
+            assert idx not in graph
+            graph[idx] = {
+                _DAGNodeOperationType.READ: read_node,
+                _DAGNodeOperationType.COMPUTE: compute_node,
+                _DAGNodeOperationType.WRITE: write_node,
+            }
+
+    # Import `ray.dag` here to avoid circular import.
+    from ray.dag import ClassMethodNode, MultiOutputNode
+
+    # Add an edge from WRITE of the writer task to READ of the reader task.
+    for idx, task in idx_to_task.items():
+        if not isinstance(task.dag_node, ClassMethodNode):
+            # The graph is used to generate an execution schedule for each actor.
+            # The edge from the InputNode has no impact on the final execution
+            # schedule.
+            continue
+        for downstream_idx in task.downstream_node_idxs:
+            downstream_dag_node = idx_to_task[downstream_idx].dag_node
+            if isinstance(downstream_dag_node, MultiOutputNode):
+                continue
+            graph[idx][_DAGNodeOperationType.WRITE].add_edge(
+                graph[downstream_idx][_DAGNodeOperationType.READ]
+            )
+    return graph
