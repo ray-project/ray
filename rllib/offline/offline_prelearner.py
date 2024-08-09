@@ -235,7 +235,7 @@ class OfflinePreLearner:
         # Otherwise we use an identity function.
         else:
 
-            def convert(sample):
+            def convert(sample, space):
                 return sample
 
         episodes = []
