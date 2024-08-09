@@ -39,7 +39,7 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 
 from ray.dag.dag_node_operation import (
     DAGNodeOperation,
-    DAGNodeOperationType,
+    _DAGNodeOperationType,
     DAGOperationGraphNode,
     _select_next_nodes,
 )
@@ -416,7 +416,7 @@ class ExecutableTask:
             # Channel closed. Exit the loop.
             return True
 
-    def exec_operation(self, class_handle, op_type: DAGNodeOperationType):
+    def exec_operation(self, class_handle, op_type: _DAGNodeOperationType):
         """
         An ExecutableTask corresponds to a DAGNode. It consists of three
         operations: READ, COMPUTE, and WRITE, which should be executed in
@@ -431,11 +431,11 @@ class ExecutableTask:
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
-        if op_type == DAGNodeOperationType.READ:
+        if op_type == _DAGNodeOperationType.READ:
             return self._read()
-        elif op_type == DAGNodeOperationType.COMPUTE:
+        elif op_type == _DAGNodeOperationType.COMPUTE:
             return self._compute(class_handle)
-        elif op_type == DAGNodeOperationType.WRITE:
+        elif op_type == _DAGNodeOperationType.WRITE:
             return self._write()
 
 
@@ -1163,19 +1163,19 @@ class CompiledDAG:
                 requires_nccl = dag_node.type_hint.requires_nccl()
 
                 read_node = DAGOperationGraphNode(
-                    DAGNodeOperation(local_idx, DAGNodeOperationType.READ),
+                    DAGNodeOperation(local_idx, _DAGNodeOperationType.READ),
                     idx,
                     actor_handle,
                     requires_nccl,
                 )
                 compute_node = DAGOperationGraphNode(
-                    DAGNodeOperation(local_idx, DAGNodeOperationType.COMPUTE),
+                    DAGNodeOperation(local_idx, _DAGNodeOperationType.COMPUTE),
                     idx,
                     actor_handle,
                     requires_nccl,
                 )
                 write_node = DAGOperationGraphNode(
-                    DAGNodeOperation(local_idx, DAGNodeOperationType.WRITE),
+                    DAGNodeOperation(local_idx, _DAGNodeOperationType.WRITE),
                     idx,
                     actor_handle,
                     requires_nccl,
@@ -1190,7 +1190,7 @@ class CompiledDAG:
         actor_to_operation_nodes: Dict[
             "ray.actor.ActorHandle", List[List[DAGOperationGraphNode]]
         ],
-    ) -> Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]]:
+    ) -> Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]]:
         """
         Generate a DAG node operation graph by adding edges based on the
         following rules:
@@ -1213,12 +1213,12 @@ class CompiledDAG:
         Returns:
             A graph where each node is a DAGOperationGraphNode. The key is the index
             of the task in idx_to_task, and the value is a dictionary that maps the
-            DAGNodeOperationType (READ, COMPUTE, or WRITE) to the corresponding
+            _DAGNodeOperationType (READ, COMPUTE, or WRITE) to the corresponding
             DAGOperationGraphNode.
         """
         assert self.idx_to_task
 
-        graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]] = {}
+        graph: Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]] = {}
 
         for _, operation_nodes_list in actor_to_operation_nodes.items():
             prev_compute_node = None
@@ -1240,9 +1240,9 @@ class CompiledDAG:
                 prev_compute_node = compute_node
                 assert idx not in graph
                 graph[idx] = {
-                    DAGNodeOperationType.READ: read_node,
-                    DAGNodeOperationType.COMPUTE: compute_node,
-                    DAGNodeOperationType.WRITE: write_node,
+                    _DAGNodeOperationType.READ: read_node,
+                    _DAGNodeOperationType.COMPUTE: compute_node,
+                    _DAGNodeOperationType.WRITE: write_node,
                 }
 
         from ray.dag import (
@@ -1258,8 +1258,8 @@ class CompiledDAG:
                 downstream_dag_node = self.idx_to_task[downstream_idx].dag_node
                 if isinstance(downstream_dag_node, MultiOutputNode):
                     continue
-                graph[idx][DAGNodeOperationType.WRITE].add_edge(
-                    graph[downstream_idx][DAGNodeOperationType.READ]
+                graph[idx][_DAGNodeOperationType.WRITE].add_edge(
+                    graph[downstream_idx][_DAGNodeOperationType.READ]
                 )
         return graph
 

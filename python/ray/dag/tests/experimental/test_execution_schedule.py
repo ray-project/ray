@@ -10,7 +10,7 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode, MultiOutputNode, ClassMethodNode
 from ray.dag.dag_node_operation import (
-    DAGNodeOperationType,
+    _DAGNodeOperationType,
     DAGOperationGraphNode,
     DAGNodeOperation,
     _select_next_nodes,
@@ -303,35 +303,35 @@ def test_simulate_pp_2workers_2batches_1f1b(ray_start_regular, monkeypatch):
     compiled_dag = dag.experimental_compile()
 
     w1_expected_schedule = [
-        (0, DAGNodeOperationType.READ),
-        (0, DAGNodeOperationType.COMPUTE),
-        (0, DAGNodeOperationType.WRITE),
-        (1, DAGNodeOperationType.READ),
-        (1, DAGNodeOperationType.COMPUTE),
-        (1, DAGNodeOperationType.WRITE),
-        (2, DAGNodeOperationType.READ),
-        (2, DAGNodeOperationType.COMPUTE),
-        (2, DAGNodeOperationType.WRITE),
-        (3, DAGNodeOperationType.READ),
-        (3, DAGNodeOperationType.COMPUTE),
-        (3, DAGNodeOperationType.WRITE),
-        (4, DAGNodeOperationType.READ),
-        (4, DAGNodeOperationType.COMPUTE),
-        (4, DAGNodeOperationType.WRITE),
+        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.COMPUTE),
+        (1, _DAGNodeOperationType.WRITE),
+        (2, _DAGNodeOperationType.READ),
+        (2, _DAGNodeOperationType.COMPUTE),
+        (2, _DAGNodeOperationType.WRITE),
+        (3, _DAGNodeOperationType.READ),
+        (3, _DAGNodeOperationType.COMPUTE),
+        (3, _DAGNodeOperationType.WRITE),
+        (4, _DAGNodeOperationType.READ),
+        (4, _DAGNodeOperationType.COMPUTE),
+        (4, _DAGNodeOperationType.WRITE),
     ]
     w2_expected_schedule = [
-        (0, DAGNodeOperationType.READ),
-        (0, DAGNodeOperationType.COMPUTE),
-        (0, DAGNodeOperationType.WRITE),
-        (1, DAGNodeOperationType.READ),
-        (1, DAGNodeOperationType.COMPUTE),
-        (2, DAGNodeOperationType.READ),
-        (1, DAGNodeOperationType.WRITE),
-        (2, DAGNodeOperationType.COMPUTE),
-        (2, DAGNodeOperationType.WRITE),
-        (3, DAGNodeOperationType.READ),
-        (3, DAGNodeOperationType.COMPUTE),
-        (3, DAGNodeOperationType.WRITE),
+        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.COMPUTE),
+        (2, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.WRITE),
+        (2, _DAGNodeOperationType.COMPUTE),
+        (2, _DAGNodeOperationType.WRITE),
+        (3, _DAGNodeOperationType.READ),
+        (3, _DAGNodeOperationType.COMPUTE),
+        (3, _DAGNodeOperationType.WRITE),
     ]
     w1_schedule = compiled_dag.actor_to_execution_schedule[w1]
     w2_schedule = compiled_dag.actor_to_execution_schedule[w2]
@@ -409,22 +409,22 @@ def test_three_actors_with_nccl_1(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     a_expected_schedule = [
-        (0, DAGNodeOperationType.READ),
-        (0, DAGNodeOperationType.COMPUTE),
-        (0, DAGNodeOperationType.WRITE),
-        (1, DAGNodeOperationType.READ),
-        (1, DAGNodeOperationType.COMPUTE),
-        (1, DAGNodeOperationType.WRITE),
+        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.COMPUTE),
+        (1, _DAGNodeOperationType.WRITE),
     ]
     b_expected_schedule = [
-        (0, DAGNodeOperationType.READ),
-        (0, DAGNodeOperationType.COMPUTE),
-        (0, DAGNodeOperationType.WRITE),
+        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (0, _DAGNodeOperationType.WRITE),
     ]
     c_expected_schedule = [
-        (0, DAGNodeOperationType.READ),
-        (0, DAGNodeOperationType.COMPUTE),
-        (0, DAGNodeOperationType.WRITE),
+        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (0, _DAGNodeOperationType.WRITE),
     ]
     a_schedule = compiled_dag.actor_to_execution_schedule[a]
     b_schedule = compiled_dag.actor_to_execution_schedule[b]
@@ -480,28 +480,28 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
     compiled_dag = dag.experimental_compile()
 
     a_expected_schedule = [
-        (0, DAGNodeOperationType.READ),
-        (0, DAGNodeOperationType.COMPUTE),
-        (1, DAGNodeOperationType.READ),
-        (0, DAGNodeOperationType.WRITE),
-        (1, DAGNodeOperationType.COMPUTE),
-        (1, DAGNodeOperationType.WRITE),
+        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (1, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.COMPUTE),
+        (1, _DAGNodeOperationType.WRITE),
     ]
     b_expected_schedule = [
-        (0, DAGNodeOperationType.READ),
-        (0, DAGNodeOperationType.COMPUTE),
-        (1, DAGNodeOperationType.READ),
-        (0, DAGNodeOperationType.WRITE),
-        (1, DAGNodeOperationType.COMPUTE),
-        (1, DAGNodeOperationType.WRITE),
+        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (1, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.COMPUTE),
+        (1, _DAGNodeOperationType.WRITE),
     ]
     c_expected_schedule = [
-        (0, DAGNodeOperationType.READ),
-        (0, DAGNodeOperationType.COMPUTE),
-        (0, DAGNodeOperationType.WRITE),
-        (1, DAGNodeOperationType.READ),
-        (1, DAGNodeOperationType.COMPUTE),
-        (1, DAGNodeOperationType.WRITE),
+        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.COMPUTE),
+        (1, _DAGNodeOperationType.WRITE),
     ]
 
     a_schedule = compiled_dag.actor_to_execution_schedule[a]
@@ -531,7 +531,7 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
 
 def generate_dag_graph_nodes(local_idx, global_idx, actor_handle, requires_nccl):
     graph_nodes = {}
-    for op_type in DAGNodeOperationType:
+    for op_type in _DAGNodeOperationType:
         graph_nodes[op_type] = DAGOperationGraphNode(
             DAGNodeOperation(local_idx, op_type),
             global_idx,
@@ -568,7 +568,7 @@ class TestSelectNextNodes:
         # actor's `executable_tasks` list is 0.
         global_idx_1 = 1
         dag_node_1 = DAGOperationGraphNode(
-            DAGNodeOperation(0, DAGNodeOperationType.READ),
+            DAGNodeOperation(0, _DAGNodeOperationType.READ),
             global_idx_1,
             fake_actor,
             False,
@@ -577,7 +577,7 @@ class TestSelectNextNodes:
         # actor's `executable_tasks` list is 1.
         global_idx_2 = 2
         dag_node_2 = DAGOperationGraphNode(
-            DAGNodeOperation(1, DAGNodeOperationType.READ),
+            DAGNodeOperation(1, _DAGNodeOperationType.READ),
             global_idx_2,
             fake_actor,
             False,
@@ -616,24 +616,24 @@ class TestSelectNextNodes:
                 local_idx_2, global_idx_2, fake_actor_2, False
             ),
         }
-        del mock_graph[global_idx_1][DAGNodeOperationType.READ]
-        del mock_graph[global_idx_1][DAGNodeOperationType.COMPUTE]
-        mock_graph[global_idx_1][DAGNodeOperationType.WRITE].add_edge(
-            mock_graph[global_idx_2][DAGNodeOperationType.READ]
+        del mock_graph[global_idx_1][_DAGNodeOperationType.READ]
+        del mock_graph[global_idx_1][_DAGNodeOperationType.COMPUTE]
+        mock_graph[global_idx_1][_DAGNodeOperationType.WRITE].add_edge(
+            mock_graph[global_idx_2][_DAGNodeOperationType.READ]
         )
-        mock_graph[global_idx_2][DAGNodeOperationType.READ].add_edge(
-            mock_graph[global_idx_2][DAGNodeOperationType.COMPUTE]
+        mock_graph[global_idx_2][_DAGNodeOperationType.READ].add_edge(
+            mock_graph[global_idx_2][_DAGNodeOperationType.COMPUTE]
         )
-        mock_graph[global_idx_2][DAGNodeOperationType.COMPUTE].add_edge(
-            mock_graph[global_idx_2][DAGNodeOperationType.WRITE]
+        mock_graph[global_idx_2][_DAGNodeOperationType.COMPUTE].add_edge(
+            mock_graph[global_idx_2][_DAGNodeOperationType.WRITE]
         )
         mock_actor_to_candidates = {
-            fake_actor_1: [mock_graph[global_idx_1][DAGNodeOperationType.WRITE]],
+            fake_actor_1: [mock_graph[global_idx_1][_DAGNodeOperationType.WRITE]],
         }
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert len(next_nodes) == 2
-        assert next_nodes[0] == mock_graph[global_idx_1][DAGNodeOperationType.WRITE]
-        assert next_nodes[1] == mock_graph[global_idx_2][DAGNodeOperationType.READ]
+        assert next_nodes[0] == mock_graph[global_idx_1][_DAGNodeOperationType.WRITE]
+        assert next_nodes[1] == mock_graph[global_idx_2][_DAGNodeOperationType.READ]
 
     def test_two_nccl_writes(self, monkeypatch):
         """
@@ -672,47 +672,47 @@ class TestSelectNextNodes:
                 local_idx_2_1, global_idx_2_1, fake_actor_2, False
             ),
         }
-        del mock_graph[global_idx_1_0][DAGNodeOperationType.READ]
-        del mock_graph[global_idx_1_0][DAGNodeOperationType.COMPUTE]
-        del mock_graph[global_idx_2_0][DAGNodeOperationType.READ]
-        del mock_graph[global_idx_2_0][DAGNodeOperationType.COMPUTE]
+        del mock_graph[global_idx_1_0][_DAGNodeOperationType.READ]
+        del mock_graph[global_idx_1_0][_DAGNodeOperationType.COMPUTE]
+        del mock_graph[global_idx_2_0][_DAGNodeOperationType.READ]
+        del mock_graph[global_idx_2_0][_DAGNodeOperationType.COMPUTE]
 
-        mock_graph[global_idx_1_0][DAGNodeOperationType.WRITE].add_edge(
-            mock_graph[global_idx_2_1][DAGNodeOperationType.READ]
+        mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE].add_edge(
+            mock_graph[global_idx_2_1][_DAGNodeOperationType.READ]
         )
-        mock_graph[global_idx_2_0][DAGNodeOperationType.WRITE].add_edge(
-            mock_graph[global_idx_1_1][DAGNodeOperationType.READ]
+        mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE].add_edge(
+            mock_graph[global_idx_1_1][_DAGNodeOperationType.READ]
         )
-        mock_graph[global_idx_2_1][DAGNodeOperationType.READ].add_edge(
-            mock_graph[global_idx_2_1][DAGNodeOperationType.COMPUTE]
+        mock_graph[global_idx_2_1][_DAGNodeOperationType.READ].add_edge(
+            mock_graph[global_idx_2_1][_DAGNodeOperationType.COMPUTE]
         )
-        mock_graph[global_idx_2_1][DAGNodeOperationType.COMPUTE].add_edge(
-            mock_graph[global_idx_2_1][DAGNodeOperationType.WRITE]
+        mock_graph[global_idx_2_1][_DAGNodeOperationType.COMPUTE].add_edge(
+            mock_graph[global_idx_2_1][_DAGNodeOperationType.WRITE]
         )
-        mock_graph[global_idx_1_1][DAGNodeOperationType.READ].add_edge(
-            mock_graph[global_idx_1_1][DAGNodeOperationType.COMPUTE]
+        mock_graph[global_idx_1_1][_DAGNodeOperationType.READ].add_edge(
+            mock_graph[global_idx_1_1][_DAGNodeOperationType.COMPUTE]
         )
-        mock_graph[global_idx_1_1][DAGNodeOperationType.COMPUTE].add_edge(
-            mock_graph[global_idx_1_1][DAGNodeOperationType.WRITE]
+        mock_graph[global_idx_1_1][_DAGNodeOperationType.COMPUTE].add_edge(
+            mock_graph[global_idx_1_1][_DAGNodeOperationType.WRITE]
         )
         mock_actor_to_candidates = {
-            fake_actor_1: [mock_graph[global_idx_1_0][DAGNodeOperationType.WRITE]],
-            fake_actor_2: [mock_graph[global_idx_2_0][DAGNodeOperationType.WRITE]],
+            fake_actor_1: [mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE]],
+            fake_actor_2: [mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE]],
         }
 
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert len(next_nodes) == 2
         assert next_nodes[0] in [
-            mock_graph[global_idx_1_0][DAGNodeOperationType.WRITE],
-            mock_graph[global_idx_2_0][DAGNodeOperationType.WRITE],
+            mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE],
+            mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE],
         ]
-        if next_nodes[0] == mock_graph[global_idx_1_0][DAGNodeOperationType.WRITE]:
+        if next_nodes[0] == mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE]:
             assert (
-                next_nodes[1] == mock_graph[global_idx_2_1][DAGNodeOperationType.READ]
+                next_nodes[1] == mock_graph[global_idx_2_1][_DAGNodeOperationType.READ]
             )
-        elif next_nodes[0] == mock_graph[global_idx_2_0][DAGNodeOperationType.WRITE]:
+        elif next_nodes[0] == mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE]:
             assert (
-                next_nodes[1] == mock_graph[global_idx_1_1][DAGNodeOperationType.READ]
+                next_nodes[1] == mock_graph[global_idx_1_1][_DAGNodeOperationType.READ]
             )
 
 
@@ -725,7 +725,7 @@ class TestBuildDAGNodeOperationGraph:
 
     def check_edges_between_read_compute_write(
         self,
-        graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]],
+        graph: Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]],
         global_idx: int,
         expected_num_edges: List[Tuple[int, int]],
     ):
@@ -743,22 +743,22 @@ class TestBuildDAGNodeOperationGraph:
         """
         assert len(expected_num_edges) == 3
         assert len(graph[global_idx]) == 3
-        read_node = graph[global_idx][DAGNodeOperationType.READ]
-        compute_node = graph[global_idx][DAGNodeOperationType.COMPUTE]
-        write_node = graph[global_idx][DAGNodeOperationType.WRITE]
+        read_node = graph[global_idx][_DAGNodeOperationType.READ]
+        compute_node = graph[global_idx][_DAGNodeOperationType.COMPUTE]
+        write_node = graph[global_idx][_DAGNodeOperationType.WRITE]
 
         for idx, node in enumerate([read_node, compute_node, write_node]):
             assert node.in_degree == expected_num_edges[idx][0]
             assert len(node.out_edges) == expected_num_edges[idx][1]
 
-        assert (global_idx, DAGNodeOperationType.COMPUTE) in read_node.out_edges
-        assert (global_idx, DAGNodeOperationType.READ) in compute_node.in_edges
-        assert (global_idx, DAGNodeOperationType.WRITE) in compute_node.out_edges
-        assert (global_idx, DAGNodeOperationType.COMPUTE) in write_node.in_edges
+        assert (global_idx, _DAGNodeOperationType.COMPUTE) in read_node.out_edges
+        assert (global_idx, _DAGNodeOperationType.READ) in compute_node.in_edges
+        assert (global_idx, _DAGNodeOperationType.WRITE) in compute_node.out_edges
+        assert (global_idx, _DAGNodeOperationType.COMPUTE) in write_node.in_edges
 
     def check_edge_between_writer_and_reader(
         self,
-        graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]],
+        graph: Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]],
         writer_global_idx: int,
         reader_global_idx: int,
     ):
@@ -772,15 +772,15 @@ class TestBuildDAGNodeOperationGraph:
             reader_global_idx: The global index of the task used to access the task
                 that the reader belongs to in `idx_to_task`.
         """
-        write_node = graph[writer_global_idx][DAGNodeOperationType.WRITE]
-        read_node = graph[reader_global_idx][DAGNodeOperationType.READ]
+        write_node = graph[writer_global_idx][_DAGNodeOperationType.WRITE]
+        read_node = graph[reader_global_idx][_DAGNodeOperationType.READ]
 
-        assert (reader_global_idx, DAGNodeOperationType.READ) in write_node.out_edges
-        assert (writer_global_idx, DAGNodeOperationType.WRITE) in read_node.in_edges
+        assert (reader_global_idx, _DAGNodeOperationType.READ) in write_node.out_edges
+        assert (writer_global_idx, _DAGNodeOperationType.WRITE) in read_node.in_edges
 
     def check_edge_between_compute_nodes(
         self,
-        graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]],
+        graph: Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]],
         global_idx_1: int,
         global_idx_2: int,
     ):
@@ -797,11 +797,11 @@ class TestBuildDAGNodeOperationGraph:
                 `bind_index` of the second task is equal to the `bind_index` of the
                 first task plus one.
         """
-        compute_node_1 = graph[global_idx_1][DAGNodeOperationType.COMPUTE]
-        compute_node_2 = graph[global_idx_2][DAGNodeOperationType.COMPUTE]
+        compute_node_1 = graph[global_idx_1][_DAGNodeOperationType.COMPUTE]
+        compute_node_2 = graph[global_idx_2][_DAGNodeOperationType.COMPUTE]
 
-        assert (global_idx_2, DAGNodeOperationType.COMPUTE) in compute_node_1.out_edges
-        assert (global_idx_1, DAGNodeOperationType.COMPUTE) in compute_node_2.in_edges
+        assert (global_idx_2, _DAGNodeOperationType.COMPUTE) in compute_node_1.out_edges
+        assert (global_idx_1, _DAGNodeOperationType.COMPUTE) in compute_node_2.in_edges
 
     def test_edges_between_read_compute_write(self, monkeypatch):
         """

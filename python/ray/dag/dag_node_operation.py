@@ -6,8 +6,7 @@ import ray
 import heapq
 
 
-@DeveloperAPI
-class DAGNodeOperationType(Enum):
+class _DAGNodeOperationType(Enum):
     """
     There are three types of operations that a DAG node can perform:
     1. READ: Read from an input channel.
@@ -25,7 +24,7 @@ class DAGNodeOperation:
     def __init__(
         self,
         idx: int,
-        operation_type: DAGNodeOperationType,
+        operation_type: _DAGNodeOperationType,
     ):
         """
         Args:
@@ -64,8 +63,8 @@ class DAGOperationGraphNode:
         self.idx = idx
         self.actor_handle = actor_handle
         self.requires_nccl = requires_nccl
-        self.in_edges: Set[Tuple[int, DAGNodeOperationType]] = set()
-        self.out_edges: Set[Tuple[int, DAGNodeOperationType]] = set()
+        self.in_edges: Set[Tuple[int, _DAGNodeOperationType]] = set()
+        self.out_edges: Set[Tuple[int, _DAGNodeOperationType]] = set()
 
     @property
     def in_degree(self) -> int:
@@ -106,7 +105,7 @@ class DAGOperationGraphNode:
 
 def _select_next_nodes(
     actor_to_candidates: Dict["ray._raylet.ActorID", List[DAGOperationGraphNode]],
-    graph: Dict[int, Dict[DAGNodeOperationType, DAGOperationGraphNode]],
+    graph: Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]],
 ):
     """
     This function selects the next nodes for topological sort to generate execution
@@ -145,7 +144,7 @@ def _select_next_nodes(
     for _, candidates in actor_to_candidates.items():
         if (
             not candidates[0].requires_nccl
-            or candidates[0].operation.type != DAGNodeOperationType.WRITE
+            or candidates[0].operation.type != _DAGNodeOperationType.WRITE
         ):
             next_nodes.append(heapq.heappop(candidates))
             assert len(next_nodes) == 1
@@ -155,7 +154,7 @@ def _select_next_nodes(
             first_nccl_node = candidates[0]
 
     assert first_nccl_node is not None
-    assert first_nccl_node.operation.type == DAGNodeOperationType.WRITE
+    assert first_nccl_node.operation.type == _DAGNodeOperationType.WRITE
     next_nodes.append(
         heapq.heappop(actor_to_candidates[first_nccl_node.actor_handle._actor_id])
     )
