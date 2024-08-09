@@ -11,6 +11,7 @@ from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack_if_needed
+from ray.rllib.utils.spaces.space_utils import to_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType
 
 logger = logging.Logger(__file__)
@@ -209,6 +210,8 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
             samples: List of episodes to be converted.
         """
         # Loop through all sampled episodes.
+        obs_space = self.env.observation_space
+        action_space = self.env.action_space
         for sample in samples:
             # Loop through all items of the episode.
             for i in range(len(sample)):
@@ -217,18 +220,30 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                     Columns.AGENT_ID: sample.agent_id,
                     Columns.MODULE_ID: sample.module_id,
                     # Compress observations, if requested.
-                    Columns.OBS: pack_if_needed(sample.get_observations(i))
+                    Columns.OBS: pack_if_needed(
+                        to_jsonable_if_needed(sample.get_observations(i), obs_space)
+                    )
                     if Columns.OBS in self.output_compress_columns
-                    else sample.get_observations(i),
+                    else obs_space.to_jsonable_if_needed(
+                        sample.get_observations(i), obs_space
+                    ),
                     # Compress actions, if requested.
-                    Columns.ACTIONS: pack_if_needed(sample.get_actions(i))
+                    Columns.ACTIONS: pack_if_needed(
+                        to_jsonable_if_needed(sample.get_actions(i), action_space)
+                    )
                     if Columns.OBS in self.output_compress_columns
-                    else sample.get_actions(i),
+                    else action_space.to_jsonable_if_needed(
+                        sample.get_actions(i), action_space
+                    ),
                     Columns.REWARDS: sample.get_rewards(i),
                     # Compress next observations, if requested.
-                    Columns.NEXT_OBS: pack_if_needed(sample.get_observations(i + 1))
+                    Columns.NEXT_OBS: pack_if_needed(
+                        to_jsonable_if_needed(sample.get_observations(i + 1), obs_space)
+                    )
                     if Columns.OBS in self.output_compress_columns
-                    else sample.get_observations(i + 1),
+                    else obs_space.to_jsonable_if_needed(
+                        sample.get_observations(i + 1), obs_space
+                    ),
                     Columns.TERMINATEDS: False
                     if i < len(sample) - 1
                     else sample.is_terminated,

@@ -68,7 +68,7 @@ config = (
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
         lr=0.0008 * max(1, args.num_gpus**0.5),
-        train_batch_size_per_learner=2000,
+        train_batch_size_per_learner=256,
     )
 )
 

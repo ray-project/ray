@@ -45,8 +45,9 @@ config = (
     )
     .offline_data(
         output="local:///tmp/cartpole/",
-        output_write_episodes=True,
+        output_write_episodes=False,
         output_max_rows_per_file=1000,
+        output_compress_columns=["obs", "new_obs", "actions"],
     )
 )
 

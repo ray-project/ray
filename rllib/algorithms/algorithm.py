@@ -871,6 +871,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 else:
                     self.offline_data.learner_handles = [self.learner_group._learner]
 
+                # Provide the `OfflineData` instance with space information. It might
+                # need it for reading recorded experiences.
+                self.offline_data.spaces = self.env_runner_group.get_spaces()
+
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)
 
