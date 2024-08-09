@@ -33,4 +33,5 @@ __all__ = [
     "RemoteBaseEnv",
     "Unity3DEnv",
     "VectorEnv",
+    "INPUT_ENV_SPACES",
 ]
