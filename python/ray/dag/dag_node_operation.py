@@ -142,9 +142,9 @@ def _select_next_nodes(
     next_nodes: List[DAGOperationGraphNode] = []
     first_nccl_node: Optional[DAGOperationGraphNode] = None
     for _, candidates in actor_to_candidates.items():
-        if (
-            not candidates[0].requires_nccl
-            or candidates[0].operation.type != _DAGNodeOperationType.WRITE
+        if not (
+            candidates[0].requires_nccl
+            and candidates[0].operation.type == _DAGNodeOperationType.WRITE
         ):
             next_nodes.append(heapq.heappop(candidates))
             assert len(next_nodes) == 1
