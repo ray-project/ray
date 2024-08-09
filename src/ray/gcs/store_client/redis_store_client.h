@@ -34,6 +34,8 @@ class RedisStoreClient : public StoreClient {
  public:
   explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client);
 
+  std::shared_ptr<RedisClient> GetRedisClient() { return redis_client_; }
+
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
                   const std::string &data,

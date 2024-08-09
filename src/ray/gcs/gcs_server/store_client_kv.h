@@ -27,7 +27,7 @@ namespace gcs {
 /// of public APIs.
 class StoreClientInternalKV : public InternalKVInterface {
  public:
-  explicit StoreClientInternalKV(std::unique_ptr<StoreClient> store_client);
+  explicit StoreClientInternalKV(std::shared_ptr<StoreClient> store_client);
 
   void Get(const std::string &ns,
            const std::string &key,
@@ -58,7 +58,7 @@ class StoreClientInternalKV : public InternalKVInterface {
             std::function<void(std::vector<std::string>)> callback) override;
 
  private:
-  std::unique_ptr<StoreClient> delegate_;
+  std::shared_ptr<StoreClient> delegate_;
   const std::string table_name_;
 };
 }  // namespace gcs
