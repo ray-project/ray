@@ -118,7 +118,7 @@ class AllToAllOperator(PhysicalOperator):
         return self._bulk_fn
 
     def progress_str(self) -> str:
-        return f"{self._output_rows} rows output"
+        return f"{self.num_output_rows_total() or 0} rows output"
 
     def initialize_sub_progress_bars(self, position: int) -> int:
         """Initialize all internal sub progress bars, and return the number of bars."""
