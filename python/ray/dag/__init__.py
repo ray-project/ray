@@ -1,6 +1,6 @@
 from ray.dag.dag_node import DAGNode
 from ray.dag.function_node import FunctionNode
-from ray.dag.class_node import ClassNode, ClassMethodNode
+from ray.dag.class_node import ClassNode, ClassMethodNode, TaskReturnNode
 from ray.dag.input_node import (
     InputNode,
     InputAttributeNode,
@@ -18,6 +18,7 @@ from ray.dag.context import DAGContext
 __all__ = [
     "ClassNode",
     "ClassMethodNode",
+    "TaskReturnNode",
     "DAGNode",
     "FunctionNode",
     "InputNode",

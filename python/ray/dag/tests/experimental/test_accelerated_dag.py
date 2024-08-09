@@ -136,18 +136,18 @@ def test_basic(ray_start_regular):
     compiled_dag.teardown()
 
 
-def test_multiple_returns_not_supported(ray_start_regular):
-    a = Actor.remote(0)
-    b = Actor.remote(0)
-    with InputNode() as i:
-        dag = a.return_two.bind(i)
-        dag = b.echo.bind(dag)
+# def test_multiple_returns_not_supported(ray_start_regular):
+#     a = Actor.remote(0)
+#     b = Actor.remote(0)
+#     with InputNode() as i:
+#         dag = a.return_two.bind(i)
+#         dag = b.echo.bind(dag)
 
-    with pytest.raises(
-        ValueError,
-        match="Compiled DAGs only supports actor methods with " "num_returns=1",
-    ):
-        dag.experimental_compile()
+#     with pytest.raises(
+#         ValueError,
+#         match="Compiled DAGs only supports actor methods with " "num_returns=1",
+#     ):
+#         dag.experimental_compile()
 
 
 def test_kwargs_not_supported(ray_start_regular):

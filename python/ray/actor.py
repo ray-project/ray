@@ -241,6 +241,7 @@ class ActorMethod:
             PARENT_CLASS_NODE_KEY,
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
+            TaskReturnNode,
         )
 
         # TODO(sang): unify option passing
@@ -271,7 +272,25 @@ class ActorMethod:
             options,
             other_args_to_resolve=other_args_to_resolve,
         )
-        return node
+
+        if node.num_returns > 1:
+            task_nodes: List[TaskReturnNode] = []
+            for i in range(node.num_returns):
+                other_args_to_resolve = {
+                    "class_method_node": node,
+                    "output_idx": i,
+                }
+                task_node = TaskReturnNode(
+                    None,
+                    None,
+                    None,
+                    None,
+                    other_args_to_resolve,
+                )
+                task_nodes.append(task_node)
+            return tuple(task_nodes)
+        else:
+            return node
 
     @wrap_auto_init
     @_tracing_actor_method_invocation
