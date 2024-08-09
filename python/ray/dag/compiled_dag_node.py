@@ -38,7 +38,7 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 )
 
 from ray.dag.dag_node_operation import (
-    DAGNodeOperation,
+    _DAGNodeOperation,
     _DAGNodeOperationType,
     _DAGOperationGraphNode,
     _select_next_nodes,
@@ -93,16 +93,16 @@ def do_allocate_channel(
 def do_exec_tasks(
     self,
     tasks: List["ExecutableTask"],
-    schedule: List[DAGNodeOperation],
+    schedule: List[_DAGNodeOperation],
 ) -> None:
     """A generic actor method to begin executing the operations belonging to an
-    actor. This runs an infinite loop to execute each DAGNodeOperation in the
+    actor. This runs an infinite loop to execute each _DAGNodeOperation in the
     order specified by the schedule. It exits only if the actor dies or an
     exception is thrown.
 
     Args:
         tasks: the executable tasks corresponding to the actor methods.
-        schedule: A list of `DAGNodeOperations` that should be executed in order.
+        schedule: A list of _DAGNodeOperation that should be executed in order.
     """
     try:
         for task in tasks:
@@ -594,7 +594,7 @@ class CompiledDAG:
         # Mapping from the actor handle to the execution schedule which is a list
         # of operations to be executed.
         self.actor_to_execution_schedule: Dict[
-            "ray.actor.ActorHandle", List[DAGNodeOperation]
+            "ray.actor.ActorHandle", List[_DAGNodeOperation]
         ] = defaultdict(list)
         # Mapping from the actor handle to the node ID that the actor is on.
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
@@ -1173,26 +1173,26 @@ class CompiledDAG:
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             for local_idx, exec_task in enumerate(executable_tasks):
                 # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
-                # and WRITE. Each _DAGOperationGraphNode has a DAGNodeOperation.
+                # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
                 idx = exec_task.idx
                 dag_node = self.idx_to_task[idx].dag_node
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
 
                 read_node = _DAGOperationGraphNode(
-                    DAGNodeOperation(local_idx, _DAGNodeOperationType.READ),
+                    _DAGNodeOperation(local_idx, _DAGNodeOperationType.READ),
                     idx,
                     actor_handle,
                     requires_nccl,
                 )
                 compute_node = _DAGOperationGraphNode(
-                    DAGNodeOperation(local_idx, _DAGNodeOperationType.COMPUTE),
+                    _DAGNodeOperation(local_idx, _DAGNodeOperationType.COMPUTE),
                     idx,
                     actor_handle,
                     requires_nccl,
                 )
                 write_node = _DAGOperationGraphNode(
-                    DAGNodeOperation(local_idx, _DAGNodeOperationType.WRITE),
+                    _DAGNodeOperation(local_idx, _DAGNodeOperationType.WRITE),
                     idx,
                     actor_handle,
                     requires_nccl,
@@ -1205,7 +1205,7 @@ class CompiledDAG:
     def _build_execution_schedule(self):
         """
         Generate an execution schedule for each actor. The schedule is a list of
-        DAGNodeOperation.
+        _DAGNodeOperation.
 
         Step 1: Generate a DAG node operation graph. Refer to the functions
         `_generate_dag_operation_graph_node` and `_build_dag_node_operation_graph`
@@ -1232,7 +1232,7 @@ class CompiledDAG:
         # Mapping from the actor handle to the execution schedule which is a list
         # of operations to be executed.
         actor_to_execution_schedule: Dict[
-            "ray.actor.ActorHandle", List[DAGNodeOperation]
+            "ray.actor.ActorHandle", List[_DAGNodeOperation]
         ] = defaultdict(list)
 
         # Step 1: Build a graph of _DAGOperationGraphNode

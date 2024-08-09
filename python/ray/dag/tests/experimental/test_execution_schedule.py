@@ -12,7 +12,7 @@ from ray.dag import InputNode, MultiOutputNode, ClassMethodNode
 from ray.dag.dag_node_operation import (
     _DAGNodeOperationType,
     _DAGOperationGraphNode,
-    DAGNodeOperation,
+    _DAGNodeOperation,
     _select_next_nodes,
     _build_dag_node_operation_graph,
 )
@@ -534,7 +534,7 @@ def generate_dag_graph_nodes(local_idx, global_idx, actor_handle, requires_nccl)
     graph_nodes = {}
     for op_type in _DAGNodeOperationType:
         graph_nodes[op_type] = _DAGOperationGraphNode(
-            DAGNodeOperation(local_idx, op_type),
+            _DAGNodeOperation(local_idx, op_type),
             global_idx,
             actor_handle,
             requires_nccl,
@@ -569,7 +569,7 @@ class TestSelectNextNodes:
         # actor's `executable_tasks` list is 0.
         global_idx_1 = 1
         dag_node_1 = _DAGOperationGraphNode(
-            DAGNodeOperation(0, _DAGNodeOperationType.READ),
+            _DAGNodeOperation(0, _DAGNodeOperationType.READ),
             global_idx_1,
             fake_actor,
             False,
@@ -578,7 +578,7 @@ class TestSelectNextNodes:
         # actor's `executable_tasks` list is 1.
         global_idx_2 = 2
         dag_node_2 = _DAGOperationGraphNode(
-            DAGNodeOperation(1, _DAGNodeOperationType.READ),
+            _DAGNodeOperation(1, _DAGNodeOperationType.READ),
             global_idx_2,
             fake_actor,
             False,

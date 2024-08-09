@@ -1,7 +1,6 @@
 from functools import total_ordering
 from enum import Enum
 from typing import Set, Tuple, List, Dict, Optional
-from ray.util.annotations import DeveloperAPI
 import ray
 import heapq
 
@@ -19,8 +18,7 @@ class _DAGNodeOperationType(Enum):
     WRITE = "WRITE"
 
 
-@DeveloperAPI
-class DAGNodeOperation:
+class _DAGNodeOperation:
     def __init__(
         self,
         idx: int,
@@ -42,7 +40,7 @@ class DAGNodeOperation:
 class _DAGOperationGraphNode:
     def __init__(
         self,
-        operation: DAGNodeOperation,
+        operation: _DAGNodeOperation,
         idx: int,
         actor_handle: "ray.actor.ActorHandle",
         requires_nccl: bool,
