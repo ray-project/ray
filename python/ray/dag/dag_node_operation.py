@@ -210,10 +210,10 @@ def _build_dag_node_operation_graph(
             the inner list, the order of operations is READ, COMPUTE, and WRITE.
 
     Returns:
-        A graph where each node is a _DAGOperationGraphNode. The key is the index
-        of the task in idx_to_task, and the value is a dictionary that maps the
-        _DAGNodeOperationType (READ, COMPUTE, or WRITE) to the corresponding
-        _DAGOperationGraphNode.
+        A graph where each node is a _DAGOperationGraphNode. The key is `dag_idx`,
+        the index to retrieve its task from `idx_to_task`, and the value is a
+        dictionary that maps the _DAGNodeOperationType (READ, COMPUTE, or WRITE)
+        to the corresponding _DAGOperationGraphNode
     """
     assert idx_to_task
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]] = {}
