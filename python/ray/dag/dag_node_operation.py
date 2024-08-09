@@ -110,8 +110,8 @@ def _select_next_nodes(
 ):
     """
     This function selects the next nodes for topological sort to generate execution
-    schedule. If there are multiple DAGOperationGraphNodes with zero in-degree,
-    select nodes based on the following rules:
+    schedule. If there are multiple candidate DAGOperationGraphNodes, select nodes
+    based on the following rules:
 
     #1  If the nodes are not NCCL write nodes, select the one with the smallest
         `bind_index`. If there are multiple candidate nodes with the smallest
@@ -132,9 +132,9 @@ def _select_next_nodes(
 
     Args:
         actor_to_candidates: A dictionary mapping an actor id to a list of
-            candidate nodes with zero in-degree. The list is maintained as a
-            priority queue, so the head of the queue, i.e., `candidates[0]`, is
-            the node with the smallest `bind_index`.
+            candidate nodes. The list is maintained as a priority queue, so
+            the head of the queue, i.e., `candidates[0]`, is the node with
+            the smallest `bind_index`.
         graph: A dictionary mapping the index of a task to a dictionary of its
             DAGOperationGraphNodes for different operations.
 
