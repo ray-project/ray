@@ -18,6 +18,9 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 /// The runtime env information which is transferred between ray core processes.
+// ExportRuntimeEnvInfo is used in the event_data stored by the export API
+// for various events. This schema is public and any changes must
+// be backward compatible.
 message ExportRuntimeEnvInfo {
   message RuntimeEnvUris {
     /// working dir uri
