@@ -230,18 +230,14 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init autoscaling manager
   InitGcsAutoscalerStateManager(gcs_init_data);
 
-  // Start RPC server when all tables have finished loading initial
-  // data.
-  rpc_server_.Run();
-
   // Init usage stats client.
   InitUsageStatsClient();
 
-  gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
   RecordMetrics();
+
+  // Start RPC server when all tables have finished loading initial
+  // data.
+  rpc_server_.Run();
 
   periodical_runner_.RunFnPeriodically(
       [this] {
@@ -555,6 +551,11 @@ void GcsServer::InitFunctionManager() {
 
 void GcsServer::InitUsageStatsClient() {
   usage_stats_client_ = std::make_unique<UsageStatsClient>(kv_manager_->GetInstance());
+
+  gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
 }
 
 void GcsServer::InitKVManager() {
