@@ -362,15 +362,19 @@ class ExecutableTask:
     def _read(self) -> bool:
         """
         Read input data from upstream DAG nodes and cache the intermediate result.
+
+        Returns:
+            True if system error occurs and exit the loop; otherwise, False.
         """
         assert self._intermediate_buffer is None
+        exit = False
         try:
             input_data = self.input_reader.read()
             self.set_intermediate_buffer(input_data)
-            return False
         except RayChannelError:
             # Channel closed. Exit the loop.
-            return True
+            exit = True
+        return exit
 
     def _compute(self, class_handle) -> bool:
         """
@@ -378,6 +382,9 @@ class ExecutableTask:
         computation. Then, cache the new intermediate result. The caller must ensure
         that the last operation executed is READ so that the function retrieves the
         correct intermediate result.
+
+        Returns:
+            True if system error occurs and exit the loop; otherwise, False.
         """
         input_data = self.reset_intermediate_buffer()
         method = getattr(class_handle, self.method_name)
@@ -407,16 +414,20 @@ class ExecutableTask:
         Retrieve the intermediate result from the COMPUTE operation and write to its
         downstream DAG nodes. The caller must ensure that the last operation executed
         is COMPUTE so that the function retrieves the correct intermediate result.
+
+        Returns:
+            True if system error occurs and exit the loop; otherwise, False.
         """
         output_val = self.reset_intermediate_buffer()
+        exit = False
         try:
             self.output_writer.write(output_val)
-            return False
         except RayChannelError:
             # Channel closed. Exit the loop.
-            return True
+            exit = True
+        return exit
 
-    def exec_operation(self, class_handle, op_type: _DAGNodeOperationType):
+    def exec_operation(self, class_handle, op_type: _DAGNodeOperationType) -> bool:
         """
         An ExecutableTask corresponds to a DAGNode. It consists of three
         operations: READ, COMPUTE, and WRITE, which should be executed in
