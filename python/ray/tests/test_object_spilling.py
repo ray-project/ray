@@ -1,3 +1,5 @@
+import os
+import time
 import copy
 import json
 import platform
@@ -317,6 +319,45 @@ def test_spill_remote_object(
     assert_no_thrashing(cluster.address)
 
 
+def write_file(file_path, size_in_bytes):
+    with open(file_path, "wb") as f:
+        data = os.urandom(size_in_bytes)
+        f.write(data)
+
+
+def read_file(file_path):
+    with open(file_path, "rb") as f:
+        f.read()
+
+
+def test_disk_write_read_throughput(fs_only_object_spilling_config):
+    file_size_mb = 800
+    file_size_bytes = file_size_mb * 1024 * 1024
+    test_file_path = (
+        fs_only_object_spilling_config[1] / "write_read_throughput_test.bin"
+    )
+
+    start_time = time.time()
+    write_file(test_file_path, file_size_bytes)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+
+    write_mibs_per_s = file_size_mb / elapsed_time
+    print(f"Write Throughput ({file_size_mb} MiB): {write_mibs_per_s:.2f} MiB/s")
+    # Otherwise the disk is too slow to run test_spill_objects_automatically
+    assert write_mibs_per_s > 10.0
+
+    start_time = time.time()
+    read_file(test_file_path)
+    end_time = time.time()
+    elapsed_time = end_time - start_time
+
+    read_mibs_per_s = file_size_mb / elapsed_time
+    print(f"Read Throughput ({file_size_mb} MiB): {read_mibs_per_s:.2f} MiB/s")
+    # Otherwise the disk is too slow to run test_spill_objects_automatically
+    assert read_mibs_per_s > 10.0
+
+
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows.")
 def test_spill_objects_automatically(fs_only_object_spilling_config, shutdown_only):
     # Limit our object store to 75 MiB of memory.
@@ -605,8 +646,6 @@ def test_spill_worker_failure(ray_start_regular):
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
