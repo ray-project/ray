@@ -48,7 +48,7 @@ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operat
 kubectl apply -f ray-cluster.external-redis.yaml
 ```
 
-### Step 4: Verify the Kubernetes cluster status 
+### Step 4: Verify the Kubernetes cluster status
 
 ```sh
 # Step 4.1: List all Pods in the `default` namespace.
@@ -141,7 +141,7 @@ KEYS *
 # 1) "864b004c-6305-42e3-ac46-adfa8eb6f752"
 
 # Step 6.5: Check the value of the key.
-HGETALL 864b004c-6305-42e3-ac46-adfa8eb6f752
+SCAN 0 MATCH 864b004c-6305-42e3-ac46-adfa8eb6f752*
 ```
 
 In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `ray.io/external-storage-namespace` annotation isn't set for the RayCluster.

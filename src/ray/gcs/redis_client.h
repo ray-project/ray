@@ -69,8 +69,6 @@ class RedisClient {
 
   std::shared_ptr<RedisContext> GetPrimaryContext() { return primary_context_; }
 
-  int GetNextJobID();
-
  protected:
   /// Attach this client to an asio event loop. Note that only
   /// one event loop should be attached at a time.
