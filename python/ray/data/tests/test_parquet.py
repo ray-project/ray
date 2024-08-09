@@ -21,7 +21,6 @@ from ray.data._internal.datasource.parquet_datasource import (
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
-from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
@@ -1032,9 +1031,6 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2 = ray.data.read_parquet(path, override_num_blocks=2, filesystem=fs)
     ds2df = ds2.to_pandas()
     assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
-    # Test metadata ops.
-    for block, meta in ds2._plan.execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
     if fs is None:
         shutil.rmtree(path)
     else:

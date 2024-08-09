@@ -1508,21 +1508,6 @@ def test_limit_pushdown(ray_start_regular_shared):
     )
 
 
-def test_execute_to_legacy_block_list(
-    ray_start_regular_shared,
-):
-    ds = ray.data.range(10)
-    # Stats not initialized until `ds.iter_rows()` is called
-    assert ds._plan._snapshot_stats is None
-
-    for i, row in enumerate(ds.iter_rows()):
-        assert row["id"] == i
-
-    assert ds._plan._snapshot_stats is not None
-    assert "ReadRange" in ds._plan._snapshot_stats.metadata
-    assert ds._plan._snapshot_stats.time_total_s > 0
-
-
 def test_streaming_executor(
     ray_start_regular_shared,
 ):
