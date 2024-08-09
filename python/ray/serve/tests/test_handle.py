@@ -397,7 +397,7 @@ def test_lazy_router_initialization(serve_instance):
 
     serve.run(dummy.bind())
     handle = serve.get_deployment_handle(
-        deployment_name="dummy", app_name="default", _lazy_router_initialization=True
+        deployment_name="dummy", app_name="default", _lazily_initialize_router=True
     )
 
     assert handle._router is None
@@ -415,7 +415,7 @@ def test_eager_router_initialization(serve_instance):
 
     serve.run(dummy.bind())
     handle = serve.get_deployment_handle(
-        deployment_name="dummy", app_name="default", _lazy_router_initialization=False
+        deployment_name="dummy", app_name="default", _lazily_initialize_router=False
     )
 
     assert handle._router is not None

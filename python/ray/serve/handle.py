@@ -111,7 +111,7 @@ class _DeploymentHandleBase:
         _router: Optional[Router] = None,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
-        _lazy_router_initialization: bool = True,
+        _lazily_initialize_router: bool = True,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         self.handle_options = handle_options or _HandleOptions()
@@ -123,7 +123,7 @@ class _DeploymentHandleBase:
         )
 
         self._router: Optional[Router] = _router
-        if not _lazy_router_initialization:
+        if not _lazily_initialize_router:
             self._get_or_create_router()
 
         logger.info(

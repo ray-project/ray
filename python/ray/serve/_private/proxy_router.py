@@ -66,7 +66,7 @@ class LongestPrefixRouter(ProxyRouter):
                 # Eagerly initialize the router for each handle so it can receive
                 # the replica set from the controller.
                 handle = self._get_handle(
-                    endpoint.name, endpoint.app_name, _lazy_router_initialization=False
+                    endpoint.name, endpoint.app_name, _lazily_initialize_router=False
                 ).options(
                     # Streaming codepath isn't supported for Java.
                     stream=not info.app_is_cross_language,
@@ -154,7 +154,7 @@ class EndpointRouter(ProxyRouter):
                 # Eagerly initialize the router for each handle so it can receive
                 # the replica set from the controller.
                 handle = self._get_handle(
-                    endpoint.name, endpoint.app_name, _lazy_router_initialization=False
+                    endpoint.name, endpoint.app_name, _lazily_initialize_router=False
                 ).options(
                     # Streaming codepath isn't supported for Java.
                     stream=not info.app_is_cross_language,

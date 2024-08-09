@@ -406,7 +406,7 @@ class ServeControllerClient:
         deployment_name: str,
         app_name: Optional[str] = SERVE_DEFAULT_APP_NAME,
         check_exists: bool = True,
-        _lazy_router_initialization: bool = True,
+        _lazily_initialize_router: bool = True,
     ) -> DeploymentHandle:
         """Construct a handle for the specified deployment.
 
@@ -436,13 +436,13 @@ class ServeControllerClient:
                 deployment_name,
                 app_name,
                 handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
-                _lazy_router_initialization=_lazy_router_initialization,
+                _lazily_initialize_router=_lazily_initialize_router,
             )
         else:
             handle = DeploymentHandle(
                 deployment_name,
                 app_name,
-                _lazy_router_initialization=_lazy_router_initialization,
+                _lazily_initialize_router=_lazily_initialize_router,
             )
 
         self.handle_cache[cache_key] = handle

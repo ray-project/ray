@@ -836,7 +836,7 @@ def get_deployment_handle(
     app_name: Optional[str] = None,
     _check_exists: bool = True,
     _record_telemetry: bool = True,
-    _lazy_router_initialization: bool = True,
+    _lazily_initialize_router: bool = True,
 ) -> DeploymentHandle:
     """Get a handle to a deployment by name.
 
@@ -930,5 +930,5 @@ def get_deployment_handle(
         deployment_name,
         app_name,
         check_exists=_check_exists,
-        _lazy_router_initialization=_lazy_router_initialization,
+        _lazily_initialize_router=_lazily_initialize_router,
     )
