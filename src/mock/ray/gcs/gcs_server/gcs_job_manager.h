@@ -24,6 +24,12 @@ class MockGcsJobManager : public GcsJobManager {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
+              HandleDeleteJob,
+              (rpc::DeleteJobRequest request,
+               rpc::DeleteJobReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
               HandleMarkJobFinished,
               (rpc::MarkJobFinishedRequest request,
                rpc::MarkJobFinishedReply *reply,

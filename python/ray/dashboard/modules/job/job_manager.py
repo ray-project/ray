@@ -11,9 +11,11 @@ from typing import Any, Dict, Iterator, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.event.event_logger import get_event_logger
-from ray._private.gcs_utils import GcsAioClient
-from ray._private.utils import run_background_task
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
+from ray._private.utils import hex_to_binary, run_background_task
+from ray._raylet import JobID
 from ray.actor import ActorHandle
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.core.generated.event_pb2 import Event
 from ray.dashboard.consts import (
     DEFAULT_JOB_START_TIMEOUT_SECONDS,
@@ -69,8 +71,13 @@ class JobManager:
 
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
-        self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._gcs_address = gcs_aio_client.address
+        self._gcs_channel = GcsChannel(gcs_address=self._gcs_address, aio=True)
+        self._gcs_channel.connect()
+        self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
+            self._gcs_channel.channel()
+        )
+        self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self.monitored_jobs = set()
@@ -595,6 +602,12 @@ class JobManager:
             )
 
         await self._job_info_client.delete_info(job_id)
+        return True
+
+    async def delete_from_job_table(self, job_id: str):
+        request = gcs_service_pb2.DeleteJobRequest()
+        request.job_id = JobID(hex_to_binary(job_id)).binary()
+        await self._gcs_job_info_stub.DeleteJob(request)
         return True
 
     def job_info_client(self) -> JobInfoStorageClient:

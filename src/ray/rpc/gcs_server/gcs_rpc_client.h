@@ -292,6 +292,12 @@ class GcsRpcClient {
                              job_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  /// Delete job info from GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
+                             DeleteJob,
+                             job_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   /// Mark job as finished to GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
                              MarkJobFinished,
