@@ -28,12 +28,7 @@ namespace gcs {
 class MockGcsPlacementGroupSchedulerInterface
     : public GcsPlacementGroupSchedulerInterface {
  public:
-  MOCK_METHOD(void,
-              ScheduleUnplacedBundles,
-              (std::shared_ptr<GcsPlacementGroup> placement_group,
-               PGSchedulingFailureCallback failure_callback,
-               PGSchedulingSuccessfulCallback success_callback),
-              (override));
+  MOCK_METHOD(void, ScheduleUnplacedBundles, (SchedulePgRequest request), (override));
   MOCK_METHOD((absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>),
               GetAndRemoveBundlesOnNode,
               (const NodeID &node_id),
@@ -58,8 +53,9 @@ class MockGcsPlacementGroupSchedulerInterface
   MOCK_METHOD(void,
               Initialize,
               ((const absl::flat_hash_map<
-                  PlacementGroupID,
-                  std::vector<std::shared_ptr<BundleSpecification>>> &group_to_bundles)),
+                   PlacementGroupID,
+                   std::vector<std::shared_ptr<BundleSpecification>>> &group_to_bundles),
+               const std::vector<SchedulePgRequest> &prepared_pgs),
               (override));
 };
 
@@ -91,12 +87,7 @@ namespace gcs {
 
 class MockGcsPlacementGroupScheduler : public GcsPlacementGroupScheduler {
  public:
-  MOCK_METHOD(void,
-              ScheduleUnplacedBundles,
-              (std::shared_ptr<GcsPlacementGroup> placement_group,
-               PGSchedulingFailureCallback failure_handler,
-               PGSchedulingSuccessfulCallback success_handler),
-              (override));
+  MOCK_METHOD(void, ScheduleUnplacedBundles, (SchedulePgRequest request), (override));
   MOCK_METHOD(void,
               DestroyPlacementGroupBundleResourcesIfExists,
               (const PlacementGroupID &placement_group_id),
