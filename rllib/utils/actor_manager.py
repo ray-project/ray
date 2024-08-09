@@ -446,7 +446,7 @@ class FaultTolerantActorManager:
         tags: List[str],
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
     ) -> Tuple[List[ray.ObjectRef], RemoteCallResults]:
         """Try fetching results from remote actor calls.
 
@@ -578,7 +578,7 @@ class FaultTolerantActorManager:
         remote_actor_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
     ) -> RemoteCallResults:
         """Calls the given function with each actor instance as arg.
 
@@ -772,7 +772,7 @@ class FaultTolerantActorManager:
         tags: Union[str, List[str], Tuple[str]] = (),
         timeout_seconds: Optional[float] = 0.0,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
     ) -> RemoteCallResults:
         """Get results from outstanding async requests that are ready.
 
@@ -828,7 +828,7 @@ class FaultTolerantActorManager:
     def probe_unhealthy_actors(
         self,
         timeout_seconds: Optional[float] = None,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
     ) -> List[int]:
         """Ping all unhealthy actors to try bringing them back.
 
