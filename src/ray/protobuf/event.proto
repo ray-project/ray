@@ -29,9 +29,6 @@ message Event {
     CLUSTER_LIFECYCLE = 4;
     AUTOSCALER = 5;
     JOBS = 6;
-
-    // Export event source types.
-    EXPORT_TASK = 7;
   }
 
   enum Severity {

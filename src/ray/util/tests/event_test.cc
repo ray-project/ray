@@ -471,11 +471,8 @@ TEST_F(EventTest, TestWithField) {
 }
 
 TEST_F(EventTest, TestExportEvent) {
-  RayEventContext::Instance().SetEventContext(
-      rpc::Event_SourceType::Event_SourceType_EXPORT_TASK);
-
   EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
-      rpc::Event_SourceType::Event_SourceType_EXPORT_TASK, log_dir));
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK, log_dir));
 
   auto task_event_ptr = std::make_unique<rpc::ExportTaskEventData>();
   task_event_ptr->set_task_id("task_id0");
@@ -488,7 +485,7 @@ TEST_F(EventTest, TestExportEvent) {
   RAY_CHECK(google::protobuf::util::MessageToJsonString(*task_event_ptr, &export_event_data_str, options).ok());
   json event_data_as_json = json::parse(export_event_data_str);
 
-  RAY_EXPORT_EVENT().WithExportEventData(std::move(task_event_ptr));
+  RayExportEvent(rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK, std::move(task_event_ptr)).SendEvent();
 
   std::vector<std::string> vc;
   ReadContentFromFile(vc, log_dir + "/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");

@@ -80,18 +80,6 @@ namespace ray {
                   __FILE__,                                                     \
                   __LINE__)
 
-// RAY_EXPORT_EVENT macro allows creating an event without specifying
-// event_type and label (not relevant for export API so default used).
-// This macro is intended to be used with WithExportEventData to
-// specify the event data.
-#define RAY_EXPORT_EVENT()                                            \
-  ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_INFO,      \
-                ray::RayEvent::EventLevelToLogLevel(                  \
-                    ::ray::rpc::Event_Severity::Event_Severity_INFO), \
-                "",                                                   \
-                __FILE__,                                             \
-                __LINE__)
-
 // interface of event reporter
 class BaseEventReporter {
  public:
@@ -106,9 +94,11 @@ class BaseEventReporter {
   virtual std::string GetReporterKey() = 0;
 };
 // responsible for writing event to specific file
+using SourceTypeVariant =
+    std::variant<rpc::Event_SourceType, rpc::ExportEvent_SourceType>;
 class LogEventReporter : public BaseEventReporter {
  public:
-  LogEventReporter(rpc::Event_SourceType source_type,
+  LogEventReporter(SourceTypeVariant source_type,
                    const std::string &log_dir,
                    bool force_flush = true,
                    int rotate_max_file_size = 100,
@@ -278,12 +268,6 @@ class RayEvent {
     return *this;
   }
 
-  RayEvent &WithExportEventData(
-      std::unique_ptr<google::protobuf::Message> event_data_ptr) {
-    export_event_data_ptr_ = std::move(event_data_ptr);
-    return *this;
-  }
-
   static void ReportEvent(const std::string &severity,
                           const std::string &label,
                           const std::string &message,
@@ -308,8 +292,6 @@ class RayEvent {
  private:
   RayEvent() = default;
 
-  bool IsExportEvent(rpc::Event_SourceType source_type);
-
   void SendMessage(const std::string &message);
 
   RayEvent(const RayEvent &event) = delete;
@@ -332,8 +314,29 @@ class RayEvent {
   const char *file_name_;
   int line_number_;
   json custom_fields_;
-  std::unique_ptr<google::protobuf::Message> export_event_data_ptr_;
   std::ostringstream osstream_;
+};
+
+class RayExportEvent {
+ public:
+  RayExportEvent(rpc::ExportEvent_SourceType source_type,
+                 std::unique_ptr<google::protobuf::Message> event_data_ptr)
+      : source_type_(source_type) {
+    event_data_ptr_ = std::move(event_data_ptr);
+  }
+
+  ~RayExportEvent();
+
+  void SendEvent();
+
+ private:
+  RayExportEvent(const RayExportEvent &event) = delete;
+
+  const RayExportEvent &operator=(const RayExportEvent &event) = delete;
+
+ private:
+  rpc::ExportEvent_SourceType source_type_;
+  std::unique_ptr<google::protobuf::Message> event_data_ptr_;
 };
 
 /// Ray Event initialization.
