@@ -31,4 +31,3 @@ We can solve this problem by using :ref:`async actors <async-actors>` and use ``
     :end-before: __async_actor_end__
 
 Here, instead of using the blocking :func:`ray.get() <ray.get>` to get the value of an ObjectRef, we use ``await`` so it can yield the control while we are waiting for the object to be fetched.
-

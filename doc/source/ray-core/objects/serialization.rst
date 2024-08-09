@@ -33,7 +33,7 @@ Ray `ObjectRefs` can be serialized using `ray.cloudpickle`. The `ObjectRef` can 
 When serialized, the `ObjectRef`'s value will remain pinned in Ray's shared memory object store. The object must be explicitly freed by calling `ray._private.internal_api.free(obj_ref)`.
 
 .. warning::
-  
+
   `ray._private.internal_api.free(obj_ref)` is a private API and may be changed in future Ray versions.
 
 This code example demonstrates how to serialize an `ObjectRef`, store it in external storage, deserialize and use it, and lastly free its object.
