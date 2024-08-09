@@ -1261,6 +1261,10 @@ class CompiledDAG:
 
         # Step 2: Topological sort
         while actor_to_candidates:
+            # The function `_select_next_nodes` will pop a candidate node from
+            # `actor_to_candidates` and return a list of nodes that can be executed
+            # in the next step. If multiple nodes are returned, only the NCCL write
+            # node is popped in this iteration.
             nodes = _select_next_nodes(actor_to_candidates, graph)
             for node in nodes:
                 if node in visited_nodes:
