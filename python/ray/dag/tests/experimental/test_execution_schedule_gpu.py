@@ -514,6 +514,7 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
 
     compiled_dag.teardown()
 
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

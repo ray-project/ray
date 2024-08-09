@@ -337,6 +337,11 @@ class ExecutableTask:
         self._intermediate_buffer: Any = None
 
     def cancel(self):
+        """
+        Close all the input channels and the output channel. The exact behavior
+        depends on the type of channel. Typically, it will release the resources
+        used by the channels.
+        """
         self.input_reader.close()
         self.output_writer.close()
 
@@ -352,10 +357,23 @@ class ExecutableTask:
         self.output_writer.start()
 
     def set_intermediate_buffer(self, data: Any):
+        """
+        Store the intermediate result of a READ or COMPUTE operation.
+
+        Args:
+            data: The intermediate result of a READ or COMPUTE operation.
+        """
         assert self._intermediate_buffer is None
         self._intermediate_buffer = data
 
     def reset_intermediate_buffer(self) -> Any:
+        """
+        Retrieve the intermediate result of a READ or COMPUTE operation,
+        and reset the intermediate buffer to None.
+
+        Returns:
+            The intermediate result of a READ or COMPUTE operation.
+        """
         data = self._intermediate_buffer
         self._intermediate_buffer = None
         return data
