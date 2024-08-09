@@ -1,5 +1,5 @@
 # Searchers
-ax-platform==0.4.1
+ax-platform[mysql]
 
 bayesian-optimization==1.4.3
 
