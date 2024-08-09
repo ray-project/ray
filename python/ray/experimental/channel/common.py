@@ -308,7 +308,6 @@ class SynchronousReader(ReaderInterface):
         for i, c in enumerate(self._input_channels):
             start_time = time.monotonic()
             # results.append(c.read(timeout))
-            # """
             result = c.read(timeout)
             if self._input_idxs:
                 idx = self._input_idxs[i]
@@ -316,7 +315,6 @@ class SynchronousReader(ReaderInterface):
                     assert isinstance(result, tuple)
                     result = result[idx]
             results.append(result)
-            # """
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
