@@ -1301,11 +1301,17 @@ class CompiledDAG:
         actor_to_operation_nodes = self._generate_dag_operation_graph_node()
         graph = self._build_dag_node_operation_graph(actor_to_operation_nodes)
 
+        # A dictionary mapping an actor id to a list of candidate nodes. The list
+        # is maintained as a priority queue, so the head of the queue, i.e.,
+        # `candidates[0]`, is the node with the smallest `bind_index`.
         actor_to_candidates: Dict[
             "ray._raylet.ActorID", List[DAGOperationGraphNode]
         ] = defaultdict(list)
         for _, node_dict in graph.items():
             for _, node in node_dict.items():
+                # A node with a zero in-degree edge means all of its dependencies
+                # have been satisfied, including both data and control dependencies.
+                # Therefore, it is a candidate for execution.
                 if node.in_degree == 0:
                     heapq.heappush(
                         actor_to_candidates[node.actor_handle._actor_id], node
