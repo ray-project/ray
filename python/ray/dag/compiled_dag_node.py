@@ -41,12 +41,11 @@ from ray.dag.dag_node_operation import (
     _DAGNodeOperation,
     _DAGNodeOperationType,
     _DAGOperationGraphNode,
-    _select_next_nodes,
     _build_dag_node_operation_graph,
+    _generate_actor_to_execution_schedule,
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-import heapq
 
 
 # Holds the input arguments for an accelerated DAG node.
@@ -1257,63 +1256,13 @@ class CompiledDAG:
             actor_to_execution_schedule: A dictionary that maps an actor handle to
                 the execution schedule which is a list of operations to be executed.
         """
-        # Mapping from the actor handle to the execution schedule which is a list
-        # of operations to be executed.
-        actor_to_execution_schedule: Dict[
-            "ray.actor.ActorHandle", List[_DAGNodeOperation]
-        ] = defaultdict(list)
-
         # Step 1: Build a graph of _DAGOperationGraphNode
         actor_to_operation_nodes = self._generate_dag_operation_graph_node()
         graph = _build_dag_node_operation_graph(
             self.idx_to_task, actor_to_operation_nodes
         )
-
-        # A dictionary mapping an actor id to a list of candidate nodes. The list
-        # is maintained as a priority queue, so the head of the queue, i.e.,
-        # `candidates[0]`, is the node with the smallest `bind_index`.
-        actor_to_candidates: Dict[
-            "ray._raylet.ActorID", List[_DAGOperationGraphNode]
-        ] = defaultdict(list)
-        for _, node_dict in graph.items():
-            for _, node in node_dict.items():
-                # A node with a zero in-degree edge means all of its dependencies
-                # have been satisfied, including both data and control dependencies.
-                # Therefore, it is a candidate for execution.
-                if node.in_degree == 0:
-                    heapq.heappush(
-                        actor_to_candidates[node.actor_handle._actor_id], node
-                    )
-
-        visited_nodes = set()
-
-        # Step 2: Topological sort
-        while actor_to_candidates:
-            # The function `_select_next_nodes` will pop a candidate node from
-            # `actor_to_candidates` and return a list of nodes that can be executed
-            # in the next step. If multiple nodes are returned, only the NCCL write
-            # node is popped in this iteration.
-            nodes = _select_next_nodes(actor_to_candidates, graph)
-            for node in nodes:
-                if node in visited_nodes:
-                    continue
-                actor_to_execution_schedule[node.actor_handle].append(node.operation)
-                visited_nodes.add(node)
-                for out_node_dag_idx, out_node_type in node.out_edges:
-                    out_node = graph[out_node_dag_idx][out_node_type]
-                    out_node.in_edges.remove((node.dag_idx, node.operation.type))
-                    if out_node.in_degree == 0:
-                        heapq.heappush(
-                            actor_to_candidates[out_node.actor_handle._actor_id],
-                            out_node,
-                        )
-
-            delete_keys = []
-            for actor_id, candidates in actor_to_candidates.items():
-                if len(candidates) == 0:
-                    delete_keys.append(actor_id)
-            for key in delete_keys:
-                del actor_to_candidates[key]
+        # Step 2: Generate an execution schedule for each actor using topological sort
+        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
         return actor_to_execution_schedule
 
     def _detect_deadlock(self) -> bool:
