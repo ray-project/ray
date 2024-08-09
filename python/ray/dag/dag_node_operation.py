@@ -60,6 +60,10 @@ class _DAGOperationGraphNode:
         self.idx = idx
         self.actor_handle = actor_handle
         self.requires_nccl = requires_nccl
+        # The in_edges and out_edges are sets of tuples. Each tuple contains
+        # an integer `dag_idx`, which can be used to index into `idx_to_task`
+        # to get the corresponding task, and a `_DAGNodeOperationType`, which can
+        # be READ, COMPUTE, or WRITE.
         self.in_edges: Set[Tuple[int, _DAGNodeOperationType]] = set()
         self.out_edges: Set[Tuple[int, _DAGNodeOperationType]] = set()
 
@@ -190,7 +194,7 @@ def _build_dag_node_operation_graph(
     This is the step one of building an execution schedule for each actor.
 
     Args:
-        idx_to_task: A dictionary that maps the `dag_index` to the `CompiledTask`.
+        idx_to_task: A dictionary that maps the `dag_idx` to the `CompiledTask`.
             `CompiledTask` contains information about a DAGNode and its downstream
             nodes.
 
