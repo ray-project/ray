@@ -11,7 +11,7 @@ from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode, MultiOutputNode, ClassMethodNode
 from ray.dag.dag_node_operation import (
     _DAGNodeOperationType,
-    DAGOperationGraphNode,
+    _DAGOperationGraphNode,
     DAGNodeOperation,
     _select_next_nodes,
     _build_dag_node_operation_graph,
@@ -533,7 +533,7 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
 def generate_dag_graph_nodes(local_idx, global_idx, actor_handle, requires_nccl):
     graph_nodes = {}
     for op_type in _DAGNodeOperationType:
-        graph_nodes[op_type] = DAGOperationGraphNode(
+        graph_nodes[op_type] = _DAGOperationGraphNode(
             DAGNodeOperation(local_idx, op_type),
             global_idx,
             actor_handle,
@@ -568,7 +568,7 @@ class TestSelectNextNodes:
         # The DAG node has a global index of 1, and its index in the
         # actor's `executable_tasks` list is 0.
         global_idx_1 = 1
-        dag_node_1 = DAGOperationGraphNode(
+        dag_node_1 = _DAGOperationGraphNode(
             DAGNodeOperation(0, _DAGNodeOperationType.READ),
             global_idx_1,
             fake_actor,
@@ -577,7 +577,7 @@ class TestSelectNextNodes:
         # The DAG node has a global index of 2, and its index in the
         # actor's `executable_tasks` list is 1.
         global_idx_2 = 2
-        dag_node_2 = DAGOperationGraphNode(
+        dag_node_2 = _DAGOperationGraphNode(
             DAGNodeOperation(1, _DAGNodeOperationType.READ),
             global_idx_2,
             fake_actor,
@@ -724,7 +724,7 @@ class TestBuildDAGNodeOperationGraph:
 
     def check_edges_between_read_compute_write(
         self,
-        graph: Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]],
+        graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
         global_idx: int,
         expected_num_edges: List[Tuple[int, int]],
     ):
@@ -757,7 +757,7 @@ class TestBuildDAGNodeOperationGraph:
 
     def check_edge_between_writer_and_reader(
         self,
-        graph: Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]],
+        graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
         writer_global_idx: int,
         reader_global_idx: int,
     ):
@@ -779,7 +779,7 @@ class TestBuildDAGNodeOperationGraph:
 
     def check_edge_between_compute_nodes(
         self,
-        graph: Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]],
+        graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
         global_idx_1: int,
         global_idx_2: int,
     ):

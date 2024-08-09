@@ -38,9 +38,8 @@ class DAGNodeOperation:
         self.type = operation_type
 
 
-@DeveloperAPI
 @total_ordering
-class DAGOperationGraphNode:
+class _DAGOperationGraphNode:
     def __init__(
         self,
         operation: DAGNodeOperation,
@@ -49,7 +48,7 @@ class DAGOperationGraphNode:
         requires_nccl: bool,
     ):
         """
-        DAGOperationGraphNode represents a node in the DAG operation graph.
+        _DAGOperationGraphNode represents a node in the DAG operation graph.
         It contains information about the node's in-degree, out-degree, edges,
         and the operation it performs.
 
@@ -72,7 +71,7 @@ class DAGOperationGraphNode:
 
     def __lt__(self, other):
         """
-        Two DAGOperationGraphNodes are comparable only when they belong to
+        Two _DAGOperationGraphNodes are comparable only when they belong to
         the same actor. For operations on the same actor, if idx is smaller,
         the DAGNode to which this operation belongs has a smaller `bind_index`.
         """
@@ -81,7 +80,7 @@ class DAGOperationGraphNode:
 
     def __eq__(self, other):
         """
-        Two DAGOperationGraphNodes are comparable only when they belong to the
+        Two _DAGOperationGraphNodes are comparable only when they belong to the
         same actor. For operations on the same actor, two operations are equal
         only when they have the same `idx` and `type`.
         """
@@ -94,7 +93,7 @@ class DAGOperationGraphNode:
     def __hash__(self):
         return hash((self.operation, self.idx))
 
-    def add_edge(self, out_node: "DAGOperationGraphNode"):
+    def add_edge(self, out_node: "_DAGOperationGraphNode"):
         """
         Add an edge from this node to `out_node`. An edge is a tuple of
         the operation's index and type.
@@ -104,12 +103,12 @@ class DAGOperationGraphNode:
 
 
 def _select_next_nodes(
-    actor_to_candidates: Dict["ray._raylet.ActorID", List[DAGOperationGraphNode]],
-    graph: Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]],
+    actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
+    graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
 ):
     """
     This function selects the next nodes for topological sort to generate execution
-    schedule. If there are multiple candidate DAGOperationGraphNodes, select nodes
+    schedule. If there are multiple candidate _DAGOperationGraphNodes, select nodes
     based on the following rules:
 
     #1  If the nodes are not NCCL write nodes, select the one with the smallest
@@ -133,13 +132,13 @@ def _select_next_nodes(
             the head of the queue, i.e., `candidates[0]`, is the node with
             the smallest `bind_index`.
         graph: A dictionary mapping the index of a task to a dictionary of its
-            DAGOperationGraphNodes for different operations.
+            _DAGOperationGraphNodes for different operations.
 
     Returns:
-        A list of DAGOperationGraphNodes to be placed into the corresponding
+        A list of _DAGOperationGraphNodes to be placed into the corresponding
         execution schedules.
     """
-    next_nodes: List[DAGOperationGraphNode] = []
+    next_nodes: List[_DAGOperationGraphNode] = []
     for _, candidates in actor_to_candidates.items():
         if not (
             candidates[0].requires_nccl
@@ -149,7 +148,7 @@ def _select_next_nodes(
             assert len(next_nodes) == 1
             return next_nodes
 
-    first_nccl_node: Optional[DAGOperationGraphNode] = None
+    first_nccl_node: Optional[_DAGOperationGraphNode] = None
     for _, candidates in actor_to_candidates.items():
         if (
             candidates[0].requires_nccl
@@ -177,9 +176,9 @@ def _select_next_nodes(
 def _build_dag_node_operation_graph(
     idx_to_task: Dict[int, "ray.dag.compiled_dag_node.CompiledTask"],
     actor_to_operation_nodes: Dict[
-        "ray.actor.ActorHandle", List[List[DAGOperationGraphNode]]
+        "ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]
     ],
-) -> Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]]:
+) -> Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]:
     """
     Generate a DAG node operation graph by adding edges based on the
     following rules:
@@ -198,19 +197,19 @@ def _build_dag_node_operation_graph(
             nodes.
 
         actor_to_operation_nodes: A dictionary that maps an actor handle to
-            a list of lists of DAGOperationGraphNode. For the same actor, the
+            a list of lists of _DAGOperationGraphNode. For the same actor, the
             index of the outer list corresponds to the index of the ExecutableTask
             in the list of `executable_tasks` in `actor_to_executable_tasks`. In
             the inner list, the order of operations is READ, COMPUTE, and WRITE.
 
     Returns:
-        A graph where each node is a DAGOperationGraphNode. The key is the index
+        A graph where each node is a _DAGOperationGraphNode. The key is the index
         of the task in idx_to_task, and the value is a dictionary that maps the
         _DAGNodeOperationType (READ, COMPUTE, or WRITE) to the corresponding
-        DAGOperationGraphNode.
+        _DAGOperationGraphNode.
     """
     assert idx_to_task
-    graph: Dict[int, Dict[_DAGNodeOperationType, DAGOperationGraphNode]] = {}
+    graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]] = {}
 
     for _, operation_nodes_list in actor_to_operation_nodes.items():
         prev_compute_node = None

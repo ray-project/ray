@@ -40,7 +40,7 @@ from ray.experimental.channel.torch_tensor_nccl_channel import (
 from ray.dag.dag_node_operation import (
     DAGNodeOperation,
     _DAGNodeOperationType,
-    DAGOperationGraphNode,
+    _DAGOperationGraphNode,
     _select_next_nodes,
     _build_dag_node_operation_graph,
 )
@@ -1151,13 +1151,13 @@ class CompiledDAG:
 
     def _generate_dag_operation_graph_node(
         self,
-    ) -> Dict["ray.actor.ActorHandle", List[List[DAGOperationGraphNode]]]:
+    ) -> Dict["ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]]:
         """
         Generate READ, COMPUTE, and WRITE operations for each DAG node.
 
         Returns:
             A dictionary that maps an actor handle to a list of lists of
-            DAGOperationGraphNode. For the same actor, the index of the
+            _DAGOperationGraphNode. For the same actor, the index of the
             outer list corresponds to the index of the ExecutableTask in
             the list of `executable_tasks` in `actor_to_executable_tasks`.
             In the inner list, the order of operations is READ, COMPUTE,
@@ -1167,31 +1167,31 @@ class CompiledDAG:
         assert self.actor_to_executable_tasks
 
         actor_to_operation_nodes: Dict[
-            "ray.actor.ActorHandle", List[List[DAGOperationGraphNode]]
+            "ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]
         ] = defaultdict(list)
 
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             for local_idx, exec_task in enumerate(executable_tasks):
-                # Divide a DAG node into three DAGOperationGraphNodes: READ, COMPUTE,
-                # and WRITE. Each DAGOperationGraphNode has a DAGNodeOperation.
+                # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
+                # and WRITE. Each _DAGOperationGraphNode has a DAGNodeOperation.
                 idx = exec_task.idx
                 dag_node = self.idx_to_task[idx].dag_node
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
 
-                read_node = DAGOperationGraphNode(
+                read_node = _DAGOperationGraphNode(
                     DAGNodeOperation(local_idx, _DAGNodeOperationType.READ),
                     idx,
                     actor_handle,
                     requires_nccl,
                 )
-                compute_node = DAGOperationGraphNode(
+                compute_node = _DAGOperationGraphNode(
                     DAGNodeOperation(local_idx, _DAGNodeOperationType.COMPUTE),
                     idx,
                     actor_handle,
                     requires_nccl,
                 )
-                write_node = DAGOperationGraphNode(
+                write_node = _DAGOperationGraphNode(
                     DAGNodeOperation(local_idx, _DAGNodeOperationType.WRITE),
                     idx,
                     actor_handle,
@@ -1213,7 +1213,7 @@ class CompiledDAG:
 
         Step 2: Topological sort
 
-        It is possible to have multiple DAGOperationGraphNodes with zero in-degree.
+        It is possible to have multiple _DAGOperationGraphNodes with zero in-degree.
         Refer to the function `_select_next_nodes` for the logic of selecting nodes.
 
         Then, put the selected nodes into the corresponding actors' schedules.
@@ -1235,7 +1235,7 @@ class CompiledDAG:
             "ray.actor.ActorHandle", List[DAGNodeOperation]
         ] = defaultdict(list)
 
-        # Step 1: Build a graph of DAGOperationGraphNode
+        # Step 1: Build a graph of _DAGOperationGraphNode
         actor_to_operation_nodes = self._generate_dag_operation_graph_node()
         graph = _build_dag_node_operation_graph(
             self.idx_to_task, actor_to_operation_nodes
@@ -1245,7 +1245,7 @@ class CompiledDAG:
         # is maintained as a priority queue, so the head of the queue, i.e.,
         # `candidates[0]`, is the node with the smallest `bind_index`.
         actor_to_candidates: Dict[
-            "ray._raylet.ActorID", List[DAGOperationGraphNode]
+            "ray._raylet.ActorID", List[_DAGOperationGraphNode]
         ] = defaultdict(list)
         for _, node_dict in graph.items():
             for _, node in node_dict.items():
