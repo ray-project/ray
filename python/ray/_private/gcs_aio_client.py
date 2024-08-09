@@ -32,7 +32,7 @@ class GcsAioClient:
     binding is stable.
 
     Defaults to the new binding. If you want to use the old binding, please
-    set the environment variable `RAY_USE_OLD_GCS_CLIENT=0`.
+    set the environment variable `RAY_USE_OLD_GCS_CLIENT=1`.
     """
 
     def __new__(cls, *args, **kwargs):
