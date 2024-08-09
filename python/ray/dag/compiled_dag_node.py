@@ -1100,7 +1100,6 @@ class CompiledDAG:
             # Sort executable tasks based on their bind index, i.e., submission order
             # so that they will be executed in that order.
             executable_tasks.sort(key=lambda task: task.bind_index)
-            print(executable_tasks)
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build an execution schedule for each actor
