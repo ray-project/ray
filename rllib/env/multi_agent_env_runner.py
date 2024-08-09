@@ -14,6 +14,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -601,7 +602,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     @override(EnvRunner)
     def get_spaces(self):
         return {
-            "__env__": (self.env.observation_space, self.env.action_space),
+            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
             # Use the already agent-to-module translated spaces from our connector
             # pipeline.
             **{
