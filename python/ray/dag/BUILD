@@ -105,6 +105,7 @@ py_test_module_list(
         "tests/experimental/test_detect_deadlock_dag.py",
         "tests/experimental/test_multi_node_dag.py",
         "tests/experimental/test_torch_tensor_dag.py",
+        "tests/experimental/test_execution_schedule.py",
     ],
     tags = [
         "accelerated_dag",
@@ -151,10 +152,10 @@ py_test(
     name = "test_execution_schedule",
     size = "medium",
     srcs = [
-        "tests/experimental/test_execution_schedule.py",
+        "tests/experimental/test_execution_schedule_gpu.py",
     ],
     env = {"RAY_PYTEST_USE_GPU": "1"},
-    main = "tests/experimental/test_execution_schedule.py",
+    main = "tests/experimental/test_execution_schedule_gpu.py",
     tags = [
         "accelerated_dag",
         "exclusive",
