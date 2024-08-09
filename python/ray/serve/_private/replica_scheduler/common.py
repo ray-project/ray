@@ -198,7 +198,7 @@ class ActorReplicaWrapper:
             else:
                 return obj_ref_gen, queue_len_info
         except asyncio.CancelledError as e:
-            # HTTP client disconnected, or request was explicitly canceled
+            # HTTP client disconnected or request was explicitly canceled.
             ray.cancel(obj_ref_gen)
             raise e from None
 
@@ -271,11 +271,11 @@ class ReplicaScheduler(ABC):
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
     @abstractmethod
-    def drop_replica(self, replica_id: ReplicaID):
+    def on_replica_actor_died(self, replica_id: ReplicaID):
         pass
 
     @abstractmethod
-    def invalidate_cache_entry(self, replica_id: ReplicaID):
+    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         pass
 
     @property

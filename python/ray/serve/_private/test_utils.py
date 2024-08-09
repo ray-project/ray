@@ -630,6 +630,8 @@ class Counter:
         await self.ready_event.wait()
 
 
-def test_log(s: str, level: str = "INFO"):
+def tlog(s: str, level: str = "INFO"):
+    """Convenient logging method for testing."""
+
     now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
     print(f"[{level}] {now} {s}")

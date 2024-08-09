@@ -109,10 +109,10 @@ class FakeReplicaScheduler(ReplicaScheduler):
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         pass
 
-    def drop_replica(self, replica_id: ReplicaID):
+    def on_replica_actor_died(self, replica_id: ReplicaID):
         self._dropped_replicas.add(replica_id)
 
-    def invalidate_cache_entry(self, replica_id: ReplicaID):
+    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
         self._replica_queue_len_cache.invalidate_key(replica_id)
 
     def set_should_block_requests(self, block_requests: bool):
