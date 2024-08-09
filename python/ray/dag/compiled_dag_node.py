@@ -383,6 +383,11 @@ class ExecutableTask:
         that the last operation executed is READ so that the function retrieves the
         correct intermediate result.
 
+        Args:
+            class_handle: An instance of the class to which the actor belongs. For example,
+                the type of `class_handle` is <class 'xxxx.Worker'> if the actor belongs to
+                the `class Worker` class.
+
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
         """
