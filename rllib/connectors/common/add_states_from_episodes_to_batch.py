@@ -273,7 +273,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     else sa_episode.get_extra_model_outputs(
                         key=Columns.STATE_OUT,
                         indices=-1,
-                        neg_indices_left_of_zero=True,
+                        neg_index_as_lookback=True,
                     )
                 )
                 # state_outs.shape=(T,[state-dim])  T=episode len
