@@ -3,7 +3,7 @@ from sphinx.project import Project
 import os
 import time
 from typing import List
-from datetime import datetime, timezone
+from datetime import datetime
 import click
 
 PENDING_FILES_PATH = "pending_files.txt"
