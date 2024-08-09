@@ -36,7 +36,7 @@ class GcsAioClient:
     """
 
     def __new__(cls, *args, **kwargs):
-        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT", "1") == "1"
+        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
         logger.debug(f"Using {'old' if use_old_client else 'new'} GCS client")
         if use_old_client:
             return OldGcsAioClient(*args, **kwargs)

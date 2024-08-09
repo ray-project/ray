@@ -2686,7 +2686,7 @@ cdef class GcsClient:
                   nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
                   ),
                   cluster_id: str = None):
-        self.use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT", "1") == "1"
+        self.use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
         if self.use_old_client:
             self.inner = OldGcsClient(address, nums_reconnect_retry, cluster_id)
         else:
