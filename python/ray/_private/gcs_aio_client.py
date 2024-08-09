@@ -31,7 +31,7 @@ class GcsAioClient:
     PythonGcsClient binding is not deleted until we are confident that the new
     binding is stable.
 
-    Defaults to the old binding. If you want to use the old binding, please
+    Defaults to the new binding. If you want to use the old binding, please
     set the environment variable `RAY_USE_OLD_GCS_CLIENT=0`.
     """
 
