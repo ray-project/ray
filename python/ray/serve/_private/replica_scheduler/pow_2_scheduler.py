@@ -17,6 +17,7 @@ from typing import (
     Tuple,
 )
 
+import ray
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentID,
@@ -240,7 +241,14 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         new_replica_id_set = set()
         new_colocated_replica_ids = defaultdict(set)
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
+
+        in_proxy = ray.get_runtime_context().get_actor_id() is not None
         for r in replicas:
+            if in_proxy:
+                r._actor_handle.push_proxy_handle.remote(
+                    ray.get_runtime_context().current_actor
+                )
+
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
             if self._self_node_id is not None and r.node_id == self._self_node_id:
@@ -272,6 +280,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._replica_queue_len_cache.remove_inactive_replicas(
             active_replica_ids=new_replica_id_set
         )
+        # Populate cache for all replicas
+        self._loop.create_task(self._probe_queue_lens(list(self._replicas.values()), 0))
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
 

@@ -321,6 +321,9 @@ class ReplicaActor:
             component_id=self._component_id,
         )
 
+    def push_proxy_handle(self, handle):
+        pass
+
     def get_num_ongoing_requests(self) -> int:
         """Fetch the number of ongoing requests at this replica (queue length).
 

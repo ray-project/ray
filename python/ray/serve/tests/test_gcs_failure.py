@@ -11,6 +11,7 @@ from ray._private.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.storage.kv_store import KVStoreError, RayInternalKVStore
 from ray.serve.context import _get_global_client
+from ray.serve.handle import DeploymentHandle
 from ray.tests.conftest import external_redis  # noqa: F401
 
 
@@ -27,6 +28,8 @@ def serve_ha(external_redis, monkeypatch):  # noqa: F811
     serve.start()
     yield (address_info, _get_global_client())
     ray.shutdown()
+    # Clear cache and global serve client
+    serve.shutdown()
 
 
 @pytest.mark.skipif(
@@ -103,6 +106,58 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
     for _ in range(10):
         assert pid == call()
+
+
+@pytest.mark.parametrize("use_proxy", [True, False])
+def test_router_on_gcs_failure(serve_ha, use_proxy: bool):
+    """Test that a new router can send requests to replicas when GCS is down.
+
+    Specifically, if a proxy was just brought up or a deployment handle
+    was just created, and the GCS goes down BEFORE the router is able to
+    send its first request, new incoming requests should successfully get
+    sent to replicas during GCS downtime.
+    """
+
+    def router_populated_with_replicas(handle: DeploymentHandle):
+        replicas = handle._router._replica_scheduler._replica_id_set
+        assert len(replicas) > 0
+        return True
+
+    @serve.deployment
+    class Dummy:
+        def __call__(self):
+            return os.getpid()
+
+    h = serve.run(Dummy.options(num_replicas=2).bind())
+    # TODO(zcin): We want to test the behavior for when the router
+    # didn't get a chance to send even a single request yet. However on
+    # the very first request we record telemetry for whether the
+    # deployment handle API was used, which will hang when the GCS is
+    # down. As a workaround for now, avoid recording telemetry so we
+    # can properly test router behavior when GCS is down. We should look
+    # into adding a timeout on the kv cache operation.
+    h._recorded_telemetry = True
+    # Eagerly create router so it receives the replica set instead of
+    # waiting for the first request
+    h._get_or_create_router()
+
+    wait_for_condition(router_populated_with_replicas, handle=h)
+
+    # Kill GCS server before a single request is sent.
+    ray.worker._global_node.kill_gcs_server()
+
+    returned_pids = set()
+    if use_proxy:
+        for _ in range(10):
+            returned_pids.add(
+                int(requests.get("http://localhost:8000", timeout=0.1).text)
+            )
+    else:
+        for _ in range(10):
+            returned_pids.add(int(h.remote().result(timeout_s=0.1)))
+
+    print("Returned pids:", returned_pids)
+    assert len(returned_pids) == 2
 
 
 if __name__ == "__main__":
