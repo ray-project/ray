@@ -485,7 +485,7 @@ TEST_F(EventTest, TestExportEvent) {
   RAY_CHECK(google::protobuf::util::MessageToJsonString(*task_event_ptr, &export_event_data_str, options).ok());
   json event_data_as_json = json::parse(export_event_data_str);
 
-  RayExportEvent(rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK, std::move(task_event_ptr)).SendEvent();
+  RayExportEvent(std::move(task_event_ptr)).SendEvent();
 
   std::vector<std::string> vc;
   ReadContentFromFile(vc, log_dir + "/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");

@@ -319,9 +319,7 @@ class RayEvent {
 
 class RayExportEvent {
  public:
-  RayExportEvent(rpc::ExportEvent_SourceType source_type,
-                 std::unique_ptr<google::protobuf::Message> event_data_ptr)
-      : source_type_(source_type) {
+  RayExportEvent(std::unique_ptr<google::protobuf::Message> event_data_ptr) {
     event_data_ptr_ = std::move(event_data_ptr);
   }
 
@@ -335,7 +333,6 @@ class RayExportEvent {
   const RayExportEvent &operator=(const RayExportEvent &event) = delete;
 
  private:
-  rpc::ExportEvent_SourceType source_type_;
   std::unique_ptr<google::protobuf::Message> event_data_ptr_;
 };
 

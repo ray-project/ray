@@ -399,7 +399,6 @@ void RayExportEvent::SendEvent() {
 
   rpc::ExportEvent export_event;
   export_event.set_event_id(event_id);
-  export_event.set_source_type(source_type_);
   export_event.set_timestamp(current_sys_time_s());
 
   std::string event_data_type_name = event_data_ptr_->GetTypeName();
@@ -407,6 +406,8 @@ void RayExportEvent::SendEvent() {
     rpc::ExportTaskEventData *task_event_data_ptr =
         dynamic_cast<rpc::ExportTaskEventData *>(event_data_ptr_.get());
     export_event.mutable_task_event_data()->CopyFrom(*task_event_data_ptr);
+    export_event.set_source_type(
+        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK);
   } else {
     RAY_LOG(FATAL) << "Invalid event_data type: " << event_data_type_name;
     return;
