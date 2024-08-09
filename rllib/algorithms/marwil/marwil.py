@@ -320,7 +320,7 @@ class MARWIL(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_stack()
+            return self._training_step_new_api_stack()
         elif self.config.enable_rl_module_and_learner:
             raise ValueError(
                 "`enable_rl_module_and_learner=True`. Hybrid stack is not "
@@ -330,9 +330,9 @@ class MARWIL(Algorithm):
                 "and `enable_env_runner_and_connector_v2` to `True`."
             )
         else:
-            return self._training_step_old_stack()
+            return self._training_step_old_api_stack()
 
-    def _training_step_new_stack(self) -> ResultDict:
+    def _training_step_new_api_stack(self) -> ResultDict:
         """Implements training logic for the new stack
 
         Note, this includes so far training with the `OfflineData`
@@ -399,7 +399,7 @@ class MARWIL(Algorithm):
 
         return self.metrics.reduce()
 
-    def _training_step_old_stack(self) -> ResultDict:
+    def _training_step_old_api_stack(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         with self._timers[SAMPLE_TIMER]:
             train_batch = synchronous_parallel_sample(worker_set=self.env_runner_group)

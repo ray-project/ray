@@ -349,14 +349,30 @@ class SACConfig(AlgorithmConfig):
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
         # TODO (sven, simon): Implement the multi-agent case for replay buffers.
-        if self.enable_env_runner_and_connector_v2 and self.replay_buffer_config[
-            "type"
-        ] not in [
-            "EpisodeReplayBuffer",
-            "PrioritizedEpisodeReplayBuffer",
-            "MultiAgentEpisodeReplayBuffer",
-            "MultiAgentPrioritizedEpisodeReplayBuffer",
-        ]:
+        if (
+            self.enable_env_runner_and_connector_v2
+            and self.replay_buffer_config["type"]
+            not in [
+                "EpisodeReplayBuffer",
+                "PrioritizedEpisodeReplayBuffer",
+                "MultiAgentEpisodeReplayBuffer",
+                "MultiAgentPrioritizedEpisodeReplayBuffer",
+            ]
+            and not (
+                # TODO (simon): Set up an indicator `is_offline_new_stack` that
+                # includes all these variable checks.
+                self.input_
+                and (
+                    isinstance(self.input_, str)
+                    or (
+                        isinstance(self.input_, list)
+                        and isinstance(self.input_[0], str)
+                    )
+                )
+                and self.input_ != "sampler"
+                and self.enable_rl_module_and_learner
+            )
+        ):
             raise ValueError(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."

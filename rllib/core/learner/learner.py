@@ -442,7 +442,7 @@ class Learner(Checkpointable):
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def compute_gradients(
-        self, loss_per_module: Dict[str, TensorType], **kwargs
+        self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
         """Computes the gradients based on the given losses.
 
