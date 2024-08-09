@@ -97,7 +97,7 @@ class GetAllNodeInfo:
     """
 
     def __new__(cls, *args, **kwargs):
-        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
+        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT", "1") == "1"
         if use_old_client:
             return GetAllNodeInfoFromGrpc(*args, **kwargs)
         else:
@@ -126,7 +126,7 @@ class GetAllNodeInfoFromGrpc:
             raise Exception(f"Failed to GetAllNodeInfo: {reply.status.message}")
         nodes = {}
         for message in reply.node_info_list:
-            nodes[NodeID.FromBinary(message.nodeId)] = message
+            nodes[NodeID(message.node_id)] = message
         return nodes
 
 

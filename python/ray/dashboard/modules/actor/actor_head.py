@@ -87,7 +87,7 @@ class GetAllActorInfo:
     """
 
     def __new__(cls, *args, **kwargs):
-        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
+        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT", "1") == "1"
         if use_old_client:
             return GetAllActorInfoFromGrpc(*args, **kwargs)
         else:
@@ -118,7 +118,7 @@ class GetAllActorInfoFromGrpc:
             raise Exception(f"Failed to GetAllActorInfo: {reply.status.message}")
         actors = {}
         for message in reply.actor_table_data:
-            actors[ActorID.FromBinary(message.actorId)] = message
+            actors[ActorID(message.actor_id)] = message
         return actors
 
 
