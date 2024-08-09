@@ -2,7 +2,7 @@
 
 # Serve a Stable Diffusion model on GKE with TPUs
 
-> **Note:** The Python files for the Ray Serve app and its client are in the [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples). This example is adapted from the [tensorflow/tpu](https://github.com/tensorflow/tpu/tree/master/tools/ray_tpu/src/serve) Cloud TPU example.
+> **Note:** The Python files for the Ray Serve app and its client are in the [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples). This guide adapts the [tensorflow/tpu](https://github.com/tensorflow/tpu/tree/master/tools/ray_tpu/src/serve) example.
 
 ## Step 1: Create a Kubernetes cluster with TPUs
 
@@ -72,6 +72,6 @@ Submit a text-to-image prompt to the Stable Diffusion model server:
 python stable_diffusion_tpu_req.py  --save_pictures
 ```
 
-* The results of the stable diffusion inference are saved to a file named diffusion_results.png.
+* The Python prompt script saves the results of the Stable Diffusion inference to a file named diffusion_results.png.
 
 ![diffusion_results](../images/diffusion_results.png)
