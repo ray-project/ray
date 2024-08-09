@@ -5,13 +5,21 @@ from ray._private.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.annotations import DeveloperAPI
 
+MAX_ERROR_STACK_TRACE_LENGTH = 3000
+
+
+@DeveloperAPI
+class TrainRunError(BaseModel):
+    stack_trace: str
+    failed_rank: int
+
 
 @DeveloperAPI
 class RunStatusEnum(str, Enum):
     """Enumeration for the status of a train run."""
 
-    # The train run has started
-    STARTED = "STARTED"
+    # The train run is running
+    RUNNING = "RUNNING"
     # The train run was terminated as expected
     FINISHED = "FINISHED"
     # The train run was terminated early due to errors in the training function
@@ -121,7 +129,7 @@ class TrainRunInfo(BaseModel):
     )
     run_status: RunStatusEnum = Field(
         description="The current status of the train run. It can be one of the "
-        "following: STARTED, FINISHED, ERRORED, or ABORTED."
+        "following: RUNNING, FINISHED, ERRORED, or ABORTED."
     )
     status_detail: str = Field(
         description="Detailed information about the current run status, "
@@ -133,6 +141,10 @@ class TrainRunInfo(BaseModel):
     end_time_ms: Optional[int] = Field(
         description="The UNIX timestamp of the end time of this Train run. "
         "If null, the Train run has not ended yet."
+    )
+    run_error: Optional[TrainRunError] = Field(
+        description="The Train Run Error contains the truncated stack trace "
+        "and the rank of the errored worker."
     )
 
 
