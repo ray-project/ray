@@ -21,3 +21,5 @@ kubectl version
 kubectl cluster-info
 kubectl get nodes
 kubectl get pods --all-namespaces
+# Show the node details, e.g. number of CPUs
+kubectl describe node kind-control-plane
