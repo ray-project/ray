@@ -1103,7 +1103,7 @@ class CompiledDAG:
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build an execution schedule for each actor
-        self._build_execution_schedule()
+        self.actor_to_execution_schedule = self._build_execution_schedule()
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
                 concurrency_group="_ray_system"
@@ -1305,7 +1305,17 @@ class CompiledDAG:
         [Example]:
 
         See `test_execution_schedule` for more examples.
+
+        Returns:
+            actor_to_execution_schedule: A dictionary that maps an actor handle to
+                the execution schedule which is a list of operations to be executed.
         """
+        # Mapping from the actor handle to the execution schedule which is a list
+        # of operations to be executed.
+        actor_to_execution_schedule: Dict[
+            "ray.actor.ActorHandle", List[DAGNodeOperation]
+        ] = defaultdict(list)
+
         # Step 1: Build a graph of DAGOperationGraphNode
         actor_to_operation_nodes = self._generate_dag_operation_graph_node()
         graph = self._build_dag_node_operation_graph(actor_to_operation_nodes)
@@ -1334,9 +1344,7 @@ class CompiledDAG:
             for node in nodes:
                 if node in visited_nodes:
                     continue
-                self.actor_to_execution_schedule[node.actor_handle].append(
-                    node.operation
-                )
+                actor_to_execution_schedule[node.actor_handle].append(node.operation)
                 visited_nodes.add(node)
                 for out_node_idx, out_node_type in node.out_edges:
                     out_node = graph[out_node_idx][out_node_type]
@@ -1353,6 +1361,7 @@ class CompiledDAG:
                     delete_keys.append(actor_id)
             for key in delete_keys:
                 del actor_to_candidates[key]
+        return actor_to_execution_schedule
 
     def _detect_deadlock(self) -> bool:
         """
