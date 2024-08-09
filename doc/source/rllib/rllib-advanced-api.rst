@@ -265,9 +265,9 @@ indicating every how many ``Algorithm.train()`` calls an "evaluation step" shoul
    :start-after: __rllib-adv_api_evaluation_1_begin__
    :end-before: __rllib-adv_api_evaluation_1_end__
 
-An evaluation step runs - using its own ``EnvRunner``s - for ``evaluation_duration``
-episodes or time-steps, depending on the ``evaluation_duration_unit`` setting, which can
-take values of either ``"episodes"`` (default) or ``"timesteps"``.
+An evaluation step runs - using its own ``EnvRunner`` instances - for ``evaluation_duration``
+episodes or time-steps, depending on the ``evaluation_duration_unit`` setting, which can take values
+of either ``"episodes"`` (default) or ``"timesteps"``.
 
 .. literalinclude:: ./doc_code/advanced_api.py
    :language: python
