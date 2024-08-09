@@ -658,61 +658,59 @@ class TestSelectNextNodes:
         fake_actor_2 = ActorHandle("fake_actor_2")
         global_idx_2_0, local_idx_2_0 = 2, 0
         global_idx_2_1, local_idx_2_1 = 4, 1
-        mock_graph = {
-            global_idx_1_0: generate_dag_graph_nodes(
-                local_idx_1_0, global_idx_1_0, fake_actor_1, True
-            ),
-            global_idx_1_1: generate_dag_graph_nodes(
-                local_idx_1_1, global_idx_1_1, fake_actor_1, False
-            ),
-            global_idx_2_0: generate_dag_graph_nodes(
-                local_idx_2_0, global_idx_2_0, fake_actor_2, True
-            ),
-            global_idx_2_1: generate_dag_graph_nodes(
-                local_idx_2_1, global_idx_2_1, fake_actor_2, False
-            ),
-        }
-        del mock_graph[global_idx_1_0][_DAGNodeOperationType.READ]
-        del mock_graph[global_idx_1_0][_DAGNodeOperationType.COMPUTE]
-        del mock_graph[global_idx_2_0][_DAGNodeOperationType.READ]
-        del mock_graph[global_idx_2_0][_DAGNodeOperationType.COMPUTE]
 
-        mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE].add_edge(
-            mock_graph[global_idx_2_1][_DAGNodeOperationType.READ]
-        )
-        mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE].add_edge(
-            mock_graph[global_idx_1_1][_DAGNodeOperationType.READ]
-        )
-        mock_graph[global_idx_2_1][_DAGNodeOperationType.READ].add_edge(
-            mock_graph[global_idx_2_1][_DAGNodeOperationType.COMPUTE]
-        )
-        mock_graph[global_idx_2_1][_DAGNodeOperationType.COMPUTE].add_edge(
-            mock_graph[global_idx_2_1][_DAGNodeOperationType.WRITE]
-        )
-        mock_graph[global_idx_1_1][_DAGNodeOperationType.READ].add_edge(
-            mock_graph[global_idx_1_1][_DAGNodeOperationType.COMPUTE]
-        )
-        mock_graph[global_idx_1_1][_DAGNodeOperationType.COMPUTE].add_edge(
-            mock_graph[global_idx_1_1][_DAGNodeOperationType.WRITE]
-        )
-        mock_actor_to_candidates = {
-            fake_actor_1: [mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE]],
-            fake_actor_2: [mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE]],
-        }
+        # Run the test 10 times to ensure that the result of `_select_next_nodes`
+        # is deterministic.
+        for _ in range(20):
+            mock_graph = {
+                global_idx_1_0: generate_dag_graph_nodes(
+                    local_idx_1_0, global_idx_1_0, fake_actor_1, True
+                ),
+                global_idx_1_1: generate_dag_graph_nodes(
+                    local_idx_1_1, global_idx_1_1, fake_actor_1, False
+                ),
+                global_idx_2_0: generate_dag_graph_nodes(
+                    local_idx_2_0, global_idx_2_0, fake_actor_2, True
+                ),
+                global_idx_2_1: generate_dag_graph_nodes(
+                    local_idx_2_1, global_idx_2_1, fake_actor_2, False
+                ),
+            }
+            del mock_graph[global_idx_1_0][_DAGNodeOperationType.READ]
+            del mock_graph[global_idx_1_0][_DAGNodeOperationType.COMPUTE]
+            del mock_graph[global_idx_2_0][_DAGNodeOperationType.READ]
+            del mock_graph[global_idx_2_0][_DAGNodeOperationType.COMPUTE]
 
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
-        assert len(next_nodes) == 2
-        assert next_nodes[0] in [
-            mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE],
-            mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE],
-        ]
-        if next_nodes[0] == mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE]:
+            mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE].add_edge(
+                mock_graph[global_idx_2_1][_DAGNodeOperationType.READ]
+            )
+            mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE].add_edge(
+                mock_graph[global_idx_1_1][_DAGNodeOperationType.READ]
+            )
+            mock_graph[global_idx_2_1][_DAGNodeOperationType.READ].add_edge(
+                mock_graph[global_idx_2_1][_DAGNodeOperationType.COMPUTE]
+            )
+            mock_graph[global_idx_2_1][_DAGNodeOperationType.COMPUTE].add_edge(
+                mock_graph[global_idx_2_1][_DAGNodeOperationType.WRITE]
+            )
+            mock_graph[global_idx_1_1][_DAGNodeOperationType.READ].add_edge(
+                mock_graph[global_idx_1_1][_DAGNodeOperationType.COMPUTE]
+            )
+            mock_graph[global_idx_1_1][_DAGNodeOperationType.COMPUTE].add_edge(
+                mock_graph[global_idx_1_1][_DAGNodeOperationType.WRITE]
+            )
+            mock_actor_to_candidates = {
+                fake_actor_1: [mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE]],
+                fake_actor_2: [mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE]],
+            }
+
+            next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+            assert len(next_nodes) == 2
+            assert (
+                next_nodes[0] == mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE]
+            )
             assert (
                 next_nodes[1] == mock_graph[global_idx_2_1][_DAGNodeOperationType.READ]
-            )
-        elif next_nodes[0] == mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE]:
-            assert (
-                next_nodes[1] == mock_graph[global_idx_1_1][_DAGNodeOperationType.READ]
             )
 
 
