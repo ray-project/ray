@@ -10,6 +10,7 @@ google-cloud-storage
 jinja2
 protobuf >= 3.15.3, != 3.19.5
 pytest
+pytest_httpserver == 1.0.12
 pyyaml
 pybuildkite
 PyGithub
