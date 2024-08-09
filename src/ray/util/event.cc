@@ -401,15 +401,13 @@ void RayExportEvent::SendEvent() {
   export_event.set_event_id(event_id);
   export_event.set_timestamp(current_sys_time_s());
 
-  std::string event_data_type_name = event_data_ptr_->GetTypeName();
-  if (event_data_type_name == "ray.rpc.ExportTaskEventData") {
-    rpc::ExportTaskEventData *task_event_data_ptr =
-        dynamic_cast<rpc::ExportTaskEventData *>(event_data_ptr_.get());
+  if (auto task_event_data_ptr = std::get_if<rpc::ExportTaskEventData>(&event_data_)) {
     export_event.mutable_task_event_data()->CopyFrom(*task_event_data_ptr);
     export_event.set_source_type(
         rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK);
   } else {
-    RAY_LOG(FATAL) << "Invalid event_data type: " << event_data_type_name;
+    // This shouldn't be possible because event_data_ is typed as ExportEventData
+    RAY_LOG(FATAL) << "Invalid event_data type.";
     return;
   }
 
