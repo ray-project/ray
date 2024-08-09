@@ -21,18 +21,17 @@ class _DAGNodeOperationType(Enum):
 class _DAGNodeOperation:
     def __init__(
         self,
-        idx: int,
+        local_idx: int,
         operation_type: _DAGNodeOperationType,
     ):
         """
         Args:
-            idx: The index of the task that this operation belongs to
-                in the actor's ExecutableTask list. The index is not
-                the same as bind_index, but there are positive correlations
-                between the two.
+            local_idx: The index of the task that this operation belongs to
+                in the actor's ExecutableTask list. The index is not the same
+                as bind_index, but there are positive correlations between the two.
             operation_type: The type of operation to perform.
         """
-        self.idx = idx
+        self.local_idx = local_idx
         self.type = operation_type
 
 
@@ -41,7 +40,7 @@ class _DAGOperationGraphNode:
     def __init__(
         self,
         operation: _DAGNodeOperation,
-        idx: int,
+        dag_idx: int,
         actor_handle: "ray.actor.ActorHandle",
         requires_nccl: bool,
     ):
@@ -53,11 +52,13 @@ class _DAGOperationGraphNode:
         Args:
             operation: The operation that this node performs. The operation
                 can be a READ, COMPUTE, or WRITE operation.
-            idx: A unique index into the original DAG.
+            dag_idx: A unique index which can be used to index into
+                `CompiledDAG.idx_to_task` to get the corresponding task.
+
             dag_node: The DAGNode that this operation belongs to.
         """
         self.operation = operation
-        self.idx = idx
+        self.dag_idx = dag_idx
         self.actor_handle = actor_handle
         self.requires_nccl = requires_nccl
         # The in_edges and out_edges are sets of tuples. Each tuple contains
@@ -71,16 +72,16 @@ class _DAGOperationGraphNode:
     def in_degree(self) -> int:
         return len(self.in_edges)
 
-    def __lt__(self, other):
+    def __lt__(self, other: "_DAGOperationGraphNode"):
         """
         Two _DAGOperationGraphNodes are comparable only when they belong to
         the same actor. For operations on the same actor, if idx is smaller,
         the DAGNode to which this operation belongs has a smaller `bind_index`.
         """
         assert self.actor_handle == other.actor_handle
-        return self.operation.idx < other.operation.idx
+        return self.operation.local_idx < other.operation.local_idx
 
-    def __eq__(self, other):
+    def __eq__(self, other: "_DAGOperationGraphNode"):
         """
         Two _DAGOperationGraphNodes are comparable only when they belong to the
         same actor. For operations on the same actor, two operations are equal
@@ -88,21 +89,21 @@ class _DAGOperationGraphNode:
         """
         assert self.actor_handle == other.actor_handle
         return (
-            self.operation.idx == other.operation.idx
+            self.operation.local_idx == other.operation.local_idx
             and self.operation.type == other.operation.type
         )
 
     def __hash__(self):
-        return hash((self.operation, self.idx))
+        return hash((self.operation, self.dag_idx))
 
 
 def _add_edge(from_node: _DAGOperationGraphNode, to_node: _DAGOperationGraphNode):
     """
     Add an edge from `from_node` to `to_node`. An edge is a tuple of
-    the operation's index and type.
+    the operation's `dag_idx` and type.
     """
-    from_node.out_edges.add((to_node.idx, to_node.operation.type))
-    to_node.in_edges.add((from_node.idx, from_node.operation.type))
+    from_node.out_edges.add((to_node.dag_idx, to_node.operation.type))
+    to_node.in_edges.add((from_node.dag_idx, from_node.operation.type))
 
 
 def _select_next_nodes(
@@ -217,7 +218,7 @@ def _build_dag_node_operation_graph(
     for _, operation_nodes_list in actor_to_operation_nodes.items():
         prev_compute_node = None
         for operation_nodes in operation_nodes_list:
-            idx = operation_nodes[0].idx
+            idx = operation_nodes[0].dag_idx
             read_node, compute_node, write_node = (
                 operation_nodes[0],
                 operation_nodes[1],

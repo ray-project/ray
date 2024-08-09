@@ -113,7 +113,7 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                done = tasks[operation.idx].exec_operation(self, operation.type)
+                done = tasks[operation.local_idx].exec_operation(self, operation.type)
                 if done:
                     break
     except Exception:
@@ -294,7 +294,9 @@ class ExecutableTask:
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
         self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
-        self.idx = task.idx
+        # A unique index which can be used to index into `idx_to_task` to get
+        # the corresponding task.
+        self.dag_idx = task.idx
 
         # Reverse map for input_channels: maps an input channel to
         # its index in input_channels.
@@ -1200,26 +1202,26 @@ class CompiledDAG:
             for local_idx, exec_task in enumerate(executable_tasks):
                 # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
                 # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
-                idx = exec_task.idx
-                dag_node = self.idx_to_task[idx].dag_node
+                dag_idx = exec_task.dag_idx
+                dag_node = self.idx_to_task[dag_idx].dag_node
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
 
                 read_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(local_idx, _DAGNodeOperationType.READ),
-                    idx,
+                    dag_idx,
                     actor_handle,
                     requires_nccl,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(local_idx, _DAGNodeOperationType.COMPUTE),
-                    idx,
+                    dag_idx,
                     actor_handle,
                     requires_nccl,
                 )
                 write_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(local_idx, _DAGNodeOperationType.WRITE),
-                    idx,
+                    dag_idx,
                     actor_handle,
                     requires_nccl,
                 )
@@ -1299,7 +1301,7 @@ class CompiledDAG:
                 visited_nodes.add(node)
                 for out_node_idx, out_node_type in node.out_edges:
                     out_node = graph[out_node_idx][out_node_type]
-                    out_node.in_edges.remove((node.idx, node.operation.type))
+                    out_node.in_edges.remove((node.dag_idx, node.operation.type))
                     if out_node.in_degree == 0:
                         heapq.heappush(
                             actor_to_candidates[out_node.actor_handle._actor_id],

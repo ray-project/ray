@@ -327,7 +327,7 @@ def test_simulate_pp_2workers_2batches_1f1b(ray_start_regular, monkeypatch):
     ):
         assert len(schedule) == len(expected_schedule)
         for i, operation in enumerate(schedule):
-            assert operation.idx == expected_schedule[i][0]
+            assert operation.local_idx == expected_schedule[i][0]
             assert operation.type == expected_schedule[i][1]
 
     tensor_cpu = torch.zeros(10, 10)
@@ -422,7 +422,7 @@ def test_three_actors_with_nccl_1(ray_start_regular):
     ):
         assert len(schedule) == len(expected_schedule)
         for i, operation in enumerate(schedule):
-            assert operation.idx == expected_schedule[i][0]
+            assert operation.local_idx == expected_schedule[i][0]
             assert operation.type == expected_schedule[i][1]
 
     tensor_cpu = torch.zeros(10, 10)
@@ -500,7 +500,7 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
     ):
         assert len(schedule) == len(expected_schedule)
         for i, operation in enumerate(schedule):
-            assert operation.idx == expected_schedule[i][0]
+            assert operation.local_idx == expected_schedule[i][0]
             assert operation.type == expected_schedule[i][1]
 
     tensor_cpu = torch.zeros(10, 10)
