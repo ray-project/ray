@@ -114,10 +114,10 @@ def _select_next_nodes(
 
     #1  If the nodes are not NCCL write nodes, select the one with the smallest
         `bind_index`. If there are multiple candidate nodes with the smallest
-        `bind_index` of the actors that they belong to, any one of them is
-        acceptable. For the implementation details, we maintain a priority queue
-        for each actor, where the head of the priority queue is the node with the
-        smallest `bind_index`.
+        `bind_index` among the actors to which they belong, any one of them is
+        acceptable, but the implementation ensures the result is deterministic.
+        For the implementation details, we maintain a priority queue for each actor,
+        where the head of the priority queue is the node with the smallest `bind_index`.
     #2  If #1 cannot be satisfied, it means that all candidate nodes are NCCL write
         nodes. In this case, select the one at the head of the priority queue and
         its immediately downstream nodes, which are NCCL read nodes, regardless of
