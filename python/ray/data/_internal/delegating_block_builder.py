@@ -57,10 +57,9 @@ class DelegatingBlockBuilder(BlockBuilder):
             self._builder = accessor.builder()
         else:
             block_type = accessor.block_type()
-            assert block_type == self._inferred_block_type, (
-                block_type,
-                self._inferred_block_type,
-            )
+            if block_type != self._inferred_block_type:
+                self._builder.add_block(accessor.to(self._inferred_block_type))
+                return
 
         self._builder.add_block(accessor.to_block())
 
