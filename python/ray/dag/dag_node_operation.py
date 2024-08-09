@@ -54,8 +54,8 @@ class _DAGOperationGraphNode:
                 can be a READ, COMPUTE, or WRITE operation.
             dag_idx: A unique index which can be used to index into
                 `CompiledDAG.idx_to_task` to get the corresponding task.
-
-            dag_node: The DAGNode that this operation belongs to.
+            actor_handle: The actor handle to which this operation belongs.
+            requires_nccl: Whether this operation requires NCCL.
         """
         self.operation = operation
         self.dag_idx = dag_idx
@@ -75,7 +75,7 @@ class _DAGOperationGraphNode:
     def __lt__(self, other: "_DAGOperationGraphNode"):
         """
         Two _DAGOperationGraphNodes are comparable only when they belong to
-        the same actor. For operations on the same actor, if idx is smaller,
+        the same actor. For operations on the same actor, if `local_idx` is smaller,
         the DAGNode to which this operation belongs has a smaller `bind_index`.
         """
         assert self.actor_handle == other.actor_handle
@@ -85,7 +85,7 @@ class _DAGOperationGraphNode:
         """
         Two _DAGOperationGraphNodes are comparable only when they belong to the
         same actor. For operations on the same actor, two operations are equal
-        only when they have the same `idx` and `type`.
+        only when they have the same `local_idx` and `type`.
         """
         assert self.actor_handle == other.actor_handle
         return (
@@ -94,6 +94,9 @@ class _DAGOperationGraphNode:
         )
 
     def __hash__(self):
+        """
+        An operation is uniquely identified by its `dag_idx` and type.
+        """
         return hash((self.operation, self.dag_idx))
 
 
@@ -169,8 +172,8 @@ def _select_next_nodes(
     # An NCCL write node is picked. NCCL is a blocking operation, so we need to pick all
     # the corresponding NCCL read nodes to avoid a deadlock.
     for downstream_node_metadata in first_nccl_node.out_edges:
-        global_idx, op_type = downstream_node_metadata[0], downstream_node_metadata[1]
-        downstream_node = graph[global_idx][op_type]
+        dag_idx, op_type = downstream_node_metadata[0], downstream_node_metadata[1]
+        downstream_node = graph[dag_idx][op_type]
         assert downstream_node.operation.type == _DAGNodeOperationType.READ
         next_nodes.append(downstream_node)
     assert len(next_nodes) == 1 + len(first_nccl_node.out_edges)
@@ -218,7 +221,7 @@ def _build_dag_node_operation_graph(
     for _, operation_nodes_list in actor_to_operation_nodes.items():
         prev_compute_node = None
         for operation_nodes in operation_nodes_list:
-            idx = operation_nodes[0].dag_idx
+            dag_idx = operation_nodes[0].dag_idx
             read_node, compute_node, write_node = (
                 operation_nodes[0],
                 operation_nodes[1],
@@ -233,8 +236,8 @@ def _build_dag_node_operation_graph(
             if prev_compute_node is not None:
                 _add_edge(prev_compute_node, compute_node)
             prev_compute_node = compute_node
-            assert idx not in graph
-            graph[idx] = {
+            assert dag_idx not in graph
+            graph[dag_idx] = {
                 _DAGNodeOperationType.READ: read_node,
                 _DAGNodeOperationType.COMPUTE: compute_node,
                 _DAGNodeOperationType.WRITE: write_node,
@@ -244,18 +247,18 @@ def _build_dag_node_operation_graph(
     from ray.dag import ClassMethodNode, MultiOutputNode
 
     # Add an edge from WRITE of the writer task to READ of the reader task.
-    for idx, task in idx_to_task.items():
+    for dag_idx, task in idx_to_task.items():
         if not isinstance(task.dag_node, ClassMethodNode):
             # The graph is used to generate an execution schedule for each actor.
             # The edge from the InputNode has no impact on the final execution
             # schedule.
             continue
-        for downstream_idx in task.downstream_node_idxs:
-            downstream_dag_node = idx_to_task[downstream_idx].dag_node
+        for downstream_dag_idx in task.downstream_node_idxs:
+            downstream_dag_node = idx_to_task[downstream_dag_idx].dag_node
             if isinstance(downstream_dag_node, MultiOutputNode):
                 continue
             _add_edge(
-                graph[idx][_DAGNodeOperationType.WRITE],
-                graph[downstream_idx][_DAGNodeOperationType.READ],
+                graph[dag_idx][_DAGNodeOperationType.WRITE],
+                graph[downstream_dag_idx][_DAGNodeOperationType.READ],
             )
     return graph

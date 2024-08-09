@@ -1299,8 +1299,8 @@ class CompiledDAG:
                     continue
                 actor_to_execution_schedule[node.actor_handle].append(node.operation)
                 visited_nodes.add(node)
-                for out_node_idx, out_node_type in node.out_edges:
-                    out_node = graph[out_node_idx][out_node_type]
+                for out_node_dag_idx, out_node_type in node.out_edges:
+                    out_node = graph[out_node_dag_idx][out_node_type]
                     out_node.in_edges.remove((node.dag_idx, node.operation.type))
                     if out_node.in_degree == 0:
                         heapq.heappush(
