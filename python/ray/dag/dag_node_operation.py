@@ -95,13 +95,14 @@ class _DAGOperationGraphNode:
     def __hash__(self):
         return hash((self.operation, self.idx))
 
-    def add_edge(self, out_node: "_DAGOperationGraphNode"):
-        """
-        Add an edge from this node to `out_node`. An edge is a tuple of
-        the operation's index and type.
-        """
-        self.out_edges.add((out_node.idx, out_node.operation.type))
-        out_node.in_edges.add((self.idx, self.operation.type))
+
+def _add_edge(from_node: _DAGOperationGraphNode, to_node: _DAGOperationGraphNode):
+    """
+    Add an edge from `from_node` to `to_node`. An edge is a tuple of
+    the operation's index and type.
+    """
+    from_node.out_edges.add((to_node.idx, to_node.operation.type))
+    to_node.in_edges.add((from_node.idx, from_node.operation.type))
 
 
 def _select_next_nodes(
@@ -224,12 +225,12 @@ def _build_dag_node_operation_graph(
             )
             # Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
             # belong to the same task.
-            read_node.add_edge(compute_node)
-            compute_node.add_edge(write_node)
+            _add_edge(read_node, compute_node)
+            _add_edge(compute_node, write_node)
             # Add an edge from COMPUTE with `bind_index` i to COMPUTE with
             # `bind_index` i+1 if they belong to the same actor.
             if prev_compute_node is not None:
-                prev_compute_node.add_edge(compute_node)
+                _add_edge(prev_compute_node, compute_node)
             prev_compute_node = compute_node
             assert idx not in graph
             graph[idx] = {
@@ -252,7 +253,8 @@ def _build_dag_node_operation_graph(
             downstream_dag_node = idx_to_task[downstream_idx].dag_node
             if isinstance(downstream_dag_node, MultiOutputNode):
                 continue
-            graph[idx][_DAGNodeOperationType.WRITE].add_edge(
-                graph[downstream_idx][_DAGNodeOperationType.READ]
+            _add_edge(
+                graph[idx][_DAGNodeOperationType.WRITE],
+                graph[downstream_idx][_DAGNodeOperationType.READ],
             )
     return graph

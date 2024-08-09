@@ -12,6 +12,7 @@ from ray.dag.dag_node_operation import (
     _DAGNodeOperation,
     _select_next_nodes,
     _build_dag_node_operation_graph,
+    _add_edge,
 )
 from ray.dag.compiled_dag_node import CompiledTask
 from typing import List, Dict, Tuple
@@ -118,14 +119,18 @@ class TestSelectNextNodes:
         }
         del mock_graph[global_idx_1][_DAGNodeOperationType.READ]
         del mock_graph[global_idx_1][_DAGNodeOperationType.COMPUTE]
-        mock_graph[global_idx_1][_DAGNodeOperationType.WRITE].add_edge(
-            mock_graph[global_idx_2][_DAGNodeOperationType.READ]
+
+        _add_edge(
+            mock_graph[global_idx_1][_DAGNodeOperationType.WRITE],
+            mock_graph[global_idx_2][_DAGNodeOperationType.READ],
         )
-        mock_graph[global_idx_2][_DAGNodeOperationType.READ].add_edge(
-            mock_graph[global_idx_2][_DAGNodeOperationType.COMPUTE]
+        _add_edge(
+            mock_graph[global_idx_2][_DAGNodeOperationType.READ],
+            mock_graph[global_idx_2][_DAGNodeOperationType.COMPUTE],
         )
-        mock_graph[global_idx_2][_DAGNodeOperationType.COMPUTE].add_edge(
-            mock_graph[global_idx_2][_DAGNodeOperationType.WRITE]
+        _add_edge(
+            mock_graph[global_idx_2][_DAGNodeOperationType.COMPUTE],
+            mock_graph[global_idx_2][_DAGNodeOperationType.WRITE],
         )
         mock_actor_to_candidates = {
             fake_actor_1: [mock_graph[global_idx_1][_DAGNodeOperationType.WRITE]],
@@ -181,23 +186,29 @@ class TestSelectNextNodes:
             del mock_graph[global_idx_2_0][_DAGNodeOperationType.READ]
             del mock_graph[global_idx_2_0][_DAGNodeOperationType.COMPUTE]
 
-            mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE].add_edge(
-                mock_graph[global_idx_2_1][_DAGNodeOperationType.READ]
+            _add_edge(
+                mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE],
+                mock_graph[global_idx_2_1][_DAGNodeOperationType.READ],
             )
-            mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE].add_edge(
-                mock_graph[global_idx_1_1][_DAGNodeOperationType.READ]
+            _add_edge(
+                mock_graph[global_idx_2_0][_DAGNodeOperationType.WRITE],
+                mock_graph[global_idx_1_1][_DAGNodeOperationType.READ],
             )
-            mock_graph[global_idx_2_1][_DAGNodeOperationType.READ].add_edge(
-                mock_graph[global_idx_2_1][_DAGNodeOperationType.COMPUTE]
+            _add_edge(
+                mock_graph[global_idx_2_1][_DAGNodeOperationType.READ],
+                mock_graph[global_idx_2_1][_DAGNodeOperationType.COMPUTE],
             )
-            mock_graph[global_idx_2_1][_DAGNodeOperationType.COMPUTE].add_edge(
-                mock_graph[global_idx_2_1][_DAGNodeOperationType.WRITE]
+            _add_edge(
+                mock_graph[global_idx_2_1][_DAGNodeOperationType.COMPUTE],
+                mock_graph[global_idx_2_1][_DAGNodeOperationType.WRITE],
             )
-            mock_graph[global_idx_1_1][_DAGNodeOperationType.READ].add_edge(
-                mock_graph[global_idx_1_1][_DAGNodeOperationType.COMPUTE]
+            _add_edge(
+                mock_graph[global_idx_1_1][_DAGNodeOperationType.READ],
+                mock_graph[global_idx_1_1][_DAGNodeOperationType.COMPUTE],
             )
-            mock_graph[global_idx_1_1][_DAGNodeOperationType.COMPUTE].add_edge(
-                mock_graph[global_idx_1_1][_DAGNodeOperationType.WRITE]
+            _add_edge(
+                mock_graph[global_idx_1_1][_DAGNodeOperationType.COMPUTE],
+                mock_graph[global_idx_1_1][_DAGNodeOperationType.WRITE],
             )
             mock_actor_to_candidates = {
                 fake_actor_1: [mock_graph[global_idx_1_0][_DAGNodeOperationType.WRITE]],
