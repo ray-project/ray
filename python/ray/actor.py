@@ -1,7 +1,7 @@
 import inspect
 import logging
 import weakref
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -235,7 +235,11 @@ class ActorMethod:
         num_returns=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
-    ):
+    ) -> Union[
+        "ray.dag.ClassMethodNode",
+        "ray.dag.TaskReturnNode",
+        Tuple["ray.dag.TaskReturnNode", ...],
+    ]:
         from ray.dag.class_node import (
             BIND_INDEX_KEY,
             PARENT_CLASS_NODE_KEY,
@@ -273,21 +277,19 @@ class ActorMethod:
             other_args_to_resolve=other_args_to_resolve,
         )
 
-        if node.num_returns > 1:
+        if node.num_returns != 0:
             task_nodes: List[TaskReturnNode] = []
             for i in range(node.num_returns):
-                other_args_to_resolve = {
-                    "class_method_node": node,
-                    "output_idx": i,
-                }
                 task_node = TaskReturnNode(
-                    None,
-                    None,
-                    None,
-                    None,
-                    other_args_to_resolve,
+                    f"return_idx_{i}",
+                    (node, i),
+                    dict(),
+                    dict(),
+                    dict(),
                 )
                 task_nodes.append(task_node)
+            if len(task_nodes) == 1:
+                return task_nodes[0]
             return tuple(task_nodes)
         else:
             return node

@@ -312,7 +312,7 @@ class SynchronousReader(ReaderInterface):
             result = c.read(timeout)
             if self._input_idxs:
                 idx = self._input_idxs[i]
-                if idx:
+                if idx is not None:
                     assert isinstance(result, tuple)
                     result = result[idx]
             results.append(result)

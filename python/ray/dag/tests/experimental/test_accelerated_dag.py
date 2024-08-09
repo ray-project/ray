@@ -150,6 +150,32 @@ def test_basic(ray_start_regular):
 #         dag.experimental_compile()
 
 
+def test_two_returns_first(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        dag = MultiOutputNode([o1])
+
+    compiled_dag = dag.experimental_compile()
+    res = ray.get(compiled_dag.execute(1))
+    assert res == [1]
+
+    compiled_dag.teardown()
+
+
+def test_two_returns_second(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        dag = MultiOutputNode([o2])
+
+    compiled_dag = dag.experimental_compile()
+    res = ray.get(compiled_dag.execute(1))
+    assert res == [2]
+
+    compiled_dag.teardown()
+
+
 def test_kwargs_not_supported(ray_start_regular):
     a = Actor.remote(0)
 

@@ -237,7 +237,7 @@ class TaskReturnNode(DAGNode):
     def __init__(
         self,
         method_name: str,
-        method_args: Tuple[Any],
+        method_args: Tuple[Any, ...],
         method_kwargs: Dict[str, Any],
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
@@ -261,10 +261,8 @@ class TaskReturnNode(DAGNode):
             BIND_INDEX_KEY, None
         )
 
-        self.class_method_node: ClassMethodNode = other_args_to_resolve.get(
-            "class_method_node"
-        )
-        self.output_idx: Optional[int] = other_args_to_resolve.get("output_idx", None)
+        self.class_method_node: ClassMethodNode = method_args[0]
+        self.output_idx: int = method_args[1]
 
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
@@ -283,7 +281,7 @@ class TaskReturnNode(DAGNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return ClassMethodNode(
+        return TaskReturnNode(
             self._method_name,
             new_args,
             new_kwargs,
@@ -299,6 +297,7 @@ class TaskReturnNode(DAGNode):
         with value in bound_args and bound_kwargs via bottom-up recursion when
         current node is executed.
         """
+        raise NotImplementedError("TaskReturnNode should not be executed")
         method_body = getattr(self._parent_class_node, self._method_name)
         # Execute with bound args.
         return method_body.options(**self._bound_options).remote(

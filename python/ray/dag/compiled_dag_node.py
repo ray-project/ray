@@ -906,13 +906,12 @@ class CompiledDAG:
                 # """
                 reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                 dag_nodes = [reader.dag_node for reader in readers]
-                read_by_multi_output_node = False
+                read_by_multi_output_node = 0
                 for dag_node in dag_nodes:
                     if isinstance(dag_node, MultiOutputNode):
-                        read_by_multi_output_node = True
-                        break
-                if read_by_multi_output_node:
-                    if len(readers) != 1:
+                        read_by_multi_output_node += 1
+                if read_by_multi_output_node != 0:
+                    if len(readers) != read_by_multi_output_node:
                         raise ValueError(
                             "DAG outputs currently can only be read by the driver or "
                             "the same actor that is also the InputNode, not by both "
@@ -1063,7 +1062,7 @@ class CompiledDAG:
                         # resolved_args.append(arg_channel)
                         input_idx = None
                         if isinstance(arg, TaskReturnNode):
-                            input_idx = arg.input_idx
+                            input_idx = arg.output_idx
                         resolved_args.append(
                             InputArg(input_channel=arg_channel, input_idx=input_idx)
                         )
@@ -1099,10 +1098,15 @@ class CompiledDAG:
             )
 
         self.dag_output_channels = []
+        self.dag_output_idxs = []
         for output in self.idx_to_task[self.output_task_idx].args:
             assert isinstance(output, DAGNode)
             output_idx = self.dag_node_to_idx[output]
             self.dag_output_channels.append(self.idx_to_task[output_idx].output_channel)
+            if isinstance(output, TaskReturnNode):
+                self.dag_output_idxs.append(output.output_idx)
+            else:
+                self.dag_output_idxs.append(None)
             # Register custom serializers for DAG outputs.
             output.type_hint.register_custom_serializer()
 
@@ -1130,7 +1134,9 @@ class CompiledDAG:
             )
         else:
             self._dag_submitter = SynchronousWriter(self.dag_input_channel)
-            self._dag_output_fetcher = SynchronousReader(self.dag_output_channels, None)
+            self._dag_output_fetcher = SynchronousReader(
+                self.dag_output_channels, self.dag_output_idxs
+            )
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
