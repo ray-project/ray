@@ -788,7 +788,7 @@ def test_compiled_dag_ref_del(ray_start_regular):
     compiled_dag.teardown()
 
 
-def test_dag_fault_tolerance_chain(ray_start_regular_shared):
+def test_dag_fault_tolerance_chain(ray_start_regular):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
         for i in range(4)
@@ -831,7 +831,7 @@ def test_dag_fault_tolerance_chain(ray_start_regular_shared):
     compiled_dag.teardown()
 
 
-def test_dag_fault_tolerance(ray_start_regular_shared):
+def test_dag_fault_tolerance(ray_start_regular):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
         for i in range(4)
@@ -872,7 +872,7 @@ def test_dag_fault_tolerance(ray_start_regular_shared):
     compiled_dag.teardown()
 
 
-def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
+def test_dag_fault_tolerance_sys_exit(ray_start_regular):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=True)
         for i in range(4)
@@ -912,7 +912,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular_shared):
     compiled_dag.teardown()
 
 
-def test_dag_teardown_while_running(ray_start_regular_shared):
+def test_dag_teardown_while_running(ray_start_regular):
     a = Actor.remote(0)
 
     with InputNode() as inp:
@@ -939,7 +939,7 @@ def test_dag_teardown_while_running(ray_start_regular_shared):
 
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio(ray_start_regular_shared, max_queue_size):
+def test_asyncio(ray_start_regular, max_queue_size):
     a = Actor.remote(0)
     with InputNode() as i:
         dag = a.echo.bind(i)
@@ -965,7 +965,7 @@ def test_asyncio(ray_start_regular_shared, max_queue_size):
 
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
+def test_asyncio_exceptions(ray_start_regular, max_queue_size):
     a = Actor.remote(0)
     with InputNode() as i:
         dag = a.inc.bind(i)
@@ -1005,7 +1005,7 @@ def test_asyncio_exceptions(ray_start_regular_shared, max_queue_size):
 
 
 class TestCompositeChannel:
-    def test_composite_channel_one_actor(self, ray_start_regular_shared):
+    def test_composite_channel_one_actor(self, ray_start_regular):
         """
         In this test, there are three 'inc' tasks on the same Ray actor, chained
         together. Therefore, the DAG will look like this:
@@ -1039,7 +1039,7 @@ class TestCompositeChannel:
 
         compiled_dag.teardown()
 
-    def test_composite_channel_two_actors(self, ray_start_regular_shared):
+    def test_composite_channel_two_actors(self, ray_start_regular):
         """
         In this test, there are three 'inc' tasks on the two Ray actors, chained
         together. Therefore, the DAG will look like this:
@@ -1073,7 +1073,7 @@ class TestCompositeChannel:
 
         compiled_dag.teardown()
 
-    def test_composite_channel_multi_output(self, ray_start_regular_shared):
+    def test_composite_channel_multi_output(self, ray_start_regular):
         """
         Driver -> a.inc -> a.inc ---> Driver
                         |         |
@@ -1100,7 +1100,7 @@ class TestCompositeChannel:
 
         compiled_dag.teardown()
 
-    def test_intra_process_channel_with_multi_readers(self, ray_start_regular_shared):
+    def test_intra_process_channel_with_multi_readers(self, ray_start_regular):
         """
         In this test, there are three 'echo' tasks on the same Ray actor.
         The DAG will look like this:
@@ -1134,7 +1134,7 @@ class TestCompositeChannel:
         compiled_dag.teardown()
 
 
-def test_simulate_pipeline_parallelism(ray_start_regular_shared):
+def test_simulate_pipeline_parallelism(ray_start_regular):
     """
     This pattern simulates the case of pipeline parallelism training, where `w0_input`
     reads data from the driver, and the fan-out tasks, `d00`, `d01`, and `d02`, use
@@ -1209,7 +1209,7 @@ def test_simulate_pipeline_parallelism(ray_start_regular_shared):
     output_dag.teardown()
 
 
-def test_channel_read_after_close(ray_start_regular_shared):
+def test_channel_read_after_close(ray_start_regular):
     # Tests that read to a channel after accelerated DAG teardown raises a
     # RayChannelError exception as the channel is closed (see issue #46284).
     @ray.remote
@@ -1229,7 +1229,7 @@ def test_channel_read_after_close(ray_start_regular_shared):
         ray.get(ref)
 
 
-def test_channel_write_after_close(ray_start_regular_shared):
+def test_channel_write_after_close(ray_start_regular):
     # Tests that write to a channel after accelerated DAG teardown raises a
     # RayChannelError exception as the channel is closed.
     @ray.remote
