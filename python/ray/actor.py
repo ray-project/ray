@@ -277,7 +277,7 @@ class ActorMethod:
             other_args_to_resolve=other_args_to_resolve,
         )
 
-        if node.num_returns != 0:
+        if node.num_returns > 1:
             task_nodes: List[TaskReturnNode] = []
             for i in range(node.num_returns):
                 task_node = TaskReturnNode(
@@ -288,8 +288,6 @@ class ActorMethod:
                     dict(),
                 )
                 task_nodes.append(task_node)
-            if len(task_nodes) == 1:
-                return task_nodes[0]
             return tuple(task_nodes)
         else:
             return node
