@@ -3,7 +3,7 @@
 Saving and Loading Checkpoints
 ==============================
 
-Ray Train provides a way to snapshot training progress with :class:`Checkpoints <ray.train.Checkpoint>`.
+Ray Train provides a way to snapshot training progress with :class:`Checkpoint <ray.train.Checkpoint>`.
 
 This is useful for:
 
