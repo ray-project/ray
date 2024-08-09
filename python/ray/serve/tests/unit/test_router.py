@@ -95,6 +95,10 @@ class FakeReplicaScheduler(ReplicaScheduler):
         return self._replica_queue_len_cache
 
     @property
+    def dropped_replicas(self) -> Set[ReplicaID]:
+        return self._dropped_replicas
+
+    @property
     def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
         replicas = {}
         if self._replica_to_return is not None:
@@ -543,7 +547,7 @@ class TestAssignRequest:
         with pytest.raises(ActorDiedError):
             await router.assign_request(dummy_request_metadata())
 
-        assert r_id in fake_replica_scheduler._dropped_replicas
+        assert r_id in fake_replica_scheduler.dropped_replicas
 
     @pytest.mark.parametrize(
         "setup_router",
