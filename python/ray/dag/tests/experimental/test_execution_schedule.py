@@ -13,8 +13,9 @@ from ray.dag.dag_node_operation import (
     DAGNodeOperationType,
     DAGOperationGraphNode,
     DAGNodeOperation,
+    _select_next_nodes,
 )
-from ray.dag.compiled_dag_node import _select_next_nodes, CompiledDAG, CompiledTask
+from ray.dag.compiled_dag_node import CompiledDAG, CompiledTask
 import torch
 from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
