@@ -20,6 +20,7 @@ from typing import (
 import ray
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
     RequestMetadata,
@@ -90,6 +91,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         event_loop: asyncio.AbstractEventLoop,
         deployment_id: DeploymentID,
+        handle_source: DeploymentHandleSource,
         prefer_local_node_routing: bool = False,
         prefer_local_az_routing: bool = False,
         self_node_id: Optional[str] = None,
@@ -100,6 +102,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
+        self._handle_source = handle_source
         self._prefer_local_node_routing = prefer_local_node_routing
         self._prefer_local_az_routing = prefer_local_az_routing
         self._self_node_id = self_node_id
@@ -242,9 +245,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         new_colocated_replica_ids = defaultdict(set)
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
 
-        in_proxy = ray.get_runtime_context().get_actor_id() is not None
         for r in replicas:
-            if in_proxy:
+            if self._handle_source == DeploymentHandleSource.PROXY:
                 r._actor_handle.push_proxy_handle.remote(
                     ray.get_runtime_context().current_actor
                 )

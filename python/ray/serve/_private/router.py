@@ -357,6 +357,7 @@ class Router:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 self._event_loop,
                 deployment_id,
+                handle_source,
                 _prefer_local_node_routing,
                 RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_node_id,
