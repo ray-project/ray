@@ -8,7 +8,10 @@ import torch
 import torch.distributed as dist
 
 import ray
-from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
+from ray.air._internal.device_manager import (
+    init_torch_device_manager,
+    try_register_torch_accelerator_module,
+)
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -105,9 +108,8 @@ def _setup_torch_process_group(
             "To override this behavior, you can set NCCL_ASYNC_ERROR_HANDLING=0."
         )
         os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
-    elif backend == "hccl" and HPU_PACKAGE_AVAILABLE:
-        import habana_frameworks.torch.core as htcore  # noqa: F401
-        import habana_frameworks.torch.distributed.hccl as hpu_dist  # noqa: F401
+    elif backend == "hccl":
+        try_register_torch_accelerator_module(backend)
 
     dist.init_process_group(
         backend=backend,
@@ -207,4 +209,5 @@ class _TorchBackend(Backend):
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: BackendConfig
     ):
+        worker_group.execute(init_torch_device_manager)
         worker_group.execute(_set_torch_distributed_env_vars)
