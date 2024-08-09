@@ -86,6 +86,7 @@ class OfflinePreLearner:
     ):
 
         self.config = config
+        self.input_read_episodes = self.config.input_read_episodes
         # We need this learner to run the learner connector pipeline.
         # If it is a `Learner` instance, the `Learner` is local.
         if isinstance(learner, Learner):
@@ -130,10 +131,17 @@ class OfflinePreLearner:
 
     @OverrideToImplementCustomLogic
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
-        # Map the batch to episodes.
-        episodes = self._map_to_episodes(
-            self._is_multi_agent, batch, schema=SCHEMA | self.config.input_read_schema
-        )
+
+        # If we directly read in episodes we just convert to list.
+        if self.input_read_episodes:
+            episodes = batch["item"].tolist()
+        # Otherwise we ap the batch to episodes.
+        else:
+            episodes = self._map_to_episodes(
+                self._is_multi_agent,
+                batch,
+                schema=SCHEMA | self.config.input_read_schema,
+            )["episodes"]
         # TODO (simon): Make synching work. Right now this becomes blocking or never
         # receives weights. Learners appear to be non accessable via other actors.
         # Increase the counter for updating the module.
@@ -165,7 +173,7 @@ class OfflinePreLearner:
         batch = self._learner_connector(
             rl_module=self._module,
             data={},
-            episodes=episodes["episodes"],
+            episodes=episodes,
             shared_data={},
         )
         # Convert to `MultiAgentBatch`.
@@ -176,7 +184,7 @@ class OfflinePreLearner:
             },
             # TODO (simon): This can be run once for the batch and the
             # metrics, but we run it twice: here and later in the learner.
-            env_steps=sum(e.env_steps() for e in episodes["episodes"]),
+            env_steps=sum(e.env_steps() for e in episodes),
         )
         # Remove all data from modules that should not be trained. We do
         # not want to pass around more data than necessaty.
