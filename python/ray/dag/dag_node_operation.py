@@ -162,9 +162,13 @@ def _select_next_nodes(
     next_nodes.append(
         heapq.heappop(actor_to_candidates[first_nccl_node.actor_handle._actor_id])
     )
+
+    # An NCCL write node is picked. NCCL is a blocking operation, so we need to pick all
+    # the corresponding NCCL read nodes to avoid a deadlock.
     for downstream_node_metadata in first_nccl_node.out_edges:
         global_idx, op_type = downstream_node_metadata[0], downstream_node_metadata[1]
         downstream_node = graph[global_idx][op_type]
+        assert downstream_node.operation.type == _DAGNodeOperationType.READ
         next_nodes.append(downstream_node)
     assert len(next_nodes) == 1 + len(first_nccl_node.out_edges)
     return next_nodes
