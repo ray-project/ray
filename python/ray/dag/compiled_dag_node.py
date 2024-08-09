@@ -1159,9 +1159,17 @@ class CompiledDAG:
             A dictionary that maps an actor handle to a list of lists of
             _DAGOperationGraphNode. For the same actor, the index of the
             outer list corresponds to the index of the ExecutableTask in
-            the list of `executable_tasks` in `actor_to_executable_tasks`.
-            In the inner list, the order of operations is READ, COMPUTE,
-            and WRITE.
+            the list of `executable_tasks` in `actor_to_executable_tasks`,
+            i.e. `local_idx`. In the inner list, the order of operations
+            is READ, COMPUTE, and WRITE.
+
+            Example:
+            {
+                actor1: [
+                    [READ COMPUTE WRITE] # local_idx 0
+                    [READ COMPUTE WRITE] # local_idx 1
+                ]
+            }
         """
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
