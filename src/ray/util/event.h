@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <google/protobuf/util/json_util.h>
 #include <gtest/gtest_prod.h>
 
 #include <boost/asio.hpp>
@@ -33,6 +34,7 @@
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
+#include "src/ray/protobuf/export_api/export_event.pb.h"
 
 using json = nlohmann::json;
 
@@ -78,12 +80,26 @@ namespace ray {
                   __FILE__,                                                     \
                   __LINE__)
 
+// RAY_EXPORT_EVENT macro allows creating an event without specifying
+// event_type and label (not relevant for export API so default used).
+// This macro is intended to be used with WithExportEventData to
+// specify the event data.
+#define RAY_EXPORT_EVENT()                                            \
+  ray::RayEvent(::ray::rpc::Event_Severity::Event_Severity_INFO,      \
+                ray::RayEvent::EventLevelToLogLevel(                  \
+                    ::ray::rpc::Event_Severity::Event_Severity_INFO), \
+                "",                                                   \
+                __FILE__,                                             \
+                __LINE__)
+
 // interface of event reporter
 class BaseEventReporter {
  public:
   virtual void Init() = 0;
 
   virtual void Report(const rpc::Event &event, const json &custom_fields) = 0;
+
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) = 0;
 
   virtual void Close() = 0;
 
@@ -105,9 +121,13 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual std::string EventToString(const rpc::Event &event, const json &custom_fields);
 
+  virtual std::string ExportEventToString(const rpc::ExportEvent &export_event);
+
   virtual void Init() override {}
 
   virtual void Report(const rpc::Event &event, const json &custom_fields) override;
+
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
 
   virtual void Close() override {}
 
@@ -138,6 +158,8 @@ class EventManager final {
   // TODO(SongGuyang): Remove the protobuf `rpc::Event` and use an internal struct
   // instead.
   void Publish(const rpc::Event &event, const json &custom_fields);
+
+  void PublishExportEvent(const rpc::ExportEvent &export_event);
 
   // NOTE(ruoqiu) AddReporters, ClearPeporters (along with the Pushlish function) would
   // not be thread-safe. But we assume default initialization and shutdown are placed in
@@ -256,6 +278,12 @@ class RayEvent {
     return *this;
   }
 
+  RayEvent &WithExportEventData(
+      std::unique_ptr<google::protobuf::Message> event_data_ptr) {
+    export_event_data_ptr_ = std::move(event_data_ptr);
+    return *this;
+  }
+
   static void ReportEvent(const std::string &severity,
                           const std::string &label,
                           const std::string &message,
@@ -280,6 +308,8 @@ class RayEvent {
  private:
   RayEvent() = default;
 
+  bool IsExportEvent(rpc::Event_SourceType source_type);
+
   void SendMessage(const std::string &message);
 
   RayEvent(const RayEvent &event) = delete;
@@ -302,6 +332,7 @@ class RayEvent {
   const char *file_name_;
   int line_number_;
   json custom_fields_;
+  std::unique_ptr<google::protobuf::Message> export_event_data_ptr_;
   std::ostringstream osstream_;
 };
 
