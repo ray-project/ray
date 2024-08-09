@@ -1099,6 +1099,7 @@ class CompiledDAG:
             # Sort executable tasks based on their bind index, i.e., submission order
             # so that they will be executed in that order.
             executable_tasks.sort(key=lambda task: task.bind_index)
+            print(executable_tasks)
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build an execution schedule for each actor
@@ -1269,6 +1270,9 @@ class CompiledDAG:
         # Add an edge from WRITE of the writer task to READ of the reader task.
         for idx, task in self.idx_to_task.items():
             if not isinstance(task.dag_node, ClassMethodNode):
+                # The graph is used to generate an execution schedule for each actor.
+                # The edge from the InputNode has no impact on the final execution
+                # schedule.
                 continue
             for downstream_idx in task.downstream_node_idxs:
                 downstream_dag_node = self.idx_to_task[downstream_idx].dag_node
