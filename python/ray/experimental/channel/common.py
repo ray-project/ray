@@ -238,7 +238,7 @@ class ReaderInterface:
     def __init__(
         self,
         input_channels: List[ChannelInterface],
-        input_idxs: Optional[List[Optional[int]]],
+        input_idxs: List[Optional[int]],
     ):
         assert isinstance(input_channels, list)
         for chan in input_channels:
@@ -296,7 +296,7 @@ class SynchronousReader(ReaderInterface):
     def __init__(
         self,
         input_channels: List[ChannelInterface],
-        input_idxs: Optional[List[Optional[int]]],
+        input_idxs: List[Optional[int]],
     ):
         super().__init__(input_channels, input_idxs)
 
@@ -309,11 +309,10 @@ class SynchronousReader(ReaderInterface):
             start_time = time.monotonic()
             # results.append(c.read(timeout))
             result = c.read(timeout)
-            if self._input_idxs:
-                idx = self._input_idxs[i]
-                if idx is not None:
-                    assert isinstance(result, tuple)
-                    result = result[idx]
+            idx = self._input_idxs[i]
+            if idx is not None:
+                assert isinstance(result, tuple)
+                result = result[idx]
             results.append(result)
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
@@ -334,9 +333,13 @@ class AwaitableBackgroundReader(ReaderInterface):
     def __init__(
         self,
         input_channels: List[ChannelInterface],
-        input_idxs: Optional[List[Optional[int]]],
+        input_idxs: List[Optional[int]],
         fut_queue: asyncio.Queue,
     ):
+        for idx in input_idxs:
+            assert (
+                idx is None
+            ), "Input index is not supported in AwaitableBackgroundReader"
         super().__init__(input_channels, input_idxs)
         self._fut_queue = fut_queue
         self._background_task = None

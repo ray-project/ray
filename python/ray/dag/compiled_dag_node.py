@@ -1090,7 +1090,7 @@ class CompiledDAG:
             )
 
         self.dag_output_channels = []
-        self.dag_output_idxs = []
+        self.dag_output_idxs: List[Optional[int]] = []
         for output in self.idx_to_task[self.output_task_idx].args:
             assert isinstance(output, DAGNode)
             output_idx = self.dag_node_to_idx[output]
@@ -1121,7 +1121,7 @@ class CompiledDAG:
             )
             self._dag_output_fetcher = AwaitableBackgroundReader(
                 self.dag_output_channels,
-                None,
+                self.dag_output_idxs,
                 self._fut_queue,
             )
         else:
