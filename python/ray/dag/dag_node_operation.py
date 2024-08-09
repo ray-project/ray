@@ -121,14 +121,12 @@ def _select_next_nodes(
         smallest `bind_index`.
     #2  If #1 cannot be satisfied, it means that all candidate nodes are NCCL write
         nodes. In this case, select the one at the head of the priority queue and
-        its downstream nodes, which are NCCL read nodes, regardless of whether the
-        downstream nodes are heads of their own priority queues.
+        its immediately downstream nodes, which are NCCL read nodes, regardless of
+        whether the downstream nodes are heads of their own priority queues.
 
     This function may return multiple nodes if they are NCCL nodes. In that case,
     this function only removes the NCCL write node, which is also the head of a
     priority queue. Other nodes will be removed in the following iterations.
-    Additionally, visited_nodes ensures that the same node will not be scheduled
-    more than once.
 
     Args:
         actor_to_candidates: A dictionary mapping an actor id to a list of
