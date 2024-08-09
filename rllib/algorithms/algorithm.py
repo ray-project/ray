@@ -463,28 +463,31 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # resolving generic config objects into specific ones (e.g. passing
         # an `AlgorithmConfig` super-class instance into a PPO constructor,
         # which normally would expect a PPOConfig object).
-        if isinstance(config, dict):
-            default_config = self.get_default_config()
-            # `self.get_default_config()` also returned a dict ->
-            # Last resort: Create core AlgorithmConfig from merged dicts.
-            if isinstance(default_config, dict):
-                config = AlgorithmConfig.from_dict(
-                    config_dict=self.merge_algorithm_configs(
-                        default_config, config, True
-                    )
-                )
-            # Default config is an AlgorithmConfig -> update its properties
-            # from the given config dict.
-            else:
-                config = default_config.update_from_dict(config)
-        else:
-            default_config = self.get_default_config()
-            # Given AlgorithmConfig is not of the same type as the default config:
-            # This could be the case e.g. if the user is building an algo from a
-            # generic AlgorithmConfig() object.
-            if not isinstance(config, type(default_config)):
-                config = default_config.update_from_dict(config.to_dict())
-
+        if not isinstance(config, AlgorithmConfig):
+            raise ValueError(
+                f"`config` must be an `AlgorithmConfig` object, but is "
+                f"`{type(config).__name__}`!"
+            )
+            #default_config = self.get_default_config()
+            ## `self.get_default_config()` also returned a dict ->
+            ## Last resort: Create core AlgorithmConfig from merged dicts.
+            #if isinstance(default_config, dict):
+            #    config = AlgorithmConfig.from_dict(
+            #        config_dict=self.merge_algorithm_configs(
+            #            default_config, config, True
+            #        )
+            #    )
+            ## Default config is an AlgorithmConfig -> update its properties
+            ## from the given config dict.
+            #else:
+            #    config = default_config.update_from_dict(config)
+        #else:
+        default_config = self.get_default_config()
+        # Given AlgorithmConfig is not of the same type as the default config:
+        # This could be the case e.g. if the user is building an algo from a
+        # generic AlgorithmConfig() object.
+        if not isinstance(config, type(default_config)):
+            config = default_config.update_from_dict(config.to_dict())
         # In case this algo is using a generic config (with no algo_class set), set it
         # here.
         if config.algo_class is None:
@@ -512,16 +515,25 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             self._env_id.__name__ if isinstance(self._env_id, type) else self._env_id
         )
 
-        # Placeholder for a local replay buffer instance.
-        self.local_replay_buffer = None
-
-        # Placeholder for our LearnerGroup responsible for updating the RLModule(s).
-        self.learner_group: Optional["LearnerGroup"] = None
-
         # The Algorithm's `MetricsLogger` object to collect stats from all its
         # components (including timers, counters and other stats in its own
         # `training_step()` and other methods) as well as custom callbacks.
         self.metrics = MetricsLogger()
+
+        # Placeholder for our LearnerGroup responsible for updating the RLModule(s).
+        self.learner_group: Optional["LearnerGroup"] = None
+
+        # Placeholder for EnvRunnerGroup (used for collecting training samples).
+        self.env_runner_group: Optional[EnvRunnerGroup] = None
+
+        # Placeholder for (eval) EnvRunnerGroup (used for evaluation, if applicable).
+        self.eval_env_runner_group: Optional[EnvRunnerGroup] = None
+        # The fully qualified AlgorithmConfig used for evaluation
+        # (or None if evaluation not setup).
+        self.evaluation_config: Optional[AlgorithmConfig] = None
+
+        # Placeholder for a local replay buffer instance.
+        self.local_replay_buffer = None
 
         # Create a default logger creator if no logger_creator is specified
         if logger_creator is None:
@@ -563,12 +575,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         self._counters = defaultdict(int)
         self._episode_history = []
         self._episodes_to_be_collected = []
-
-        # The fully qualified AlgorithmConfig used for evaluation
-        # (or None if evaluation not setup).
-        self.evaluation_config: Optional[AlgorithmConfig] = None
-        # Evaluation EnvRunnerGroup and metrics last returned by `self.evaluate()`.
-        self.eval_env_runner_group: Optional[EnvRunnerGroup] = None
 
         super().__init__(
             config=config,
@@ -630,16 +636,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         self.local_replay_buffer = self._create_local_replay_buffer_if_necessary(
             self.config
         )
-
-        # Create a dict, mapping ActorHandles to sets of open remote
-        # requests (object refs). This way, we keep track, of which actors
-        # inside this Algorithm (e.g. a remote EnvRunner) have
-        # already been sent how many (e.g. `sample()`) requests.
-        self.remote_requests_in_flight: DefaultDict[
-            ActorHandle, Set[ray.ObjectRef]
-        ] = defaultdict(set)
-
-        self.env_runner_group: Optional[EnvRunnerGroup] = None
 
         # Offline RL settings.
         input_evaluation = self.config.get("input_evaluation")
