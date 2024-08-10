@@ -149,7 +149,7 @@ py_test(
 )
 
 py_test(
-    name = "test_execution_schedule",
+    name = "test_execution_schedule_gpu",
     size = "medium",
     srcs = [
         "tests/experimental/test_execution_schedule_gpu.py",

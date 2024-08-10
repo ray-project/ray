@@ -11,10 +11,8 @@ from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode, MultiOutputNode
 from ray.dag.dag_node_operation import _DAGNodeOperationType
 import torch
-from typing import List
-from dataclasses import dataclass, field
-from collections import deque, defaultdict
-from ray.actor import ActorHandle
+from typing import Optional
+from ray.dag.compiled_dag_node import CompiledDAG
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
@@ -22,219 +20,24 @@ if sys.platform != "linux" and sys.platform != "darwin":
 USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 
 
-@dataclass
-class PipelineConfig:
-    """
-    pp_size: Number of pipeline parallel workers.
-    num_micro_batches: Number of micro-batches.
-    """
-
-    pp_size: int
-    num_micro_batches: int
-
-
-@dataclass
-class PipelineUnit:
-    """
-    op: Operation type (FWD or BWD).
-    pp_rank: Pipeline parallel rank.
-    batch_id: Batch ID.
-    uid: Unique ID for the pipeline unit.
-    """
-
-    op: str
-    pp_rank: int
-    batch_id: int
-    uid: str = field(init=False, repr=False)
-
-    def __post_init__(self):
-        self.uid = f"{self.op}_rank-{self.pp_rank}_batch-{self.batch_id}"
-
-    def __repr__(self) -> str:
-        return self.uid
-
-
-def generate_1f1b_schedule(config: PipelineConfig) -> List[List[PipelineUnit]]:
-    """
-    Args:
-        config: Pipeline configuration.
-    Returns:
-        schedule: List of pipeline units for 1F1B pipeline parallelism. Each
-            inner list represents the schedule for a pipeline parallel worker.
-    """
-    pp_size = config.pp_size
-    num_micro_batches = config.num_micro_batches
-
-    schedule = []
-    for pp_rank in range(config.pp_size):
-        warm_up_batches = pp_size - pp_rank
-        main_1f1b_batches = num_micro_batches - warm_up_batches
-        cool_down_batches = num_micro_batches - main_1f1b_batches
-
-        rank_schedule = []
-        bwd_batch_id = fwd_batch_id = 0
-
-        for _ in range(warm_up_batches):
-            rank_schedule.append(PipelineUnit("FWD", pp_rank, fwd_batch_id))
-            fwd_batch_id += 1
-
-        for _ in range(main_1f1b_batches):
-            rank_schedule.append(PipelineUnit("BWD", pp_rank, bwd_batch_id))
-            bwd_batch_id += 1
-            rank_schedule.append(PipelineUnit("FWD", pp_rank, fwd_batch_id))
-            fwd_batch_id += 1
-
-        for _ in range(cool_down_batches):
-            rank_schedule.append(PipelineUnit("BWD", pp_rank, bwd_batch_id))
-            bwd_batch_id += 1
-        schedule.append(rank_schedule)
-    return schedule
-
-
-class PipelineModel:
-    def __init__(
-        self,
-        config: PipelineConfig,
-        schedule: List[List[PipelineUnit]],
-        blocks: List[ActorHandle],
-    ) -> None:
-        """
-        Args:
-            config: Pipeline configuration.
-            schedule: List of pipeline units. Each inner list represents the
-                schedule for a pipeline parallel worker.
-            blocks: List of actors representing pipeline parallel workers.
-        """
-        self.config = config
-        self.blocks = blocks
-        self.generate_pipeline_schedules(schedule)
-        self.dag = self.build_dag()
-
-    def generate_pipeline_schedules(self, schedule: List[List[PipelineUnit]]):
-        """
-        Convert per-worker schedule to per-batch schedule.
-
-        Args:
-            schedule: List of pipeline units. Each inner list represents the
-                schedule for a pipeline parallel worker.
-        """
-        self.id_to_unit = dict()
-        self.stage_schedules = defaultdict(list)
-        self.batch_schedules = defaultdict(list)
-
-        for pp_rank, stage_schedule in enumerate(schedule):
-            self.stage_schedules[pp_rank] = stage_schedule
-            for unit in stage_schedule:
-                self.id_to_unit[unit.uid] = unit
-                self.batch_schedules[unit.batch_id].append(unit)
-
-        for batch_id in self.batch_schedules:
-            fwd_units = [
-                unit for unit in self.batch_schedules[batch_id] if unit.op == "FWD"
-            ]
-            bwd_units = [
-                unit for unit in self.batch_schedules[batch_id] if unit.op == "BWD"
-            ]
-
-            fwd_units.sort(key=lambda unit: unit.pp_rank)
-            bwd_units.sort(key=lambda unit: unit.pp_rank, reverse=True)
-            self.batch_schedules[batch_id] = fwd_units + bwd_units
-
-    def build_dependency_graph(self):
-        """
-        Add dependencies between pipeline units based on:
-        (1) Per-batch schedule and (2) Per-worker schedule.
-        """
-        graph = defaultdict(set)
-        reversed_graph = defaultdict(set)
-
-        for schedules in [self.batch_schedules, self.stage_schedules]:
-            for schedule in schedules.values():
-                prev_unit = None
-                for unit in schedule:
-                    if prev_unit:
-                        graph[prev_unit.uid].add(unit.uid)
-                        reversed_graph[unit.uid].add(prev_unit.uid)
-                    prev_unit = unit
-        return graph, reversed_graph
-
-    def build_dag(self):
-        """
-        Build accelerated DAG for the pipeline model.
-        """
-        graph, reversed_graph = self.build_dependency_graph()
-        dag_nodes = dict()  # Cache DAG Node for each unit
-
-        first_unit = self.batch_schedules[0][0]
-        queue = deque([first_unit.uid])
-
-        with InputNode() as input_node:
-            root_node = self.blocks[0].read_input.bind(input_node)
-
-            output_nodes = []
-
-            while queue:
-                uid = queue.popleft()
-                unit = self.id_to_unit[uid]
-                batch_id = unit.batch_id
-                batch_schedule_index = self.batch_schedules[batch_id].index(unit)
-
-                # First forward step
-                if batch_schedule_index == 0:
-                    prev_dag_node = root_node
-                else:
-                    prev_unit = self.batch_schedules[batch_id][batch_schedule_index - 1]
-                    prev_dag_node = dag_nodes[prev_unit.uid]
-
-                block = self.blocks[unit.pp_rank]
-                if unit.op == "FWD":
-                    cur_dag_node = block.fwd.bind(prev_dag_node)
-                else:
-                    cur_dag_node = block.bwd.bind(prev_dag_node)
-
-                # Last backward step
-                if batch_schedule_index == 2 * self.config.pp_size - 1:
-                    output_nodes.append(cur_dag_node)
-
-                # ADD NCCL Channel:
-                if unit.op == "FWD" and unit.pp_rank < self.config.pp_size - 1:
-                    cur_dag_node.with_type_hint(
-                        TorchTensorType(transport=TorchTensorType.NCCL)
-                    )
-                if unit.op == "BWD" and unit.pp_rank > 0:
-                    cur_dag_node.with_type_hint(
-                        TorchTensorType(transport=TorchTensorType.NCCL)
-                    )
-
-                dag_nodes[uid] = cur_dag_node
-
-                # Enqueue new units
-                for target_uid in graph[uid]:
-                    reversed_graph[target_uid].remove(uid)
-                    if not reversed_graph[target_uid]:
-                        queue.append(target_uid)
-
-            dag = MultiOutputNode(output_nodes)
-            compiled_dag = dag.experimental_compile()
-        return compiled_dag
-
-    def step(self, input_batches):
-        return ray.get(self.dag.execute(input_batches))
-
-    def teardown(self):
-        self.dag.teardown()
-
-
 @ray.remote(num_cpus=0, num_gpus=1)
 class Worker:
-    def __init__(self):
-        pass
+    def __init__(self, rank: Optional[int] = None):
+        self.rank = rank
+        self.trace = []
 
     def fwd(self, value):
+        self.trace.append(("FWD", self.rank))
         return value
 
     def bwd(self, value):
+        self.trace.append(("BWD", self.rank))
         return value
+
+    def pop_trace(self):
+        trace = self.trace
+        self.trace = []
+        return trace
 
     def read_input(self, input):
         return input
@@ -244,6 +47,56 @@ class Worker:
 
     def no_op_two(self, value1, value2):
         return value1, value2
+
+
+def generate_1f1b_dag(
+    num_workers: int, num_microbatches: int, num_lead_microbatches: int
+) -> CompiledDAG:
+    workers = [Worker.remote(rank) for rank in range(num_workers)]
+
+    with ray.dag.InputNode() as inp:
+        fwd_queues = [[] for _ in range(num_workers)]
+        bwd_queues = [[] for _ in range(num_workers)]
+        # Once a worker's counter reaches 0, it cannot execute another fwd until it
+        # executes a bwd first.
+        fwd_counter = [num_lead_microbatches - i for i in range(num_workers)]
+        # All of the done batches.
+        done = []
+
+        # FWD on worker 0.
+        input_data = workers[0].read_input.bind(inp)
+        for i in range(num_microbatches):
+            fwd_queues[0].append(input_data)
+
+        while len(done) < num_microbatches:
+            for i, worker in enumerate(workers):
+                if fwd_counter[i] > 0 and fwd_queues[i]:
+                    b = fwd_queues[i].pop(0)
+                    b = worker.fwd.bind(b)
+                    if i < num_workers - 1:
+                        fwd_queues[i + 1].append(b)
+                        # Use NCCL channel for communication between workers.
+                        b.with_type_hint(
+                            TorchTensorType(transport=TorchTensorType.NCCL)
+                        )
+                    else:
+                        bwd_queues[i].append(b)
+                    fwd_counter[i] -= 1
+                elif bwd_queues[i]:
+                    b = bwd_queues[i].pop(0)
+                    b = worker.bwd.bind(b)
+                    if i > 0:
+                        bwd_queues[i - 1].append(b)
+                        # Use NCCL channel for communication between workers.
+                        b.with_type_hint(
+                            TorchTensorType(transport=TorchTensorType.NCCL)
+                        )
+                    else:
+                        done.append(b)
+                    fwd_counter[i] += 1
+        dag = ray.dag.MultiOutputNode(done)
+    compiled_dag = dag.experimental_compile()
+    return compiled_dag
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
@@ -353,20 +206,18 @@ def test_simulate_pp_4workers_8batches_1f1b(ray_start_regular, monkeypatch):
 
     monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
 
-    num_worker, num_batch = 4, 8
-
-    workers = [Worker.remote() for _ in range(num_worker)]
-    config = PipelineConfig(num_worker, num_batch)
-    schedule = generate_1f1b_schedule(config)
-    model = PipelineModel(config, schedule, workers)
+    num_workers, num_microbatches, num_lead_microbatches = 4, 8, 4
+    compiled_dag = generate_1f1b_dag(
+        num_workers, num_microbatches, num_lead_microbatches
+    )
 
     tensor_cpu = torch.zeros(10, 10)
-    tensors = model.step(tensor_cpu)
+    tensors = ray.get(compiled_dag.execute(tensor_cpu))
     tensor_cuda = tensor_cpu.to("cuda:0")
-    assert len(tensors) == num_batch
+    assert len(tensors) == num_microbatches
     for t in tensors:
         assert torch.equal(t, tensor_cuda)
-    model.teardown()
+    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
