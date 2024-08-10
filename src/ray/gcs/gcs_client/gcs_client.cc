@@ -664,7 +664,7 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
     }
     return Status::OK();
   }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return GrpcStatusToRayStatus(status);
 }
 
 Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
