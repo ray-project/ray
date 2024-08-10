@@ -421,7 +421,7 @@ class StateDataSourceClient:
     - Runtime Env Agents via HTTP.
 
     For the GCS part excluding `get_all_jobs`, it defaults to use the GcsAioClient. If
-    the environment variable RAY_USE_OLD_GCS_CLIENT=1, it usees the direct gRPC stubs.
+    the environment variable RAY_USE_OLD_GCS_CLIENT=1, it uses the direct gRPC stubs.
 
     The module is not in charge of service discovery. The caller is responsible for
     finding services and register stubs through `register*` APIs.

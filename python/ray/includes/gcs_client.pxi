@@ -745,6 +745,7 @@ cdef raise_or_return(tup):
 # Must not raise exceptions, or it crashes the process.
 #############################################################
 
+# IDEA(ryw): use Cython fused types to reduce boilerplate.
 cdef convert_optional_raw_get_all_actor_info_reply(
         CRayStatus status, optional[CGetAllActorInfoReply]&& c_data) with gil:
     # -> gcs_service_pb2.GetAllActorInfoReply
