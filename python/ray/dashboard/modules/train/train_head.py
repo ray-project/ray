@@ -6,7 +6,6 @@ from aiohttp.web import Request, Response
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.core.generated import gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray.dashboard.modules.job.utils import find_jobs_by_job_ids
@@ -23,7 +22,6 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         self._train_stats_actor = None
         self._job_info_client = None
-        self._gcs_actor_info_stub = None
 
     @routes.get("/api/train/v2/runs")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
@@ -186,11 +184,6 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             self._job_info_client = JobInfoStorageClient(
                 self._dashboard_head.gcs_aio_client
             )
-
-        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
-        self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
-            gcs_channel
-        )
 
     async def get_train_stats_actor(self):
         """
