@@ -27,19 +27,6 @@ MAX_GCS_PUBLISH_RETRIES = 60
 
 class _PublisherBase:
     @staticmethod
-    def _create_log_request(log_json: dict):
-        job_id = log_json.get("job")
-        return gcs_service_pb2.GcsPublishRequest(
-            pub_messages=[
-                pubsub_pb2.PubMessage(
-                    channel_type=pubsub_pb2.RAY_LOG_CHANNEL,
-                    key_id=job_id.encode() if job_id else None,
-                    log_batch_message=logging_utils.log_batch_dict_to_proto(log_json),
-                )
-            ]
-        )
-
-    @staticmethod
     def _create_node_resource_usage_request(key: str, json: str):
         return gcs_service_pb2.GcsPublishRequest(
             pub_messages=[
