@@ -780,6 +780,110 @@ class TestGenerateActorToExecutionSchedule:
             graph[dag_idx_2_2][_DAGNodeOperationType.WRITE].operation,
         ]
 
+    def test_simulate_pp_2workers_2batches_1f1b(self, monkeypatch):
+        """
+        This test simulates a simple 1F1B pipeline parallelism for training with
+        2 workers and 2 batches.
+
+        w1: fwd_b1  fwd_b2          bwd_b1          bwd_b2
+        w2:         fwd_b1  bwd_b1  fwd_b2  bwd_b2
+
+        The communication between workers is done using NCCL. The communication
+        within the worker actor is done using IntraProcessChannel.
+        """
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+
+        worker_1 = ActorHandle("worker_1")
+        dag_idx_1_1, local_idx_1_1 = 1, 0
+        dag_idx_1_2, local_idx_1_2 = 2, 1
+        dag_idx_1_3, local_idx_1_3 = 3, 2
+        dag_idx_1_4, local_idx_1_4 = 4, 3
+        worker_2 = ActorHandle("worker_2")
+        dag_idx_2_1, local_idx_2_1 = 5, 0
+        dag_idx_2_2, local_idx_2_2 = 6, 1
+        dag_idx_2_3, local_idx_2_3 = 7, 2
+        dag_idx_2_4, local_idx_2_4 = 8, 3
+        graph = {
+            dag_idx_1_1: generate_dag_graph_nodes(
+                local_idx_1_1, dag_idx_1_1, worker_1, True
+            ),
+            dag_idx_1_2: generate_dag_graph_nodes(
+                local_idx_1_2, dag_idx_1_2, worker_1, True
+            ),
+            dag_idx_1_3: generate_dag_graph_nodes(
+                local_idx_1_3, dag_idx_1_3, worker_1, False
+            ),
+            dag_idx_1_4: generate_dag_graph_nodes(
+                local_idx_1_4, dag_idx_1_4, worker_1, False
+            ),
+            dag_idx_2_1: generate_dag_graph_nodes(
+                local_idx_2_1, dag_idx_2_1, worker_2, False
+            ),
+            dag_idx_2_2: generate_dag_graph_nodes(
+                local_idx_2_2, dag_idx_2_2, worker_2, True
+            ),
+            dag_idx_2_3: generate_dag_graph_nodes(
+                local_idx_2_3, dag_idx_2_3, worker_2, False
+            ),
+            dag_idx_2_4: generate_dag_graph_nodes(
+                local_idx_2_4, dag_idx_2_4, worker_2, True
+            ),
+        }
+        self.add_edge_between_read_compute_write(graph[dag_idx_1_1])
+        self.add_edge_between_read_compute_write(graph[dag_idx_1_2])
+        self.add_edge_between_read_compute_write(graph[dag_idx_1_3])
+        self.add_edge_between_read_compute_write(graph[dag_idx_1_4])
+        self.add_edge_between_read_compute_write(graph[dag_idx_2_1])
+        self.add_edge_between_read_compute_write(graph[dag_idx_2_2])
+        self.add_edge_between_read_compute_write(graph[dag_idx_2_3])
+        self.add_edge_between_read_compute_write(graph[dag_idx_2_4])
+        self.add_data_dependeny(graph[dag_idx_1_1], graph[dag_idx_2_1])
+        self.add_data_dependeny(graph[dag_idx_2_1], graph[dag_idx_2_2])
+        self.add_data_dependeny(graph[dag_idx_2_2], graph[dag_idx_1_3])
+        self.add_data_dependeny(graph[dag_idx_1_2], graph[dag_idx_2_3])
+        self.add_data_dependeny(graph[dag_idx_2_3], graph[dag_idx_2_4])
+        self.add_data_dependeny(graph[dag_idx_2_4], graph[dag_idx_1_4])
+        self.add_control_dependency(graph[dag_idx_1_1], graph[dag_idx_1_2])
+        self.add_control_dependency(graph[dag_idx_1_2], graph[dag_idx_1_3])
+        self.add_control_dependency(graph[dag_idx_1_3], graph[dag_idx_1_4])
+        self.add_control_dependency(graph[dag_idx_2_1], graph[dag_idx_2_2])
+        self.add_control_dependency(graph[dag_idx_2_2], graph[dag_idx_2_3])
+        self.add_control_dependency(graph[dag_idx_2_3], graph[dag_idx_2_4])
+
+        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        assert len(actor_to_execution_schedule) == 2
+        assert len(actor_to_execution_schedule[worker_1]) == 12
+        assert len(actor_to_execution_schedule[worker_2]) == 12
+        assert actor_to_execution_schedule[worker_1] == [
+            graph[dag_idx_1_1][_DAGNodeOperationType.READ].operation,
+            graph[dag_idx_1_1][_DAGNodeOperationType.COMPUTE].operation,
+            graph[dag_idx_1_1][_DAGNodeOperationType.WRITE].operation,
+            graph[dag_idx_1_2][_DAGNodeOperationType.READ].operation,
+            graph[dag_idx_1_2][_DAGNodeOperationType.COMPUTE].operation,
+            graph[dag_idx_1_2][_DAGNodeOperationType.WRITE].operation,
+            graph[dag_idx_1_3][_DAGNodeOperationType.READ].operation,
+            graph[dag_idx_1_3][_DAGNodeOperationType.COMPUTE].operation,
+            graph[dag_idx_1_3][_DAGNodeOperationType.WRITE].operation,
+            graph[dag_idx_1_4][_DAGNodeOperationType.READ].operation,
+            graph[dag_idx_1_4][_DAGNodeOperationType.COMPUTE].operation,
+            graph[dag_idx_1_4][_DAGNodeOperationType.WRITE].operation,
+        ]
+        assert actor_to_execution_schedule[worker_2] == [
+            graph[dag_idx_2_1][_DAGNodeOperationType.READ].operation,
+            graph[dag_idx_2_1][_DAGNodeOperationType.COMPUTE].operation,
+            graph[dag_idx_2_1][_DAGNodeOperationType.WRITE].operation,
+            graph[dag_idx_2_2][_DAGNodeOperationType.READ].operation,
+            graph[dag_idx_2_2][_DAGNodeOperationType.COMPUTE].operation,
+            # The order of `dag_idx_2_3.READ` and `dag_idx_2_2.WRITE` is important.
+            graph[dag_idx_2_3][_DAGNodeOperationType.READ].operation,
+            graph[dag_idx_2_2][_DAGNodeOperationType.WRITE].operation,
+            graph[dag_idx_2_3][_DAGNodeOperationType.COMPUTE].operation,
+            graph[dag_idx_2_3][_DAGNodeOperationType.WRITE].operation,
+            graph[dag_idx_2_4][_DAGNodeOperationType.READ].operation,
+            graph[dag_idx_2_4][_DAGNodeOperationType.COMPUTE].operation,
+            graph[dag_idx_2_4][_DAGNodeOperationType.WRITE].operation,
+        ]
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
