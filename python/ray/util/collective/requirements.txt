@@ -1,1 +1,1 @@
-cupy-cuda100
+cupy-cuda12x
