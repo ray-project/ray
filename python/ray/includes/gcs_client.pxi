@@ -556,13 +556,12 @@ cdef class NewGcsClient:
 
         return (is_accepted, rejection_reason_message.decode())
 
-
     #############################################################
     # Publisher methods
     #############################################################
 
     def publish_error(self, key_id: bytes, error_type: str, message: str,
-                      job_id: Optional[JobID]=None, timeout=None):
+                      job_id: Optional[JobID] = None, timeout = None):
         cdef:
             CErrorTableData error_info
             c_string c_key_id = key_id
@@ -606,7 +605,7 @@ cdef class NewGcsClient:
                     c_job_id, log_batch, timeout_ms))
 
     def async_publish_node_resource_usage(
-        self, key_id: str, node_resource_usage_json: str) -> Future[None]:
+            self, key_id: str, node_resource_usage_json: str) -> Future[None]:
         cdef:
             c_string c_key_id = key_id
             c_string c_node_resource_usage_json = node_resource_usage_json.encode()
