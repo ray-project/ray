@@ -379,4 +379,5 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... core
         --build-name coregpubuild
         --only-tags multi_gpu
+      - sleep 15000
     depends_on: coregpubuild
