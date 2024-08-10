@@ -13,6 +13,7 @@ from ray.dag.dag_node_operation import _DAGNodeOperationType
 import torch
 from typing import Optional
 from ray.dag.compiled_dag_node import CompiledDAG
+from ray.dag.tests.experimental.test_torch_tensor_dag import TorchTensorWorker
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
@@ -362,6 +363,46 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
     assert len(tensors) == 3
     for t in tensors:
         assert torch.equal(t, tensor_cuda)
+
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
+    """
+    Test nested torch.Tensor passed via NCCL. Its shape and dtype is
+    dynamically declared, and there may be multiple tensors.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    with InputNode() as inp:
+        dag = sender.send_dict_with_tuple_args.bind(inp)
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = receiver.recv_dict.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        i += 1
+
+        shape = (10 * i,)
+        dtype = torch.float16
+        args = (shape, dtype, i)
+
+        ref = compiled_dag.execute(args)
+        result = ray.get(ref)
+        expected_result = {j: (j, shape, dtype) for j in range(i)}
+        assert result == expected_result
 
     compiled_dag.teardown()
 
