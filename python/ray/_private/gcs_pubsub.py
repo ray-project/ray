@@ -149,21 +149,6 @@ class GcsAioPublisher(_PublisherBase):
             assert channel is not None, "One of address and channel must be specified"
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 
-    async def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:
-        """Publishes error info to GCS."""
-        msg = pubsub_pb2.PubMessage(
-            channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
-            key_id=key_id,
-            error_info_message=error_info,
-        )
-        req = gcs_service_pb2.GcsPublishRequest(pub_messages=[msg])
-        await self._stub.GcsPublish(req)
-
-    async def publish_logs(self, log_batch: dict) -> None:
-        """Publishes logs to GCS."""
-        req = self._create_log_request(log_batch)
-        await self._stub.GcsPublish(req)
-
     async def publish_resource_usage(self, key: str, json: str) -> None:
         """Publishes logs to GCS."""
         req = self._create_node_resource_usage_request(key, json)
