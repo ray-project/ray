@@ -118,6 +118,30 @@ def test_windows_path():
         assert _is_local_windows_path("c:\\some\\where/mixed")
 
 
+@pytest.mark.parametrize(
+    "shuffle, valid",
+    [
+        (None, True),
+        ("files", True),
+        (True, False),
+        (False, False),
+        ("file", False),
+    ],
+)
+def test_shuffle_arg(ray_start_regular_shared, tmp_path, shuffle, valid):
+
+    path = os.path.join(tmp_path, "test.txt")
+    with open(path, "w"):
+        pass
+
+    if valid:
+        FileBasedDatasource(path, shuffle=shuffle)
+
+    else:
+        with pytest.raises(ValueError):
+            FileBasedDatasource(path, shuffle=shuffle)
+
+
 if __name__ == "__main__":
     import sys
 
