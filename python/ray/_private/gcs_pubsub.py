@@ -1,3 +1,4 @@
+import os
 import asyncio
 from collections import deque
 import logging
@@ -21,36 +22,6 @@ from ray.core.generated import common_pb2
 from ray.core.generated import pubsub_pb2
 
 logger = logging.getLogger(__name__)
-
-# Max retries for GCS publisher connection error
-MAX_GCS_PUBLISH_RETRIES = 60
-
-
-class _PublisherBase:
-    @staticmethod
-    def _create_log_request(log_json: dict):
-        job_id = log_json.get("job")
-        return gcs_service_pb2.GcsPublishRequest(
-            pub_messages=[
-                pubsub_pb2.PubMessage(
-                    channel_type=pubsub_pb2.RAY_LOG_CHANNEL,
-                    key_id=job_id.encode() if job_id else None,
-                    log_batch_message=logging_utils.log_batch_dict_to_proto(log_json),
-                )
-            ]
-        )
-
-    @staticmethod
-    def _create_node_resource_usage_request(key: str, json: str):
-        return gcs_service_pb2.GcsPublishRequest(
-            pub_messages=[
-                pubsub_pb2.PubMessage(
-                    channel_type=pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL,
-                    key_id=key.encode(),
-                    node_resource_usage_message=common_pb2.NodeResourceUsage(json=json),
-                )
-            ]
-        )
 
 
 class _SubscriberBase:
@@ -138,36 +109,51 @@ class _SubscriberBase:
         return msgs
 
 
-class GcsAioPublisher(_PublisherBase):
-    """Publisher to GCS. Uses async io."""
+class GcsAioPublisher:
+    """
+    Publisher to GCS. Uses async io.
+    It makes the call via GcsAioClient or a direct gRPC stub, depending on the env var
+    RAY_USE_OLD_GCS_CLIENT.
+    """
 
-    def __init__(self, address: str = None, channel: aiogrpc.Channel = None):
-        if address:
-            assert channel is None, "address and channel cannot both be specified"
-            channel = gcs_utils.create_gcs_channel(address, aio=True)
+    def __new__(cls, *args, **kwargs):
+        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
+        if use_old_client:
+            return GcsAioPublisherFromGrpc(*args, **kwargs)
         else:
-            assert channel is not None, "One of address and channel must be specified"
-        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
+            return GcsAioPublisherFromNewGcsClient(*args, **kwargs)
 
-    async def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:
-        """Publishes error info to GCS."""
-        msg = pubsub_pb2.PubMessage(
-            channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
-            key_id=key_id,
-            error_info_message=error_info,
-        )
-        req = gcs_service_pb2.GcsPublishRequest(pub_messages=[msg])
-        await self._stub.GcsPublish(req)
 
-    async def publish_logs(self, log_batch: dict) -> None:
-        """Publishes logs to GCS."""
-        req = self._create_log_request(log_batch)
-        await self._stub.GcsPublish(req)
+class GcsAioPublisherFromNewGcsClient:
+    def __init__(self, gcs_aio_client: gcs_utils.GcsAioClient):
+        self.gcs_aio_client = gcs_aio_client
 
     async def publish_resource_usage(self, key: str, json: str) -> None:
-        """Publishes logs to GCS."""
+        """Publishes logs to GCS using the new GCS client."""
+        await self.gcs_aio_client.publish_node_resource_usage(key, json)
+
+
+class GcsAioPublisherFromGrpc:
+    def __init__(self, gcs_aio_client: gcs_utils.GcsAioClient):
+        address = gcs_aio_client.address
+        channel = gcs_utils.create_gcs_channel(address, aio=True)
+        self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
+
+    async def publish_resource_usage(self, key: str, json: str) -> None:
+        """Publishes logs to GCS using the old gRPC client."""
         req = self._create_node_resource_usage_request(key, json)
         await self._stub.GcsPublish(req)
+
+    def _create_node_resource_usage_request(self, key: str, json: str):
+        return gcs_service_pb2.GcsPublishRequest(
+            pub_messages=[
+                pubsub_pb2.PubMessage(
+                    channel_type=pubsub_pb2.RAY_NODE_RESOURCE_USAGE_CHANNEL,
+                    key_id=key.encode(),
+                    node_resource_usage_message=common_pb2.NodeResourceUsage(json=json),
+                )
+            ]
+        )
 
 
 class _AioSubscriber(_SubscriberBase):

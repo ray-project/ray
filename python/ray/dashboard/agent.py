@@ -84,7 +84,7 @@ class DashboardAgent:
         from ray._private.gcs_pubsub import GcsAioPublisher
         from ray.dashboard.http_server_agent import HttpServerAgent
 
-        self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
+        self.aio_publisher = GcsAioPublisher(self.gcs_aio_client)
 
         try:
             from grpc import aio as aiogrpc
