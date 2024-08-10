@@ -27,6 +27,6 @@ class EnvToModulePipeline(ConnectorPipelineV2):
             data=data if data is not None else {},
             episodes=episodes,
             explore=explore,
-            shared_data=shared_data,
+            shared_data=shared_data if shared_data is not None else {},
             **kwargs,
         )

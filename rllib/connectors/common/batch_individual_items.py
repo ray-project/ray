@@ -1,17 +1,39 @@
 from typing import Any, List, Optional
 
+import gymnasium as gym
+
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
 
 
 class BatchIndividualItems(ConnectorV2):
+    def __init__(
+        self,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
+        *,
+        multi_agent: bool = False,
+        **kwargs,
+    ):
+        """Initializes a BatchIndividualItems instance.
+
+        Args:
+            multi_agent: Whether this is a connector operating on a multi-agent
+                observation space mapping AgentIDs to individual agents' observations.
+        """
+        super().__init__(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            **kwargs,
+        )
+        self._multi_agent = multi_agent
+
     @override(ConnectorV2)
     def __call__(
         self,
@@ -23,8 +45,7 @@ class BatchIndividualItems(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
-        is_marl_module = isinstance(rl_module, MultiAgentRLModule)
+        is_multi_rl_module = isinstance(rl_module, MultiRLModule)
 
         # Convert lists of individual items into properly batched data.
         for column, column_data in data.copy().items():
@@ -32,8 +53,13 @@ class BatchIndividualItems(ConnectorV2):
             # the AgentToModuleMapping connector has already been applied, leading
             # to a batch structure of:
             # [module_id] -> [col0] -> [list of items]
-            if is_marl_module and column in rl_module:
-                assert is_multi_agent
+            if is_multi_rl_module and column in rl_module:
+                # Case, in which a column has already been properly batched before this
+                # connector piece is called.
+                if not self._multi_agent:
+                    continue
+                # If MA Off-Policy and independent sampling we need to overcome this
+                # check.
                 module_data = column_data
                 for col, col_data in module_data.copy().items():
                     if isinstance(col_data, list) and col != Columns.INFOS:
@@ -53,7 +79,7 @@ class BatchIndividualItems(ConnectorV2):
             # Single-agent case: There is a dict under `column` mapping
             # `eps_id` to lists of items:
             # Sort by eps_id, concat all these lists, then batch.
-            elif not is_multi_agent:
+            elif not self._multi_agent:
                 # TODO: only really need this in non-Learner connector pipeline
                 memorized_map_structure = []
                 list_to_be_batched = []
@@ -72,7 +98,7 @@ class BatchIndividualItems(ConnectorV2):
                         individual_items_already_have_batch_dim="auto",
                     )
                 )
-                if is_marl_module:
+                if is_multi_rl_module:
                     if DEFAULT_MODULE_ID not in data:
                         data[DEFAULT_MODULE_ID] = {}
                     data[DEFAULT_MODULE_ID][column] = data.pop(column)

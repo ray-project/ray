@@ -206,7 +206,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
             }
 
             // If there's no more attempt to try.
-            if (status.IsGrpcUnavailable()) {
+            if (status.IsRpcError() &&
+                status.rpc_code() == grpc::StatusCode::UNAVAILABLE) {
               std::ostringstream ss;
               ss << "Failed to get the system config from raylet because "
                  << "it is dead. Worker will terminate. Status: " << status
@@ -233,6 +234,7 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   thread.join();
 
   RayConfig::instance().initialize(promise.get_future().get());
+  ray::asio::testing::init();
 }
 
 void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {

@@ -99,7 +99,7 @@ Getter methods
     ~AlgorithmConfig.get_default_learner_class
     ~AlgorithmConfig.get_default_rl_module_spec
     ~AlgorithmConfig.get_evaluation_config_object
-    ~AlgorithmConfig.get_marl_module_spec
+    ~AlgorithmConfig.get_multi_rl_module_spec
     ~AlgorithmConfig.get_multi_agent_setup
     ~AlgorithmConfig.get_rollout_fragment_length
 
@@ -149,6 +149,8 @@ Constructor
     :toctree: doc/
 
     ~Algorithm
+    ~Algorithm.setup
+    ~Algorithm.get_default_config
 
 Inference and Evaluation
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -196,4 +198,3 @@ Multi Agent
 
     ~Algorithm.add_policy
     ~Algorithm.remove_policy
-

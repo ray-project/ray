@@ -8,7 +8,8 @@ from google.cloud.bigquery import job
 from google.cloud.bigquery_storage_v1.types import stream as gcbqs_stream
 
 import ray
-from ray.data.datasource import BigQueryDatasource, _BigQueryDatasink
+from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
+from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -197,7 +198,7 @@ class TestWriteBigQuery:
     """Tests for BigQuery Write."""
 
     def test_write(self, ray_get_mock):
-        bq_datasink = _BigQueryDatasink(
+        bq_datasink = BigQueryDatasink(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset=_TEST_BQ_DATASET,
         )
@@ -210,7 +211,7 @@ class TestWriteBigQuery:
         assert status == "ok"
 
     def test_write_dataset_exists(self, ray_get_mock):
-        bq_datasink = _BigQueryDatasink(
+        bq_datasink = BigQueryDatasink(
             project_id=_TEST_GCP_PROJECT_ID,
             dataset="existingdataset" + "." + _TEST_BQ_TABLE_ID,
         )

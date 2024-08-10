@@ -5,6 +5,7 @@ from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.compute import ActorPoolStrategy
+from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -26,6 +27,7 @@ from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401
     from_arrow,
     from_arrow_refs,
+    from_blocks,
     from_dask,
     from_huggingface,
     from_items,
@@ -46,6 +48,7 @@ from ray.data.read_api import (  # noqa: F401
     read_csv,
     read_databricks_tables,
     read_datasource,
+    read_delta_sharing_tables,
     read_images,
     read_json,
     read_lance,
@@ -61,8 +64,7 @@ from ray.data.read_api import (  # noqa: F401
 
 # Module-level cached global functions for callable classes. It needs to be defined here
 # since it has to be process-global across cloudpickled funcs.
-_cached_fn = None
-_cached_cls = None
+_map_actor_context = None
 
 configure_logging()
 
@@ -136,6 +138,7 @@ __all__ = [
     "read_binary_files",
     "read_csv",
     "read_datasource",
+    "read_delta_sharing_tables",
     "read_images",
     "read_json",
     "read_lance",
@@ -148,4 +151,5 @@ __all__ = [
     "read_webdataset",
     "set_progress_bars",
     "Preprocessor",
+    "TFXReadOptions",
 ]

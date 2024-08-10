@@ -1,5 +1,6 @@
+# @OldAPIStack
 """
-This script demonstrates how to specify n (vectorized) envs
+This script specifies n (vectorized) envs
 as Ray remote (actors), such that stepping through these occurs in parallel.
 Also, actions for each env step are calculated on the "main" node.
 
@@ -37,7 +38,7 @@ def get_cli_args():
 
     # example-specific args
     # This should be >1, otherwise, remote envs make no sense.
-    parser.add_argument("--num-envs-per-worker", type=int, default=4)
+    parser.add_argument("--num-envs-per-env-runner", type=int, default=4)
 
     # general args
     parser.add_argument(
@@ -106,7 +107,7 @@ class PPORemoteInference(PPO):
             bundles=[
                 {
                     # Single CPU for the local worker. This CPU hosts the
-                    # main model in this example (num_workers=0).
+                    # main model in this example (num_env_runners=0).
                     "CPU": 1,
                     # Possibly add n GPUs to this.
                     "GPU": cf.num_gpus,
@@ -134,7 +135,7 @@ if __name__ == "__main__":
             # Force sub-envs to be ray.actor.ActorHandles, so we can step
             # through them in parallel.
             remote_worker_envs=True,
-            num_envs_per_env_runner=args.num_envs_per_worker,
+            num_envs_per_env_runner=args.num_envs_per_env_runner,
             # Use a single worker (however, with n parallelized remote envs, maybe
             # even running on another node).
             # Action computations occur on the "main" (GPU?) node, while
@@ -146,7 +147,7 @@ if __name__ == "__main__":
             num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             # Set the number of CPUs used by the (local) worker, aka "driver"
             # to match the number of Ray remote envs.
-            num_cpus_for_main_process=args.num_envs_per_worker + 1,
+            num_cpus_for_main_process=args.num_envs_per_env_runner + 1,
         )
     )
 

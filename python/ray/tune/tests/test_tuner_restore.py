@@ -628,7 +628,7 @@ def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
     with pytest.raises(ValueError):
         tuner = Tuner.restore(
             str(tmpdir / "overwrite_trainable"),
-            trainable="__fake",
+            trainable="abcd",
             resume_errored=True,
         )
 

@@ -1,4 +1,5 @@
-"""Example of handling variable length and/or parametric action spaces.
+# @OldAPIStack
+"""Example of handling variable length or parametric action spaces.
 
 This is a toy example of the action-embedding based approach for handling large
 discrete action spaces (potentially infinite in size), similar to this:
@@ -79,7 +80,7 @@ if __name__ == "__main__":
             },
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "num_workers": 0,
+            "num_env_runners": 0,
             "framework": args.framework,
             "action_mask_key": "valid_avail_actions_mask",
         },

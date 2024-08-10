@@ -52,13 +52,6 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 /// The duration between loads pulled by GCS
 RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
 
-/// If GCS restarts, before the first heatbeat is sent,
-/// gcs_failover_worker_reconnect_timeout is used for the threshold
-/// of the raylet. This is very useful given that raylet might need
-/// a while to reconnect to the GCS, for example, when GCS is available
-/// but not reachable to raylet.
-RAY_CONFIG(int64_t, gcs_failover_worker_reconnect_timeout, 120)
-
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 
@@ -797,13 +790,6 @@ RAY_CONFIG(bool, event_log_reporter_enabled, true)
 /// This has no effect if `event_log_reporter_enabled` is false.
 RAY_CONFIG(bool, emit_event_to_log_file, false)
 
-/// Whether to enable register actor async.
-/// If it is false, the actor registration to GCS becomes synchronous, i.e.,
-/// core worker is blocked until GCS registers the actor and replies to it.
-/// If it is true, the actor registration is async, but actor handles cannot
-/// be passed to other worker until it is registered to GCS.
-RAY_CONFIG(bool, actor_register_async, true)
-
 /// Event severity threshold value
 RAY_CONFIG(std::string, event_level, "warning")
 
@@ -910,3 +896,6 @@ RAY_CONFIG(int, object_manager_client_connection_num, 4)
 //     std::min(std::max(2, num_cpus / 4), 8)
 // Update this to overwrite it.
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
+
+// Write export API events to file if enabled
+RAY_CONFIG(bool, enable_export_api_write, false)

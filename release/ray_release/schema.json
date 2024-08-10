@@ -28,7 +28,8 @@
 					"type": "string",
 					"enum": [
 						"3.9",
-						"3.11"
+						"3.11",
+						"3.12"
 					]
 				},
 				"frequency": {
@@ -98,14 +99,8 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"type": {
-					"type": "string",
-					"enum": [
-						"cpu",
-						"gpu",
-						"cu118",
-						"cu121"
-					]
+				"type":{
+					"type": "string"
 				},
 				"post_build_script":{
 					"type": "string"

@@ -1,3 +1,5 @@
+# @OldAPIStack
+
 """Example of using a custom training workflow.
 
 This example creates a number of CartPole agents, some of which are trained with
@@ -88,7 +90,7 @@ class MyAlgo(Algorithm):
         # TODO: Use `max_env_steps=200` option of synchronous_parallel_sample instead.
         while num_env_steps < 200:
             ma_batches = synchronous_parallel_sample(
-                worker_set=self.workers, concat=False
+                worker_set=self.env_runner_group, concat=False
             )
             # Loop through ma-batches (which were collected in parallel).
             for ma_batch in ma_batches:
@@ -126,7 +128,7 @@ class MyAlgo(Algorithm):
             - self._counters[LAST_TARGET_UPDATE_TS]
             >= self.get_policy("dqn_policy").config["target_network_update_freq"]
         ):
-            self.workers.local_worker().get_policy("dqn_policy").update_target()
+            self.env_runner.get_policy("dqn_policy").update_target()
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
                 "agent_steps_trained_DQN"

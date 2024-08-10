@@ -52,6 +52,7 @@ class MapOperator(OneToOneOperator, ABC):
         name: str,
         target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
+        supports_fusion: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
     ):
@@ -60,6 +61,7 @@ class MapOperator(OneToOneOperator, ABC):
         # NOTE: This constructor must be called by subclasses.
 
         self._map_transformer = map_transformer
+        self._supports_fusion = supports_fusion
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn
         self._ray_remote_args_factory_actor_locality = None
@@ -113,6 +115,7 @@ class MapOperator(OneToOneOperator, ABC):
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
+        supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "MapOperator":
@@ -135,6 +138,7 @@ class MapOperator(OneToOneOperator, ABC):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            supports_fusion: Whether this operator supports fusion with other operators.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -158,6 +162,7 @@ class MapOperator(OneToOneOperator, ABC):
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
                 concurrency=compute_strategy.size,
+                supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -173,6 +178,7 @@ class MapOperator(OneToOneOperator, ABC):
                 compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
+                supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -310,17 +316,25 @@ class MapOperator(OneToOneOperator, ABC):
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
             self._metrics.on_task_finished(task_index, exception)
 
-            # Estimate number of tasks from inputs received and tasks submitted so far
-            estimated_num_tasks = (
-                self.input_dependencies[0].num_outputs_total()
-                / self._metrics.num_inputs_received
-                * self._next_data_task_idx
-            )
-            self._estimated_output_blocks = round(
-                estimated_num_tasks
-                * self._metrics.num_outputs_of_finished_tasks
-                / self._metrics.num_tasks_finished
-            )
+            # Estimate number of tasks and rows from inputs received and tasks
+            # submitted so far
+            upstream_op_num_outputs = self.input_dependencies[0].num_outputs_total()
+            if upstream_op_num_outputs:
+                estimated_num_tasks = (
+                    upstream_op_num_outputs
+                    / self._metrics.num_inputs_received
+                    * self._next_data_task_idx
+                )
+                self._estimated_num_output_bundles = round(
+                    estimated_num_tasks
+                    * self._metrics.num_outputs_of_finished_tasks
+                    / self._metrics.num_tasks_finished
+                )
+                self._estimated_num_output_rows = round(
+                    estimated_num_tasks
+                    * self._metrics.rows_task_outputs_generated
+                    / self._metrics.num_tasks_finished
+                )
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
@@ -370,8 +384,7 @@ class MapOperator(OneToOneOperator, ABC):
         assert self._started
         bundle = self._output_queue.get_next()
         self._metrics.on_output_dequeued(bundle)
-        for _, meta in bundle.blocks:
-            self._output_metadata.append(meta)
+        self._output_metadata.extend(bundle.metadata)
         return bundle
 
     @abstractmethod
@@ -403,6 +416,23 @@ class MapOperator(OneToOneOperator, ABC):
     def incremental_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
+    def implements_accurate_memory_accounting(self) -> bool:
+        return True
+
+    def supports_fusion(self) -> bool:
+        return self._supports_fusion
+
+    def num_active_tasks(self) -> int:
+        # Override `num_active_tasks` to only include data tasks and exclude
+        # metadata tasks, which are used by the actor-pool map operator to
+        # check if a newly created actor is ready.
+        # The reasons are because:
+        # 1. `PhysicalOperator.completed` checks `num_active_tasks`. The operator
+        #   should be considered completed if there are still pending actors.
+        # 2. The number of active tasks in the progress bar will be more accurate
+        #   to reflect the actual data processing tasks.
+        return len(self._data_tasks)
+
 
 def _map_task(
     map_transformer: MapTransformer,
@@ -426,7 +456,7 @@ def _map_task(
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
-        m_out = BlockAccessor.for_block(b_out).get_metadata([], None)
+        m_out = BlockAccessor.for_block(b_out).get_metadata()
         m_out.exec_stats = stats.build()
         m_out.exec_stats.udf_time_s = map_transformer.udf_time()
         m_out.exec_stats.task_idx = ctx.task_idx

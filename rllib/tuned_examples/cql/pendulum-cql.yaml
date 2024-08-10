@@ -13,6 +13,9 @@ pendulum-cql:
         # Works for both torch and tf.
         framework: torch
 
+        # Set seed.
+        seed: 0
+
         # Use one or more offline files or "input: sampler" for online learning.
         input: 'dataset'
         input_config:         
@@ -26,7 +29,7 @@ pendulum-cql:
         twin_q: true
         train_batch_size: 2000
         bc_iters: 100
-        num_workers: 2
+        num_env_runners: 2
         min_time_s_per_iteration: 10
 
         metrics_num_episodes_for_smoothing: 5

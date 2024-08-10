@@ -40,6 +40,6 @@ mspacman-sac-tf:
             actor_learning_rate: 0.0003
             critic_learning_rate: 0.0003
             entropy_learning_rate: 0.0003
-        num_workers: 0
+        num_env_runners: 0
         num_gpus: 0
         metrics_num_episodes_for_smoothing: 5

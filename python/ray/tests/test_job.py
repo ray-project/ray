@@ -11,6 +11,8 @@ from typing import List
 from pathlib import Path
 import pytest
 
+import ray.cloudpickle as pickle
+
 import ray
 from ray._private.test_utils import (
     run_string_as_driver,
@@ -19,7 +21,7 @@ from ray._private.test_utils import (
     format_web_url,
     wait_for_pid_to_exit,
 )
-from ray.job_config import JobConfig
+from ray.job_config import JobConfig, LoggingConfig
 from ray.job_submission import JobSubmissionClient
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 
@@ -54,6 +56,9 @@ def test_invalid_gcs_address():
         JobSubmissionClient("abc:abc")
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="lib is not supported on Python 3.12"
+)
 def test_job_isolation(call_ray_start):
     # Make sure two jobs with same module name
     # don't interfere with each other
@@ -187,6 +192,15 @@ def test_config_metadata(shutdown_only):
     from_worker = ray._private.worker.global_worker.core_worker.get_job_config()
 
     assert dict(from_worker.metadata) == job_config.metadata
+
+
+def test_logging_config_serialization():
+    logging_config = LoggingConfig(encoding="TEXT")
+    serialized_py_logging_config = pickle.dumps(logging_config)
+    job_config = JobConfig()
+    job_config.set_py_logging_config(logging_config)
+    pb = job_config._get_proto_job_config()
+    assert pb.serialized_py_logging_config == serialized_py_logging_config
 
 
 def test_get_entrypoint():

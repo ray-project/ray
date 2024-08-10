@@ -1,6 +1,7 @@
-"""Example showing how one can restore a connector enabled TF policy
+# @OldAPIStack
+"""Example showing to restore a connector enabled TF policy
 checkpoint for a new self-play PyTorch training job.
-The checkpointed policy may be trained with a different algorithm too.
+You can train the checkpointed policy with a different algorithm too.
 """
 
 import argparse
@@ -63,7 +64,7 @@ class AddPolicyCallback(DefaultCallbacks):
         algorithm.add_policy(
             policy_id=OPPONENT_POLICY_ID,
             policy=policy,
-            evaluation_workers=True,
+            add_to_eval_env_runners=True,
         )
 
 

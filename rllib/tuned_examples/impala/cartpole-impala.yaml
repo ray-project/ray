@@ -8,8 +8,8 @@ cartpole-impala:
     config:
         enable_rl_module_and_learner: true
         # Works for both torch and tf.
-        framework: tf2
+        framework: torch
         num_gpus: 0
         grad_clip: 40
-        num_workers: 2
-        num_learner_workers: 1
+        num_env_runners: 2
+        num_learners: 1

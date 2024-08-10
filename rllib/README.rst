@@ -33,26 +33,16 @@ Installation and Setup
 
 Install RLlib and run your first experiment on your laptop in seconds:
 
-**TensorFlow:**
-
-.. code-block:: bash
-
-    $ conda create -n rllib python=3.8
-    $ conda activate rllib
-    $ pip install "ray[rllib]" tensorflow "gymnasium[atari]" "gymnasium[accept-rom-license]" atari_py
-    $ # Run a test job:
-    $ rllib train --run APPO --env CartPole-v0
-
-
 **PyTorch:**
 
 .. code-block:: bash
 
-    $ conda create -n rllib python=3.8
+    $ conda create -n rllib python=3.11
     $ conda activate rllib
     $ pip install "ray[rllib]" torch "gymnasium[atari]" "gymnasium[accept-rom-license]" atari_py
-    $ # Run a test job:
-    $ rllib train --run APPO --env CartPole-v0 --torch
+    $ # Run a test job (assuming you are in the `ray` pip-installed directory):
+    $ cd rllib/examples/inference/
+    $ python policy_inference_after_training.py --stop-reward=100.0
 
 
 Algorithms Supported
@@ -231,7 +221,7 @@ The most **popular deep-learning frameworks**: `PyTorch <https://github.com/ray-
 (tf1.x/2.x static-graph/eager/traced) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`_.
 
 **Highly distributed learning**: Our RLlib algorithms (such as our "PPO" or "IMPALA")
-allow you to set the ``num_workers`` config parameter, such that your workloads can run
+allow you to set the ``num_env_runners`` config parameter, such that your workloads can run
 on 100s of CPUs/nodes thus parallelizing and speeding up learning.
 
 **Vectorized (batched) and remote (parallel) environments**: RLlib auto-vectorizes
