@@ -392,7 +392,6 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             const optional[CActorID] &actor_id,
             const optional[CJobID] &job_id,
             const optional[c_string] &actor_state_name,
-            int64_t limit,
             const MultiItemPyCallback[CActorTableData] &callback,
             int64_t timeout_ms)
 

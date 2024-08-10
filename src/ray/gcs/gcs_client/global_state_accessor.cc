@@ -173,7 +173,6 @@ std::vector<std::string> GlobalStateAccessor::GetAllActorInfo(
         actor_id,
         job_id,
         actor_state_name,
-        /*limit=*/-1,
         TransformForMultiItemCallback<rpc::ActorTableData>(actor_table_data, promise)));
   }
   promise.get_future().get();

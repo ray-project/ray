@@ -58,7 +58,6 @@ class ActorInfoAccessor {
   /// \param  actor_id To filter actors by actor_id.
   /// \param  job_id To filter actors by job_id.
   /// \param  actor_state_name To filter actors based on actor state.
-  /// \param  limit max number of return actors. -1 means no limit.
   /// \param callback Callback that will be called after lookup finishes.
   /// \param timeout_ms -1 means infinite.
   /// \return Status
@@ -66,7 +65,6 @@ class ActorInfoAccessor {
       const std::optional<ActorID> &actor_id,
       const std::optional<JobID> &job_id,
       const std::optional<std::string> &actor_state_name,
-      int64_t limit,
       const MultiItemCallback<rpc::ActorTableData> &callback,
       int64_t timeout_ms = -1);
 

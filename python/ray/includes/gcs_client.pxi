@@ -26,7 +26,7 @@ from ray.includes.common cimport (
     CGetTaskEventsReply,
     CGetAllPlacementGroupReply,
     CGetAllNodeInfoReply,
-     CGetAllWorkerInfoReply,
+    CGetAllWorkerInfoReply,
     ConnectOnSingletonIoContext,
     CStatusCode,
     CStatusCode_OK,
@@ -401,7 +401,6 @@ cdef class NewGcsClient:
         actor_id: Optional[ActorID] = None,
         job_id: Optional[JobID] = None,
         actor_state_name: Optional[str] = None,
-        limit: Optional[int] = None,
         timeout: Optional[float] = None
     ) -> Future[Dict[ActorID, gcs_pb2.ActorTableData]]:
         cdef:
@@ -409,7 +408,6 @@ cdef class NewGcsClient:
             optional[CActorID] c_actor_id
             optional[CJobID] c_job_id
             optional[c_string] c_actor_state_name
-            int64_t c_limit = limit if limit is not None else -1
             fut = incremented_fut()
         if actor_id is not None:
             c_actor_id = (<ActorID>actor_id).native()
@@ -421,7 +419,7 @@ cdef class NewGcsClient:
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Actors().AsyncGetAllByFilter(
-                    c_actor_id, c_job_id, c_actor_state_name, c_limit,
+                    c_actor_id, c_job_id, c_actor_state_name,
                     MultiItemPyCallback[CActorTableData](
                         &convert_get_all_actor_info,
                         assign_and_decrement_fut,
@@ -489,6 +487,7 @@ cdef class NewGcsClient:
     #############################################################
     # Job methods
     #############################################################
+
     def get_all_job_info(
         self, timeout: Optional[float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
@@ -566,7 +565,8 @@ cdef class NewGcsClient:
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Tasks().AsyncRawGetTaskEvents(
-                    c_actor_id, c_job_id, c_task_id, c_name, c_state, exclude_driver, c_limit,
+                    c_actor_id, c_job_id, c_task_id, c_name, c_state, exclude_driver,
+                    c_limit,
                     OptionalItemPyCallback[CGetTaskEventsReply](
                         &convert_optional_raw_get_task_events_reply,
                         assign_and_decrement_fut,

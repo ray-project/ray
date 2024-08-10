@@ -295,7 +295,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
         std::nullopt,
         std::nullopt,
         std::nullopt,
-        /*limit=*/-1,
         [filter_non_dead_actor, &actors, &promise](
             Status status, std::vector<rpc::ActorTableData> &&result) {
           if (!result.empty()) {

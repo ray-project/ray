@@ -31,6 +31,7 @@ from ray.util.state.common import (
     TaskSummaries,
     DRIVER_TASK_ID_PREFIX,
 )
+from ray.core.generated.gcs_service_pb2 import GetAllActorInfoReply
 from ray.core.generated.gcs_pb2 import ActorTableData
 from click.testing import CliRunner
 from ray.util.state.state_cli import summary_state_cli_group
@@ -133,39 +134,40 @@ async def test_api_manager_summary_actors(state_api_manager):
     actor_ids = [ActorID((f"{i}" * 16).encode()) for i in range(9)]
     class_a = "A"
     class_b = "B"
-    data_source_client.get_all_actor_info.return_value = {
-        actor_ids[0]: generate_actor_data(
-            actor_ids[0].binary(),
-            state=ActorTableData.ActorState.ALIVE,
-            class_name=class_a,
-        ),
-        actor_ids[1]: generate_actor_data(
-            actor_ids[1].binary(),
-            state=ActorTableData.ActorState.DEAD,
-            class_name=class_b,
-        ),
-        actor_ids[2]: generate_actor_data(
-            actor_ids[2].binary(),
-            state=ActorTableData.ActorState.PENDING_CREATION,
-            class_name=class_b,
-        ),
-        actor_ids[3]: generate_actor_data(
-            actor_ids[3].binary(),
-            state=ActorTableData.ActorState.DEPENDENCIES_UNREADY,
-            class_name=class_b,
-        ),
-        actor_ids[4]: generate_actor_data(
-            actor_ids[4].binary(),
-            state=ActorTableData.ActorState.RESTARTING,
-            class_name=class_b,
-        ),
-        actor_ids[5]: generate_actor_data(
-            actor_ids[5].binary(),
-            state=ActorTableData.ActorState.RESTARTING,
-            class_name=class_b,
-        ),
-    }
-
+    data_source_client.get_all_actor_info.return_value = GetAllActorInfoReply(
+        actor_table_data=[
+            generate_actor_data(
+                actor_ids[0].binary(),
+                state=ActorTableData.ActorState.ALIVE,
+                class_name=class_a,
+            ),
+            generate_actor_data(
+                actor_ids[1].binary(),
+                state=ActorTableData.ActorState.DEAD,
+                class_name=class_b,
+            ),
+            generate_actor_data(
+                actor_ids[2].binary(),
+                state=ActorTableData.ActorState.PENDING_CREATION,
+                class_name=class_b,
+            ),
+            generate_actor_data(
+                actor_ids[3].binary(),
+                state=ActorTableData.ActorState.DEPENDENCIES_UNREADY,
+                class_name=class_b,
+            ),
+            generate_actor_data(
+                actor_ids[4].binary(),
+                state=ActorTableData.ActorState.RESTARTING,
+                class_name=class_b,
+            ),
+            generate_actor_data(
+                actor_ids[5].binary(),
+                state=ActorTableData.ActorState.RESTARTING,
+                class_name=class_b,
+            ),
+        ]
+    )
     result = await state_api_manager.summarize_actors(option=create_summary_options())
     data = result.result
     assert "cluster" in result.result.node_id_to_summary

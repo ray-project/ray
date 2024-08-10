@@ -1,7 +1,6 @@
 from math import ceil
 import sys
 import time
-from typing import Dict
 
 import pytest
 
@@ -15,7 +14,6 @@ from ray._private.utils import get_used_memory
 from ray._private.state_api_test_utils import verify_failed_task
 
 from ray.util.state.state_manager import StateDataSourceClient
-from ray.core.generated.gcs_pb2 import ActorTableData
 
 
 memory_usage_threshold = 0.5
@@ -346,11 +344,9 @@ async def test_actor_oom_logs_error(ray_with_memory_monitor):
             verified = True
     assert verified
 
-    result: Dict[
-        ray.ActorID, ActorTableData
-    ] = await state_api_client.get_all_actor_info(timeout=5, limit=10)
+    result = await state_api_client.get_all_actor_info(timeout=5, limit=10)
     verified = False
-    for actor in result.values():
+    for actor in result.actor_table_data:
         if actor.actor_id.hex() == actor_id:
             assert actor.death_cause
             assert actor.death_cause.oom_context

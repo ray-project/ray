@@ -171,14 +171,13 @@ Status ActorInfoAccessor::AsyncGetAllByFilter(
     const std::optional<ActorID> &actor_id,
     const std::optional<JobID> &job_id,
     const std::optional<std::string> &actor_state_name,
-    int64_t limit,
     const MultiItemCallback<rpc::ActorTableData> &callback,
     int64_t timeout_ms) {
   return AsyncRawGetAllActorInfo(
       actor_id,
       job_id,
       actor_state_name,
-      limit,
+      /*limit=*/-1,
       [callback](const Status &status, std::optional<rpc::GetAllActorInfoReply> &&reply) {
         callback(status, VectorFromProtobuf(reply->actor_table_data()));
       },
