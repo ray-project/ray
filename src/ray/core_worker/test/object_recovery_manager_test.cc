@@ -22,7 +22,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
@@ -75,7 +75,7 @@ class MockRayletClient : public PinObjectsInterface {
     for (const auto &callback : callbacks_snapshot) {
       rpc::PinObjectIDsReply reply;
       reply.add_successes(success);
-      callback(Status::OK(), reply);
+      callback(Status::OK(), std::move(reply));
     }
     return flushed;
   }

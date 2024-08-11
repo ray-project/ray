@@ -343,8 +343,8 @@ class ExecutionPlan:
         schema = None
         if self.has_computed_output():
             schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
-        elif self._logical_plan.dag.schema() is not None:
-            schema = self._logical_plan.dag.schema()
+        elif self._logical_plan.dag.aggregate_output_metadata().schema is not None:
+            schema = self._logical_plan.dag.aggregate_output_metadata().schema
         elif fetch_if_missing:
             iter_ref_bundles, _, _ = self.execute_to_iterator()
             for ref_bundle in iter_ref_bundles:
@@ -375,7 +375,7 @@ class ExecutionPlan:
 
     def input_files(self) -> Optional[List[str]]:
         """Get the input files of the dataset, if available."""
-        return self._logical_plan.dag.input_files()
+        return self._logical_plan.dag.aggregate_output_metadata().input_files
 
     def meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -387,8 +387,8 @@ class ExecutionPlan:
         """
         if self.has_computed_output():
             num_rows = sum(m.num_rows for m in self._snapshot_bundle.metadata)
-        elif self._logical_plan.dag.num_rows() is not None:
-            num_rows = self._logical_plan.dag.num_rows()
+        elif self._logical_plan.dag.aggregate_output_metadata().num_rows is not None:
+            num_rows = self._logical_plan.dag.aggregate_output_metadata().num_rows
         else:
             num_rows = None
         return num_rows
