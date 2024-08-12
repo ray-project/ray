@@ -194,7 +194,8 @@ void ActorManager::WaitForActorOutOfScope(
     // already been evicted by the time we get this request, in which case we should
     // respond immediately so the gcs server can destroy the actor.
     const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-    if (!reference_counter_->SetDeleteCallback(actor_creation_return_id, callback)) {
+    if (!reference_counter_->SetObjectPrimaryCopyDeleteCallback(actor_creation_return_id,
+                                                                callback)) {
       RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
       MarkActorKilledOrOutOfScope(actor_handle);
       actor_out_of_scope_callback(actor_id);

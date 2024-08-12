@@ -12,6 +12,7 @@ from typing import List
 import pytest
 
 import ray
+from ray._private import ray_constants
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.test_utils import enable_external_redis, wait_for_condition
@@ -246,6 +247,149 @@ def test_plugin_timeout(set_runtime_env_plugins, start_cluster):
         return bad_fun_num == 1 and good_fun_num == 2
 
     wait_for_condition(condition, timeout=60)
+
+
+FAULT_PLUGIN_CLASS_PATH = "ray.tests.test_runtime_env_plugin.FaultPlugin"
+FAULT_PLUGIN_NAME = "FaultPlugin"
+FAULT_PLUGIN_KEY = "FAULT_PLUGIN_KEY"
+
+
+class FaultPlugin(DummyPlugin):
+    name = FAULT_PLUGIN_NAME
+
+    async def create(
+        self,
+        uri: str,
+        runtime_env: "RuntimeEnv",
+        ctx: RuntimeEnvContext,
+        logger: logging.Logger,  # noqa: F821
+    ) -> float:
+        action = os.environ.get(FAULT_PLUGIN_KEY, "raise")
+        if action == "raise":
+            raise RuntimeError(
+                "Ever tried. Ever failed. No matter. Try again. Fail again. Fail "
+                "better. -- Waiting for Godot, Samuel Beckett"
+            )
+        elif action == "sleep":
+            await asyncio.sleep(3600)
+        elif action == "ok":
+            return
+        else:
+            raise ValueError(f"unknown action {action}")
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + FAULT_PLUGIN_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+def test_task_fails_on_rt_env_failure(
+    set_runtime_env_plugins,
+    monkeypatch,
+    ray_start_cluster,
+):
+    """
+    Simulate runtime env failure on a node. The task should fail but the raylet should
+    not die. See https://github.com/ray-project/ray/pull/46991
+    """
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    with monkeypatch.context() as m:
+        m.setenv(FAULT_PLUGIN_KEY, "raise")
+        fault_node = cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=0.1, runtime_env={FAULT_PLUGIN_NAME: {}})
+    def s(a, b):
+        return a + b
+
+    two = ray.put(2)
+    three = ray.put(3)
+
+    mortal = s.remote(two, three)
+    immortal = s.options(max_retries=-1).remote(two, three)
+
+    with pytest.raises(RuntimeEnvSetupError) as e:
+        ray.get(mortal)
+    assert "Samuel Beckett" in str(e.value)
+    # Note: even immortal task will fail because a rt env failure cancels tasks.
+    with pytest.raises(RuntimeEnvSetupError) as e:
+        ray.get(immortal)
+    assert "Samuel Beckett" in str(e.value)
+
+    # Assert that the raylet is still alive.
+    for _ in range(5):
+        time.sleep(1)
+        assert (
+            fault_node.all_processes[ray_constants.PROCESS_TYPE_RAYLET][
+                0
+            ].process.poll()
+            is None
+        )
+
+
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + FAULT_PLUGIN_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+def test_actor_fails_on_rt_env_failure(
+    set_runtime_env_plugins,
+    monkeypatch,
+    ray_start_cluster,
+):
+    """
+    Simulate runtime env failure on a node. The actor should be dead, but the raylet
+    should not die. See https://github.com/ray-project/ray/pull/46991
+    """
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    with monkeypatch.context() as m:
+        m.setenv(FAULT_PLUGIN_KEY, "raise")
+        fault_node = cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=0.1, runtime_env={FAULT_PLUGIN_NAME: {}})
+    class Actor:
+        def __init__(self, a, b):
+            self.a = a
+            self.b = b
+
+        def ping(self):
+            return self.a + self.b
+
+    two = ray.put(2)
+    three = ray.put(3)
+
+    mortal = Actor.remote(two, three)
+    immortal = Actor.options(max_restarts=-1).remote(two, three)
+
+    with pytest.raises(RuntimeEnvSetupError) as e:
+        ray.get(mortal.ping.remote())
+    assert "Samuel Beckett" in str(e.value)
+
+    # Note: even immortal actor will die because a rt env failure cancels tasks.
+    with pytest.raises(RuntimeEnvSetupError) as e:
+        ray.get(immortal.ping.remote())
+    assert "Samuel Beckett" in str(e.value)
+
+    # Assert that the raylet is still alive.
+    for _ in range(5):
+        time.sleep(1)
+        assert (
+            fault_node.all_processes[ray_constants.PROCESS_TYPE_RAYLET][
+                0
+            ].process.poll()
+            is None
+        )
 
 
 PRIORITY_TEST_PLUGIN1_CLASS_PATH = (
