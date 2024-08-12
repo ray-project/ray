@@ -474,18 +474,18 @@ TEST_F(EventTest, TestExportEvent) {
   EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK, log_dir));
 
-  rpc::ExportTaskEventData task_event;
-  task_event.set_task_id("task_id0");
-  task_event.set_attempt_number(1);
-  task_event.set_job_id("job_id0");
+  std::shared_ptr<rpc::ExportTaskEventData> task_event_ptr = std::make_shared<rpc::ExportTaskEventData>();
+  task_event_ptr->set_task_id("task_id0");
+  task_event_ptr->set_attempt_number(1);
+  task_event_ptr->set_job_id("job_id0");
 
   std::string export_event_data_str;
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
-  RAY_CHECK(google::protobuf::util::MessageToJsonString(task_event, &export_event_data_str, options).ok());
+  RAY_CHECK(google::protobuf::util::MessageToJsonString(*task_event_ptr, &export_event_data_str, options).ok());
   json event_data_as_json = json::parse(export_event_data_str);
 
-  RayExportEvent(&task_event).SendEvent();
+  RayExportEvent(task_event_ptr).SendEvent();
 
   std::vector<std::string> vc;
   ReadContentFromFile(vc, log_dir + "/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
