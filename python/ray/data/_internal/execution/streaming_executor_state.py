@@ -260,8 +260,13 @@ class OpState:
         queued = self.num_queued() + self.op.internal_queue_size()
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: {active} active, {queued} queued"
-        if self.op._in_task_submission_backpressure:
-            desc += ", BACKPRESSURED"
+        if (
+            self.op._in_task_submission_backpressure
+            and time.perf_counter()
+            - self.op.metrics._task_submission_backpressure_start_time
+            > 15
+        ):
+            desc += " 🚧"
         desc += f", [{resource_manager.get_op_usage_str(self.op)}]"
         suffix = self.op.progress_str()
         if suffix:
