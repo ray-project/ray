@@ -1,7 +1,8 @@
+import os
 import logging
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
-from ray._raylet import GcsClient
+from ray._raylet import GcsClient, NewGcsClient, JobID
 from ray.core.generated import (
     gcs_pb2,
 )
@@ -14,12 +15,65 @@ from ray._private.ray_constants import env_integer
 # If the arg `executor` in GcsAioClient constructor is set, use it.
 # Otherwise if env var `GCS_AIO_CLIENT_DEFAULT_THREAD_COUNT` is set, use it.
 # Otherwise, use 5.
+# This is only used for the OldGcsAioClient.
 GCS_AIO_CLIENT_DEFAULT_THREAD_COUNT = env_integer(
     "GCS_AIO_CLIENT_DEFAULT_THREAD_COUNT", 5
 )
 
-
 logger = logging.getLogger(__name__)
+
+
+class GcsAioClient:
+    """
+    Async GCS client.
+
+    This class is in transition to use the new C++ GcsClient binding. The old
+    PythonGcsClient binding is not deleted until we are confident that the new
+    binding is stable.
+
+    Defaults to the new binding. If you want to use the old binding, please
+    set the environment variable `RAY_USE_OLD_GCS_CLIENT=1`.
+    """
+
+    def __new__(cls, *args, **kwargs):
+        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
+        logger.debug(f"Using {'old' if use_old_client else 'new'} GCS client")
+        if use_old_client:
+            return OldGcsAioClient(*args, **kwargs)
+        else:
+            return NewGcsAioClient(*args, **kwargs)
+
+
+class NewGcsAioClient:
+    def __init__(
+        self,
+        address: str = None,
+        loop=None,
+        executor=None,
+        nums_reconnect_retry: int = 5,
+    ):
+        # See https://github.com/ray-project/ray/blob/d0b46eff9ddcf9ec7256dd3a6dda33e7fb7ced95/python/ray/_raylet.pyx#L2693 # noqa: E501
+        timeout_ms = 1000 * (nums_reconnect_retry + 1)
+        self.inner = NewGcsClient.standalone(
+            str(address), cluster_id=None, timeout_ms=timeout_ms
+        )
+        # Forwarded Methods. Not using __getattr__ because we want one fewer layer of
+        # indirection.
+        self.internal_kv_get = self.inner.async_internal_kv_get
+        self.internal_kv_multi_get = self.inner.async_internal_kv_multi_get
+        self.internal_kv_put = self.inner.async_internal_kv_put
+        self.internal_kv_del = self.inner.async_internal_kv_del
+        self.internal_kv_exists = self.inner.async_internal_kv_exists
+        self.internal_kv_keys = self.inner.async_internal_kv_keys
+        self.check_alive = self.inner.async_check_alive
+        self.get_all_job_info = self.inner.async_get_all_job_info
+        # Forwarded Properties.
+        self.address = self.inner.address
+        self.cluster_id = self.inner.cluster_id
+        # Note: these only exists in the new client.
+        self.get_all_actor_info = self.inner.async_get_all_actor_info
+        self.get_all_node_info = self.inner.async_get_all_node_info
+        self.kill_actor = self.inner.async_kill_actor
 
 
 class AsyncProxy:
@@ -45,7 +99,7 @@ class AsyncProxy:
             return attr
 
 
-class GcsAioClient:
+class OldGcsAioClient:
     def __init__(
         self,
         loop=None,
@@ -146,7 +200,7 @@ class GcsAioClient:
 
     async def get_all_job_info(
         self, timeout: Optional[float] = None
-    ) -> Dict[bytes, gcs_pb2.JobTableData]:
+    ) -> Dict[JobID, gcs_pb2.JobTableData]:
         """
         Return dict key: bytes of job_id; value: JobTableData pb message.
         """

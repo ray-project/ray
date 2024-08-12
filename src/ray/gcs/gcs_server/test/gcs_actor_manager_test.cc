@@ -37,7 +37,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
   void Schedule(std::shared_ptr<gcs::GcsActor> actor) { actors.push_back(actor); }
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
-  void ReleaseUnusedWorkers(
+  void ReleaseUnusedActorWorkers(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) {}
   void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) {
     const auto &actor_id = actor->GetActorID();
@@ -96,7 +96,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
         [this, status, &promise]() {
           auto callback = callbacks_.front();
           auto reply = rpc::WaitForActorOutOfScopeReply();
-          callback(status, reply);
+          callback(status, std::move(reply));
           promise.set_value(false);
         },
         "test");

@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 import gymnasium as gym
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType, ModuleID
@@ -114,7 +114,7 @@ class AgentToModuleMapping(ConnectorV2):
         input_observation_space: Optional[gym.Space] = None,
         input_action_space: Optional[gym.Space] = None,
         *,
-        module_specs: Dict[ModuleID, SingleAgentRLModuleSpec],
+        module_specs: Dict[ModuleID, RLModuleSpec],
         agent_to_module_mapping_fn,
     ):
         super().__init__(input_observation_space, input_action_space)
@@ -133,9 +133,6 @@ class AgentToModuleMapping(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # This Connector should only be used in a multi-agent setting.
-        assert not episodes or isinstance(episodes[0], MultiAgentEpisode)
-
         # Current agent to module mapping function.
         # agent_to_module_mapping_fn = shared_data.get("agent_to_module_mapping_fn")
         # Store in shared data, which module IDs map to which episode/agent, such
@@ -242,8 +239,8 @@ class AgentToModuleMapping(ConnectorV2):
                         "mapping function is stochastic (such that for some agent A, "
                         "more than one ModuleID might be returned somewhat randomly). "
                         f"Fix this error by providing {which}-space information using "
-                        "`config.rl_module(rl_module_spec=MultiAgentRLModuleSpec("
-                        f"module_specs={{'{module_id}': SingleAgentRLModuleSpec("
+                        "`config.rl_module(rl_module_spec=MultiRLModuleSpec("
+                        f"module_specs={{'{module_id}': RLModuleSpec("
                         "observation_space=..., action_space=...)}}))"
                     )
 

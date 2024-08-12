@@ -11,7 +11,7 @@ from ci.ray_ci.automation.ray_wheels_lib import (
     download_ray_wheels_from_s3,
     _check_downloaded_wheels,
     PYTHON_VERSIONS,
-    PLATFORMS,
+    ALL_PLATFORMS,
     RAY_TYPES,
 )
 
@@ -25,10 +25,12 @@ SAMPLE_WHEELS = [
 
 
 def test_get_wheel_names():
-    ray_version = "1.0.0"
+    ray_version = "1.11.0"
     wheel_names = _get_wheel_names(ray_version)
 
-    assert len(wheel_names) == len(PYTHON_VERSIONS) * len(PLATFORMS) * len(RAY_TYPES)
+    assert len(wheel_names) == len(PYTHON_VERSIONS) * len(ALL_PLATFORMS) * len(
+        RAY_TYPES
+    )
 
     for wheel_name in wheel_names:
         assert len(wheel_name.split("-")) == 5
@@ -44,7 +46,7 @@ def test_get_wheel_names():
         assert ray_type in RAY_TYPES
         assert ray_version == ray_version
         assert f"{python_version}-{python_version2}" in PYTHON_VERSIONS
-        assert platform in PLATFORMS
+        assert platform in ALL_PLATFORMS
 
 
 def test_check_downloaded_wheels():
@@ -134,10 +136,42 @@ def test_download_ray_wheels_from_s3(
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         download_ray_wheels_from_s3(
-            commit_hash=commit_hash, ray_version=ray_version, directory_path=tmp_dir
+            commit_hash=commit_hash,
+            ray_version=ray_version,
+            directory_path=tmp_dir,
         )
 
-        mock_get_wheel_names.assert_called_with(ray_version)
+        mock_get_wheel_names.assert_called_with(ray_version=ray_version)
+        assert mock_download_wheel.call_count == len(SAMPLE_WHEELS)
+        for i, call_args in enumerate(mock_download_wheel.call_args_list):
+            assert (
+                call_args[0][0]
+                == f"releases/{ray_version}/{commit_hash}/{SAMPLE_WHEELS[i]}.whl"
+            )
+            assert call_args[0][1] == tmp_dir
+
+        mock_check_wheels.assert_called_with(tmp_dir, SAMPLE_WHEELS)
+
+
+@mock.patch("ci.ray_ci.automation.ray_wheels_lib.download_wheel_from_s3")
+@mock.patch("ci.ray_ci.automation.ray_wheels_lib._check_downloaded_wheels")
+@mock.patch("ci.ray_ci.automation.ray_wheels_lib._get_wheel_names")
+def test_download_ray_wheels_from_s3_partial_platform(
+    mock_get_wheel_names, mock_check_wheels, mock_download_wheel
+):
+    commit_hash = "1234567"
+    ray_version = "1.1.0"
+
+    mock_get_wheel_names.return_value = SAMPLE_WHEELS
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        download_ray_wheels_from_s3(
+            commit_hash=commit_hash,
+            ray_version=ray_version,
+            directory_path=tmp_dir,
+        )
+
+        mock_get_wheel_names.assert_called_with(ray_version=ray_version)
         assert mock_download_wheel.call_count == len(SAMPLE_WHEELS)
         for i, call_args in enumerate(mock_download_wheel.call_args_list):
             assert (

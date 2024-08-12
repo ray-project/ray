@@ -11,6 +11,8 @@ export LANG="en_US.UTF-8"
 export BUILD="1"
 export DL="1"
 export RUN_PER_FLAKY_TEST="2"
+export TORCH_VERSION=2.0.1
+export TORCHVISION_VERSION=0.15.2
 
 filter_out_flaky_tests() {
   bazel run ci/ray_ci/automation:filter_tests -- --state_filter=-flaky --prefix=darwin:
@@ -27,21 +29,14 @@ run_tests() {
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI "$@"
 }
 
-run_small_and_large_flaky_tests() {
+run_flaky_tests() {
   # shellcheck disable=SC2046
   # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "client_tests|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2", tests(//python/ray/tests/...))' | select_flaky_tests |
+  (bazel query 'attr(tags, "client_tests|small_size_python_tests|large_size_python_tests_shard_0|large_size_python_tests_shard_1|large_size_python_tests_shard_2|medium_size_python_tests_a_to_j|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | select_flaky_tests |
     xargs bazel test --config=ci $(./ci/run/bazel_export_options) \
       --runs_per_test="$RUN_PER_FLAKY_TEST" \
       --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX \
       --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER --test_env=CI) || exit 42
-}
-
-run_medium_flaky_tests() {
-  # shellcheck disable=SC2046
-  # 42 is the universal rayci exit code for test failures
-  (bazel query 'attr(tags, "medium_size_python_tests_a_to_j|medium_size_python_tests_k_to_z", tests(//python/ray/tests/...))' | select_flaky_tests |
-    xargs bazel test --config=ci $(./ci/run/bazel_export_options) --runs_per_test="$RUN_PER_FLAKY_TEST" --test_env=CI) || exit 42
 }
 
 run_small_test() {
@@ -77,7 +72,6 @@ run_large_test() {
 }
 
 run_core_dashboard_test() {
-  TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
   # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
   # with dynamic linking.
   # shellcheck disable=SC2046

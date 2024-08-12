@@ -114,9 +114,12 @@ def postprocess_actions(batch: SampleBatchType, ioctx: IOContext) -> SampleBatch
             )
 
         if isinstance(batch, SampleBatch):
-            default_policy = ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
+            policy = ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
+            if policy is None:
+                assert len(ioctx.worker.policy_map) == 1
+                policy = next(iter(ioctx.worker.policy_map.values()))
             batch[SampleBatch.ACTIONS] = clip_action(
-                batch[SampleBatch.ACTIONS], default_policy.action_space_struct
+                batch[SampleBatch.ACTIONS], policy.action_space_struct
             )
         else:
             for pid, b in batch.policy_batches.items():
@@ -150,20 +153,23 @@ def postprocess_actions(batch: SampleBatchType, ioctx: IOContext) -> SampleBatch
         )
 
         if isinstance(batch, SampleBatch):
-            pol = ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
+            policy = ioctx.worker.policy_map.get(DEFAULT_POLICY_ID)
+            if policy is None:
+                assert len(ioctx.worker.policy_map) == 1
+                policy = next(iter(ioctx.worker.policy_map.values()))
             if isinstance(
-                pol.action_space_struct, (tuple, dict)
-            ) and not pol.config.get("_disable_action_flattening"):
+                policy.action_space_struct, (tuple, dict)
+            ) and not policy.config.get("_disable_action_flattening"):
                 raise ValueError(error_msg)
             batch[SampleBatch.ACTIONS] = normalize_action(
-                batch[SampleBatch.ACTIONS], pol.action_space_struct
+                batch[SampleBatch.ACTIONS], policy.action_space_struct
             )
         else:
             for pid, b in batch.policy_batches.items():
-                pol = ioctx.worker.policy_map[pid]
+                policy = ioctx.worker.policy_map[pid]
                 if isinstance(
-                    pol.action_space_struct, (tuple, dict)
-                ) and not pol.config.get("_disable_action_flattening"):
+                    policy.action_space_struct, (tuple, dict)
+                ) and not policy.config.get("_disable_action_flattening"):
                     raise ValueError(error_msg)
                 b[SampleBatch.ACTIONS] = normalize_action(
                     b[SampleBatch.ACTIONS],
@@ -246,13 +252,16 @@ class JsonReader(InputReader):
         self.batch_size = 1
         if self.ioctx:
             self.batch_size = self.ioctx.config.get("train_batch_size", 1)
-            num_workers = self.ioctx.config.get("num_workers", 0)
+            num_workers = self.ioctx.config.get("num_env_runners", 0)
             if num_workers:
                 self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)
 
         if self.ioctx.worker is not None:
             self.policy_map = self.ioctx.worker.policy_map
             self.default_policy = self.policy_map.get(DEFAULT_POLICY_ID)
+            if self.default_policy is None:
+                assert len(self.policy_map) == 1
+                self.default_policy = next(iter(self.policy_map.values()))
 
         if isinstance(inputs, str):
             inputs = os.path.abspath(os.path.expanduser(inputs))

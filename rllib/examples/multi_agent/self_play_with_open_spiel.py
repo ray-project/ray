@@ -22,8 +22,9 @@ import functools
 
 import numpy as np
 
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.air.constants import TRAINING_ITERATION
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
@@ -34,6 +35,7 @@ from ray.rllib.examples.multi_agent.utils import (
 )
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -48,12 +50,7 @@ from open_spiel.python.rl_environment import Environment  # noqa: E402
 
 
 parser = add_rllib_example_script_args(default_timesteps=2000000)
-parser.add_argument(
-    "--env",
-    type=str,
-    default="connect_four",
-    choices=["markov_soccer", "connect_four"],
-)
+parser.set_defaults(env="connect_four")
 parser.add_argument(
     "--win-rate-threshold",
     type=float,
@@ -125,13 +122,15 @@ if __name__ == "__main__":
             )
         )
         .env_runners(
-            num_env_runners=args.num_env_runners,
+            num_env_runners=(args.num_env_runners or 2),
             num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
         )
+        .learners(
+            num_learners=args.num_gpus,
+            num_gpus_per_learner=1 if args.num_gpus else 0,
+        )
         .resources(
-            num_learner_workers=args.num_gpus,
-            num_gpus_per_learner_worker=1 if args.num_gpus else 0,
-            num_cpus_for_local_worker=1,
+            num_cpus_for_main_process=1,
         )
         .multi_agent(
             # Initial policy map: Random and default algo one. This will be expanded
@@ -165,10 +164,10 @@ if __name__ == "__main__":
                 "fcnet_hiddens": [512, 512],
                 "uses_new_env_runners": args.enable_new_api_stack,
             },
-            rl_module_spec=MultiAgentRLModuleSpec(
+            rl_module_spec=MultiRLModuleSpec(
                 module_specs={
-                    "main": SingleAgentRLModuleSpec(),
-                    "random": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                    "main": RLModuleSpec(),
+                    "random": RLModuleSpec(module_class=RandomRLModule),
                 }
             ),
         )
@@ -179,8 +178,8 @@ if __name__ == "__main__":
         config.training(num_sgd_iter=20)
 
     stop = {
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "training_iteration": args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
         "league_size": args.min_league_size,
     }
 

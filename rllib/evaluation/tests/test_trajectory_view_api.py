@@ -22,6 +22,7 @@ from ray.rllib.policy.sample_batch import (
 )
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.test_utils import framework_iterator, check
 
 
@@ -89,7 +90,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
-            rollout_worker = algo.workers.local_worker()
+            rollout_worker = algo.env_runner
             sample_batch = rollout_worker.sample()
             sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
             expected_count = (
@@ -161,7 +162,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
 
-            rollout_worker = algo.workers.local_worker()
+            rollout_worker = algo.env_runner
             sample_batch = rollout_worker.sample()
             sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
 
@@ -218,11 +219,14 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         for _ in framework_iterator(config, frameworks="tf2"):
             algo = config.build()
-            rw = algo.workers.local_worker()
+            rw = algo.env_runner
             sample = rw.sample()
             assert sample.count == algo.config.get_rollout_fragment_length()
             results = algo.train()
-            assert results["timesteps_total"] == config["train_batch_size"]
+            assert (
+                results[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
+                == config["train_batch_size"]
+            )
             algo.stop()
 
     def test_traj_view_next_action(self):
@@ -352,7 +356,10 @@ class TestTrajectoryViewAPI(unittest.TestCase):
         results = None
         for i in range(num_iterations):
             results = algo.train()
-        self.assertEqual(results["agent_timesteps_total"], results["timesteps_total"])
+        self.assertEqual(
+            results["agent_timesteps_total"],
+            results[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"],
+        )
         self.assertEqual(
             results["num_env_steps_trained"] * num_agents,
             results["num_agent_steps_trained"],

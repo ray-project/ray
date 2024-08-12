@@ -35,7 +35,11 @@ from ray.rllib.policy.sample_batch import (
     convert_ma_batch_to_sample_batch,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import NUM_AGENT_STEPS_SAMPLED, NUM_AGENT_STEPS_TRAINED
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.test_utils import check, framework_iterator
 from ray.tune.registry import register_env
 
@@ -98,6 +102,15 @@ class TestRolloutWorker(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
+
+    @staticmethod
+    def _from_existing_env_runner(local_env_runner, remote_workers=None):
+        workers = EnvRunnerGroup(
+            env_creator=None, default_policy_class=None, config=None, _setup=False
+        )
+        workers.reset(remote_workers or [])
+        workers._local_env_runner = local_env_runner
+        return workers
 
     def test_basic(self):
         ev = RolloutWorker(
@@ -206,13 +219,13 @@ class TestRolloutWorker(unittest.TestCase):
         )
         for _ in framework_iterator(config, frameworks=("torch", "tf")):
             algo = config.build()
-            results = algo.workers.foreach_worker(
+            results = algo.env_runner_group.foreach_worker(
                 lambda w: w.total_rollout_fragment_length
             )
-            results2 = algo.workers.foreach_worker_with_id(
+            results2 = algo.env_runner_group.foreach_worker_with_id(
                 lambda i, w: (i, w.total_rollout_fragment_length)
             )
-            results3 = algo.workers.foreach_worker(
+            results3 = algo.env_runner_group.foreach_worker(
                 lambda w: w.foreach_env(lambda env: 1)
             )
             self.assertEqual(results, [10, 10, 10])
@@ -482,20 +495,20 @@ class TestRolloutWorker(unittest.TestCase):
             config=config,
         )
         sample = convert_ma_batch_to_sample_batch(ev.sample())
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         self.assertEqual(max(sample["rewards"]), 1)
         result = collect_metrics(ws, [])
         # Shows different behavior when connector is on/off.
         if config.enable_connectors:
-            # episode_reward_mean shows the correct clipped value.
-            self.assertEqual(result["episode_reward_mean"], 10)
+            # episode_return_mean shows the correct clipped value.
+            self.assertEqual(result[EPISODE_RETURN_MEAN], 10)
         else:
-            # episode_reward_mean shows the unclipped raw value
+            # episode_return_mean shows the unclipped raw value
             # when connector is off, and old env_runner v1 is used.
-            self.assertEqual(result["episode_reward_mean"], 1000)
+            self.assertEqual(result[EPISODE_RETURN_MEAN], 1000)
         ev.stop()
 
         # Clipping in certain range (-2.0, 2.0).
@@ -528,13 +541,13 @@ class TestRolloutWorker(unittest.TestCase):
             .environment(clip_rewards=False),
         )
         sample = convert_ma_batch_to_sample_batch(ev2.sample())
-        ws2 = EnvRunnerGroup._from_existing(
-            local_worker=ev2,
+        ws2 = self._from_existing_env_runner(
+            local_env_runner=ev2,
             remote_workers=[],
         )
         self.assertEqual(max(sample["rewards"]), 100)
         result2 = collect_metrics(ws2, [])
-        self.assertEqual(result2["episode_reward_mean"], 1000)
+        self.assertEqual(result2[EPISODE_RETURN_MEAN], 1000)
         ev2.stop()
 
     def test_metrics(self):
@@ -556,15 +569,15 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="complete_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[remote_ev],
         )
         ev.sample()
         ray.get(remote_ev.sample.remote())
         result = collect_metrics(ws)
         self.assertEqual(result["episodes_this_iter"], 20)
-        self.assertEqual(result["episode_reward_mean"], 10)
+        self.assertEqual(result[EPISODE_RETURN_MEAN], 10)
         ev.stop()
 
     def test_auto_vectorization(self):
@@ -578,8 +591,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         for _ in range(8):
@@ -610,8 +623,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         batch = ev.sample()
@@ -635,13 +648,14 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
+
         result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 0)
         for _ in range(8):
@@ -662,8 +676,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         for _ in range(8):

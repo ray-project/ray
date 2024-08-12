@@ -1,10 +1,10 @@
 # ML tracking integrations
-comet-ml==3.31.9
+comet-ml==3.44.1
 mlflow==2.9.2
-wandb==0.13.4
+wandb==0.17.0
 
 # ML training frameworks
-xgboost==1.7.6
+xgboost==2.1.0
 lightgbm==3.3.5
 
 # Huggingface

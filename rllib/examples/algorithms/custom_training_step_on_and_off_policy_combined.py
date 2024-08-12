@@ -1,3 +1,5 @@
+# @OldAPIStack
+
 """Example of using a custom training workflow.
 
 This example creates a number of CartPole agents, some of which are trained with
@@ -10,6 +12,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -28,8 +31,11 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_TARGET_UPDATES,
     LAST_TARGET_UPDATE_TS,
 )
@@ -84,7 +90,7 @@ class MyAlgo(Algorithm):
         # TODO: Use `max_env_steps=200` option of synchronous_parallel_sample instead.
         while num_env_steps < 200:
             ma_batches = synchronous_parallel_sample(
-                worker_set=self.workers, concat=False
+                worker_set=self.env_runner_group, concat=False
             )
             # Loop through ma-batches (which were collected in parallel).
             for ma_batch in ma_batches:
@@ -122,7 +128,7 @@ class MyAlgo(Algorithm):
             - self._counters[LAST_TARGET_UPDATE_TS]
             >= self.get_policy("dqn_policy").config["target_network_update_freq"]
         ):
-            self.workers.local_worker().get_policy("dqn_policy").update_target()
+            self.env_runner.get_policy("dqn_policy").update_target()
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
                 "agent_steps_trained_DQN"
@@ -203,9 +209,9 @@ if __name__ == "__main__":
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "num_env_steps_sampled_lifetime": args.stop_timesteps,
-        "env_runner_results/episode_return_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     results = tune.Tuner(

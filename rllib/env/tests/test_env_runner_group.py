@@ -23,12 +23,12 @@ class TestEnvRunnerGroup(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
             config=AlgorithmConfig().env_runners(num_env_runners=2),
-            num_workers=2,
+            num_env_runners=2,
         )
 
         policies = ws.foreach_worker(
             lambda w: w.get_policy(DEFAULT_POLICY_ID),
-            local_worker=True,
+            local_env_runner=True,
         )
 
         # 3 policies including the one from the local worker.
@@ -38,7 +38,7 @@ class TestEnvRunnerGroup(unittest.TestCase):
 
         policies = ws.foreach_worker(
             lambda w: w.get_policy(DEFAULT_POLICY_ID),
-            local_worker=False,
+            local_env_runner=False,
         )
 
         # 2 policies from only the remote workers.
@@ -52,12 +52,12 @@ class TestEnvRunnerGroup(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
             config=AlgorithmConfig().env_runners(num_env_runners=2),
-            num_workers=2,
+            num_env_runners=2,
         )
 
         policy_refs = ws.foreach_worker(
             lambda w: w.get_policy(DEFAULT_POLICY_ID),
-            local_worker=False,
+            local_env_runner=False,
             return_obj_refs=True,
         )
 
@@ -74,7 +74,7 @@ class TestEnvRunnerGroup(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=RandomPolicy,
             config=AlgorithmConfig().env_runners(num_env_runners=2),
-            num_workers=2,
+            num_env_runners=2,
         )
 
         # Fired async request against both remote workers.

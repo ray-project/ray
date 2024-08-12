@@ -3,21 +3,14 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
 
-import ray
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
 from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.limit_operator import LimitOperator
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import memory_string
 from ray.data.context import DataContext
 
@@ -45,18 +38,15 @@ class ResourceManager:
     # when `ReservationOpResourceAllocator` is not enabled.
     DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION = 0.25
 
-    # Memory accounting is accurate only for these operators.
-    # We'll enable memory reservation if a dataset only contains these operators.
-    _ACCURRATE_MEMORY_ACCOUNTING_OPS = (
-        InputDataBuffer,
-        MapOperator,
-        LimitOperator,
-        OutputSplitter,
-    )
-
-    def __init__(self, topology: "Topology", options: ExecutionOptions):
+    def __init__(
+        self,
+        topology: "Topology",
+        options: ExecutionOptions,
+        get_total_resources: Callable[[], ExecutionResources],
+    ):
         self._topology = topology
         self._options = options
+        self._get_total_resources = get_total_resources
         self._global_limits = ExecutionResources.zero()
         self._global_limits_last_update_time = 0
         self._global_usage = ExecutionResources.zero()
@@ -78,11 +68,11 @@ class ResourceManager:
         ctx = DataContext.get_current()
 
         if ctx.op_resource_reservation_enabled:
-            should_enable = True
-            for op in topology:
-                if not isinstance(op, ResourceManager._ACCURRATE_MEMORY_ACCOUNTING_OPS):
-                    should_enable = False
-                    break
+            # We'll enable memory reservation if all operators have
+            # implemented accurate memory accounting.
+            should_enable = all(
+                op.implements_accurate_memory_accounting() for op in topology
+            )
             if should_enable:
                 self._op_resource_allocator = ReservationOpResourceAllocator(
                     self, ctx.op_resource_reservation_ratio
@@ -170,20 +160,14 @@ class ResourceManager:
         self._global_limits_last_update_time = time.time()
         default_limits = self._options.resource_limits
         exclude = self._options.exclude_resources
-        cluster = ray.cluster_resources()
+        total_resources = self._get_total_resources()
         default_mem_fraction = (
             self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
             if self.op_resource_allocator_enabled()
             else self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION
         )
-        cluster_resources = ExecutionResources(
-            cpu=cluster.get("CPU", 0.0),
-            gpu=cluster.get("GPU", 0.0),
-            object_store_memory=round(
-                default_mem_fraction * cluster.get("object_store_memory", 0.0)
-            ),
-        )
-        self._global_limits = default_limits.min(cluster_resources).subtract(exclude)
+        total_resources.object_store_memory *= default_mem_fraction
+        self._global_limits = default_limits.min(total_resources).subtract(exclude)
         return self._global_limits
 
     def get_op_usage(self, op: PhysicalOperator) -> ExecutionResources:
@@ -216,7 +200,7 @@ class ResourceManager:
         """Return the downstream fraction of the given operator."""
         return self._downstream_fraction[op]
 
-    def get_downstream_object_store_memory(self, op: PhysicalOperator) -> int:
+    def get_downstream_object_store_memory(self, op: PhysicalOperator) -> float:
         """Return the downstream object store memory usage of the given operator."""
         return self._downstream_object_store_memory[op]
 
@@ -243,7 +227,7 @@ class OpResourceAllocator(ABC):
         self._resource_manager = resource_manager
 
     @abstractmethod
-    def update_usages(self) -> ExecutionResources:
+    def update_usages(self):
         """Callback to update resource usages."""
         ...
 
@@ -262,20 +246,22 @@ class OpResourceAllocator(ABC):
 class ReservationOpResourceAllocator(OpResourceAllocator):
     """An OpResourceAllocator implementation that reserves resources for each operator.
 
-    This class reserves memory and CPU resources for map operators, and consider runtime
-    resource usages to limit the resources that each operator can use.
+    This class reserves memory and CPU resources for eligible operators, and considers
+    runtime resource usages to limit the resources that each operator can use.
 
     It works in the following way:
-    1. Currently we only limit map operators. Non-map operators are not throttled, but
-       their usage will be accounted for their upstream map operators. E.g., for such
-       a dataset "map1->limit->map2->streaming_split", we'll treat "map1->limit" as
+    1. An operator is eligible for resource reservation, if it has enabled throttling
+       and hasn't completed. Ineligible operators are not throttled, but
+       their usage will be accounted for their upstream eligible operators. E.g., for
+       such a dataset "map1->limit->map2->streaming_split", we'll treat "map1->limit" as
        a group and "map2->streaming_split" as another group.
-    2. For each map operator, we reserve `reservation_ratio * global_resources /
-        num_map_ops` resources, half of which is reserved only for the operator outputs,
-        excluding pending task outputs.
+    2. For each eligible operator, we reserve `reservation_ratio * global_resources /
+        num_eligible_ops` resources, half of which is reserved only for the operator
+        outputs, excluding pending task outputs.
     3. Non-reserved resources are shared among all operators.
-    4. In each scheduling iteration, each map operator will get "remaining of their own
-       reserved resources" + "remaining of shared resources / num_map_ops" resources.
+    4. In each scheduling iteration, each eligible operator will get "remaining of their
+       own reserved resources" + "remaining of shared resources / num_eligible_ops"
+       resources.
 
     The `reservation_ratio` is set to 50% by default. Users can tune this value to
     adjust how aggressive or conservative the resource allocation is. A higher value
@@ -360,7 +346,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # the pending task outputs, and/or op's internal output buffers (the latter can
         # happen when `preserve_order=True`).
         # Then we'll have no budget to pull blocks from the op.
-        self._reserved_for_op_outputs: Dict[PhysicalOperator, int] = {}
+        self._reserved_for_op_outputs: Dict[PhysicalOperator, float] = {}
         # Total shared resources.
         self._total_shared = ExecutionResources.zero()
         # Resource budgets for each operator, excluding `_reserved_for_op_outputs`.
@@ -377,12 +363,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         self._idle_detector = self.IdleDetector()
 
+    def _is_op_eligible(self, op: PhysicalOperator) -> bool:
+        """Whether the op is eligible for memory reservation."""
+        return not op.throttling_disabled() and not op.completed()
+
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
-        # Only consider map operators that are not completed.
         return [
-            op
-            for op in self._resource_manager._topology
-            if isinstance(op, MapOperator) and not op.completed()
+            op for op in self._resource_manager._topology if self._is_op_eligible(op)
         ]
 
     def _update_reservation(self):
@@ -419,16 +406,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             )
             # Calculate the minimum amount of resources to reserve.
             # 1. Make sure the reserved resources are at least to allow one task.
-            min_reserved = op.incremental_resource_usage(
-                consider_autoscaling=False
-            ).copy()
+            min_reserved = op.incremental_resource_usage().copy()
             # 2. To ensure that all GPUs are utilized, reserve enough resource budget
             # to launch one task for each worker.
-            if (
-                isinstance(op, ActorPoolMapOperator)
-                and op.base_resource_usage().gpu > 0
-            ):
-                min_reserved.object_store_memory *= op._autoscaling_policy.min_workers
+            if op.base_resource_usage().gpu > 0:
+                min_workers = sum(
+                    pool.min_size() for pool in op.get_autoscaling_actor_pools()
+                )
+                min_reserved.object_store_memory *= min_workers
             # Also include `reserved_for_op_outputs`.
             min_reserved.object_store_memory += self._reserved_for_op_outputs[op]
             # Total resources we want to reserve for this operator.
@@ -477,7 +462,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # launch tasks. Then we should temporarily unblock the streaming output
         # backpressure by allowing reading at least 1 block. So the current operator
         # can finish at least one task and yield resources to the downstream operators.
-        for next_op in self._get_downstream_map_ops(op):
+        for next_op in self._get_downstream_eligible_ops(op):
             if not self._reserved_min_resources[next_op]:
                 # Case 1: the downstream operator hasn't reserved the minimum resources
                 # to run at least one task.
@@ -490,16 +475,16 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 return True
         return False
 
-    def _get_op_outputs_usage_with_downstream(self, op: PhysicalOperator) -> int:
+    def _get_op_outputs_usage_with_downstream(self, op: PhysicalOperator) -> float:
         """Get the outputs memory usage of the given operator, including the downstream
-        non-Map operators.
+        ineligible operators.
         """
         # Outputs usage of the current operator.
         op_outputs_usage = self._resource_manager._mem_op_outputs[op]
-        # Also account the downstream non-Map operators' memory usage.
+        # Also account the downstream ineligible operators' memory usage.
         op_outputs_usage += sum(
             self._resource_manager.get_op_usage(next_op).object_store_memory
-            for next_op in self._get_downstream_non_map_ops(op)
+            for next_op in self._get_downstream_ineligible_ops(op)
         )
         return op_outputs_usage
 
@@ -516,35 +501,35 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             res = 1
         return res
 
-    def _get_downstream_non_map_ops(
+    def _get_downstream_ineligible_ops(
         self, op: PhysicalOperator
     ) -> Iterable[PhysicalOperator]:
-        """Get the downstream non-Map operators of the given operator.
+        """Get the downstream ineligible operators of the given operator.
 
         E.g.,
           - "cur_map->downstream_map" will return an empty list.
           - "cur_map->limit1->limit2->downstream_map" will return [limit1, limit2].
         """
         for next_op in op.output_dependencies:
-            if not isinstance(next_op, MapOperator):
+            if not self._is_op_eligible(next_op):
                 yield next_op
-                yield from self._get_downstream_non_map_ops(next_op)
+                yield from self._get_downstream_ineligible_ops(next_op)
 
-    def _get_downstream_map_ops(
+    def _get_downstream_eligible_ops(
         self, op: PhysicalOperator
     ) -> Iterable[PhysicalOperator]:
-        """Get the downstream Map operators of the given operator, ignoring intermediate
-        non-Map operators.
+        """Get the downstream eligible operators of the given operator, ignoring intermediate
+        ineligible operators.
 
         E.g.,
           - "cur_map->downstream_map" will return [downstream_map].
           - "cur_map->limit1->limit2->downstream_map" will return [downstream_map].
         """
         for next_op in op.output_dependencies:
-            if isinstance(next_op, MapOperator):
+            if self._is_op_eligible(next_op):
                 yield next_op
             else:
-                yield from self._get_downstream_map_ops(next_op)
+                yield from self._get_downstream_eligible_ops(next_op)
 
     def update_usages(self):
         self._update_reservation()

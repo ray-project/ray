@@ -512,12 +512,10 @@ class OpRuntimeMetrics:
             input_size,
         )
 
-        blocks = [input[0] for input in inputs.blocks]
-        metadata = [input[1] for input in inputs.blocks]
         ctx = ray.data.context.DataContext.get_current()
         if ctx.enable_get_object_locations_for_metrics:
-            locations = ray.experimental.get_object_locations(blocks)
-            for block, meta in zip(blocks, metadata):
+            locations = ray.experimental.get_object_locations(inputs.block_refs)
+            for block, meta in inputs.blocks:
                 if locations[block].get("did_spill", False):
                     assert meta.size_bytes is not None
                     self.obj_store_mem_spilled += meta.size_bytes

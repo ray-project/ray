@@ -239,7 +239,7 @@ def _explore(
         new_T = df[df["Trial"] == str(base)].iloc[-1, :]["Time"]
         new_Reward = df[df["Trial"] == str(base)].iloc[-1, :].Reward
 
-        lst = [[old] + [new_T] + values + [new_Reward]]
+        lst = [[str(old)] + [new_T] + values + [new_Reward]]
         cols = ["Trial", "Time"] + list(bounds) + ["Reward"]
         new_entry = pd.DataFrame(lst, columns=cols)
 
