@@ -6,6 +6,12 @@ from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
 from ray.rllib.algorithms.marwil.marwil_offline_prelearner import (
     MARWILOfflinePreLearner,
 )
+from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
+    AddObservationsFromEpisodesToBatch,
+)
+from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
+    AddNextObservationsFromEpisodesToTrainBatch,
+)
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
@@ -264,6 +270,28 @@ class MARWILConfig(AlgorithmConfig):
         return super().build(env, logger_creator)
 
     @override(AlgorithmConfig)
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
+        pipeline = super().build_learner_connector(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            device=device,
+        )
+
+        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # after the corresponding "add-OBS-..." default piece).
+        pipeline.insert_after(
+            AddObservationsFromEpisodesToBatch,
+            AddNextObservationsFromEpisodesToTrainBatch(),
+        )
+
+        return pipeline
+
+    @override(AlgorithmConfig)
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
@@ -350,7 +378,7 @@ class MARWIL(Algorithm):
             batch = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
-                return_iterator=True if self.config.num_learners > 1 else False,
+                return_iterator=self.config.num_learners > 1,
             )
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):

@@ -25,7 +25,7 @@ assert (
 data_path = "tests/data/cartpole/cartpole-v1_large"
 base_path = Path(__file__).parents[2]
 print(f"base_path={base_path}")
-data_path = "local://" + base_path.joinpath(data_path)
+data_path = "local://" / base_path / data_path
 print(f"data_path={data_path}")
 
 # Define the MARWIL config.

@@ -162,6 +162,8 @@ class CQLConfig(SACConfig):
             device=device,
         )
 
+        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # after the corresponding "add-OBS-..." default piece).
         pipeline.insert_after(
             AddObservationsFromEpisodesToBatch,
             AddNextObservationsFromEpisodesToTrainBatch(),
@@ -201,7 +203,11 @@ class CQLConfig(SACConfig):
         # this is needed because we have no iterators, but instead a single
         # batch returned directly from the `OfflineData.sample` method.
         if self.num_learners == 0 and not self.dataset_num_iters_per_learner:
-            self.dataset_num_iters_per_learner = 1
+            raise ValueError(
+                "When using a single local learner the number of iterations "
+                "per learner, `dataset_num_iters_per_learner` has to be 1. "
+                "Set this hyperparameter in the `AlgorithmConfig.offline_data`."
+            )
 
 
 class CQL(SAC):
@@ -238,16 +244,17 @@ class CQL(SAC):
 
     def _training_step_new_api_stack(self) -> ResultDict:
 
+        # Sampling from offline data.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
-            # Sampling from offline data.
+            # Return an iterator in case we are using remote learners.
             batch = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
-                return_iterator=True if self.config.num_learners > 1 else False,
+                return_iterator=self.config.num_learners > 1,
             )
 
+        # Updating the policy.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            # Updating the policy.
             # TODO (simon, sven): Check, if we should execute directly s.th. like
             # update_from_iterator.
             learner_results = self.learner_group.update_from_batch(

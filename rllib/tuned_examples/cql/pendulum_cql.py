@@ -35,6 +35,7 @@ config = (
     .offline_data(
         input_=[data_path.as_posix()],
         actions_in_input_normalized=True,
+        dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
     )
     .training(
         bc_iters=100,

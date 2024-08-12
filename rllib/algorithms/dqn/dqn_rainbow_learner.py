@@ -6,12 +6,6 @@ from ray.rllib.core.learner.utils import update_target_network
 from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
-    AddObservationsFromEpisodesToBatch,
-)
-from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
-    AddNextObservationsFromEpisodesToTrainBatch,
-)
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -54,14 +48,6 @@ class DQNRainbowLearner(Learner):
                 else None
             )
         )
-
-        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
-        # after the corresponding "add-OBS-..." default piece).
-        if self.config.add_default_connectors_to_learner_pipeline:
-            self._learner_connector.insert_after(
-                AddObservationsFromEpisodesToBatch,
-                AddNextObservationsFromEpisodesToTrainBatch(),
-            )
 
     @override(Learner)
     def add_module(
