@@ -40,35 +40,6 @@ void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
           actor_id, execute_out_of_order, max_pending_calls, fail_if_actor_unreachable));
 }
 
-void ActorTaskSubmitter::KillActor(const ActorID &actor_id,
-                                   bool force_kill,
-                                   bool no_restart) {
-  absl::MutexLock lock(&mu_);
-  rpc::KillActorRequest request;
-  request.set_intended_actor_id(actor_id.Binary());
-  request.set_force_kill(force_kill);
-  request.set_no_restart(no_restart);
-
-  auto it = client_queues_.find(actor_id);
-  // The language frontend can only kill actors that it has a reference to.
-  RAY_CHECK(it != client_queues_.end());
-
-  if (!it->second.pending_force_kill) {
-    it->second.pending_force_kill = request;
-  } else if (force_kill) {
-    // Overwrite the previous request to kill the actor if the new request is a
-    // force kill.
-    it->second.pending_force_kill->set_force_kill(true);
-    if (no_restart) {
-      // Overwrite the previous request to disable restart if the new request's
-      // no_restart flag is set to true.
-      it->second.pending_force_kill->set_no_restart(true);
-    }
-  }
-
-  SendPendingTasks(actor_id);
-}
-
 Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   auto task_id = task_spec.TaskId();
   auto actor_id = task_spec.ActorId();
@@ -166,7 +137,6 @@ void ActorTaskSubmitter::DisconnectRpcClient(ClientQueue &queue) {
   queue.rpc_client = nullptr;
   core_worker_client_pool_.Disconnect(WorkerID::FromBinary(queue.worker_id));
   queue.worker_id.clear();
-  queue.pending_force_kill.reset();
 }
 
 void ActorTaskSubmitter::FailInflightTasks(
@@ -176,9 +146,8 @@ void ActorTaskSubmitter::FailInflightTasks(
   // network issue. We don't call `task_finisher_.FailOrRetryPendingTask` directly because
   // there's much more work to do in the callback.
   auto status = Status::IOError("Fail all inflight tasks due to actor state change.");
-  rpc::PushTaskReply reply;
   for (const auto &[_, callback] : inflight_task_callbacks) {
-    callback(status, reply);
+    callback(status, rpc::PushTaskReply());
   }
 }
 
@@ -410,15 +379,6 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
     return;
   }
 
-  // Check if there is a pending force kill. If there is, send it and disconnect the
-  // client.
-  if (client_queue.pending_force_kill) {
-    RAY_LOG(INFO).WithField(actor_id) << "Sending KillActor request to actor";
-    // It's okay if this fails because this means the worker is already dead.
-    client_queue.rpc_client->KillActor(*client_queue.pending_force_kill, nullptr);
-    client_queue.pending_force_kill.reset();
-  }
-
   // Submit all pending actor_submit_queue->
   while (true) {
     auto task = actor_submit_queue->PopNextTaskToSend();
@@ -484,7 +444,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
 
   queue.inflight_task_callbacks.emplace(task_id, std::move(reply_callback));
   rpc::ClientCallback<rpc::PushTaskReply> wrapped_callback =
-      [this, task_id, actor_id](const Status &status, const rpc::PushTaskReply &reply) {
+      [this, task_id, actor_id](const Status &status, rpc::PushTaskReply &&reply) {
         rpc::ClientCallback<rpc::PushTaskReply> reply_callback;
         {
           absl::MutexLock lock(&mu_);
@@ -500,7 +460,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
           reply_callback = std::move(callback_it->second);
           queue.inflight_task_callbacks.erase(callback_it);
         }
-        reply_callback(status, reply);
+        reply_callback(status, std::move(reply));
       };
 
   task_finisher_.MarkTaskWaitingForExecution(task_id,

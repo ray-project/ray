@@ -14,7 +14,6 @@
 
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 
-#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {

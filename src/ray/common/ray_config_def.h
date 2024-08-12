@@ -790,13 +790,6 @@ RAY_CONFIG(bool, event_log_reporter_enabled, true)
 /// This has no effect if `event_log_reporter_enabled` is false.
 RAY_CONFIG(bool, emit_event_to_log_file, false)
 
-/// Whether to enable register actor async.
-/// If it is false, the actor registration to GCS becomes synchronous, i.e.,
-/// core worker is blocked until GCS registers the actor and replies to it.
-/// If it is true, the actor registration is async, but actor handles cannot
-/// be passed to other worker until it is registered to GCS.
-RAY_CONFIG(bool, actor_register_async, true)
-
 /// Event severity threshold value
 RAY_CONFIG(std::string, event_level, "warning")
 
@@ -903,3 +896,6 @@ RAY_CONFIG(int, object_manager_client_connection_num, 4)
 //     std::min(std::max(2, num_cpus / 4), 8)
 // Update this to overwrite it.
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
+
+// Write export API events to file if enabled
+RAY_CONFIG(bool, enable_export_api_write, false)

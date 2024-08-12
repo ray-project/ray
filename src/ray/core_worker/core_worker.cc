@@ -3190,13 +3190,13 @@ std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
 
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                                          std::shared_ptr<RayObject> *return_object,
-                                         const ObjectID &generator_id) {
+                                         const ObjectID &generator_id,
+                                         const rpc::Address &owner_address) {
   // TODO(swang): If there is already an existing copy of this object, then it
   // might not have the same value as the new copy. It would be better to evict
   // the existing copy here.
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> result_map;
   bool got_exception;
-  rpc::Address owner_address(worker_context_.GetCurrentTask()->CallerAddress());
 
   // Temporarily set the return object's owner's address. This is needed to retrieve the
   // value from plasma.
@@ -3723,7 +3723,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
-  if (!reference_counter_->SetDeleteCallback(object_id, unpin_object)) {
+  if (!reference_counter_->SetObjectPrimaryCopyDeleteCallback(object_id, unpin_object)) {
     // If the object is already evicted (callback cannot be set), unregister the
     // subscription & publish the message so that the subscriber knows it.
     unpin_object(object_id);
