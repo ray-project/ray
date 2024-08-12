@@ -280,7 +280,6 @@ class ParquetDatasource(Datasource):
         self._schema = schema
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
-
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
 
