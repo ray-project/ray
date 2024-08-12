@@ -25,6 +25,27 @@ more information.
 
         .. div::
 
+            .. image:: https://img.shields.io/github/stars/astronomer/astro-provider-ray?style=social)]
+                :target: https://github.com/astronomer/astro-provider-ray
+
+            Apache Airflow is an open-source platform that enables users to programmatically author, schedule, and monitor workflows using directed acyclic graphs (DAGs) of tasks, allowing for the orchestration of complex data pipelines and ETL processes.
+
+        +++
+        .. button-link:: https://astronomer.github.io/astro-provider-ray/
+            :color: primary
+            :outline:
+            :expand:
+
+            Airflow Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/buildflow.png
+            :class: card-figure
+
+        .. div::
+
             .. image:: https://img.shields.io/github/stars/launchflow/buildflow?style=social)]
                 :target: https://github.com/launchflow/buildflow
 
