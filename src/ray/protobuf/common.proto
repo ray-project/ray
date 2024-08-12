@@ -345,8 +345,8 @@ message RuntimeEnvFailedContext {
   string error_message = 1;
 }
 
-// Note: ActorUnschedulableContext is used in the export API and state API so it is public.
-// Any modifications must be backward compatible.
+// Note: ActorUnschedulableContext is used in the export API and state API so it is
+// public. Any modifications must be backward compatible.
 message ActorUnschedulableContext {
   string error_message = 1;
 }

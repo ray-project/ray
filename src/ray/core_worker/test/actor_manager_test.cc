@@ -478,9 +478,15 @@ TEST_F(ActorManagerTest, TestActorDeathCauseBackwardCompatibility) {
   rpc::RuntimeEnvFailedContext runtime_env_failed_context;
   rpc::ActorDeathCause actor_death_cause2;
   runtime_env_failed_context.set_error_message("error message string");
-  actor_death_cause2.mutable_runtime_env_failed_context()->CopyFrom(runtime_env_failed_context);
+  actor_death_cause2.mutable_runtime_env_failed_context()->CopyFrom(
+      runtime_env_failed_context);
 
-  rpc::NodeDeathInfo::Reason node_death_info_reason_arr[5] = {rpc::NodeDeathInfo::UNSPECIFIED, rpc::NodeDeathInfo::EXPECTED_TERMINATION, rpc::NodeDeathInfo::UNEXPECTED_TERMINATION, rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED, rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE};
+  rpc::NodeDeathInfo::Reason node_death_info_reason_arr[5] = {
+      rpc::NodeDeathInfo::UNSPECIFIED,
+      rpc::NodeDeathInfo::EXPECTED_TERMINATION,
+      rpc::NodeDeathInfo::UNEXPECTED_TERMINATION,
+      rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED,
+      rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE};
   for (rpc::NodeDeathInfo::Reason node_death_info_reason : node_death_info_reason_arr) {
     rpc::ActorDiedErrorContext actor_died_context;
     rpc::NodeDeathInfo node_death_info;
@@ -504,7 +510,8 @@ TEST_F(ActorManagerTest, TestActorDeathCauseBackwardCompatibility) {
   rpc::ActorUnschedulableContext actor_unschedulable_context;
   rpc::ActorDeathCause actor_death_cause4;
   actor_unschedulable_context.set_error_message("error message string");
-  actor_death_cause4.mutable_actor_unschedulable_context()->CopyFrom(actor_unschedulable_context);
+  actor_death_cause4.mutable_actor_unschedulable_context()->CopyFrom(
+      actor_unschedulable_context);
 
   rpc::OomContext oom_context;
   rpc::ActorDeathCause actor_death_cause5;
