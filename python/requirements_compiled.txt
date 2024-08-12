@@ -662,8 +662,6 @@ googleapis-common-protos==1.61.0
     #   tensorflow-metadata
 gpy==1.13.1
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
-gpytorch==1.10
-    # via botorch
 gradio==3.50.2 ; platform_system != "Windows"
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 gradio-client==0.6.1
@@ -1120,8 +1118,6 @@ multidict==6.0.5
     # via
     #   aiohttp
     #   yarl
-multipledispatch==1.0.0
-    # via botorch
 multiprocess==0.70.15
     # via
     #   datasets
@@ -1688,8 +1684,6 @@ pyparsing==3.1.1
     #   torch-geometric
 pyro-api==0.1.2
     # via pyro-ppl
-pyro-ppl==1.8.6
-    # via botorch
 pyro4==4.82
     # via hpbandster
 pyrsistent==0.20.0
