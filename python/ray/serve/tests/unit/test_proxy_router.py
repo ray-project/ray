@@ -33,9 +33,6 @@ def mock_longest_prefix_router() -> LongestPrefixRouter:
         def _set_request_protocol(self, protocol: RequestProtocol):
             self._protocol = protocol
 
-        def _get_or_create_router(self):
-            pass
-
     def mock_get_handle(name, *args, **kwargs):
         return MockHandle(name)
 
@@ -57,9 +54,6 @@ def mock_endpoint_router() -> EndpointRouter:
 
         def _set_request_protocol(self, protocol: RequestProtocol):
             self._protocol = protocol
-
-        def _get_or_create_router(self):
-            pass
 
     def mock_get_handle(name, *args, **kwargs):
         return MockHandle(name)
