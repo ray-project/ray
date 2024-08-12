@@ -20,7 +20,7 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/buildflow.png
+        .. figure:: ../images/airflow.png
             :class: card-figure
 
         .. div::
@@ -36,7 +36,7 @@ more information.
             :outline:
             :expand:
 
-            Airflow Integration
+            Apache Airflow Integration
 
 
     .. grid-item-card::
