@@ -197,6 +197,7 @@ class _Bar:
         delta = state["x"] - self.state["x"]
         if delta:
             self.bar.update(delta)
+        self.bar.refresh()
         self.state = state
 
     def close(self):
@@ -241,8 +242,12 @@ class _BarGroup:
     def close_bar(self, state: ProgressBarState) -> None:
         """Remove a bar from this group."""
         bar = self.bars_by_uuid[state["uuid"]]
+        # Note: Hide and then unhide bars to prevent flashing of the
+        # last bar when we are closing multiple bars sequentially.
+        instance().hide_bars()
         bar.close()
         del self.bars_by_uuid[state["uuid"]]
+        instance().unhide_bars()
 
     def slots_required(self):
         """Return the number of pos slots we need to accomodate bars in this group."""
