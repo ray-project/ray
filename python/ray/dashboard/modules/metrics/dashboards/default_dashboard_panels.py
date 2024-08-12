@@ -399,20 +399,18 @@ DEFAULT_GRAFANA_PANELS = [
         unit="percent",
         targets=[
             Target(
-                expr='(sum(ray_node_mem_used{{instance=~"$Instance",{global_filters}}}) / sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})) * 100',
-                legend="Memory Usage: {{instance}}",
+                expr='ray_node_mem_used{{instance=~"$Instance",{global_filters}}}/ray_node_mem_total{{instance=~"$Instance",{global_filters}}} * 100 < 80',
+                legend="Memory Usage < 80%: {{instance}}",
             ),
             Target(
-                expr='(sum(ray_node_mem_used{{instance=~"$Instance",{global_filters}}}) / sum(ray_node_mem_total{{instance=~"$Instance",{global_filters}}})) * 100 > 80',
+                expr='ray_node_mem_used{{instance=~"$Instance",{global_filters}}}/ray_node_mem_total{{instance=~"$Instance",{global_filters}}} * 100 > 80',
                 legend="Memory Usage > 80%: {{instance}}",
             ),
-            Target(
-                expr='sum(ray_node_mem_used{{instance="head-node",{global_filters}}}) / sum(ray_node_mem_total{{instance="head-node",{global_filters}}}) * 100',
-                legend="Head Node: {{instance}}",
-                lineWidth=4,  # Double thickness for the head node
-            ),
         ],
+        fill=0,
+        stack=False,
     ),
+
 
 ]
 

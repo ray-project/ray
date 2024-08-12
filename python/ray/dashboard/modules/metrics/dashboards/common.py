@@ -26,6 +26,7 @@ class Target:
 
     expr: str
     legend: str
+    linewidth: int = 1
 
 
 @dataclass
