@@ -896,3 +896,6 @@ RAY_CONFIG(int, object_manager_client_connection_num, 4)
 //     std::min(std::max(2, num_cpus / 4), 8)
 // Update this to overwrite it.
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
+
+// Write export API events to file if enabled
+RAY_CONFIG(bool, enable_export_api_write, false)
