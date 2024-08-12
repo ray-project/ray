@@ -26,6 +26,7 @@ from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
@@ -4620,9 +4621,9 @@ class AlgorithmConfig(_Config):
         # dict's special __env__ key.
         if spaces is not None:
             if env_obs_space is None:
-                env_obs_space = spaces.get("__env__", [None])[0]
+                env_obs_space = spaces.get(INPUT_ENV_SPACES, [None])[0]
             if env_act_space is None:
-                env_act_space = spaces.get("__env__", [None, None])[1]
+                env_act_space = spaces.get(INPUT_ENV_SPACES, [None, None])[1]
 
         # Check each defined policy ID and unify its spec.
         for pid, policy_spec in policies.copy().items():
