@@ -431,6 +431,7 @@ class AlgorithmConfig(_Config):
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
+        self.input_read_episodes = False
         self.map_batches_kwargs = {}
         self.iter_batches_kwargs = {}
         self.prelearner_class = None
@@ -2385,6 +2386,7 @@ class AlgorithmConfig(_Config):
         input_read_method: Optional[Union[str, Callable]] = NotProvided,
         input_read_method_kwargs: Optional[Dict] = NotProvided,
         input_read_schema: Optional[Dict[str, str]] = NotProvided,
+        input_read_episodes: Optional[bool] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
         prelearner_class: Optional[Type] = NotProvided,
@@ -2437,6 +2439,16 @@ class AlgorithmConfig(_Config):
                 schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
                 contains already the names in this schema, no `input_read_schema` is
                 needed.
+            input_read_episodes: If offline data is already stored in RLlib's
+                `EpisodeType` format, i.e. `ray.rllib.env.SingleAgentEpisode` (multi
+                -agent is planned but not supported, yet). Reading directly episodes
+                avoids an additional transforming step and is usually faster and
+                therefore the adviced format when your application remains fully inside
+                of RLlib's schema. The other format is a columnar format and is agnostic
+                to the RL framework used. Use the latter format, if you are unsure when
+                to use the data or in which RL framework. The default is to read column
+                data, i.e. `False`. See also `output_write_episodes` to define the
+                output data format when recording.
             map_batches_kwargs: `kwargs` for the `map_batches` method. These will be
                 passed into the `ray.data.Dataset.map_batches` method when sampling
                 without checking. If no arguments passed in the default arguments `{
@@ -2528,6 +2540,8 @@ class AlgorithmConfig(_Config):
             self.input_read_method_kwargs = input_read_method_kwargs
         if input_read_schema is not NotProvided:
             self.input_read_schema = input_read_schema
+        if input_read_episodes is not NotProvided:
+            self.input_read_episodes = input_read_episodes
         if map_batches_kwargs is not NotProvided:
             self.map_batches_kwargs = map_batches_kwargs
         if iter_batches_kwargs is not NotProvided:
