@@ -7,7 +7,6 @@ import requests
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.exceptions import RayServeException
