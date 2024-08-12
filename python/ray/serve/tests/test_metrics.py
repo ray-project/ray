@@ -1330,7 +1330,9 @@ class TestHandleMetrics:
             check_metric_float_eq,
             timeout=15,
             metric="ray_serve_num_scheduling_tasks",
-            expected=-1,  # -1 means not expected to be present yet.
+            # Router is eagerly created on HTTP proxy, so there are metrics emitted
+            # from proxy router
+            expected=0,
             # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
             # metrics from new and old sessions.
             expected_tags={
@@ -1342,7 +1344,9 @@ class TestHandleMetrics:
             check_metric_float_eq,
             timeout=15,
             metric="serve_num_scheduling_tasks_in_backoff",
-            expected=-1,  # -1 means not expected to be present yet.
+            # Router is eagerly created on HTTP proxy, so there are metrics emitted
+            # from proxy router
+            expected=0,
             # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
             # metrics from new and old sessions.
             expected_tags={
