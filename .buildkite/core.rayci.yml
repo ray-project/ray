@@ -376,8 +376,7 @@ steps:
       - gpu
     instance_type: gpu-large
     commands:
-      - sleep 10000
-      # - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... core
-      #   --build-name coregpubuild
-      #   --only-tags multi_gpu
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... core
+        --build-name coregpubuild
+        --only-tags multi_gpu
     depends_on: coregpubuild
