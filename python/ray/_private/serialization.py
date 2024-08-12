@@ -162,7 +162,7 @@ class SerializationContext:
 
         import types
         from pathlib import Path
-        
+
         def try_make_relative(dir_path, file_path):
             try:
                 relative_path = Path(file_path).relative_to(Path(dir_path))
@@ -171,6 +171,7 @@ class SerializationContext:
                 return str(file_path)
 
         orig = pickle.CloudPickler.dispatch[types.CodeType]
+
         def hack_codetype_reducer(obj):
             """
             Hack to change co_filename in serialized CodeType.
@@ -181,7 +182,8 @@ class SerializationContext:
             logger.error("hack_codetype_reducer")
             ctor, data = orig(obj)
             co_filename = try_make_relative(
-                "/home/ray/default", obj.co_filename # POC overriding hardcoded workspace path
+                "/home/ray/default",
+                obj.co_filename,  # POC overriding hardcoded workspace path
             )
             # Index of the co_filename in the data tuple for CodeType.
             # This is pure hack. See _code_reduce in cloudpickle/cloudpickle.py
