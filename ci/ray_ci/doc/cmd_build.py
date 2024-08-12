@@ -54,9 +54,12 @@ def _build(ray_checkout_dir):
     # We need to unset PYTHONPATH to use the Python from the environment instead of
     # from the Bazel runfiles.
     env.update({"PYTHONPATH": ""})
-    import numpy
-    logger.info(f"numpy version: {numpy.__version__}, type: {type(numpy.__version__)}")
-    logger.info(f"test = {numpy.__version__ < '2'}")
+    try:
+        import numpy
+        logger.info(f"numpy version: {numpy.__version__}, type: {type(numpy.__version__)}")
+        logger.info(f"test = {numpy.__version__ < '2'}")
+    except Exception as e:
+        logger.error(f"Failed to import numpy: {e}")
     subprocess.run(
         ["make", "html"],
         cwd=os.path.join(ray_checkout_dir, "doc"),
