@@ -40,38 +40,38 @@ message ExportActorData {
   // The ID of the actor that was created.
   bytes actor_id = 1;
   // The ID of the job that created the actor.
-  bytes job_id = 4;
+  bytes job_id = 2;
   // Current state of this actor.
-  ActorState state = 6;
+  ActorState state = 3;
   // Whether the actor is persistent.
-  bool is_detached = 11;
+  bool is_detached = 4;
   // Name of the actor.
-  string name = 12;
+  string name = 5;
   // The process id of this actor.
-  uint32 pid = 16;
+  uint32 pid = 6;
   // The actor's namespace. Named `ray_namespace` to avoid confusions when invoked in c++.
-  string ray_namespace = 19;
+  string ray_namespace = 7;
   // Serialized runtime_env used to report in the dashboard snapshot. We need to populate
   // it here instead of grabbing it from the task spec because the task spec is cleared
   // for deleted actors: https://github.com/ray-project/ray/pull/11149.
-  string serialized_runtime_env = 22;
+  string serialized_runtime_env = 8;
   // The actor's class name. This is necessary because the task spec's lifetime
   // is shorter than the ActorTableData.
-  string class_name = 23;
+  string class_name = 9;
   // Contains metadata about why the actor is dead.
-  ActorDeathCause death_cause = 24;
+  ActorDeathCause death_cause = 10;
   // Quantities of the different resources required by this actor.
-  map<string, double> required_resources = 28;
+  map<string, double> required_resources = 11;
   // The node id of the actor once it is created.
   // address field can contain an address although actor is not created
   // so we have a separate field to track this.
   // If the actor is restarting, the node id could be incorrect.
-  optional bytes node_id = 29;
+  optional bytes node_id = 12;
   // Placement group ID if the actor requires a placement group.
-  optional bytes placement_group_id = 30;
+  optional bytes placement_group_id = 13;
   // The repr name of the actor if specified with a customized repr method, e.g. __repr__
   // This field is only available after the actor creation task has been run since it
   // might depend on actor fields to be initialized in __init__.
   // Default to empty string if no customized repr is defined.
-  string repr_name = 31;
+  string repr_name = 14;
 }
