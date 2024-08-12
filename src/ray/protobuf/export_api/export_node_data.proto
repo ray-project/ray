@@ -48,23 +48,23 @@ message ExportNodeData {
     string node_manager_address = 2;
 
     // Current state of this node.
-    GcsNodeState state = 7;
+    GcsNodeState state = 3;
 
     // The total resources of this node.
-    map<string, double> resources_total = 11;
+    map<string, double> resources_total = 4;
 
     // The user-provided identifier or name for this node.
-    string node_name = 12;
+    string node_name = 5;
 
     // The unix ms timestamp the node was started at.
-    uint64 start_time_ms = 23;
+    uint64 start_time_ms = 6;
     // The unix ms timestamp the node was ended at.
-    uint64 end_time_ms = 24;
+    uint64 end_time_ms = 7;
     // If this is a head node.
-    bool is_head_node = 25;
+    bool is_head_node = 8;
     // The key-value labels of this node.
-    map<string, string> labels = 26;
+    map<string, string> labels = 9;
 
     // The death info of this node.
-    NodeDeathInfo death_info = 29;
+    NodeDeathInfo death_info = 10;
 }
