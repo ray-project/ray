@@ -10,6 +10,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 import ray
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -523,6 +524,22 @@ class Router:
                 if obj_ref_gen is not None:
                     ray.cancel(obj_ref_gen)
 
+                raise
+            except ActorDiedError:
+                # Replica has died but controller hasn't notified the router yet.
+                # Don't consider this replica for requests in the future.
+                self._replica_scheduler.on_replica_actor_died(replica.replica_id)
+                logger.warning(
+                    f"{replica.replica_id} will not be considered for future "
+                    "requests because it has died."
+                )
+                raise
+            except ActorUnavailableError:
+                # There are network issues, or replica has died but GCS is down so
+                # ActorUnavailableError will be raised until GCS recovers. For the
+                # time being, invalidate the cache entry so that we don't try to
+                # send requests to this replica without actively probing.
+                self._replica_scheduler.on_replica_actor_unavailable(replica.replica_id)
                 raise
 
             # If the replica rejects the request, retry the scheduling process. The
