@@ -836,7 +836,6 @@ def get_deployment_handle(
     app_name: Optional[str] = None,
     _check_exists: bool = True,
     _record_telemetry: bool = True,
-    _lazily_initialize_router: bool = True,
 ) -> DeploymentHandle:
     """Get a handle to a deployment by name.
 
@@ -926,9 +925,4 @@ def get_deployment_handle(
     if _record_telemetry:
         ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
 
-    return client.get_handle(
-        deployment_name,
-        app_name,
-        check_exists=_check_exists,
-        _lazily_initialize_router=_lazily_initialize_router,
-    )
+    return client.get_handle(deployment_name, app_name, check_exists=_check_exists)

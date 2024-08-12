@@ -111,7 +111,6 @@ class _DeploymentHandleBase:
         _router: Optional[Router] = None,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
-        _lazily_initialize_router: bool = True,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         self.handle_options = handle_options or _HandleOptions()
@@ -123,8 +122,6 @@ class _DeploymentHandleBase:
         )
 
         self._router: Optional[Router] = _router
-        if not _lazily_initialize_router:
-            self._get_or_create_router()
 
         logger.info(
             f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
@@ -234,7 +231,7 @@ class _DeploymentHandleBase:
             _source=_source,
         )
 
-        if self._router is None:
+        if self._router is None and _prefer_local_routing == DEFAULT.VALUE:
             self._get_or_create_router()
 
         return DeploymentHandle(

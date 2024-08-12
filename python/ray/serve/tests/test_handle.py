@@ -390,38 +390,6 @@ def test_set_request_protocol(serve_instance):
     assert handle.handle_options._request_protocol == RequestProtocol.HTTP
 
 
-def test_lazy_router_initialization(serve_instance):
-    @serve.deployment
-    def dummy():
-        pass
-
-    serve.run(dummy.bind())
-    handle = serve.get_deployment_handle(
-        deployment_name="dummy", app_name="default", _lazily_initialize_router=True
-    )
-
-    assert handle._router is None
-
-
-def test_eager_router_initialization(serve_instance):
-    def router_populated_with_replicas(router):
-        replicas = router._replica_scheduler._replica_id_set
-        assert len(replicas) > 0
-        return True
-
-    @serve.deployment
-    def dummy():
-        pass
-
-    serve.run(dummy.bind())
-    handle = serve.get_deployment_handle(
-        deployment_name="dummy", app_name="default", _lazily_initialize_router=False
-    )
-
-    assert handle._router is not None
-    wait_for_condition(router_populated_with_replicas, router=handle._router)
-
-
 if __name__ == "__main__":
     import sys
 
