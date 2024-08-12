@@ -21,3 +21,10 @@ if [[ "${RAY_RELEASE_BUILD:-}" == "" ]]; then
         export RAY_RELEASE_BUILD="true"
     fi
 fi
+
+UPSTREAM_BRANCH="master"
+if [[ "${RAY_VERSION}" != "3.0.0.dev0" ]]; then
+    UPSTREAM_BRANCH="releases/${RAY_VERSION}"
+fi
+export UPSTREAM_BRANCH
+echo "UPSTREAM_BRANCH=$UPSTREAM_BRANCH"

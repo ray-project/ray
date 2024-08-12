@@ -59,6 +59,14 @@ steps:
       - "3.10"
       - "3.11"
 
+  - label: "Check ray wheels"
+    key: check-ray-wheels
+    commands:
+      - source anyscale/ci/setup-env.sh
+      - bazel run //anyscale/ci:check_wheels_exist_s3 -- --branch="$$UPSTREAM_BRANCH" --ray_version="$$RAY_VERSION"  --commit_hash="$(cat .UPSTREAM)"
+    depends_on:
+      - forge
+
   - label: ":tapioca: runtime py{{matrix.py}} {{matrix.base}} image"
     key: runtime-image
     tags: docker
@@ -70,6 +78,7 @@ steps:
       - runtime-helper
       - raycpubase
       - raycudabase
+      - check-ray-wheels
     job_env: forge
     mount_buildkite_agent: true
     matrix:
@@ -96,6 +105,7 @@ steps:
       - runtime-helper
       - min-cpubase
       - min-cudabase
+      - check-ray-wheels
     job_env: forge
     mount_buildkite_agent: true
     matrix:
@@ -122,6 +132,7 @@ steps:
       - runtime-helper
       - ray-mlcpubase
       - ray-mlcudabase
+      - check-ray-wheels
     job_env: forge
     mount_buildkite_agent: true
     matrix:
