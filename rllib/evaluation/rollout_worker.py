@@ -33,7 +33,6 @@ from ray.rllib.connectors.util import (
 )
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.base_env import BaseEnv, convert_to_base_env
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
@@ -733,6 +732,8 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             lambda env: (env.observation_space, env.action_space)
         )
         if env_spaces:
+            from ray.rllib.env import INPUT_ENV_SPACES
+
             spaces[INPUT_ENV_SPACES] = env_spaces[0]
         return spaces
 
