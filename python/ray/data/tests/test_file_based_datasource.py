@@ -119,27 +119,35 @@ def test_windows_path():
 
 
 @pytest.mark.parametrize(
-    "shuffle, valid",
-    [
-        (None, True),
-        ("files", True),
-        (True, False),
-        (False, False),
-        ("file", False),
-    ],
+    "shuffle",
+    [True, False, "file"],
 )
-def test_shuffle_arg(ray_start_regular_shared, tmp_path, shuffle, valid):
+def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, tmp_path, shuffle):
 
     path = os.path.join(tmp_path, "test.txt")
     with open(path, "w"):
         pass
 
-    if valid:
+    with pytest.raises(ValueError):
         FileBasedDatasource(path, shuffle=shuffle)
 
-    else:
-        with pytest.raises(ValueError):
-            FileBasedDatasource(path, shuffle=shuffle)
+
+@pytest.mark.parametrize(
+    "shuffle",
+    [
+        None,
+        "files",
+    ],
+)
+def test_valid_shuffle_arg_does_not_raise_error(
+    ray_start_regular_shared, tmp_path, shuffle
+):
+
+    path = os.path.join(tmp_path, "test.txt")
+    with open(path, "w"):
+        pass
+
+    FileBasedDatasource(path, shuffle=shuffle)
 
 
 if __name__ == "__main__":

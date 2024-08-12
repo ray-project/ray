@@ -33,7 +33,6 @@ from ray.data.datasource._default_metadata_providers import (
     get_generic_metadata_provider,
 )
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_based_datasource import _validate_shuffle_arg
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import PathPartitionFilter
@@ -279,10 +278,9 @@ class ParquetDatasource(Datasource):
         self._to_batches_kwargs = to_batch_kwargs
         self._columns = columns
         self._schema = schema
+        self._file_metadata_shuffler = None
         self._include_paths = include_paths
 
-        _validate_shuffle_arg(shuffle)
-        self._file_metadata_shuffler = None
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
 

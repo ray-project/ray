@@ -762,6 +762,8 @@ def read_parquet(
         **arrow_parquet_args,
     )
 
+    _validate_shuffle_arg
+
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
     _block_udf = arrow_parquet_args.pop("_block_udf", None)
     schema = arrow_parquet_args.pop("schema", None)
@@ -3157,3 +3159,11 @@ def _get_num_output_blocks(
     elif override_num_blocks is not None:
         parallelism = override_num_blocks
     return parallelism
+
+
+def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
+    if shuffle not in [None, "files"]:
+        raise ValueError(
+            f"Invalid value for 'shuffle': {shuffle}. "
+            "Valid values are None, 'files'."
+        )
