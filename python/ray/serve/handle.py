@@ -234,7 +234,7 @@ class _DeploymentHandleBase:
             _source=_source,
         )
 
-        if self._router is None and _prefer_local_routing == DEFAULT.VALUE:
+        if self._router is None:
             self._get_or_create_router()
 
         return DeploymentHandle(
