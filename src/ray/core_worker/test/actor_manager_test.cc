@@ -500,36 +500,17 @@ TEST_F(ActorManagerTest, TestActorDeathCauseBackwardCompatibility) {
     actor_died_context.mutable_node_death_info()->CopyFrom(node_death_info);
     actor_death_cause3.mutable_actor_died_error_context()->CopyFrom(actor_died_context);
   }
-  
 
+  rpc::ActorUnschedulableContext actor_unschedulable_context;
+  rpc::ActorDeathCause actor_death_cause4;
+  actor_unschedulable_context.set_error_message("error message string");
+  actor_death_cause4.mutable_actor_unschedulable_context()->CopyFrom(actor_unschedulable_context);
 
-
-  // std::string ray_namespace = "default_ray_namespace";
-  // std::string actor_name = "actor_name";
-  // ActorID actor_id = AddActorHandle(ray_namespace, actor_name);
-  // // Make sure the actor is valid.
-  // ASSERT_FALSE(actor_manager_->IsActorKilledOrOutOfScope(actor_id));
-  // // Make sure the finished callback is cached as it is not reached yet.
-  // ASSERT_TRUE(actor_info_accessor_->subscribe_finished_callback_map_.contains(actor_id));
-
-  // // The actor is killed.
-  // actor_manager_->OnActorKilled(actor_id);
-  // // Make sure the actor is invalid.
-  // ASSERT_TRUE(actor_manager_->IsActorKilledOrOutOfScope(actor_id));
-
-  // rpc::ActorTableData actor_table_data;
-  // actor_table_data.set_actor_id(actor_id.Binary());
-  // actor_table_data.set_state(rpc::ActorTableData::ALIVE);
-  // actor_table_data.set_ray_namespace(ray_namespace);
-  // actor_table_data.set_name(actor_name);
-  // // The callback for successful subscription reached.
-  // ASSERT_TRUE(actor_info_accessor_->ActorSubscribeFinished(actor_id, actor_table_data));
-  // // Make sure the finished callback is removed.
-  // ASSERT_FALSE(actor_info_accessor_->subscribe_finished_callback_map_.contains(actor_id));
-
-  // // Make sure the named actor will not be put into `cached_actor_name_to_ids_`
-  // auto cached_actor_name = GenerateCachedActorName(ray_namespace, actor_name);
-  // ASSERT_TRUE(actor_manager_->GetCachedNamedActorID(cached_actor_name).IsNil());
+  rpc::OomContext oom_context;
+  rpc::ActorDeathCause actor_death_cause5;
+  oom_context.set_error_message("error message string");
+  oom_context.set_fail_immediately(true);
+  actor_death_cause5.mutable_oom_context()->CopyFrom(oom_context);
 }
 
 }  // namespace core
