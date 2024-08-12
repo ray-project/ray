@@ -9,10 +9,10 @@ Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#deep-q-networks-dqn-rainbow-parametric-dqn
 """  # noqa: E501
 
+from collections import defaultdict
 import logging
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 import numpy as np
-import tree
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
@@ -24,11 +24,7 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.execution.train_ops import (
     train_one_step,
     multi_gpu_train_one_step,
@@ -36,6 +32,7 @@ from ray.rllib.execution.train_ops import (
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.replay_buffers.utils import (
     update_priorities_in_episode_replay_buffer,
     update_priorities_in_replay_buffer,
@@ -45,6 +42,7 @@ from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     ENV_RUNNER_RESULTS,
+    ENV_RUNNER_SAMPLING_TIMER,
     LAST_TARGET_UPDATE_TS,
     LEARNER_ADDITIONAL_UPDATE_TIMER,
     LEARNER_RESULTS,
@@ -53,9 +51,14 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
+    NUM_MODULE_STEPS_SAMPLED,
+    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
+    NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     NUM_TARGET_UPDATES,
     REPLAY_BUFFER_SAMPLE_TIMER,
     REPLAY_BUFFER_UPDATE_PRIOS_TIMER,
@@ -139,8 +142,8 @@ class DQNConfig(AlgorithmConfig):
 
         # `training()`
         self.grad_clip = 40.0
-        # Note: Only when using _enable_new_api_stack=True can the clipping mode be
-        # configured by the user. On the old API stack, RLlib will always clip by
+        # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
+        # be configured by the user. On the old API stack, RLlib will always clip by
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
         self.lr = 5e-4
@@ -407,7 +410,7 @@ class DQNConfig(AlgorithmConfig):
         super().validate()
 
         if (
-            not self._enable_new_api_stack
+            not self.enable_rl_module_and_learner
             and self.exploration_config["type"] == "ParameterNoise"
         ):
             if self.batch_mode != "complete_episodes":
@@ -417,7 +420,7 @@ class DQNConfig(AlgorithmConfig):
                     "batch_mode='complete_episodes')`."
                 )
 
-        if not self.uses_new_env_runners and not self.in_evaluation:
+        if not self.enable_env_runner_and_connector_v2 and not self.in_evaluation:
             validate_buffer_config(self)
 
         if self.td_error_loss_fn not in ["huber", "mse"]:
@@ -439,7 +442,7 @@ class DQNConfig(AlgorithmConfig):
         # TODO (simon): Find a clean solution to deal with
         # configuration configs when using the new API stack.
         if (
-            not self._enable_new_api_stack
+            not self.enable_rl_module_and_learner
             and self.exploration_config["type"] == "ParameterNoise"
         ):
             if self.batch_mode != "complete_episodes":
@@ -462,7 +465,7 @@ class DQNConfig(AlgorithmConfig):
         )
 
         if (
-            self.uses_new_env_runners
+            self.enable_env_runner_and_connector_v2
             and not isinstance(self.replay_buffer_config["type"], str)
             and not issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
         ):
@@ -588,7 +591,7 @@ class DQN(Algorithm):
             The results dict from executing the training iteration.
         """
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack(with_noise_reset=True)
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).
@@ -601,9 +604,9 @@ class DQN(Algorithm):
 
         # Run multiple sampling + storing to buffer iterations.
         for _ in range(store_weight):
-            with self.metrics.log_time((TIMERS, SAMPLE_TIMER)):
+            with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
                 # Sample in parallel from workers.
-                episodes, env_runner_metrics = synchronous_parallel_sample(
+                episodes, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.workers,
                     concat=True,
                     sample_timeout_s=self.config.sample_timeout_s,
@@ -612,26 +615,27 @@ class DQN(Algorithm):
                 )
             # Add the sampled experiences to the replay buffer.
             self.local_replay_buffer.add(episodes)
-
             # Reduce EnvRunner metrics over the n EnvRunners.
-            self.metrics.log_n_dicts(env_runner_metrics, key=ENV_RUNNER_RESULTS)
+            self.metrics.log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
-        # Log lifetime counts for env- and agent steps sampled.
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED_LIFETIME,
+            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0),
+            reduce="sum",
+        )
+        self.metrics.log_value(
+            NUM_EPISODES_LIFETIME,
+            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_EPISODES, default=0),
+            reduce="sum",
+        )
         self.metrics.log_dict(
-            {
-                NUM_AGENT_STEPS_SAMPLED_LIFETIME: {
-                    aid: self.metrics.peek(
-                        ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, aid, default=0
-                    )
-                    for aid in self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME)
-                },
-                NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED, default=0
-                ),
-                NUM_EPISODES_LIFETIME: self.metrics.peek(
-                    ENV_RUNNER_RESULTS, NUM_EPISODES, default=0
-                ),
-            },
+            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED, default={}),
+            key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+            reduce="sum",
+        )
+        self.metrics.log_dict(
+            self.metrics.peek(ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED, default={}),
+            key=NUM_MODULE_STEPS_SAMPLED_LIFETIME,
             reduce="sum",
         )
 
@@ -643,7 +647,7 @@ class DQN(Algorithm):
             current_ts = self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
 
         # If enough experiences have been sampled start training.
-        if current_ts > self.config.num_steps_sampled_before_learning_starts:
+        if current_ts >= self.config.num_steps_sampled_before_learning_starts:
             # Resample noise for noisy networks, if necessary. Note, this
             # is proposed in the "Noisy Networks for Exploration" paper
             # (https://arxiv.org/abs/1706.10295) in Algorithm 1. The noise
@@ -669,39 +673,42 @@ class DQN(Algorithm):
 
                 # Perform an update on the buffer-sampled train batch.
                 with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-                    learner_results = self.learner_group.update_from_batch(
-                        train_batch,
-                        reduce_fn=self._reduce_fn,
-                    )
-                    # Isolate TD-errors from result dicts (we should not log these, they
-                    # might be very large).
+                    learner_results = self.learner_group.update_from_batch(train_batch)
+                    # Isolate TD-errors from result dicts (we should not log these to
+                    # disk or WandB, they might be very large).
+                    td_errors = defaultdict(list)
+                    for res in learner_results:
+                        for mid, m_res in res.items():
+                            if TD_ERROR_KEY in m_res:
+                                td_errors[mid].extend(
+                                    convert_to_numpy(m_res.pop(TD_ERROR_KEY).peek())
+                                )
                     td_errors = {
-                        mid: {TD_ERROR_KEY: res.pop(TD_ERROR_KEY)}
-                        for mid, res in learner_results.items()
-                        if TD_ERROR_KEY in res
+                        mid: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
+                        for mid, s in td_errors.items()
                     }
-                    self.metrics.log_dict(
-                        learner_results,
-                        key=LEARNER_RESULTS,
-                        # TODO (sven): For now, as we do NOT use MetricsLogger inside
-                        #  Learner and LearnerGroup, we assume here that the
-                        #  Learner/LearnerGroup-returned values are absolute (and thus
-                        #  require a reduce window of just 1 (take as-is)). Remove the
-                        #  window setting below, once Learner/LearnerGroup themselves
-                        #  use MetricsLogger.
-                        window=1,
+                    self.metrics.log_n_dicts(learner_results, key=LEARNER_RESULTS)
+                    self.metrics.log_value(
+                        NUM_ENV_STEPS_TRAINED_LIFETIME,
+                        self.metrics.peek(
+                            LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED
+                        ),
+                        reduce="sum",
                     )
-                    # TODO (sven): Move these counters into Learners and add
-                    #  module-steps and agent-steps trained and sampled.
                     self.metrics.log_dict(
                         {
-                            NUM_ENV_STEPS_TRAINED_LIFETIME: train_batch.env_steps(),
-                            # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                            #    LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED
-                            # ),
+                            (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (
+                                stats[NUM_MODULE_STEPS_TRAINED]
+                            )
+                            for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
                         },
                         reduce="sum",
                     )
+                    # TODO (sven): Uncomment this once agent steps are available in the
+                    #  Learner stats.
+                    # self.metrics.log_dict(self.metrics.peek(
+                    #   LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED, default={}
+                    # ), key=NUM_AGENT_STEPS_TRAINED_LIFETIME, reduce="sum")
 
                 # Update replay buffer priorities.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_UPDATE_PRIOS_TIMER)):
@@ -714,35 +721,13 @@ class DQN(Algorithm):
 
                 # Update the target networks, if necessary.
                 with self.metrics.log_time((TIMERS, LEARNER_ADDITIONAL_UPDATE_TIMER)):
-                    modules_to_update = set(learner_results.keys()) - {ALL_MODULES}
+                    modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
                     additional_results = self.learner_group.additional_update(
                         module_ids_to_update=modules_to_update,
                         timestep=current_ts,
-                        last_update=self.metrics.peek(
-                            # TODO (sven): Support multi-agent in DQN/SAC.
-                            (LEARNER_RESULTS, DEFAULT_POLICY_ID, LAST_TARGET_UPDATE_TS),
-                            default=0,
-                        ),
                     )
-                    # Add the additional results to the training results, if any.
-                    self.metrics.log_dict(
-                        additional_results,
-                        key=LEARNER_RESULTS,
-                        # TODO (sven): For now, as we do NOT use MetricsLogger inside
-                        #  Learner and LearnerGroup, we assume here that the Learner/
-                        #  LearnerGroup-returned values are absolute (and thus require a
-                        #  reduce window of just 1 (take as-is)). Remove the window
-                        #  setting below, once Learner/LearnerGroup themselves use
-                        #  MetricsLogger.
-                        window=1,
-                    )
-                    # TODO (sven): Move this count increase into Learner
-                    #  `additional_update()` once MetricsLogger is present in Learner.
-                    self.metrics.log_value(
-                        (LEARNER_RESULTS, NUM_TARGET_UPDATES),
-                        value=additional_results[DEFAULT_POLICY_ID][NUM_TARGET_UPDATES],
-                        reduce="sum",
-                    )
+                    # log the additional results as well.
+                    self.metrics.log_n_dicts(additional_results, key=LEARNER_RESULTS)
 
             # Update weights and global_vars - after learning on the local worker -
             # on all remote workers.
@@ -846,31 +831,3 @@ class DQN(Algorithm):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-    # TODO (sven): Replace reduction fn sent to LearnerGroup entirely by
-    #  MetricsLogger. a) one MetricsLogger on each Learner worker so each
-    #  can return their own reduced results dict, then b) reduce over m
-    #  Learner workers' results dict in `training_step` using Algorithm's
-    #  own MetricsLogger.
-    @staticmethod
-    def _reduce_fn(results: List[ResultDict]) -> ResultDict:
-        """Reduces all metrics, but the TD-errors."""
-        # First get the single modules' results.
-        module_results = [
-            v for res in results for k, v in res.items() if k != ALL_MODULES
-        ]
-        # Extract the TD-errors as we want to keep them as arrays.
-        td_errors = tree.map_structure_up_to(
-            {TD_ERROR_KEY: True}, lambda x: x, *module_results
-        )
-        # Now reduce all other results.
-        reduced_results = tree.map_structure(lambda *x: np.mean(x), *results)
-        # Add the TD-error arrays to the results and return.
-        return {
-            k: v if k == ALL_MODULES else {**v, TD_ERROR_KEY: td_error}
-            for k, v, td_error in zip(
-                reduced_results.keys(),
-                reduced_results.values(),
-                [None] + list(td_errors.values()),
-            )
-        }

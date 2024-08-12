@@ -5,7 +5,7 @@ cartpole-impala:
         sampler_results/episode_reward_mean: 150
         timesteps_total: 500000
     config:
-        _enable_new_api_stack: true
+        enable_rl_module_and_learner: true
         # Works for both torch and tf.
         framework: tf2
         num_gpus: 0

@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional, Union
 import tree
 
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.policy.sample_batch import (
     SampleBatch,
     DEFAULT_POLICY_ID,
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 @ExperimentalAPI
 def synchronous_parallel_sample(
     *,
-    worker_set: WorkerSet,
+    worker_set: EnvRunnerGroup,
     max_agent_steps: Optional[int] = None,
     max_env_steps: Optional[int] = None,
     concat: bool = True,
@@ -38,7 +38,7 @@ def synchronous_parallel_sample(
     `remote_fn()`, which will be applied to the worker(s) instead.
 
     Args:
-        worker_set: The WorkerSet to use for sampling.
+        worker_set: The EnvRunnerGroup to use for sampling.
         remote_fn: If provided, use `worker.apply.remote(remote_fn)` instead
             of `worker.sample.remote()` to generate the requests.
         max_agent_steps: Optional number of agent steps to be included in the
@@ -101,7 +101,6 @@ def synchronous_parallel_sample(
                     else (lambda w: (w.sample(), w.get_metrics()))
                 ),
                 local_worker=False,
-                healthy_only=True,
                 timeout_seconds=sample_timeout_s,
             )
             # Nothing was returned (maybe all workers are stalling) or no healthy

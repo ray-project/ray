@@ -144,12 +144,6 @@ compile_pip_dependencies() {
   # pip install will complain about irresolvable constraints.
   sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
 
-  # Add python_version < 3.11 to scikit-image, scipy, networkx
-  # as they need more recent versions in python 3.11.
-  # These will be automatically resolved. Remove as
-  # soon as we resolve to versions of scikit-image that are built for py311.
-  sed -i -E 's/((scikit-image|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
-
   cat "${WORKSPACE_DIR}/python/$TARGET"
 
   if [ "$HAS_TORCH" -eq 0 ]; then

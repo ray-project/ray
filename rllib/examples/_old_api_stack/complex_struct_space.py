@@ -40,7 +40,7 @@ if __name__ == "__main__":
         PPOConfig()
         .environment(SimpleRPG)
         .framework(args.framework)
-        .env_runners(rollout_fragment_length=1, num_rollout_workers=0)
+        .env_runners(rollout_fragment_length=1, num_env_runners=0)
         .training(train_batch_size=2, model={"custom_model": "my_model"})
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))

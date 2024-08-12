@@ -15,6 +15,7 @@ import Pagination from "@mui/material/Pagination";
 import makeStyles from "@mui/styles/makeStyles";
 import React from "react";
 import { Outlet } from "react-router-dom";
+import { sliceToPage } from "../../common/util";
 import Loading from "../../components/Loading";
 import { SearchInput } from "../../components/SearchComponent";
 import TitleCard from "../../components/TitleCard";
@@ -73,6 +74,12 @@ const JobList = () => {
     setPage,
   } = useJobList();
 
+  const {
+    items: list,
+    constrainedPage,
+    maxPage,
+  } = sliceToPage(jobList, page.pageNo, page.pageSize);
+
   return (
     <div className={classes.root}>
       <Loading loading={isLoading} />
@@ -120,8 +127,8 @@ const JobList = () => {
           </Box>
           <div>
             <Pagination
-              count={Math.ceil(jobList.length / page.pageSize)}
-              page={page.pageNo}
+              count={maxPage}
+              page={constrainedPage}
               onChange={(e, pageNo) => setPage("pageNo", pageNo)}
             />
           </div>
@@ -147,17 +154,12 @@ const JobList = () => {
               </TableRow>
             </TableHead>
             <TableBody>
-              {jobList
-                .slice(
-                  (page.pageNo - 1) * page.pageSize,
-                  page.pageNo * page.pageSize,
-                )
-                .map((job, index) => {
-                  const { job_id, submission_id } = job;
-                  return (
-                    <JobRow key={job_id ?? submission_id ?? index} job={job} />
-                  );
-                })}
+              {list.map((job, index) => {
+                const { job_id, submission_id } = job;
+                return (
+                  <JobRow key={job_id ?? submission_id ?? index} job={job} />
+                );
+              })}
             </TableBody>
           </Table>
         </TableContainer>

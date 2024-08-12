@@ -1,22 +1,19 @@
 # __enabling-new-api-stack-sa-ppo-begin__
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 
 
 config = (
     PPOConfig().environment("CartPole-v1")
-    # Switch the new API stack flag to True (False by default).
-    # This enables the use of the RLModule (replaces ModelV2) AND Learner (replaces
-    # Policy) classes.
-    .experimental(_enable_new_api_stack=True)
-    # However, the above flag only activates the RLModule and Learner APIs. In order
-    # to utilize all of the new API stack's classes, you also have to specify the
-    # EnvRunner (replaces RolloutWorker) to use.
-    # Note that this step will be fully automated in the next release.
-    # Set the `env_runner_cls` to `SingleAgentEnvRunner` for single-agent setups and
-    # `MultiAgentEnvRunner` for multi-agent cases.
-    .env_runners(env_runner_cls=SingleAgentEnvRunner)
+    # Switch both the new API stack flags to True (both False by default).
+    # This enables the use of
+    # a) RLModule (replaces ModelV2) and Learner (replaces Policy)
+    # b) and automatically picks the correct EnvRunner (single-agent vs multi-agent)
+    # and enables ConnectorV2 support.
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     # We are using a simple 1-CPU setup here for learning. However, as the new stack
     # supports arbitrary scaling on the learner axis, feel free to set
     # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
@@ -43,7 +40,6 @@ print(config.build().train())
 # __enabling-new-api-stack-ma-ppo-begin__
 
 from ray.rllib.algorithms.ppo import PPOConfig  # noqa
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner  # noqa
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole  # noqa
 
 
@@ -51,17 +47,15 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole  # no
 # looks like this.
 config = (
     PPOConfig().environment(MultiAgentCartPole, env_config={"num_agents": 2})
-    # Switch the new API stack flag to True (False by default).
-    # This enables the use of the RLModule (replaces ModelV2) AND Learner (replaces
-    # Policy) classes.
-    .experimental(_enable_new_api_stack=True)
-    # However, the above flag only activates the RLModule and Learner APIs. In order
-    # to utilize all of the new API stack's classes, you also have to specify the
-    # EnvRunner (replaces RolloutWorker) to use.
-    # Note that this step will be fully automated in the next release.
-    # Set the `env_runner_cls` to `SingleAgentEnvRunner` for single-agent setups and
-    # `MultiAgentEnvRunner` for multi-agent cases.
-    .env_runners(env_runner_cls=MultiAgentEnvRunner)
+    # Switch both the new API stack flags to True (both False by default).
+    # This enables the use of
+    # a) RLModule (replaces ModelV2) and Learner (replaces Policy)
+    # b) and automatically picks the correct EnvRunner (single-agent vs multi-agent)
+    # and enables ConnectorV2 support.
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     # We are using a simple 1-CPU setup here for learning. However, as the new stack
     # supports arbitrary scaling on the learner axis, feel free to set
     # `num_learner_workers` to the number of available GPUs for multi-GPU training (and
@@ -95,20 +89,19 @@ print(config.build().train())
 # __enabling-new-api-stack-sa-sac-begin__
 
 from ray.rllib.algorithms.sac import SACConfig  # noqa
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner  # noqa
 
 
 config = (
     SACConfig().environment("Pendulum-v1")
-    # Switch the new API stack flag to True (False by default).
-    # This enables the use of the RLModule (replaces ModelV2) AND Learner (replaces
-    # Policy) classes.
-    .experimental(_enable_new_api_stack=True)
-    # However, the above flag only activates the RLModule and Learner APIs. In order
-    # to utilize all of the new API stack's classes, you also have to specify the
-    # EnvRunner (replaces RolloutWorker) to use.
-    # Note that this step will be fully automated in the next release.
-    .env_runners(env_runner_cls=SingleAgentEnvRunner)
+    # Switch both the new API stack flags to True (both False by default).
+    # This enables the use of
+    # a) RLModule (replaces ModelV2) and Learner (replaces Policy)
+    # b) and automatically picks the correct EnvRunner (single-agent vs multi-agent)
+    # and enables ConnectorV2 support.
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     # We are using a simple 1-CPU setup here for learning. However, as the new stack
     # supports arbitrary scaling on the learner axis, feel free to set
     # `num_learner_workers` to the number of available GPUs for multi-GPU training (and

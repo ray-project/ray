@@ -133,7 +133,7 @@ if __name__ == "__main__":
         .framework(args.framework)
         # Use n worker processes to listen on different ports.
         .env_runners(
-            num_rollout_workers=args.num_workers,
+            num_env_runners=args.num_workers,
             rollout_fragment_length=20,
             enable_connectors=False,
         )

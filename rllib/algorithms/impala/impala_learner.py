@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Dict
+from typing import Dict
 
 import numpy as np
 
@@ -96,8 +96,8 @@ class ImpalaLearner(Learner):
     @override(Learner)
     def additional_update_for_module(
         self, *, module_id: ModuleID, config: ImpalaConfig, timestep: int
-    ) -> Dict[str, Any]:
-        results = super().additional_update_for_module(
+    ) -> None:
+        super().additional_update_for_module(
             module_id=module_id, config=config, timestep=timestep
         )
 
@@ -105,9 +105,11 @@ class ImpalaLearner(Learner):
         new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
             timestep=timestep
         )
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
-
-        return results
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
+            new_entropy_coeff,
+            window=1,
+        )
 
     @abc.abstractmethod
     def _compute_values(self, batch) -> np._typing.NDArray:

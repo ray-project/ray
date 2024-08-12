@@ -46,6 +46,7 @@ namespace rpc {
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(KillActor)                      \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(CancelTask)                     \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RemoteCancelTask)               \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RegisterMutableObjectReader)    \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetCoreWorkerStats)             \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(LocalGC)                        \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DeleteObjects)                  \
@@ -71,6 +72,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                      \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(CancelTask)                     \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoteCancelTask)               \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RegisterMutableObjectReader)    \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                        \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteObjects)                  \

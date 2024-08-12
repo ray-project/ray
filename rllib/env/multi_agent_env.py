@@ -2,6 +2,8 @@ import gymnasium as gym
 import logging
 from typing import Callable, Dict, List, Tuple, Optional, Union, Set, Type
 
+import numpy as np
+
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.annotations import (
@@ -554,7 +556,15 @@ def make_multi_agent(
 
         @override(MultiAgentEnv)
         def render(self):
-            return self.envs[0].render(self.render_mode)
+            # This render method simply renders all n underlying individual single-agent
+            # envs and concatenates their images (on top of each other if the returned
+            # images have dims where [width] > [height], otherwise next to each other).
+            render_images = [e.render() for e in self.envs]
+            if render_images[0].shape[1] > render_images[0].shape[0]:
+                concat_dim = 0
+            else:
+                concat_dim = 1
+            return np.concatenate(render_images, axis=concat_dim)
 
     return MultiEnv
 

@@ -238,7 +238,7 @@ We also have tests for code formatting and linting that need to pass before merg
 
 .. code-block:: shell
 
-  pip install -r python/requirements/lint-requirements.txt
+  pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
 
 * If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 

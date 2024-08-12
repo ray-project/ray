@@ -74,7 +74,7 @@ class APPOTorchPolicy(
         # However, we also would like to avoid creating special Policy-subclasses
         # for this as the entire Policy concept will soon not be used anymore with
         # the new Learner- and RLModule APIs.
-        if not config.get("_enable_new_api_stack", False):
+        if not config.get("enable_rl_module_and_learner", False):
             # Although this is a no-op, we call __init__ here to make it clear
             # that base.__init__ will use the make_model() call.
             VTraceOptimizer.__init__(self)

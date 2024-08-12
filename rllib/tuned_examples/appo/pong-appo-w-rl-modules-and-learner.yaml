@@ -8,7 +8,7 @@ appo-pongnoframeskip-v5:
         timesteps_total: 20000000
     config:
         # Run with Learner- and RLModule API (new stack).
-        _enable_new_api_stack: true
+        enable_rl_module_and_learner: true
         # Make analogous to old v4 + NoFrameskip.
         env_config:
             frameskip: 1

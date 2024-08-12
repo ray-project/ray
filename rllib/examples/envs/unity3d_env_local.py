@@ -132,7 +132,7 @@ if __name__ == "__main__":
         # For running in editor, force to use just one Worker (we only have
         # one Unity running)!
         .env_runners(
-            num_rollout_workers=args.num_workers if args.file_name else 0,
+            num_env_runners=args.num_workers if args.file_name else 0,
             rollout_fragment_length=200,
         )
         .training(

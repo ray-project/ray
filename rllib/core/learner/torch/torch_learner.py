@@ -129,7 +129,7 @@ class TorchLearner(Learner):
         gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        return fwd_out, loss_per_module, self._metrics
+        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
     @override(Learner)
     def compute_gradients(
@@ -355,6 +355,9 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
+        # Activate tensor-mode on our MetricsLogger.
+        self.metrics.activate_tensor_mode()
+
         # The first time we call _update after building the learner or
         # adding/removing models, we update with the uncompiled update method.
         # This makes it so that any variables that may be created during the first

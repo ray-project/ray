@@ -63,9 +63,10 @@ if __name__ == "__main__":
             evaluation_config={
                 "explore": False,
                 # Do NOT use the eval EnvRunners' ConnectorV2 states. Instead, before
-                # each round of evaluation, broadcast the latest training WorkerSet's
-                # ConnectorV2 state (merged from all training remote EnvRunners) to
-                # all eval EnvRunners (and discard the eval EnvRunners' stats).
+                # each round of evaluation, broadcast the latest training
+                # EnvRunnerGroup's ConnectorV2 states (merged from all training remote
+                # EnvRunners) to the eval EnvRunnerGroup (and discard the eval
+                # EnvRunners' stats).
                 "use_worker_filter_stats": False,
             },
         )

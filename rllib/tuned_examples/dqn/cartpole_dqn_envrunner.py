@@ -1,24 +1,19 @@
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 
 config = (
     DQNConfig()
     .environment(env="CartPole-v1")
     .framework(framework="torch")
-    .experimental(_enable_new_api_stack=True)
-    .env_runners(
-        env_runner_cls=SingleAgentEnvRunner,
-        num_rollout_workers=0,
-    )
-    .resources(
-        num_learner_workers=0,
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
     )
     .rl_module(
         # Settings identical to old stack.
         model_config_dict={
             "fcnet_hiddens": [256],
             "fcnet_activation": "relu",
-            "epsilon": [(0, 1.0), (10000, 0.05)],
+            "epsilon": [(0, 1.0), (10000, 0.02)],
             "fcnet_bias_initializer": "zeros_",
             "post_fcnet_bias_initializer": "zeros_",
             "post_fcnet_hiddens": [256],
@@ -28,7 +23,7 @@ config = (
         # Settings identical to old stack.
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
-            "capacity": 100000,
+            "capacity": 50000,
             "alpha": 0.6,
             "beta": 0.4,
         },
@@ -54,6 +49,6 @@ config = (
 )
 
 stop = {
-    "evaluation_results/env_runner_results/episode_return_mean": 500.0,
+    "evaluation_results/env_runner_results/episode_return_mean": 450.0,
     "num_env_steps_sampled_lifetime": 100000,
 }

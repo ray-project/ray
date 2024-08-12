@@ -4,10 +4,10 @@ import tempfile
 import unittest
 
 import ray
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
 
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.test_utils import (
@@ -66,7 +66,7 @@ class TestLearner(unittest.TestCase):
         for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             learner = config.build_learner(env=self.ENV)
 
-            params = learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+            params = learner.get_parameters(learner.module[DEFAULT_MODULE_ID])
 
             tape = None
             if fw == "torch":
@@ -98,7 +98,7 @@ class TestLearner(unittest.TestCase):
             # Pretend our computed gradients are our weights + 1.0.
             grads = {
                 learner.get_param_ref(v): v + 1.0
-                for v in learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+                for v in learner.get_parameters(learner.module[DEFAULT_MODULE_ID])
             }
             # Call the learner's postprocessing method.
             processed_grads = list(learner.postprocess_gradients(grads).values())
@@ -119,7 +119,7 @@ class TestLearner(unittest.TestCase):
             # Pretend our computed gradients are our weights + 1.0.
             grads = {
                 learner.get_param_ref(v): v + 1.0
-                for v in learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+                for v in learner.get_parameters(learner.module[DEFAULT_MODULE_ID])
             }
             # Call the learner's postprocessing method.
             processed_grads = list(learner.postprocess_gradients(grads).values())
@@ -139,7 +139,7 @@ class TestLearner(unittest.TestCase):
             # Pretend our computed gradients are our weights + 1.0.
             grads = {
                 learner.get_param_ref(v): v + 1.0
-                for v in learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+                for v in learner.get_parameters(learner.module[DEFAULT_MODULE_ID])
             }
             # Call the learner's postprocessing method.
             processed_grads = list(learner.postprocess_gradients(grads).values())
@@ -169,7 +169,7 @@ class TestLearner(unittest.TestCase):
             learner = config.build_learner(env=self.ENV)
 
             # calculated the expected new params based on gradients of all ones.
-            params = learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
+            params = learner.get_parameters(learner.module[DEFAULT_MODULE_ID])
             n_steps = 100
             expected = [
                 (
@@ -209,7 +209,7 @@ class TestLearner(unittest.TestCase):
                 module_id="test",
                 module_spec=rl_module_spec,
             )
-            learner.remove_module(DEFAULT_POLICY_ID)
+            learner.remove_module(DEFAULT_MODULE_ID)
 
             # only test module should be left
             self.assertEqual(set(learner.module.keys()), {"test"})
@@ -269,7 +269,7 @@ class TestLearner(unittest.TestCase):
 
             # Remove a module then save/load and check states.
             with tempfile.TemporaryDirectory() as tmpdir:
-                learner1.remove_module(module_id=DEFAULT_POLICY_ID)
+                learner1.remove_module(module_id=DEFAULT_MODULE_ID)
                 learner1.save_state(tmpdir)
                 learner2.load_state(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)

@@ -8,11 +8,11 @@ import argparse
 
 import ray
 from ray import air, tune
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.examples.envs.classes.env_using_remote_actor import (
     CartPoleWithRemoteParamServer,
     ParameterStorage,
 )
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check
 from ray.tune.registry import get_trainable_cls
@@ -40,8 +40,8 @@ if __name__ == "__main__":
         )
         .framework(args.framework)
         .env_runners(
-            num_rollout_workers=1,
-            num_envs_per_worker=2,
+            num_env_runners=1,
+            num_envs_per_env_runner=2,
             rollout_fragment_length=50,
         )
         .resources(
@@ -89,14 +89,14 @@ if __name__ == "__main__":
         check(results1["hist_stats"], results2["hist_stats"])
         # As well as training behavior (minibatch sequence during SGD
         # iterations).
-        if config._enable_new_api_stack:
+        if config.enable_rl_module_and_learner:
             check(
-                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
-                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                results1["info"][LEARNER_INFO][DEFAULT_MODULE_ID],
+                results2["info"][LEARNER_INFO][DEFAULT_MODULE_ID],
             )
         else:
             check(
-                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                results1["info"][LEARNER_INFO][DEFAULT_MODULE_ID]["learner_stats"],
+                results2["info"][LEARNER_INFO][DEFAULT_MODULE_ID]["learner_stats"],
             )
     ray.shutdown()

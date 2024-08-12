@@ -46,7 +46,7 @@ class AddPolicyCallback(DefaultCallbacks):
         self._checkpoint_dir = checkpoint_dir
         super().__init__()
 
-    def on_algorithm_init(self, *, algorithm, **kwargs):
+    def on_algorithm_init(self, *, algorithm, metrics_logger, **kwargs):
         policy = Policy.from_checkpoint(
             self._checkpoint_dir, policy_ids=[OPPONENT_POLICY_ID]
         )
@@ -73,8 +73,8 @@ def main(checkpoint_dir):
         .framework("torch")
         .callbacks(partial(AddPolicyCallback, checkpoint_dir))
         .env_runners(
-            num_rollout_workers=1,
-            num_envs_per_worker=5,
+            num_env_runners=1,
+            num_envs_per_env_runner=5,
             # We will be restoring a TF2 policy.
             # So tell the RolloutWorkers to enable TF eager exec as well, even if
             # framework is set to torch.

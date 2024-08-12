@@ -21,6 +21,7 @@ from ray._private.test_utils import (
     SignalActor,
     async_wait_for_condition,
     async_wait_for_condition_async_predicate,
+    wait_for_condition,
 )
 from ray.dashboard.modules.job.common import JOB_ID_METADATA_KEY, JOB_NAME_METADATA_KEY
 from ray.dashboard.modules.job.job_manager import (
@@ -252,6 +253,43 @@ async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: 
     await async_wait_for_condition_async_predicate(
         lambda: check_is_running_tasks(job_id, False), timeout=30
     )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head"],
+    indirect=True,
+)
+async def test_job_supervisor_logs_saved(
+    call_ray_start, tmp_path, capsys  # noqa: F811
+):
+    """Test JobSupervisor logs are saved to jobs/supervisor-{submission_id}.log"""
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+    job_manager = JobManager(gcs_aio_client, tmp_path)
+    job_id = await job_manager.submit_job(
+        entrypoint="echo hello 1", submission_id="job_1"
+    )
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+    # Verify logs saved to file
+    supervisor_log_path = os.path.join(
+        ray._private.worker._global_node.get_logs_dir_path(),
+        f"jobs/supervisor-{job_id}.log",
+    )
+    log_message = f"Job {job_id} entrypoint command exited with code 0"
+    with open(supervisor_log_path, "r") as f:
+        logs = f.read()
+        assert log_message in logs
+
+    # Verify logs in stderr. Run in wait_for_condition to ensure
+    # logs are flushed
+    wait_for_condition(lambda: log_message in capsys.readouterr().err)
 
 
 @pytest.fixture(scope="module")

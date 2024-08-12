@@ -31,25 +31,9 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
 
      * - Ray Version
        - Dask Version
-     * - ``2.12.0``
+     * - ``2.8.0`` or above
        - ``2022.10.1``
-     * - ``2.11.0``
-       - ``2022.10.1``
-     * - ``2.10.0``
-       - ``2022.10.1``
-     * - ``2.9.1``
-       - ``2022.10.1``
-     * - ``2.9.0``
-       - ``2022.10.1``
-     * - ``2.8.0``
-       - ``2022.10.1``
-     * - ``2.7.0``
-       - | ``2022.2.0 (Python version < 3.8)``
-         | ``2022.10.1 (Python version >= 3.8)``
-     * - ``2.6.0``
-       - | ``2022.2.0 (Python version < 3.8)``
-         | ``2022.10.1 (Python version >= 3.8)``
-     * - ``2.5.0``
+     * - ``2.5.0`` to ``2.7.x``
        - | ``2022.2.0 (Python version < 3.8)``
          | ``2022.10.1 (Python version >= 3.8)``
      * - ``2.4.0``

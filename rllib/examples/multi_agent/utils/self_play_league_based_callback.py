@@ -32,7 +32,7 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
         # Report the matchup counters (who played against whom?).
         self._matching_stats = defaultdict(int)
 
-    def on_train_result(self, *, algorithm, result, **kwargs):
+    def on_train_result(self, *, algorithm, metrics_logger=None, result, **kwargs):
         local_worker = algorithm.workers.local_worker()
 
         # Avoid `self` being pickled into the remote function below.

@@ -9,13 +9,13 @@ from ray.rllib.algorithms.ppo.ppo import (
 )
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo.tests.test_ppo import PENDULUM_FAKE_BATCH
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import (
     LEARNER_RESULTS_CURR_LR_KEY,
 )
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
 )
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import (
     check,
@@ -41,7 +41,7 @@ def get_model_config(framework, lstm=False):
 
 class MyCallbacks(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
-        stats = result["info"][LEARNER_INFO][DEFAULT_POLICY_ID]
+        stats = result["info"][LEARNER_INFO][DEFAULT_MODULE_ID]
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
         check(
             stats[LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY],
@@ -78,7 +78,7 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing lr-scheduling correctness.
@@ -119,7 +119,7 @@ class TestPPO(unittest.TestCase):
 
                     # Check current entropy coeff value using the respective Scheduler.
                     entropy_coeff = learner.entropy_coeff_schedulers_per_module[
-                        DEFAULT_POLICY_ID
+                        DEFAULT_MODULE_ID
                     ].get_current_value()
                     check(entropy_coeff, 0.1)
 
@@ -137,7 +137,7 @@ class TestPPO(unittest.TestCase):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment(
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
@@ -181,7 +181,7 @@ class TestPPO(unittest.TestCase):
         """Tests the free log std option works."""
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("Pendulum-v1")
             .env_runners(
                 num_env_runners=1,
@@ -203,7 +203,7 @@ class TestPPO(unittest.TestCase):
             algo = config.build()
             policy = algo.get_policy()
             learner = algo.learner_group._learner
-            module = learner.module[DEFAULT_POLICY_ID]
+            module = learner.module[DEFAULT_MODULE_ID]
 
             # Check the free log std var is created.
             if fw == "torch":

@@ -1,13 +1,11 @@
-import abc
 import numpy as np
 
-from typing import Any, Dict
+from typing import Dict
 
-from ray.rllib.algorithms.sac.sac import SACConfig
+from ray.rllib.algorithms.dqn.dqn_rainbow_learner import DQNRainbowLearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
-from ray.rllib.utils.metrics import LAST_TARGET_UPDATE_TS, NUM_TARGET_UPDATES
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 # Now, this is double defined: In `SACRLModule` and here. I would keep it here
@@ -21,10 +19,11 @@ QF_PREDS = "qf_preds"
 QF_TARGET_PREDS = "qf_target_preds"
 QF_TWIN_LOSS_KEY = "qf_twin_loss"
 QF_TWIN_PREDS = "qf_twin_preds"
+TD_ERROR_MEAN_KEY = "td_error_mean"
 TD_ERROR_KEY = "td_error"
 
 
-class SACLearner(Learner):
+class SACLearner(DQNRainbowLearner):
     @override(Learner)
     def build(self) -> None:
         # Store the current alpha in log form. We need it during optimization
@@ -64,40 +63,6 @@ class SACLearner(Learner):
         )
 
     @override(Learner)
-    def additional_update_for_module(
-        self,
-        *,
-        module_id: ModuleID,
-        config: SACConfig,
-        timestep: int,
-        last_update: int,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Updates the target Q Networks.
-
-        Args:
-            module_id: Module ID of the module to be updated.
-
-        """
-        results = super().additional_update_for_module(
-            module_id=module_id,
-            config=config,
-            timestep=timestep,
-        )
-
-        # TODO (Sven): APPO uses `config.target_update_frequency`. Can we
-        # choose a standard here?
-        if (timestep - last_update) >= config.target_network_update_freq:
-            self._update_module_target_networks(module_id, config)
-            results[NUM_TARGET_UPDATES] = 1
-            results[LAST_TARGET_UPDATE_TS] = timestep
-        else:
-            results[NUM_TARGET_UPDATES] = 0
-            results[LAST_TARGET_UPDATE_TS] = last_update
-
-        return results
-
-    @override(Learner)
     def remove_module(self, module_id: ModuleID) -> None:
         """Removes the temperature and target entropy.
 
@@ -107,16 +72,3 @@ class SACLearner(Learner):
         super().remove_module(module_id)
         self.curr_log_alpha.pop(module_id, None)
         self.target_entropy.pop(module_id, None)
-
-    @abc.abstractmethod
-    def _update_module_target_networks(
-        self, module_id: ModuleID, config: SACConfig
-    ) -> None:
-        """Update the target Q network(s) of each module with the current Q network.
-
-        The update is made via Polyak averaging.
-
-        Args:
-            module_id: The module ID whose target Q network(s) should be updated.
-            config: The `AlgorithmConfig` specific in the given `module_id`.
-        """

@@ -1,12 +1,14 @@
+import asyncio
 import json
 import sys
 import os
 import platform
 from unittest import mock
 
+import aioboto3
 import boto3
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import (
@@ -18,6 +20,7 @@ from ray_release.test import (
     TestResult,
     TestState,
     TestType,
+    ResultStatus,
     _convert_env_list_to_dict,
     DATAPLANE_ECR_REPO,
     DATAPLANE_ECR_ML_REPO,
@@ -40,6 +43,18 @@ def _stub_test(val: dict) -> Test:
     )
     test.update(val)
     return test
+
+
+def _stub_test_result(status: ResultStatus) -> TestResult:
+    return TestResult(
+        status=status.value,
+        commit="1234567890",
+        branch="master",
+        url="url",
+        timestamp=0,
+        pull_request="1",
+        rayci_step_id="123",
+    )
 
 
 def test_is_byod_cluster():
@@ -165,7 +180,14 @@ def test_is_stable() -> None:
     assert not Test(stable=False).is_stable()
 
 
-@patch.dict(os.environ, {"BUILDKITE_BRANCH": "food", "BUILDKITE_PULL_REQUEST": "1"})
+@patch.dict(
+    os.environ,
+    {
+        "BUILDKITE_BRANCH": "food",
+        "BUILDKITE_PULL_REQUEST": "1",
+        "RAYCI_STEP_ID": "g4_s5",
+    },
+)
 def test_result_from_bazel_event() -> None:
     result = TestResult.from_bazel_event(
         {
@@ -175,6 +197,7 @@ def test_result_from_bazel_event() -> None:
     assert result.is_passing()
     assert result.branch == "food"
     assert result.pull_request == "1"
+    assert result.rayci_step_id == "g4_s5"
     result = TestResult.from_bazel_event(
         {
             "testResult": {"status": "FAILED"},
@@ -252,6 +275,45 @@ def test_get_bisect_daily_rate_limit() -> None:
 
 def test_get_s3_name() -> None:
     assert Test._get_s3_name("linux://python/ray/test") == "linux:__python_ray_test"
+
+
+def test_is_high_impact() -> None:
+    assert _stub_test(
+        {"name": "test", Test.KEY_IS_HIGH_IMPACT: "true"}
+    ).is_high_impact()
+    assert not _stub_test(
+        {"name": "test", Test.KEY_IS_HIGH_IMPACT: "false"}
+    ).is_high_impact()
+    assert not _stub_test({"name": "test"}).is_high_impact()
+
+
+@patch("ray_release.test.Test._gen_test_result")
+def test_gen_test_results(mock_gen_test_result) -> None:
+    def _mock_gen_test_result(
+        client: aioboto3.Session.client,
+        bucket: str,
+        key: str,
+    ) -> TestResult:
+        return (
+            _stub_test_result(ResultStatus.SUCCESS)
+            if key == "good"
+            else _stub_test_result(ResultStatus.ERROR)
+        )
+
+    mock_gen_test_result.side_effect = AsyncMock(side_effect=_mock_gen_test_result)
+
+    results = asyncio.run(
+        _stub_test({})._gen_test_results(
+            bucket="bucket",
+            keys=["good", "bad", "bad", "good"],
+        )
+    )
+    assert [result.status for result in results] == [
+        ResultStatus.SUCCESS.value,
+        ResultStatus.ERROR.value,
+        ResultStatus.ERROR.value,
+        ResultStatus.SUCCESS.value,
+    ]
 
 
 if __name__ == "__main__":

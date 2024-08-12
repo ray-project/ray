@@ -346,6 +346,27 @@ message DrainRayletReply {
   string rejection_reason_message = 2;
 }
 
+message RegisterMutableObjectRequest {
+  bytes writer_object_id = 1;
+  int64 num_readers = 2;
+  bytes reader_object_id = 3;
+}
+
+message RegisterMutableObjectReply {
+  // Nothing for now.
+}
+
+message PushMutableObjectRequest {
+  bytes writer_object_id = 1;
+  uint64 data_size = 2;
+  uint64 metadata_size = 3;
+  bytes data = 4;
+}
+
+message PushMutableObjectReply {
+  // Empty for now.
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Handle the case when GCS restarted.
@@ -406,4 +427,7 @@ service NodeManagerService {
   // Gets the task execution result. May contain a result if
   // the task completed in error.
   rpc GetTaskFailureCause(GetTaskFailureCauseRequest) returns (GetTaskFailureCauseReply);
+  rpc RegisterMutableObject(RegisterMutableObjectRequest)
+      returns (RegisterMutableObjectReply);
+  rpc PushMutableObject(PushMutableObjectRequest) returns (PushMutableObjectReply);
 }

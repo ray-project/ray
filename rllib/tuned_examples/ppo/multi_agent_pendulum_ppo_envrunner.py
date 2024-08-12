@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.tune.registry import register_env
 
@@ -8,10 +7,12 @@ register_env("multi_agent_pendulum", lambda _: MultiAgentPendulum({"num_agents":
 
 config = (
     PPOConfig()
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .environment("multi_agent_pendulum")
     .env_runners(
-        env_runner_cls=MultiAgentEnvRunner,
         num_envs_per_env_runner=1,
         num_env_runners=2,
     )

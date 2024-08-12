@@ -31,7 +31,7 @@ config = (
         },
     )
     .env_runners(
-        num_rollout_workers=4,
+        num_env_runners=4,
         num_envs_per_env_runner=1,
     )
     # Switch on resiliency (recreate any failed worker).

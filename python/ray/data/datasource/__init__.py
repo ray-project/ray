@@ -37,6 +37,7 @@ from ray.data.datasource.image_datasink import _ImageDatasink
 from ray.data.datasource.image_datasource import ImageDatasource
 from ray.data.datasource.json_datasink import _JSONDatasink
 from ray.data.datasource.json_datasource import JSONDatasource
+from ray.data.datasource.lance_datasource import LanceDatasource
 from ray.data.datasource.mongo_datasink import _MongoDatasink
 from ray.data.datasource.mongo_datasource import MongoDatasource
 from ray.data.datasource.numpy_datasink import _NumpyDatasink
@@ -91,6 +92,7 @@ __all__ = [
     "ImageDatasource",
     "_JSONDatasink",
     "JSONDatasource",
+    "LanceDatasource",
     "_NumpyDatasink",
     "NumpyDatasource",
     "ParquetBaseDatasource",

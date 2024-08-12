@@ -157,6 +157,7 @@ inline grpc::ChannelArguments CreateDefaultChannelArguments() {
                      ::RayConfig::instance().grpc_client_keepalive_time_ms());
     arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS,
                      ::RayConfig::instance().grpc_client_keepalive_timeout_ms());
+    arguments.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
   }
   arguments.SetInt(GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS,
                    ::RayConfig::instance().grpc_client_idle_timeout_ms());

@@ -158,6 +158,30 @@ class _ParquetFileFragmentMetaData:
         self.schema_pickled = schema_pickled
 
 
+def _check_for_legacy_tensor_type(schema):
+    """Check for the legacy tensor extension type and raise an error if found.
+
+    Ray Data uses an extension type to represent tensors in Arrow tables. Previously,
+    the extension type extended `PyExtensionType`. However, this base type can expose
+    users to arbitrary code execution. To prevent this, we don't load the type by
+    default.
+    """
+    import pyarrow as pa
+
+    for name, type in zip(schema.names, schema.types):
+        if isinstance(type, pa.UnknownExtensionType) and isinstance(
+            type, pa.PyExtensionType
+        ):
+            raise RuntimeError(
+                f"Ray Data couldn't infer the type of column '{name}'. This might mean "
+                "you're trying to read data written with an older version of Ray. "
+                "Reading data written with older versions of Ray might expose you to "
+                "arbitrary code execution. To try reading the data anyway, set "
+                "`RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on all nodes."
+                "To learn more, see https://github.com/ray-project/ray/issues/41314."
+            )
+
+
 @PublicAPI
 class ParquetDatasource(Datasource):
     """Parquet datasource, for reading and writing Parquet files.
@@ -257,6 +281,8 @@ class ParquetDatasource(Datasource):
             schema = pa.schema(
                 [schema.field(column) for column in columns], schema.metadata
             )
+
+        _check_for_legacy_tensor_type(schema)
 
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.

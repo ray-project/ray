@@ -6,13 +6,11 @@ from ray.rllib.algorithms.ppo.ppo_learner import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
 )
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import (
     LEARNER_RESULTS_CURR_LR_KEY,
 )
 
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.test_utils import (
     check,
@@ -37,7 +35,7 @@ def get_model_config(framework, lstm=False):
 
 class MyCallbacks(DefaultCallbacks):
     def on_train_result(self, *, algorithm, result: dict, **kwargs):
-        stats = result[LEARNER_RESULTS][DEFAULT_POLICY_ID]
+        stats = result[LEARNER_RESULTS][DEFAULT_MODULE_ID]
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
         check(
             stats[LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY],
@@ -75,11 +73,11 @@ class TestPPO(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             # Enable new API stack and use EnvRunner.
-            .experimental(_enable_new_api_stack=True)
-            .env_runners(
-                env_runner_cls=SingleAgentEnvRunner,
-                num_rollout_workers=0,
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
             )
+            .env_runners(num_env_runners=0)
             .training(
                 num_sgd_iter=2,
                 # Setup lr schedule for testing lr-scheduling correctness.
@@ -127,7 +125,7 @@ class TestPPO(unittest.TestCase):
 
                     # Check current entropy coeff value using the respective Scheduler.
                     entropy_coeff = learner.entropy_coeff_schedulers_per_module[
-                        DEFAULT_POLICY_ID
+                        DEFAULT_MODULE_ID
                     ].get_current_value()
                     check(entropy_coeff, 0.1)
 

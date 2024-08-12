@@ -57,7 +57,7 @@ Thus, the `rayservice-ha-serve-svc` service in the previous step has 3 endpoints
 
 ```sh
 # Port forward the Ray Dashboard.
-kubectl port-forward --address 0.0.0.0 svc/rayservice-ha-head-svc 8265:8265
+kubectl port-forward svc/rayservice-ha-head-svc 8265:8265
 # Visit ${YOUR_IP}:8265 in your browser for the Dashboard (e.g. 127.0.0.1:8265)
 # Check:
 # (1) Both head and worker nodes have HTTPProxyActors.

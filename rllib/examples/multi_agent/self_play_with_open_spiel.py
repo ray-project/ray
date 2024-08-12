@@ -24,7 +24,6 @@ import numpy as np
 
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
@@ -106,7 +105,10 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
+        .api_stack(
+            enable_rl_module_and_learner=args.enable_new_api_stack,
+            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
+        )
         .environment("open_spiel_env")
         .framework(args.framework)
         # Set up the main piece in this experiment: The league-bases self-play
@@ -123,13 +125,8 @@ if __name__ == "__main__":
             )
         )
         .env_runners(
-            num_rollout_workers=args.num_env_runners,
-            num_envs_per_worker=1 if args.enable_new_api_stack else 5,
-            # Set up the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
-            env_runner_cls=(
-                None if not args.enable_new_api_stack else MultiAgentEnvRunner
-            ),
+            num_env_runners=args.num_env_runners,
+            num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
         )
         .resources(
             num_learner_workers=args.num_gpus,

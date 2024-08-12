@@ -111,7 +111,11 @@ if __name__ == "__main__":
     )
 
     # Confirm, we picked the right trial.
-    assert value_best_metric == results.get_dataframe()[metric].min()
+
+    assert (
+        value_best_metric
+        == results.get_dataframe(filter_metric=metric, filter_mode="min")[metric].min()
+    )
 
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:

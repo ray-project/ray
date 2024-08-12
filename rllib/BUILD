@@ -971,10 +971,10 @@ py_test(
 )
 
 py_test(
-    name = "evaluation/tests/test_episode",
-    tags = ["team:rllib", "evaluation"],
+    name = "env/tests/test_env_runner_group",
+    tags = ["team:rllib", "evaluation", "exclusive"],
     size = "small",
-    srcs = ["evaluation/tests/test_episode.py"]
+    srcs = ["env/tests/test_env_runner_group.py"]
 )
 
 py_test(
@@ -982,6 +982,13 @@ py_test(
     tags = ["team:rllib", "evaluation"],
     size = "small",
     srcs = ["evaluation/tests/test_env_runner_v2.py"]
+)
+
+py_test(
+    name = "evaluation/tests/test_episode",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_episode.py"]
 )
 
 py_test(
@@ -996,13 +1003,6 @@ py_test(
     tags = ["team:rllib", "evaluation"],
     size = "small",
     srcs = ["evaluation/tests/test_postprocessing.py"]
-)
-
-py_test(
-    name = "evaluation/tests/test_worker_set",
-    tags = ["team:rllib", "evaluation", "exclusive"],
-    size = "small",
-    srcs = ["evaluation/tests/test_worker_set.py"]
 )
 
 py_test(
@@ -2276,6 +2276,32 @@ py_test(
     size = "medium",
     srcs = ["examples/envs/custom_gym_env.py"],
     args = ["--enable-new-api-stack", "--as-test"]
+)
+
+py_test(
+    name = "examples/envs/custom_env_render_method",
+    main = "examples/envs/custom_env_render_method.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_env_render_method.py"],
+    args = ["--enable-new-api-stack", "--num-agents=0"]
+)
+
+py_test(
+    name = "examples/envs/custom_env_render_method_multi_agent",
+    main = "examples/envs/custom_env_render_method.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_env_render_method.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2"]
+)
+
+py_test(
+    name = "examples/envs/env_rendering_and_recording",
+    srcs = ["examples/envs/env_rendering_and_recording.py"],
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "small",
+    args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=3"]
 )
 
 #@OldAPIStack

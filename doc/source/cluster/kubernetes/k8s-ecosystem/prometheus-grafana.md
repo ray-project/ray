@@ -66,7 +66,7 @@ kubectl get pod -l ray.io/node-type=head
 # raycluster-kuberay-head-btwc2   1/1     Running   0          63s
 
 # Wait until all Ray Pods are running and forward the port of the Prometheus metrics endpoint in a new terminal.
-kubectl port-forward --address 0.0.0.0 ${RAYCLUSTER_HEAD_POD} 8080:8080
+kubectl port-forward ${RAYCLUSTER_HEAD_POD} 8080:8080
 curl localhost:8080
 
 # Example output (Prometheus metrics format):
@@ -301,7 +301,7 @@ spec:
 ## Step 9: Access Prometheus Web UI
 ```sh
 # Forward the port of Prometheus Web UI in the Prometheus server Pod.
-kubectl port-forward --address 0.0.0.0 prometheus-prometheus-kube-prometheus-prometheus-0 -n prometheus-system 9090:9090
+kubectl port-forward prometheus-prometheus-kube-prometheus-prometheus-0 -n prometheus-system 9090:9090
 ```
 
 - Go to `${YOUR_IP}:9090/targets` (e.g. `127.0.0.1:9090/targets`). You should be able to see:
@@ -322,7 +322,7 @@ kubectl port-forward --address 0.0.0.0 prometheus-prometheus-kube-prometheus-pro
 
 ```sh
 # Forward the port of Grafana
-kubectl port-forward --address 0.0.0.0 deployment/prometheus-grafana -n prometheus-system 3000:3000
+kubectl port-forward deployment/prometheus-grafana -n prometheus-system 3000:3000
 # Note: You need to update `RAY_GRAFANA_IFRAME_HOST` if you expose Grafana to a different port.
 
 # Check ${YOUR_IP}:3000/login for the Grafana login page (e.g. 127.0.0.1:3000/login).
@@ -351,7 +351,7 @@ Refer to [this Grafana document](https://grafana.com/tutorials/run-grafana-behin
 ## Step 11: Embed Grafana panels in Ray Dashboard
 
 ```sh
-kubectl port-forward --address 0.0.0.0 svc/raycluster-embed-grafana-head-svc 8265:8265
+kubectl port-forward svc/raycluster-embed-grafana-head-svc 8265:8265
 # Visit http://127.0.0.1:8265/#/metrics in your browser.
 ```
 

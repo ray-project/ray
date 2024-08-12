@@ -9,7 +9,7 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import GradInfoDict, LearnerStatsDict, ResultDict
 
 if TYPE_CHECKING:
-    from ray.rllib.evaluation.worker_set import WorkerSet
+    from ray.rllib.env.env_runner_group import EnvRunnerGroup
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ def get_learner_stats(grad_info: GradInfoDict) -> LearnerStatsDict:
 
 @OldAPIStack
 def collect_metrics(
-    workers: "WorkerSet",
+    workers: "EnvRunnerGroup",
     remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
     keep_custom_metrics: bool = False,
@@ -71,7 +71,7 @@ def collect_metrics(
     """Gathers episode metrics from rollout worker set.
 
     Args:
-        workers: WorkerSet.
+        workers: EnvRunnerGroup.
         remote_worker_ids: Optional list of IDs of remote workers to collect
             metrics from.
         timeout_seconds: Timeout in seconds for collecting metrics from remote workers.
@@ -92,14 +92,14 @@ def collect_metrics(
 
 @OldAPIStack
 def collect_episodes(
-    workers: "WorkerSet",
+    workers: "EnvRunnerGroup",
     remote_worker_ids: Optional[List[int]] = None,
     timeout_seconds: int = 180,
 ) -> List[RolloutMetrics]:
     """Gathers new episodes metrics tuples from the given RolloutWorkers.
 
     Args:
-        workers: WorkerSet.
+        workers: EnvRunnerGroup.
         remote_worker_ids: Optional list of IDs of remote workers to collect
             metrics from.
         timeout_seconds: Timeout in seconds for collecting metrics from remote workers.

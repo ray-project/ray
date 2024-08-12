@@ -1,5 +1,5 @@
 import logging
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
@@ -121,9 +121,8 @@ class PPOTfLearner(PPOLearner, TfLearner):
         if config.use_kl_loss:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: -tf.reduce_mean(surrogate_loss),
                 VF_LOSS_KEY: mean_vf_loss,
@@ -139,6 +138,8 @@ class PPOTfLearner(PPOLearner, TfLearner):
                 #    batch[Columns.VALUE_TARGETS]
                 # ),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss
@@ -151,18 +152,17 @@ class PPOTfLearner(PPOLearner, TfLearner):
         config: PPOConfig,
         timestep: int,
         sampled_kl_values: dict,
-    ) -> Dict[str, Any]:
-        assert sampled_kl_values, "Sampled KL values are empty."
+    ) -> None:
 
-        results = super().additional_update_for_module(
+        super().additional_update_for_module(
             module_id=module_id,
             config=config,
             timestep=timestep,
-            sampled_kl_values=sampled_kl_values,
         )
 
         # Update KL coefficient.
         if config.use_kl_loss:
+            assert sampled_kl_values, "Sampled KL values are empty."
             sampled_kl = sampled_kl_values[module_id]
             curr_var = self.curr_kl_coeffs_per_module[module_id]
             if sampled_kl > 2.0 * config.kl_target:
@@ -170,6 +170,10 @@ class PPOTfLearner(PPOLearner, TfLearner):
                 curr_var.assign(curr_var * 1.5)
             elif sampled_kl < 0.5 * config.kl_target:
                 curr_var.assign(curr_var * 0.5)
-            results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
 
-        return results
+            # Log the updated KL-coeff value.
+            self.metrics.log_value(
+                (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+                curr_var.numpy(),
+                window=1,
+            )

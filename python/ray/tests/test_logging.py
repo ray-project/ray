@@ -460,6 +460,15 @@ assert set(log_component_names).isdisjoint(set(paths)), paths
         assert f"({component}" in stderr, stderr
 
 
+def test_custom_logging_format(shutdown_only):
+    script = """
+import ray
+ray.init(logging_format='custom logging format - %(message)s')
+"""
+    stderr = run_string_as_driver(script)
+    assert "custom logging format - " in stderr
+
+
 def test_segfault_stack_trace(ray_start_cluster, capsys):
     @ray.remote
     def f():

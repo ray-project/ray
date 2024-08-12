@@ -158,15 +158,3 @@ Adding and Removing Modules
 
     Learner.add_module
     Learner.remove_module
-
-Managing Results
-----------------
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    Learner.compile_results
-    Learner.register_metric
-    Learner.register_metrics
-    Learner._check_result

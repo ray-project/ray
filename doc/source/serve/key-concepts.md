@@ -11,7 +11,7 @@ A deployment contains business logic or an ML model to handle incoming requests 
 At runtime, a deployment consists of a number of *replicas*, which are individual copies of the class or function that are started in separate Ray Actors (processes).
 The number of replicas can be scaled up or down (or even autoscaled) to match the incoming request load.
 
-To define a deployment, use the {mod}`@serve.deployment <ray.serve.api.deployment>` decorator on a Python class (or function for simple use cases).
+To define a deployment, use the {mod}`@serve.deployment <ray.serve.deployment>` decorator on a Python class (or function for simple use cases).
 Then, `bind` the deployment with optional arguments to the constructor to define an [application](serve-key-concepts-application).
 Finally, deploy the resulting application using `serve.run` (or the equivalent `serve run` CLI command, see [Development Workflow](serve-dev-workflow) for details).
 

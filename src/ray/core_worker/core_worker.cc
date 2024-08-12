@@ -1,4 +1,3 @@
-
 // Copyright 2017 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -380,8 +379,22 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       }));
 
 #if defined(__APPLE__) || defined(__linux__)
-  experimental_mutable_object_manager_ =
-      std::make_shared<experimental::MutableObjectManager>();
+  // TODO(jhumphri): Combine with implementation in NodeManager.
+  // TODO(jhumphri): Pool these connections with the other clients in CoreWorker connected
+  // to the raylet.
+  auto raylet_channel_client_factory = [this](const NodeID &node_id) {
+    auto node_info = gcs_client_->Nodes().Get(node_id);
+    RAY_CHECK(node_info) << "No GCS info for node " << node_id;
+    auto grpc_client = rpc::NodeManagerWorkerClient::make(
+        node_info->node_manager_address(),
+        node_info->node_manager_port(),
+        *experimental_mutable_object_provider_->client_call_manager());
+    return std::shared_ptr<raylet::RayletClient>(
+        new raylet::RayletClient(std::move(grpc_client)));
+  };
+  experimental_mutable_object_provider_ =
+      std::make_shared<experimental::MutableObjectProvider>(
+          plasma_store_provider_->store_client(), raylet_channel_client_factory);
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,
@@ -1384,16 +1397,16 @@ Status CoreWorker::ExperimentalChannelWriteAcquire(
     uint64_t data_size,
     int64_t num_readers,
     std::shared_ptr<Buffer> *data) {
-  return experimental_mutable_object_manager_->WriteAcquire(
+  return experimental_mutable_object_provider_->WriteAcquire(
       object_id, data_size, metadata->Data(), metadata->Size(), num_readers, *data);
 }
 
 Status CoreWorker::ExperimentalChannelWriteRelease(const ObjectID &object_id) {
-  return experimental_mutable_object_manager_->WriteRelease(object_id);
+  return experimental_mutable_object_provider_->WriteRelease(object_id);
 }
 
 Status CoreWorker::ExperimentalChannelSetError(const ObjectID &object_id) {
-  return experimental_mutable_object_manager_->SetError(object_id);
+  return experimental_mutable_object_provider_->SetError(object_id);
 }
 
 Status CoreWorker::SealOwned(const ObjectID &object_id,
@@ -1441,56 +1454,92 @@ Status CoreWorker::SealExisting(const ObjectID &object_id,
 
 Status CoreWorker::ExperimentalChannelReadRelease(
     const std::vector<ObjectID> &object_ids) {
-  RAY_CHECK(object_ids.size() == 1);
-  return experimental_mutable_object_manager_->ReadRelease(object_ids[0]);
+  RAY_CHECK_EQ(object_ids.size(), 1UL);
+  return experimental_mutable_object_provider_->ReadRelease(object_ids[0]);
 }
 
-Status CoreWorker::ExperimentalChannelRegisterReader(const ObjectID &object_id) {
-  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/false);
+Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
+                                                           const NodeID *node_id) {
+  experimental_mutable_object_provider_->RegisterWriterChannel(object_id, node_id);
+  return Status::OK();
 }
 
-Status CoreWorker::ExperimentalChannelRegisterWriter(const ObjectID &object_id) {
-  return ExperimentalChannelRegisterWriterOrReader(object_id, /*is_writer=*/true);
-}
-
-Status CoreWorker::ExperimentalChannelRegisterWriterOrReader(const ObjectID &object_id,
-                                                             bool is_writer) {
-  std::unique_ptr<plasma::MutableObject> object = nullptr;
-  RAY_RETURN_NOT_OK(
-      plasma_store_provider_->GetExperimentalMutableObject(object_id, &object));
-  RAY_CHECK(object) << "Mutable object must be local to be registered";
-  if (is_writer) {
-    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterWriterChannel(
-        object_id, std::move(object)));
-  } else {
-    RAY_RETURN_NOT_OK(experimental_mutable_object_manager_->RegisterReaderChannel(
-        object_id, std::move(object)));
+Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
+    const ObjectID &writer_object_id,
+    const ActorID &reader_actor,
+    int64_t num_readers,
+    const ObjectID &reader_object_id) {
+  rpc::Address addr;
+  {
+    std::promise<void> promise;
+    RAY_CHECK(gcs_client_->Actors()
+                  .AsyncGet(reader_actor,
+                            [&addr, &promise](
+                                Status status,
+                                const boost::optional<rpc::ActorTableData> &result) {
+                              RAY_CHECK(result);
+                              if (result) {
+                                addr.set_ip_address(result->address().ip_address());
+                                addr.set_port(result->address().port());
+                                addr.set_worker_id(result->address().worker_id());
+                              }
+                              promise.set_value();
+                            })
+                  .ok());
+    promise.get_future().wait();
   }
+
+  // TODO(jhumphri): Support case where there are readers on multiple different nodes.
+  // Currently, this code only supports the case where all readers are on a single node.
+  {
+    std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
+        core_worker_client_pool_->GetOrConnect(addr);
+
+    rpc::RegisterMutableObjectReaderRequest req;
+    req.set_writer_object_id(writer_object_id.Binary());
+    req.set_num_readers(num_readers);
+    req.set_reader_object_id(reader_object_id.Binary());
+    rpc::RegisterMutableObjectReaderReply reply;
+
+    std::promise<void> promise;
+    conn->RegisterMutableObjectReader(
+        req,
+        [&promise](const Status &status,
+                   const rpc::RegisterMutableObjectReaderReply &reply) {
+          RAY_CHECK(status.ok());
+          promise.set_value();
+        });
+    promise.get_future().wait();
+  }
+
+  return Status::OK();
+}
+
+Status CoreWorker::ExperimentalRegisterMutableObjectReader(const ObjectID &object_id) {
+  experimental_mutable_object_provider_->RegisterReaderChannel(object_id);
   return Status::OK();
 }
 
 Status CoreWorker::Get(const std::vector<ObjectID> &ids,
                        const int64_t timeout_ms,
-                       std::vector<std::shared_ptr<RayObject>> *results) {
+                       std::vector<std::shared_ptr<RayObject>> &results) {
   std::unique_ptr<ScopedTaskMetricSetter> state = nullptr;
   if (options_.worker_type == WorkerType::WORKER) {
     // We track the state change only from workers.
     state = std::make_unique<ScopedTaskMetricSetter>(
         worker_context_, task_counter_, rpc::TaskStatus::RUNNING_IN_RAY_GET);
   }
-  results->resize(ids.size(), nullptr);
+  results.resize(ids.size(), nullptr);
 
   // Check whether these are experimental.Channel objects.
   bool is_experimental_channel = false;
-  for (const auto &id : ids) {
-    if (experimental_mutable_object_manager_->ReaderChannelRegistered(id)) {
+  for (const ObjectID &id : ids) {
+    if (experimental_mutable_object_provider_->ReaderChannelRegistered(id)) {
       is_experimental_channel = true;
-    } else {
-      if (is_experimental_channel) {
-        return Status::NotImplemented(
-            "ray.get can only be called on all normal objects, or all "
-            "experimental.Channel objects");
-      }
+    } else if (is_experimental_channel) {
+      return Status::NotImplemented(
+          "ray.get can only be called on all normal objects, or all "
+          "experimental.Channel objects");
     }
   }
 
@@ -1501,23 +1550,23 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
           "non-infinity timeout_ms not supported for experimental channels");
     }
     return GetExperimentalMutableObjects(ids, results);
-  } else {
-    return GetObjects(ids, timeout_ms, results);
   }
+
+  return GetObjects(ids, timeout_ms, results);
 }
 
 Status CoreWorker::GetExperimentalMutableObjects(
-    const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> *results) {
+    const std::vector<ObjectID> &ids, std::vector<std::shared_ptr<RayObject>> &results) {
   for (size_t i = 0; i < ids.size(); i++) {
     RAY_RETURN_NOT_OK(
-        experimental_mutable_object_manager_->ReadAcquire(ids[i], (*results)[i]));
+        experimental_mutable_object_provider_->ReadAcquire(ids[i], results[i]));
   }
   return Status::OK();
 }
 
 Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
                               const int64_t timeout_ms,
-                              std::vector<std::shared_ptr<RayObject>> *results) {
+                              std::vector<std::shared_ptr<RayObject>> &results) {
   // Normal ray.get path for immutable in-memory and shared memory objects.
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
@@ -1591,7 +1640,7 @@ Status CoreWorker::GetObjects(const std::vector<ObjectID> &ids,
   for (size_t i = 0; i < ids.size(); i++) {
     const auto pair = result_map.find(ids[i]);
     if (pair != result_map.end()) {
-      (*results)[i] = pair->second;
+      results[i] = pair->second;
       RAY_CHECK(!pair->second->IsInPlasmaError());
       if (pair->second->IsException()) {
         // The language bindings should throw an exception if they see this
@@ -4060,6 +4109,21 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
   }
 }
 
+void CoreWorker::HandleRegisterMutableObjectReader(
+    rpc::RegisterMutableObjectReaderRequest request,
+    rpc::RegisterMutableObjectReaderReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  local_raylet_client_->RegisterMutableObjectReader(
+      ObjectID::FromBinary(request.writer_object_id()),
+      request.num_readers(),
+      ObjectID::FromBinary(request.reader_object_id()),
+      [send_reply_callback](const Status &status,
+                            const rpc::RegisterMutableObjectReply &r) {
+        RAY_CHECK(status.ok());
+        send_reply_callback(Status::OK(), nullptr, nullptr);
+      });
+}
+
 int64_t CoreWorker::GetLocalMemoryStoreBytesUsed() const {
   MemoryStoreStats memory_store_stats = memory_store_->GetMemoryStoreStatisticalData();
   return memory_store_stats.num_local_objects_bytes;
@@ -4360,7 +4424,7 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
   bool object_is_local = false;
   if (Contains(object_id, &object_is_local).ok() && object_is_local) {
     std::vector<std::shared_ptr<RayObject>> vec;
-    if (Get(std::vector<ObjectID>{object_id}, 0, &vec).ok()) {
+    if (Get(std::vector<ObjectID>{object_id}, 0, vec).ok()) {
       RAY_CHECK(vec.size() > 0)
           << "Failed to get local object but Raylet notified object is local.";
       return success(vec.front(), object_id, py_future);

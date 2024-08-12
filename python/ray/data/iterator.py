@@ -196,7 +196,7 @@ class DataIterator(abc.ABC):
         return "unknown_dataset"
 
     def iter_rows(
-        self, *, prefetch_batches: int = 0, prefetch_blocks: int = 0
+        self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
     ) -> Iterable[Dict[str, Any]]:
         """Return a local row iterable over the dataset.
 
@@ -234,6 +234,10 @@ class DataIterator(abc.ABC):
                 DeprecationWarning,
             )
             iter_batch_args["prefetch_batches"] = prefetch_blocks
+        if prefetch_batches != 1:
+            warnings.warn(
+                "`prefetch_batches` is deprecated in Ray 2.12.", DeprecationWarning
+            )
 
         batch_iterable = self.iter_batches(**iter_batch_args)
 
@@ -271,7 +275,7 @@ class DataIterator(abc.ABC):
 
         This iterable yields a dictionary of column-tensors. If you are looking for
         more flexibility in the tensor conversion (e.g. casting dtypes) or the batch
-        format, try using :meth:`~ray.data.iterator.DataIterator.iter_batches` directly.
+        format, try using :meth:`~ray.data.DataIterator.iter_batches` directly.
 
         Examples:
             >>> import ray

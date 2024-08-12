@@ -116,10 +116,6 @@ class RayTaskError(RayError):
         """Initialize a RayTaskError."""
         import ray
 
-        # BaseException implements a __reduce__ method that returns
-        # a tuple with the type and the value of self.args.
-        # https://stackoverflow.com/a/49715949/2213289
-        self.args = (function_name, traceback_str, cause, proctitle, pid, ip)
         if proctitle:
             self.proctitle = proctitle
         else:
@@ -130,8 +126,24 @@ class RayTaskError(RayError):
         self.traceback_str = traceback_str
         self.actor_repr = actor_repr
         self._actor_id = actor_id
-        # TODO(edoakes): should we handle non-serializable exception objects?
         self.cause = cause
+
+        try:
+            pickle.dumps(cause)
+        except (pickle.PicklingError, TypeError) as e:
+            err_msg = (
+                "The original cause of the RayTaskError"
+                f" ({self.cause.__class__}) isn't serializable: {e}."
+                " Overwriting the cause to a RayError."
+            )
+            logger.warning(err_msg)
+            self.cause = RayError(err_msg)
+
+        # BaseException implements a __reduce__ method that returns
+        # a tuple with the type and the value of self.args.
+        # https://stackoverflow.com/a/49715949/2213289
+        self.args = (function_name, traceback_str, self.cause, proctitle, pid, ip)
+
         assert traceback_str is not None
 
     def make_dual_exception_type(self) -> Type:

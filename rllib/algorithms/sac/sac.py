@@ -217,7 +217,7 @@ class SACConfig(AlgorithmConfig):
                 collecting samples from the env).
                 If None, uses "natural" values of:
                 `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
-                `num_envs_per_worker`).
+                `num_envs_per_env_runner`).
                 If not None, will make sure that the ratio between timesteps inserted
                 into and sampled from th buffer matches the given values.
                 Example:
@@ -225,7 +225,7 @@ class SACConfig(AlgorithmConfig):
                 train_batch_size=250
                 rollout_fragment_length=1
                 num_workers=1 (or 0)
-                num_envs_per_worker=1
+                num_envs_per_env_runner=1
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
@@ -347,7 +347,9 @@ class SACConfig(AlgorithmConfig):
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
         # TODO (sven, simon): Implement the multi-agent case for replay buffers.
-        if self.uses_new_env_runners and self.replay_buffer_config["type"] not in [
+        if self.enable_env_runner_and_connector_v2 and self.replay_buffer_config[
+            "type"
+        ] not in [
             "EpisodeReplayBuffer",
             "PrioritizedEpisodeReplayBuffer",
         ]:
@@ -445,7 +447,7 @@ class SAC(DQN):
             The results dict from executing the training iteration.
         """
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack(with_noise_reset=False)
         # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).

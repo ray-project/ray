@@ -52,7 +52,6 @@ Closing
 
 from ray import air, tune
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.tune.logger import Logger, LegacyLoggerCallback
 
 
@@ -83,8 +82,10 @@ class MyPrintLogger(Logger):
 if __name__ == "__main__":
     config = (
         PPOConfig()
-        .experimental(_enable_new_api_stack=True)
-        .env_runners(env_runner_cls=SingleAgentEnvRunner)
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .environment("CartPole-v1")
         # Setting up a custom logger config.
         # ----------------------------------

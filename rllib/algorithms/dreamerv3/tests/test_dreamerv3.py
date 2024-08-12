@@ -19,7 +19,7 @@ import numpy as np
 
 import ray
 from ray.rllib.algorithms.dreamerv3 import dreamerv3
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
@@ -205,7 +205,7 @@ class TestDreamerV3(unittest.TestCase):
                     # Create our RLModule to compute actions with.
                     policy_dict, _ = config.get_multi_agent_setup()
                     module_spec = config.get_marl_module_spec(policy_dict=policy_dict)
-                    rl_module = module_spec.build()[DEFAULT_POLICY_ID]
+                    rl_module = module_spec.build()[DEFAULT_MODULE_ID]
 
                     # Count the generated RLModule's parameters and compare to the
                     # paper's reported numbers ([1] and [3]).

@@ -8,7 +8,6 @@ import pathlib
 from typing import (
     Any,
     Callable,
-    DefaultDict,
     Dict,
     List,
     Hashable,
@@ -24,29 +23,30 @@ import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
-from ray.rllib.core.learner.reduce_result_dict_fn import _reduce_mean_results
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModule,
     MultiAgentRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    MultiAgentBatch,
-    SampleBatch,
-)
+from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.debug import update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
-    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED,
 )
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
     MiniBatchDummyIterator,
     MiniBatchCyclicIterator,
@@ -281,10 +281,11 @@ class Learner:
         # to handle lr-updates entirely in user's hands.
         self._optimizer_lr_schedules: Dict[Optimizer, Scheduler] = {}
 
-        # Registered metrics (one sub-dict per module ID) to be returned from
-        # `Learner.update()`. These metrics will be "compiled" automatically into
-        # the final results dict in the `self.compile_update_results()` method.
-        self._metrics = defaultdict(dict)
+        # The Learner's own MetricsLogger to be used to log RLlib's built-in metrics or
+        # custom user-defined ones (e.g. custom loss values). When returning from an
+        # `update_from_...()` method call, the Learner will do a `self.metrics.reduce()`
+        # and return the resulting (reduced) dict.
+        self.metrics = MetricsLogger()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def build(self) -> None:
@@ -299,7 +300,7 @@ class Learner:
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             # TODO (sven): Figure out which space to provide here. For now,
             #  it doesn't matter, as the default connector piece doesn't use
             #  this information anyway.
@@ -571,10 +572,10 @@ class Learner:
                 grad_clip_by=config.grad_clip_by,
             )
             if config.grad_clip_by == "global_norm":
-                self.register_metric(
-                    module_id,
-                    f"gradients_{optimizer_name}_global_norm",
-                    global_norm,
+                self.metrics.log_value(
+                    key=(module_id, f"gradients_{optimizer_name}_global_norm"),
+                    value=global_norm,
+                    window=1,
                 )
             postprocessed_grads.update(grad_dict_to_clip)
 
@@ -592,35 +593,9 @@ class Learner:
                 tensor references to gradient tensors.
         """
 
-    def register_metric(self, module_id: str, key: str, value: Any) -> None:
-        """Registers a single key/value metric pair for loss- and gradient stats.
-
-        Args:
-            module_id: The module_id to register the metric under. This may be
-                ALL_MODULES.
-            key: The name of the metric to register (below the given `module_id`).
-            value: The actual value of the metric. This might also be a tensor var (e.g.
-                from within a traced tf2 function).
-        """
-        self._metrics[module_id][key] = value
-
-    def register_metrics(self, module_id: str, metrics_dict: Dict[str, Any]) -> None:
-        """Registers several key/value metric pairs for loss- and gradient stats.
-
-        Args:
-            module_id: The module_id to register the metrics under. This may be
-                ALL_MODULES.
-            metrics_dict: A dict mapping names of metrics to be registered (below the
-                given `module_id`) to the actual values of these metrics. Values might
-                also be tensor vars (e.g. from within a traced tf2 function).
-                These will be automatically converted to numpy values.
-        """
-        for key, value in metrics_dict.items():
-            self.register_metric(module_id, key, value)
-
     def get_optimizer(
         self,
-        module_id: ModuleID = DEFAULT_POLICY_ID,
+        module_id: ModuleID = DEFAULT_MODULE_ID,
         optimizer_name: str = DEFAULT_OPTIMIZER,
     ) -> Optimizer:
         """Returns the optimizer object, configured under the given module_id and name.
@@ -631,7 +606,7 @@ class Learner:
 
         Args:
             module_id: The ModuleID for which to return the configured optimizer.
-                If not provided, will assume DEFAULT_POLICY_ID.
+                If not provided, will assume DEFAULT_MODULE_ID.
             optimizer_name: The name of the optimizer (registered under `module_id` via
                 `self.register_optimizer()`) to return. If not provided, will assume
                 DEFAULT_OPTIMIZER.
@@ -758,68 +733,6 @@ class Learner:
         """
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def compile_results(
-        self,
-        *,
-        batch: MultiAgentBatch,
-        fwd_out: Dict[str, Any],
-        loss_per_module: Dict[str, TensorType],
-        metrics_per_module: DefaultDict[ModuleID, Dict[str, Any]],
-    ) -> Dict[str, Any]:
-        """Compile results from the update in a numpy-friendly format.
-
-        Args:
-            batch: The batch that was used for the update.
-            fwd_out: The output of the forward train pass.
-            loss_per_module: A dict mapping module IDs (including ALL_MODULES) to the
-                individual loss tensors as returned by calls to
-                `compute_loss_for_module(module_id=...)`.
-            metrics_per_module: The collected metrics defaultdict mapping ModuleIDs to
-                metrics dicts. These metrics are collected during loss- and
-                gradient computation, gradient postprocessing, and gradient application.
-
-        Returns:
-            A dictionary of results sub-dicts per module (including ALL_MODULES).
-        """
-        if not isinstance(batch, MultiAgentBatch):
-            raise ValueError(
-                f"batch must be a MultiAgentBatch, but got {type(batch)} instead."
-            )
-
-        # We compile the metrics to have the structure:
-        # top-leve key: module_id -> [key, e.g. self.TOTAL_LOSS_KEY] -> [value].
-        # Results will include all registered metrics under the respective module ID
-        # top-level key.
-        module_learner_stats = defaultdict(dict)
-        # Add the num agent|env steps trained counts for all modules.
-        module_learner_stats[ALL_MODULES][NUM_AGENT_STEPS_TRAINED] = batch.agent_steps()
-        module_learner_stats[ALL_MODULES][NUM_ENV_STEPS_TRAINED] = batch.env_steps()
-
-        loss_per_module_numpy = convert_to_numpy(loss_per_module)
-
-        for module_id in list(batch.policy_batches.keys()) + [ALL_MODULES]:
-            # Report total loss per module and other registered metrics.
-            module_learner_stats[module_id].update(
-                {
-                    self.TOTAL_LOSS_KEY: loss_per_module_numpy[module_id],
-                    **convert_to_numpy(metrics_per_module[module_id]),
-                }
-            )
-            # Report registered optimizers' learning rates.
-            module_learner_stats[module_id].update(
-                {
-                    f"{optim_name}_lr": convert_to_numpy(
-                        self._get_optimizer_lr(optimizer)
-                    )
-                    for optim_name, optimizer in (
-                        self.get_optimizers_for_module(module_id=module_id)
-                    )
-                }
-            )
-
-        return dict(module_learner_stats)
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def add_module(
         self,
         *,
@@ -870,6 +783,11 @@ class Learner:
             del self._module_optimizers[module_id]
 
         self.module.remove_module(module_id)
+
+        # Remove all stats from the module from our metrics logger, so we don't report
+        # results from this module again.
+        if module_id in self.metrics.stats:
+            del self.metrics.stats[module_id]
 
     @OverrideToImplementCustomLogic
     def should_module_be_updated(self, module_id, multi_agent_batch=None):
@@ -971,8 +889,11 @@ class Learner:
             A single total loss tensor. If you have more than one optimizer on the
             provided `module_id` and would like to compute gradients separately using
             these different optimizers, simply add up the individual loss terms for
-            each optimizer and return the sum. Also, for tracking the individual loss
-            terms, you can use the `Learner.register_metric(s)` APIs.
+            each optimizer and return the sum. Also, for recording/logging any
+            individual loss terms, you can use the `Learner.metrics.log_value(
+            key=..., value=...)` or `Learner.metrics.log_dict()` APIs. See:
+            :py:class:`~ray.rllib.utils.metrics.metrics_logger.MetricsLogger` for more
+            information.
         """
 
     @OverrideToImplementCustomLogic
@@ -982,7 +903,7 @@ class Learner:
         module_ids_to_update: Optional[Sequence[ModuleID]] = None,
         timestep: int,
         **kwargs,
-    ) -> Dict[ModuleID, Any]:
+    ) -> Dict[ModuleID, ResultDict]:
         """Apply additional non-gradient based updates to this Algorithm.
 
         For example, this could be used to do a polyak averaging update
@@ -1005,6 +926,7 @@ class Learner:
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule
             )
+            from ray.rllib.core import DEFAULT_MODULE_ID
             from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 
             env = gym.make("CartPole-v1")
@@ -1036,9 +958,9 @@ class Learner:
             class CustomPPOLearner(PPOTorchLearner):
                 def additional_update_for_module(
                     self, *, module_id, config, timestep, sampled_kl_values
-                ):
+                ) -> None:
 
-                    results = super().additional_update_for_module(
+                    super().additional_update_for_module(
                         module_id=module_id,
                         config=config,
                         timestep=timestep,
@@ -1052,7 +974,11 @@ class Learner:
                         curr_var.data *= 1.2
                     elif sampled_kl < 0.8 * self.config.kl_target:
                         curr_var.data *= 0.4
-                    results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.item()})
+                    self.metrics.log_value(
+                        (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+                        curr_var.item(),
+                        window=1,
+                    )
 
             # Construct the Learner object.
             learner = CustomPPOLearner(
@@ -1069,7 +995,7 @@ class Learner:
                 if i % 10 == 0:
                     learner.additional_update(
                         timestep=i,
-                        sampled_kl_values={"default_policy": 0.5}
+                        sampled_kl_values={DEFAULT_MODULE_ID: 0.5}
                     )
 
         Args:
@@ -1081,22 +1007,20 @@ class Learner:
         Returns:
             A dictionary of results from the update
         """
-        results_all_modules = {}
         module_ids = (
             module_ids_to_update
             if module_ids_to_update is not None
             else self.module.keys()
         )
         for module_id in module_ids:
-            module_results = self.additional_update_for_module(
+            self.additional_update_for_module(
                 module_id=module_id,
                 config=self.config.get_config_for_module(module_id),
                 timestep=timestep,
                 **kwargs,
             )
-            results_all_modules[module_id] = module_results
 
-        return results_all_modules
+        return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def additional_update_for_module(
@@ -1107,7 +1031,7 @@ class Learner:
         timestep: int,
         hps=None,
         **kwargs,
-    ) -> Dict[str, Any]:
+    ) -> None:
         """Apply additional non-gradient based updates for a single module.
 
         See `additional_update` for more details.
@@ -1128,8 +1052,6 @@ class Learner:
                 error=True,
             )
 
-        results = {}
-
         # Only cover the optimizer mapped to this particular module.
         for optimizer_name, optimizer in self.get_optimizers_for_module(module_id):
             # Only update this optimizer's lr, if a scheduler has been registered
@@ -1139,27 +1061,27 @@ class Learner:
                     timestep=timestep
                 )
                 self._set_optimizer_lr(optimizer, lr=new_lr)
+
                 # Make sure our returned results differentiate by optimizer name
                 # (if not the default name).
                 stats_name = LEARNER_RESULTS_CURR_LR_KEY
                 if optimizer_name != DEFAULT_OPTIMIZER:
                     stats_name += "_" + optimizer_name
-                results.update({stats_name: new_lr})
-
-        return results
+                self.metrics.log_value(
+                    key=(module_id, stats_name), value=new_lr, window=1
+                )
 
     def update_from_batch(
         self,
         batch: MultiAgentBatch,
         *,
-        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
-            _reduce_mean_results
-        ),
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        # Deprecated args.
+        reduce_fn=DEPRECATED_VALUE,
+    ) -> ResultDict:
         """Do `num_iters` minibatch updates given a train batch.
 
         You can use this method to take more than one backward pass on the batch.
@@ -1168,25 +1090,30 @@ class Learner:
 
         Args:
             batch: A batch of training data to update from.
-            reduce_fn: reduce_fn: A function to reduce the results from a list of
-                minibatch updates. This can be any arbitrary function that takes a
-                list of dictionaries and returns a single dictionary. For example you
-                can either take an average (default) or concatenate the results (for
-                example for metrics) or be more selective about you want to report back
-                to the algorithm's training_step. If None is passed, the results will
-                not get reduced.
             minibatch_size: The size of the minibatch to use for each update.
             num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
 
         Returns:
-            A dictionary of results, in numpy format or a list of such dictionaries in
-            case `reduce_fn` is None and we have more than one minibatch pass.
+            A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
+            returned dict may be arbitrarily nested and must have `Stats` objects at
+            all its leafs, allowing components further downstream (i.e. a user of this
+            Learner) to further reduce these results (for example over n parallel
+            Learners).
         """
+        if reduce_fn != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Learner.update_from_batch(reduce_fn=..)",
+                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
+                " API in your custom Learner methods for logging your custom values "
+                "and time-reducing (or parallel-reducing) them.",
+                error=True,
+            )
         return self._update_from_batch_or_episodes(
             batch=batch,
             episodes=None,
-            reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
         )
@@ -1195,15 +1122,14 @@ class Learner:
         self,
         episodes: List[EpisodeType],
         *,
-        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
-            _reduce_mean_results
-        ),
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
         min_total_mini_batches: int = 0,
-    ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
+        # Deprecated args.
+        reduce_fn=DEPRECATED_VALUE,
+    ) -> ResultDict:
         """Do `num_iters` minibatch updates given a list of episodes.
 
         You can use this method to take more than one backward pass on the batch.
@@ -1212,13 +1138,6 @@ class Learner:
 
         Args:
             episodes: An list of episode objects to update from.
-            reduce_fn: reduce_fn: A function to reduce the results from a list of
-                minibatch updates. This can be any arbitrary function that takes a
-                list of dictionaries and returns a single dictionary. For example you
-                can either take an average (default) or concatenate the results (for
-                example for metrics) or be more selective about you want to report back
-                to the algorithm's training_step. If None is passed, the results will
-                not get reduced.
             minibatch_size: The size of the minibatch to use for each update.
             num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
@@ -1231,13 +1150,25 @@ class Learner:
                 different number of mini-batches than other Learners, causing deadlocks.
 
         Returns:
-            A dictionary of results, in numpy format or a list of such dictionaries in
-            case `reduce_fn` is None and we have more than one minibatch pass.
+            A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
+            returned dict may be arbitrarily nested and must have `Stats` objects at
+            all its leafs, allowing components further downstream (i.e. a user of this
+            Learner) to further reduce these results (for example over n parallel
+            Learners).
         """
+        if reduce_fn != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Learner.update_from_episodes(reduce_fn=..)",
+                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
+                " API in your custom Learner methods for logging your custom values "
+                "and time-reducing (or parallel-reducing) them.",
+                error=True,
+            )
         return self._update_from_batch_or_episodes(
             batch=None,
             episodes=episodes,
-            reduce_fn=reduce_fn,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
             min_total_mini_batches=min_total_mini_batches,
@@ -1339,9 +1270,6 @@ class Learner:
         #  as well for simplicity.
         batch: Optional[MultiAgentBatch] = None,
         episodes: Optional[List[EpisodeType]] = None,
-        reduce_fn: Callable[[List[Dict[str, Any]]], ResultDict] = (
-            _reduce_mean_results
-        ),
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
@@ -1356,12 +1284,14 @@ class Learner:
 
         # Call the learner connector.
         if self._learner_connector is not None and episodes is not None:
+            # Call the learner connector pipeline.
             batch = self._learner_connector(
                 rl_module=self.module,
                 data=batch,
                 episodes=episodes,
                 shared_data={},
             )
+            # Convert to a batch.
             # TODO (sven): Try to not require MultiAgentBatch anymore.
             batch = MultiAgentBatch(
                 {
@@ -1386,6 +1316,29 @@ class Learner:
             if not self.should_module_be_updated(module_id, batch):
                 del batch.policy_batches[module_id]
 
+        # Log all timesteps (env, agent, modules) based on given episodes.
+        if self._learner_connector is not None and episodes is not None:
+            self._log_steps_trained_metrics(episodes, batch)
+        # TODO (sven): Possibly remove this if-else block entirely. We might be in a
+        #  world soon where we always learn from episodes, never from an incoming batch.
+        else:
+            self.metrics.log_dict(
+                {
+                    (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
+                    (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
+                },
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_dict(
+                {
+                    (mid, NUM_MODULE_STEPS_TRAINED): len(b)
+                    for mid, b in batch.policy_batches.items()
+                },
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+
         if minibatch_size and self._learner_connector is not None:
             batch_iter = partial(
                 MiniBatchCyclicIterator,
@@ -1406,7 +1359,6 @@ class Learner:
             # `minibatch_size` and `num_iters` are not set by the user.
             batch_iter = MiniBatchDummyIterator
 
-        results = []
         # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
         # device (e.g. GPU). We move the batch already here to avoid having to move
         # every single minibatch that is created in the `batch_iter` below.
@@ -1417,33 +1369,40 @@ class Learner:
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
             nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
-            (fwd_out, loss_per_module, metrics_per_module) = self._update(
+            fwd_out, loss_per_module, tensor_metrics = self._update(
                 nested_tensor_minibatch
             )
-            result = self.compile_results(
-                batch=tensor_minibatch,
-                fwd_out=fwd_out,
-                loss_per_module=loss_per_module,
-                metrics_per_module=defaultdict(dict, **metrics_per_module),
-            )
-            self._check_result(result)
-            results.append(result)
+
+            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+            # to actual (numpy) values.
+            self.metrics.tensors_to_numpy(tensor_metrics)
+
+            # Log all individual RLModules' loss terms and its registered optimizers'
+            # current learning rates.
+            for mid, loss in convert_to_numpy(loss_per_module).items():
+                self.metrics.log_value(
+                    key=(mid, self.TOTAL_LOSS_KEY),
+                    value=loss,
+                    window=1,
+                )
 
         self._set_slicing_by_batch_id(batch, value=False)
 
-        # Reduce results across all minibatches, if necessary.
+        # Log all current learning rates of all our optimizers (registered under the
+        # different ModuleIDs).
+        self.metrics.log_dict(
+            {
+                (mid, f"{full_name[len(mid) + 1 :]}_lr"): convert_to_numpy(
+                    self._get_optimizer_lr(self._named_optimizers[full_name])
+                )
+                for mid, full_names in self._module_optimizers.items()
+                for full_name in full_names
+            },
+            window=1,
+        )
 
-        # If we only have one result anyways, then the user will not expect a list
-        # to be reduced here (and might not provide a `reduce_fn` therefore) ->
-        # Return single results dict.
-        if len(results) == 1:
-            return results[0]
-        # If no `reduce_fn` provided, return list of results dicts.
-        elif reduce_fn is None:
-            return results
-        # Pass list of results dicts through `reduce_fn` and return a single results
-        # dict.
-        return reduce_fn(results)
+        # Reduce results across all minibatch update steps.
+        return self.metrics.reduce()
 
     def _set_slicing_by_batch_id(
         self, batch: MultiAgentBatch, *, value: bool
@@ -1624,38 +1583,6 @@ class Learner:
                 "(variables)!"
             )
 
-    def _check_result(self, result: Dict[str, Any]) -> None:
-        """Checks whether the result has the correct format.
-
-        All the keys should be referencing the module ids that got updated. There is a
-        special key `ALL_MODULES` that hold any extra information that is not specific
-        to a module.
-
-        Args:
-            result: The result of the update.
-
-        Raises:
-            ValueError: If the result are not in the correct format.
-        """
-        if not isinstance(result, dict):
-            raise ValueError(
-                f"The result of the update must be a dictionary. Got: {type(result)}"
-            )
-
-        if ALL_MODULES not in result:
-            raise ValueError(
-                f"The result of the update must have a key {ALL_MODULES} "
-                "that holds any extra information that is not specific to a module."
-            )
-
-        for key in result:
-            if key != ALL_MODULES:
-                if key not in self.module.keys():
-                    raise ValueError(
-                        f"The key {key} in the result of the update is not a valid "
-                        f"module id. Valid module ids are: {list(self.module.keys())}."
-                    )
-
     def _check_is_built(self):
         if self.module is None:
             raise ValueError(
@@ -1669,7 +1596,7 @@ class Learner:
         self._named_optimizers = {}
         self._module_optimizers = defaultdict(list)
         self._optimizer_lr_schedules = {}
-        self._metrics = defaultdict(dict)
+        self.metrics = MetricsLogger()
         self._is_built = False
 
     def apply(self, func, *_args, **_kwargs):
@@ -1721,3 +1648,77 @@ class Learner:
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
+
+    def _log_steps_trained_metrics(self, episodes, batch):
+        # Logs this iteration's steps trained, based on given `episodes`.
+        env_steps = sum(len(e) for e in episodes)
+        log_dict = defaultdict(dict)
+        for sa_episode in self._learner_connector.single_agent_episode_iterator(
+            episodes, agents_that_stepped_only=False
+        ):
+            mid = (
+                sa_episode.module_id
+                if sa_episode.module_id is not None
+                else DEFAULT_MODULE_ID
+            )
+            # Do not log steps trained for those ModuleIDs that should not be updated.
+            if mid != ALL_MODULES and mid not in batch.policy_batches:
+                continue
+
+            _len = len(sa_episode)
+
+            # TODO (sven): Decide, whether agent_ids should be part of LEARNER_RESULTS.
+            #  Currently and historically, only ModuleID keys and ALL_MODULES were used
+            #  and expected. Does it make sense to include e.g. agent steps trained?
+            #  I'm not sure atm.
+            # aid = (
+            #    sa_episode.agent_id if sa_episode.agent_id is not None
+            #    else DEFAULT_AGENT_ID
+            # )
+            if NUM_MODULE_STEPS_TRAINED not in log_dict[mid]:
+                log_dict[mid][NUM_MODULE_STEPS_TRAINED] = _len
+            else:
+                log_dict[mid][NUM_MODULE_STEPS_TRAINED] += _len
+            # TODO (sven): See above.
+            # if NUM_AGENT_STEPS_TRAINED not in log_dict[aid]:
+            #    log_dict[aid][NUM_AGENT_STEPS_TRAINED] = _len
+            # else:
+            #    log_dict[aid][NUM_AGENT_STEPS_TRAINED] += _len
+            if NUM_MODULE_STEPS_TRAINED not in log_dict[ALL_MODULES]:
+                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = _len
+            else:
+                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += _len
+
+        # Log env steps (all modules).
+        self.metrics.log_value(
+            (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
+            env_steps,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
+        # Log per-module steps trained (plus all modules) and per-agent steps trained.
+        self.metrics.log_dict(dict(log_dict), reduce="sum", clear_on_reduce=True)
+
+    @Deprecated(
+        new="self.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+        "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+        help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger API "
+        "for logging your custom values and time-reducing (or parallel-reducing) them.",
+        error=True,
+    )
+    def register_metric(self, *args, **kwargs):
+        pass
+
+    @Deprecated(
+        new="self.metrics.[log_value|log_dict|log_time](key=..., value=..., "
+        "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
+        help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger API "
+        "for logging your custom values and time-reducing (or parallel-reducing) them.",
+        error=True,
+    )
+    def register_metrics(self, *args, **kwargs):
+        pass
+
+    @Deprecated(error=True)
+    def compile_results(self, *args, **kwargs):
+        pass

@@ -177,6 +177,15 @@ Databricks
 
    read_databricks_tables
 
+Lance
+-----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_lance
+
 Dask
 ----
 

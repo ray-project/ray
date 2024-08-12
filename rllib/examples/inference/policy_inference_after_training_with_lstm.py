@@ -130,7 +130,7 @@ if __name__ == "__main__":
     # Set LSTM's initial internal state.
     lstm_cell_size = config["model"]["lstm_cell_size"]
     # range(2) b/c h- and c-states of the LSTM.
-    if algo.config._enable_new_api_stack:
+    if algo.config.enable_rl_module_and_learner:
         init_state = state = algo.get_policy().model.get_initial_state()
     else:
         init_state = state = [np.zeros([lstm_cell_size], np.float32) for _ in range(2)]

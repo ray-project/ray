@@ -48,7 +48,7 @@ class TestBC(unittest.TestCase):
 
         # Test for RLModule API and ModelV2.
         for rl_modules in [True, False]:
-            config.experimental(_enable_new_api_stack=rl_modules)
+            config.api_stack(enable_rl_module_and_learner=rl_modules)
             # Old and new stack support different frameworks
             if rl_modules:
                 frameworks_to_test = ("torch", "tf2")

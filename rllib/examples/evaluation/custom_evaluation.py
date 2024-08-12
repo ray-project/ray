@@ -65,7 +65,7 @@ Training iteration 1 -> evaluation round 2
 """
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EVALUATION_RESULTS
 from ray.rllib.utils.test_utils import (
@@ -86,12 +86,15 @@ parser.add_argument("--corridor-length-eval-worker-1", type=int, default=20)
 parser.add_argument("--corridor-length-eval-worker-2", type=int, default=30)
 
 
-def custom_eval_function(algorithm: Algorithm, eval_workers: WorkerSet) -> ResultDict:
+def custom_eval_function(
+    algorithm: Algorithm,
+    eval_workers: EnvRunnerGroup,
+) -> ResultDict:
     """Example of a custom evaluation function.
 
     Args:
         algorithm: Algorithm class to evaluate.
-        eval_workers: Evaluation WorkerSet.
+        eval_workers: Evaluation EnvRunnerGroup.
 
     Returns:
         metrics: Evaluation metrics dict.

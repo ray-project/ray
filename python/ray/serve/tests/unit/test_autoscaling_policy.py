@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
 from ray.serve.autoscaling_policy import (
     _calculate_desired_num_replicas,
     replica_queue_length_autoscaling_policy,
@@ -407,8 +407,8 @@ class TestReplicaQueueLengthPolicy:
             downscale_delay_s=600.0,
         )
 
-        upscale_wait_periods = int(upscale_delay_s / CONTROL_LOOP_PERIOD_S)
-        downscale_wait_periods = int(downscale_delay_s / CONTROL_LOOP_PERIOD_S)
+        upscale_wait_periods = int(upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
+        downscale_wait_periods = int(downscale_delay_s / CONTROL_LOOP_INTERVAL_S)
 
         overload_requests = 100
 
@@ -677,7 +677,7 @@ class TestReplicaQueueLengthPolicy:
         config = AutoscalingConfig(**config)
 
         if delay_s > 0:
-            wait_periods = int(delay_s / CONTROL_LOOP_PERIOD_S)
+            wait_periods = int(delay_s / CONTROL_LOOP_INTERVAL_S)
             assert wait_periods > 1
 
         underload_requests, overload_requests = 2 * 20, 100

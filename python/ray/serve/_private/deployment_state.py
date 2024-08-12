@@ -1301,7 +1301,9 @@ class DeploymentState:
         )
         if self._target_state.info.deployment_config.autoscaling_config:
             self._autoscaling_state_manager.register_deployment(
-                self._id, self._target_state.info
+                self._id,
+                self._target_state.info,
+                self._target_state.target_num_replicas,
             )
 
     def recover_current_state_from_replica_actor_names(

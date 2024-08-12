@@ -577,6 +577,8 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise ValueError(message)
     elif status.IsObjectUnknownOwner():
         raise ValueError(message)
+    elif status.IsIOError():
+        raise IOError(message)
     elif status.IsRpcError():
         raise RpcError(message, rpc_code=status.rpc_code())
     elif status.IsIntentionalSystemExit():
@@ -3477,7 +3479,7 @@ cdef class CoreWorker:
             c_vector[CObjectID] c_object_ids = ObjectRefsToVector(object_refs)
         with nogil:
             op_status = CCoreWorkerProcess.GetCoreWorker().Get(
-                c_object_ids, timeout_ms, &results)
+                c_object_ids, timeout_ms, results)
         check_status(op_status)
 
         return RayObjectsToDataMetadataPairs(results)
@@ -3647,26 +3649,55 @@ cdef class CoreWorker:
     def experimental_channel_set_error(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
+            CRayStatus status
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelSetError(c_object_id))
+            status = (CCoreWorkerProcess.GetCoreWorker()
+                      .ExperimentalChannelSetError(c_object_id))
+        return status.ok()
 
-    def experimental_channel_register_writer(self, ObjectRef object_ref):
+    def experimental_channel_register_writer(self,
+                                             ObjectRef writer_ref,
+                                             ObjectRef reader_ref,
+                                             writer_node,
+                                             reader_node,
+                                             ActorID reader,
+                                             int64_t num_readers):
         cdef:
-            CObjectID c_object_id = object_ref.native()
+            CObjectID c_writer_ref = writer_ref.native()
+            CObjectID c_reader_ref = reader_ref.native()
+            CNodeID c_reader_node = CNodeID.FromHex(reader_node)
+            CNodeID *c_reader_node_id = NULL
+            CActorID c_reader_actor = reader.native()
+
+        if num_readers == 0:
+            return
+        if writer_node != reader_node:
+            c_reader_node_id = &c_reader_node
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelRegisterWriter(c_object_id))
+                         .ExperimentalRegisterMutableObjectWriter(c_writer_ref,
+                                                                  c_reader_node_id,
+                                                                  ))
+        if writer_node != reader_node:
+            with nogil:
+                check_status(
+                        CCoreWorkerProcess.GetCoreWorker()
+                        .ExperimentalRegisterMutableObjectReaderRemote(c_writer_ref,
+                                                                       c_reader_actor,
+                                                                       num_readers,
+                                                                       c_reader_ref
+                                                                       ))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
         cdef:
             CObjectID c_object_id = object_ref.native()
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalChannelRegisterReader(c_object_id))
+            check_status(
+                CCoreWorkerProcess.GetCoreWorker()
+                .ExperimentalRegisterMutableObjectReader(c_object_id))
 
     def experimental_channel_read_release(self, object_refs):
         """

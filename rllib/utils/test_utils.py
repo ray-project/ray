@@ -101,7 +101,7 @@ def add_rllib_example_script_args(
     parser.add_argument(
         "--enable-new-api-stack",
         action="store_true",
-        help="Whether to use the _enable_new_api_stack config setting.",
+        help="Whether to use the `enable_rl_module_and_learner` config setting.",
     )
     parser.add_argument(
         "--framework",
@@ -423,7 +423,7 @@ def check_compute_single_action(
                 input_dict[SampleBatch.PREV_ACTIONS] = action_in
                 input_dict[SampleBatch.PREV_REWARDS] = reward_in
             if state_in:
-                if what.config.get("_enable_new_api_stack", False):
+                if what.config.get("enable_rl_module_and_learner", False):
                     input_dict["state_in"] = state_in
                 else:
                     for i, s in enumerate(state_in):
@@ -699,7 +699,7 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
             data in it.
     """
     # Import these here to avoid circular dependencies.
-    from ray.rllib.core.rl_module.rl_module import DEFAULT_POLICY_ID
+    from ray.rllib.core import DEFAULT_MODULE_ID
     from ray.rllib.utils.metrics import (
         ENV_RUNNER_RESULTS,
         FAULT_TOLERANCE_STATS,
@@ -740,11 +740,11 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
     # Check in particular the "info" dict.
     learner_results = train_results[LEARNER_RESULTS]
 
-    # Make sure we have a default_policy key if we are not in a
+    # Make sure we have a `DEFAULT_MODULE_ID key if we are not in a
     # multi-agent setup.
     if not is_multi_agent:
-        assert len(learner_results) == 0 or DEFAULT_POLICY_ID in learner_results, (
-            f"'{DEFAULT_POLICY_ID}' not found in "
+        assert len(learner_results) == 0 or DEFAULT_MODULE_ID in learner_results, (
+            f"'{DEFAULT_MODULE_ID}' not found in "
             f"train_results['{LEARNER_RESULTS}']!"
         )
 
@@ -895,7 +895,7 @@ def framework_iterator(
 
     for fw in frameworks:
         # Skip tf if on new API stack.
-        if fw == "tf" and config.get("_enable_new_api_stack", False):
+        if fw == "tf" and config.get("enable_rl_module_and_learner", False):
             logger.warning("Skipping `framework=tf` (new API stack configured)!")
             continue
         # Skip if tf/tf2 and py >= 3.11.
@@ -1355,30 +1355,17 @@ def run_rllib_example_script_experiment(
             "training_iteration": args.stop_iters,
         }
 
-    from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-    from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-
     # Enhance the `base_config`, based on provided `args`.
     config = (
         # Set the framework.
         base_config.framework(args.framework)
         # Enable the new API stack?
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
-        # Define EnvRunner/RolloutWorker scaling and behavior.
-        .env_runners(
-            num_env_runners=args.num_env_runners,
-            # Set up the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
-            env_runner_cls=(
-                None
-                if not args.enable_new_api_stack
-                else (
-                    SingleAgentEnvRunner
-                    if args.num_agents == 0
-                    else MultiAgentEnvRunner
-                )
-            ),
+        .api_stack(
+            enable_rl_module_and_learner=args.enable_new_api_stack,
+            enable_env_runner_and_connector_v2=args.enable_new_api_stack,
         )
+        # Define EnvRunner/RolloutWorker scaling and behavior.
+        .env_runners(num_env_runners=args.num_env_runners)
         # Define compute resources used.
         .resources(
             # Old stack.
@@ -1402,7 +1389,7 @@ def run_rllib_example_script_experiment(
                 ]
                 print(f" R(eval)={Reval}", end="")
             print()
-            for key, value in stop.items():
+            for key, threshold in stop.items():
                 val = results
                 for k in key.split("/"):
                     try:
@@ -1410,8 +1397,8 @@ def run_rllib_example_script_experiment(
                     except KeyError:
                         val = None
                         break
-                if val is not None and val >= value:
-                    print(f"Stop criterium ({key}={value}) fulfilled!")
+                if val is not None and not np.isnan(val) and val >= threshold:
+                    print(f"Stop criterium ({key}={threshold}) fulfilled!")
                     return results
         ray.shutdown()
         return results
@@ -1585,7 +1572,7 @@ def check_reproducibilty(
         num_gpus: int(os.environ.get("RLLIB_NUM_GPUS", "0"))
         num_workers: 0 (only local workers) or
                      4 ((1) local workers + (4) remote workers)
-        num_envs_per_worker: 2
+        num_envs_per_env_runner: 2
 
     Args:
         algo_class: Algorithm class to test.
@@ -1616,7 +1603,7 @@ def check_reproducibilty(
                 # new API
                 num_gpus_per_learner_worker=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             )
-            .env_runners(num_rollout_workers=num_workers, num_envs_per_worker=2)
+            .env_runners(num_env_runners=num_workers, num_envs_per_env_runner=2)
         )
 
         for fw in framework_iterator(algo_config, **fw_kwargs):
@@ -1647,7 +1634,7 @@ def check_reproducibilty(
             # iterations).
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
-            if algo_config._enable_new_api_stack:
+            if algo_config.enable_rl_module_and_learner:
                 check(
                     results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
                     results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
@@ -1805,7 +1792,7 @@ def test_ckpt_restore(
     tf2=False,
     replay_buffer=False,
     run_restored_algorithm=True,
-    eval_workerset=False,
+    eval_env_runner_group=False,
 ):
     """Test that after an algorithm is trained, its checkpoint can be restored.
 
@@ -1820,6 +1807,8 @@ def test_ckpt_restore(
         object_store: Whether to test checkpointing with objects from the object store.
         replay_buffer: Whether to test checkpointing with replay buffers.
         run_restored_algorithm: Whether to run the restored algorithm after restoring.
+        eval_env_runner_group: Whether to also inspect the eval EnvRunnerGroup of the
+            Algorithm.
 
     """
     # config = algorithms_and_configs[algo_name].to_dict()
@@ -1875,9 +1864,9 @@ def test_ckpt_restore(
             ]._storage[42 : 42 + 42]
             check(data, new_data)
 
-        # Check, whether the eval worker sets have the same policies and
+        # Check, whether the eval EnvRunnerGroup has the same policies and
         # `policy_mapping_fn`.
-        if eval_workerset:
+        if eval_env_runner_group:
             eval_mapping_src = inspect.getsource(
                 alg1.evaluation_workers.local_worker().policy_mapping_fn
             )
@@ -2010,7 +1999,7 @@ def check_supported_spaces(
         config_copy = config.copy()
         config_copy.validate()
         # If RLModules are enabled, we need to skip a few tests for now:
-        if config_copy._enable_new_api_stack:
+        if config_copy.enable_rl_module_and_learner:
             # Skip PPO cases in which RLModules don't support the given spaces yet.
             if o_name not in rlmodule_supported_observation_spaces:
                 logger.warning(
@@ -2089,7 +2078,7 @@ def check_supported_spaces(
     if not frameworks:
         frameworks = ("tf2", "tf", "torch")
 
-    if config._enable_new_api_stack:
+    if config.enable_rl_module_and_learner:
         # Only test the frameworks that are supported by RLModules.
         frameworks = tuple(
             fw for fw in frameworks if fw in rlmodule_supported_frameworks

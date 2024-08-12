@@ -590,6 +590,9 @@ def run(
                 time.sleep(10)
         except KeyboardInterrupt:
             logger.warning("Got KeyboardInterrupt, exiting...")
+            # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
+            # from the main script.
+            raise
     return handle
 
 

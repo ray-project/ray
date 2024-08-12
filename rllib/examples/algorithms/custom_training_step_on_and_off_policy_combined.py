@@ -192,12 +192,11 @@ if __name__ == "__main__":
 
     config = (
         AlgorithmConfig()
-        # TODO (Kourosh):  Migrate this to the new RLModule / Learner API.
-        .experimental(_enable_new_api_stack=False)
+        .api_stack(enable_rl_module_and_learner=False)
         .environment("multi_agent_cartpole")
         .framework("torch" if args.torch else "tf")
         .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
-        .env_runners(num_rollout_workers=0, rollout_fragment_length=50)
+        .env_runners(num_env_runners=0, rollout_fragment_length=50)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .reporting(metrics_num_episodes_for_smoothing=30)

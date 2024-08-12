@@ -10,9 +10,9 @@ Sampling the Environment or offline data
 ========================================
 
 Data ingest via either environment rollouts or other data-generating methods
-(e.g. reading from offline files) is done in RLlib by :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` instances,
-which sit inside a :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet`
-(together with other parallel ``RolloutWorkers``) in the RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+(e.g. reading from offline files) is done in RLlib by :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances,
+which sit inside a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
+(together with other parallel ``EnvRunners``) in the RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
 (under the ``self.workers`` property):
 
 
@@ -21,15 +21,15 @@ which sit inside a :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet`
     :width: 600
     :align: left
 
-    **A typical RLlib WorkerSet setup inside an RLlib Algorithm:** Each :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet` contains
-    exactly one local :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` object and N ray remote
-    :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` (ray actors).
+    **A typical RLlib EnvRunnerGroup setup inside an RLlib Algorithm:** Each :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` contains
+    exactly one local :py:class:`~ray.rllib.env.env_runner.EnvRunner` object and N ray remote
+    :py:class:`~ray.rllib.env.env_runner.EnvRunner` (ray actors).
     The workers contain a policy map (with one or more policies), and - in case a simulator
     (env) is available - a vectorized :py:class:`~ray.rllib.env.base_env.BaseEnv`
     (containing M sub-environments) and a :py:class:`~ray.rllib.evaluation.sampler.SamplerInput` (either synchronous or asynchronous) which controls
     the environment data collection loop.
     In the online case (i.e. environment is available) as well as the offline case (i.e. no environment),
-    :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` uses the :py:meth:`~ray.rllib.evaluation.rollout_worker.RolloutWorker.sample` method to
+    :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` uses the :py:meth:`~ray.rllib.env.env_runner.EnvRunner.sample` method to
     get :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` objects for training.
 
 
@@ -145,10 +145,10 @@ Miscellaneous
 
 .. _workerset-reference-docs:
 
-WorkerSet API
--------------
+EnvRunnerGroup API
+------------------
 
-.. currentmodule:: ray.rllib.evaluation.worker_set
+.. currentmodule:: ray.rllib.env.env_runner_group
 
 Constructor
 ~~~~~~~~~~~
@@ -158,9 +158,9 @@ Constructor
     :nosignatures:
     :toctree: doc/
 
-    WorkerSet
-    WorkerSet.stop
-    WorkerSet.reset
+    EnvRunnerGroup
+    EnvRunnerGroup.stop
+    EnvRunnerGroup.reset
 
 
 Worker Orchestration
@@ -169,18 +169,18 @@ Worker Orchestration
     :nosignatures:
     :toctree: doc/
 
-    ~WorkerSet.add_workers
-    ~WorkerSet.foreach_worker
-    ~WorkerSet.foreach_worker_with_id
-    ~WorkerSet.foreach_worker_async
-    ~WorkerSet.fetch_ready_async_reqs
-    ~WorkerSet.num_in_flight_async_reqs
-    ~WorkerSet.local_worker
-    ~WorkerSet.remote_workers
-    ~WorkerSet.num_healthy_remote_workers
-    ~WorkerSet.num_healthy_workers
-    ~WorkerSet.num_remote_worker_restarts
-    ~WorkerSet.probe_unhealthy_workers
+    ~EnvRunnerGroup.add_workers
+    ~EnvRunnerGroup.foreach_worker
+    ~EnvRunnerGroup.foreach_worker_with_id
+    ~EnvRunnerGroup.foreach_worker_async
+    ~EnvRunnerGroup.fetch_ready_async_reqs
+    ~EnvRunnerGroup.num_in_flight_async_reqs
+    ~EnvRunnerGroup.local_worker
+    ~EnvRunnerGroup.remote_workers
+    ~EnvRunnerGroup.num_healthy_remote_workers
+    ~EnvRunnerGroup.num_healthy_workers
+    ~EnvRunnerGroup.num_remote_worker_restarts
+    ~EnvRunnerGroup.probe_unhealthy_workers
 
 Pass-through methods
 ~~~~~~~~~~~~~~~~~~~~
@@ -188,12 +188,12 @@ Pass-through methods
     :nosignatures:
     :toctree: doc/
 
-    ~WorkerSet.add_policy
-    ~WorkerSet.foreach_env
-    ~WorkerSet.foreach_env_with_context
-    ~WorkerSet.foreach_policy
-    ~WorkerSet.foreach_policy_to_train
-    ~WorkerSet.sync_weights
+    ~EnvRunnerGroup.add_policy
+    ~EnvRunnerGroup.foreach_env
+    ~EnvRunnerGroup.foreach_env_with_context
+    ~EnvRunnerGroup.foreach_policy
+    ~EnvRunnerGroup.foreach_policy_to_train
+    ~EnvRunnerGroup.sync_weights
 
 
 
