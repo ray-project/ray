@@ -155,8 +155,6 @@ aws-sam-translator==1.81.0
     # via cfn-lint
 aws-xray-sdk==2.12.1
     # via moto
-ax-platform==0.3.2
-    # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 azure-cli-core==2.62.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 azure-cli-telemetry==1.1.0
@@ -2122,15 +2120,6 @@ sphinxcontrib-qthelp==1.0.8
     # via sphinx
 sphinxcontrib-serializinghtml==1.1.10
     # via sphinx
-sqlalchemy==1.4.17
-    # via
-    #   aim
-    #   alembic
-    #   ax-platform
-    #   jupyter-cache
-    #   mlflow
-    #   optuna
-    #   pymars
 sqlglot==25.6.1
     # via fugue
 sqlparse==0.5.1
