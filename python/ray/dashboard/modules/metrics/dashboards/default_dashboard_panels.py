@@ -410,8 +410,6 @@ DEFAULT_GRAFANA_PANELS = [
         fill=0,
         stack=False,
     ),
-
-
 ]
 
 
