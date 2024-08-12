@@ -2,7 +2,6 @@ import tree
 from typing import Dict
 
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.algorithms.cql.cql_learner import CQLLearner
 from ray.rllib.algorithms.sac.sac_learner import (
     LOGPS_KEY,
     QF_LOSS_KEY,
@@ -26,7 +25,7 @@ from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 torch, nn = try_import_torch()
 
 
-class CQLTorchLearner(SACTorchLearner, CQLLearner):
+class CQLTorchLearner(SACTorchLearner):
     @override(SACTorchLearner)
     def compute_loss_for_module(
         self,
@@ -38,7 +37,7 @@ class CQLTorchLearner(SACTorchLearner, CQLLearner):
     ) -> TensorType:
 
         # TODO (simon, sven): Add upstream information pieces into this timesteps
-        # call arg to Learner.update_...().
+        #  call arg to Learner.update_...().
         self.metrics.log_value(
             (ALL_MODULES, TRAINING_ITERATION),
             1,
