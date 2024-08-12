@@ -79,23 +79,6 @@ class CQLTorchLearner(SACTorchLearner, CQLLearner):
         # Get the current batch size. Note, this size might vary in case the
         # last batch contains less than `train_batch_size_per_learner` examples.
         batch_size = batch[Columns.OBS].shape[0]
-        # Optimize the hyperparameter `alpha` by using the current policy evaluated
-        # at the current state. Note further, we minimize here, while the original
-        # equation in Haarnoja et al. (2018) considers maximization.
-        if batch_size == config.train_batch_size_per_learner:
-            optim = self.get_optimizer(module_id=module_id, optimizer_name="alpha")
-            optim.zero_grad(set_to_none=True)
-            alpha_loss.backward()
-            # Add the gradients to the gradient buffer that is evaluated later in
-            # `self.apply_gradients`.
-            self.grads.update(
-                {
-                    pid: p.grad.clone()
-                    for pid, p in self.filter_param_dict_for_optimizer(
-                        self._params, optim
-                    ).items()
-                }
-            )
 
         # Get the current alpha.
         alpha = torch.exp(self.curr_log_alpha[module_id])
@@ -117,23 +100,6 @@ class CQLTorchLearner(SACTorchLearner, CQLLearner):
             # training iterations.
             bc_logps_curr = action_dist_curr.logp(batch[Columns.ACTIONS])
             actor_loss = torch.mean(alpha.detach() * logps_curr - bc_logps_curr)
-
-        # Optimize the SAC actor loss.
-        if batch_size == config.train_batch_size_per_learner:
-            optim = self.get_optimizer(module_id=module_id, optimizer_name="policy")
-            optim.zero_grad()
-            # Retain the graph b/c we want to step a nother time through it.
-            actor_loss.backward(retain_graph=True)
-            # Add the gradients to the gradient buffer that is used
-            # in `self.apply_gradients`.
-            self.grads.update(
-                {
-                    pid: p.grad.clone()
-                    for pid, p in self.filter_param_dict_for_optimizer(
-                        self._params, optim
-                    ).items()
-                }
-            )
 
         # The critic loss is composed of the standard SAC Critic L2 loss and the
         # CQL entropy loss.
@@ -281,25 +247,6 @@ class CQLTorchLearner(SACTorchLearner, CQLLearner):
         critic_loss = sac_critic_loss + cql_loss
         # TODO (simon): Add here also the critic loss for the twin-Q
 
-        # If the batch size is large enough optimize the critic.
-        if batch_size == config.train_batch_size_per_learner:
-            critic_optim = self.get_optimizer(module_id=module_id, optimizer_name="qf")
-            critic_optim.zero_grad(set_to_none=True)
-            critic_loss.backward(retain_graph=True)
-            # Add the gradients to the gradient buffer that is evaluated
-            # in `self.apply_gradients` later.
-            self.grads.update(
-                {
-                    pid: self.grads[pid] + p.grad.clone()
-                    if pid in self.grads
-                    else p.grad.clone()
-                    for pid, p in self.filter_param_dict_for_optimizer(
-                        self._params, critic_optim
-                    ).items()
-                }
-            )
-            # TODO (simon): Also optimize the twin-Q.
-
         total_loss = actor_loss + critic_loss + alpha_loss
         # TODO (simon): Add Twin Q losses
 
@@ -336,33 +283,33 @@ class CQLTorchLearner(SACTorchLearner, CQLLearner):
     def compute_gradients(
         self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
-        """Returns the collected gradients from loss computation.
 
-        Note, the gradients for each module are collected in the
-        `compute_loss_for_module` method. CQL uses similar to SAC multiple learners
-        and multiple passes through the networks which need to be recorded
-        step-wise.
+        grads = {}
+        for module_id in set(loss_per_module.keys()) - {ALL_MODULES}:
+            # Loop through optimizers registered for this module.
+            for optim_name, optim in self.get_optimizers_for_module(module_id):
+                # Zero the gradients. Note, we need to reset the gradients b/c
+                # each component for a module operates on the same graph.
+                optim.zero_grad(set_to_none=True)
 
-        Dict mapping module IDs to their individual total loss
-                terms, computed by the individual `compute_loss_for_module()` calls.
-                The overall total loss (sum of loss terms over all modules) is stored
-                under `loss_per_module[ALL_MODULES]`.
-            **kwargs: Forward compatibility kwargs.
+                # Compute the gradients for the component and module.
+                self.metrics.peek((module_id, optim_name + "_loss")).backward(
+                    retain_graph=True
+                )
+                # Store the gradients for the component and module.
+                # TODO (simon): Check another time the graph for overlapping
+                # gradients.
+                grads.update(
+                    {
+                        pid: grads[pid] + p.grad.clone()
+                        if pid in grads
+                        else p.grad.clone()
+                        for pid, p in self.filter_param_dict_for_optimizer(
+                            self._params, optim
+                        ).items()
+                    }
+                )
 
-        Returns:
-            Returns:
-            The gradients in the same (flat) format as self._params. Note that all
-            top-level structures, such as module IDs, will not be present anymore in
-            the returned dict. It will merely map parameter tensor references to their
-            respective gradient tensors.
-        """
-        # TODO (simon): Check, if we can use a similar setup to SAC and also make the
-        # backward passes all here.
-        # Return here simply the buffered gradients from `compute_loss_for_module`.
-        grads = self.grads
-        # Reset the gradient buffer.
-        self.grads = {}
-        # Finally, return the gradients.
         return grads
 
     def _repeat_tensor(self, tensor, repeat):

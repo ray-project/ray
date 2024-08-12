@@ -12,14 +12,9 @@ class CQLLearner(SACLearner):
         # for `alpha`` and the target entropy defined.
         super().build()
 
-        # Set up the gradient buffer to store gradients to apply
-        # them later in `self.apply_gradients`.
-        self.grads = {}
-
-        # Log the training iteration to switch from behavior cloning to improving
-        # the policy.
-        # TODO (simon, sven): Add upstream information pieces into this timesteps
-        # call arg to Learner.update_...().
+        # Add a metric to keep track of training iterations to
+        # determine when switching the actor loss from behavior
+        # cloning to SAC.
         self.metrics.log_value(
             (ALL_MODULES, TRAINING_ITERATION), float("nan"), window=1
         )
