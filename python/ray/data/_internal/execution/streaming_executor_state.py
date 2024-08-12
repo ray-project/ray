@@ -262,9 +262,10 @@ class OpState:
         desc = f"- {self.op.name}: {active} active, {queued} queued"
         if (
             self.op._in_task_submission_backpressure
-            and time.perf_counter()
-            - self.op.metrics._task_submission_backpressure_start_time
-            > 15
+            or resource_manager.op_resource_allocator.max_task_output_bytes_to_read(
+                self.op
+            )
+            == 0
         ):
             desc += " 🚧"
         desc += f", [{resource_manager.get_op_usage_str(self.op)}]"
