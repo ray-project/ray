@@ -23,7 +23,7 @@ assert (
 
 
 base_path = Path(__file__).parents[2]
-data_path = base_path.joinpath("tests/data/pendulum/pendulum-v1_enormous")
+data_path = base_path / "tests/data/pendulum/pendulum-v1_enormous"
 
 config = (
     CQLConfig()
