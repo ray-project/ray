@@ -1,4 +1,3 @@
-import math
 import tree
 from typing import Dict
 
@@ -42,10 +41,8 @@ class CQLTorchLearner(SACTorchLearner, CQLLearner):
         # call arg to Learner.update_...().
         self.metrics.log_value(
             (ALL_MODULES, TRAINING_ITERATION),
-            0
-            if math.isnan(self.metrics.peek((ALL_MODULES, TRAINING_ITERATION)))
-            else self.metrics.peek((ALL_MODULES, TRAINING_ITERATION)) + 1,
-            window=1,
+            1,
+            reduce="sum",
         )
         # Get the train action distribution for the current policy and current state.
         # This is needed for the policy (actor) loss and the `alpha`` loss.
@@ -84,7 +81,10 @@ class CQLTorchLearner(SACTorchLearner, CQLLearner):
         alpha = torch.exp(self.curr_log_alpha[module_id])
         # Start training with behavior cloning and turn to the classic Soft-Actor Critic
         # after `bc_iters` of training iterations.
-        if self.metrics.peek((ALL_MODULES, TRAINING_ITERATION)) >= config.bc_iters:
+        if (
+            self.metrics.peek((ALL_MODULES, TRAINING_ITERATION), default=0)
+            >= config.bc_iters
+        ):
             # Calculate current Q-values.
             batch_curr = {
                 Columns.OBS: batch[Columns.OBS],
