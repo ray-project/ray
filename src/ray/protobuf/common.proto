@@ -322,6 +322,8 @@ message NodeDeathInfo {
   string reason_message = 2;
 }
 
+// Note: ActorDeathCause is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message ActorDeathCause {
   oneof context {
     // Indicates that this actor is marked as DEAD due to actor creation task failure.
