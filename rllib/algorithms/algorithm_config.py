@@ -2441,8 +2441,8 @@ class AlgorithmConfig(_Config):
                 schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
                 contains already the names in this schema, no `input_read_schema` is
                 needed.
-            intput_compress_columns: What input columns are compressed with LZ4 in the
-                intput data. If data is stored in `RLlib`'s `SingleAgentEpisode` (
+            input_compress_columns: What input columns are compressed with LZ4 in the
+                input data. If data is stored in `RLlib`'s `SingleAgentEpisode` (
                 `MultiAgentEpisode` not supported, yet).
             map_batches_kwargs: `kwargs` for the `map_batches` method. These will be
                 passed into the `ray.data.Dataset.map_batches` method when sampling

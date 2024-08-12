@@ -120,11 +120,15 @@ class OfflinePreLearner:
             self._module = module_spec.build()
             self._module.set_state(module_state)
 
-        self.spaces = spaces or (None, None)
+        # Store the observation and action space if defined, otherwise we
+        # set them to `None`. Note, if `None` the `convert_from_jsonable`
+        # will not convert the input space samples.
+        self.observation_space, self.action_space = spaces or (None, None)
+
         # Build the learner connector pipeline.
         self._learner_connector = self.config.build_learner_connector(
-            input_observation_space=self.spaces[0],
-            input_action_space=self.spaces[1],
+            input_observation_space=self.observation_space,
+            input_action_space=self.action_space,
         )
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
@@ -142,8 +146,8 @@ class OfflinePreLearner:
             schema=SCHEMA | self.config.input_read_schema,
             finalize=False,
             input_compress_columns=self.config.input_compress_columns,
-            observation_space=self.spaces[0],
-            action_space=self.spaces[1],
+            observation_space=self.observation_space,
+            action_space=self.action_space,
         )
         # TODO (simon): Make synching work. Right now this becomes blocking or never
         # receives weights. Learners appear to be non accessable via other actors.
