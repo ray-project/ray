@@ -233,8 +233,6 @@ botocore==1.29.76
     #   boto3
     #   moto
     #   s3transfer
-botorch==0.8.5
-    # via ax-platform
 braceexpand==0.1.7
     # via webdataset
 bracex==2.4
@@ -1507,8 +1505,6 @@ platformdirs==3.11.0
     #   snowflake-connector-python
     #   virtualenv
     #   wandb
-plotly==5.18.0
-    # via ax-platform
 pluggy==1.3.0
     # via pytest
 polars==0.14.21
@@ -2353,8 +2349,6 @@ triad==0.9.8
     #   qpd
 trustme==0.9.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-typeguard==2.13.3
-    # via ax-platform
 typer==0.12.3
     # via -r /ray/ci/../python/requirements.txt
 types-python-dateutil==2.9.0.20240316
