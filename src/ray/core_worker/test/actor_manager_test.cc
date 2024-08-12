@@ -468,6 +468,36 @@ TEST_F(ActorManagerTest, TestActorDeathCauseBackwardCompatibility) {
   // so this test verifies all fields can be populated
 
   rpc::RayException ray_exception;
+  rpc::ActorDeathCause actor_death_cause1;
+  ray_exception.set_language(rpc::Language::CPP);
+  ray_exception.set_formatted_exception_string("exception string");
+  std::string set_serialized_exception_byte_data = "serialized exception bytes data";
+  ray_exception.set_serialized_exception(set_serialized_exception_byte_data);
+  actor_death_cause1.mutable_creation_task_failure_context()->CopyFrom(ray_exception);
+
+  rpc::RuntimeEnvFailedContext runtime_env_failed_context;
+  rpc::ActorDeathCause actor_death_cause2;
+  runtime_env_failed_context.set_error_message("error message string");
+  actor_death_cause2.mutable_runtime_env_failed_context()->CopyFrom(runtime_env_failed_context);
+
+  rpc::ActorDiedErrorContext actor_died_context;
+  rpc::NodeDeathInfo node_death_info;
+  rpc::ActorDeathCause actor_death_cause3;
+  node_death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+  node_death_info.set_reason_message("reason message string");
+  actor_died_context.set_error_message("error message string");
+  actor_died_context.set_owner_id("ownerId1");
+  actor_died_context.set_owner_ip_address("127.0.0.1");
+  actor_died_context.set_node_ip_address("127.0.0.1");
+  actor_died_context.set_pid(123);
+  actor_died_context.set_name("actor_name");
+  actor_died_context.set_ray_namespace("actor_ray_namespace");
+  actor_died_context.set_class_name("actor_class_name");
+  actor_died_context.set_actor_id("actorId1");
+  actor_died_context.set_never_started(False);
+  actor_died_context.mutable_node_death_info()->CopyFrom(node_death_info);
+  actor_death_cause3.mutable_actor_died_error_context()->CopyFrom(actor_died_context);
+
 
 
   // std::string ray_namespace = "default_ray_namespace";
