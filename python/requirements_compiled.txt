@@ -983,10 +983,6 @@ lightgbm==3.3.5
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 lightning-utilities==0.11.2
     # via pytorch-lightning
-linear-operator==0.4.0
-    # via
-    #   botorch
-    #   gpytorch
 llvmlite==0.42.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
