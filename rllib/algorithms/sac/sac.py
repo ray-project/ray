@@ -14,7 +14,7 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.typing import RLModuleSpecType, ResultDict
+from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType, ResultDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -82,6 +82,8 @@ class SACConfig(AlgorithmConfig):
             "critic_learning_rate": 3e-4,
             "entropy_learning_rate": 3e-4,
         }
+        self.policy_lr = 3e-5
+        self.alpha_lr = 3e-4
         self.grad_clip = None
         self.target_network_update_freq = 0
 
@@ -135,6 +137,8 @@ class SACConfig(AlgorithmConfig):
         clip_actions: Optional[bool] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         optimization_config: Optional[Dict[str, Any]] = NotProvided,
+        policy_lr: Optional[LearningRateOrSchedule] = NotProvided,
+        alpha_lr: Optional[LearningRateOrSchedule] = NotProvided,
         target_network_update_freq: Optional[int] = NotProvided,
         _deterministic_loss: Optional[bool] = NotProvided,
         _use_beta_distribution: Optional[bool] = NotProvided,
@@ -239,6 +243,38 @@ class SACConfig(AlgorithmConfig):
             optimization_config: Config dict for optimization. Set the supported keys
                 `actor_learning_rate`, `critic_learning_rate`, and
                 `entropy_learning_rate` in here.
+            policy_lr: The learning rate (float) or learning rate schedule for the
+                policy in the format of
+                [[timestep, lr-value], [timestep, lr-value], ...] In case of a
+                schedule, intermediary timesteps will be assigned to linearly
+                interpolated learning rate values. A schedule config's first entry
+                must start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Note: It is common practice (two-timescale approach) to use a smaller
+                learning rate for the policy than for the critic to ensure that the
+                critic gives adequate values for improving the policy.
+                Note: If you require a) more than one optimizer (per RLModule),
+                b) optimizer types that are not Adam, c) a learning rate schedule that
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
+                The default value is 3e-5, one decimal less than the respective
+                learning rate of the critic (see `lr`).
+            alpha_lr: The learning rate (float) or learning rate schedule for the
+                hyperparameter alpha in the format of
+                [[timestep, lr-value], [timestep, lr-value], ...] In case of a
+                schedule, intermediary timesteps will be assigned to linearly
+                interpolated learning rate values. A schedule config's first entry
+                must start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Note: If you require a) more than one optimizer (per RLModule),
+                b) optimizer types that are not Adam, c) a learning rate schedule that
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
+                The default value is 3e-4, identical to the critic learning rate (`lr`).
             target_network_update_freq: Update the target network every
                 `target_network_update_freq` steps.
             _deterministic_loss: Whether the loss should be calculated deterministically
@@ -289,6 +325,10 @@ class SACConfig(AlgorithmConfig):
             self.grad_clip = grad_clip
         if optimization_config is not NotProvided:
             self.optimization = optimization_config
+        if policy_lr is not NotProvided:
+            self.policy_lr = policy_lr
+        if alpha_lr is not NotProvided:
+            self.alpha_lr = alpha_lr
         if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
         if _deterministic_loss is not NotProvided:

@@ -86,7 +86,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             optimizer_name="policy",
             optimizer=optim_actor,
             params=params_actor,
-            lr_or_lr_schedule=config.lr,
+            lr_or_lr_schedule=config.policy_lr,
         )
 
         # Define the optimizer for the temperature.
@@ -97,7 +97,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             optimizer_name="alpha",
             optimizer=optim_temperature,
             params=[temperature],
-            lr_or_lr_schedule=config.lr,
+            lr_or_lr_schedule=config.alpha_lr,
         )
 
     @override(DQNRainbowTorchLearner)

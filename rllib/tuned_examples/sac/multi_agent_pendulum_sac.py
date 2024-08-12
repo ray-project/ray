@@ -28,6 +28,8 @@ config = (
     .training(
         initial_alpha=1.001,
         lr=8e-4,
+        policy_lr=3e-5,
+        alpha_lr=8e-4,
         target_entropy="auto",
         n_step=1,
         tau=0.005,
