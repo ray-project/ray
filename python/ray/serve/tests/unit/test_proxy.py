@@ -23,19 +23,104 @@ from ray.serve.generated import serve_pb2
 from ray.serve.grpc_util import RayServegRPCContext
 
 
-async def _consume_proxy_generator(
-    gen: ResponseGenerator,
-) -> Tuple[ResponseStatus, List]:
-    status = None
-    messages = []
-    async for message in gen:
-        if isinstance(message, ResponseStatus):
-            status = message
-        else:
-            messages.append(message)
+class FakeRef:
+    def __init__(self, messages=()):
+        self.called = False
+        self.messages = messages
 
-    assert status is not None
-    return status, messages
+    def _on_completed(self, func):
+        pass
+
+    def is_nil(self):
+        return False
+
+    def __await__(self):
+        future = asyncio.Future()
+        future.set_result(self)
+        result = yield from future
+        if self.called:
+            return pickle.dumps(self.messages)
+        self.called = True
+        return result
+
+    def _to_object_ref(self, *args, **kwargs):
+        return self
+
+    def cancel(self):
+        pass
+
+
+class FakeActorHandle:
+    @property
+    def receive_asgi_messages(self):
+        class FakeReceiveASGIMessagesActorMethod:
+            def remote(self, request_id):
+                return FakeRef()
+
+        return FakeReceiveASGIMessagesActorMethod()
+
+
+class FakeGrpcHandle:
+    def __init__(self, streaming: bool, grpc_context: RayServegRPCContext):
+        self.deployment_id = DeploymentID(
+            name="fake_deployment_name", app_name="fake_app_name"
+        )
+        self.streaming = streaming
+        self.grpc_context = grpc_context
+
+    async def remote(self, *args, **kwargs):
+        def unary_call():
+            return "hello world"
+
+        def streaming_call():
+            for i in range(10):
+                yield f"hello world: {i}"
+
+        return (
+            self.grpc_context,
+            unary_call() if not self.streaming else streaming_call(),
+        )
+
+    def options(self, *args, **kwargs):
+        return self
+
+    @property
+    def deployment_name(self) -> str:
+        return self.deployment_id.name
+
+    @property
+    def app_name(self) -> str:
+        return self.deployment_id.app_name
+
+
+class FakeProxyRouter(ProxyRouter):
+    def __init__(self, *args, **kwargs):
+        self.route = None
+        self.handle = None
+        self.app_is_cross_language = None
+
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
+        pass
+
+    def get_handle_for_endpoint(self, *args, **kwargs):
+        if (
+            self.route is None
+            and self.handle is None
+            and self.app_is_cross_language is None
+        ):
+            return None
+
+        return self.route, self.handle, self.app_is_cross_language
+
+    def match_route(self, *args, **kwargs):
+        if (
+            self.route is None
+            and self.handle is None
+            and self.app_is_cross_language is None
+        ):
+            return None
+
+        return self.route, self.handle, self.app_is_cross_language
 
 
 class FakeProxyRequest(ProxyRequest):
@@ -86,95 +171,6 @@ class FakeProxyRequest(ProxyRequest):
         return self._is_health_request
 
 
-class FakeRef:
-    def __init__(self, messages=()):
-        self.called = False
-        self.messages = messages
-
-    def _on_completed(self, func):
-        pass
-
-    def is_nil(self):
-        return False
-
-    def __await__(self):
-        future = asyncio.Future()
-        future.set_result(self)
-        result = yield from future
-        if self.called:
-            return pickle.dumps(self.messages)
-        self.called = True
-        return result
-
-    def _to_object_ref(self, *args, **kwargs):
-        return self
-
-    def cancel(self):
-        pass
-
-
-class FakeHttpReceive:
-    def __init__(self, messages=None):
-        self.messages = messages or []
-
-    async def __call__(self):
-        while True:
-            if self.messages:
-                return self.messages.pop()
-            await asyncio.sleep(0.1)
-
-
-class FakeHttpSend:
-    def __init__(self):
-        self.messages = []
-
-    async def __call__(self, message):
-        self.messages.append(message)
-
-
-class FakeActorHandle:
-    @property
-    def receive_asgi_messages(self):
-        class FakeReceiveASGIMessagesActorMethod:
-            def remote(self, request_id):
-                return FakeRef()
-
-        return FakeReceiveASGIMessagesActorMethod()
-
-
-class FakeGrpcHandle:
-    def __init__(self, streaming: bool, grpc_context: RayServegRPCContext):
-        self.deployment_id = DeploymentID(
-            name="fake_deployment_name", app_name="fake_app_name"
-        )
-        self.streaming = streaming
-        self.grpc_context = grpc_context
-
-    async def remote(self, *args, **kwargs):
-        def unary_call():
-            return "hello world"
-
-        def streaming_call():
-            for i in range(10):
-                yield f"hello world: {i}"
-
-        return (
-            self.grpc_context,
-            unary_call() if not self.streaming else streaming_call(),
-        )
-
-    def options(self, *args, **kwargs):
-        return self
-
-    @property
-    def deployment_name(self) -> str:
-        return self.deployment_id.name
-
-    @property
-    def app_name(self) -> str:
-        return self.deployment_id.app_name
-
-
 class FakeHTTPHandle:
     def __init__(self, messages):
         self.deployment_id = DeploymentID(
@@ -197,34 +193,38 @@ class FakeHTTPHandle:
         return self.deployment_id.app_name
 
 
-class FakeProxyRouter(ProxyRouter):
-    def __init__(self, *args, **kwargs):
-        self.route = None
-        self.handle = None
-        self.app_is_cross_language = None
+class FakeHttpReceive:
+    def __init__(self, messages=None):
+        self.messages = messages or []
 
-    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        pass
+    async def __call__(self):
+        while True:
+            if self.messages:
+                return self.messages.pop()
+            await asyncio.sleep(0.1)
 
-    def get_handle_for_endpoint(self, *args, **kwargs):
-        if (
-            self.route is None
-            and self.handle is None
-            and self.app_is_cross_language is None
-        ):
-            return None
 
-        return self.route, self.handle, self.app_is_cross_language
+class FakeHttpSend:
+    def __init__(self):
+        self.messages = []
 
-    def match_route(self, *args, **kwargs):
-        if (
-            self.route is None
-            and self.handle is None
-            and self.app_is_cross_language is None
-        ):
-            return None
+    async def __call__(self, message):
+        self.messages.append(message)
 
-        return self.route, self.handle, self.app_is_cross_language
+
+async def _consume_proxy_generator(
+    gen: ResponseGenerator,
+) -> Tuple[ResponseStatus, List]:
+    status = None
+    messages = []
+    async for message in gen:
+        if isinstance(message, ResponseStatus):
+            status = message
+        else:
+            messages.append(message)
+
+    assert status is not None
+    return status, messages
 
 
 class TestgRPCProxy:
