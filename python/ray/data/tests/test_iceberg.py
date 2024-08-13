@@ -3,6 +3,7 @@ import random
 
 import pyarrow as pa
 import pytest
+from packaging.version import Version
 from pkg_resources import parse_version
 from pyiceberg import catalog as pyi_catalog
 from pyiceberg import expressions as pyi_expr
@@ -29,7 +30,7 @@ _CATALOG_KWARGS = {
 }
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=True, scope="function")
 def pyiceberg_full_mock(monkeypatch):
     from pyiceberg.catalog.sql import SqlCatalog
 
@@ -99,141 +100,161 @@ def pyiceberg_full_mock(monkeypatch):
     table.delete(delete_filter=pyi_expr.GreaterThanOrEqual("col_a", 101))
 
 
-class TestReadIceberg:
-    def test_get_catalog(self):
-        # NOTE: Iceberg only works with PyArrow 9 or above.
-        pyarrow_version = _get_pyarrow_version()
-        if pyarrow_version is not None:
-            pyarrow_version = parse_version(pyarrow_version)
-        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-            return
+@pytest.mark.skipif(
+    Version(pa.__version__) < Version("9.0.0"),
+    reason="PyIceberg depends on pyarrow>=9.0.0",
+)
+def test_get_catalog(monkeypatch):
+    # NOTE: Iceberg only works with PyArrow 9 or above.
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        return
 
-        iceberg_ds = IcebergDatasource(
-            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-            catalog_kwargs=_CATALOG_KWARGS.copy(),
-        )
-        catalog = iceberg_ds._get_catalog()
-        assert catalog.name == _CATALOG_NAME
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    catalog = iceberg_ds._get_catalog()
+    assert catalog.name == _CATALOG_NAME
 
-    def test_plan_files(self):
-        # NOTE: Iceberg only works with PyArrow 9 or above.
-        pyarrow_version = _get_pyarrow_version()
-        if pyarrow_version is not None:
-            pyarrow_version = parse_version(pyarrow_version)
-        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-            return
 
-        iceberg_ds = IcebergDatasource(
-            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-            catalog_kwargs=_CATALOG_KWARGS.copy(),
-        )
-        plan_files = iceberg_ds.plan_files
-        assert len(plan_files) == 10
+@pytest.mark.skipif(
+    Version(pa.__version__) < Version("9.0.0"),
+    reason="PyIceberg depends on pyarrow>=9.0.0",
+)
+def test_plan_files(monkeypatch):
+    # NOTE: Iceberg only works with PyArrow 9 or above.
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        return
 
-    def test_chunk_plan_files(self):
-        # NOTE: Iceberg only works with PyArrow 9 or above.
-        pyarrow_version = _get_pyarrow_version()
-        if pyarrow_version is not None:
-            pyarrow_version = parse_version(pyarrow_version)
-        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-            return
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    plan_files = iceberg_ds.plan_files
+    assert len(plan_files) == 10
 
-        iceberg_ds = IcebergDatasource(
-            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-            catalog_kwargs=_CATALOG_KWARGS.copy(),
-        )
 
-        chunks = iceberg_ds._distribute_tasks_into_equal_chunks(
-            iceberg_ds.plan_files, 5
-        )
-        assert (len(c) == 2 for c in chunks)
+@pytest.mark.skipif(
+    Version(pa.__version__) < Version("9.0.0"),
+    reason="PyIceberg depends on pyarrow>=9.0.0",
+)
+def test_chunk_plan_files(monkeypatch):
+    # NOTE: Iceberg only works with PyArrow 9 or above.
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        return
 
-        chunks = iceberg_ds._distribute_tasks_into_equal_chunks(
-            iceberg_ds.plan_files, 20
-        )
-        assert (
-            sum(len(c) == 1 for c in chunks) == 10
-            and sum(len(c) == 0 for c in chunks) == 10
-        )
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
 
-    def test_get_read_tasks(self):
-        # NOTE: Iceberg only works with PyArrow 9 or above.
-        pyarrow_version = _get_pyarrow_version()
-        if pyarrow_version is not None:
-            pyarrow_version = parse_version(pyarrow_version)
-        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-            return
+    chunks = iceberg_ds._distribute_tasks_into_equal_chunks(iceberg_ds.plan_files, 5)
+    assert (len(c) == 2 for c in chunks)
 
-        iceberg_ds = IcebergDatasource(
-            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-            catalog_kwargs=_CATALOG_KWARGS.copy(),
-        )
-        read_tasks = iceberg_ds.get_read_tasks(5)
-        assert len(read_tasks) == 5
-        assert all(len(rt.metadata.input_files) == 2 for rt in read_tasks)
+    chunks = iceberg_ds._distribute_tasks_into_equal_chunks(iceberg_ds.plan_files, 20)
+    assert (
+        sum(len(c) == 1 for c in chunks) == 10
+        and sum(len(c) == 0 for c in chunks) == 10
+    )
 
-    def test_filtered_read(self):
-        # NOTE: Iceberg only works with PyArrow 9 or above.
-        pyarrow_version = _get_pyarrow_version()
-        if pyarrow_version is not None:
-            pyarrow_version = parse_version(pyarrow_version)
-        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-            return
 
-        from pyiceberg import expressions as pyi_expr
+@pytest.mark.skipif(
+    Version(pa.__version__) < Version("9.0.0"),
+    reason="PyIceberg depends on pyarrow>=9.0.0",
+)
+def test_get_read_tasks(monkeypatch):
+    # NOTE: Iceberg only works with PyArrow 9 or above.
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        return
 
-        iceberg_ds = IcebergDatasource(
-            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-            row_filter=pyi_expr.In("col_c", {1, 2, 3, 4}),
-            selected_fields=("col_b",),
-            catalog_kwargs=_CATALOG_KWARGS.copy(),
-        )
-        read_tasks = iceberg_ds.get_read_tasks(5)
-        # Should be capped to 4, as there will be only 4 files
-        assert len(read_tasks) == 4, read_tasks
-        assert all(len(rt.metadata.input_files) == 1 for rt in read_tasks)
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    read_tasks = iceberg_ds.get_read_tasks(5)
+    assert len(read_tasks) == 5
+    assert all(len(rt.metadata.input_files) == 2 for rt in read_tasks)
 
-    def test_read_basic(self):
-        # NOTE: Iceberg only works with PyArrow 9 or above.
-        pyarrow_version = _get_pyarrow_version()
-        if pyarrow_version is not None:
-            pyarrow_version = parse_version(pyarrow_version)
-        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
-            return
 
-        row_filter = pyi_expr.In("col_c", {1, 2, 3, 4, 5, 6, 7, 8})
+@pytest.mark.skipif(
+    Version(pa.__version__) < Version("9.0.0"),
+    reason="PyIceberg depends on pyarrow>=9.0.0",
+)
+def test_filtered_read(monkeypatch):
+    # NOTE: Iceberg only works with PyArrow 9 or above.
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        return
 
-        ray_ds = read_iceberg(
-            table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
-            row_filter=row_filter,
-            selected_fields=("col_a", "col_b"),
-            catalog_kwargs=_CATALOG_KWARGS.copy(),
-        )
-        table: pa.Table = pa.concat_tables(
-            (ray.get(ref) for ref in ray_ds.to_arrow_refs())
-        )
+    from pyiceberg import expressions as pyi_expr
 
-        # string -> large_string because pyiceberg by default chooses large_string
-        expected_schema = pa.schema(
-            [pa.field("col_a", pa.int32()), pa.field("col_b", pa.large_string())]
-        )
-        assert table.schema.equals(expected_schema)
+    iceberg_ds = IcebergDatasource(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        row_filter=pyi_expr.In("col_c", {1, 2, 3, 4}),
+        selected_fields=("col_b",),
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    read_tasks = iceberg_ds.get_read_tasks(5)
+    # Should be capped to 4, as there will be only 4 files
+    assert len(read_tasks) == 4, read_tasks
+    assert all(len(rt.metadata.input_files) == 1 for rt in read_tasks)
 
-        # Read the raw table from PyIceberg
-        sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
-        orig_table_p = (
-            sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
-            .scan(row_filter=row_filter, selected_fields=("col_a", "col_b"))
-            .to_pandas()
-            .sort_values(["col_a", "col_b"])
-            .reset_index(drop=True)
-        )
 
-        # Actually compare the tables now
-        table_p = (
-            ray_ds.to_pandas().sort_values(["col_a", "col_b"]).reset_index(drop=True)
-        )
-        assert orig_table_p.equals(table_p)
+@pytest.mark.skipif(
+    Version(pa.__version__) < Version("9.0.0"),
+    reason="PyIceberg depends on pyarrow>=9.0.0",
+)
+def test_read_basic(monkeypatch):
+    # NOTE: Iceberg only works with PyArrow 9 or above.
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+        return
+
+    row_filter = pyi_expr.In("col_c", {1, 2, 3, 4, 5, 6, 7, 8})
+
+    ray_ds = read_iceberg(
+        table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
+        row_filter=row_filter,
+        selected_fields=("col_a", "col_b"),
+        catalog_kwargs=_CATALOG_KWARGS.copy(),
+    )
+    table: pa.Table = pa.concat_tables((ray.get(ref) for ref in ray_ds.to_arrow_refs()))
+
+    # string -> large_string because pyiceberg by default chooses large_string
+    expected_schema = pa.schema(
+        [pa.field("col_a", pa.int32()), pa.field("col_b", pa.large_string())]
+    )
+    assert table.schema.equals(expected_schema)
+
+    # Read the raw table from PyIceberg
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    orig_table_p = (
+        sql_catalog.load_table(f"{_DB_NAME}.{_TABLE_NAME}")
+        .scan(row_filter=row_filter, selected_fields=("col_a", "col_b"))
+        .to_pandas()
+        .sort_values(["col_a", "col_b"])
+        .reset_index(drop=True)
+    )
+
+    # Actually compare the tables now
+    table_p = ray_ds.to_pandas().sort_values(["col_a", "col_b"]).reset_index(drop=True)
+    assert orig_table_p.equals(table_p)
 
 
 if __name__ == "__main__":
