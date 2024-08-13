@@ -10,6 +10,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
+    BuildOutputBlocksMapTransformFn,
     MapTransformer,
     MapTransformFn,
 )
@@ -43,7 +44,10 @@ def plan_read_parquet_fragments_op(
                 include_paths=op.include_paths,
             )
 
-    transform_fns: List[MapTransformFn] = [BlockMapTransformFn(read_fragments)]
+    transform_fns: List[MapTransformFn] = [
+        BlockMapTransformFn(read_fragments),
+        BuildOutputBlocksMapTransformFn.for_blocks(),
+    ]
     map_transformer = MapTransformer(transform_fns)
 
     return MapOperator.create(
