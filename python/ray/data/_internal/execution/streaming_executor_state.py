@@ -262,10 +262,7 @@ class OpState:
         desc = f"- {self.op.name}: {active} active, {queued} queued"
         if (
             self.op._in_task_submission_backpressure
-            or resource_manager.op_resource_allocator.max_task_output_bytes_to_read(
-                self.op
-            )
-            == 0
+            or self.op._max_task_output_bytes_to_read == 0
         ):
             desc += " 🚧"
         desc += f", [{resource_manager.get_op_usage_str(self.op)}]"
@@ -405,11 +402,11 @@ def process_completed_tasks(
     max_bytes_to_read_per_op: Dict[OpState, int] = {}
     if resource_manager.op_resource_allocator_enabled():
         for op, state in topology.items():
-            max_bytes_to_read = (
+            op._max_task_output_bytes_to_read = (
                 resource_manager.op_resource_allocator.max_task_output_bytes_to_read(op)
             )
-            if max_bytes_to_read is not None:
-                max_bytes_to_read_per_op[state] = max_bytes_to_read
+            if op._max_task_output_bytes_to_read is not None:
+                max_bytes_to_read_per_op[state] = op._max_task_output_bytes_to_read
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0

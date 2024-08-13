@@ -183,6 +183,7 @@ class PhysicalOperator(Operator):
         self._target_max_block_size = target_max_block_size
         self._started = False
         self._in_task_submission_backpressure = False
+        self._max_task_output_bytes_to_read = None
         self._metrics = OpRuntimeMetrics(self)
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
