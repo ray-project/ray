@@ -98,7 +98,6 @@ class NormalTaskSubmitter {
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
         worker_type_(worker_type),
-        actor_creator_(actor_creator),
         client_cache_(core_worker_client_pool),
         job_id_(job_id),
         lease_request_rate_limiter_(lease_request_rate_limiter),
@@ -268,9 +267,6 @@ class NormalTaskSubmitter {
 
   /// The type of this core worker process.
   const WorkerType worker_type_;
-
-  /// Interface for actor creation.
-  std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Protects task submission state below.
   absl::Mutex mu_;
