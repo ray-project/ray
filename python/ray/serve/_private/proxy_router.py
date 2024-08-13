@@ -164,7 +164,7 @@ class LongestPrefixRouter(ProxyRouter):
             return True, ""
 
         for handle in self.handles.values():
-            if handle._running_replicas_populated():
+            if handle.running_replicas_populated():
                 return True, ""
 
         return False, NO_REPLICAS_MESSAGE
@@ -237,7 +237,7 @@ class EndpointRouter(ProxyRouter):
             return True, ""
 
         for handle in self.handles.values():
-            if handle._running_replicas_populated():
+            if handle.running_replicas_populated():
                 return True, ""
 
         return False, NO_REPLICAS_MESSAGE

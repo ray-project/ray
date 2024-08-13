@@ -200,7 +200,7 @@ class _DeploymentHandleBase:
             }
         )
 
-    def _running_replicas_populated(self) -> bool:
+    def running_replicas_populated(self) -> bool:
         if self._router is None:
             return False
 

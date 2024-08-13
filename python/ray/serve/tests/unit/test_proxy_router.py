@@ -4,6 +4,8 @@ import pytest
 
 from ray.serve._private.common import DeploymentID, EndpointInfo, RequestProtocol
 from ray.serve._private.proxy_router import (
+    NO_REPLICAS_MESSAGE,
+    NO_ROUTES_MESSAGE,
     EndpointRouter,
     LongestPrefixRouter,
     ProxyRouter,
@@ -48,6 +50,7 @@ def mock_endpoint_router() -> EndpointRouter:
         def __init__(self, name: str):
             self._name = name
             self._protocol = RequestProtocol.UNDEFINED
+            self._running_replicas_populated = False
 
         def options(self, *args, **kwargs):
             return self
@@ -60,6 +63,12 @@ def mock_endpoint_router() -> EndpointRouter:
 
         def _get_or_create_router(self):
             pass
+
+        def running_replicas_populated(self) -> bool:
+            return self._running_replicas_populated
+
+        def set_running_replicas_populated(self, val: bool):
+            self._running_replicas_populated = val
 
     def mock_get_handle(name, *args, **kwargs):
         return MockHandle(name)
@@ -202,6 +211,50 @@ def test_update_routes(mocked_router, target_route1, target_route2, request):
 
     route, handle, app_is_cross_language = get_handle_function(router)(target_route2)
     assert all([route == "/endpoint2", handle == "endpoint2", app_is_cross_language])
+
+
+class TestReadyForTraffic:
+    @pytest.mark.parametrize("is_head", [False, True])
+    def test_route_table_not_populated(
+        self, mock_endpoint_router: EndpointRouter, is_head: bool
+    ):
+        ready_for_traffic, msg = mock_endpoint_router.ready_for_traffic(is_head=is_head)
+        assert not ready_for_traffic
+        assert msg == NO_ROUTES_MESSAGE
+
+    def test_head_route_table_populated_no_replicas(
+        self, mock_endpoint_router: EndpointRouter
+    ):
+        d_id = DeploymentID(name="A", app_name="B")
+        mock_endpoint_router.update_routes({d_id: EndpointInfo(route="/")})
+        mock_endpoint_router.handles[d_id].set_running_replicas_populated(False)
+
+        ready_for_traffic, msg = mock_endpoint_router.ready_for_traffic(is_head=True)
+        assert ready_for_traffic
+        assert not msg
+
+    def test_worker_route_table_populated_no_replicas(
+        self, mock_endpoint_router: EndpointRouter
+    ):
+        d_id = DeploymentID(name="A", app_name="B")
+        mock_endpoint_router.update_routes({d_id: EndpointInfo(route="/")})
+        mock_endpoint_router.handles[d_id].set_running_replicas_populated(False)
+
+        ready_for_traffic, msg = mock_endpoint_router.ready_for_traffic(is_head=False)
+        assert not ready_for_traffic
+        assert msg == NO_REPLICAS_MESSAGE
+
+    @pytest.mark.parametrize("is_head", [False, True])
+    def test_route_table_populated_with_replicas(
+        self, mock_endpoint_router: EndpointRouter, is_head: bool
+    ):
+        d_id = DeploymentID(name="A", app_name="B")
+        mock_endpoint_router.update_routes({d_id: EndpointInfo(route="/")})
+        mock_endpoint_router.handles[d_id].set_running_replicas_populated(True)
+
+        ready_for_traffic, msg = mock_endpoint_router.ready_for_traffic(is_head=is_head)
+        assert ready_for_traffic
+        assert not msg
 
 
 if __name__ == "__main__":
