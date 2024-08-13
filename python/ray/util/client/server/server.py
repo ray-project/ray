@@ -55,7 +55,7 @@ def _use_response_cache(func):
 
     @functools.wraps(func)
     def wrapper(self, request, context):
-        metadata = {k: v for k, v in context.invocation_metadata()}
+        metadata = dict(context.invocation_metadata())
         expected_ids = ("client_id", "thread_id", "req_id")
         if any(i not in metadata for i in expected_ids):
             # Missing IDs, skip caching and call underlying stub directly
@@ -455,7 +455,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             return ray_client_pb2.GetResponse(valid=False, error=cloudpickle.dumps(e))
 
     def GetObject(self, request: ray_client_pb2.GetRequest, context):
-        metadata = {k: v for k, v in context.invocation_metadata()}
+        metadata = dict(context.invocation_metadata())
         client_id = metadata.get("client_id")
         if client_id is None:
             yield ray_client_pb2.GetResponse(

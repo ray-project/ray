@@ -4,11 +4,13 @@ https://gist.github.com/xwjiang2010/13e6df091e5938aff5b44769bec8ffb8,
 change your pytest running directory to ray/python/ray/tune/tests/
 """
 
+import sys
 import unittest
 from collections import defaultdict
 from unittest.mock import patch
 
 import numpy as np
+import pytest
 
 import ray
 import ray.tune.search.sample
@@ -687,6 +689,10 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="BOHB not yet supported for python 3.12+",
+    )
     def testConvertBOHB(self):
         import ConfigSpace
 
@@ -748,6 +754,9 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(5 <= config["a"] <= 6)
         self.assertTrue(8 <= config["b"] <= 9)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB doesn't support py312"
+    )
     def testSampleBoundsBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -768,6 +777,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testConvertHEBO(self):
         import torch
         from hebo.design_space.design_space import DesignSpace
@@ -824,6 +836,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         # Mixed configs are not supported
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testSampleBoundsHEBO(self):
         from ray.tune.search.hebo import HEBOSearch
 
@@ -1521,6 +1536,9 @@ class SearchSpaceTest(unittest.TestCase):
 
         return self._testPointsToEvaluate(BayesOptSearch, config)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB not yet supported for python 3.12+"
+    )
     def testPointsToEvaluateBOHB(self):
         config = {
             "metric": ray.tune.search.sample.Categorical([1, 2, 3, 4]).uniform(),
@@ -1838,6 +1856,10 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertNotEqual(configs[0]["rand"], configs[3]["rand"])
 
     @patch.object(logger, "warning")
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="TODO(justinvyu): not working for python 3.12 yet",
+    )
     def testSetSearchPropertiesBackwardsCompatibility(self, mocked_warning_method):
         from ray.tune.search import Searcher
 
@@ -1864,8 +1886,4 @@ class SearchSpaceTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

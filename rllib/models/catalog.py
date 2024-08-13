@@ -385,7 +385,7 @@ class ModelCatalog:
                 dist_cls = (
                     TorchMultiCategorical if framework == "torch" else MultiCategorical
                 )
-                num_cats = int(np.product(action_space.shape))
+                num_cats = int(np.prod(action_space.shape))
                 return (
                     partial(
                         dist_cls,
@@ -495,7 +495,7 @@ class ModelCatalog:
                     size += 1
                 else:
                     all_discrete = False
-                    size += np.product(flat_action_space[i].shape)
+                    size += np.prod(flat_action_space[i].shape)
             size = int(size)
             return dl_lib.int32 if all_discrete else dl_lib.float32, (None, size)
         else:
