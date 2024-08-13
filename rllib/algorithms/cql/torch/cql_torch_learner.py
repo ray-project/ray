@@ -37,7 +37,7 @@ class CQLTorchLearner(SACTorchLearner):
     ) -> TensorType:
 
         # TODO (simon, sven): Add upstream information pieces into this timesteps
-        # call arg to Learner.update_...().
+        #  call arg to Learner.update_...().
         self.metrics.log_value(
             (ALL_MODULES, TRAINING_ITERATION),
             1,

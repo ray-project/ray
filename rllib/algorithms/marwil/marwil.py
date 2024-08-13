@@ -198,7 +198,7 @@ class MARWILConfig(AlgorithmConfig):
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use 'torch' instead."
             )
 
     @override(AlgorithmConfig)
@@ -211,7 +211,8 @@ class MARWILConfig(AlgorithmConfig):
             return MARWILTorchLearner
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use 'torch'."
+                f"The framework {self.framework_str} is not supported. "
+                "Use 'torch' instead."
             )
 
     @override(AlgorithmConfig)
@@ -352,7 +353,7 @@ class MARWIL(Algorithm):
         elif self.config.enable_rl_module_and_learner:
             raise ValueError(
                 "`enable_rl_module_and_learner=True`. Hybrid stack is not "
-                "is not supported for MARWIL. Either use the old stack with "
+                "supported for MARWIL. Either use the old stack with "
                 "`ModelV2` or the new stack with `RLModule`. You can enable "
                 "the new stack by setting both, `enable_rl_module_and_learner` "
                 "and `enable_env_runner_and_connector_v2` to `True`."
