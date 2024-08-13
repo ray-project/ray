@@ -757,6 +757,8 @@ def read_parquet(
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
     """
+    _validate_shuffle_arg(shuffle)
+
     if meta_provider is None:
         meta_provider = get_parquet_metadata_provider(override_num_blocks)
     arrow_parquet_args = _resolve_parquet_args(
@@ -3242,3 +3244,11 @@ def _get_num_output_blocks(
     elif override_num_blocks is not None:
         parallelism = override_num_blocks
     return parallelism
+
+
+def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
+    if shuffle not in [None, "files"]:
+        raise ValueError(
+            f"Invalid value for 'shuffle': {shuffle}. "
+            "Valid values are None, 'files'."
+        )
