@@ -101,6 +101,8 @@ def read_parquet(
     concurrency: Optional[int] = None,
     **arrow_parquet_args,
 ) -> Dataset:
+    _validate_shuffle_arg(shuffle)
+
     if ray_remote_args is None:
         ray_remote_args = {}
 
@@ -695,3 +697,11 @@ def read_files(
         ),
         logical_plan=logical_plan,
     )
+
+
+def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
+    if shuffle not in [None, "files"]:
+        raise ValueError(
+            f"Invalid value for 'shuffle': {shuffle}. "
+            "Valid values are None, 'files'."
+        )
