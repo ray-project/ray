@@ -29,7 +29,7 @@ class _DAGNodeOperation:
         Args:
             local_idx: The index of the task that this operation belongs to
                 in the actor's ExecutableTask list. The index is not the same
-                as bind_index, but there are positive correlations between the two.
+                as bind_index because there may be more tasks bound to an actor than tasks that appear in the current compiled DAG.
             operation_type: The type of operation to perform.
         """
         self.local_idx = local_idx
