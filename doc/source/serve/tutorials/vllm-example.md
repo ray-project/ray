@@ -33,13 +33,13 @@ The Serve code is as follows:
 Use the following code to start the Serve app:
 ```bash
 # on GPU
-serve run llm:build_app model="NousResearch/Meta-Llama-3-8B-Instruct" tensor-parallel-size=2 device="GPU"
+serve run llm:build_app model="NousResearch/Meta-Llama-3-8B-Instruct" tensor-parallel-size=2 accelerator="GPU"
 # on HPU
-serve run llm:build_app model="NousResearch/Meta-Llama-3-8B-Instruct" tensor-parallel-size=2 device="HPU"
+serve run llm:build_app model="NousResearch/Meta-Llama-3-8B-Instruct" tensor-parallel-size=2 accelerator="HPU"
 ```
 
 :::{note}
-This example uses Tensor Parallel size of 2, which means Ray Serve deploys the model to Ray Actors across 2 GPUs or HPUs (based on the device type) using placement groups.
+This example uses Tensor Parallel size of 2, which means Ray Serve deploys the model to Ray Actors across 2 GPUs or HPUs (based on the accelerator type) using placement groups.
 :::
 
 
