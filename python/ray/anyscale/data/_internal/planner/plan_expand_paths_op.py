@@ -126,7 +126,13 @@ def create_expand_paths_operator(
         input_op,
         name="ExpandPaths",
         target_max_block_size=None,
-        ray_remote_args={"num_cpus": 0.5},
+        ray_remote_args={
+            "num_cpus": 0.5,
+            # This is operator is extremely fast. If we don't unblock backpressure, this
+            # operator gets bottlenecked by the Ray Data scheduler. This can prevent Ray
+            # Data from launching enough read tasks.
+            "_generator_backpressure_num_objects": -1,
+        },
     )
 
 

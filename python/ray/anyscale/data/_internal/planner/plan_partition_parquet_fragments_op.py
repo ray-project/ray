@@ -143,5 +143,11 @@ def create_partition_parquet_fragments_operator(
         name="PartitionParquetFragments",
         target_max_block_size=None,
         compute_strategy=TaskPoolStrategy(MAX_NUM_PARTITION_TASKS),
-        ray_remote_args={"num_cpus": 0.5},
+        ray_remote_args={
+            "num_cpus": 0.5,
+            # This is operator is extremely fast. If we don't unblock backpressure, this
+            # operator gets bottlenecked by the Ray Data scheduler. This can prevent Ray
+            # Data from launching enough read tasks.
+            "_generator_backpressure_num_objects": -1,
+        },
     )
