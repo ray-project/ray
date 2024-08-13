@@ -151,7 +151,7 @@ class CQLTorchLearner(SACTorchLearner):
         td_error = torch.abs(q_selected - q_selected_target)
         # Calculate a TD-error for twin-Q values, if needed.
         if config.twin_q:
-            td_error += torch.abs(q_twin_selected, q_selected_target)
+            td_error += torch.abs(q_twin_selected - q_selected_target)
             # Rescale the TD error
             td_error *= 0.5
 
