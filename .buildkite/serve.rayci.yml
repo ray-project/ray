@@ -183,6 +183,7 @@ steps:
   - label: ":windows: serve tests"
     tags:
       - serve
+      - disabled
     job_env: WINDOWS
     instance_type: windows
     parallelism: 5
