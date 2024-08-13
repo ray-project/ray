@@ -230,7 +230,7 @@ if setup_spec.type == SetupType.RAY:
     pyarrow_dep = "pyarrow >= 6.0.1"
     setup_spec.extras = {
         "adag": [
-            "cupy-cuda12x>=13.2.0; sys_platform != 'darwin'",
+            "cupy-cuda12x; sys_platform != 'darwin'",
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:

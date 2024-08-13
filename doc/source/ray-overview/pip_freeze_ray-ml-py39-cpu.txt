@@ -91,7 +91,7 @@ contourpy==1.1.1
 crc32c==2.3
 crcmod==1.7
 cryptography==38.0.1
-cupy-cuda12x>=13.2.0
+cupy-cuda12x==13.1.0
 cycler==0.12.1
 Cython==0.29.37
 dask==2022.10.1
