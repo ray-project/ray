@@ -46,6 +46,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci/doc:cmd_build
+      - sleep 18000
     depends_on: docbuild
     job_env: docbuild-py3.12
 
