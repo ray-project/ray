@@ -248,10 +248,15 @@ Policy utilities
 Other utilities
 ~~~~~~~~~~~~~~~
 
-.. currentmodule:: ray.rllib.utils
+.. currentmodule:: ray.rllib
 
 .. autosummary::
    :nosignatures:
    :toctree: doc/
 
-   tensor_dtype.get_np_dtype
+   utils.tensor_dtype.get_np_dtype
+   common.CLIArguments
+   common.FrameworkEnum
+   common.SupportedFileType
+   core.rl_module.validate_module_id
+   train.load_experiments_from_file
