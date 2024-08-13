@@ -49,7 +49,7 @@ class ReferenceCounterInterface {
       bool is_reconstructable,
       bool add_local_ref,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>()) = 0;
-  virtual bool SetDeleteCallback(
+  virtual bool SetObjectPrimaryCopyDeleteCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
 
@@ -317,8 +317,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Sets the callback that will be run when the object goes out of scope.
   /// Returns true if the object was in scope and the callback was added, else false.
-  bool SetDeleteCallback(const ObjectID &object_id,
-                         const std::function<void(const ObjectID &)> callback)
+  bool SetObjectPrimaryCopyDeleteCallback(
+      const ObjectID &object_id, const std::function<void(const ObjectID &)> callback)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void ResetDeleteCallbacks(const std::vector<ObjectID> &object_ids)
@@ -771,9 +771,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Metadata related to borrowing.
     std::unique_ptr<BorrowInfo> borrow_info;
 
-    /// Callback that will be called when this ObjectID no longer has
-    /// references.
-    std::function<void(const ObjectID &)> on_delete;
+    /// Callback that will be called when this Object's primary copy
+    /// should be deleted: out of scope or internal_api.free
+    std::function<void(const ObjectID &)> on_object_primary_copy_delete;
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
     std::function<void(const ObjectID &)> on_ref_removed;
@@ -828,9 +828,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                         rpc::Address *owner_address = nullptr) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Release the pinned plasma object, if any. Also unsets the raylet address
+  /// Delete the object primary copy, if any. Also unsets the raylet address
   /// that the object was pinned at, if the address was set.
-  void ReleasePlasmaObject(ReferenceTable::iterator it);
+  void DeleteObjectPrimaryCopy(ReferenceTable::iterator it);
 
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.

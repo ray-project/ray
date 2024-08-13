@@ -70,14 +70,21 @@ class PPOConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.ppo import PPOConfig
+
         config = PPOConfig()
-        config = config.training(gamma=0.9, lr=0.01, kl_coeff=0.3,
-            train_batch_size=128)
-        config = config.resources(num_gpus=0)
-        config = config.env_runners(num_env_runners=1)
+        # Activate new API stack.
+        config.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        config.environment("CartPole-v1")
+        config.env_runners(num_env_runners=1)
+        config.training(
+            gamma=0.9, lr=0.01, kl_coeff=0.3, train_batch_size_per_learner=256
+        )
 
         # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build(env="CartPole-v1")
+        algo = config.build()
         algo.train()
 
     .. testcode::
@@ -85,22 +92,26 @@ class PPOConfig(AlgorithmConfig):
         from ray.rllib.algorithms.ppo import PPOConfig
         from ray import air
         from ray import tune
-        config = PPOConfig()
-        # Print out some default values.
 
-        # Update the config object.
-        config.training(
-            lr=tune.grid_search([0.001 ]), clip_param=0.2
+        config = (
+            PPOConfig()
+            # Activate new API stack.
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            # Set the config object's env.
+            .environment(env="CartPole-v1")
+            # Update the config object's training parameters.
+            .training(
+                lr=0.001, clip_param=0.2
+            )
         )
-        # Set the config object's env.
-        config = config.environment(env="CartPole-v1")
 
-        # Use to_dict() to get the old-style python config dict
-        # when running with tune.
         tune.Tuner(
             "PPO",
             run_config=air.RunConfig(stop={"training_iteration": 1}),
-            param_space=config.to_dict(),
+            param_space=config,
         ).fit()
 
     .. testoutput::
@@ -200,7 +211,6 @@ class PPOConfig(AlgorithmConfig):
     def training(
         self,
         *,
-        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         use_critic: Optional[bool] = NotProvided,
         use_gae: Optional[bool] = NotProvided,
         lambda_: Optional[float] = NotProvided,
@@ -217,6 +227,8 @@ class PPOConfig(AlgorithmConfig):
         clip_param: Optional[float] = NotProvided,
         vf_clip_param: Optional[float] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
+        # @OldAPIStack
+        lr_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
         # Deprecated.
         vf_share_layers=DEPRECATED_VALUE,
         **kwargs,
@@ -224,10 +236,6 @@ class PPOConfig(AlgorithmConfig):
         """Sets the training related configuration.
 
         Args:
-            lr_schedule: Learning rate schedule. In the format of
-                [[timestep, lr-value], [timestep, lr-value], ...]
-                Intermediary timesteps will be assigned to interpolated learning rate
-                values. A schedule should normally start from timestep 0.
             use_critic: Should use a critic as a baseline (otherwise don't use value
                 baseline; required for using GAE).
             use_gae: If true, use the Generalized Advantage Estimator (GAE)
@@ -256,8 +264,12 @@ class PPOConfig(AlgorithmConfig):
                 (recommended).
             vf_loss_coeff: Coefficient of the value function loss. IMPORTANT: you must
                 tune this if you set vf_share_layers=True inside your model's config.
-            entropy_coeff: Coefficient of the entropy regularizer.
-            entropy_coeff_schedule: Decay schedule for the entropy regularizer.
+            entropy_coeff: The entropy coefficient (float) or entropy coefficient
+                schedule in the format of
+                [[timestep, coeff-value], [timestep, coeff-value], ...]
+                In case of a schedule, intermediary timesteps will be assigned to
+                linearly interpolated coefficient values. A schedule config's first
+                entry must start with timestep 0, i.e.: [[0, initial_value], [...]].
             clip_param: The PPO clip parameter.
             vf_clip_param: Clip param for the value function. Note that this is
                 sensitive to the scale of the rewards. If your expected V is large,
