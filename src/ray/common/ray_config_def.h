@@ -720,7 +720,7 @@ RAY_CONFIG(uint32_t,
            std::getenv("RAY_preallocate_plasma_memory") != nullptr &&
                    std::getenv("RAY_preallocate_plasma_memory") == std::string("1")
                ? 120
-               : 10)
+               : 30)
 
 /// The scheduler will treat these predefined resource types as unit_instance.
 /// Default predefined_unit_instance_resources is "GPU".

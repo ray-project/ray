@@ -2,7 +2,7 @@
 
 It also checks that it is usable with a separate scheduler.
 
-Requires the Ax library to be installed (`pip install ax-platform sqlalchemy`).
+Requires the Ax library to be installed (`pip install ax-platform`).
 """
 
 import time
