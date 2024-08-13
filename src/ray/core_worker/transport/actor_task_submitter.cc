@@ -97,7 +97,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
               RAY_LOG(INFO).WithField(actor_id)
                   << "Failed to create actor with status: " << status.ToString();
             }
-            RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(
+            RAY_UNUSED(task_finisher_.FailPendingTask(
                 task_id,
                 rpc::ErrorType::ACTOR_CREATION_FAILED,
                 &status,
