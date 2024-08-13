@@ -29,7 +29,8 @@ class _DAGNodeOperation:
         Args:
             local_idx: The index of the task that this operation belongs to
                 in the actor's ExecutableTask list. The index is not the same
-                as bind_index because there may be more tasks bound to an actor than tasks that appear in the current compiled DAG.
+                as bind_index because there may be more tasks bound to an actor
+                than tasks that appear in the current compiled DAG.
             operation_type: The type of operation to perform.
         """
         self.local_idx = local_idx
@@ -132,7 +133,9 @@ def _select_next_nodes(
 
     This function may return multiple nodes if they are NCCL nodes. In that case,
     this function only removes the NCCL write node, which is also the head of a
-    priority queue. Other nodes will be removed in the following iterations.
+    priority queue. Other nodes will be removed in the following iterations. The
+    NCCL read nodes will be returned even though they should not yet be in the
+    candidate list.
 
     Args:
         actor_to_candidates: A dictionary mapping an actor id to a list of
