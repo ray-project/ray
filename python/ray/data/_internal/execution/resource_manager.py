@@ -125,7 +125,8 @@ class ResourceManager:
         num_ops_so_far = 0
         num_ops_total = len(self._topology)
         for op, state in reversed(self._topology.items()):
-            # Update `self._op_usages`, `self._op_running_usages`, and `self._op_pending_usages`.
+            # Update `self._op_usages`, `self._op_running_usages`,
+            # and `self._op_pending_usages`.
             op_usage = op.current_processor_usage()
             op_running_usage = op.running_processor_usage()
             op_pending_usage = op.pending_processor_usage()
@@ -134,16 +135,25 @@ class ResourceManager:
             assert not op_running_usage.object_store_memory
             assert not op_pending_usage.object_store_memory
             op_usage.object_store_memory = self._estimate_object_store_memory(op, state)
-            op_running_usage.object_store_memory = self._estimate_object_store_memory(op, state)
-            op_pending_usage.object_store_memory = self._estimate_object_store_memory(op, state)
+            op_running_usage.object_store_memory = self._estimate_object_store_memory(
+                op, state
+            )
+            op_pending_usage.object_store_memory = self._estimate_object_store_memory(
+                op, state
+            )
             self._op_usages[op] = op_usage
             self._op_running_usages[op] = op_running_usage
             self._op_pending_usages[op] = op_pending_usage
 
-            # Update `self._global_usage`, `self._global_running_usage`, and `self._global_pending_usage`.
+            # Update `self._global_usage`, `self._global_running_usage`,
+            # and `self._global_pending_usage`.
             self._global_usage = self._global_usage.add(op_usage)
-            self._global_running_usage = self._global_running_usage.add(op_running_usage)
-            self._global_pending_usage = self._global_pending_usage.add(op_pending_usage)
+            self._global_running_usage = self._global_running_usage.add(
+                op_running_usage
+            )
+            self._global_pending_usage = self._global_pending_usage.add(
+                op_pending_usage
+            )
 
             # Update `self._downstream_fraction` and `_downstream_object_store_memory`.
             # Subtract one from denom to account for input buffer.
