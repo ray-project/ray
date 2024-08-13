@@ -171,9 +171,13 @@ class ProgressBar:
             total_rows_processed = 0
             for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
-                num_rows = (
-                    result.num_rows if hasattr(result, "num_rows") else 1
-                )  # Default to 1 if no row count is available
+                if hasattr(result, "num_rows"):
+                    num_rows = result.num_rows
+                elif hasattr(result, "__len__"):
+                    #For output is DataFrame,i.e. sort_sample
+                    num_rows = len(result)
+                else:
+                    num_rows = 1
                 total_rows_processed += num_rows
             # TODO(zhilong): Change the total to total_row when init progress bar
             self.update(total_rows_processed)
