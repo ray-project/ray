@@ -135,7 +135,8 @@ def test_router_on_gcs_failure(serve_ha, use_proxy: bool):
     # deployment handle API was used, which will hang when the GCS is
     # down. As a workaround for now, avoid recording telemetry so we
     # can properly test router behavior when GCS is down. We should look
-    # into adding a timeout on the kv cache operation.
+    # into adding a timeout on the kv cache operation. For now, the proxy
+    # doesn't run into this because we don't record telemetry on proxy
     h._recorded_telemetry = True
     # Eagerly create router so it receives the replica set instead of
     # waiting for the first request
