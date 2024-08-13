@@ -1,1 +1,1 @@
-cupy-cuda12x
+cupy-cuda12x>=13.2.0; sys_platform != 'darwin'
