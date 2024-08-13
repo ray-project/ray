@@ -82,8 +82,11 @@ class SACConfig(AlgorithmConfig):
             "critic_learning_rate": 3e-4,
             "entropy_learning_rate": 3e-4,
         }
-        self.policy_lr = 3e-5
+        self.actor_lr = 3e-5
+        self.critic_lr = 3e-4
         self.alpha_lr = 3e-4
+        # Set `lr` parameter to `None` and ensure it is not used.
+        self.lr = None
         self.grad_clip = None
         self.target_network_update_freq = 0
 
@@ -137,7 +140,8 @@ class SACConfig(AlgorithmConfig):
         clip_actions: Optional[bool] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         optimization_config: Optional[Dict[str, Any]] = NotProvided,
-        policy_lr: Optional[LearningRateOrSchedule] = NotProvided,
+        actor_lr: Optional[LearningRateOrSchedule] = NotProvided,
+        critic_lr: Optional[LearningRateOrSchedule] = NotProvided,
         alpha_lr: Optional[LearningRateOrSchedule] = NotProvided,
         target_network_update_freq: Optional[int] = NotProvided,
         _deterministic_loss: Optional[bool] = NotProvided,
@@ -243,7 +247,7 @@ class SACConfig(AlgorithmConfig):
             optimization_config: Config dict for optimization. Set the supported keys
                 `actor_learning_rate`, `critic_learning_rate`, and
                 `entropy_learning_rate` in here.
-            policy_lr: The learning rate (float) or learning rate schedule for the
+            actor_lr: The learning rate (float) or learning rate schedule for the
                 policy in the format of
                 [[timestep, lr-value], [timestep, lr-value], ...] In case of a
                 schedule, intermediary timesteps will be assigned to linearly
@@ -260,7 +264,25 @@ class SACConfig(AlgorithmConfig):
                 Learner's `configure_optimizer_for_module()` method and handle
                 lr-scheduling yourself.
                 The default value is 3e-5, one decimal less than the respective
-                learning rate of the critic (see `lr`).
+                learning rate of the critic (see `critic_lr`).
+            critic_lr: The learning rate (float) or learning rate schedule for the
+                critic in the format of
+                [[timestep, lr-value], [timestep, lr-value], ...] In case of a
+                schedule, intermediary timesteps will be assigned to linearly
+                interpolated learning rate values. A schedule config's first entry
+                must start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Note: It is common practice (two-timescale approach) to use a smaller
+                learning rate for the policy than for the critic to ensure that the
+                critic gives adequate values for improving the policy.
+                Note: If you require a) more than one optimizer (per RLModule),
+                b) optimizer types that are not Adam, c) a learning rate schedule that
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
+                The default value is 3e-4, one decimal higher than the respective
+                learning rate of the actor (policy) (see `actor_lr`).
             alpha_lr: The learning rate (float) or learning rate schedule for the
                 hyperparameter alpha in the format of
                 [[timestep, lr-value], [timestep, lr-value], ...] In case of a
@@ -325,8 +347,10 @@ class SACConfig(AlgorithmConfig):
             self.grad_clip = grad_clip
         if optimization_config is not NotProvided:
             self.optimization = optimization_config
-        if policy_lr is not NotProvided:
-            self.policy_lr = policy_lr
+        if actor_lr is not NotProvided:
+            self.actor_lr = actor_lr
+        if critic_lr is not NotProvided:
+            self.critic_lr = critic_lr
         if alpha_lr is not NotProvided:
             self.alpha_lr = alpha_lr
         if target_network_update_freq is not NotProvided:
@@ -400,6 +424,14 @@ class SACConfig(AlgorithmConfig):
             raise ValueError(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
+            )
+
+        if self.enable_rl_module_and_learner and self.lr:
+            raise ValueError(
+                "Basic learning rate parameter `lr` is not `None`. For SAC "
+                "use the specific learning rate parameters `actor_lr`, `critic_lr` "
+                "and `alpha_lr`, for the actor, critic, and the hyperparameter "
+                "`alpha`, respectively."
             )
 
     @override(AlgorithmConfig)

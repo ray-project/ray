@@ -27,8 +27,9 @@ config = (
     .environment(env="multi_agent_pendulum")
     .training(
         initial_alpha=1.001,
-        lr=8e-4,
-        policy_lr=3e-5,
+        # Use a smaller
+        actor_lr=3e-5,
+        critic_lr=3e-4,
         alpha_lr=8e-4,
         target_entropy="auto",
         n_step=1,

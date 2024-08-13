@@ -18,9 +18,9 @@ config = (
     .environment(env="Pendulum-v1")
     .training(
         initial_alpha=1.001,
-        lr=3e-4,
         # Use a smaller learning rate for the policy.
-        policy_lr=3e-5,
+        actor_lr=3e-5,
+        critic_lr=3e-4,
         alpha_lr=1e-4,
         target_entropy="auto",
         n_step=1,
