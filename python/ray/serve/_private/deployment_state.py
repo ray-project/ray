@@ -1275,9 +1275,7 @@ class DeploymentState:
         # time we checked.
         self._multiplexed_model_ids_updated = False
 
-        self._last_broadcasted_running_replica_infos: Optional[
-            List[RunningReplicaInfo]
-        ] = None
+        self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
         self._last_broadcasted_deployment_config = None
 
     def should_autoscale(self) -> bool:
@@ -1424,8 +1422,7 @@ class DeploymentState:
         """
         running_replica_infos = self.get_running_replica_infos()
         if (
-            self._last_broadcasted_running_replica_infos is not None
-            and set(self._last_broadcasted_running_replica_infos)
+            set(self._last_broadcasted_running_replica_infos)
             == set(running_replica_infos)
             and not self._multiplexed_model_ids_updated
         ):
