@@ -108,6 +108,57 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   }
 }
 
+void TaskStatusEvent::ToRpcTaskExportEvents(rpc::ExportTaskEventData *rpc_task_export_event_data) {
+  // Base fields
+  rpc_task_export_event_data->set_task_id(task_id_.Binary());
+  rpc_task_export_event_data->set_job_id(job_id_.Binary());
+  rpc_task_export_event_data->set_attempt_number(attempt_number_);
+
+  // Task info.
+  if (task_spec_) {
+    FillExportTaskInfo(rpc_task_export_event_data->mutable_task_info(), *task_spec_);
+  }
+
+  // Task status update.
+  auto dst_state_update = rpc_task_export_event_data->mutable_state_updates();
+  FillExportTaskStatusUpdateTime(task_status_, timestamp_, dst_state_update);
+
+  if (!state_update_.has_value()) {
+    return;
+  }
+
+  if (state_update_->node_id_.has_value()) {
+    RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+        << "Node ID should be included when task status changes to "
+           "SUBMITTED_TO_WORKER.";
+    dst_state_update->set_node_id(state_update_->node_id_->Binary());
+  }
+
+  if (state_update_->worker_id_.has_value()) {
+    RAY_CHECK(task_status_ == rpc::TaskStatus::SUBMITTED_TO_WORKER)
+        << "Worker ID should be included when task status changes to "
+           "SUBMITTED_TO_WORKER.";
+    dst_state_update->set_worker_id(state_update_->worker_id_->Binary());
+  }
+
+  if (state_update_->error_info_.has_value()) {
+    *(dst_state_update->mutable_error_info()) = *state_update_->error_info_;
+  }
+
+  if (state_update_->task_log_info_.has_value()) {
+    dst_state_update->mutable_task_log_info()->MergeFrom(
+        state_update_->task_log_info_.value());
+  }
+
+  if (state_update_->pid_.has_value()) {
+    dst_state_update->set_worker_pid(state_update_->pid_.value());
+  }
+
+  if (state_update_->is_debugger_paused_.has_value()) {
+    dst_state_update->set_is_debugger_paused(state_update_->is_debugger_paused_.value());
+  }
+}
+
 void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   // Rate limit on the number of profiling events from the task. This is especially the
   // case if a driver has many profiling events when submitting tasks
@@ -117,6 +168,23 @@ void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   rpc_task_events->set_task_id(task_id_.Binary());
   rpc_task_events->set_job_id(job_id_.Binary());
   rpc_task_events->set_attempt_number(attempt_number_);
+  profile_events->set_component_type(std::move(component_type_));
+  profile_events->set_component_id(std::move(component_id_));
+  profile_events->set_node_ip_address(std::move(node_ip_address_));
+  auto event_entry = profile_events->add_events();
+  event_entry->set_event_name(std::move(event_name_));
+  event_entry->set_start_time(start_time_);
+  event_entry->set_end_time(end_time_);
+  event_entry->set_extra_data(std::move(extra_data_));
+}
+
+void TaskProfileEvent::ToRpcTaskExportEvents(rpc::ExportTaskEventData *rpc_task_export_event_data) {
+  auto profile_events = rpc_task_export_event_data->mutable_profile_events();
+
+  // Base fields
+  rpc_task_export_event_data->set_task_id(task_id_.Binary());
+  rpc_task_export_event_data->set_job_id(job_id_.Binary());
+  rpc_task_export_event_data->set_attempt_number(attempt_number_);
   profile_events->set_component_type(std::move(component_type_));
   profile_events->set_component_id(std::move(component_id_));
   profile_events->set_node_ip_address(std::move(node_ip_address_));
@@ -331,6 +399,45 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateDataToSend(
   return data;
 }
 
+void TaskEventBufferImpl::WriteExportData(
+    std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
+    std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send,
+    absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send) {
+  // Aggregate the task events by TaskAttempt.
+  // absl::flat_hash_map<TaskAttempt, rpc::ExportTaskEventData> agg_task_events;
+  // std::vector<std::shared_ptr<rpc::ExportTaskEventData>> rpc_export_task_events;
+  auto to_rpc_event_fn = [this, &agg_task_events, &dropped_task_attempts_to_send](
+                             std::unique_ptr<TaskEvent> &event) {
+    if (dropped_task_attempts_to_send.count(event->GetTaskAttempt())) {
+      // We are marking this as data loss due to some missing task status updates.
+      // We will not send this event to GCS.
+      stats_counter_.Increment(
+          TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
+      return;
+    }
+
+    std::shared_ptr<rpc::ExportTaskEventData> rpc_event_data_ptr = std::make_shared<rpc::ExportTaskEventData>();
+
+    // if (!agg_task_events.count(event->GetTaskAttempt())) {
+    //   auto inserted =
+    //       agg_task_events.insert({event->GetTaskAttempt(), rpc::TaskEvents()});
+    //   RAY_CHECK(inserted.second);
+    // }
+
+    // auto itr = agg_task_events.find(event->GetTaskAttempt());
+
+    event->ToRpcTaskExportEvents(rpc_event_data_ptr);
+    RayExportEvent(rpc_event_data_ptr).SendEvent();
+  };
+
+  std::for_each(
+      status_events_to_send.begin(), status_events_to_send.end(), to_rpc_event_fn);
+  std::for_each(
+      profile_events_to_send.begin(), profile_events_to_send.end(), to_rpc_event_fn);
+
+  return rpc_export_task_events;
+}
+
 void TaskEventBufferImpl::FlushEvents(bool forced) {
   if (!enabled_) {
     return;
@@ -363,6 +470,10 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   // Aggregate and prepare the data to send.
   std::unique_ptr<rpc::TaskEventData> data =
       CreateDataToSend(std::move(status_events_to_send),
+                       std::move(profile_events_to_send),
+                       std::move(dropped_task_attempts_to_send));
+  
+  WriteExportData(std::move(status_events_to_send),
                        std::move(profile_events_to_send),
                        std::move(dropped_task_attempts_to_send));
 
@@ -463,6 +574,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     if (inserted.second) {
       stats_counter_.Increment(TaskEventBufferCounter::kNumDroppedTaskAttemptsStored);
     }
+    // TODO: Push evicted event to dropped_task_events buffer
   } else {
     stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventsStored);
   }

@@ -57,6 +57,13 @@ class TaskEvent {
   /// \param[out] rpc_task_events The rpc task event to be filled.
   virtual void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) = 0;
 
+  /// Convert itself a rpc::ExportTaskEventData
+  ///
+  /// NOTE: this method will modify internal states by moving fields to the
+  /// rpc::ExportTaskEventData.
+  /// \param[out] rpc_task_export_event_data The rpc export task event data to be filled.
+  virtual void ToRpcTaskExportEvents(rpc::ExportTaskEventData *rpc_task_export_event_data) = 0;
+
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
 
@@ -126,6 +133,8 @@ class TaskStatusEvent : public TaskEvent {
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
+  void ToRpcTaskExportEvents(rpc::ExportTaskEventData *rpc_task_export_event_data) override;
+
   bool IsProfileEvent() const override { return false; }
 
  private:
@@ -152,6 +161,8 @@ class TaskProfileEvent : public TaskEvent {
                             int64_t start_time);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
+
+  void ToRpcTaskExportEvents(rpc::ExportTaskEventData *rpc_task_export_event_data) override;
 
   bool IsProfileEvent() const override { return true; }
 
@@ -320,6 +331,17 @@ class TaskEventBufferImpl : public TaskEventBuffer {
       std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
       std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send,
       absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send);
+  
+  /// Write export task events.
+  ///
+  /// \param status_events_to_send Task status events to be written.
+  /// \param profile_events_to_send Task profile events to be written.
+  /// \param dropped_task_attempts_to_send Task attempts that were dropped due to
+  ///        status events being dropped.
+  void WriteExportData(
+      std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
+      std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send,
+      absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send);
 
   /// Reset the counters during flushing data to GCS.
   void ResetCountersForFlush();
@@ -418,6 +440,57 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestBufferSizeLimitProfileEvents);
   FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask);
 };
+
+inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_info,
+                         const TaskSpecification &task_spec) {
+  rpc::TaskType type;
+  if (task_spec.IsNormalTask()) {
+    type = rpc::TaskType::NORMAL_TASK;
+  } else if (task_spec.IsDriverTask()) {
+    type = rpc::TaskType::DRIVER_TASK;
+  } else if (task_spec.IsActorCreationTask()) {
+    type = rpc::TaskType::ACTOR_CREATION_TASK;
+    task_info->set_actor_id(task_spec.ActorCreationId().Binary());
+  } else {
+    RAY_CHECK(task_spec.IsActorTask());
+    type = rpc::TaskType::ACTOR_TASK;
+    task_info->set_actor_id(task_spec.ActorId().Binary());
+  }
+  task_info->set_type(type);
+  task_info->set_language(task_spec.GetLanguage());
+  task_info->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
+
+  task_info->set_task_id(task_spec.TaskId().Binary());
+  // NOTE: we set the parent task id of a task to be submitter's task id, where
+  // the submitter depends on the owner coreworker's:
+  // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
+  // - if the owner coreworker runs an actor, the submitter's task id will be the actor's
+  // creation task id.
+  task_info->set_parent_task_id(task_spec.SubmitterTaskId().Binary());
+  const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
+  task_info->mutable_required_resources()->insert(resources_map.begin(),
+                                                  resources_map.end());
+  task_info->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+  const auto &pg_id = task_spec.PlacementGroupBundleId().first;
+  if (!pg_id.IsNil()) {
+    task_info->set_placement_group_id(pg_id.Binary());
+  }
+}
+
+/// Fill the rpc::ExportTaskEventData::TaskStateUpdate with the timestamps according to the status change.
+///
+/// \param task_status The task status.
+/// \param timestamp The timestamp.
+/// \param[out] state_updates The state updates with timestamp to be updated.
+inline void FillExportTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
+                                     int64_t timestamp,
+                                     rpc::ExportTaskEventData::TaskStateUpdate *state_updates) {
+  if (task_status == rpc::TaskStatus::NIL) {
+    // Not status change.
+    return;
+  }
+  (*state_updates->mutable_state_ts_ns())[task_status] = timestamp;
+}
 
 }  // namespace worker
 
