@@ -25,7 +25,6 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.typing import (
     ModuleID,
     Optimizer,
@@ -99,7 +98,8 @@ class TfLearner(Learner):
         gradient_tape: "tf.GradientTape",
         **kwargs,
     ) -> ParamDict:
-        grads = gradient_tape.gradient(loss_per_module[ALL_MODULES], self._params)
+        total_loss = sum(loss_per_module.values())
+        grads = gradient_tape.gradient(total_loss, self._params)
         return grads
 
     @override(Learner)
@@ -300,7 +300,7 @@ class TfLearner(Learner):
         def helper(_batch):
             with tf.GradientTape(persistent=True) as tape:
                 fwd_out = self._module.forward_train(_batch)
-                loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
+                loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=_batch)
             gradients = self.compute_gradients(loss_per_module, gradient_tape=tape)
             del tape
             postprocessed_gradients = self.postprocess_gradients(gradients)

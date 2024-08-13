@@ -71,7 +71,7 @@ def make_curiosity_learner_class(learner_class):
                     AddNextObservationsFromEpisodesToTrainBatch(),
                 )
 
-        def compute_loss(
+        def compute_losses(
             self,
             *,
             fwd_out: Dict[str, Any],
