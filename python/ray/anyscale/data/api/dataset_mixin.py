@@ -5,9 +5,11 @@ from ray.anyscale.data._internal.logical.operators.expand_paths_operator import 
     ExpandPaths,
 )
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
+from ray.anyscale.data._internal.logical.operators.streaming_aggregate import (
+    StreamingAggregate,
+)
 from ray.anyscale.data.api.streaming_aggregate import StreamingAggFn
 from ray.anyscale.data.datasource.snowflake_datasink import SnowflakeDatasink
-from ray.anyscale.data.logical_operators.streaming_aggregate import StreamingAggregate
 from ray.data import Dataset
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
