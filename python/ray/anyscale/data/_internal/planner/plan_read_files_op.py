@@ -43,4 +43,5 @@ def plan_read_files_op(
         target_max_block_size=None,
         ray_remote_args=op.ray_remote_args,
         compute_strategy=TaskPoolStrategy(op.concurrency),
+        supports_fusion=False,
     )
