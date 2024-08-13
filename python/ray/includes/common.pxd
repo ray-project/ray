@@ -557,6 +557,22 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_string &rejection_reason_message
         )
 
+    cdef cppclass CPublishToGcsAccessor "ray::gcs::PublishToGcsAccessor":
+        CRayStatus PublishError(
+            const c_string &key_id,
+            const CErrorTableData &data,
+            int64_t timeout_ms)
+
+        CRayStatus PublishLogs(
+            const c_string &key_id,
+            const CLogBatch &data,
+            int64_t timeout_ms)
+
+        CRayStatus AsyncPublishNodeResourceUsage(
+            const c_string &key_id,
+            const c_string &node_resource_usage,
+            const StatusPyCallback &callback
+        )
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
@@ -584,6 +600,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CNodeResourceInfoAccessor& NodeResources()
         CRuntimeEnvAccessor& RuntimeEnvs()
         CAutoscalerStateAccessor& Autoscaler()
+        CPublishToGcsAccessor& PublishToGcs()
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
 

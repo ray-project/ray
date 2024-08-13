@@ -74,6 +74,7 @@ class NewGcsAioClient:
         self.get_all_actor_info = self.inner.async_get_all_actor_info
         self.get_all_node_info = self.inner.async_get_all_node_info
         self.kill_actor = self.inner.async_kill_actor
+        self.publish_node_resource_usage = self.inner.async_publish_node_resource_usage
 
 
 class AsyncProxy:

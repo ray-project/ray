@@ -3038,7 +3038,44 @@ cdef class OldGcsClient:
     #############################################################
     # Interface for rpc::autoscaler::AutoscalerStateService ends
     #############################################################
-cdef class GcsPublisher:
+
+class GcsPublisher:
+    """
+    GcsPublisher publishes logs and errors to the GCS server.
+
+    This class is in transition to use the new C++ GcsClient binding. The old
+    PythonGcsPublisher binding is not deleted until we are confident that the new
+    binding is stable.
+
+    Defaults to the new binding. If you want to use the old binding, please
+    set the environment variable `RAY_USE_OLD_GCS_CLIENT=1`.
+    """
+    def __new__(self, *args, **kwargs):
+        if os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1":
+            return OldGcsPublisher(*args, **kwargs)
+        return NewGcsPublisher(*args, **kwargs)
+
+cdef class NewGcsPublisher:
+    cdef NewGcsClient inner
+
+    def __cinit__(self, address):
+        self.inner = NewGcsClient.standalone(address, cluster_id=None, timeout_ms=-1)
+
+    def publish_error(self, key_id: bytes, error_type: str, message: str,
+                      job_id=None, num_retries=None):
+        # To simulate old behavior of retry every 1s, default to 60 retries.
+        # See `PythonGcsPublisher::DoPublishWithRetries`.
+        if num_retries is None:
+            MAX_GCS_PUBLISH_RETRIES = 60
+            num_retries = MAX_GCS_PUBLISH_RETRIES
+        timeout = num_retries  # * 1s
+        return self.inner.publish_error(key_id, error_type, message, job_id, timeout)
+
+    def publish_logs(self, log_json: dict):
+        return self.inner.publish_logs(log_json)
+
+
+cdef class OldGcsPublisher:
     """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
     cdef:
         shared_ptr[CPythonGcsPublisher] inner

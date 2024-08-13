@@ -11,6 +11,7 @@ import sys
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
+import ray._private.tls_utils
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
@@ -84,7 +85,7 @@ class DashboardAgent:
         from ray._private.gcs_pubsub import GcsAioPublisher
         from ray.dashboard.http_server_agent import HttpServerAgent
 
-        self.aio_publisher = GcsAioPublisher(address=self.gcs_address)
+        self.aio_publisher = GcsAioPublisher(self.gcs_aio_client)
 
         try:
             from grpc import aio as aiogrpc

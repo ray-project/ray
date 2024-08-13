@@ -977,6 +977,37 @@ class AutoscalerStateAccessor {
   GcsClient *client_impl_;
 };
 
+/// \class PublishToGcsAccessor
+/// `PublishToGcsAccessor` is a sub-interface of `GcsClient`.
+/// Most pubsub messages are GCS -> Clients, e.g. actor updates, node updates.
+/// But we have cases Clients -> GCS:
+/// 1. (sync)  RAY_ERROR_INFO_CHANNEL, used by workers and dashboard.
+/// 2. (sync)  RAY_LOG_CHANNEL, used by workers and dashboard.
+/// 3. (async) RAY_NODE_RESOURCE_USAGE_CHANNEL, used by reporter agent.
+class PublishToGcsAccessor {
+ public:
+  PublishToGcsAccessor();
+  explicit PublishToGcsAccessor(GcsClient *client_impl);
+  virtual ~PublishToGcsAccessor() = default;
+
+  virtual Status PublishError(const std::string &key_id,
+                              const rpc::ErrorTableData &data,
+                              int64_t timeout_ms);
+
+  virtual Status PublishLogs(const std::string &key_id,
+                             const rpc::LogBatch &data,
+                             int64_t timeout_ms);
+
+  virtual Status AsyncPublishNodeResourceUsage(
+      const std::string &key_id,
+      const std::string &node_resource_usage_json,
+      const StatusCallback &done);
+
+ private:
+  GcsClient *client_impl_;
+};
+;
+
 }  // namespace gcs
 
 }  // namespace ray
