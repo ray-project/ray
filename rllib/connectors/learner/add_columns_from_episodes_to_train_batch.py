@@ -5,13 +5,30 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class AddColumnsFromEpisodesToTrainBatch(ConnectorV2):
     """Adds infos/actions/rewards/terminateds/... to train batch.
 
+    Note: This is one of the default Learner ConnectorV2 pieces that are added
+    automatically by RLlib into every Learner connector pipeline, unless
+    `config.add_default_connectors_to_learner_pipeline` is set to False.
+
+    The default Learner connector pipeline is:
+    [
+        [0 or more user defined ConnectorV2 pieces],
+        AddObservationsFromEpisodesToBatch,
+        AddColumnsFromEpisodesToTrainBatch,
+        AddStatesFromEpisodesToBatch,
+        AgentToModuleMapping,  # only in multi-agent setups!
+        BatchIndividualItems,
+        NumpyToTensor,
+    ]
+
     Does NOT add observations to train batch (these should have already been added
-    by a different ConnectorV2 piece: AddObservationsToTrainBatch)
+    by another ConnectorV2 piece: `AddObservationsToTrainBatch` in the same pipeline).
 
     If provided with `episodes` data, this connector piece makes sure that the final
     train batch going into the RLModule for updating (`forward_train()` call) contains

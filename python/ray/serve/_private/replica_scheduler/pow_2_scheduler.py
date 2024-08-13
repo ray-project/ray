@@ -457,6 +457,19 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     self.num_scheduling_tasks_in_backoff
                 )
 
+    def on_replica_actor_died(self, replica_id: ReplicaID):
+        """Drop replica from replica set so it's not considered for future requests."""
+
+        self._replicas.pop(replica_id, None)
+        self._replica_id_set.discard(replica_id)
+        for id_set in self._colocated_replica_ids.values():
+            id_set.discard(replica_id)
+
+    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
+        """Invalidate cache entry so active probing is required for the next request."""
+
+        self._replica_queue_len_cache.invalidate_key(replica_id)
+
     async def _probe_queue_lens(
         self,
         replicas: List[ReplicaWrapper],
@@ -536,12 +549,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 # raised even when a replica is temporarily unavailable.
                 # See https://github.com/ray-project/ray/issues/44185 for details.
                 if isinstance(t.exception(), ActorDiedError):
-                    self._replicas.pop(replica.replica_id, None)
-                    self._replica_id_set.discard(replica.replica_id)
-                    for id_set in self._colocated_replica_ids.values():
-                        id_set.discard(replica.replica_id)
+                    self.on_replica_actor_died(replica.replica_id)
                     msg += " This replica will no longer be considered for requests."
+                # Replica is temporarily unavailable because of network issues, or
+                # replica has died but GCS is down so ActorUnavailableError will
+                # be raised until the GCS recovers. For the time being, invalidate
+                # the cache entry so that we don't try to send requests to this
+                # replica without actively probing.
                 elif isinstance(t.exception(), ActorUnavailableError):
+                    self.on_replica_actor_unavailable(replica.replica_id)
                     msg = (
                         "Failed to fetch queue length for "
                         f"{replica.replica_id}. Replica is temporarily "

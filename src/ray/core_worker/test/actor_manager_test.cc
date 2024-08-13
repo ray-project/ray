@@ -118,8 +118,6 @@ class MockActorTaskSubmitter : public ActorTaskSubmitterInterface {
                     int64_t num_restarts,
                     bool dead,
                     const rpc::ActorDeathCause &death_cause));
-  MOCK_METHOD3(KillActor,
-               void(const ActorID &actor_id, bool force_kill, bool no_restart));
 
   MOCK_METHOD0(CheckTimeoutTasks, void());
 
