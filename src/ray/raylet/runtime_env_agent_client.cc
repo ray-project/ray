@@ -359,7 +359,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   void GetOrCreateRuntimeEnv(const JobID &job_id,
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
-                             const std::string &serialized_allocated_resource_instances,
                              GetOrCreateRuntimeEnvCallback callback) override {
     RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateRuntimeEnvReply>(
         [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
@@ -367,7 +366,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           return TryGetOrCreateRuntimeEnv(job_id,
                                           serialized_runtime_env,
                                           runtime_env_config,
-                                          serialized_allocated_resource_instances,
                                           succ_callback,
                                           fail_callback);
         },
@@ -413,15 +411,12 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       const JobID &job_id,
       const std::string &serialized_runtime_env,
       const rpc::RuntimeEnvConfig &runtime_env_config,
-      const std::string &serialized_allocated_resource_instances,
       std::function<void(rpc::GetOrCreateRuntimeEnvReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback) {
     rpc::GetOrCreateRuntimeEnvRequest request;
     request.set_job_id(job_id.Hex());
     request.set_serialized_runtime_env(serialized_runtime_env);
     request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
-    request.set_serialized_allocated_resource_instances(
-        serialized_allocated_resource_instances);
     std::string payload = request.SerializeAsString();
 
     auto session = Session::Create(
