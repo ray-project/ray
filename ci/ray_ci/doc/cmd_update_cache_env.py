@@ -79,7 +79,7 @@ def update_file_timestamp(ray_dir: str, pending_files: List[str]) -> None:
 
     # Update Makefile timestamp
     os.utime(f"{ray_doc_dir}/Makefile", (new_timestamp, new_timestamp))
-    
+
     new_timestamp = datetime.now().timestamp()
     for file in pending_files:
         if file.split(".")[-1] != "py":
