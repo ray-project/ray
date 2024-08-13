@@ -57,7 +57,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
-        self._global_running_info: Optional[ProgressBar] = None
+        self._global_info: Optional[ProgressBar] = None
 
         self._execution_id = uuid.uuid4().hex
 
@@ -130,7 +130,7 @@ class StreamingExecutor(Executor, threading.Thread):
             # Note: DAG must be initialized in order to query num_outputs_total.
             # TODO(zhilong): Implement num_output_rows_total for all
             # AllToAllOperators
-            self._global_running_info = ProgressBar(
+            self._global_info = ProgressBar(
                 "Running", dag.num_output_rows_total(), unit="row"
             )
 
@@ -151,8 +151,8 @@ class StreamingExecutor(Executor, threading.Thread):
                     item = self._outer._output_node.get_output_blocking(
                         output_split_idx
                     )
-                    if self._outer._global_running_info:
-                        self._outer._global_running_info.update(1, dag.num_outputs_total())
+                    if self._outer._global_info:
+                        self._outer._global_info.update(1, dag.num_outputs_total())
                     return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
@@ -198,7 +198,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 logger.info(stats_summary_string)
             # Close the progress bars from top to bottom to avoid them jumping
             # around in the console after completion.
-            if self._global_running_info:
+            if self._global_info:
                 # Set the appropriate description that summarizes
                 # the result of dataset execution.
                 if execution_completed:
@@ -208,8 +208,8 @@ class StreamingExecutor(Executor, threading.Thread):
                     )
                 else:
                     prog_bar_msg = f"{WARN_PREFIX} Dataset execution failed"
-                self._global_running_info.set_description(prog_bar_msg)
-                self._global_running_info.close()
+                self._global_info.set_description(prog_bar_msg)
+                self._global_info.close()
             for op, state in self._topology.items():
                 op.shutdown()
                 state.close_progress_bars()
@@ -345,17 +345,21 @@ class StreamingExecutor(Executor, threading.Thread):
         return len(self._output_node.outqueue) == 0
 
     def _report_current_usage(self) -> None:
-        cur_usage = self._resource_manager.get_global_running_usage()
+        running_usage = self._resource_manager.get_global_running_usage()
+        pending_usage = self._resource_manager.get_global_pending_usage()
         limits = self._resource_manager.get_global_limits()
         resources_status = (
             "Running: "
-            f"{cur_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
-            f"{cur_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
-            f"{cur_usage.object_store_memory_str()}/"
-            f"{limits.object_store_memory_str()} object_store_memory"
+            f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
+            f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
+            f"{running_usage.object_store_memory_str()}/"
+            f"{limits.object_store_memory_str()} object_store_memory; "\
+            "Pending actors: "
+            f"{pending_usage.cpu:.4g} on CPU, "
+            f"{pending_usage.gpu:.4g} on GPU"
         )
-        if self._global_running_info:
-            self._global_running_info.set_description(resources_status)
+        if self._global_info:
+            self._global_info.set_description(resources_status)
 
     def _get_operator_tags(self):
         """Returns a list of operator tags."""
