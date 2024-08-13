@@ -3,6 +3,7 @@ import random
 
 import pyarrow as pa
 import pytest
+from pkg_resources import parse_version
 from pyiceberg import catalog as pyi_catalog
 from pyiceberg import expressions as pyi_expr
 from pyiceberg import schema as pyi_schema
@@ -11,6 +12,7 @@ from pyiceberg.partitioning import PartitionField, PartitionSpec
 from pyiceberg.transforms import IdentityTransform
 
 import ray
+from ray._private.utils import _get_pyarrow_version
 from ray.data import read_iceberg
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 
@@ -99,6 +101,13 @@ def pyiceberg_full_mock(monkeypatch):
 
 class TestReadIceberg:
     def test_get_catalog(self):
+        # NOTE: Iceberg only works with PyArrow 9 or above.
+        pyarrow_version = _get_pyarrow_version()
+        if pyarrow_version is not None:
+            pyarrow_version = parse_version(pyarrow_version)
+        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+            return
+
         iceberg_ds = IcebergDatasource(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
             catalog_kwargs=_CATALOG_KWARGS.copy(),
@@ -107,6 +116,13 @@ class TestReadIceberg:
         assert catalog.name == _CATALOG_NAME
 
     def test_plan_files(self):
+        # NOTE: Iceberg only works with PyArrow 9 or above.
+        pyarrow_version = _get_pyarrow_version()
+        if pyarrow_version is not None:
+            pyarrow_version = parse_version(pyarrow_version)
+        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+            return
+
         iceberg_ds = IcebergDatasource(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
             catalog_kwargs=_CATALOG_KWARGS.copy(),
@@ -115,6 +131,13 @@ class TestReadIceberg:
         assert len(plan_files) == 10
 
     def test_chunk_plan_files(self):
+        # NOTE: Iceberg only works with PyArrow 9 or above.
+        pyarrow_version = _get_pyarrow_version()
+        if pyarrow_version is not None:
+            pyarrow_version = parse_version(pyarrow_version)
+        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+            return
+
         iceberg_ds = IcebergDatasource(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
             catalog_kwargs=_CATALOG_KWARGS.copy(),
@@ -134,6 +157,13 @@ class TestReadIceberg:
         )
 
     def test_get_read_tasks(self):
+        # NOTE: Iceberg only works with PyArrow 9 or above.
+        pyarrow_version = _get_pyarrow_version()
+        if pyarrow_version is not None:
+            pyarrow_version = parse_version(pyarrow_version)
+        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+            return
+
         iceberg_ds = IcebergDatasource(
             table_identifier=f"{_DB_NAME}.{_TABLE_NAME}",
             catalog_kwargs=_CATALOG_KWARGS.copy(),
@@ -143,6 +173,13 @@ class TestReadIceberg:
         assert all(len(rt.metadata.input_files) == 2 for rt in read_tasks)
 
     def test_filtered_read(self):
+        # NOTE: Iceberg only works with PyArrow 9 or above.
+        pyarrow_version = _get_pyarrow_version()
+        if pyarrow_version is not None:
+            pyarrow_version = parse_version(pyarrow_version)
+        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+            return
+
         from pyiceberg import expressions as pyi_expr
 
         iceberg_ds = IcebergDatasource(
@@ -157,6 +194,13 @@ class TestReadIceberg:
         assert all(len(rt.metadata.input_files) == 1 for rt in read_tasks)
 
     def test_read_basic(self):
+        # NOTE: Iceberg only works with PyArrow 9 or above.
+        pyarrow_version = _get_pyarrow_version()
+        if pyarrow_version is not None:
+            pyarrow_version = parse_version(pyarrow_version)
+        if pyarrow_version is not None and pyarrow_version < parse_version("9.0.0"):
+            return
+
         row_filter = pyi_expr.In("col_c", {1, 2, 3, 4, 5, 6, 7, 8})
 
         ray_ds = read_iceberg(
