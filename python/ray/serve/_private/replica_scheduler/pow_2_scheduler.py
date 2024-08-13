@@ -246,6 +246,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
 
         for r in replicas:
+            # If on the proxy, replica needs to call back into the proxy with
+            # `receive_asgi_messages` which can be blocked when GCS is down.
+            # To prevent that from happening, push proxy handle eagerly
             if self._handle_source == DeploymentHandleSource.PROXY:
                 r._actor_handle.push_proxy_handle.remote(
                     ray.get_runtime_context().current_actor
