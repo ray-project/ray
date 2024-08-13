@@ -232,6 +232,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         total_loss = actor_loss + critic_loss + alpha_loss
         # If twin Q networks should be used, add the critic loss of the twin Q network.
         if config.twin_q:
+            # TODO (simon): Check, if we need to multiply the critic_loss then with 0.5.
             total_loss += critic_twin_loss
 
         # Log the TD-error with reduce=None, such that - in case we have n parallel
