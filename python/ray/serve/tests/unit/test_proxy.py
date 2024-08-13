@@ -1,5 +1,6 @@
 import asyncio
 import pickle
+import sys
 from typing import Dict, List, Tuple
 from unittest.mock import AsyncMock
 
@@ -706,3 +707,7 @@ class TestHTTPProxy:
         assert status.is_error is False
         assert status.message == HEALTHY_MESSAGE
         self._check_asgi_messages(messages, status_code=200, body=HEALTHY_MESSAGE)
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
