@@ -318,13 +318,18 @@ def _generate_transform_fn_for_async_map_batches(
         # generators, and in the main event loop, yield them from
         # the queue as they become available.
         output_batch_queue = queue.Queue()
+        exception_queue = queue.Queue()
 
         async def process_batch(batch: DataBatch):
-            output_batch_iterator = await fn(batch)
-            # As soon as results become available from the async generator,
-            # put them into the result queue so they can be yielded.
-            async for output_batch in output_batch_iterator:
-                output_batch_queue.put(output_batch)
+            try:
+                output_batch_iterator = await fn(batch)
+                # As soon as results become available from the async generator,
+                # put them into the result queue so they can be yielded.
+                async for output_batch in output_batch_iterator:
+                    output_batch_queue.put(output_batch)
+            except Exception as e:
+                exception_queue.put(e)
+                output_batch_queue.put(None)  # Signal to stop processing
 
         async def process_all_batches():
             loop = ray.data._map_actor_context.udf_map_asyncio_loop
@@ -344,12 +349,19 @@ def _generate_transform_fn_for_async_map_batches(
 
         # Yield results as they become available.
         while not future.done():
+            if not exception_queue.empty():
+                raise exception_queue.get()
             # Here, `out_batch` is a one-row output batch
             # from the async generator, corresponding to a
             # single row from the input batch.
             out_batch = output_batch_queue.get()
+            if out_batch is None:
+                break
             _validate_batch_output(out_batch)
             yield out_batch
+
+        if not exception_queue.empty():
+            raise exception_queue.get()
 
     return transform_fn
 
@@ -448,7 +460,7 @@ def _create_map_transformer_for_row_based_map_op(
 
 def generate_map_rows_fn(
     target_max_block_size: int,
-) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
+) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the UDF to each record of blocks."""
     context = DataContext.get_current()
 
@@ -468,7 +480,7 @@ def generate_map_rows_fn(
 
 def generate_flat_map_fn(
     target_max_block_size: int,
-) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
+) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the UDF to each record of blocks,
     and then flatten results.
     """
@@ -491,7 +503,7 @@ def generate_flat_map_fn(
 
 def generate_filter_fn(
     target_max_block_size: int,
-) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
+) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the UDF to each record of blocks,
     and filter out records that do not satisfy the given predicate.
     """
