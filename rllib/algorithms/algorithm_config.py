@@ -534,6 +534,7 @@ class AlgorithmConfig(_Config):
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
 
         # `self.experimental()`
+        self._enable_torch_mixed_precision_training = False
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
@@ -3134,6 +3135,13 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if _enable_rl_module_api != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
+                new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
+                error=True,
+            )
+
         if model_config_dict is not NotProvided:
             self._model_config_dict = model_config_dict
         if rl_module_spec is not NotProvided:
@@ -3149,17 +3157,12 @@ class AlgorithmConfig(_Config):
                 algorithm_config_overrides_per_module
             )
 
-        if _enable_rl_module_api != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
-                new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
-                error=False,
-            )
         return self
 
     def experimental(
         self,
         *,
+        _enable_torch_mixed_precision_training: Optional[bool] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
@@ -3170,6 +3173,10 @@ class AlgorithmConfig(_Config):
         """Sets the config's experimental settings.
 
         Args:
+            _enable_torch_mixed_precision_training: Whether to switch on automatic mixed-
+                precision training for torch RLModules. Note that this setting only
+                works on the new API stack, by doing
+                `config.api_stack(enable_rl_module_and_learner=True)`.
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy will handle more than one loss/optimizer.
                 Set this to True, if you would like to return more than
@@ -3199,6 +3206,10 @@ class AlgorithmConfig(_Config):
             )
             self.api_stack(enable_rl_module_and_learner=_enable_new_api_stack)
 
+        if _enable_torch_mixed_precision_training is not NotProvided:
+            self._enable_torch_mixed_precision_training = (
+                _enable_torch_mixed_precision_training
+            )
         if _tf_policy_handles_more_than_one_loss is not NotProvided:
             self._tf_policy_handles_more_than_one_loss = (
                 _tf_policy_handles_more_than_one_loss

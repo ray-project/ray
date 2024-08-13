@@ -391,6 +391,11 @@ class Learner(Checkpointable):
                 lr=scheduler.get_current_value(),
             )
 
+        # Optionally, set up a loss scaler in case of automatic mixed precision
+        # training.
+        if self.config._enable_torch_mixed_precision_training:
+            self._set_loss_scaler(optimizer_name=optimizer_name)
+
     @OverrideToImplementCustomLogic
     def configure_optimizers(self) -> None:
         """Configures, creates, and registers the optimizers for this Learner.
@@ -1571,6 +1576,14 @@ class Learner(Checkpointable):
         Args:
             optimizer: The local optimizer to update the learning rate for.
             lr: The new learning rate.
+        """
+
+    @abc.abstractmethod
+    def _set_loss_scaler(self, optimizer_name: Optimizer) -> None:
+        """Adds a framework-specific loss scaler for automatic mixed precision training.
+
+        Args:
+            optimizer_name: The name of the optimizer to associate the scaler with.
         """
 
     @staticmethod

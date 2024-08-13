@@ -97,6 +97,10 @@ class TorchLearner(Learner):
                 torch_dynamo_mode=self.config.torch_compile_learner_dynamo_mode,
             )
 
+        # Loss scalers for mixed precision training. Map optimizer names to
+        # associated torch GradScaler objects.
+        self._amp_grad_scalers = {}
+
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
@@ -129,8 +133,13 @@ class TorchLearner(Learner):
         # Activate tensor-mode on our MetricsLogger.
         self.metrics.activate_tensor_mode()
 
-        fwd_out = self.module.forward_train(batch)
-        loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
+        if self.config._enable_torch_mixed_precision_training:
+            with torch.cuda.amp.autocast():
+                fwd_out = self.module.forward_train(batch)
+                loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
+        else:
+            fwd_out = self.module.forward_train(batch)
+            loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
 
         gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
@@ -146,10 +155,14 @@ class TorchLearner(Learner):
     def compute_gradients(
         self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
+        self.get_optimizer()
         for optim in self._optimizer_parameters:
             # `set_to_none=True` is a faster way to zero out the gradients.
             optim.zero_grad(set_to_none=True)
-        loss_per_module[ALL_MODULES].backward()
+        if self.config._enable_torch_mixed_precision_training:
+            self._amp_grad_scalers[].scale(loss_per_module[ALL_MODULES]).backward()
+        else:
+            loss_per_module[ALL_MODULES].backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
         return grads
@@ -167,6 +180,8 @@ class TorchLearner(Learner):
         # For each optimizer call its step function.
         for optim in self._optimizer_parameters:
             optim.step()
+        if self.config._enable_torch_mixed_precision_training:
+            self._torch_amp_scaler.update()
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
@@ -487,6 +502,10 @@ class TorchLearner(Learner):
     def _set_optimizer_lr(optimizer: "torch.optim.Optimizer", lr: float) -> None:
         for g in optimizer.param_groups:
             g["lr"] = lr
+
+    @override(Learner)
+    def _set_loss_scaler(self, optimizer_name: str) -> None:
+        self._amp_grad_scalers[optimizer_name] = torch.cuda.amp.GradScaler()
 
     @staticmethod
     @override(Learner)
