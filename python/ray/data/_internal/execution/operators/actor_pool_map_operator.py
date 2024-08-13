@@ -297,10 +297,14 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
         )
 
-    def current_running_processor_usage(self) -> ExecutionResources:
-        # Exclude pending actors from the total count and only count running actors
-        # towards our current running resource usage to avoid the progress bar from
-        # displaying more GPUs than actually used.
+    def pending_processor_usage(self) -> ExecutionResources:
+        num_pending_workers = self._actor_pool.num_pending_actors()
+        return ExecutionResources(
+            cpu=self._ray_remote_args.get("num_cpus", 0) * num_pending_workers,
+            gpu=self._ray_remote_args.get("num_gpus", 0) * num_pending_workers,
+        )
+
+    def running_processor_usage(self) -> ExecutionResources:
         num_running_workers = self._actor_pool.num_running_actors()
         return ExecutionResources(
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_running_workers,

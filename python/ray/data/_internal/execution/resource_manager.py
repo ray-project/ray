@@ -51,8 +51,10 @@ class ResourceManager:
         self._global_limits_last_update_time = 0
         self._global_usage = ExecutionResources.zero()
         self._global_running_usage = ExecutionResources.zero()
+        self._global_pending_usage = ExecutionResources.zero()
         self._op_usages: Dict[PhysicalOperator, ExecutionResources] = {}
         self._op_running_usages: Dict[PhysicalOperator, ExecutionResources] = {}
+        self._op_pending_usages: Dict[PhysicalOperator, ExecutionResources] = {}
         # Object store memory usage internal to the operator, including the
         # pending task outputs and op's internal output buffers.
         self._mem_op_internal: Dict[PhysicalOperator, int] = defaultdict(int)
@@ -112,8 +114,10 @@ class ResourceManager:
         # computations or remove this method entirely and compute usages on demand.
         self._global_usage = ExecutionResources(0, 0, 0)
         self._global_running_usage = ExecutionResources(0, 0, 0)
+        self._global_pending_usage = ExecutionResources(0, 0, 0)
         self._op_usages.clear()
         self._op_running_usages.clear()
+        self._op_pending_usages.clear()
         self._downstream_fraction.clear()
         self._downstream_object_store_memory.clear()
 
@@ -121,22 +125,23 @@ class ResourceManager:
         num_ops_so_far = 0
         num_ops_total = len(self._topology)
         for op, state in reversed(self._topology.items()):
-            # Update `self._op_usages` and `self._op_running_usages`.
+            # Update `self._op_usages`, `self._op_running_usages`, and `self._op_pending_usages`.
             op_usage = op.current_processor_usage()
-            op_running_usage = op.current_running_processor_usage()
+            op_running_usage = op.running_processor_usage()
+            op_pending_usage = op.pending_processor_usage()
             assert not op_usage.object_store_memory
             assert not op_running_usage.object_store_memory
+            assert not op_pending_usage.object_store_memory
             op_usage.object_store_memory = self._estimate_object_store_memory(op, state)
-            op_running_usage.object_store_memory = self._estimate_object_store_memory(
-                op, state
-            )
+            op_running_usage.object_store_memory = self._estimate_object_store_memory(op, state)
+            op_pending_usage.object_store_memory = self._estimate_object_store_memory(op, state)
             self._op_usages[op] = op_usage
             self._op_running_usages[op] = op_running_usage
-            # Update `self._global_usage` and `self._global_running_usage`.
+            self._op_pending_usages[op] = op_pending_usage
+            # Update `self._global_usage`, `self._global_running_usage`, and `self._global_pending_usage`.
             self._global_usage = self._global_usage.add(op_usage)
-            self._global_running_usage = self._global_running_usage.add(
-                op_running_usage
-            )
+            self._global_running_usage = self._global_running_usage.add(op_running_usage)
+            self._global_pending_usage = self._global_pending_usage.add(op_pending_usage)
             # Update `self._downstream_fraction` and `_downstream_object_store_memory`.
             # Subtract one from denom to account for input buffer.
             f = (1.0 + num_ops_so_far) / max(1.0, num_ops_total - 1.0)
@@ -160,6 +165,10 @@ class ResourceManager:
     def get_global_running_usage(self) -> ExecutionResources:
         """Return the global running resource usage at the current time."""
         return self._global_running_usage
+
+    def get_global_pending_usage(self) -> ExecutionResources:
+        """Return the global pending resource usage at the current time."""
+        return self._global_pending_usage
 
     def get_global_limits(self) -> ExecutionResources:
         """Return the global resource limits at the current time.
