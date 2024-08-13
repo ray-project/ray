@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 import ray
 from .thread_runner import ThreadRunner
 from ray.actor import ActorHandle
+from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
@@ -137,6 +138,7 @@ class RayTrainWorker:
         distributed_context: DistributedContext,
         synchronization_actor: SynchronizationActor,
         storage_context: StorageContext,
+        dataset_shards: Dict[str, DataIterator] = None,
         checkpoint: Optional[Checkpoint] = None,
     ):
         context = TrainContext(
@@ -148,6 +150,7 @@ class RayTrainWorker:
                 training_thread_runner=ThreadRunner(),
             ),
             storage_context=storage_context,
+            dataset_shards=dataset_shards or {},
             checkpoint=checkpoint,
         )
         set_train_context(context)

@@ -199,9 +199,9 @@ class TorchTrainer(DataParallelTrainer):
             backend_config=torch_config,
             scaling_config=scaling_config,
             run_config=run_config,
+            dataset_config=dataset_config,
+            datasets=datasets,
             # TODO: Re-enable below.
-            # dataset_config=dataset_config,
-            # datasets=datasets,
             # resume_from_checkpoint=resume_from_checkpoint,
             # metadata=metadata,
         )

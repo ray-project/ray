@@ -3,7 +3,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
 
 import ray
 from ray.exceptions import GetTimeoutError, RayActorError
@@ -169,7 +169,8 @@ class WorkerGroup:
         return self._assign_worker_ranks(workers)
 
     def _init_train_context_on_workers(
-        self, checkpoint: Optional[Checkpoint] = None
+        self,
+        train_context_args: Dict[str, List[Any]],
     ) -> None:
         context_init_tasks = [
             worker.actor.init_train_context.remote(
@@ -177,9 +178,11 @@ class WorkerGroup:
                 distributed_context=worker.distributed_context,
                 synchronization_actor=self._sync_actor,
                 storage_context=self._storage_context,
-                checkpoint=checkpoint,
+                **{
+                    arg: arg_values[i] for arg, arg_values in train_context_args.items()
+                },
             )
-            for worker in self._workers
+            for i, worker in enumerate(self._workers)
         ]
         ray.get(context_init_tasks)
 
@@ -243,7 +246,20 @@ class WorkerGroup:
         # To prevent the driver from crashing, catch all `RayActorError`s and
         # raise a specially handled error to the controller.
         try:
-            self._init_train_context_on_workers(checkpoint)
+            train_context_args = {"checkpoint": [checkpoint] * len(self._workers)}
+            for callable in self._callbacks:
+                args = callable.before_init_train_context(self)
+                for arg, arg_values in args.items():
+                    assert len(arg_values) == num_workers, (
+                        f"Callback {callable} returned {arg} with "
+                        f"{len(arg_values)} values, expected {num_workers}."
+                    )
+                    assert (
+                        arg not in train_context_args
+                    ), f"Callback {callable} returned {arg} which is already set."
+                    train_context_args[arg] = arg_values
+
+            self._init_train_context_on_workers(train_context_args)
 
             for callback in self._callbacks:
                 callback.after_worker_group_start(self)

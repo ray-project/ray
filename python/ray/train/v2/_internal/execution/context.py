@@ -5,6 +5,7 @@ from queue import Queue
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 import ray
+from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
 from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
@@ -55,6 +56,7 @@ class TrainContext:
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext
+    dataset_shards: Dict[str, DataIterator]
     checkpoint: Optional[Checkpoint] = None
 
     @_copy_doc(session.get_metadata)
@@ -114,6 +116,28 @@ class TrainContext:
 
     def get_checkpoint(self):
         return self.checkpoint
+
+    def get_dataset_shard(self, dataset_name: str) -> DataIterator:
+        """Returns the :class:`ray.data.DataIterator` shard for this worker.
+
+        Call :meth:`~ray.data.DataIterator.iter_torch_batches` or
+        :meth:`~ray.data.DataIterator.to_tf` on this shard to convert it to the
+        appropriate framework-specific data type.
+
+        Args:
+            dataset_name: Name of the dataset shard.
+        Returns:
+            The ``DataIterator`` shard with the given name for this worker.
+        Raises:
+            KeyError: If the dataset shard with the given name is not found.
+        """
+        try:
+            return self.dataset_shards[dataset_name]
+        except KeyError:
+            raise KeyError(
+                f"Dataset {dataset_name} not found. Available datasets: "
+                f"{list(self.dataset_shards.keys())}."
+            )
 
     def _sync_checkpoint_dir_name_across_ranks(
         self, checkpoint_dir_name: Optional[str] = None

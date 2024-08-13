@@ -5,13 +5,13 @@ import ray
 from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig, Checkpoint
 from ray.train._internal.data_config import DataConfig
-from ray.train.base_trainer import GenDataset
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
     WorkingDirectorySetupCallback,
 )
+from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback, GenDataset
 from ray.train.v2._internal.constants import _UNSUPPORTED, get_env_vars_to_propagate
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
@@ -130,8 +130,8 @@ class DataParallelTrainer:
         run_config: Optional[RunConfig] = None,
         # TODO: [Deprecated] Remove in future release
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        datasets: Optional[Dict[str, GenDataset]] = _UNSUPPORTED,
-        dataset_config: Optional[DataConfig] = _UNSUPPORTED,
+        datasets: Optional[Dict[str, GenDataset]] = None,
+        dataset_config: Optional[DataConfig] = None,
         metadata: Optional[Dict[str, Any]] = _UNSUPPORTED,
     ):
         self.train_loop_per_worker = train_loop_per_worker
@@ -143,13 +143,18 @@ class DataParallelTrainer:
             logger.warning(RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
         self.resume_from_checkpoint = resume_from_checkpoint
 
+        self.datasets = datasets or {}
+
+        dataset_config = dataset_config or DataConfig()
+        if not isinstance(dataset_config, DataConfig):
+            raise ValueError(
+                "`dataset_config` must be an instance of ray.train.DataConfig, "
+                f"was: {dataset_config}"
+            )
+        self.data_config = dataset_config
+
         # TODO: No support for below
         error_msg = "The '{}' argument is not supported yet."
-
-        if datasets != _UNSUPPORTED:
-            raise NotImplementedError(error_msg.format("datasets"))
-        if dataset_config != _UNSUPPORTED:
-            raise NotImplementedError(error_msg.format("dataset_config"))
         if metadata != _UNSUPPORTED:
             raise NotImplementedError(error_msg.format("metadata"))
 
@@ -165,9 +170,14 @@ class DataParallelTrainer:
             self.backend_config, self.scaling_config
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
+        datasets_setup_callback = DatasetsSetupCallback(
+            self.datasets,
+            self.data_config,
+        )
         callbacks = [
             accelerator_setup_callback,
             backend_setup_callback,
+            datasets_setup_callback,
         ]
         if env_bool(RAY_CHDIR_TO_TRIAL_DIR, True):
             working_directory_setup_callback = WorkingDirectorySetupCallback()

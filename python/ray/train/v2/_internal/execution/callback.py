@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List
 
 from ray.train import Checkpoint
 from ray.util.annotations import DeveloperAPI
@@ -21,6 +21,18 @@ class Callback:
 
 @DeveloperAPI
 class WorkerGroupCallback(Callback):
+    def before_init_train_context(
+        self, worker_group: "WorkerGroup"
+    ) -> Dict[str, List[Any]]:
+        """Called before initializing the TrainContext for the worker_group.
+
+        Return:
+            A dictionary of additional arguments for TrainContext.
+            The key is the argument name and the value is a list of argument values
+            to pass to the TrainContext constructor of each worker in the worker group.
+        """
+        return {}
+
     def after_worker_group_start(self, worker_group: "WorkerGroup"):
         """Called after the worker group actors are initialized.
         All workers should be ready to execute tasks."""
