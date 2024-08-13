@@ -218,6 +218,10 @@ class TestReadyForTraffic:
     def test_route_table_not_populated(
         self, mock_endpoint_router: EndpointRouter, is_head: bool
     ):
+        """Proxy router should NOT be ready for traffic if:
+        - it has not received route table from controller
+        """
+
         ready_for_traffic, msg = mock_endpoint_router.ready_for_traffic(is_head=is_head)
         assert not ready_for_traffic
         assert msg == NO_ROUTES_MESSAGE
@@ -225,6 +229,12 @@ class TestReadyForTraffic:
     def test_head_route_table_populated_no_replicas(
         self, mock_endpoint_router: EndpointRouter
     ):
+        """Proxy router should be ready for traffic if:
+        - it has received route table from controller
+        - it hasn't received any replicas yet
+        - it lives on head node
+        """
+
         d_id = DeploymentID(name="A", app_name="B")
         mock_endpoint_router.update_routes({d_id: EndpointInfo(route="/")})
         mock_endpoint_router.handles[d_id].set_running_replicas_populated(False)
@@ -236,6 +246,12 @@ class TestReadyForTraffic:
     def test_worker_route_table_populated_no_replicas(
         self, mock_endpoint_router: EndpointRouter
     ):
+        """Proxy router should NOT be ready for traffic if:
+        - it has received route table from controller
+        - it hasn't received any replicas yet
+        - it lives on a worker node
+        """
+
         d_id = DeploymentID(name="A", app_name="B")
         mock_endpoint_router.update_routes({d_id: EndpointInfo(route="/")})
         mock_endpoint_router.handles[d_id].set_running_replicas_populated(False)
@@ -248,6 +264,11 @@ class TestReadyForTraffic:
     def test_route_table_populated_with_replicas(
         self, mock_endpoint_router: EndpointRouter, is_head: bool
     ):
+        """Proxy router should be ready for traffic if:
+        - it has received route table from controller
+        - it has received replicas from controller
+        """
+
         d_id = DeploymentID(name="A", app_name="B")
         mock_endpoint_router.update_routes({d_id: EndpointInfo(route="/")})
         mock_endpoint_router.handles[d_id].set_running_replicas_populated(True)

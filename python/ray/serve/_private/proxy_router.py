@@ -14,7 +14,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.utils import get_head_node_id
 from ray.serve.handle import DeploymentHandle
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -151,7 +150,7 @@ class LongestPrefixRouter(ProxyRouter):
         The first return value will be false if any of the following hold:
         - The route table has not been populated yet
         - The route table has been populated, but none of the handles
-          have received running replicas yet
+          have received running replicas yet AND it lives on a worker node.
 
         Otherwise, the first return value will be true.
         """
@@ -224,7 +223,7 @@ class EndpointRouter(ProxyRouter):
         The first return value will be false if any of the following hold:
         - The route table has not been populated yet
         - The route table has been populated, but none of the handles
-          have received running replicas yet
+          have received running replicas yet AND it lives on a worker node.
 
         Otherwise, the first return value will be true.
         """

@@ -522,12 +522,6 @@ class TestHealthzAndRoutes:
             == "This node is being drained."
         )
 
-    # def test_route_table_not_populated(self, shutdown_ray):
-    #     pass
-    #
-    # def test_routers_not_populated_with_running_replicas(self):
-    #     pass
-
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
