@@ -139,7 +139,6 @@ class ProgressBar:
                 if hasattr(result, "num_rows"):
                     num_rows = result.num_rows
                 elif hasattr(result, "__len__"):
-                    #For output is DataFrame,i.e. sort_sample
                     num_rows = len(result)
                 else:
                     num_rows = 1
@@ -174,7 +173,7 @@ class ProgressBar:
                 if hasattr(result, "num_rows"):
                     num_rows = result.num_rows
                 elif hasattr(result, "__len__"):
-                    #For output is DataFrame,i.e. sort_sample
+                    # For output is DataFrame,i.e. sort_sample
                     num_rows = len(result)
                 else:
                     num_rows = 1
