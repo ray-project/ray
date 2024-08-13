@@ -140,7 +140,7 @@ class FakeProxyRouter(ProxyRouter):
     def set_ready_for_traffic(self):
         self._ready_for_traffic = True
 
-    def ready_for_traffic(self) -> bool:
+    def ready_for_traffic(self, is_head: bool) -> bool:
         if self._ready_for_traffic:
             return True, ""
 
