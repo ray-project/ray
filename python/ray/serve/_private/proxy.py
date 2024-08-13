@@ -158,7 +158,6 @@ class GenericProxy(ABC):
             self.request_timeout_s = None
 
         self._node_id = node_id
-        # print("cindy is head node", node_id == get_head_node_id())
         self._is_head = is_head
 
         # Used only for displaying the route table.
@@ -340,12 +339,12 @@ class GenericProxy(ABC):
         router_ready_for_traffic, router_msg = self.proxy_router.ready_for_traffic(
             self._is_head
         )
-        if not router_ready_for_traffic:
-            healthy = False
-            message = router_msg
-        elif self._is_draining():
+        if self._is_draining():
             healthy = False
             message = DRAINING_MESSAGE
+        elif not router_ready_for_traffic:
+            healthy = False
+            message = router_msg
         else:
             healthy = True
             message = HEALTHY_MESSAGE
@@ -1217,10 +1216,11 @@ class ProxyActor:
 
             http_middlewares.extend(middlewares)
 
+        is_head = node_id == get_head_node_id()
         self.http_proxy = HTTPProxy(
             node_id=node_id,
             node_ip_address=node_ip_address,
-            is_head=self._node_id == get_head_node_id(),
+            is_head=is_head,
             proxy_router_class=LongestPrefixRouter,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
@@ -1230,7 +1230,7 @@ class ProxyActor:
             gRPCProxy(
                 node_id=node_id,
                 node_ip_address=node_ip_address,
-                is_head=self._node_id == get_head_node_id(),
+                is_head=is_head,
                 proxy_router_class=EndpointRouter,
                 request_timeout_s=(
                     request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S

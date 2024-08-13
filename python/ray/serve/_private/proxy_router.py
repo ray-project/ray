@@ -88,7 +88,6 @@ class LongestPrefixRouter(ProxyRouter):
                     _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
                     _source=DeploymentHandleSource.PROXY,
                 )
-                print("cindy the handle that we got!!", handle)
                 handle._set_request_protocol(self._protocol)
                 # Eagerly initialize the router for each handle so it can receive
                 # the replica set from the controller.
