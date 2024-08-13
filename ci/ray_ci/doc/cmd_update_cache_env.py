@@ -3,7 +3,7 @@ from sphinx.project import Project
 import os
 import time
 from typing import List
-from datetime import datetime, timezone
+from datetime import datetime
 import click
 
 PENDING_FILES_PATH = "pending_files.txt"
@@ -60,10 +60,10 @@ def update_file_timestamp(ray_dir: str) -> None:
     an old timestamp to avoid rebuilding them.
     """
     ray_doc_dir = os.path.join(ray_dir, "doc")
-    new_timestamp = datetime(2000, 7, 22, 0, 0, tzinfo=timezone.utc).timestamp()
 
-    # Update all template files timestamp
-    directory = f"{ray_doc_dir}/source/_templates"
+    # Update all target html files timestamp to the current time
+    new_timestamp = datetime.now().timestamp()
+    directory = f"{ray_doc_dir}/_build/html/"
 
     for root, dirs, files in os.walk(directory):
         for file in files:
