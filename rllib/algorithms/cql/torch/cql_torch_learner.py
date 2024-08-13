@@ -149,11 +149,11 @@ class CQLTorchLearner(SACTorchLearner):
 
         # Calculate the TD error.
         td_error = torch.abs(q_selected - q_selected_target)
-        # TODO (simon): Add the Twin TD error
+        # Calculate a TD-error for twin-Q values, if needed.
         if config.twin_q:
             td_error += torch.abs(q_twin_selected, q_selected_target)
             # Rescale the TD error
-            td_error += 0.5
+            td_error *= 0.5
 
         # MSBE loss for the critic(s) (i.e. Q, see eqs. (7-8) Haarnoja et al. (2018)).
         # Note, this needs a sample from the current policy given the next state.
@@ -211,6 +211,7 @@ class CQLTorchLearner(SACTorchLearner):
             )
             .view(batch_size, config.num_actions, 1)
         )
+        # Calculate twin Q-values for the random actions, if needed.
         if config.twin_q:
             q_twin_rand_repeat = (
                 self.module[module_id]
@@ -235,6 +236,8 @@ class CQLTorchLearner(SACTorchLearner):
             )
             .view(batch_size, config.num_actions, 1)
         )
+        # Calculate twin Q-values for the repeated actions from the current policy,
+        # if needed.
         if config.twin_q:
             q_twin_curr_repeat = (
                 self.module[module_id]
@@ -247,6 +250,8 @@ class CQLTorchLearner(SACTorchLearner):
             )
         del batch_curr_repeat
         batch_next_repeat = {
+            # Note, we use here the current observations b/c we want to keep the
+            # state fix while sampling the actions.
             Columns.OBS: obs_curr_repeat,
             Columns.ACTIONS: actions_next_repeat,
         }
@@ -259,6 +264,8 @@ class CQLTorchLearner(SACTorchLearner):
             )
             .view(batch_size, config.num_actions, 1)
         )
+        # Calculate also the twin Q-values for the current policy and next actions,
+        # if needed.
         if config.twin_q:
             q_twin_next_repeat = (
                 self.module[module_id]
@@ -272,6 +279,9 @@ class CQLTorchLearner(SACTorchLearner):
         del batch_next_repeat
 
         # Compute the log-probabilities for the random actions.
+        # TODO (simon): This is the density for a discrete uniform, however, actions
+        # come from a continuous one. So actually this density should use (1/(high-low))
+        # instead of (1/2).
         random_density = torch.log(
             torch.pow(
                 torch.tensor(
@@ -295,8 +305,8 @@ class CQLTorchLearner(SACTorchLearner):
             * config.min_q_weight
             * config.temperature
         )
-        cql_loss = cql_loss - (q_selected.mean() * config.min_q_weight)
-
+        cql_loss -= q_selected.mean() * config.min_q_weight
+        # Add the CQL loss term to the SAC loss term.
         critic_loss = sac_critic_loss + cql_loss
 
         # If a twin Q-value function is implemented calculated its CQL loss.
@@ -314,7 +324,8 @@ class CQLTorchLearner(SACTorchLearner):
                 * config.min_q_weight
                 * config.temperature
             )
-            cql_twin_loss - (q_twin_selected.mean()) * config.min_q_weight
+            cql_twin_loss -= q_twin_selected.mean() * config.min_q_weight
+            # Add the CQL loss term to the SAC loss term.
             critic_twin_loss = sac_critic_twin_loss + cql_twin_loss
 
         # TODO (simon): Check, if we need to implement here also a Lagrangian
@@ -322,10 +333,10 @@ class CQLTorchLearner(SACTorchLearner):
 
         total_loss = actor_loss + critic_loss + alpha_loss
 
+        # Add the twin critic loss to the total loss, if needed.
         if config.twin_q:
-            # TODO (simon): Check, if we need to multiply the critic_loss then
-            # with 0.5.
-            total_loss += critic_twin_loss
+            # Reweigh the critic loss terms in the total loss.
+            total_loss += 0.5 * critic_twin_loss - 0.5 * critic_loss
 
         # Log important loss stats (reduce=mean (default), but with window=1
         # in order to keep them history free).
