@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/core_worker/task_event_buffer.h"
+#include "ray/util/event.h"
 
 #include "ray/gcs/pb_util.h"
 
@@ -108,7 +109,7 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   }
 }
 
-void TaskStatusEvent::ToRpcTaskExportEvents(rpc::ExportTaskEventData *rpc_task_export_event_data) {
+void TaskStatusEvent::ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) {
   // Base fields
   rpc_task_export_event_data->set_task_id(task_id_.Binary());
   rpc_task_export_event_data->set_job_id(job_id_.Binary());
@@ -142,7 +143,9 @@ void TaskStatusEvent::ToRpcTaskExportEvents(rpc::ExportTaskEventData *rpc_task_e
   }
 
   if (state_update_->error_info_.has_value()) {
-    *(dst_state_update->mutable_error_info()) = *state_update_->error_info_;
+    auto error_info = dst_state_update->mutable_error_info();
+    error_info->set_error_message((*state_update_->error_info_).error_message());
+    error_info->set_error_type((*state_update_->error_info_).error_type());
   }
 
   if (state_update_->task_log_info_.has_value()) {
@@ -178,7 +181,7 @@ void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   event_entry->set_extra_data(std::move(extra_data_));
 }
 
-void TaskProfileEvent::ToRpcTaskExportEvents(rpc::ExportTaskEventData *rpc_task_export_event_data) {
+void TaskProfileEvent::ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) {
   auto profile_events = rpc_task_export_event_data->mutable_profile_events();
 
   // Base fields
@@ -406,7 +409,7 @@ void TaskEventBufferImpl::WriteExportData(
   // Aggregate the task events by TaskAttempt.
   // absl::flat_hash_map<TaskAttempt, rpc::ExportTaskEventData> agg_task_events;
   // std::vector<std::shared_ptr<rpc::ExportTaskEventData>> rpc_export_task_events;
-  auto to_rpc_event_fn = [this, &agg_task_events, &dropped_task_attempts_to_send](
+  auto to_rpc_event_fn = [this, &dropped_task_attempts_to_send](
                              std::unique_ptr<TaskEvent> &event) {
     if (dropped_task_attempts_to_send.count(event->GetTaskAttempt())) {
       // We are marking this as data loss due to some missing task status updates.
@@ -434,8 +437,6 @@ void TaskEventBufferImpl::WriteExportData(
       status_events_to_send.begin(), status_events_to_send.end(), to_rpc_event_fn);
   std::for_each(
       profile_events_to_send.begin(), profile_events_to_send.end(), to_rpc_event_fn);
-
-  return rpc_export_task_events;
 }
 
 void TaskEventBufferImpl::FlushEvents(bool forced) {
