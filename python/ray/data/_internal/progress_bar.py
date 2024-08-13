@@ -134,7 +134,13 @@ class ProgressBar:
             done, remaining = ray.wait(
                 remaining, num_returns=len(remaining), fetch_local=False, timeout=0.1
             )
-            self.update(len(done))
+            total_rows_processed = 0
+            for _, result in zip(done, ray.get(done)):
+                num_rows = (
+                    result.num_rows if hasattr(result, "num_rows") else 1
+                )  # Default to 1 if no row count is available
+                total_rows_processed += num_rows
+            self.update(total_rows_processed)
 
             with _canceled_threads_lock:
                 if t in _canceled_threads:
@@ -158,9 +164,15 @@ class ProgressBar:
             )
             if fetch_local:
                 fetch_local = False
+            total_rows_processed = 0
             for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
-            self.update(len(done))
+                num_rows = (
+                    result.num_rows if hasattr(result, "num_rows") else 1
+                )  # Default to 1 if no row count is available
+                total_rows_processed += num_rows
+            # TODO(zhilong): Change the total to total_row when init progress bar
+            self.update(total_rows_processed)
 
             with _canceled_threads_lock:
                 if t in _canceled_threads:
@@ -173,6 +185,10 @@ class ProgressBar:
         if self._bar and name != self._desc:
             self._desc = name
             self._bar.set_description(self._desc)
+
+    def refresh(self):
+        if self._bar:
+            self._bar.refresh()
 
     def update(self, i: int = 0, total: Optional[int] = None) -> None:
         if self._bar and (i != 0 or self._bar.total != total):

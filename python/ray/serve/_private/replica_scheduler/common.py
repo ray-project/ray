@@ -198,6 +198,7 @@ class ActorReplicaWrapper:
             else:
                 return obj_ref_gen, queue_len_info
         except asyncio.CancelledError as e:
+            # HTTP client disconnected or request was explicitly canceled.
             ray.cancel(obj_ref_gen)
             raise e from None
 
@@ -241,6 +242,9 @@ class ReplicaQueueLengthCache:
             queue_len, self._get_curr_time_s()
         )
 
+    def invalidate_key(self, replica_id: ReplicaID):
+        self._cache.pop(replica_id, None)
+
     def remove_inactive_replicas(self, *, active_replica_ids: Set[ReplicaID]):
         """Removes entries for all replica IDs not in the provided active set."""
         # NOTE: the size of the cache dictionary changes during this loop.
@@ -265,6 +269,14 @@ class ReplicaScheduler(ABC):
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Compatibility shim for RunningReplicaInfo datatype."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
+
+    @abstractmethod
+    def on_replica_actor_died(self, replica_id: ReplicaID):
+        pass
+
+    @abstractmethod
+    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
+        pass
 
     @property
     @abstractmethod

@@ -82,7 +82,7 @@ class LongestPrefixRouter(ProxyRouter):
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                handle = self._get_handle(endpoint.name, endpoint.app_name).options(
+                handle = self._get_handle(endpoint.name, endpoint.app_name,).options(
                     # Streaming codepath isn't supported for Java.
                     stream=not info.app_is_cross_language,
                     _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
@@ -90,7 +90,7 @@ class LongestPrefixRouter(ProxyRouter):
                 )
                 print("cindy the handle that we got!!", handle)
                 handle._set_request_protocol(self._protocol)
-                # Eagerly instantiate the router for each handle so it can receive
+                # Eagerly initialize the router for each handle so it can receive
                 # the replica set from the controller.
                 handle._get_or_create_router()
                 self.handles[endpoint] = handle
@@ -205,7 +205,7 @@ class EndpointRouter(ProxyRouter):
                     _source=DeploymentHandleSource.PROXY,
                 )
                 handle._set_request_protocol(self._protocol)
-                # Eagerly instantiate the router for each handle so it can receive
+                # Eagerly initialize the router for each handle so it can receive
                 # the replica set from the controller.
                 handle._get_or_create_router()
                 self.handles[endpoint] = handle
