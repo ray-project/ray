@@ -1,3 +1,4 @@
+from collections import defaultdict
 import logging
 from typing import (
     Any,
@@ -99,7 +100,7 @@ class TorchLearner(Learner):
 
         # Loss scalers for mixed precision training. Map optimizer names to
         # associated torch GradScaler objects.
-        self._amp_grad_scalers = {}
+        self._amp_grad_scalers = defaultdict(lambda: torch.cuda.amp.GradScaler())
 
     @OverrideToImplementCustomLogic
     @override(Learner)
@@ -155,14 +156,19 @@ class TorchLearner(Learner):
     def compute_gradients(
         self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
-        self.get_optimizer()
         for optim in self._optimizer_parameters:
             # `set_to_none=True` is a faster way to zero out the gradients.
             optim.zero_grad(set_to_none=True)
+
         if self.config._enable_torch_mixed_precision_training:
-            self._amp_grad_scalers[].scale(loss_per_module[ALL_MODULES]).backward()
+            total_loss = sum(
+                self._amp_grad_scalers[key].scale(loss)
+                for key, loss in loss_per_module.items()
+            )
         else:
-            loss_per_module[ALL_MODULES].backward()
+            total_loss = sum(loss_per_module.values())
+
+        total_loss.backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
         return grads
@@ -178,10 +184,17 @@ class TorchLearner(Learner):
             self._params[pid].grad = grad
 
         # For each optimizer call its step function.
-        for optim in self._optimizer_parameters:
-            optim.step()
+        for module_id, optimizer_names in self._module_optimizers.items():
+            for optimizer_name in optimizer_names:
+                optim = self.get_optimizer(module_id, optimizer_name)
+                if self.config._enable_torch_mixed_precision_training:
+                    self._amp_grad_scalers[module_id].step(optim)
+                else:
+                    optim.step()
+
         if self.config._enable_torch_mixed_precision_training:
-            self._torch_amp_scaler.update()
+            for scaler in self._amp_grad_scalers.values():
+                scaler.update()
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
@@ -502,10 +515,6 @@ class TorchLearner(Learner):
     def _set_optimizer_lr(optimizer: "torch.optim.Optimizer", lr: float) -> None:
         for g in optimizer.param_groups:
             g["lr"] = lr
-
-    @override(Learner)
-    def _set_loss_scaler(self, optimizer_name: str) -> None:
-        self._amp_grad_scalers[optimizer_name] = torch.cuda.amp.GradScaler()
 
     @staticmethod
     @override(Learner)

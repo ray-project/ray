@@ -391,11 +391,6 @@ class Learner(Checkpointable):
                 lr=scheduler.get_current_value(),
             )
 
-        # Optionally, set up a loss scaler in case of automatic mixed precision
-        # training.
-        if self.config._enable_torch_mixed_precision_training:
-            self._set_loss_scaler(optimizer_name=optimizer_name)
-
     @OverrideToImplementCustomLogic
     def configure_optimizers(self) -> None:
         """Configures, creates, and registers the optimizers for this Learner.
@@ -600,9 +595,22 @@ class Learner(Checkpointable):
             The optimizer object, configured under the given `module_id` and
             `optimizer_name`.
         """
+        # `optimizer_name` could possibly be the full optimizer name (including the
+        # module_id under which it is registered).
+        if optimizer_name in self._named_optimizers:
+            return self._named_optimizers[optimizer_name]
+
+        # Normally, `optimizer_name` is just the optimizer's name, not including the
+        # `module_id`.
         full_registration_name = module_id + "_" + optimizer_name
-        assert full_registration_name in self._named_optimizers
-        return self._named_optimizers[full_registration_name]
+        if full_registration_name in self._named_optimizers:
+            return self._named_optimizers[full_registration_name]
+
+        # No optimizer found.
+        raise KeyError(
+            f"Optimizer not found! module_id={module_id} "
+            f"optimizer_name={optimizer_name}"
+        )
 
     def get_optimizers_for_module(
         self, module_id: ModuleID = ALL_MODULES
@@ -859,7 +867,7 @@ class Learner(Checkpointable):
             must contain one protected key ALL_MODULES which will be used for computing
             gradients through.
         """
-        loss_total = None
+        # loss_total = None
         loss_per_module = {}
         for module_id in fwd_out:
             module_batch = batch[module_id]
@@ -873,12 +881,12 @@ class Learner(Checkpointable):
             )
             loss_per_module[module_id] = loss
 
-            if loss_total is None:
-                loss_total = loss
-            else:
-                loss_total += loss
+            # if loss_total is None:
+            #    loss_total = loss
+            # else:
+            #    loss_total += loss
 
-        loss_per_module[ALL_MODULES] = loss_total
+        # loss_per_module[ALL_MODULES] = loss_total
 
         return loss_per_module
 
@@ -1576,14 +1584,6 @@ class Learner(Checkpointable):
         Args:
             optimizer: The local optimizer to update the learning rate for.
             lr: The new learning rate.
-        """
-
-    @abc.abstractmethod
-    def _set_loss_scaler(self, optimizer_name: Optimizer) -> None:
-        """Adds a framework-specific loss scaler for automatic mixed precision training.
-
-        Args:
-            optimizer_name: The name of the optimizer to associate the scaler with.
         """
 
     @staticmethod
