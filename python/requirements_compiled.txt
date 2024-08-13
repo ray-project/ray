@@ -155,7 +155,7 @@ aws-sam-translator==1.81.0
     # via cfn-lint
 aws-xray-sdk==2.12.1
     # via moto
-ax-platform==0.4.1
+ax-platform==0.3.2
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
 azure-cli-core==2.62.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
