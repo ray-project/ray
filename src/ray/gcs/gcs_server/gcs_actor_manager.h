@@ -21,11 +21,11 @@
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -525,19 +525,16 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param actor_id ID of the actor to kill.
   /// \param force_kill Whether to force kill an actor by killing the worker.
-  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
-  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
+  void KillActor(const ActorID &actor_id, bool force_kill);
 
   /// Notify CoreWorker to kill the specified actor.
   ///
   /// \param actor The actor to be killed.
   /// \param death_cause Context about why this actor is dead.
   /// \param force_kill Whether to force kill an actor by killing the worker.
-  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
                                    const rpc::ActorDeathCause &death_cause,
-                                   bool force_kill = true,
-                                   bool no_restart = true);
+                                   bool force_kill = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.

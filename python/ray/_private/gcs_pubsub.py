@@ -14,7 +14,6 @@ except ImportError:
 
 import ray._private.gcs_utils as gcs_utils
 import ray._private.logging_utils as logging_utils
-from ray.core.generated.gcs_pb2 import ErrorTableData
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
 from ray.core.generated import common_pb2
@@ -27,19 +26,6 @@ MAX_GCS_PUBLISH_RETRIES = 60
 
 
 class _PublisherBase:
-    @staticmethod
-    def _create_log_request(log_json: dict):
-        job_id = log_json.get("job")
-        return gcs_service_pb2.GcsPublishRequest(
-            pub_messages=[
-                pubsub_pb2.PubMessage(
-                    channel_type=pubsub_pb2.RAY_LOG_CHANNEL,
-                    key_id=job_id.encode() if job_id else None,
-                    log_batch_message=logging_utils.log_batch_dict_to_proto(log_json),
-                )
-            ]
-        )
-
     @staticmethod
     def _create_node_resource_usage_request(key: str, json: str):
         return gcs_service_pb2.GcsPublishRequest(
@@ -148,21 +134,6 @@ class GcsAioPublisher(_PublisherBase):
         else:
             assert channel is not None, "One of address and channel must be specified"
         self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
-
-    async def publish_error(self, key_id: bytes, error_info: ErrorTableData) -> None:
-        """Publishes error info to GCS."""
-        msg = pubsub_pb2.PubMessage(
-            channel_type=pubsub_pb2.RAY_ERROR_INFO_CHANNEL,
-            key_id=key_id,
-            error_info_message=error_info,
-        )
-        req = gcs_service_pb2.GcsPublishRequest(pub_messages=[msg])
-        await self._stub.GcsPublish(req)
-
-    async def publish_logs(self, log_batch: dict) -> None:
-        """Publishes logs to GCS."""
-        req = self._create_log_request(log_batch)
-        await self._stub.GcsPublish(req)
 
     async def publish_resource_usage(self, key: str, json: str) -> None:
         """Publishes logs to GCS."""
@@ -273,46 +244,6 @@ class _AioSubscriber(_SubscriberBase):
         except Exception:
             pass
         self._stub = None
-
-
-class GcsAioErrorSubscriber(_AioSubscriber):
-    def __init__(
-        self,
-        worker_id: bytes = None,
-        address: str = None,
-        channel: grpc.Channel = None,
-    ):
-        super().__init__(pubsub_pb2.RAY_ERROR_INFO_CHANNEL, worker_id, address, channel)
-
-    async def poll(self, timeout=None) -> Tuple[bytes, ErrorTableData]:
-        """Polls for new error message.
-
-        Returns:
-            A tuple of error message ID and ErrorTableData proto message,
-            or None, None if polling times out or subscriber closed.
-        """
-        await self._poll(timeout=timeout)
-        return self._pop_error_info(self._queue)
-
-
-class GcsAioLogSubscriber(_AioSubscriber):
-    def __init__(
-        self,
-        worker_id: bytes = None,
-        address: str = None,
-        channel: grpc.Channel = None,
-    ):
-        super().__init__(pubsub_pb2.RAY_LOG_CHANNEL, worker_id, address, channel)
-
-    async def poll(self, timeout=None) -> dict:
-        """Polls for new log message.
-
-        Returns:
-            A dict containing a batch of log lines and their metadata,
-            or None if polling times out or subscriber closed.
-        """
-        await self._poll(timeout=timeout)
-        return self._pop_log_batch(self._queue)
 
 
 class GcsAioResourceUsageSubscriber(_AioSubscriber):

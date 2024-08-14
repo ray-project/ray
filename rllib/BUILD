@@ -462,7 +462,7 @@ py_test(
     name = "learning_tests_cartpole_marwil",
     main = "tuned_examples/marwil/cartpole_marwil.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-    size = "medium",
+    size = "large",
     srcs = ["tuned_examples/marwil/cartpole_marwil.py"],
     # Include the zipped json data file as well.
     data = [
@@ -2530,13 +2530,23 @@ py_test(
 )
 
 py_test(
-    name = "examples/curiosity/inverse_dynamics_model_based_curiosity",
-    main = "examples/curiosity/inverse_dynamics_model_based_curiosity.py",
+    name = "examples/curiosity/intrinsic_curiosity_model_based_curiosity_ppo",
+    main = "examples/curiosity/intrinsic_curiosity_model_based_curiosity.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
-    srcs = ["examples/curiosity/inverse_dynamics_model_based_curiosity.py"],
-    args = ["--enable-new-api-stack", "--as-test"]
+    srcs = ["examples/curiosity/intrinsic_curiosity_model_based_curiosity.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--algo=PPO"]
 )
+
+# TODO (sven): Learns, but very slowly. Needs further tuning.
+# py_test(
+#    name = "examples/curiosity/intrinsic_curiosity_model_based_curiosity_dqn",
+#    main = "examples/curiosity/intrinsic_curiosity_model_based_curiosity.py",
+#    tags = ["team:rllib", "exclusive", "examples"],
+#    size = "large",
+#    srcs = ["examples/curiosity/intrinsic_curiosity_model_based_curiosity.py"],
+#    args = ["--enable-new-api-stack", "--as-test", "--algo=DQN"]
+# )
 
 
 # subdirectory: curriculum/

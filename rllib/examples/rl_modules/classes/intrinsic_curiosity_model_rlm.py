@@ -2,6 +2,9 @@ from typing import Any, Dict, TYPE_CHECKING
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.torch import TorchRLModule
+from ray.rllib.examples.learners.classes.curiosity_torch_learner_utils import (  # noqa
+    ICM_MODULE_ID,
+)
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.annotations import override
@@ -16,8 +19,8 @@ if TYPE_CHECKING:
 torch, nn = try_import_torch()
 
 
-class InverseDynamicsModel(TorchRLModule):
-    """An inverse-dynamics model as TorchRLModule for curiosity-based exploration.
+class IntrinsicCuriosityModel(TorchRLModule):
+    """An intrinsic curiosity model (ICM) as TorchRLModule for better exploration.
 
     For more details, see:
     [1] Curiosity-driven Exploration by Self-supervised Prediction
@@ -46,8 +49,8 @@ class InverseDynamicsModel(TorchRLModule):
 
             from ray.rllib.core import Columns
             from ray.rllib.core.rl_module.rl_module import RLModuleConfig
-            from ray.rllib.examples.rl_modules.classes.inverse_dynamics_model_rlm import (  # noqa
-                InverseDynamicsModel
+            from ray.rllib.examples.rl_modules.classes.intrinsic_curiosity_model_rlm import (  # noqa
+                IntrinsicCuriosityModel
             )
 
             B = 10  # batch size
@@ -60,7 +63,7 @@ class InverseDynamicsModel(TorchRLModule):
                 observation_space=gym.spaces.Box(-1.0, 1.0, (O,), np.float32),
                 action_space=gym.spaces.Discrete(A),
             )
-            icm_net = InverseDynamicsModel(rl_module_config)
+            icm_net = IntrinsicCuriosityModel(rl_module_config)
 
             # Create some dummy input.
             obs = torch.from_numpy(
@@ -90,7 +93,7 @@ class InverseDynamicsModel(TorchRLModule):
 
     @override(TorchRLModule)
     def setup(self):
-        # Get the IDM achitecture settings from the RLModuleConfig's (self.config)
+        # Get the ICM achitecture settings from the RLModuleConfig's (self.config)
         # `model_config_dict` property:
         cfg = self.config.model_config_dict
 
@@ -243,7 +246,7 @@ class InverseDynamicsModel(TorchRLModule):
     @override(TorchRLModule)
     def _forward_inference(self, batch, **kwargs):
         raise NotImplementedError(
-            "InverseDynamicsModel should only be used for training! "
+            "`IntrinsicCuriosityModel` should only be used for training! "
             "Use `forward_train()` instead."
         )
 
