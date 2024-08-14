@@ -176,8 +176,8 @@ class TorchLearner(Learner):
     @override(Learner)
     def apply_gradients(self, gradients_dict: ParamDict) -> None:
         # Make sure the parameters do not carry gradients on their own.
-        for optim in self._optimizer_parameters:
-            optim.zero_grad(set_to_none=True)
+        #for optim in self._optimizer_parameters:
+        #    optim.zero_grad(set_to_none=True)
 
         # Set the gradient of the parameters.
         for pid, grad in gradients_dict.items():
