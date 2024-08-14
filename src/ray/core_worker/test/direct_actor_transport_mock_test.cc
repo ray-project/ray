@@ -93,13 +93,10 @@ TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   auto creation_task_spec = GetActorCreationTaskSpec(actor_id);
   EXPECT_CALL(*task_finisher, CompletePendingTask(_, _, _, _)).Times(0);
-  EXPECT_CALL(*task_finisher,
-              FailOrRetryPendingTask(creation_task_spec.TaskId(),
-                                     rpc::ErrorType::ACTOR_CREATION_FAILED,
-                                     _,
-                                     _,
-                                     true,
-                                     false));
+  EXPECT_CALL(
+      *task_finisher,
+      FailPendingTask(
+          creation_task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, _, _));
   rpc::ClientCallback<rpc::CreateActorReply> create_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncCreateActor(creation_task_spec, ::testing::_))
