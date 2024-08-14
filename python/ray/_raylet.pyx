@@ -4589,9 +4589,9 @@ cdef class CoreWorker:
             return True
         else:
             with nogil:
-                success = (CCoreWorkerProcess.GetCoreWorker()
-                           .PinExistingReturnObject(
-                                   return_id, return_ptr, generator_id))
+                success = (
+                    CCoreWorkerProcess.GetCoreWorker().PinExistingReturnObject(
+                        return_id, return_ptr, generator_id, caller_address))
             return success
 
     cdef store_task_outputs(self,

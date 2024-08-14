@@ -1400,11 +1400,6 @@ class Dataset:
                 f"The length of locality_hints {len(locality_hints)} "
                 f"doesn't equal the number of splits {n}."
             )
-            # TODO: this is unreachable code.
-            if len(set(locality_hints)) != len(locality_hints):
-                raise ValueError(
-                    "locality_hints must not contain duplicate actor handles"
-                )
 
         bundle = self._plan.execute()
         owned_by_consumer = bundle.owns_blocks

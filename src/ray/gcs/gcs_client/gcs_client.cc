@@ -54,12 +54,11 @@ void GcsSubscriberClient::PubsubLongPolling(
   req.set_max_processed_sequence_id(request.max_processed_sequence_id());
   req.set_publisher_id(request.publisher_id());
   rpc_client_->GcsSubscriberPoll(
-      req,
-      [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {
+      req, [callback](const Status &status, rpc::GcsSubscriberPollReply &&poll_reply) {
         rpc::PubsubLongPollingReply reply;
-        *reply.mutable_pub_messages() = poll_reply.pub_messages();
-        *reply.mutable_publisher_id() = poll_reply.publisher_id();
-        callback(status, reply);
+        reply.mutable_pub_messages()->Swap(poll_reply.mutable_pub_messages());
+        *reply.mutable_publisher_id() = std::move(*poll_reply.mutable_publisher_id());
+        callback(status, std::move(reply));
       });
 }
 
@@ -72,9 +71,9 @@ void GcsSubscriberClient::PubsubCommandBatch(
   rpc_client_->GcsSubscriberCommandBatch(
       req,
       [callback](const Status &status,
-                 const rpc::GcsSubscriberCommandBatchReply &batch_reply) {
+                 rpc::GcsSubscriberCommandBatchReply &&batch_reply) {
         rpc::PubsubCommandBatchReply reply;
-        callback(status, reply);
+        callback(status, std::move(reply));
       });
 }
 
@@ -665,7 +664,7 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
     }
     return Status::OK();
   }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return GrpcStatusToRayStatus(status);
 }
 
 Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
