@@ -40,6 +40,7 @@ def set_progress_bars(enabled: bool) -> bool:
         "`ray.data.DataContext.get_current().enable_progress_bars` instead.",
     )
 
+
 def extract_num_rows(result: Any) -> int:
     """Extract the number of rows from a result object.
 

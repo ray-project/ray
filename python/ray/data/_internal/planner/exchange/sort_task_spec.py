@@ -147,7 +147,10 @@ class SortTaskSpec(ExchangeTaskSpec):
 
     @staticmethod
     def sample_boundaries(
-        blocks: List[ObjectRef[Block]], sort_key: SortKey, num_reducers: int, sample_bar: ProgressBar
+        blocks: List[ObjectRef[Block]],
+        sort_key: SortKey,
+        num_reducers: int,
+        sample_bar: ProgressBar,
     ) -> List[T]:
         """
         Return (num_reducers - 1) items in ascending order from the blocks that
