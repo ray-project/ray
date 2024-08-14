@@ -202,7 +202,11 @@ class CQLConfig(SACConfig):
         # Assert that for a local learner the number of iterations is 1. Note,
         # this is needed because we have no iterators, but instead a single
         # batch returned directly from the `OfflineData.sample` method.
-        if self.num_learners == 0 and not self.dataset_num_iters_per_learner:
+        if (
+            self.num_learners == 0
+            and not self.dataset_num_iters_per_learner
+            and self.enable_rl_module_and_learner
+        ):
             raise ValueError(
                 "When using a single local learner the number of iterations "
                 "per learner, `dataset_num_iters_per_learner` has to be 1. "
