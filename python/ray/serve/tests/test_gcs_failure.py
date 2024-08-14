@@ -170,6 +170,14 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
 
 
 def test_handle_router_updated_replicas_then_gcs_failure(serve_ha):
+    """Test the router's replica set is updated from 1 to 2 replicas, with the first
+    replica staying the same. Verify that if the GCS goes down before the router
+    gets a chance to send a request to the second replica, requests can be handled
+    during GCS failure.
+
+    This test uses a plain handle to send requests.
+    """
+
     _, client = serve_ha
 
     config = {
@@ -201,6 +209,13 @@ def test_handle_router_updated_replicas_then_gcs_failure(serve_ha):
 
 
 def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
+    """Test the router's replica set is updated from 1 to 2 replicas, with the first
+    replica staying the same. Verify that if the GCS goes down before the router
+    gets a chance to send a request to the second replica, requests can be handled
+    during GCS failure.
+
+    This test sends http requests to the proxy.
+    """
     _, client = serve_ha
 
     config = {
