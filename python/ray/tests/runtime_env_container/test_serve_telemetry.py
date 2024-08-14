@@ -106,6 +106,8 @@ client.deploy_apps(ServeDeploySchema.parse_obj(config))
 wait_for_condition(check_app, app_name="app1", expected="helloworldalice", timeout=300)
 wait_for_condition(check_telemetry_app)
 
+deployment_runtime_env = dict(runtime_env)
+deployment_runtime_env["working_dir"] = None
 # Deploy with container runtime env set at deployment level
 config["applications"].append(
     {
@@ -119,10 +121,7 @@ config["applications"].append(
             {
                 "name": "Model",
                 "ray_actor_options": {
-                    "runtime_env": {
-                        "container": {"image": args.image, "worker_path": worker_pth},
-                        "working_dir": None,
-                    },
+                    "runtime_env": deployment_runtime_env,
                 },
             }
         ],
