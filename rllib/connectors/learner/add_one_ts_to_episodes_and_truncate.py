@@ -6,8 +6,10 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.postprocessing.episodes import add_one_ts_to_episodes_and_truncate
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class AddOneTsToEpisodesAndTruncate(ConnectorV2):
     """Adds an artificial timestep to all incoming episodes at the end.
 

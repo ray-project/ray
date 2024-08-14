@@ -5,8 +5,10 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class TensorToNumpy(ConnectorV2):
     """Converts (framework) tensors across the entire input data into numpy arrays."""
 

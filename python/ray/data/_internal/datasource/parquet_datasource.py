@@ -95,7 +95,7 @@ class _SampleInfo:
 
 # TODO(ekl) this is a workaround for a pyarrow serialization bug, where serializing a
 # raw pyarrow file fragment causes S3 network calls.
-class _SerializedFragment:
+class SerializedFragment:
     def __init__(self, frag: "ParquetFileFragment"):
         self._data = cloudpickle.dumps(
             (frag.format, frag.path, frag.filesystem, frag.partition_expression)
@@ -114,12 +114,12 @@ class _SerializedFragment:
 
 # Visible for test mocking.
 def _deserialize_fragments(
-    serialized_fragments: List[_SerializedFragment],
+    serialized_fragments: List[SerializedFragment],
 ) -> List["pyarrow._dataset.ParquetFileFragment"]:
     return [p.deserialize() for p in serialized_fragments]
 
 
-def _check_for_legacy_tensor_type(schema):
+def check_for_legacy_tensor_type(schema):
     """Check for the legacy tensor extension type and raise an error if found.
 
     Ray Data uses an extension type to represent tensors in Arrow tables. Previously,
@@ -138,7 +138,7 @@ def _check_for_legacy_tensor_type(schema):
                 "you're trying to read data written with an older version of Ray. "
                 "Reading data written with older versions of Ray might expose you to "
                 "arbitrary code execution. To try reading the data anyway, set "
-                "`RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on all nodes."
+                "`RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE=1` on *all* nodes."
                 "To learn more, see https://github.com/ray-project/ray/issues/41314."
             )
 
@@ -171,7 +171,6 @@ class ParquetDatasource(Datasource):
         _check_pyarrow_version()
 
         import pyarrow as pa
-        import pyarrow.parquet as pq
 
         self._supports_distributed_reads = not _is_local_scheme(paths)
         if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
@@ -211,30 +210,12 @@ class ParquetDatasource(Datasource):
             filtered_paths = set(expanded_paths) - set(paths)
             if filtered_paths:
                 logger.info(f"Filtered out {len(filtered_paths)} paths")
-        else:
-            if len(paths) == 1:
-                paths = paths[0]
 
         if dataset_kwargs is None:
             dataset_kwargs = {}
 
-        try:
-            # The `use_legacy_dataset` parameter is deprecated in Arrow 15.
-            if parse_version(_get_pyarrow_version()) >= parse_version("15.0.0"):
-                pq_ds = pq.ParquetDataset(
-                    paths,
-                    **dataset_kwargs,
-                    filesystem=filesystem,
-                )
-            else:
-                pq_ds = pq.ParquetDataset(
-                    paths,
-                    **dataset_kwargs,
-                    filesystem=filesystem,
-                    use_legacy_dataset=False,
-                )
-        except OSError as e:
-            _handle_read_os_error(e, paths)
+        pq_ds = get_parquet_dataset(paths, filesystem, dataset_kwargs)
+
         if schema is None:
             schema = pq_ds.schema
         if columns:
@@ -242,7 +223,7 @@ class ParquetDatasource(Datasource):
                 [schema.field(column) for column in columns], schema.metadata
             )
 
-        _check_for_legacy_tensor_type(schema)
+        check_for_legacy_tensor_type(schema)
 
         if _block_udf is not None:
             # Try to infer dataset schema by passing dummy table through UDF.
@@ -289,7 +270,7 @@ class ParquetDatasource(Datasource):
         # NOTE: Store the custom serialized `ParquetFileFragment` to avoid unexpected
         # network calls when `_ParquetDatasourceReader` is serialized. See
         # `_SerializedFragment()` implementation for more details.
-        self._pq_fragments = [_SerializedFragment(p) for p in pq_ds.fragments]
+        self._pq_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
         self._pq_paths = [p.path for p in pq_ds.fragments]
         self._meta_provider = meta_provider
         self._inferred_schema = inferred_schema
@@ -302,9 +283,15 @@ class ParquetDatasource(Datasource):
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
 
-        sample_infos = self._sample_fragments()
-        self._encoding_ratio = _estimate_files_encoding_ratio(sample_infos)
-        self._default_read_batch_size_rows = _estimate_default_read_batch_size_rows(
+        sample_infos = sample_fragments(
+            self._pq_fragments,
+            to_batches_kwargs=to_batch_kwargs,
+            columns=columns,
+            schema=schema,
+            local_scheduling=self._local_scheduling,
+        )
+        self._encoding_ratio = estimate_files_encoding_ratio(sample_infos)
+        self._default_read_batch_size_rows = estimate_default_read_batch_size_rows(
             sample_infos
         )
 
@@ -381,7 +368,7 @@ class ParquetDatasource(Datasource):
             )
             read_tasks.append(
                 ReadTask(
-                    lambda f=fragments: _read_fragments(
+                    lambda f=fragments: read_fragments(
                         block_udf,
                         to_batches_kwargs,
                         default_read_batch_size_rows,
@@ -396,53 +383,6 @@ class ParquetDatasource(Datasource):
 
         return read_tasks
 
-    def _sample_fragments(self) -> List[_SampleInfo]:
-        # Sample a few rows from Parquet files to estimate the encoding ratio.
-        # Launch tasks to sample multiple files remotely in parallel.
-        # Evenly distributed to sample N rows in i-th row group in i-th file.
-        # TODO(ekl/cheng) take into account column pruning.
-        num_files = len(self._pq_fragments)
-        num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
-        min_num_samples = min(
-            PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES, num_files
-        )
-        max_num_samples = min(
-            PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES, num_files
-        )
-        num_samples = max(min(num_samples, max_num_samples), min_num_samples)
-
-        # Evenly distributed to choose which file to sample, to avoid biased prediction
-        # if data is skewed.
-        file_samples = [
-            self._pq_fragments[idx]
-            for idx in np.linspace(0, num_files - 1, num_samples).astype(int).tolist()
-        ]
-
-        sample_fragment = cached_remote_fn(_sample_fragment)
-        futures = []
-        scheduling = self._local_scheduling or "SPREAD"
-        for sample in file_samples:
-            # Sample the first rows batch in i-th file.
-            # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
-            # same machine to cause OOM issue, as sampling can be memory-intensive.
-            futures.append(
-                sample_fragment.options(
-                    scheduling_strategy=scheduling,
-                    # Retry in case of transient errors during sampling.
-                    retry_exceptions=[OSError],
-                ).remote(
-                    self._to_batches_kwargs,
-                    self._columns,
-                    self._schema,
-                    sample,
-                )
-            )
-        sample_bar = ProgressBar("Parquet Files Sample", len(futures), unit="file")
-        sample_infos = sample_bar.fetch_until_complete(futures)
-        sample_bar.close()
-
-        return sample_infos
-
     def get_name(self):
         """Return a human-readable name for this datasource.
 
@@ -454,30 +394,14 @@ class ParquetDatasource(Datasource):
     def supports_distributed_reads(self) -> bool:
         return self._supports_distributed_reads
 
-    def num_rows(self) -> Optional[int]:
-        # If there is a filter operation, the total row count is unknown.
-        if self._to_batches_kwargs.get("filter") is not None:
-            return None
 
-        if not self._metadata:
-            return None
-
-        return sum(metadata.num_rows for metadata in self._metadata)
-
-    def schema(self) -> "pyarrow.Schema":
-        return self._inferred_schema
-
-    def input_files(self) -> Optional[List[str]]:
-        return self._pq_paths
-
-
-def _read_fragments(
+def read_fragments(
     block_udf,
     to_batches_kwargs,
     default_read_batch_size_rows,
     columns,
     schema,
-    serialized_fragments: List[_SerializedFragment],
+    serialized_fragments: List[SerializedFragment],
     include_paths: bool,
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
@@ -543,7 +467,7 @@ def _sample_fragment(
     to_batches_kwargs,
     columns,
     schema,
-    file_fragment: _SerializedFragment,
+    file_fragment: SerializedFragment,
 ) -> _SampleInfo:
     # Sample the first rows batch from file fragment `serialized_fragment`.
     fragment = _deserialize_fragments_with_retry([file_fragment])[0]
@@ -586,7 +510,7 @@ def _sample_fragment(
     return sample_data
 
 
-def _estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
+def estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
     """Return an estimate of the Parquet files encoding ratio.
 
     To avoid OOMs, it is safer to return an over-estimate than an underestimate.
@@ -610,7 +534,7 @@ def _estimate_files_encoding_ratio(sample_infos: List[_SampleInfo]) -> float:
     return max(ratio, PARQUET_ENCODING_RATIO_ESTIMATE_LOWER_BOUND)
 
 
-def _estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> int:
+def estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> int:
     def compute_batch_size_rows(sample_info: _SampleInfo) -> int:
         if sample_info.actual_bytes_per_row is None:
             return PARQUET_READER_ROW_BATCH_SIZE
@@ -628,3 +552,84 @@ def _estimate_default_read_batch_size_rows(sample_infos: List[_SampleInfo]) -> i
             )
 
     return np.mean(list(map(compute_batch_size_rows, sample_infos)))
+
+
+def get_parquet_dataset(paths, filesystem, dataset_kwargs):
+    import pyarrow.parquet as pq
+
+    # If you pass a list containing a single directory path to `ParquetDataset`, PyArrow
+    # errors with 'IsADirectoryError: Path ... points to a directory, but only file
+    # paths are supported'. To avoid this, we pass the directory path directly.
+    if len(paths) == 1:
+        paths = paths[0]
+
+    try:
+        # The `use_legacy_dataset` parameter is deprecated in Arrow 15.
+        if parse_version(_get_pyarrow_version()) >= parse_version("15.0.0"):
+            dataset = pq.ParquetDataset(
+                paths,
+                **dataset_kwargs,
+                filesystem=filesystem,
+            )
+        else:
+            dataset = pq.ParquetDataset(
+                paths,
+                **dataset_kwargs,
+                filesystem=filesystem,
+                use_legacy_dataset=False,
+            )
+    except OSError as e:
+        _handle_read_os_error(e, paths)
+
+    return dataset
+
+
+def sample_fragments(
+    serialized_fragments,
+    *,
+    to_batches_kwargs,
+    columns,
+    schema,
+    local_scheduling=None,
+) -> List[_SampleInfo]:
+    # Sample a few rows from Parquet files to estimate the encoding ratio.
+    # Launch tasks to sample multiple files remotely in parallel.
+    # Evenly distributed to sample N rows in i-th row group in i-th file.
+    # TODO(ekl/cheng) take into account column pruning.
+    num_files = len(serialized_fragments)
+    num_samples = int(num_files * PARQUET_ENCODING_RATIO_ESTIMATE_SAMPLING_RATIO)
+    min_num_samples = min(PARQUET_ENCODING_RATIO_ESTIMATE_MIN_NUM_SAMPLES, num_files)
+    max_num_samples = min(PARQUET_ENCODING_RATIO_ESTIMATE_MAX_NUM_SAMPLES, num_files)
+    num_samples = max(min(num_samples, max_num_samples), min_num_samples)
+
+    # Evenly distributed to choose which file to sample, to avoid biased prediction
+    # if data is skewed.
+    file_samples = [
+        serialized_fragments[idx]
+        for idx in np.linspace(0, num_files - 1, num_samples).astype(int).tolist()
+    ]
+
+    sample_fragment = cached_remote_fn(_sample_fragment)
+    futures = []
+    scheduling = local_scheduling or "SPREAD"
+    for sample in file_samples:
+        # Sample the first rows batch in i-th file.
+        # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
+        # same machine to cause OOM issue, as sampling can be memory-intensive.
+        futures.append(
+            sample_fragment.options(
+                scheduling_strategy=scheduling,
+                # Retry in case of transient errors during sampling.
+                retry_exceptions=[OSError],
+            ).remote(
+                to_batches_kwargs,
+                columns,
+                schema,
+                sample,
+            )
+        )
+    sample_bar = ProgressBar("Parquet Files Sample", len(futures), unit="file")
+    sample_infos = sample_bar.fetch_until_complete(futures)
+    sample_bar.close()
+
+    return sample_infos
