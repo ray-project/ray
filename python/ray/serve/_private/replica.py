@@ -16,7 +16,7 @@ import starlette.responses
 import ray
 from ray import cloudpickle
 from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorClass
+from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -321,7 +321,7 @@ class ReplicaActor:
             component_id=self._component_id,
         )
 
-    def push_proxy_handle(self, handle):
+    def push_proxy_handle(self, handle: ActorHandle):
         pass
 
     def get_num_ongoing_requests(self) -> int:
