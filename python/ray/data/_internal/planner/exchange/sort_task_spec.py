@@ -147,7 +147,7 @@ class SortTaskSpec(ExchangeTaskSpec):
 
     @staticmethod
     def sample_boundaries(
-        blocks: List[ObjectRef[Block]], sort_key: SortKey, num_reducers: int
+        blocks: List[ObjectRef[Block]], sort_key: SortKey, num_reducers: int, sample_bar: ProgressBar
     ) -> List[T]:
         """
         Return (num_reducers - 1) items in ascending order from the blocks that
@@ -162,11 +162,6 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_results = [
             sample_block.remote(block, n_samples, sort_key) for block in blocks
         ]
-        sample_bar = ProgressBar(
-            SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
-            total=n_samples * len(blocks),
-            unit="rows",
-        )
         samples = sample_bar.fetch_until_complete(sample_results)
         sample_bar.close()
         del sample_results
