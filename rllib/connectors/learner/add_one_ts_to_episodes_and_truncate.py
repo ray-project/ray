@@ -102,9 +102,13 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         # mask : t t t t t t t t f t t t t t t f t t t t t f
 
         shared_data["_sa_episodes_lengths"] = {}
-        for sa_episode in self.single_agent_episode_iterator(
+        for i, sa_episode in enumerate(self.single_agent_episode_iterator(
             episodes, agents_that_stepped_only=False
-        ):
+        )):
+            # TODO (sven): remove this hack; just for testing 
+            sa_episode.id_ += "_" + str(i)
+            # END TODO
+            
             len_ = len(sa_episode)
 
             # Extend all episodes by one ts.
@@ -120,7 +124,9 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
             )
 
             terminateds = (
-                [False for _ in range(len_ - 1)] + [sa_episode.is_terminated] + [True]
+                [False for _ in range(len_ - 1)]
+                + [bool(sa_episode.is_terminated)]
+                + [True]  # extra timestep
             )
             self.add_n_batch_items(
                 data,

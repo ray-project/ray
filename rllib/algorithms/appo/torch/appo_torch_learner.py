@@ -54,8 +54,9 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         )
         behaviour_actions_logp = batch[Columns.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[Columns.ACTIONS])
+
         rollout_frag_or_episode_len = config.get_rollout_fragment_length()
-        recurrent_seq_len = None
+        recurrent_seq_len = batch.get("seq_lens")
 
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
