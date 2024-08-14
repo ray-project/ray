@@ -18,6 +18,7 @@ from typing import (
 )
 
 import ray
+from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -96,6 +97,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         prefer_local_az_routing: bool = False,
         self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
+        self_actor_handle: Optional[ActorHandle] = None,
         self_availability_zone: Optional[str] = None,
         use_replica_queue_len_cache: bool = False,
         get_curr_time_s: Optional[Callable[[], float]] = None,
@@ -106,6 +108,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._prefer_local_node_routing = prefer_local_node_routing
         self._prefer_local_az_routing = prefer_local_az_routing
         self._self_node_id = self_node_id
+        self._self_actor_handle = self_actor_handle
         self._self_availability_zone = self_availability_zone
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
 
@@ -245,11 +248,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         new_colocated_replica_ids = defaultdict(set)
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
 
-        self_actor_handle = (
-            ray.get_runtime_context().current_actor
-            if ray.get_runtime_context().get_actor_id() is not None
-            else None
-        )
         for r in replicas:
             # If on the proxy, replica needs to call back into the proxy with
             # `receive_asgi_messages` which can be blocked when GCS is down.
@@ -258,7 +256,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 self._handle_source == DeploymentHandleSource.PROXY
                 and r.replica_id not in self._replicas
             ):
-                r.push_proxy_handle(self_actor_handle)
+                r.push_proxy_handle(self._self_actor_handle)
 
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
