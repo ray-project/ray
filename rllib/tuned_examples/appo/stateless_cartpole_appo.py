@@ -1,7 +1,3 @@
-import functools
-
-from torch import nn
-
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole

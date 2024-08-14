@@ -101,14 +101,24 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         # batch: - - - - - - - T B0- - - - - R Bx- - - - R Bx
         # mask : t t t t t t t t f t t t t t t f t t t t t f
 
-        shared_data["_sa_episodes_lengths"] = {}
-        for i, sa_episode in enumerate(self.single_agent_episode_iterator(
-            episodes, agents_that_stepped_only=False
-        )):
-            # TODO (sven): remove this hack; just for testing 
+        for i, sa_episode in enumerate(
+            self.single_agent_episode_iterator(episodes, agents_that_stepped_only=False)
+        ):
+            # TODO (sven): This is a little bit of a hack: By expanding the Episode's
+            #  ID, we make sure that each episode chunk in `episodes` is treated as a
+            #  separate episode in the `self.add_n_batch_items` below. Some algos (e.g.
+            #  APPO) may have >1 episode chunks from the same episode (same ID) in the
+            #  training data, thus leading to a malformatted batch in case of
+            #  RNN-triggered zero-padding of the train batch.
+            #  For example, if e1 (id=a len=4) and e2 (id=a len=5) are two chunks of the
+            #  same episode in `episodes`, the resulting batch would have an additional
+            #  timestep in the middle of the episode's "row":
+            #  {  "obs": {
+            #    ("a", <- eps ID): [0, 1, 2, 3 <- len=4, [additional 1 ts (bad)],
+            #                       0, 1, 2, 3, 4 <- len=5, [additional 1 ts]]
+            #  }}
             sa_episode.id_ += "_" + str(i)
-            # END TODO
-            
+
             len_ = len(sa_episode)
 
             # Extend all episodes by one ts.
