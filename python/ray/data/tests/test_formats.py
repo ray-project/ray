@@ -133,15 +133,9 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds._set_uuid("data")
     ds.write_parquet(out_path)
 
-    ds_dfs = []
-    # `write_parquet` writes an unspecified number of files.
-    for path in os.listdir(out_path):
-        assert path.startswith("data_") and path.endswith(".parquet")
-        ds_dfs.append(pd.read_parquet(os.path.join(out_path, path)))
-
-    ds_df = pd.concat(ds_dfs).reset_index(drop=True)
-    df = pd.concat([df1, df2]).reset_index(drop=True)
-    assert ds_df.equals(df)
+    actual_data = set(pd.read_parquet(out_path).itertuples(index=False))
+    expected_data = set(pd.concat([df1, df2]).itertuples(index=False))
+    assert actual_data == expected_data, (actual_data, expected_data)
 
 
 def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):

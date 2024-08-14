@@ -17,6 +17,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -607,7 +608,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     @override(EnvRunner)
     def get_spaces(self):
         return {
-            "__env__": (self.env.observation_space, self.env.action_space),
+            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
             DEFAULT_MODULE_ID: (
                 self._env_to_module.observation_space,
                 self.env.single_action_space,

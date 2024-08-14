@@ -1,4 +1,4 @@
-// Copyright 2022 The Ray Authors.
+// Copyright 2024 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,16 +16,14 @@
 
 #include <memory>
 
-#include "ray/gcs/gcs_client/gcs_client.h"
+#include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "src/ray/protobuf/usage.pb.h"
 
 namespace ray {
 namespace gcs {
 class UsageStatsClient {
  public:
-  explicit UsageStatsClient(const std::string &gcs_address,
-                            ClusterID cluster_id,
-                            instrumented_io_context &io_service);
+  explicit UsageStatsClient(ray::gcs::InternalKVInterface &internal_kv);
 
   /// C++ version of record_extra_usage_tag in usage_lib.py
   ///
@@ -41,7 +39,7 @@ class UsageStatsClient {
   static constexpr char kExtraUsageTagPrefix[] = "extra_usage_tag_";
   static constexpr char kUsageStatsNamespace[] = "usage_stats";
 
-  std::unique_ptr<GcsClient> gcs_client_;
+  ray::gcs::InternalKVInterface &internal_kv_;
 };
 }  // namespace gcs
 }  // namespace ray
