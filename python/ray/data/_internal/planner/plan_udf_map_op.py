@@ -329,7 +329,8 @@ def _generate_transform_fn_for_async_map_batches(
                     output_batch_queue.put(output_batch)
             except Exception as e:
                 exception_queue.put(e)
-                output_batch_queue.put(None)  # Signal to stop processing
+                SENTINEL = dict()  # Signal to stop processing
+                output_batch_queue.put(SENTINEL)
 
         async def process_all_batches():
             loop = ray.data._map_actor_context.udf_map_asyncio_loop
