@@ -711,7 +711,11 @@ class TestHTTPProxy:
     #     assert status.code == 503
     #     assert status.is_error is True
     #     assert status.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
-    #     self._check_asgi_messages(messages, status_code=503, body=ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE)
+    #     self._check_asgi_messages(
+    #         messages,
+    #         status_code=503,
+    #         body=ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE,
+    #     )
     #
     #     # Update route table, response should no longer error (even if empty).
     #     http_proxy.update_routes({})
