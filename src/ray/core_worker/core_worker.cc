@@ -450,6 +450,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             }
             RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
           } else {
+            RAY_CHECK(spec.IsNormalTask());
             RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
           }
         }
@@ -1075,6 +1076,8 @@ void CoreWorker::InternalHeartbeat() {
         actor_handle->SetResubmittedActorTaskSpec(spec);
       }
       RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
+    } else if (spec.IsActorCreationTask()) {
+      RAY_CHECK_OK(actor_task_submitter_->SubmitActorCreationTask(spec));
     } else {
       RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
     }
