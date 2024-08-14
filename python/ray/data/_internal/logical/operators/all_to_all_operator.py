@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
-from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.aggregate import AggregateFn
 from ray.data.block import BlockMetadata
 
@@ -125,6 +125,7 @@ class Sort(AbstractAllToAll):
             "Sort",
             input_op,
             sub_progress_bar_names=[
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],

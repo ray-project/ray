@@ -40,6 +40,23 @@ def set_progress_bars(enabled: bool) -> bool:
         "`ray.data.DataContext.get_current().enable_progress_bars` instead.",
     )
 
+def extract_num_rows(result: Any) -> int:
+    """Extract the number of rows from a result object.
+
+    Args:
+        result: The result object from which to extract the number of rows.
+
+    Returns:
+        The number of rows, defaulting to 1 if it cannot be determined.
+    """
+    if hasattr(result, "num_rows"):
+        return result.num_rows
+    elif hasattr(result, "__len__"):
+        # For output is DataFrame,i.e. sort_sample
+        return len(result)
+    else:
+        return 1
+
 
 class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports.
@@ -136,12 +153,7 @@ class ProgressBar:
             )
             total_rows_processed = 0
             for _, result in zip(done, ray.get(done)):
-                if hasattr(result, "num_rows"):
-                    num_rows = result.num_rows
-                elif hasattr(result, "__len__"):
-                    num_rows = len(result)
-                else:
-                    num_rows = 1
+                num_rows = extract_num_rows(result)
                 total_rows_processed += num_rows
             self.update(total_rows_processed)
 
@@ -170,13 +182,7 @@ class ProgressBar:
             total_rows_processed = 0
             for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
-                if hasattr(result, "num_rows"):
-                    num_rows = result.num_rows
-                elif hasattr(result, "__len__"):
-                    # For output is DataFrame,i.e. sort_sample
-                    num_rows = len(result)
-                else:
-                    num_rows = 1
+                num_rows = extract_num_rows(result)
                 total_rows_processed += num_rows
             # TODO(zhilong): Change the total to total_row when init progress bar
             self.update(total_rows_processed)
