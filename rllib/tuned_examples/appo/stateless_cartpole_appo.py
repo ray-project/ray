@@ -13,7 +13,10 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(enable_new_api_stack=True)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    num_env_runners=3,
+)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
@@ -28,13 +31,12 @@ config = (
     )
     .environment(StatelessCartPole)
     .env_runners(
-        num_env_runners=3,
         env_to_module_connector=lambda env: MeanStdFilter(),
     )
     .training(
-        lr=0.0003,
+        lr=0.0005,
         num_sgd_iter=6,
-        vf_loss_coeff=0.01,
+        vf_loss_coeff=0.05,
         grad_clip=20.0,
     )
     .rl_module(
@@ -43,6 +45,7 @@ config = (
             "fcnet_activation": "linear",
             "vf_share_layers": True,
             "use_lstm": True,
+            "lstm_cell_size": 128,
             "uses_new_env_runners": True,
             "max_seq_len": 20,
         },
