@@ -163,7 +163,6 @@ class SortTaskSpec(ExchangeTaskSpec):
             sample_block.remote(block, n_samples, sort_key) for block in blocks
         ]
         samples = sample_bar.fetch_until_complete(sample_results)
-        sample_bar.close()
         del sample_results
         samples = [s for s in samples if len(s) > 0]
         # The dataset is empty
