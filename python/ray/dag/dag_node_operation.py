@@ -154,13 +154,10 @@ def _select_next_nodes(
 
     If the selected node is an NCCL write node, select all its immediately downstream
     nodes, which are NCCL read nodes, regardless of whether the downstream nodes are
-    heads of their own priority queues.
-
-    This function may return multiple nodes if they are NCCL nodes. In that case,
-    this function only removes the NCCL write node, which is also the head of a
-    priority queue. Other nodes will be removed in the following iterations. The
-    NCCL read nodes will be returned even though they should not yet be in the
-    candidate list.
+    heads of their own priority queues. In that case, this function only removes the
+    NCCL write node, which is also the head of a priority queue. Other nodes will be
+    removed in the following iterations. The NCCL read nodes will be returned even
+    though they should not yet be in the candidate list.
 
     Args:
         actor_to_candidates: A dictionary mapping an actor id to a list of
