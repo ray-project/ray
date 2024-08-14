@@ -118,7 +118,7 @@ class GetAllActorInfoFromGrpc:
             raise Exception(f"Failed to GetAllActorInfo: {reply.status.message}")
         actors = {}
         for message in reply.actor_table_data:
-            actors[ActorID.FromBinary(message.actorId)] = message
+            actors[ActorID(message.actor_id)] = message
         return actors
 
 
