@@ -534,6 +534,9 @@ def test_cold_start_time(serve_instance):
 
     wait_for_condition(check_running)
 
+    assert requests.post("http://localhost:8000/-/healthz").status_code == 200
+    assert requests.post("http://localhost:8000/-/routes").status_code == 200
+
     start = time.time()
     result = handle.remote().result()
     cold_start_time = time.time() - start
