@@ -41,9 +41,6 @@ def make_time_major(
         # Swap B and T axes.
         tensor = torch.transpose(tensor, 1, 0)
         return tensor
-
-        # B = recurrent_seq_len.shape[0]
-        # T = tensor.shape[0] // B
     else:
         T = trajectory_len
         # Zero-pad, if necessary.
