@@ -75,7 +75,7 @@ message GangResourceRequest {
   string details = 2;
 }
 
-// Cluster resource constraint represents minimial cluster size requirement,
+// Cluster resource constraint represents minimal cluster size requirement,
 // this is issued through ray.autoscaler.sdk.request_resources.
 message ClusterResourceConstraint {
   // If not emtpy, the cluster should have the capacity (total resource) to fit
@@ -97,6 +97,8 @@ enum NodeStatus {
   DRAINING = 4;
 }
 
+// TODO:
+// 1. We should add head node info here -> it's available from GcsNodeInfo
 message NodeState {
   // The node id internal to Ray in binary format.
   bytes node_id = 1;
@@ -296,12 +298,18 @@ message DrainNodeRequest {
   // The detailed drain reason message.
   // Used for observability.
   string reason_message = 3;
+  /// Timestamp in ms when the node to be drained will be force killed.
+  /// 0 if there is no deadline.
+  /// This is a hint to Ray that it should drain everything before the deadline.
+  int64 deadline_timestamp_ms = 4;
 }
 
 message DrainNodeReply {
   // Whether the drain request is accepted.
   // If it's accepted, the node will transition into DRAINING status.
   bool is_accepted = 1;
+  // If is_accepted is false, this contains the rejection reason.
+  string rejection_reason_message = 2;
 }
 
 service AutoscalerStateService {

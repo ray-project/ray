@@ -209,11 +209,11 @@ class DatasetReader(InputReader):
         self._dataset = ds
         self.count = None if not self._dataset else self._dataset.count()
         # do this to disable the ray data stdout logging
-        ray.data.set_progress_bars(enabled=False)
+        ray.data.DataContext.get_current().enable_progress_bars = False
 
         # the number of steps to return per call to next()
         self.batch_size = self._ioctx.config.get("train_batch_size", 1)
-        num_workers = self._ioctx.config.get("num_workers", 0)
+        num_workers = self._ioctx.config.get("num_env_runners", 0)
         seed = self._ioctx.config.get("seed", None)
         if num_workers:
             self.batch_size = max(math.ceil(self.batch_size / num_workers), 1)

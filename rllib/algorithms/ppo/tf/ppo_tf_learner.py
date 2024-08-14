@@ -1,7 +1,8 @@
 import logging
-from typing import Any, Dict
+from typing import Dict
 
-import tree
+import numpy as np
+
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_KL_KEY,
     LEARNER_RESULTS_CURR_KL_COEFF_KEY,
@@ -10,15 +11,14 @@ from ray.rllib.algorithms.ppo.ppo import (
     PPOConfig,
 )
 from ray.rllib.algorithms.ppo.ppo_learner import PPOLearner
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
-from ray.rllib.core.models.base import ENCODER_OUT, CRITIC
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
@@ -37,21 +37,20 @@ class PPOTfLearner(PPOLearner, TfLearner):
         *,
         module_id: ModuleID,
         config: PPOConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        # TODO (Kourosh): batch type is NestedDict.
         # TODO (Kourosh): We may or may not user module_id. For example if we have an
-        # agent based learning rate scheduler, we may want to use module_id to get the
-        # learning rate for that agent.
+        #  agent based learning rate scheduler, we may want to use module_id to get the
+        #  learning rate for that agent.
 
         # RNN case: Mask away 0-padded chunks at end of time axis.
         if self.module[module_id].is_stateful():
             # In the RNN case, we expect incoming tensors to be padded to the maximum
             # sequence length. We infer the max sequence length from the actions
             # tensor.
-            maxlen = tf.math.reduce_max(batch[SampleBatch.SEQ_LENS])
-            mask = tf.sequence_mask(batch[SampleBatch.SEQ_LENS], maxlen)
+            maxlen = tf.math.reduce_max(batch[Columns.SEQ_LENS])
+            mask = tf.sequence_mask(batch[Columns.SEQ_LENS], maxlen)
 
             def possibly_masked_mean(t):
                 return tf.reduce_mean(tf.boolean_mask(t, mask))
@@ -66,15 +65,14 @@ class PPOTfLearner(PPOLearner, TfLearner):
             module_id
         ].get_exploration_action_dist_cls()
         curr_action_dist = action_dist_class_train.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
         prev_action_dist = action_dist_class_exploration.from_logits(
-            batch[SampleBatch.ACTION_DIST_INPUTS]
+            batch[Columns.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = tf.exp(
-            curr_action_dist.logp(batch[SampleBatch.ACTIONS])
-            - batch[SampleBatch.ACTION_LOGP]
+            curr_action_dist.logp(batch[Columns.ACTIONS]) - batch[Columns.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -97,7 +95,7 @@ class PPOTfLearner(PPOLearner, TfLearner):
 
         # Compute a value function loss.
         if config.use_critic:
-            value_fn_out = fwd_out[SampleBatch.VF_PREDS]
+            value_fn_out = fwd_out[Columns.VF_PREDS]
             vf_loss = tf.math.square(value_fn_out - batch[Postprocessing.VALUE_TARGETS])
             vf_loss_clipped = tf.clip_by_value(vf_loss, 0, config.vf_clip_param)
             mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
@@ -124,9 +122,8 @@ class PPOTfLearner(PPOLearner, TfLearner):
         if config.use_kl_loss:
             total_loss += self.curr_kl_coeffs_per_module[module_id] * mean_kl_loss
 
-        # Register important loss stats.
-        self.register_metrics(
-            module_id,
+        # Log important loss stats.
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: -tf.reduce_mean(surrogate_loss),
                 VF_LOSS_KEY: mean_vf_loss,
@@ -136,60 +133,50 @@ class PPOTfLearner(PPOLearner, TfLearner):
                 ),
                 ENTROPY_KEY: mean_entropy,
                 LEARNER_RESULTS_KL_KEY: mean_kl_loss,
-                # "advantages": possibly_masked_mean(batch[Postprocessing.ADVANTAGES]),
-                # "values": possibly_masked_mean(batch[SampleBatch.VF_PREDS]),
+                # "advantages": possibly_masked_mean(batch[Columns.ADVANTAGES]),
+                # "values": possibly_masked_mean(batch[Columns.VF_PREDS]),
                 # "value_targets": possibly_masked_mean(
-                #    batch[Postprocessing.VALUE_TARGETS]
+                #    batch[Columns.VALUE_TARGETS]
                 # ),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # Return the total loss.
         return total_loss
 
     @override(PPOLearner)
-    def additional_update_for_module(
+    def _update_module_kl_coeff(
         self,
         *,
         module_id: ModuleID,
         config: PPOConfig,
-        timestep: int,
-        sampled_kl_values: dict,
-    ) -> Dict[str, Any]:
-        assert sampled_kl_values, "Sampled KL values are empty."
+    ) -> None:
+        kl = convert_to_numpy(self.metrics.peek((module_id, LEARNER_RESULTS_KL_KEY)))
 
-        results = super().additional_update_for_module(
-            module_id=module_id,
-            config=config,
-            timestep=timestep,
-            sampled_kl_values=sampled_kl_values,
+        if np.isnan(kl):
+            logger.warning(
+                f"KL divergence for Module {module_id} is non-finite, this "
+                "will likely destabilize your model and the training "
+                "process. Action(s) in a specific state have near-zero "
+                "probability. This can happen naturally in deterministic "
+                "environments where the optimal policy has zero mass for a "
+                "specific action. To fix this issue, consider setting "
+                "`kl_coeff` to 0.0 or increasing `entropy_coeff` in your "
+                "config."
+            )
+
+        # Update the KL coefficient.
+        curr_var = self.curr_kl_coeffs_per_module[module_id]
+        if kl > 2.0 * config.kl_target:
+            # TODO (Kourosh) why not 2?
+            curr_var.assign(curr_var * 1.5)
+        elif kl < 0.5 * config.kl_target:
+            curr_var.assign(curr_var * 0.5)
+
+        # Log the updated KL-coeff value.
+        self.metrics.log_value(
+            (module_id, LEARNER_RESULTS_CURR_KL_COEFF_KEY),
+            curr_var.numpy(),
+            window=1,
         )
-
-        # Update KL coefficient.
-        if config.use_kl_loss:
-            sampled_kl = sampled_kl_values[module_id]
-            curr_var = self.curr_kl_coeffs_per_module[module_id]
-            if sampled_kl > 2.0 * config.kl_target:
-                # TODO (Kourosh) why not 2?
-                curr_var.assign(curr_var * 1.5)
-            elif sampled_kl < 0.5 * config.kl_target:
-                curr_var.assign(curr_var * 0.5)
-            results.update({LEARNER_RESULTS_CURR_KL_COEFF_KEY: curr_var.numpy()})
-
-        return results
-
-    @override(PPOLearner)
-    def _compute_values(self, batch):
-        infos = batch.pop(SampleBatch.INFOS, None)
-        batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
-        if infos is not None:
-            batch[SampleBatch.INFOS] = infos
-
-        # TODO (sven): Make multi-agent capable.
-        module = self.module[DEFAULT_POLICY_ID].unwrapped()
-
-        # Shared encoder.
-        encoder_outs = module.encoder(batch)
-        # Value head.
-        vf_out = module.vf(encoder_outs[ENCODER_OUT][CRITIC])
-        # Squeeze out last dimension (single node value head).
-        return tf.squeeze(vf_out, -1)

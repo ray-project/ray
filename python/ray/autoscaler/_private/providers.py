@@ -126,6 +126,18 @@ def _import_spark(provider_config):
     return SparkNodeProvider
 
 
+def _load_fake_multinode_defaults_config():
+    import ray.autoscaler._private.fake_multi_node as ray_fake_multinode
+
+    return os.path.join(os.path.dirname(ray_fake_multinode.__file__), "example.yaml")
+
+
+def _load_read_only_defaults_config():
+    import ray.autoscaler._private.readonly as ray_readonly
+
+    return os.path.join(os.path.dirname(ray_readonly.__file__), "example.yaml")
+
+
 def _load_fake_multinode_docker_defaults_config():
     import ray.autoscaler._private.fake_multi_node as ray_fake_multinode
 
@@ -213,6 +225,7 @@ _PROVIDER_PRETTY_NAMES = {
 }
 
 _DEFAULT_CONFIGS = {
+    "fake_multinode": _load_fake_multinode_defaults_config,
     "fake_multinode_docker": _load_fake_multinode_docker_defaults_config,
     "local": _load_local_defaults_config,
     "aws": _load_aws_defaults_config,
@@ -221,6 +234,7 @@ _DEFAULT_CONFIGS = {
     "aliyun": _load_aliyun_defaults_config,
     "kubernetes": _load_kubernetes_defaults_config,
     "vsphere": _load_vsphere_defaults_config,
+    "readonly": _load_read_only_defaults_config,
 }
 
 

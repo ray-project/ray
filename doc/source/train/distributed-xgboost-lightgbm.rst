@@ -36,16 +36,12 @@ training parameters are passed as the ``params`` dictionary.
 
     .. tab-item:: XGBoost
 
-        Run ``pip install -U xgboost_ray``.
-
         .. literalinclude:: doc_code/gbdt_user_guide.py
             :language: python
             :start-after: __xgboost_start__
             :end-before: __xgboost_end__
 
     .. tab-item:: LightGBM
-
-        Run ``pip install -U lightgbm_ray``.
 
         .. literalinclude:: doc_code/gbdt_user_guide.py
             :language: python
@@ -208,7 +204,7 @@ machines have 16 CPUs in addition to the 4 GPUs, each actor should have
 How to preprocess data for training?
 ------------------------------------
 
-Particularly for tabular data, Ray Data comes with out-of-the-box :ref:`preprocessors <data-preprocessors>` that implement common feature preprocessing operations.
+Particularly for tabular data, Ray Data comes with out-of-the-box :ref:`preprocessors <preprocessor-ref>` that implement common feature preprocessing operations.
 You can use this with Ray Train Trainers by applying them on the dataset before passing the dataset into a Trainer. For example:
 
 

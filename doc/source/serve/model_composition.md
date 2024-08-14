@@ -8,8 +8,7 @@ With this guide, you can:
 * Independently scale and configure each of your ML models and business logic steps
 
 :::{note}
-{mod}`DeploymentHandle <ray.serve.handle.DeploymentHandle>` is now the default handle API.
-You can continue using the legacy `RayServeHandle` and `RayServeSyncHandle` APIs using `handle.options(use_new_handle_api=False)` or `export RAY_SERVE_ENABLE_NEW_HANDLE_API=0`, but this support will be removed in a future version.
+The deprecated `RayServeHandle` and `RayServeSyncHandle` APIs have been fully removed as of Ray 2.10.
 :::
 
 ## Compose deployments using DeploymentHandles
@@ -129,12 +128,20 @@ Example:
 :language: python
 ```
 
-## Advanced: Pass a DeploymentResponse "by reference"
+## Advanced: Pass a DeploymentResponse in a nested object [DEPRECATED]
+
+:::{warning}
+Passing a `DeploymentResponse` to downstream handle calls in nested objects is deprecated and will be removed in the next release.
+Ray Serve will no longer handle converting them to Ray `ObjectRef`s for you.
+Please manually use `DeploymentResponse._to_object_ref()` instead to pass the corresponding object reference in nested objects.
+
+Passing a `DeploymentResponse` object as a top-level argument or keyword argument is still supported.
+:::
 
 By default, when you pass a `DeploymentResponse` to another `DeploymentHandle` call, Ray Serve passes the result of the `DeploymentResponse` directly to the downstream method once it's ready.
 However, in some cases you might want to start executing the downstream call before the result is ready. For example, to do some preprocessing or fetch a file from remote storage.
-To accomplish this behavior, pass the `DeploymentResponse` "by reference" by embedding it in another Python object, such as a list or dictionary.
-When you pass responses by reference, Ray Serve replaces them with Ray `ObjectRef`s instead of the resulting value and they can start executing before the result is ready.
+To accomplish this behavior, pass the `DeploymentResponse` embedded in another Python object, such as a list or dictionary.
+When you pass responses in a nested object, Ray Serve replaces them with Ray `ObjectRef`s instead of the resulting value and they can start executing before the result is ready.
 
 The example below has two deployments: a preprocessor and a downstream model that takes the output of the preprocessor.
 The downstream model has two methods:

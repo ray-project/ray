@@ -14,7 +14,7 @@ from ray.rllib.models.torch.torch_action_dist import (
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
@@ -29,7 +29,7 @@ if nn is not None:
     F = nn.functional
 
 
-@PublicAPI
+@OldAPIStack
 class Curiosity(Exploration):
     """Implementation of:
     [1] Curiosity-driven Exploration by Self-supervised Prediction
@@ -108,7 +108,7 @@ class Curiosity(Exploration):
 
         super().__init__(action_space, model=model, framework=framework, **kwargs)
 
-        if self.policy_config["num_workers"] != 0:
+        if self.policy_config["num_env_runners"] != 0:
             raise ValueError(
                 "Curiosity exploration currently does not support parallelism."
                 " `num_workers` must be 0!"

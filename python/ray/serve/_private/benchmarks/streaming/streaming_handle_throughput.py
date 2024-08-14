@@ -13,7 +13,6 @@ class EndpointDeployment(Endpoint):
 class CallerDeployment(Caller):
     async def _consume_single_stream(self):
         method = self._get_remote_method().options(
-            use_new_handle_api=True,
             stream=True,
         )
 
@@ -76,9 +75,7 @@ def main(
         num_trials=num_trials,
         trial_runtime=trial_runtime,
     )
-    h = serve.run(app).options(
-        use_new_handle_api=True,
-    )
+    h = serve.run(app)
 
     mean, stddev = h.run_benchmark.remote().result()
     print(

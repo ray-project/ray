@@ -71,7 +71,10 @@ void GcsResourceManager::HandleGetDrainingNodes(
     }
     const auto &node_resources = node_resources_entry.second.GetLocalView();
     if (node_resources.is_draining) {
-      *reply->add_node_ids() = node_resources_entry.first.Binary();
+      auto draining_node = reply->add_draining_nodes();
+      draining_node->set_node_id(node_resources_entry.first.Binary());
+      draining_node->set_draining_deadline_timestamp_ms(
+          node_resources.draining_deadline_timestamp_ms);
     }
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -114,6 +117,30 @@ void GcsResourceManager::HandleGetAllAvailableResources(
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
+}
+
+void GcsResourceManager::HandleGetAllTotalResources(
+    rpc::GetAllTotalResourcesRequest request,
+    rpc::GetAllTotalResourcesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
+  for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
+    if (node_resources_entry.first == local_scheduling_node_id) {
+      continue;
+    }
+    rpc::TotalResources resource;
+    resource.set_node_id(node_resources_entry.first.Binary());
+    const auto &node_resources = node_resources_entry.second.GetLocalView();
+    for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
+      const auto &resource_name = resource_id.Binary();
+      const auto &resource_value = node_resources.total.Get(resource_id);
+      resource.mutable_resources_total()->insert(
+          {resource_name, resource_value.Double()});
+    }
+    reply->add_resources_list()->CopyFrom(resource);
+  }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_All_TOTAL_RESOURCES_REQUEST];
 }
 
 void GcsResourceManager::UpdateFromResourceView(
@@ -308,8 +335,10 @@ void GcsResourceManager::UpdatePlacementGroupLoad(
 std::string GcsResourceManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsResourceManager: "
-         << "\n- GetAllAvailableResources request count"
+         << "\n- GetAllAvailableResources request count: "
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
+         << "\n- GetAllTotalResources request count: "
+         << counts_[CountType::GET_All_TOTAL_RESOURCES_REQUEST]
          << "\n- GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
   return stream.str();

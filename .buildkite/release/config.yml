@@ -6,7 +6,8 @@ forge_prefix: cr.ray.io/rayproject/
 builder_queues:
   builder: builder_queue_branch
 runner_queues:
-  default: release_queue_small
+  release: release_queue_small
+  release-medium: release_queue_medium
 buildkite_dirs:
   - .buildkite/release
 env:

@@ -4,15 +4,14 @@ try:
     from ray.serve.api import (
         Application,
         Deployment,
+        _run,
         delete,
         deployment,
         get_app_handle,
-        get_deployment,
         get_deployment_handle,
         get_multiplexed_model_id,
         get_replica_context,
         ingress,
-        list_deployments,
         multiplexed,
         run,
         shutdown,
@@ -35,6 +34,7 @@ except ModuleNotFoundError as e:
 ray._private.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
+    "_run",
     "batch",
     "start",
     "HTTPOptions",
@@ -42,8 +42,6 @@ __all__ = [
     "shutdown",
     "ingress",
     "deployment",
-    "get_deployment",
-    "list_deployments",
     "run",
     "delete",
     "Application",

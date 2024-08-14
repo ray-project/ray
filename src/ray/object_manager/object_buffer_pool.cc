@@ -14,6 +14,8 @@
 
 #include "ray/object_manager/object_buffer_pool.h"
 
+#include <optional>
+
 #include "absl/time/time.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
@@ -119,32 +121,57 @@ void ObjectBufferPool::WriteChunk(const ObjectID &object_id,
                                   uint64_t metadata_size,
                                   const uint64_t chunk_index,
                                   const std::string &data) {
-  absl::MutexLock lock(&pool_mutex_);
-  auto it = create_buffer_state_.find(object_id);
-  if (it == create_buffer_state_.end() || chunk_index >= it->second.chunk_state.size() ||
-      it->second.chunk_state.at(chunk_index) != CreateChunkState::REFERENCED) {
-    RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
-                   << " could be sealed";
-    return;
+  std::optional<ObjectBufferPool::ChunkInfo> chunk_info;
+  {
+    absl::MutexLock lock(&pool_mutex_);
+    auto it = create_buffer_state_.find(object_id);
+    if (it == create_buffer_state_.end() ||
+        chunk_index >= it->second.chunk_state.size() ||
+        it->second.chunk_state.at(chunk_index) != CreateChunkState::REFERENCED) {
+      RAY_LOG(DEBUG) << "Object " << object_id << " aborted before chunk " << chunk_index
+                     << " could be sealed";
+      return;
+    }
+    if (it->second.data_size != data_size || it->second.metadata_size != metadata_size) {
+      RAY_LOG(DEBUG) << "Object " << object_id << " size mismatch, rejecting chunk";
+      return;
+    }
+    RAY_CHECK(it->second.chunk_info.size() > chunk_index);
+
+    chunk_info = it->second.chunk_info.at(chunk_index);
+    RAY_CHECK(data.size() == chunk_info->buffer_length)
+        << "size mismatch!  data size: " << data.size()
+        << " chunk size: " << chunk_info->buffer_length;
+
+    // Update the state from REFERENCED To SEALED before releasing the lock to ensure
+    // that no other thread sees a REFERENCED state.
+    it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
+    // Increment the number of inflight copies to ensure Abort
+    // does not release the buffer.
+    it->second.num_inflight_copies++;
   }
-  if (it->second.data_size != data_size || it->second.metadata_size != metadata_size) {
-    RAY_LOG(DEBUG) << "Object " << object_id << " size mismatch, rejecting chunk";
-    return;
-  }
-  RAY_CHECK(it->second.chunk_info.size() > chunk_index);
-  auto &chunk_info = it->second.chunk_info.at(chunk_index);
-  RAY_CHECK(data.size() == chunk_info.buffer_length)
-      << "size mismatch!  data size: " << data.size()
-      << " chunk size: " << chunk_info.buffer_length;
-  std::memcpy(chunk_info.data, data.data(), chunk_info.buffer_length);
-  it->second.chunk_state.at(chunk_index) = CreateChunkState::SEALED;
-  it->second.num_seals_remaining--;
-  if (it->second.num_seals_remaining == 0) {
-    RAY_CHECK_OK(store_client_->Seal(object_id));
-    RAY_CHECK_OK(store_client_->Release(object_id));
-    create_buffer_state_.erase(it);
-    RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
-                   << ", last chunk index: " << chunk_index;
+
+  RAY_CHECK(chunk_info.has_value()) << "chunk_info is not set";
+  // The num_inflight_copies is used to ensure that another thread cannot call Release
+  // on the object_id, which makes the unguarded copy call safe.
+  std::memcpy(chunk_info->data, data.data(), chunk_info->buffer_length);
+
+  {
+    // Ensure the process of object_id Seal and Release is mutex guarded.
+    absl::MutexLock lock(&pool_mutex_);
+    auto it = create_buffer_state_.find(object_id);
+    // Abort cannot be called during inflight copy operations.
+    RAY_CHECK(it != create_buffer_state_.end());
+    // Decrement the number of inflight copies to ensure Abort can release the buffer.
+    it->second.num_inflight_copies--;
+    it->second.num_seals_remaining--;
+    if (it->second.num_seals_remaining == 0) {
+      RAY_CHECK_OK(store_client_->Seal(object_id));
+      RAY_CHECK_OK(store_client_->Release(object_id));
+      create_buffer_state_.erase(it);
+      RAY_LOG(DEBUG) << "Have received all chunks for object " << object_id
+                     << ", last chunk index: " << chunk_index;
+    }
   }
 }
 
@@ -154,6 +181,14 @@ void ObjectBufferPool::AbortCreate(const ObjectID &object_id) {
 }
 
 void ObjectBufferPool::AbortCreateInternal(const ObjectID &object_id) {
+  auto no_copy_inflight = [this, object_id]() {
+    pool_mutex_.AssertReaderHeld();
+    auto it = create_buffer_state_.find(object_id);
+    return it == create_buffer_state_.end() || it->second.num_inflight_copies == 0;
+  };
+
+  pool_mutex_.Await(absl::Condition(&no_copy_inflight));
+  // Mutex is acquired, no copy inflight, safe to abort the object_id.
   auto it = create_buffer_state_.find(object_id);
   if (it != create_buffer_state_.end()) {
     RAY_CHECK_OK(store_client_->Release(object_id));

@@ -140,6 +140,7 @@ def run_tune_pbt(smoke_test=False):
             metric="mean_accuracy",
             mode="max",
             num_samples=8,
+            reuse_actors=True,
         ),
         param_space={
             "lr": 0.0001,

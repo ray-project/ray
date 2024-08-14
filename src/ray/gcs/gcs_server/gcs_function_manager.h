@@ -46,7 +46,6 @@ class GcsFunctionManager {
  private:
   void RemoveExportedFunctions(const JobID &job_id) {
     auto job_id_hex = job_id.Hex();
-    kv_.Del("fun", "IsolatedExports:" + job_id_hex + ":", true, nullptr);
     kv_.Del("fun", "RemoteFunction:" + job_id_hex + ":", true, nullptr);
     kv_.Del("fun", "ActorClass:" + job_id_hex + ":", true, nullptr);
     kv_.Del("fun",

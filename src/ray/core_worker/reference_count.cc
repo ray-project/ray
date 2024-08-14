@@ -273,6 +273,44 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_i
                                     absl::optional<NodeID>()));
 }
 
+void ReferenceCounter::TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,
+                                           std::vector<ObjectID> *deleted) {
+  absl::MutexLock lock(&mutex_);
+  for (const auto &object_id : object_ids) {
+    auto it = object_id_refs_.find(object_id);
+    if (it == object_id_refs_.end()) {
+      // Unconsumed ref has already been released.
+      continue;
+    }
+
+    if (it->second.local_ref_count == 0) {
+      // Unconsumed ref has already been released.
+      continue;
+    }
+    RemoveLocalReferenceInternal(object_id, deleted);
+  }
+}
+
+bool ReferenceCounter::CheckGeneratorRefsLineageOutOfScope(
+    const ObjectID &generator_id, int64_t num_objects_generated) {
+  absl::MutexLock lock(&mutex_);
+  if (object_id_refs_.count(generator_id)) {
+    return false;
+  }
+
+  auto task_id = generator_id.TaskId();
+  for (int64_t i = 0; i < num_objects_generated; i++) {
+    // Add 2 because task returns start from index 1 and the
+    // first return object is the generator ID.
+    const auto return_id = ObjectID::FromIndex(task_id, i + 2);
+    if (object_id_refs_.count(return_id)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool ReferenceCounter::AddOwnedObjectInternal(
     const ObjectID &object_id,
     const std::vector<ObjectID> &inner_ids,
@@ -322,6 +360,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   if (add_local_ref) {
     it->second.local_ref_count++;
   }
+  PRINT_REF_COUNT(it);
   return true;
 }
 
@@ -446,11 +485,8 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateResubmittedTaskReferences(
-    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids) {
+    const std::vector<ObjectID> &argument_ids) {
   absl::MutexLock lock(&mutex_);
-  for (const auto &return_id : return_ids) {
-    UpdateObjectPendingCreationInternal(return_id, true);
-  }
   for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
     RAY_CHECK(it != object_id_refs_.end());
@@ -516,10 +552,12 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
 
     RAY_LOG(DEBUG) << "Releasing lineage internal for argument " << argument_id;
     arg_it->second.lineage_ref_count--;
+    if (arg_it->second.OutOfScope(lineage_pinning_enabled_)) {
+      DeleteObjectPrimaryCopy(arg_it);
+    }
     if (arg_it->second.ShouldDelete(lineage_pinning_enabled_)) {
       RAY_CHECK(arg_it->second.on_ref_removed == nullptr);
       lineage_bytes_evicted += ReleaseLineageReferences(arg_it);
-      ReleasePlasmaObject(arg_it);
       EraseReference(arg_it);
     }
   }
@@ -635,7 +673,7 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
     }
     // Free only the plasma value. We must keep the reference around so that we
     // have the ownership information.
-    ReleasePlasmaObject(it);
+    DeleteObjectPrimaryCopy(it);
   }
 }
 
@@ -673,7 +711,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       }
     }
     // Perform the deletion.
-    ReleasePlasmaObject(it);
+    DeleteObjectPrimaryCopy(it);
     if (deleted) {
       deleted->push_back(id);
     }
@@ -733,16 +771,16 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
   return lineage_bytes_evicted;
 }
 
-void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
-  if (it->second.on_delete) {
-    RAY_LOG(DEBUG) << "Calling on_delete for object " << it->first;
-    it->second.on_delete(it->first);
-    it->second.on_delete = nullptr;
+void ReferenceCounter::DeleteObjectPrimaryCopy(ReferenceTable::iterator it) {
+  if (it->second.on_object_primary_copy_delete) {
+    RAY_LOG(DEBUG) << "Calling on_object_primary_copy_delete for object " << it->first;
+    it->second.on_object_primary_copy_delete(it->first);
+    it->second.on_object_primary_copy_delete = nullptr;
   }
   it->second.pinned_at_raylet_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
-    // The spilled copy of the object should get deleted during the on_delete
-    // callback, so reset the spill location metadata here.
+    // The spilled copy of the object should get deleted during the
+    // on_object_primary_copy_delete callback, so reset the spill location metadata here.
     // NOTE(swang): Spilled copies in cloud storage are not GCed, so we do not
     // reset the spilled metadata.
     it->second.spilled = false;
@@ -751,7 +789,7 @@ void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
   }
 }
 
-bool ReferenceCounter::SetDeleteCallback(
+bool ReferenceCounter::SetObjectPrimaryCopyDeleteCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -774,7 +812,7 @@ bool ReferenceCounter::SetDeleteCallback(
   // will resend the registration request after GCS restarts.
   // 2.After GCS restarts, GCS will send `WaitForActorOutOfScope` request to owned actors
   // again.
-  it->second.on_delete = callback;
+  it->second.on_object_primary_copy_delete = callback;
   return true;
 }
 
@@ -784,7 +822,7 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
     const auto &object_id = it->first;
     if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id ||
         it->second.spilled_node_id == raylet_id) {
-      ReleasePlasmaObject(it);
+      DeleteObjectPrimaryCopy(it);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
         objects_to_recover_.push_back(object_id);
       }
@@ -824,7 +862,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
       if (check_node_alive_(raylet_id)) {
         it->second.pinned_at_raylet_id = raylet_id;
       } else {
-        ReleasePlasmaObject(it);
+        DeleteObjectPrimaryCopy(it);
         objects_to_recover_.push_back(object_id);
       }
     }
@@ -1381,7 +1419,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   } else {
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled to dead node "
                    << spilled_node_id;
-    ReleasePlasmaObject(it);
+    DeleteObjectPrimaryCopy(it);
     objects_to_recover_.push_back(object_id);
   }
   return true;
@@ -1484,9 +1522,10 @@ bool ReferenceCounter::IsObjectReconstructable(const ObjectID &object_id,
   return it->second.is_reconstructable;
 }
 
-void ReferenceCounter::UpdateObjectReady(const ObjectID &object_id) {
+void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
+                                                   bool pending_creation) {
   absl::MutexLock lock(&mutex_);
-  UpdateObjectPendingCreationInternal(object_id, /*pending_creation*/ false);
+  UpdateObjectPendingCreationInternal(object_id, pending_creation);
 }
 
 bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const {
@@ -1521,7 +1560,7 @@ void ReferenceCounter::PushToLocationSubscribers(ReferenceTable::iterator it) {
   object_info_publisher_->Publish(std::move(pub_message));
 }
 
-Status ReferenceCounter::FillObjectInformation(
+void ReferenceCounter::FillObjectInformation(
     const ObjectID &object_id, rpc::WorkerObjectLocationsPubMessage *object_info) {
   RAY_CHECK(object_info != nullptr);
   absl::MutexLock lock(&mutex_);
@@ -1534,7 +1573,6 @@ Status ReferenceCounter::FillObjectInformation(
   } else {
     FillObjectInformationInternal(it, object_info);
   }
-  return Status::OK();
 }
 
 void ReferenceCounter::FillObjectInformationInternal(
@@ -1542,7 +1580,10 @@ void ReferenceCounter::FillObjectInformationInternal(
   for (const auto &node_id : it->second.locations) {
     object_info->add_node_ids(node_id.Binary());
   }
-  object_info->set_object_size(it->second.object_size);
+  int64_t object_size = it->second.object_size;
+  if (object_size > 0) {
+    object_info->set_object_size(it->second.object_size);
+  }
   object_info->set_spilled_url(it->second.spilled_url);
   object_info->set_spilled_node_id(it->second.spilled_node_id.Binary());
   auto primary_node_id = it->second.pinned_at_raylet_id.value_or(NodeID::Nil());

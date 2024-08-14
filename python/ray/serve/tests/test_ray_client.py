@@ -9,6 +9,7 @@ import requests
 import ray
 from ray import serve
 from ray._private.test_utils import run_string_as_driver
+from ray.serve._private.utils import inside_ray_client_context
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
@@ -44,7 +45,7 @@ def serve_with_client(ray_client_instance, ray_init_kwargs=None):
         namespace="default_test_namespace",
         **ray_init_kwargs,
     )
-    assert ray.util.client.ray.is_connected()
+    assert inside_ray_client_context()
 
     yield
 
@@ -198,7 +199,26 @@ def test_handle_hanging(serve_with_client):
     ray.shutdown()
 
 
-if __name__ == "__main__":
-    import sys
+def test_streaming_handle(serve_with_client):
+    """stream=True is not supported, check that there's a good error message."""
 
+    @serve.deployment
+    def f():
+        return 1
+
+    h = serve.run(f.bind())
+    h = h.options(stream=False)
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "Streaming DeploymentHandles are not currently supported when "
+            "connected to a remote Ray cluster using Ray Client."
+        ),
+    ):
+        h = h.options(stream=True)
+
+    assert h.remote().result() == 1
+
+
+if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

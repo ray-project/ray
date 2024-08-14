@@ -25,8 +25,6 @@ import io.ray.serve.util.CollectionUtil;
 import io.ray.serve.util.MessageFormatter;
 import io.ray.serve.util.ServeProtoUtil;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -301,35 +299,6 @@ public class Serve {
         deploymentRoute.getDeploymentInfo().getReplicaConfig(),
         deploymentRoute.getDeploymentInfo().getVersion(),
         deploymentRoute.getRoute());
-  }
-
-  /**
-   * Returns a dictionary of all active deployments.
-   *
-   * <p>Dictionary maps deployment name to Deployment objects.
-   *
-   * @return
-   * @deprecated {@value Constants#MIGRATION_MESSAGE}
-   */
-  @Deprecated
-  public static Map<String, Deployment> listDeployments() {
-    LOGGER.warn(Constants.MIGRATION_MESSAGE);
-    Map<String, DeploymentRoute> infos = getGlobalClient().listDeployments();
-    if (infos == null || infos.size() == 0) {
-      return Collections.emptyMap();
-    }
-    Map<String, Deployment> deployments = new HashMap<>(infos.size());
-    for (Map.Entry<String, DeploymentRoute> entry : infos.entrySet()) {
-      deployments.put(
-          entry.getKey(),
-          new Deployment(
-              entry.getKey(),
-              entry.getValue().getDeploymentInfo().getDeploymentConfig(),
-              entry.getValue().getDeploymentInfo().getReplicaConfig(),
-              entry.getValue().getDeploymentInfo().getVersion(),
-              entry.getValue().getRoute()));
-    }
-    return deployments;
   }
 
   /**

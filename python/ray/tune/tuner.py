@@ -1,27 +1,25 @@
 import logging
 import os
-from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
 
 import pyarrow.fs
 
 import ray
-from ray.air.config import RunConfig
 from ray.air._internal.usage import AirEntrypoint
+from ray.air.config import RunConfig
 from ray.air.util.node import _force_on_current_node
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
-from ray.tune import TuneError
-from ray.tune.execution.experiment_state import _ResumeConfig
-from ray.tune.experimental.output import (
-    get_air_verbosity,
-)
-from ray.tune.result_grid import ResultGrid
-from ray.tune.trainable import Trainable
-from ray.tune.impl.tuner_internal import TunerInternal, _TUNER_PKL
-from ray.tune.tune_config import TuneConfig
+from ray.tune import ResumeConfig
+from ray.tune.experimental.output import get_air_verbosity
+from ray.tune.impl.tuner_internal import _TUNER_PKL, TunerInternal
 from ray.tune.progress_reporter import (
     _prepare_progress_reporter_for_ray_client,
     _stream_client_output,
 )
+from ray.tune.result_grid import ResultGrid
+from ray.tune.trainable import Trainable
+from ray.tune.tune_config import TuneConfig
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -40,14 +38,6 @@ ClientActorHandle = Any
 # The magic key that is used when instantiating Tuner during resume.
 _TUNER_INTERNAL = "_tuner_internal"
 _SELF = "self"
-
-
-_TUNER_FAILED_MSG = (
-    "The Ray Tune run failed. Please inspect the previous error messages for a "
-    "cause. After fixing the issue, you can restart the run from scratch or "
-    "continue this run. To continue this run, you can use "
-    '`tuner = Tuner.restore("{path}", trainable=...)`.'
-)
 
 
 @PublicAPI(stability="beta")
@@ -187,6 +177,7 @@ class Tuner:
         restart_errored: bool = False,
         param_space: Optional[Dict[str, Any]] = None,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+        _resume_config: Optional[ResumeConfig] = None,
     ) -> "Tuner":
         """Restores Tuner after a previously failed run.
 
@@ -247,16 +238,23 @@ class Tuner:
             storage_filesystem: Custom ``pyarrow.fs.FileSystem``
                 corresponding to the ``path``. This may be necessary if the original
                 experiment passed in a custom filesystem.
+            _resume_config: [Experimental] Config object that controls how to resume
+                trials of different statuses. Can be used as a substitute to
+                `resume_*` and `restart_*` flags above.
         """
-        # TODO(xwjiang): Add some comments to clarify the config behavior across
-        #  retored runs.
-        #  For example, is callbacks supposed to be automatically applied
-        #  when a Tuner is restored and fit again?
+        unfinished = (
+            ResumeConfig.ResumeType.RESUME
+            if resume_unfinished
+            else ResumeConfig.ResumeType.SKIP
+        )
+        errored = ResumeConfig.ResumeType.SKIP
+        if resume_errored:
+            errored = ResumeConfig.ResumeType.RESUME
+        elif restart_errored:
+            errored = ResumeConfig.ResumeType.RESTART
 
-        resume_config = _ResumeConfig(
-            resume_unfinished=resume_unfinished,
-            resume_errored=resume_errored,
-            restart_errored=restart_errored,
+        resume_config = _resume_config or ResumeConfig(
+            unfinished=unfinished, errored=errored
         )
 
         if not ray.util.client.ray.is_connected():
@@ -327,7 +325,7 @@ class Tuner:
             bool: True if this path exists and contains the Tuner state to resume from
         """
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
-        return _exists_at_fs_path(fs, os.path.join(fs_path, _TUNER_PKL))
+        return _exists_at_fs_path(fs, Path(fs_path, _TUNER_PKL).as_posix())
 
     def _prepare_remote_tuner_for_jupyter_progress_reporting(self):
         run_config: RunConfig = ray.get(self._remote_tuner.get_run_config.remote())
@@ -373,43 +371,27 @@ class Tuner:
 
         Raises:
             RayTaskError: If user-provided trainable raises an exception
-            TuneError: General Ray Tune error.
         """
 
         if not self._is_ray_client:
-            try:
-                return self._local_tuner.fit()
-            except TuneError as e:
-                raise TuneError(
-                    _TUNER_FAILED_MSG.format(
-                        path=self._local_tuner.get_experiment_checkpoint_dir()
-                    )
-                ) from e
+            return self._local_tuner.fit()
         else:
-            experiment_checkpoint_dir = ray.get(
-                self._remote_tuner.get_experiment_checkpoint_dir.remote()
-            )
             (
                 progress_reporter,
                 string_queue,
             ) = self._prepare_remote_tuner_for_jupyter_progress_reporting()
-            try:
-                fit_future = self._remote_tuner.fit.remote()
-                _stream_client_output(
-                    fit_future,
-                    progress_reporter,
-                    string_queue,
-                )
-                return ray.get(fit_future)
-            except TuneError as e:
-                raise TuneError(
-                    _TUNER_FAILED_MSG.format(path=experiment_checkpoint_dir)
-                ) from e
+            fit_future = self._remote_tuner.fit.remote()
+            _stream_client_output(
+                fit_future,
+                progress_reporter,
+                string_queue,
+            )
+            return ray.get(fit_future)
 
     def get_results(self) -> ResultGrid:
         """Get results of a hyperparameter tuning run.
 
-        This method returns the same results as :meth:`fit() <ray.tune.tuner.Tuner.fit>`
+        This method returns the same results as :meth:`~ray.tune.Tuner.fit`
         and can be used to retrieve the results after restoring a tuner without
         calling ``fit()`` again.
 

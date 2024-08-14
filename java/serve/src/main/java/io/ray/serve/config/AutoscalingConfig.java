@@ -6,7 +6,7 @@ public class AutoscalingConfig implements Serializable {
   private static final long serialVersionUID = 9135422781025005216L;
   private int minReplicas = 1;
   private int maxReplicas = 1;
-  private int targetNumOngoingRequestsPerReplica = 1;
+  private int targetOngoingRequests = 1;
   /** How often to scrape for metrics */
   private double metricsIntervalS = 10.0;
   /** Time window to average over for metrics. */
@@ -34,12 +34,12 @@ public class AutoscalingConfig implements Serializable {
     this.maxReplicas = maxReplicas;
   }
 
-  public int getTargetNumOngoingRequestsPerReplica() {
-    return targetNumOngoingRequestsPerReplica;
+  public int getTargetOngoingRequests() {
+    return targetOngoingRequests;
   }
 
-  public void setTargetNumOngoingRequestsPerReplica(int targetNumOngoingRequestsPerReplica) {
-    this.targetNumOngoingRequestsPerReplica = targetNumOngoingRequestsPerReplica;
+  public void setTargetOngoingRequests(int targetOngoingRequests) {
+    this.targetOngoingRequests = targetOngoingRequests;
   }
 
   public double getMetricsIntervalS() {
@@ -86,7 +86,7 @@ public class AutoscalingConfig implements Serializable {
     return io.ray.serve.generated.AutoscalingConfig.newBuilder()
         .setMinReplicas(minReplicas)
         .setMaxReplicas(maxReplicas)
-        .setTargetNumOngoingRequestsPerReplica(targetNumOngoingRequestsPerReplica)
+        .setTargetOngoingRequests(targetOngoingRequests)
         .setMetricsIntervalS(metricsIntervalS)
         .setLookBackPeriodS(lookBackPeriodS)
         .setSmoothingFactor(smoothingFactor)

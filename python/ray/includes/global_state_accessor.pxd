@@ -1,8 +1,13 @@
 from libcpp.string cimport string as c_string
 from libcpp cimport bool as c_bool
 from libcpp.vector cimport vector as c_vector
+from libcpp.unordered_map cimport unordered_map
 from libcpp.memory cimport unique_ptr
-from libc.stdint cimport int32_t as c_int32_t, uint32_t as c_uint32_t
+from libc.stdint cimport (
+  int32_t as c_int32_t,
+  uint32_t as c_uint32_t,
+  int64_t as c_int64_t,
+)
 from ray.includes.unique_ids cimport (
     CActorID,
     CJobID,
@@ -28,7 +33,8 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         CJobID GetNextJobID()
         c_vector[c_string] GetAllNodeInfo()
         c_vector[c_string] GetAllAvailableResources()
-        c_vector[CNodeID] GetDrainingNodes()
+        c_vector[c_string] GetAllTotalResources()
+        unordered_map[CNodeID, c_int64_t] GetDrainingNodes()
         c_vector[c_string] GetAllTaskEvents()
         unique_ptr[c_string] GetObjectInfo(const CObjectID &object_id)
         unique_ptr[c_string] GetAllResourceUsage()
@@ -54,6 +60,9 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         CRayStatus GetNodeToConnectForDriver(
             const c_string &node_ip_address,
             c_string *node_to_connect)
+        CRayStatus GetNode(
+          const c_string &node_id,
+          c_string *node_info)
 
 cdef extern from * namespace "ray::gcs" nogil:
     """

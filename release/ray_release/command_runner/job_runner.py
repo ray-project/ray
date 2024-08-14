@@ -1,5 +1,6 @@
 import json
 import os
+import shutil
 import tempfile
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
@@ -56,9 +57,7 @@ class JobRunner(CommandRunner):
 
     def _copy_script_to_working_dir(self, script_name):
         script = os.path.join(os.path.dirname(__file__), f"_{script_name}")
-        if os.path.exists(script_name):
-            os.unlink(script_name)
-        os.link(script, script_name)
+        shutil.copy(script, script_name)
 
     def prepare_remote_env(self):
         self._copy_script_to_working_dir("wait_cluster.py")

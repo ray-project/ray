@@ -40,7 +40,7 @@ def test_max_errored_blocks(
             raise RuntimeError(f"Task failed: {id}")
         return row
 
-    ds = ray.data.range(num_tasks, parallelism=num_tasks).map(map_func)
+    ds = ray.data.range(num_tasks, override_num_blocks=num_tasks).map(map_func)
     should_fail = 0 <= max_errored_blocks < num_errored_blocks
     if should_fail:
         with pytest.raises(Exception, match="Task failed"):

@@ -7,7 +7,7 @@ import tree  # pip install dm_tree
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
 from ray.rllib.utils.typing import (
@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from ray.rllib.evaluation.sample_batch_builder import MultiAgentSampleBatchBuilder
 
 
-@DeveloperAPI
+@OldAPIStack
 class Episode:
     """Tracks the current state of a (possibly multi-agent) episode.
 
@@ -120,7 +120,6 @@ class Episode:
         self._agent_to_prev_action: Dict[AgentID, EnvActionType] = {}
         self._agent_reward_history: Dict[AgentID, List[int]] = defaultdict(list)
 
-    @DeveloperAPI
     def policy_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> PolicyID:
         """Returns and stores the policy ID for the specified agent.
 
@@ -171,7 +170,6 @@ class Episode:
             )
         return policy_id
 
-    @DeveloperAPI
     def last_observation_for(
         self, agent_id: AgentID = _DUMMY_AGENT_ID
     ) -> Optional[EnvObsType]:
@@ -187,7 +185,6 @@ class Episode:
 
         return self._agent_to_last_obs.get(agent_id)
 
-    @DeveloperAPI
     def last_raw_obs_for(
         self, agent_id: AgentID = _DUMMY_AGENT_ID
     ) -> Optional[EnvObsType]:
@@ -204,7 +201,6 @@ class Episode:
         """
         return self._agent_to_last_raw_obs.get(agent_id)
 
-    @DeveloperAPI
     def last_info_for(
         self, agent_id: AgentID = _DUMMY_AGENT_ID
     ) -> Optional[EnvInfoDict]:
@@ -220,7 +216,6 @@ class Episode:
         """
         return self._agent_to_last_info.get(agent_id)
 
-    @DeveloperAPI
     def last_action_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvActionType:
         """Returns the last action for the specified AgentID, or zeros.
 
@@ -258,7 +253,6 @@ class Episode:
                     return np.zeros_like(flat, dtype=policy.action_space.dtype)
                 return np.zeros_like(flat)
 
-    @DeveloperAPI
     def prev_action_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> EnvActionType:
         """Returns the previous action for the specified agent, or zeros.
 
@@ -294,7 +288,6 @@ class Episode:
             else:
                 return np.zeros_like(self.last_action_for(agent_id))
 
-    @DeveloperAPI
     def last_reward_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> float:
         """Returns the last reward for the specified agent, or zero.
 
@@ -317,7 +310,6 @@ class Episode:
         else:
             return 0.0
 
-    @DeveloperAPI
     def prev_reward_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> float:
         """Returns the previous reward for the specified agent, or zero.
 
@@ -341,7 +333,6 @@ class Episode:
         else:
             return 0.0
 
-    @DeveloperAPI
     def rnn_state_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> List[Any]:
         """Returns the last RNN state for the specified agent.
 
@@ -358,7 +349,6 @@ class Episode:
             self._agent_to_rnn_state[agent_id] = policy.get_initial_state()
         return self._agent_to_rnn_state[agent_id]
 
-    @DeveloperAPI
     def last_terminated_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> bool:
         """Returns the last `terminated` flag for the specified AgentID.
 
@@ -372,7 +362,6 @@ class Episode:
             self._agent_to_last_terminated[agent_id] = False
         return self._agent_to_last_terminated[agent_id]
 
-    @DeveloperAPI
     def last_truncated_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> bool:
         """Returns the last `truncated` flag for the specified AgentID.
 
@@ -386,7 +375,6 @@ class Episode:
             self._agent_to_last_truncated[agent_id] = False
         return self._agent_to_last_truncated[agent_id]
 
-    @DeveloperAPI
     def last_extra_action_outs_for(
         self,
         agent_id: AgentID = _DUMMY_AGENT_ID,
@@ -405,7 +393,6 @@ class Episode:
         """
         return self._agent_to_last_extra_action_outs[agent_id]
 
-    @DeveloperAPI
     def get_agents(self) -> List[AgentID]:
         """Returns list of agent IDs that have appeared in this episode.
 
@@ -462,14 +449,3 @@ class Episode:
             error=True,
         )
         return self.policy_mapping_fn
-
-    @Deprecated(new="Episode.last_extra_action_outs_for", error=True)
-    def last_pi_info_for(self, *args, **kwargs):
-        return self.last_extra_action_outs_for(*args, **kwargs)
-
-
-# Backward compatibility. The name Episode implies that there is
-# also a (single agent?) Episode.
-@Deprecated(new="ray.rllib.evaluation.episode.Episode", error=True)
-class MultiAgentEpisode(Episode):
-    pass

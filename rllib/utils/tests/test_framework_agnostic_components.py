@@ -162,7 +162,7 @@ class TestFrameWorkAgnosticComponents(unittest.TestCase):
 
     def test_unregistered_envs(self):
         """Tests, whether an Env can be specified simply by its absolute class."""
-        env_cls = "ray.rllib.examples.env.stateless_cartpole.StatelessCartPole"
+        env_cls = "ray.rllib.examples.envs.classes.stateless_cartpole.StatelessCartPole"
         env = from_config(env_cls, {"config": 42.0})
         state, _ = env.reset()
         self.assertTrue(state.shape == (2,))

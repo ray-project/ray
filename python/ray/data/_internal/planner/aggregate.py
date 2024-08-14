@@ -14,8 +14,7 @@ from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler impor
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
-from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
-from ray.data._internal.sort import SortKey
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import unify_block_metadata_schema
 from ray.data.aggregate import AggregateFn
@@ -40,9 +39,8 @@ def generate_aggregate_fn(
         blocks = []
         metadata = []
         for ref_bundle in refs:
-            for block, block_metadata in ref_bundle.blocks:
-                blocks.append(block)
-                metadata.append(block_metadata)
+            blocks.extend(ref_bundle.block_refs)
+            metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
             return (blocks, {})
         unified_schema = unify_block_metadata_schema(metadata)

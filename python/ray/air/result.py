@@ -1,21 +1,21 @@
-import os
 import io
 import json
-import pandas as pd
-import pyarrow
+import logging
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
+import pandas as pd
+import pyarrow
+
 import ray
 from ray.air.constants import (
-    EXPR_RESULT_FILE,
-    EXPR_PROGRESS_FILE,
     EXPR_ERROR_PICKLE_FILE,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
 )
 from ray.util.annotations import PublicAPI
-
-import logging
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
@@ -88,8 +88,8 @@ class Result:
 
     def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""
-        from ray.tune.result import AUTO_RESULT_KEYS
         from ray.tune.experimental.output import BLACKLISTED_KEYS
+        from ray.tune.result import AUTO_RESULT_KEYS
 
         shown_attributes = {k: getattr(self, k) for k in self._items_to_repr}
         if self.error:
@@ -155,20 +155,20 @@ class Result:
         """
         # TODO(justinvyu): Fix circular dependency.
         from ray.train import Checkpoint
-        from ray.train.constants import CHECKPOINT_DIR_NAME
         from ray.train._internal.storage import (
-            get_fs_and_path,
             _exists_at_fs_path,
             _list_at_fs_path,
+            get_fs_and_path,
         )
+        from ray.train.constants import CHECKPOINT_DIR_NAME
 
         fs, fs_path = get_fs_and_path(path, storage_filesystem)
         if not _exists_at_fs_path(fs, fs_path):
             raise RuntimeError(f"Trial folder {fs_path} doesn't exist!")
 
         # Restore metrics from result.json
-        result_json_file = os.path.join(fs_path, EXPR_RESULT_FILE)
-        progress_csv_file = os.path.join(fs_path, EXPR_PROGRESS_FILE)
+        result_json_file = Path(fs_path, EXPR_RESULT_FILE).as_posix()
+        progress_csv_file = Path(fs_path, EXPR_PROGRESS_FILE).as_posix()
         if _exists_at_fs_path(fs, result_json_file):
             lines = cls._read_file_as_str(fs, result_json_file).split("\n")
             json_list = [json.loads(line) for line in lines if line]
@@ -232,7 +232,7 @@ class Result:
 
         # Restore the trial error if it exists
         error = None
-        error_file_path = os.path.join(fs_path, EXPR_ERROR_PICKLE_FILE)
+        error_file_path = Path(fs_path, EXPR_ERROR_PICKLE_FILE).as_posix()
         if _exists_at_fs_path(fs, error_file_path):
             with fs.open_input_stream(error_file_path) as f:
                 error = ray.cloudpickle.load(f)

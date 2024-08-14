@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import tempfile
+from pathlib import Path
 from typing import Any, Dict
 
 import torch
@@ -25,6 +26,7 @@ def import_lightning():  # noqa: F402
 pl = import_lightning()
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
+_LIGHTNING_LESS_THAN_2_1 = Version(pl.__version__) < Version("2.1.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
 _TORCH_FSDP_AVAILABLE = _TORCH_GREATER_EQUAL_1_12 and torch.distributed.is_available()
 
@@ -51,15 +53,6 @@ logger = logging.getLogger(__name__)
 LIGHTNING_REPORT_STAGE_KEY = "_report_on"
 
 
-def get_worker_root_device():
-    """Get the first torch device of the current worker if there are multiple."""
-    devices = ray.train.torch.get_device()
-    if isinstance(devices, list):
-        return devices[0]
-    else:
-        return devices
-
-
 @PublicAPI(stability="beta")
 class RayDDPStrategy(pl.strategies.DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration.
@@ -77,7 +70,7 @@ class RayDDPStrategy(pl.strategies.DDPStrategy):
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -93,6 +86,11 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
 
     For a full list of initialization arguments, please refer to:
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
+
+    .. note::
+        It is recommended to upgrade `lightning>=2.1` or above when using FSDP
+        with Lightning, since Lightning starts to natively support `state_dict_type`,
+        `sharding_strategy`, `auto_wrap_policy` and other FSDP configurations from 2.1.
     """
 
     def __init__(self, *args, **kwargs):
@@ -101,7 +99,7 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -111,10 +109,23 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
         )
 
     def lightning_module_state_dict(self) -> Dict[str, Any]:
-        """Gathers the full state dict to rank 0 on CPU."""
+        """Gathers the full state dict to rank 0 on CPU.
+
+        FSDP checkpointing is broken in Lightning 2.0.x. This subclass patches the
+        behavior to perform a full state dict checkpointing, gathering the checkpoint
+        shards on rank 0 CPU. Upgrade to `lightning>=2.1` to do sharded state dict
+        checkpointing.
+
+        See the note in the class docstring for more details.
+        """
+
         assert self.model is not None, "Failed to get the state dict for a None model!"
 
-        if _LIGHTNING_GREATER_EQUAL_2_0 and _TORCH_FSDP_AVAILABLE:
+        if (
+            _TORCH_FSDP_AVAILABLE
+            and _LIGHTNING_GREATER_EQUAL_2_0
+            and _LIGHTNING_LESS_THAN_2_1
+        ):
             with FullyShardedDataParallel.state_dict_type(
                 module=self.model,
                 state_dict_type=StateDictType.FULL_STATE_DICT,
@@ -123,8 +134,16 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
                 ),
             ):
                 state_dict = self.model.state_dict()
+
+                ckpt_state_dict = {}
                 prefix_len = len("_forward_module.")
-                return {k[prefix_len:]: v for k, v in state_dict.items()}
+                for k, v in state_dict.items():
+                    if k.startswith("_forward_module."):
+                        non_prefixed_key = k[prefix_len:]
+                        ckpt_state_dict[non_prefixed_key] = v
+                    else:
+                        ckpt_state_dict[k] = v
+                return ckpt_state_dict
         else:
             # Otherwise Lightning uses Fairscale FSDP, no need to unshard by ourself.
             return super().lightning_module_state_dict()
@@ -144,7 +163,7 @@ class RayDeepSpeedStrategy(pl.strategies.DeepSpeedStrategy):
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -242,7 +261,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         super().__init__()
         self.trial_name = train.get_context().get_trial_name()
         self.local_rank = train.get_context().get_local_rank()
-        self.tmpdir_prefix = os.path.join(tempfile.gettempdir(), self.trial_name)
+        self.tmpdir_prefix = Path(tempfile.gettempdir(), self.trial_name).as_posix()
         if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
             shutil.rmtree(self.tmpdir_prefix)
 
@@ -250,7 +269,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     def on_train_epoch_end(self, trainer, pl_module) -> None:
         # Creates a checkpoint dir with fixed name
-        tmpdir = os.path.join(self.tmpdir_prefix, str(trainer.current_epoch))
+        tmpdir = Path(self.tmpdir_prefix, str(trainer.current_epoch)).as_posix()
         os.makedirs(tmpdir, exist_ok=True)
 
         # Fetch metrics
@@ -262,7 +281,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         metrics["step"] = trainer.global_step
 
         # Save checkpoint to local
-        ckpt_path = os.path.join(tmpdir, self.CHECKPOINT_NAME)
+        ckpt_path = Path(tmpdir, self.CHECKPOINT_NAME).as_posix()
         trainer.save_checkpoint(ckpt_path, weights_only=False)
 
         # Report to train session
@@ -270,7 +289,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         train.report(metrics=metrics, checkpoint=checkpoint)
 
         # Add a barrier to ensure all workers finished reporting here
-        torch.distributed.barrier()
+        trainer.strategy.barrier()
 
         if self.local_rank == 0:
             shutil.rmtree(tmpdir)

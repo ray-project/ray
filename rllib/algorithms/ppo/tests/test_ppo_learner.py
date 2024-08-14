@@ -10,39 +10,35 @@ import tree  # pip install dm-tree
 import ray
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.algorithms.ppo.ppo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
+from ray.rllib.core.columns import Columns
+from ray.rllib.evaluation.postprocessing import compute_gae_for_sample_batch
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.tune.registry import register_env
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.tune.registry import register_env
 
-from ray.rllib.evaluation.postprocessing import (
-    compute_gae_for_sample_batch,
-)
 
 # Fake CartPole episode of n time steps.
 FAKE_BATCH = {
-    SampleBatch.OBS: np.array(
+    Columns.OBS: np.array(
         [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32,
     ),
-    SampleBatch.NEXT_OBS: np.array(
+    Columns.NEXT_OBS: np.array(
         [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
         dtype=np.float32,
     ),
-    SampleBatch.ACTIONS: np.array([0, 1, 1]),
-    SampleBatch.PREV_ACTIONS: np.array([0, 1, 1]),
-    SampleBatch.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-    SampleBatch.PREV_REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
-    SampleBatch.TERMINATEDS: np.array([False, False, True]),
-    SampleBatch.TRUNCATEDS: np.array([False, False, False]),
-    SampleBatch.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
-    SampleBatch.ACTION_DIST_INPUTS: np.array(
+    Columns.ACTIONS: np.array([0, 1, 1]),
+    Columns.REWARDS: np.array([1.0, -1.0, 0.5], dtype=np.float32),
+    Columns.TERMINATEDS: np.array([False, False, True]),
+    Columns.TRUNCATEDS: np.array([False, False, False]),
+    Columns.VF_PREDS: np.array([0.5, 0.6, 0.7], dtype=np.float32),
+    Columns.ACTION_DIST_INPUTS: np.array(
         [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5]], dtype=np.float32
     ),
-    SampleBatch.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
-    SampleBatch.EPS_ID: np.array([0, 0, 0]),
-    SampleBatch.AGENT_INDEX: np.array([0, 0, 0]),
+    Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2], dtype=np.float32),
+    Columns.EPS_ID: np.array([0, 0, 0]),
 }
 
 
@@ -58,14 +54,11 @@ class TestPPO(unittest.TestCase):
         ray.shutdown()
 
     def test_loss(self):
-
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
-            )
+            .env_runners(num_env_runners=0)
             .training(
                 gamma=0.99,
                 model=dict(
@@ -105,14 +98,14 @@ class TestPPO(unittest.TestCase):
 
             algo.stop()
 
-    def test_save_load_state(self):
+    def test_save_to_path_and_restore_from_path(self):
         """Tests saving and loading the state of the PPO Learner Group."""
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
             )
             .training(
                 gamma=0.99,
@@ -131,13 +124,11 @@ class TestPPO(unittest.TestCase):
             learner_group1 = algo_config.build_learner_group(env=self.ENV)
             learner_group2 = algo_config.build_learner_group(env=self.ENV)
             with tempfile.TemporaryDirectory() as tmpdir:
-                learner_group1.save_state(tmpdir)
-                learner_group2.load_state(tmpdir)
+                learner_group1.save_to_path(tmpdir)
+                learner_group2.restore_from_path(tmpdir)
                 # Remove functions from state b/c they are not comparable via `check`.
                 s1 = learner_group1.get_state()
-                s1.pop("should_module_be_updated_fn")
                 s2 = learner_group2.get_state()
-                s2.pop("should_module_be_updated_fn")
                 check(s1, s2)
 
     def test_kl_coeff_changes(self):
@@ -149,11 +140,12 @@ class TestPPO(unittest.TestCase):
         initial_kl_coeff = 0.01
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 rollout_fragment_length=50,
+                exploration_config={},
             )
             .training(
                 gamma=0.99,
@@ -164,7 +156,6 @@ class TestPPO(unittest.TestCase):
                 ),
                 kl_coeff=initial_kl_coeff,
             )
-            .exploration(exploration_config={})
             .environment("multi_agent_cartpole")
             .multi_agent(
                 policies={"p0", "p1"},

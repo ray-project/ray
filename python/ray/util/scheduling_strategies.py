@@ -11,7 +11,7 @@ if TYPE_CHECKING:
 # "SPREAD": Spread scheduling on a best effort basis.
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class PlacementGroupSchedulingStrategy:
     """Placement group based scheduling strategy.
 
@@ -37,7 +37,7 @@ class PlacementGroupSchedulingStrategy:
         self.placement_group_capture_child_tasks = placement_group_capture_child_tasks
 
 
-@PublicAPI(stability="beta")
+@PublicAPI
 class NodeAffinitySchedulingStrategy:
     """Static scheduling strategy used to run a task or actor on a particular node.
 
@@ -133,11 +133,12 @@ LabelMatchExpressionsT = Dict[str, Union[In, NotIn, Exists, DoesNotExist]]
 
 @PublicAPI(stability="alpha")
 class NodeLabelSchedulingStrategy:
-    """Label based node affinity scheduling strategy
+    """
+    Label based node affinity scheduling strategy
 
     scheduling_strategy=NodeLabelSchedulingStrategy({
-          "region": In("us"),
-          "gpu_type": Exists()
+        "region": In("us"),
+        "gpu_type": Exists(),
     })
     """
 

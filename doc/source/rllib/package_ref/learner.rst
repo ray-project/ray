@@ -1,3 +1,10 @@
+
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+.. include:: /_includes/rllib/new_api_stack_component.rst
+
 .. _learner-reference-docs:
 
 
@@ -74,10 +81,9 @@ Performing Updates
 
     Learner.update_from_batch
     Learner.update_from_episodes
+    Learner.before_gradient_based_update
     Learner._update
-    Learner.additional_update
-    Learner.additional_update_for_module
-    Learner._convert_batch_type
+    Learner.after_gradient_based_update
 
 
 Computing Losses
@@ -132,16 +138,14 @@ Saving, Loading, Checkpointing, and Restoring States
     :nosignatures:
     :toctree: doc/
 
-    Learner.save_state
-    Learner.load_state
-    Learner._save_optimizers
-    Learner._load_optimizers
     Learner.get_state
     Learner.set_state
-    Learner.get_optimizer_state
-    Learner.set_optimizer_state
-    Learner._get_metadata
-    
+    Learner.save_to_path
+    Learner.restore_from_path
+    Learner.from_checkpoint
+    Learner._get_optimizer_state
+    Learner._set_optimizer_state
+
 Adding and Removing Modules
 ---------------------------
 
@@ -151,15 +155,3 @@ Adding and Removing Modules
 
     Learner.add_module
     Learner.remove_module
-
-Managing Results
-----------------
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    Learner.compile_results
-    Learner.register_metric
-    Learner.register_metrics
-    Learner._check_result

@@ -17,7 +17,6 @@ from ray.util.client.common import (
     _propagate_error_in_context,
     OrderedResponseCache,
 )
-from ray.util.client import CURRENT_PROTOCOL_VERSION
 from ray.util.debug import log_once
 from ray._private.client_mode_hook import disable_client_hook
 
@@ -275,6 +274,8 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
                             req.task, arglist, kwargs, context
                         )
                         resp = ray_client_pb2.DataResponse(task_ticket=resp_ticket)
+                        del arglist
+                        del kwargs
                 elif req_type == "terminate":
                     with self.clients_lock:
                         response = self.basic_service.Terminate(req.terminate, context)
@@ -412,5 +413,4 @@ class DataServicer(ray_client_pb2_grpc.RayletDataStreamerServicer):
             ),
             ray_version=ray.__version__,
             ray_commit=ray.__commit__,
-            protocol_version=CURRENT_PROTOCOL_VERSION,
         )

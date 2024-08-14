@@ -1,3 +1,4 @@
+import logging
 import random
 from collections import defaultdict
 
@@ -11,7 +12,7 @@ from ray.data import Dataset
 from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
     PushBasedShuffleTaskScheduler,
 )
-from ray.data._internal.sort import SortKey
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
@@ -55,7 +56,7 @@ def test_sort_simple(ray_start_regular, use_push_based_shuffle):
     parallelism = 4
     xs = list(range(num_items))
     random.shuffle(xs)
-    ds = ray.data.from_items(xs, parallelism=parallelism)
+    ds = ray.data.from_items(xs, override_num_blocks=parallelism)
     assert extract_values("item", ds.sort("item").take(num_items)) == list(
         range(num_items)
     )
@@ -118,7 +119,7 @@ def test_sort_arrow(
             offset += shard
         if offset < num_items:
             dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
-        ds = ray.data.from_pandas(dfs).map_batches(
+        ds = ray.data.from_blocks(dfs).map_batches(
             lambda t: t, batch_format="pyarrow", batch_size=None
         )
 
@@ -170,7 +171,7 @@ def test_sort_arrow_with_empty_blocks(
         )
 
         ds = ray.data.from_items(
-            [{"A": (x % 3), "B": x} for x in range(3)], parallelism=3
+            [{"A": (x % 3), "B": x} for x in range(3)], override_num_blocks=3
         )
         ds = ds.filter(lambda r: r["A"] == 0)
         assert list(ds.sort("A").iter_rows()) == [{"A": 0, "B": 0}]
@@ -179,8 +180,8 @@ def test_sort_arrow_with_empty_blocks(
         ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
         assert (
             len(
-                ray.data._internal.sort.sample_boundaries(
-                    ds._plan.execute().get_blocks(), SortKey("id"), 3
+                SortTaskSpec.sample_boundaries(
+                    ds._plan.execute().block_refs, SortKey("id"), 3
                 )
             )
             == 2
@@ -234,7 +235,7 @@ def test_sort_pandas(ray_start_regular, num_items, parallelism, use_push_based_s
         offset += shard
     if offset < num_items:
         dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
-    ds = ray.data.from_pandas(dfs)
+    ds = ray.data.from_blocks(dfs)
 
     def assert_sorted(sorted_ds, expected_rows):
         assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(
@@ -270,7 +271,9 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
         == 0
     )
 
-    ds = ray.data.from_items([{"A": (x % 3), "B": x} for x in range(3)], parallelism=3)
+    ds = ray.data.from_items(
+        [{"A": (x % 3), "B": x} for x in range(3)], override_num_blocks=3
+    )
     ds = ds.filter(lambda r: r["A"] == 0)
     assert list(ds.sort("A").iter_rows()) == [{"A": 0, "B": 0}]
 
@@ -278,8 +281,8 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     ds = ray.data.range(10).filter(lambda r: r["id"] > 10)
     assert (
         len(
-            ray.data._internal.sort.sample_boundaries(
-                ds._plan.execute().get_blocks(), SortKey("id"), 3
+            SortTaskSpec.sample_boundaries(
+                ds._plan.execute().block_refs, SortKey("id"), 3
             )
         )
         == 2
@@ -434,7 +437,7 @@ def test_push_based_shuffle_stats(ray_start_cluster):
         ray.init(cluster.address)
 
         parallelism = 100
-        ds = ray.data.range(1000, parallelism=parallelism).random_shuffle()
+        ds = ray.data.range(1000, override_num_blocks=parallelism).random_shuffle()
         ds = ds.materialize()
         assert "RandomShuffleMerge" in ds.stats()
         # Check all nodes used.
@@ -469,7 +472,11 @@ def test_sort_multinode(ray_start_cluster, use_push_based_shuffle):
     ray.init(cluster.address)
 
     parallelism = 100
-    ds = ray.data.range(1000, parallelism=parallelism).random_shuffle().sort("id")
+    ds = (
+        ray.data.range(1000, override_num_blocks=parallelism)
+        .random_shuffle()
+        .sort("id")
+    )
     for i, row in enumerate(ds.iter_rows()):
         assert row["id"] == i
 
@@ -575,7 +582,9 @@ def test_push_based_shuffle_reduce_stage_scheduling(ray_start_cluster, pipeline)
 
         ray.init(cluster.address)
 
-        ds = ray.data.range(1000, parallelism=num_output_blocks).random_shuffle()
+        ds = ray.data.range(
+            1000, override_num_blocks=num_output_blocks
+        ).random_shuffle()
         # Only the last round should have fewer tasks in flight.
         assert task_context["num_instances_below_parallelism"] <= 1
         task_context["num_instances_below_parallelism"] = 0
@@ -612,17 +621,17 @@ def test_debug_limit_shuffle_execution_to_num_blocks(
     shuffle_fn = shuffle_op
 
     parallelism = 100
-    ds = ray.data.range(1000, parallelism=parallelism)
+    ds = ray.data.range(1000, override_num_blocks=parallelism)
     shuffled_ds = shuffle_fn(ds).materialize()
     shuffled_ds = shuffled_ds.materialize()
-    assert shuffled_ds.num_blocks() == parallelism
+    assert shuffled_ds._plan.initial_num_blocks() == parallelism
 
     DataContext.get_current().set_config(
         "debug_limit_shuffle_execution_to_num_blocks", 1
     )
     shuffled_ds = shuffle_fn(ds).materialize()
     shuffled_ds = shuffled_ds.materialize()
-    assert shuffled_ds.num_blocks() == 1
+    assert shuffled_ds._plan.initial_num_blocks() == 1
 
 
 @pytest.mark.parametrize("use_push_based_shuffle", [False, True])
@@ -630,7 +639,7 @@ def test_memory_usage(ray_start_regular, restore_data_context, use_push_based_sh
     DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
 
     parallelism = 2
-    ds = ray.data.range(int(1e8), parallelism=parallelism)
+    ds = ray.data.range(int(1e8), override_num_blocks=parallelism)
     ds = ds.random_shuffle().materialize()
 
     stats = ds._get_stats_summary()
@@ -638,6 +647,78 @@ def test_memory_usage(ray_start_regular, restore_data_context, use_push_based_sh
     # one task uses much more memory than the other.
     for op_stats in stats.operators_stats:
         assert op_stats.memory["max"] < 2000
+
+
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+@pytest.mark.parametrize("under_threshold", [False, True])
+def test_sort_object_ref_warnings(
+    ray_start_regular,
+    restore_data_context,
+    use_push_based_shuffle,
+    under_threshold,
+    propagate_logs,
+    caplog,
+):
+    # Test that we warn iff expected driver memory usage from
+    # storing ObjectRefs is higher than the configured
+    # threshold.
+    warning_str = "Execution is estimated to use"
+    warning_str_with_bytes = (
+        "Execution is estimated to use at least "
+        f"{90 if use_push_based_shuffle else 300}KB"
+    )
+
+    DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
+    if not under_threshold:
+        DataContext.get_current().warn_on_driver_memory_usage_bytes = 10_000
+
+    ds = ray.data.range(int(1e8), override_num_blocks=10)
+    with caplog.at_level(logging.WARNING, logger="ray.data.dataset"):
+        ds = ds.random_shuffle().materialize()
+
+    if under_threshold:
+        assert warning_str not in caplog.text
+        assert warning_str_with_bytes not in caplog.text
+    else:
+        assert warning_str in caplog.text
+        assert warning_str_with_bytes in caplog.text
+
+
+@pytest.mark.parametrize("use_push_based_shuffle", [False, True])
+@pytest.mark.parametrize("under_threshold", [False, True])
+def test_sort_inlined_objects_warnings(
+    ray_start_regular,
+    restore_data_context,
+    use_push_based_shuffle,
+    under_threshold,
+    propagate_logs,
+    caplog,
+):
+    # Test that we warn iff expected driver memory usage from
+    # storing tiny Ray objects on driver heap is higher than
+    # the configured threshold.
+    if use_push_based_shuffle:
+        warning_strs = [
+            "More than 3MB of driver memory used",
+            "More than 7MB of driver memory used",
+        ]
+    else:
+        warning_strs = [
+            "More than 8MB of driver memory used",
+        ]
+
+    DataContext.get_current().use_push_based_shuffle = use_push_based_shuffle
+    if not under_threshold:
+        DataContext.get_current().warn_on_driver_memory_usage_bytes = 3_000_000
+
+    ds = ray.data.range(int(1e6), override_num_blocks=10)
+    with caplog.at_level(logging.WARNING, logger="ray.data.dataset"):
+        ds = ds.random_shuffle().materialize()
+
+    if under_threshold:
+        assert all(warning_str not in caplog.text for warning_str in warning_strs)
+    else:
+        assert all(warning_str in caplog.text for warning_str in warning_strs)
 
 
 if __name__ == "__main__":

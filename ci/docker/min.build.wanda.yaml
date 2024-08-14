@@ -4,6 +4,9 @@ dockerfile: ci/docker/min.build.Dockerfile
 srcs:
   - ci/env/install-dependencies.sh
   - ci/env/install-core-prerelease-dependencies.sh
+  - python/setup.py
+  - python/ray/_version.py
+  - README.rst
 build_args:
   - PYTHON_VERSION
   - EXTRA_DEPENDENCY

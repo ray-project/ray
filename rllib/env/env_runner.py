@@ -1,17 +1,24 @@
 import abc
-from typing import Any, Dict, TYPE_CHECKING
+from typing import Any, Dict, Tuple, TYPE_CHECKING
+
+import gymnasium as gym
+import tree  # pip install dm_tree
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.typing import TensorType
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-tf1, _, _ = try_import_tf()
+tf1, tf, _ = try_import_tf()
 
 
-@ExperimentalAPI
+# TODO (sven): As soon as RolloutWorker is no longer supported, make this base class
+#  a Checkpointable. Currently, only some of its subclasses are Checkpointables.
+@PublicAPI(stability="alpha")
 class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     """Base class for distributed RL-style data collection from an environment.
 
@@ -36,7 +43,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             config: The AlgorithmConfig to use to setup this EnvRunner.
             **kwargs: Forward compatibility kwargs.
         """
-        self.config = config
+        self.config = config.copy(copy_frozen=False)
         super().__init__(**kwargs)
 
         # This eager check is necessary for certain all-framework tests
@@ -73,39 +80,30 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             The collected experience in any form.
         """
 
-    def get_state(self) -> Dict[str, Any]:
-        """Returns this EnvRunner's (possibly serialized) current state as a dict.
+    @abc.abstractmethod
+    def get_spaces(self) -> Dict[str, Tuple[gym.Space, gym.Space]]:
+        """Returns a dict mapping ModuleIDs to 2-tuples of obs- and action space.
 
-        Returns:
-            The current state of this EnvRunner.
+        The returned dict might also contain an extra key `__env__`, which maps to
+        a 2-tuple of the bare Env's observation- and action spaces.
         """
-        # TODO (sven, simon): `Algorithm.save_checkpoint()` will store with
-        # this an empty worker state and in `Algorithm.from_checkpoint()`
-        # the empty state (not `None`) must be ensured separately. Shall we
-        # return here as a default `None`?
-        return {}
-
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Restores this EnvRunner's state from the given state dict.
-
-        Args:
-            state: The state dict to restore the state from.
-
-        .. testcode::
-            :skipif: True
-
-            from ray.rllib.env.env_runner import EnvRunner
-            env_runner = ...
-            state = env_runner.get_state()
-            new_runner = EnvRunner(...)
-            new_runner.set_state(state)
-        """
-        pass
 
     def stop(self) -> None:
-        """Releases all resources used by this EnvRunner."""
+        """Releases all resources used by this EnvRunner.
+
+        For example, when using a gym.Env in this EnvRunner, you should make sure
+        that its `close()` method is called.
+        """
         pass
 
     def __del__(self) -> None:
         """If this Actor is deleted, clears all resources used by it."""
         pass
+
+    def _convert_to_tensor(self, struct) -> TensorType:
+        """Converts structs to a framework-specific tensor."""
+
+        if self.config.framework_str == "torch":
+            return convert_to_torch_tensor(struct)
+        else:
+            return tree.map_structure(tf.convert_to_tensor, struct)

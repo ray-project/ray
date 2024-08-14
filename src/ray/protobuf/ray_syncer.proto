@@ -42,8 +42,10 @@ message ResourceViewSyncMessage {
   int64 idle_duration_ms = 4;
   // Whether the node is being drained.
   bool is_draining = 5;
+  // Timestamp when the node to be drained will be force killed.
+  int64 draining_deadline_timestamp_ms = 6;
   // Why the node is not idle.
-  repeated string node_activity = 6;
+  repeated string node_activity = 7;
 }
 
 message RaySyncMessage {

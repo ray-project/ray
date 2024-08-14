@@ -1,7 +1,7 @@
 import asyncio
 from concurrent.futures.thread import ThreadPoolExecutor
 from functools import partial
-from typing import List
+from typing import List, Optional
 
 import pytest
 import requests
@@ -153,6 +153,57 @@ def test_batching_client_dropped_streaming(serve_instance):
     resp = requests.get(url, timeout=1)
     assert resp.status_code == 200
     assert resp.text == "0123456789"
+
+
+def test_observability_helpers():
+    """Checks observability helper methods that are used for batching.
+
+    Tests three observability helper methods:
+        * _get_curr_iteration_start_time: gets the current iteration's start
+            time.
+        * _is_batching_task_alive: returns whether the batch-handler task is
+            alive.
+        * _get_handling_task_stack: returns the stack for the batch-handler task.
+    """
+
+    @serve.deployment(name="batcher")
+    class Batcher:
+        @serve.batch(max_batch_size=3)
+        async def handle_batch(self, requests):
+            return [0] * len(requests)
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+        async def _get_curr_iteration_start_time(self) -> Optional[float]:
+            return self.handle_batch._get_curr_iteration_start_time()
+
+        async def _is_batching_task_alive(self) -> bool:
+            return await self.handle_batch._is_batching_task_alive()
+
+        async def _get_handling_task_stack(self) -> Optional[str]:
+            return await self.handle_batch._get_handling_task_stack()
+
+    serve.run(target=Batcher.bind(), name="app_name")
+    handle = serve.get_deployment_handle(deployment_name="batcher", app_name="app_name")
+
+    assert handle._is_batching_task_alive.remote().result()
+
+    requests.get("http://localhost:8000/")
+
+    assert len(handle._get_handling_task_stack.remote().result()) is not None
+    assert handle._is_batching_task_alive.remote().result()
+
+    curr_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
+
+    for _ in range(5):
+        requests.get("http://localhost:8000/")
+
+    new_iteration_start_time = handle._get_curr_iteration_start_time.remote().result()
+
+    assert new_iteration_start_time > curr_iteration_start_time
+    assert len(handle._get_handling_task_stack.remote().result()) is not None
+    assert handle._is_batching_task_alive.remote().result()
 
 
 if __name__ == "__main__":

@@ -20,8 +20,7 @@ class LinuxContainer(Container):
         envs: Optional[List[str]] = None,
         tmp_filesystem: Optional[str] = None,
     ) -> None:
-        super().__init__(docker_tag, envs)
-        self.volumes = volumes or []
+        super().__init__(docker_tag, volumes, envs)
 
         if tmp_filesystem is not None:
             if tmp_filesystem != "tmpfs":
@@ -29,6 +28,8 @@ class LinuxContainer(Container):
         self.tmp_filesystem = tmp_filesystem
 
     def install_ray(self, build_type: Optional[str] = None) -> List[str]:
+        cache_readonly = os.environ.get("BUILDKITE_CACHE_READONLY", "")
+
         env = os.environ.copy()
         env["DOCKER_BUILDKIT"] = "1"
         subprocess.check_call(
@@ -42,7 +43,7 @@ class LinuxContainer(Container):
                 "--build-arg",
                 f"BUILD_TYPE={build_type or ''}",
                 "--build-arg",
-                f"BUILDKITE_PIPELINE_ID={env.get('BUILDKITE_PIPELINE_ID')}",
+                f"BUILDKITE_CACHE_READONLY={cache_readonly}",
                 "-t",
                 self._get_docker_image(),
                 "-f",
@@ -62,8 +63,6 @@ class LinuxContainer(Container):
         gpu_ids: Optional[List[int]] = None,
     ) -> List[str]:
         extra_args = [
-            "--env",
-            "NVIDIA_DISABLE_REQUIRE=1",
             "--add-host",
             "rayci.localhost:host-gateway",
         ]
@@ -72,8 +71,6 @@ class LinuxContainer(Container):
                 "--mount",
                 f"type={self.tmp_filesystem},destination=/tmp",
             ]
-        for volume in self.volumes:
-            extra_args += ["--volume", volume]
         for cap in _DOCKER_CAP_ADD:
             extra_args += ["--cap-add", cap]
         if gpu_ids:

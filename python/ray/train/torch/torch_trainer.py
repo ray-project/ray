@@ -1,13 +1,10 @@
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional, Union
 
 from ray.train import Checkpoint, DataConfig, RunConfig, ScalingConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch.config import TorchConfig
 from ray.train.trainer import GenDataset
 from ray.util import PublicAPI
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
 
 
 @PublicAPI(stability="stable")
@@ -149,7 +146,9 @@ class TorchTrainer(DataParallelTrainer):
             :ref:`Ray Train Loop utilities <train-loop-api>`.
         train_loop_config: A configuration ``Dict`` to pass in as an argument to
             ``train_loop_per_worker``.
-            This is typically used for specifying hyperparameters.
+            This is typically used for specifying hyperparameters. Passing large
+            datasets via `train_loop_config` is not recommended and may introduce
+            large overhead and unknown issues with serialization and deserialization.
         torch_config: The configuration for setting up the PyTorch Distributed backend.
             If set to None, a default configuration will be used in which
             GPU training uses NCCL and CPU training uses Gloo.
@@ -188,8 +187,6 @@ class TorchTrainer(DataParallelTrainer):
         dataset_config: Optional[DataConfig] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # Deprecated.
-        preprocessor: Optional["Preprocessor"] = None,
     ):
         if not torch_config:
             torch_config = TorchConfig()
@@ -202,7 +199,6 @@ class TorchTrainer(DataParallelTrainer):
             dataset_config=dataset_config,
             run_config=run_config,
             datasets=datasets,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
             metadata=metadata,
         )

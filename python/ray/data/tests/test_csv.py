@@ -83,26 +83,26 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     assert ds.input_files() == [_unwrap_protocol(path1)]
     assert "{one: int64, two: string}" in str(ds), ds
 
-    # Two files, parallelism=2.
+    # Two files, override_num_blocks=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
     path2 = os.path.join(data_path, "test2.csv")
     df2.to_csv(path2, index=False, storage_options=storage_options)
     ds = ray.data.read_csv(
-        [path1, path2], parallelism=2, filesystem=fs, partitioning=None
+        [path1, path2], override_num_blocks=2, filesystem=fs, partitioning=None
     )
     dsdf = ds.to_pandas()
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
-    # Three files, parallelism=2.
+    # Three files, override_num_blocks=2.
     df3 = pd.DataFrame({"one": [7, 8, 9], "two": ["h", "i", "j"]})
     path3 = os.path.join(data_path, "test3.csv")
     df3.to_csv(path3, index=False, storage_options=storage_options)
     ds = ray.data.read_csv(
-        [path1, path2, path3], parallelism=2, filesystem=fs, partitioning=None
+        [path1, path2, path3], override_num_blocks=2, filesystem=fs, partitioning=None
     )
     df = pd.concat([df1, df2, df3], ignore_index=True)
     dsdf = ds.to_pandas()
@@ -205,7 +205,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
         file_extensions=["csv"],
         partitioning=None,
     )
-    assert ds.num_blocks() == 2
+    assert ds._plan.initial_num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
     dsdf = ds.to_pandas()
     assert df.equals(dsdf)
@@ -367,7 +367,7 @@ def test_csv_read_many_files_partitioned(
         paths,
         filesystem=fs,
         partitioning=partition_path_encoder.scheme,
-        parallelism=num_files,
+        override_num_blocks=num_files,
     )
 
     assert_base_partitioned_ds(
@@ -376,7 +376,6 @@ def test_csv_read_many_files_partitioned(
         num_input_files=num_files,
         num_rows=num_rows,
         schema="{one: int64, two: int64}",
-        num_computed=num_files,
         sorted_values=sorted(
             itertools.chain.from_iterable(
                 list(
@@ -659,9 +658,9 @@ def test_csv_read_partitioned_with_filter_multikey(
             data_path,
             partition_filter=partition_path_filter,
             filesystem=fs,
-            parallelism=6,
+            override_num_blocks=6,
         )
-        assert_base_partitioned_ds(ds, num_input_files=6, num_computed=6)
+        assert_base_partitioned_ds(ds, num_input_files=6)
         assert ray.get(kept_file_counter.get.remote()) == 6
         if i == 0:
             # expect to skip 1 unpartitioned files in the parent of the base directory
@@ -689,7 +688,7 @@ def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
         storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
     # Single block.
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([df1])
+    ds = ray.data.from_blocks([df1])
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
     file_path = os.path.join(data_path, "data_000000_000000.csv")
@@ -697,7 +696,7 @@ def test_csv_write(ray_start_regular_shared, fs, data_path, endpoint_url):
 
     # Two blocks.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
+    ds = ray.data.from_blocks([df1, df2])
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
     file_path2 = os.path.join(data_path, "data_000001_000000.csv")
@@ -730,7 +729,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
@@ -738,68 +737,17 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.from_pandas([df, df2])
     ds._set_uuid("data")
     ds.write_csv(data_path, filesystem=fs)
-    ds2 = ray.data.read_csv(data_path, parallelism=2, filesystem=fs)
+    ds2 = ray.data.read_csv(data_path, override_num_blocks=2, filesystem=fs)
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
-
-
-@pytest.mark.parametrize(
-    "fs,data_path,endpoint_url",
-    [
-        (None, lazy_fixture("local_path"), None),
-        (lazy_fixture("local_fs"), lazy_fixture("local_path"), None),
-        (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
-    ],
-)
-def test_csv_write_block_path_provider(
-    # NOTE: This is shutdown_only because this is the last use of the shared local
-    # cluster; following this, we start a new cluster, so we need to shut this one down.
-    # If the ordering of these tests change, then this needs to change.
-    shutdown_only,
-    fs,
-    data_path,
-    endpoint_url,
-    mock_block_write_path_provider,
-):
-    if endpoint_url is None:
-        storage_options = {}
-    else:
-        storage_options = dict(client_kwargs=dict(endpoint_url=endpoint_url))
-
-    # Single block.
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    ds = ray.data.from_pandas([df1])
-    ds._set_uuid("data")
-    ds.write_csv(
-        data_path, filesystem=fs, block_path_provider=mock_block_write_path_provider
-    )
-    file_path = os.path.join(data_path, "000000_000000_data.test.csv")
-    assert df1.equals(pd.read_csv(file_path, storage_options=storage_options))
-
-    # Two blocks.
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
-    ds._set_uuid("data")
-    ds.write_csv(
-        data_path, filesystem=fs, block_path_provider=mock_block_write_path_provider
-    )
-    file_path2 = os.path.join(data_path, "000001_000000_data.test.csv")
-    df = pd.concat([df1, df2])
-    ds_df = pd.concat(
-        [
-            pd.read_csv(file_path, storage_options=storage_options),
-            pd.read_csv(file_path2, storage_options=storage_options),
-        ]
-    )
-    assert df.equals(ds_df)
 
 
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the
 # shutdown_only fixture so the shared cluster is shut down, otherwise the below
-# test_write_datasource_ray_remote_args test, which uses a cluster_utils cluster, will
+# test_write_datasink_ray_remote_args test, which uses a cluster_utils cluster, will
 # fail with a double-init.
 def test_csv_read_no_header(shutdown_only, tmp_path):
     from pyarrow import csv
@@ -910,6 +858,19 @@ def test_csv_invalid_file_handler(shutdown_only, tmp_path):
             delimiter=",", invalid_row_handler=lambda i: "skip"
         ),
     )
+
+
+@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
+def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+    ray.data.range(100, override_num_blocks=20).write_csv(
+        tmp_path, num_rows_per_file=num_rows_per_file
+    )
+
+    for filename in os.listdir(tmp_path):
+        with open(os.path.join(tmp_path, filename), "r") as file:
+            # Subtract 1 from the number of lines to account for the header.
+            num_rows_written = len(file.read().splitlines()) - 1
+            assert num_rows_written == num_rows_per_file
 
 
 if __name__ == "__main__":

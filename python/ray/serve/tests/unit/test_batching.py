@@ -1,47 +1,46 @@
 import asyncio
+import logging
 import time
 from typing import List
 
 import pytest
 
+import ray
 from ray import serve
 from ray._private.utils import get_or_create_event_loop
+from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.config import DeploymentConfig
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve.batching import _BatchQueue
 from ray.serve.exceptions import RayServeException
 
+# Setup the global replica context for the test.
+default_deployment_config = DeploymentConfig()
+ray.serve.context._set_internal_replica_context(
+    replica_id=ReplicaID(unique_id="test", deployment_id=DeploymentID(name="test")),
+    servable_object=None,
+    _deployment_config=default_deployment_config,
+)
 
-@pytest.mark.asyncio
-async def test_batching_magic_attributes():
-    class BatchingExample:
-        def __init__(self):
-            self.count = 0
-            self.batch_sizes = set()
 
-        @property
-        def _ray_serve_max_batch_size(self):
-            return self.count + 1
+class FakeStream:
+    def __init__(self):
+        self.messages = []
 
-        @property
-        def _ray_serve_batch_wait_timeout_s(self):
-            return 0.1
+    def write(self, buf):
+        self.messages.append(buf)
 
-        @serve.batch
-        async def handle_batch(self, requests):
-            self.count += 1
-            batch_size = len(requests)
-            self.batch_sizes.add(batch_size)
-            return [batch_size] * batch_size
+    def reset_message(self):
+        self.messages = []
 
-    batching_example = BatchingExample()
 
-    for batch_size in range(1, 7):
-        tasks = [
-            get_or_create_event_loop().create_task(batching_example.handle_batch(1))
-            for _ in range(batch_size)
-        ]
-
-        done, _ = await asyncio.wait(tasks, return_when="ALL_COMPLETED")
-        assert set({task.result() for task in done}) == {batch_size}
-        time.sleep(0.05)
+# We use a single event loop for the entire test session. Without this
+# fixture, the event loop is sometimes prematurely terminated by pytest.
+@pytest.fixture(scope="session")
+def event_loop():
+    loop = get_or_create_event_loop()
+    yield loop
+    loop.close()
 
 
 @pytest.mark.asyncio
@@ -238,6 +237,26 @@ async def test_batch_timeout_empty_queue():
 
 
 @pytest.mark.asyncio
+async def test_batch_wait_queue_exceeds_batch_size_race_condition():
+    """Check that the wait queue can exceed the batch size.
+
+    This test was added to guard against a race condition documented in
+    https://github.com/ray-project/ray/pull/42705#discussion_r1466653910.
+    """
+
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=10000)
+    async def no_op(requests):
+        return ["No-op"] * len(requests)
+
+    tasks = [get_or_create_event_loop().create_task(no_op(None)) for _ in range(10)]
+
+    # All the tasks should finish.
+    done, pending = await asyncio.wait(tasks, timeout=0.5)
+    assert len(done) == len(tasks)
+    assert len(pending) == 0
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_size_multiple_long_timeout(use_class):
     @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
@@ -316,6 +335,202 @@ async def test_batch_args_kwargs(mode, use_class):
         coros = [func(key2="hi2", key1="hi1"), func(key2="hi4", key1="hi3")]
 
     result = await asyncio.gather(*coros)
+    assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [True, False])
+@pytest.mark.parametrize("use_gen", [True, False])
+async def test_batch_cancellation(use_class, use_gen):
+    block_requests = asyncio.Event()
+    request_was_cancelled = True
+
+    async def unary_implementation(key1, key2):
+        nonlocal block_requests, request_was_cancelled
+        await block_requests.wait()
+        request_was_cancelled = False
+        return [(key1[i], key2[i]) for i in range(len(key1))]
+
+    async def streaming_implementation(key1, key2):
+        nonlocal block_requests, request_was_cancelled
+        await block_requests.wait()
+        request_was_cancelled = False
+        yield [(key1[i], key2[i]) for i in range(len(key1))]
+
+    if use_class:
+
+        class MultipleArgs:
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def unary_method(self, key1, key2):
+                return await unary_implementation(key1, key2)
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def streaming_method(self, key1, key2):
+                async for value in streaming_implementation(key1, key2):
+                    yield value
+
+        instance = MultipleArgs()
+
+        if use_gen:
+            func = instance.streaming_method
+        else:
+            func = instance.unary_method
+
+    else:
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def unary_func(key1, key2):
+            return await unary_implementation(key1, key2)
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def streaming_func(key1, key2):
+            async for value in streaming_implementation(key1, key2):
+                yield value
+
+        if use_gen:
+            func = streaming_func
+        else:
+            func = unary_func
+
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
+    else:
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
+
+    print("Submitted requests.")
+
+    # The requests should be blocked on the long request_timeout
+    done, pending = await asyncio.wait(tasks, timeout=0.01)
+    assert len(done) == 0
+    assert len(pending) == 2
+
+    print("Requests are blocked, as expected.")
+
+    # Cancel the first request. The second request should still be blocked on
+    # the long request_timeout
+    tasks[0].cancel()
+    pending, done = await asyncio.wait(tasks, timeout=0.01)
+    assert len(done) == 1
+    assert len(pending) == 1
+
+    print("Cancelled first request.")
+
+    # Cancel the second request. Both requests should be done.
+    tasks[1].cancel()
+    done, pending = await asyncio.wait(tasks, timeout=0.01)
+    assert len(done) == 2
+    assert len(pending) == 0
+
+    print("Cancelled second request. Sending new requests with no timeout.")
+
+    # Sanity check that the request was actually cancelled.
+    assert request_was_cancelled
+
+    # Unblock requests. The requests should succeed.
+    block_requests.set()
+
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
+    else:
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
+
+    result = await asyncio.gather(*tasks)
+    assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [True, False])
+@pytest.mark.parametrize("use_gen", [True, False])
+async def test_cancellation_after_error(use_class, use_gen):
+    """Cancelling a request after it errors should be supported."""
+
+    raise_error = asyncio.Event()
+
+    async def unary_implementation(key1, key2):
+        if not raise_error.is_set():
+            raise ValueError()
+        return [(key1[i], key2[i]) for i in range(len(key1))]
+
+    async def streaming_implementation(key1, key2):
+        if not raise_error.is_set():
+            raise ValueError()
+        yield [(key1[i], key2[i]) for i in range(len(key1))]
+
+    if use_class:
+
+        class MultipleArgs:
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def unary_method(self, key1, key2):
+                return await unary_implementation(key1, key2)
+
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def streaming_method(self, key1, key2):
+                async for value in streaming_implementation(key1, key2):
+                    yield value
+
+        instance = MultipleArgs()
+
+        if use_gen:
+            func = instance.streaming_method
+        else:
+            func = instance.unary_method
+
+    else:
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def unary_func(key1, key2):
+            return await unary_implementation(key1, key2)
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def streaming_func(key1, key2):
+            async for value in streaming_implementation(key1, key2):
+                yield value
+
+        if use_gen:
+            func = streaming_func
+        else:
+            func = unary_func
+
+    # Submit requests and then cancel them.
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
+    else:
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
+
+    print("Submitted initial batch of requests.")
+
+    for task in tasks:
+        task.cancel()
+
+    print("Closed initial batch of requests.")
+
+    raise_error.set()
+
+    # Submit requests and check that they still work.
+    if use_gen:
+        gens = [func("hi1", "hi2"), func("hi3", "hi4")]
+        tasks = [asyncio.create_task(gen.__anext__()) for gen in gens]
+    else:
+        tasks = [
+            asyncio.create_task(func("hi1", "hi2")),
+            asyncio.create_task(func("hi3", "hi4")),
+        ]
+
+    print("Submitted new batch of requests.")
+
+    result = await asyncio.gather(*tasks)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
 
 
@@ -584,6 +799,50 @@ async def test_batch_generator_setters():
             await coro.__anext__() == expected_result
         with pytest.raises(StopAsyncIteration):
             await coro.__anext__()
+
+
+def test_warn_if_max_batch_size_exceeds_max_ongoing_requests():
+    """Test warn_if_max_batch_size_exceeds_max_ongoing_requests() logged the warning
+     message correctly.
+
+    When the queue starts with or updated `max_batch_size` to be larger than
+    max_ongoing_requests, log the warning to suggest configuring `max_ongoing_requests`.
+    When the queue starts with or updated `max_batch_size` to be smaller or equal than
+    max_ongoing_requests, no warning should be logged.
+    """
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    stream = FakeStream()
+    stream_handler = logging.StreamHandler(stream)
+    logger.addHandler(stream_handler)
+    bound = default_deployment_config.max_ongoing_requests
+    over_bound = bound + 1
+    under_bound = bound - 1
+    over_bound_warning_message = (
+        f"`max_batch_size` ({over_bound}) is larger than "
+        f"`max_ongoing_requests` ({bound}). This means "
+        "the replica will never receive a full batch. Please update "
+        "`max_ongoing_requests` to be >= `max_batch_size`.\n"
+    )
+
+    # Start queue above the bound will log warning. Start at under or at the bound will
+    # not log warning
+    for max_batch_size in [over_bound, under_bound, bound]:
+        queue = _BatchQueue(max_batch_size=max_batch_size, batch_wait_timeout_s=1000)
+        if max_batch_size > bound:
+            assert over_bound_warning_message in stream.messages
+        else:
+            assert over_bound_warning_message not in stream.messages
+        stream.reset_message()
+
+    # Update queue above the bound will log warning. Update at under or at the bound
+    # will not log warning
+    for max_batch_size in [over_bound, under_bound, bound]:
+        queue.set_max_batch_size(max_batch_size)
+        if max_batch_size > bound:
+            assert over_bound_warning_message in stream.messages
+        else:
+            assert over_bound_warning_message not in stream.messages
+        stream.reset_message()
 
 
 if __name__ == "__main__":

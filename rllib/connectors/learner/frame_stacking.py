@@ -1,6 +1,6 @@
 from functools import partial
 
-from ray.rllib.connectors.common.frame_stacking import _FrameStackingConnector
+from ray.rllib.connectors.common.frame_stacking import _FrameStacking
 
 
-FrameStackingLearner = partial(_FrameStackingConnector, as_learner_connector=True)
+FrameStackingLearner = partial(_FrameStacking, as_learner_connector=True)

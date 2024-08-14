@@ -11,7 +11,7 @@ from starlette.responses import StreamingResponse
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 
 @ray.remote
@@ -255,7 +255,7 @@ def test_proxy_from_streaming_handle(
         @serve.deployment
         @serve.ingress(app)
         class SimpleGenerator:
-            def __init__(self, handle: RayServeHandle):
+            def __init__(self, handle: DeploymentHandle):
                 self._h = handle.options(stream=True)
 
             @app.get("/")
@@ -271,7 +271,7 @@ def test_proxy_from_streaming_handle(
 
         @serve.deployment
         class SimpleGenerator:
-            def __init__(self, handle: RayServeHandle):
+            def __init__(self, handle: DeploymentHandle):
                 self._h = handle.options(stream=True)
 
             def __call__(self, request: Request) -> StreamingResponse:

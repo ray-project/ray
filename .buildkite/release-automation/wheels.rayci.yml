@@ -1,0 +1,103 @@
+group: Upload & Validate wheels
+steps:
+  - block: "Upload wheels from S3 to TestPyPI"
+    key: block-upload-wheels-testpypi
+    depends_on: 
+      - forge
+
+  - label: "Upload wheels from S3 to TestPyPI"
+    key: upload-wheels-testpypi
+    depends_on:
+      - block-upload-wheels-testpypi
+    job_env: forge
+    instance_type: small_branch
+    commands:
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
+      - source .buildkite/release-automation/set-ray-version.sh
+      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
+        --ray_version="$$RAY_VERSION" --commit_hash="$$RAY_COMMIT"
+        --pypi_env=test
+
+  - block: "Download & validate Ray wheels from TestPyPI Linux x86_64"
+    key: block-validate-linux-x86_64-wheels
+    depends_on:
+      - forge
+
+  - label: "Linux x86_64 Python {{matrix}}"
+    key: validate-linux-x86_64-wheels
+    job_env: forge
+    depends_on:
+      - block-validate-linux-x86_64-wheels
+    commands:
+      - export PYTHON_VERSION={{matrix}}
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
+      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+
+  - block: "Download & validate Ray wheels from TestPyPI Linux arm64"
+    key: block-validate-linux-arm64-wheels
+    depends_on:
+      - forge-arm64
+
+  - label: "Linux arm64 Python {{matrix}}"
+    key: validate-linux-arm64-wheels
+    instance_type: medium-arm64
+    job_env: forge-arm64
+    depends_on:
+      - block-validate-linux-arm64-wheels
+    commands:
+      - export PYTHON_VERSION={{matrix}}
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
+      - bash -i .buildkite/release-automation/verify-linux-wheels.sh
+    matrix:
+      - "3.9"
+      - "3.10"
+      - "3.11"
+      - "3.12"
+
+  - block: "Download & validate Ray wheels from TestPyPI Mac"
+    key: block-validate-macos-wheels
+    depends_on: []
+  
+  - label: "MacOS x86_64"
+    key: validate-macos-x86_64-wheels
+    depends_on:
+      - block-validate-macos-wheels
+    job_env: MACOS
+    instance_type: macos
+    commands:
+      - ./.buildkite/release-automation/verify-macos-wheels.sh x86_64
+
+  - label: "MacOS arm64"
+    key: validate-macos-arm64-wheels
+    depends_on:
+      - block-validate-macos-wheels
+    job_env: MACOS
+    instance_type: macos-arm64
+    commands:
+      - ./.buildkite/release-automation/verify-macos-wheels.sh arm64
+
+  - block: "Upload wheels to PyPI"
+    key: block-upload-wheels-pypi
+    depends_on: []
+
+  - label: "Upload wheels to PyPI"
+    key: upload-wheels-pypi
+    depends_on:
+      - block-upload-wheels-pypi
+    job_env: forge
+    instance_type: small_branch
+    commands:
+      - export RAY_VERSION="$RAY_VERSION"
+      - export RAY_COMMIT="$RAY_COMMIT"
+      - source .buildkite/release-automation/set-ray-version.sh
+      - bazel run //ci/ray_ci/automation:upload_wheels_pypi -- 
+        --ray_version="$$RAY_VERSION" --commit_hash="$$RAY_COMMIT"
+        --pypi_env=prod

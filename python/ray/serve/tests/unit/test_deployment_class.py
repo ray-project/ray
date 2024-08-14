@@ -84,7 +84,7 @@ class TestDeploymentOptions:
         "route_prefix": "/",
         "ray_actor_options": {},
         "user_config": {},
-        "max_concurrent_queries": 10,
+        "max_ongoing_requests": 10,
         "autoscaling_config": None,
         "graceful_shutdown_wait_loop_s": 10,
         "graceful_shutdown_timeout_s": 10,
@@ -193,7 +193,7 @@ class TestDeploymentOptions:
             deployment_options["autoscaling_config"] = {
                 "min_replicas": 1,
                 "max_replicas": 5,
-                "target_num_ongoing_requests_per_replica": 5,
+                "target_ongoing_requests": 5,
             }
         elif option == "autoscaling_config":
             deployment_options["num_replicas"] = 5
@@ -214,12 +214,40 @@ class TestDeploymentOptions:
         f = f.options(**options)
         assert f._deployment_config.user_configured_option_names == set(options.keys())
 
-        @serve.deployment
+    def test_eager_placement_group_validation(self):
+        """Check that placement groups are validated early.
+
+        Placement group bundles should be validated when the deployment is
+        defined, not when it's deployed.
+        """
+
+        with pytest.raises(ValueError):
+
+            # PG bundle with empty resources is invalid.
+            @serve.deployment(
+                placement_group_bundles=[{"CPU": 0, "GPU": 0}],
+                ray_actor_options={"num_cpus": 0, "num_gpus": 0},
+            )
+            def f():
+                pass
+
+    def test_placement_group_strategy_without_bundles(self):
+        """Check that specifying strategy requires also specifying bundles."""
+
+        with pytest.raises(ValueError):
+
+            # PG strategy without bundles is invalid.
+            @serve.deployment(placement_group_strategy="PACK")
+            def f():
+                pass
+
+        # PG strategy with bundles is valid.
+        @serve.deployment(
+            placement_group_strategy="PACK",
+            placement_group_bundles=[{"CPU": 10}],
+        )
         def g():
             pass
-
-        g.set_options(**options)
-        assert g._deployment_config.user_configured_option_names == set(options.keys())
 
 
 if __name__ == "__main__":

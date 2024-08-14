@@ -10,7 +10,7 @@ from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
+from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import create_dataset_tag
 from ray.data.block import Block, BlockMetadata
 from ray.data.iterator import DataIterator
@@ -68,14 +68,10 @@ class StreamSplitDataIterator(DataIterator):
         self._world_size = world_size
         self._iter_stats = DatasetStats(metadata={}, parent=None)
 
-    def _to_block_iterator(
+    def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-        Optional[DatasetStats],
-        bool,
-    ]:
-        def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+        def gen_blocks() -> Iterator[RefBundle]:
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
             )
@@ -83,16 +79,16 @@ class StreamSplitDataIterator(DataIterator):
                 Optional[ObjectRef[Block]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
-                block_ref: Optional[Tuple[ObjectRef[Block], BlockMetadata]] = ray.get(
-                    future
-                )
-                if not block_ref:
+                block_ref_and_md: Optional[
+                    Tuple[ObjectRef[Block], BlockMetadata]
+                ] = ray.get(future)
+                if not block_ref_and_md:
                     break
                 else:
                     future = self._coord_actor.get.remote(
                         cur_epoch, self._output_split_idx
                     )
-                    yield block_ref
+                    yield RefBundle(blocks=(block_ref_and_md,), owns_blocks=False)
 
         return gen_blocks(), self._iter_stats, False
 
@@ -100,8 +96,12 @@ class StreamSplitDataIterator(DataIterator):
         """Implements DataIterator."""
         # Merge the locally recorded iter stats and the remotely recorded
         # stream execution stats.
-        summary = ray.get(self._coord_actor.stats.remote())
+        stats = ray.get(self._coord_actor.stats.remote())
+        summary = stats.to_summary()
         summary.iter_stats = self._iter_stats.to_summary().iter_stats
+        summary.iter_stats.streaming_split_coord_time.add(
+            stats.streaming_split_coordinator_s.get()
+        )
         return summary.to_string()
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
@@ -171,20 +171,20 @@ class SplitCoordinator:
                 output_iterator = execute_to_legacy_bundle_iterator(
                     executor,
                     dataset._plan,
-                    True,
-                    dataset._plan._dataset_uuid,
                     dag_rewrite=add_split_op,
                 )
                 yield output_iterator
 
         self._next_epoch = gen_epochs()
         self._output_iterator = None
+        # Used for debugging https://github.com/ray-project/ray/issues/45225
+        self._debug_info = {}
 
-    def stats(self) -> DatasetStatsSummary:
+    def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
         if self._executor:
-            return self._executor.get_stats().to_summary()
-        return self._base_dataset._get_stats_summary()
+            return self._executor.get_stats()
+        return self._base_dataset._plan.stats()
 
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
@@ -204,7 +204,7 @@ class SplitCoordinator:
 
         This is intended to be called concurrently from multiple clients.
         """
-
+        start_time = time.perf_counter()
         if epoch_id != self._cur_epoch:
             raise ValueError(
                 "Invalid iterator: the dataset has moved on to another epoch."
@@ -235,13 +235,21 @@ class SplitCoordinator:
             return block
         except StopIteration:
             return None
+        finally:
+            stats = self.stats()
+            if stats and stats.streaming_split_coordinator_s:
+                stats.streaming_split_coordinator_s.add(
+                    time.perf_counter() - start_time
+                )
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
 
+        self._debug_info[split_idx] = {}
         # Decrement and await all clients to arrive here.
         with self._lock:
             starting_epoch = self._cur_epoch
+            self._debug_info[split_idx]["starting_epoch"] = starting_epoch
             self._unfinished_clients_in_epoch -= 1
 
         start_time = time.time()
@@ -261,11 +269,31 @@ class SplitCoordinator:
             time.sleep(0.1)
 
         # Advance to the next epoch.
+        self._debug_info[split_idx]["entering_lock"] = (
+            self._cur_epoch,
+            self._output_iterator is None,
+            time.time(),
+        )
         with self._lock:
+            self._debug_info[split_idx]["entered_lock"] = (
+                self._cur_epoch,
+                self._output_iterator is None,
+                time.time(),
+            )
             if self._cur_epoch == starting_epoch:
                 self._cur_epoch += 1
                 self._unfinished_clients_in_epoch = self._n
                 self._output_iterator = next(self._next_epoch)
+                self._debug_info[split_idx]["set_iter"] = (
+                    self._cur_epoch,
+                    self._output_iterator is None,
+                    time.time(),
+                )
+            self._debug_info[split_idx]["leaving_lock"] = (
+                self._cur_epoch,
+                self._output_iterator is None,
+                time.time(),
+            )
 
-        assert self._output_iterator is not None
+        assert self._output_iterator is not None, self._debug_info
         return starting_epoch + 1

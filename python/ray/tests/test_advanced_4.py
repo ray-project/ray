@@ -1,4 +1,4 @@
-import mock
+from unittest import mock
 import subprocess
 import sys
 
@@ -201,11 +201,6 @@ def function_entry_num(job_id):
 
     return (
         len(
-            _internal_kv_list(
-                b"IsolatedExports:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
-            )
-        )
-        + len(
             _internal_kv_list(
                 b"RemoteFunction:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
             )

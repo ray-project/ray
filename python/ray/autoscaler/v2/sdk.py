@@ -5,7 +5,12 @@ from typing import List
 from ray._raylet import GcsClient
 from ray.autoscaler.v2.schema import ClusterStatus, Stats
 from ray.autoscaler.v2.utils import ClusterStatusParser
-from ray.core.generated.autoscaler_pb2 import GetClusterStatusReply
+from ray.core.generated.autoscaler_pb2 import (
+    ClusterResourceState,
+    GetClusterResourceStateReply,
+    GetClusterStatusReply,
+    NodeState,
+)
 
 DEFAULT_RPC_TIMEOUT_S = 10
 
@@ -74,3 +79,32 @@ def get_cluster_status(
         reply,
         stats=Stats(gcs_request_time_s=reply_time - req_time, request_ts_s=req_time),
     )
+
+
+def get_cluster_resource_state(gcs_client: GcsClient) -> ClusterResourceState:
+    """
+    Get the cluster resource state from GCS.
+    Args:
+        gcs_client: The GCS client to query.
+    Returns:
+        A ClusterResourceState object
+    Raises:
+        Exception: If the request times out or failed.
+    """
+    str_reply = gcs_client.get_cluster_resource_state()
+    reply = GetClusterResourceStateReply()
+    reply.ParseFromString(str_reply)
+    return reply.cluster_resource_state
+
+
+def is_head_node(node_state: NodeState) -> bool:
+    """
+    Check if the node is a head node from the node state.
+    Args:
+        node_state: the node state
+    Returns:
+        is_head: True if the node is a head node, False otherwise.
+    """
+    # TODO: we should include this bit of information in the future. e.g.
+    # from labels.
+    return "node:__internal_head__" in dict(node_state.total_resources)

@@ -13,11 +13,10 @@ import ray
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import ApplicationStatus
-from ray.serve._private.logging_utils import (
-    get_component_log_file_name,
-    get_serve_logs_dir,
-)
+from ray.serve._private.common import ApplicationStatus, DeploymentStatus
+from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.test_utils import check_deployment_status, check_num_replicas_eq
+from ray.serve._private.utils import get_component_file_name
 from ray.util.state import list_actors
 
 
@@ -119,7 +118,7 @@ def test_http_proxy_request_cancellation(serve_instance):
     # https://github.com/ray-project/ray/issues/21425
     s = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class A:
         def __init__(self) -> None:
             self.counter = 0
@@ -235,7 +234,7 @@ def test_deploy_application_unhealthy(serve_instance):
         for actor in list_actors()
         if actor["name"] == "SERVE_CONTROLLER_ACTOR"
     ][0]
-    controller_log_file_name = get_component_log_file_name(
+    controller_log_file_name = get_component_file_name(
         "controller", controller_pid, component_type=None, suffix=".log"
     )
     controller_log_path = os.path.join(get_serve_logs_dir(), controller_log_file_name)
@@ -255,7 +254,7 @@ def test_deploy_bad_pip_package_deployment(serve_instance):
         def __call__(self):
             return "hello world"
 
-    serve.run(Model.bind(), _blocking=False)
+    serve._run(Model.bind(), _blocking=False)
 
     def check_fail():
         app_status = serve.status().applications["default"]
@@ -291,6 +290,115 @@ def test_deploy_same_deployment_name_different_app(serve_instance):
     assert app1_status.deployments["Model"].status == "HEALTHY"
     assert app2_status.status == "RUNNING"
     assert app2_status.deployments["Model"].status == "HEALTHY"
+
+
+@pytest.mark.parametrize("use_options", [True, False])
+def test_num_replicas_auto_api(serve_instance, use_options):
+    """Test setting only `num_replicas="auto"`."""
+
+    signal = SignalActor.remote()
+
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    if use_options:
+        A = serve.deployment(A).options(num_replicas="auto")
+    else:
+        A = serve.deployment(num_replicas="auto")(A)
+
+    serve.run(A.bind(), name="default")
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+    check_num_replicas_eq("A", 1)
+
+    app_details = serve_instance.get_serve_details()["applications"]["default"]
+    deployment_config = app_details["deployments"]["A"]["deployment_config"]
+    assert "num_replicas" not in deployment_config
+    assert deployment_config["max_ongoing_requests"] == 5
+    assert deployment_config["autoscaling_config"] == {
+        # Set by `num_replicas="auto"`
+        "target_ongoing_requests": 2.0,
+        "min_replicas": 1,
+        "max_replicas": 100,
+        # Untouched defaults
+        "metrics_interval_s": 10.0,
+        "upscale_delay_s": 30.0,
+        "look_back_period_s": 30.0,
+        "downscale_delay_s": 600.0,
+        "upscale_smoothing_factor": None,
+        "downscale_smoothing_factor": None,
+        "upscaling_factor": None,
+        "downscaling_factor": None,
+        "smoothing_factor": 1.0,
+        "initial_replicas": None,
+    }
+
+
+@pytest.mark.parametrize("use_options", [True, False])
+def test_num_replicas_auto_basic(serve_instance, use_options):
+    """Test `num_replicas="auto"` and the defaults are used by autoscaling."""
+
+    signal = SignalActor.remote()
+
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    if use_options:
+        A = serve.deployment(A).options(
+            num_replicas="auto",
+            autoscaling_config={"metrics_interval_s": 1, "upscale_delay_s": 1},
+            graceful_shutdown_timeout_s=1,
+        )
+    else:
+        A = serve.deployment(
+            num_replicas="auto",
+            autoscaling_config={"metrics_interval_s": 1, "upscale_delay_s": 1},
+            graceful_shutdown_timeout_s=1,
+        )(A)
+
+    h = serve.run(A.bind(), name="default")
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+    check_num_replicas_eq("A", 1)
+
+    app_details = serve_instance.get_serve_details()["applications"]["default"]
+    deployment_config = app_details["deployments"]["A"]["deployment_config"]
+    assert "num_replicas" not in deployment_config
+    assert deployment_config["max_ongoing_requests"] == 5
+    assert deployment_config["autoscaling_config"] == {
+        # Set by `num_replicas="auto"`
+        "target_ongoing_requests": 2.0,
+        "min_replicas": 1,
+        "max_replicas": 100,
+        # Overrided by `autoscaling_config`
+        "metrics_interval_s": 1.0,
+        "upscale_delay_s": 1.0,
+        # Untouched defaults
+        "look_back_period_s": 30.0,
+        "downscale_delay_s": 600.0,
+        "upscale_smoothing_factor": None,
+        "downscale_smoothing_factor": None,
+        "upscaling_factor": None,
+        "downscaling_factor": None,
+        "smoothing_factor": 1.0,
+        "initial_replicas": None,
+    }
+
+    for i in range(3):
+        [h.remote() for _ in range(2)]
+
+        def check_num_waiters(target: int):
+            assert ray.get(signal.cur_num_waiters.remote()) == target
+            return True
+
+        wait_for_condition(check_num_waiters, target=2 * (i + 1))
+        print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
+        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1)
+        print(time.time(), f"Confirmed number of replicas are at {i+1}.")
 
 
 if __name__ == "__main__":

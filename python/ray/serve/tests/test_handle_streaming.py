@@ -5,7 +5,7 @@ import pytest
 
 from ray import serve
 from ray.serve import Deployment
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 
 @serve.deployment
@@ -139,7 +139,7 @@ class TestDeploymentHandleStreaming:
     def test_basic(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer: RayServeHandle):
+            def __init__(self, streamer: DeploymentHandle):
                 self._h = streamer
 
             async def __call__(self):
@@ -166,7 +166,7 @@ class TestDeploymentHandleStreaming:
     def test_call_gen_without_stream_flag(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer: RayServeHandle):
+            def __init__(self, streamer: DeploymentHandle):
                 self._h = streamer
 
             async def __call__(self):
@@ -196,7 +196,7 @@ class TestDeploymentHandleStreaming:
     def test_call_no_gen_with_stream_flag(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer: RayServeHandle):
+            def __init__(self, streamer: DeploymentHandle):
                 self._h = streamer
 
             async def __call__(self):
@@ -215,7 +215,7 @@ class TestDeploymentHandleStreaming:
     def test_generator_yields_no_results(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer: RayServeHandle):
+            def __init__(self, streamer: DeploymentHandle):
                 self._h = streamer
 
             async def __call__(self):
@@ -231,7 +231,7 @@ class TestDeploymentHandleStreaming:
     def test_exception_raised_in_gen(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer: RayServeHandle):
+            def __init__(self, streamer: DeploymentHandle):
                 self._h = streamer
 
             async def __call__(self):
@@ -247,7 +247,9 @@ class TestDeploymentHandleStreaming:
     def test_call_multiple_downstreams(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer1: RayServeHandle, streamer2: RayServeHandle):
+            def __init__(
+                self, streamer1: DeploymentHandle, streamer2: DeploymentHandle
+            ):
                 self._h1 = streamer1.options(stream=True)
                 self._h2 = streamer2.options(stream=True)
 
@@ -281,7 +283,7 @@ class TestGeneratorFunctionDeployment:
     def test_deployment_handle(self, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, f: RayServeHandle):
+            def __init__(self, f: DeploymentHandle):
                 self._f = f.options(stream=True)
 
             async def __call__(self):

@@ -17,7 +17,7 @@ echo "--- Installing KubeRay operator from official Helm repo."
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm install kuberay-operator kuberay/kuberay-operator
 kubectl wait pod  -l app.kubernetes.io/name=kuberay-operator \
-    --for=condition=Ready=True  --timeout=5m
+    --for=condition=Ready=True  --timeout=2m
 
 echo "--- Installing KubeRay cluster and port forward."
 
@@ -42,5 +42,7 @@ helm install chaos-mesh chaos-mesh/chaos-mesh -n=chaos-mesh \
     --set chaosDaemon.runtime=containerd \
     --set chaosDaemon.socketPath=/run/containerd/containerd.sock \
     --version 2.6.1
-kubectl wait pod --namespace chaos-mesh \
+
+echo "--- Waiting for chaos-mesh to be ready."
+kubectl wait pod --namespace chaos-mesh --timeout=300s \
     -l app.kubernetes.io/instance=chaos-mesh --for=condition=Ready=True

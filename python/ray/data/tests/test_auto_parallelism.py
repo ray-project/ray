@@ -113,7 +113,7 @@ def test_autodetect_parallelism(
         def estimate_inmemory_data_size(self):
             return data_size
 
-    result, _, _, _ = _autodetect_parallelism(
+    result, _, _ = _autodetect_parallelism(
         parallelism=-1,
         target_max_block_size=target_max_block_size,
         ctx=DataContext.get_current(),
@@ -126,18 +126,18 @@ def test_autodetect_parallelism(
 def test_auto_parallelism_basic(shutdown_only):
     ray.init(num_cpus=8)
     context = DataContext.get_current()
-    context.min_parallelism = 1
+    context.read_op_min_num_blocks = 1
     # Datasource bound.
-    ds = ray.data.range_tensor(5, shape=(100,), parallelism=-1)
-    assert ds.num_blocks() == 5, ds
+    ds = ray.data.range_tensor(5, shape=(100,), override_num_blocks=-1)
+    assert ds._plan.initial_num_blocks() == 5, ds
     # CPU bound. TODO(ekl) we should fix range datasource to respect parallelism more
     # properly, currently it can go a little over.
-    ds = ray.data.range_tensor(10000, shape=(100,), parallelism=-1)
-    assert ds.num_blocks() == 16, ds
+    ds = ray.data.range_tensor(10000, shape=(100,), override_num_blocks=-1)
+    assert ds._plan.initial_num_blocks() == 16, ds
     # Block size bound.
-    ds = ray.data.range_tensor(100000000, shape=(100,), parallelism=-1)
-    assert ds.num_blocks() >= 590, ds
-    assert ds.num_blocks() <= 600, ds
+    ds = ray.data.range_tensor(100000000, shape=(100,), override_num_blocks=-1)
+    assert ds._plan.initial_num_blocks() >= 590, ds
+    assert ds._plan.initial_num_blocks() <= 600, ds
 
 
 def test_auto_parallelism_placement_group(shutdown_only):
@@ -147,8 +147,8 @@ def test_auto_parallelism_placement_group(shutdown_only):
     def run():
         context = DataContext.get_current()
         context.min_parallelism = 1
-        ds = ray.data.range_tensor(2000, shape=(100,), parallelism=-1)
-        return ds.num_blocks()
+        ds = ray.data.range_tensor(2000, shape=(100,), override_num_blocks=-1)
+        return ds._plan.initial_num_blocks()
 
     # 1/16 * 4 * 16 = 4
     pg = ray.util.placement_group([{"CPU": 1}])

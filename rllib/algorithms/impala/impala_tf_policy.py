@@ -178,7 +178,7 @@ class VTraceClipGradients:
         self, optimizer: LocalOptimizer, loss: TensorType
     ) -> ModelGradients:
         # Supporting more than one loss/optimizer.
-        if self.config.get("_enable_new_api_stack", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             # In order to access the variables for rl modules, we need to
             # use the underlying keras api model.trainable_variables.
             trainable_variables = self.model.trainable_variables
@@ -302,7 +302,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # However, we also would like to avoid creating special Policy-subclasses
             # for this as the entire Policy concept will soon not be used anymore with
             # the new Learner- and RLModule APIs.
-            if not self.config.get("_enable_new_api_stack"):
+            if not self.config.get("enable_rl_module_and_learner"):
                 GradStatsMixin.__init__(self)
                 VTraceClipGradients.__init__(self)
                 VTraceOptimizer.__init__(self)

@@ -9,7 +9,6 @@ import ray
 from ray import serve
 from ray.serve._private.common import RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, _HandleOptions
 
@@ -224,7 +223,7 @@ def test_args_kwargs_sync(serve_instance):
         assert kwargs["kwarg1"] == 1
         assert kwargs["kwarg2"] == "2"
 
-    handle = serve.run(f.bind()).options(use_new_handle_api=True)
+    handle = serve.run(f.bind())
     handle.remote("hi", kwarg1=1, kwarg2="2").result()
 
 
@@ -236,7 +235,7 @@ async def test_args_kwargs_async(serve_instance):
         assert kwargs["kwarg1"] == 1
         assert kwargs["kwarg2"] == "2"
 
-    handle = serve.run(f.bind()).options(use_new_handle_api=True)
+    handle = serve.run(f.bind())
     await handle.remote("hi", kwarg1=1, kwarg2="2")
 
 
@@ -246,7 +245,7 @@ def test_nonexistent_method_sync(serve_instance):
         def exists(self):
             pass
 
-    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    handle = serve.run(A.bind())
     with pytest.raises(RayServeException) as excinfo:
         handle.does_not_exist.remote().result()
 
@@ -262,7 +261,7 @@ async def test_nonexistent_method_async(serve_instance):
         def exists(self):
             pass
 
-    handle = serve.run(A.bind()).options(use_new_handle_api=True)
+    handle = serve.run(A.bind())
     with pytest.raises(RayServeException) as excinfo:
         await handle.does_not_exist.remote()
 
@@ -357,34 +356,6 @@ def test_handle_options_with_same_router(serve_instance):
     handle2 = handle.options(multiplexed_model_id="model2")
     assert handle._router
     assert id(handle2._router) == id(handle._router)
-
-
-class MyRouter(PowerOfTwoChoicesReplicaScheduler):
-    pass
-
-
-@pytest.mark.parametrize("use_new_handle_api", [False, True])
-def test_handle_options_custom_router(serve_instance, use_new_handle_api: bool):
-    @serve.deployment
-    def echo(name: str):
-        return f"Hi {name}"
-
-    handle = serve.run(echo.bind()).options(
-        _router_cls="ray.serve.tests.test_handle.MyRouter",
-        use_new_handle_api=use_new_handle_api,
-    )
-
-    if use_new_handle_api:
-        result = handle.remote("HI").result()
-    else:
-        result = ray.get(handle.remote("HI"))
-
-    assert result == "Hi HI"
-
-    print("Router class used", handle._router._replica_scheduler)
-    assert (
-        "MyRouter" in handle._router._replica_scheduler.__class__.__name__
-    ), handle._router._replica_scheduler
 
 
 def test_set_request_protocol(serve_instance):

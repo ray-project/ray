@@ -45,3 +45,9 @@ This section contains commands for :ref:`Ray Job Submission <jobs-quickstart>`.
 .. click:: ray.dashboard.modules.job.cli:list
    :prog: ray job list
    :show-nested:
+
+.. _ray-job-delete-doc:
+
+.. click:: ray.dashboard.modules.job.cli:delete
+   :prog: ray job delete
+   :show-nested:

@@ -4,7 +4,17 @@ import inspect
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 import ray
 from ray.actor import ActorHandle
@@ -85,9 +95,49 @@ def update_env_vars(env_vars: Dict[str, Any]):
     os.environ.update(sanitized)
 
 
+def count_required_parameters(fn: Callable) -> int:
+    """Counts the number of required parameters of a function.
+
+    NOTE: *args counts as 1 required parameter.
+
+    Examples
+    --------
+
+    >>> def fn(a, b, /, c, *args, d=1, e=2, **kwargs):
+    ...    pass
+    >>> count_required_parameters(fn)
+    4
+
+    >>> fn = lambda: 1
+    >>> count_required_parameters(fn)
+    0
+
+    >>> def fn(config, a, b=1, c=2):
+    ...     pass
+    >>> from functools import partial
+    >>> count_required_parameters(partial(fn, a=0))
+    1
+    """
+    params = inspect.signature(fn).parameters.values()
+
+    positional_param_kinds = {
+        inspect.Parameter.POSITIONAL_ONLY,
+        inspect.Parameter.POSITIONAL_OR_KEYWORD,
+        inspect.Parameter.VAR_POSITIONAL,
+    }
+    return len(
+        [
+            p
+            for p in params
+            if p.default == inspect.Parameter.empty and p.kind in positional_param_kinds
+        ]
+    )
+
+
 def construct_train_func(
     train_func: Union[Callable[[], T], Callable[[Dict[str, Any]], T]],
     config: Optional[Dict[str, Any]],
+    train_func_context: ContextManager,
     fn_arg_name: Optional[str] = "train_func",
     discard_returns: bool = False,
 ) -> Callable[[], T]:
@@ -97,6 +147,8 @@ def construct_train_func(
             This can either take in no arguments or a ``config`` dict.
         config (Optional[Dict]): Configurations to pass into
             ``train_func``. If None then an empty Dict will be created.
+        train_func_context: Context manager for user's `train_func`, which executes
+            backend-specific logic before and after the training function.
         fn_arg_name (Optional[str]): The name of training function to use for error
             messages.
         discard_returns: Whether to discard any returns from train_func or not.
@@ -105,8 +157,7 @@ def construct_train_func(
     Raises:
         ValueError: if the input ``train_func`` is invalid.
     """
-    signature = inspect.signature(train_func)
-    num_params = len(signature.parameters)
+    num_required_params = count_required_parameters(train_func)
 
     if discard_returns:
         # Discard any returns from the function so that
@@ -123,19 +174,20 @@ def construct_train_func(
     else:
         wrapped_train_func = train_func
 
-    if num_params > 1:
+    if num_required_params > 1:
         err_msg = (
-            f"{fn_arg_name} should take in 0 or 1 arguments, but it accepts "
-            f"{num_params} arguments instead."
+            f"{fn_arg_name} should take in 0 or 1 required arguments, but it accepts "
+            f"{num_required_params} required arguments instead."
         )
         raise ValueError(err_msg)
-    elif num_params == 1:
+    elif num_required_params == 1:
         config = {} if config is None else config
 
         @functools.wraps(wrapped_train_func)
         def train_fn():
             try:
-                return wrapped_train_func(config)
+                with train_func_context():
+                    return wrapped_train_func(config)
             except Exception as e:
                 raise StartTraceback from e
 
@@ -144,7 +196,8 @@ def construct_train_func(
         @functools.wraps(wrapped_train_func)
         def train_fn():
             try:
-                return wrapped_train_func()
+                with train_func_context():
+                    return wrapped_train_func()
             except Exception as e:
                 raise StartTraceback from e
 

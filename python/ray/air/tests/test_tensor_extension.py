@@ -2,10 +2,11 @@ import itertools
 
 import numpy as np
 import pandas as pd
-from packaging.version import parse as parse_version
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
+from ray._private.utils import _get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorArray,
     ArrowTensorType,
@@ -14,7 +15,6 @@ from ray.air.util.tensor_extensions.arrow import (
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
-from ray._private.utils import _get_pyarrow_version
 
 
 @pytest.mark.parametrize(

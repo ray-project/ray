@@ -54,16 +54,16 @@ class ClusterTaskManagerInterface {
           rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
       const std::string &scheduling_failure_message = "") = 0;
 
-  /// Attempt to cancel an already queued task that belongs to an owner.
+  /// Attempt to cancel all queued tasks that match the predicate.
   ///
-  /// \param owner_task_id: The id of the parent.
-  /// \param failure_type: The failure type.
-  /// \param scheduling_failure_message: The failure message.
-  virtual void CancelTaskForOwner(
-      const TaskID &owner_task_id,
-      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type =
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
-      const std::string &scheduling_failure_message = "") = 0;
+  /// \param predicate: A function that returns true if a task needs to be cancelled.
+  /// \param failure_type: The reason for cancellation.
+  /// \param scheduling_failure_message: The reason message for cancellation.
+  /// \return True if any task was successfully cancelled.
+  virtual bool CancelTasks(
+      std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
+      rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+      const std::string &scheduling_failure_message) = 0;
 
   /// Queue task and schedule. This hanppens when processing the worker lease request.
   ///

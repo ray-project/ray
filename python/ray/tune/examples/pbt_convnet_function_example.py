@@ -3,14 +3,15 @@
 # __tutorial_imports_begin__
 import argparse
 import os
+
 import numpy as np
 import torch
 import torch.optim as optim
-from ray.tune.examples.mnist_pytorch import test_func, ConvNet, get_data_loaders
 
 import ray
 from ray import train, tune
 from ray.train import Checkpoint
+from ray.tune.examples.mnist_pytorch import ConvNet, get_data_loaders, test_func
 from ray.tune.schedulers import PopulationBasedTraining
 
 # __tutorial_imports_end__
@@ -132,6 +133,7 @@ if __name__ == "__main__":
             metric="mean_accuracy",
             mode="max",
             num_samples=4,
+            reuse_actors=True,
         ),
         param_space={
             "lr": tune.uniform(0.001, 1),

@@ -5,10 +5,6 @@ import ray
 from ray.actor import ActorHandle
 from ray.data import DataIterator, Dataset, ExecutionOptions, NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
-from ray.data.preprocessor import Preprocessor
-
-# TODO(justinvyu): Fix the circular import error
-from ray.train.constants import TRAIN_DATASET_KEY  # noqa
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 
@@ -95,17 +91,21 @@ class DataConfig:
             worker_node_ids if self._execution_options.locality_with_output else None
         )
         for name, ds in datasets.items():
-            ds = ds.copy(ds)
-            ds.context.execution_options = copy.deepcopy(self._execution_options)
+            execution_options = copy.deepcopy(self._execution_options)
 
-            # Add training-reserved resources to Data's exclude_resources.
-            ds.context.execution_options.exclude_resources = (
-                ds.context.execution_options.exclude_resources.add(
-                    ExecutionResources(
-                        cpu=self._num_train_cpus, gpu=self._num_train_gpus
+            if execution_options.is_resource_limits_default():
+                # If "resource_limits" is not overriden by the user,
+                # add training-reserved resources to Data's exclude_resources.
+                execution_options.exclude_resources = (
+                    execution_options.exclude_resources.add(
+                        ExecutionResources(
+                            cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                        )
                     )
                 )
-            )
+
+            ds = ds.copy(ds)
+            ds.context.execution_options = execution_options
 
             if name in datasets_to_split:
                 for i, split in enumerate(
@@ -124,23 +124,16 @@ class DataConfig:
     def default_ingest_options() -> ExecutionOptions:
         """The default Ray Data options used for data ingest.
 
-        By default, output locality is enabled, which means that Ray Data will try to
-        place tasks on the node the data is consumed. The remaining configurations are
-        carried over from what is already set in DataContext.
+        By default, configurations are carried over from what is already set
+        in DataContext.
         """
         ctx = ray.data.DataContext.get_current()
         return ExecutionOptions(
-            locality_with_output=True,
+            # TODO(hchen): Re-enable `locality_with_output` by default after fixing
+            # https://github.com/ray-project/ray/issues/40607
+            locality_with_output=ctx.execution_options.locality_with_output,
             resource_limits=ctx.execution_options.resource_limits,
+            exclude_resources=ctx.execution_options.exclude_resources,
             preserve_order=ctx.execution_options.preserve_order,
             verbose_progress=ctx.execution_options.verbose_progress,
         )
-
-    def _legacy_preprocessing(
-        self, datasets: Dict[str, Dataset], preprocessor: Optional[Preprocessor]
-    ) -> Dict[str, Dataset]:
-        """Legacy hook for backwards compatiblity.
-
-        This will be removed in the future.
-        """
-        return datasets  # No-op for non-legacy configs.

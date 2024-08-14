@@ -112,14 +112,9 @@ class WorkerGroup:
     Args:
         num_workers: The number of workers (Ray actors) to launch.
             Defaults to 1.
-        num_cpus_per_worker: The number of CPUs to reserve for each
-            worker. Fractional values are allowed. Defaults to 1.
-        num_gpus_per_worker: The number of GPUs to reserve for each
-            worker. Fractional values are allowed. Defaults to 0.
-        additional_resources_per_worker (Optional[Dict[str, float]]):
-            Dictionary specifying the extra resources that will be
-            requested for each worker in addition to ``num_cpus_per_worker``
-            and ``num_gpus_per_worker``.
+        resources_per_worker (Optional[Dict[str, float]]):
+            Dictionary specifying the resources that will be
+            requested for each worker. Defaults to {"CPU": 1}.
         actor_cls (Optional[Type]): If specified use this class as the
             remote actors.
         remote_cls_args, remote_cls_kwargs: If ``remote_cls`` is provided,
@@ -142,26 +137,28 @@ class WorkerGroup:
     def __init__(
         self,
         num_workers: int = 1,
-        num_cpus_per_worker: float = 1,
-        num_gpus_per_worker: float = 0,
-        additional_resources_per_worker: Optional[Dict[str, float]] = None,
+        resources_per_worker: Optional[Dict[str, float]] = None,
         actor_cls: Type = None,
         actor_cls_args: Optional[Tuple] = None,
         actor_cls_kwargs: Optional[Dict] = None,
         placement_group: Union[PlacementGroup, str] = "default",
     ):
+        if resources_per_worker is None:
+            resources_per_worker = {"CPU": 1}
+        else:
+            resources_per_worker = resources_per_worker.copy()
+
         if num_workers <= 0:
             raise ValueError(
                 "The provided `num_workers` must be greater "
                 f"than 0. Received num_workers={num_workers} "
                 f"instead."
             )
-        if num_cpus_per_worker < 0 or num_gpus_per_worker < 0:
+
+        if any(v < 0 for v in resources_per_worker.values()):
             raise ValueError(
-                "The number of CPUs and GPUs per worker must "
-                "not be negative. Received "
-                f"num_cpus_per_worker={num_cpus_per_worker} and "
-                f"num_gpus_per_worker={num_gpus_per_worker}."
+                "The number of resources per worker must not be negative. "
+                f"Received resources_per_worker={resources_per_worker}."
             )
 
         if (actor_cls_args or actor_cls_kwargs) and not actor_cls:
@@ -171,9 +168,9 @@ class WorkerGroup:
             )
 
         self.num_workers = num_workers
-        self.num_cpus_per_worker = num_cpus_per_worker
-        self.num_gpus_per_worker = num_gpus_per_worker
-        self.additional_resources_per_worker = additional_resources_per_worker
+        self.num_cpus_per_worker = resources_per_worker.pop("CPU", 0)
+        self.num_gpus_per_worker = resources_per_worker.pop("GPU", 0)
+        self.memory_per_worker = resources_per_worker.pop("memory", 0)
         self.workers = []
         self._base_cls = create_executable_class(actor_cls)
         assert issubclass(self._base_cls, RayTrainWorker)
@@ -188,7 +185,8 @@ class WorkerGroup:
         self._remote_cls = ray.remote(
             num_cpus=self.num_cpus_per_worker,
             num_gpus=self.num_gpus_per_worker,
-            resources=self.additional_resources_per_worker,
+            memory=self.memory_per_worker,
+            resources=resources_per_worker,
         )(self._base_cls)
         self.start()
 
@@ -362,46 +360,43 @@ class WorkerGroup:
         for i in range(len(new_actors)):
             self.workers.append(Worker(actor=new_actors[i], metadata=metadata[i]))
 
-    def sort_workers_by_ip_and_gpu_id(self, _first_ip: Optional[str] = None):
-        """Reorder the workers by their node ip and the lowest GPU id.
+    def sort_workers_by_node_id_and_gpu_id(self, _first_node_id: Optional[str] = None):
+        """Reorder the workers by their node id and the lowest GPU id.
 
         This is useful for collocating workers on the same node.
 
         Example:
             Given workers with the following attributes:
-                worker_0: ip=1, gpu_ids=[1]
-                worker_1: ip=0, gpu_ids=[0]
-                worker_2: ip=1, gpu_ids=[0]
-                worker_3: ip=0, gpu_ids=[1]
+                worker_0: node_id=1, gpu_ids=[1]
+                worker_1: node_id=0, gpu_ids=[0]
+                worker_2: node_id=1, gpu_ids=[0]
+                worker_3: node_id=0, gpu_ids=[1]
 
             The function will perform the following steps:
-                1. Group by node IP:
-                    ip=0: worker_1, worker_3
-                    ip=1: worker_0, worker_2
+                1. Group by node ID:
+                    node_id=0: worker_1, worker_3
+                    node_id=1: worker_0, worker_2
 
                 2. Sort each group by GPU ID:
-                    ip=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
-                    ip=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
+                    node_id=0: worker_1 (gpu_id=0), worker_3 (gpu_id=1)
+                    node_id=1: worker_2 (gpu_id=0), worker_0 (gpu_id=1)
 
             Resulting in the order: [worker_1, worker_3, worker_2, worker_0]
 
         Args:
-            _first_ip: The first IP to group by.
-                Hack to avoid OOMs.
-                This is just a temporary solution for Train loading entire checkpoints
-                into memory by ensuring that the rank 0 worker is on the same node as
-                trainable, thus allowing for lazy checkpoint transfer to be used.
-                See https://github.com/ray-project/ray/issues/33073
-                for more context.
-                TODO remove this argument.
+            _first_node_id: The first ID to group by.
+                Set this to the node ID of the trainer coordinator to ensure that the
+                rank 0 worker is on the same node, allowing additional resources to
+                be specified for rank 0 workers via
+                `ScalingConfig(trainer_resources=)`.
         """
-        ip_to_workers = defaultdict(list)
+        node_id_to_workers = defaultdict(list)
 
-        if _first_ip is not None:
-            ip_to_workers[_first_ip] = []
+        if _first_node_id is not None:
+            node_id_to_workers[_first_node_id] = []
 
         for worker in self.workers:
-            ip_to_workers[worker.metadata.node_ip].append(worker)
+            node_id_to_workers[worker.metadata.node_id].append(worker)
 
         # Sort workers on the same node by the lowest GPU id
         # More details: https://github.com/ray-project/ray/issues/40803
@@ -418,11 +413,11 @@ class WorkerGroup:
             except ValueError:
                 return min(gpu_ids)
 
-        for node_ip in ip_to_workers:
-            ip_to_workers[node_ip].sort(key=get_lowest_gpu_id)
+        for node_id in node_id_to_workers:
+            node_id_to_workers[node_id].sort(key=get_lowest_gpu_id)
 
         sorted_workers = []
-        for workers in ip_to_workers.values():
+        for workers in node_id_to_workers.values():
             sorted_workers.extend(workers)
 
         self.workers = sorted_workers

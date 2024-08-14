@@ -31,9 +31,9 @@ import gymnasium as gym
 import torch
 
 # ENCODER_OUT is a constant we use to enumerate Encoder I/O.
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.catalog import Catalog
-from ray.rllib.policy.sample_batch import SampleBatch
 
 env = gym.make("CartPole-v1")
 
@@ -50,7 +50,7 @@ head = torch.nn.Linear(catalog.latent_dims[0], env.action_space.n)
 obs, info = env.reset()
 # Encoders check for state and sequence lengths for recurrent models.
 # We don't need either in this case because default encoders are not recurrent.
-input_batch = {SampleBatch.OBS: torch.Tensor([obs])}
+input_batch = {Columns.OBS: torch.Tensor([obs])}
 # Pass the batch through our models and the action distribution.
 encoding = encoder(input_batch)[ENCODER_OUT]
 action_dist_inputs = head(encoding)
@@ -70,7 +70,7 @@ import torch
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
 # STATE_IN, STATE_OUT and ENCODER_OUT are constants we use to enumerate Encoder I/O.
-from ray.rllib.core.models.base import STATE_IN, ENCODER_OUT, ACTOR
+from ray.rllib.core.models.base import ENCODER_OUT, ACTOR
 from ray.rllib.policy.sample_batch import SampleBatch
 
 env = gym.make("CartPole-v1")
@@ -102,7 +102,7 @@ env.step(actions[0])
 # __sphinx_doc_algo_configs_begin__
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
 
 class MyPPOCatalog(PPOCatalog):
@@ -113,15 +113,13 @@ class MyPPOCatalog(PPOCatalog):
 
 config = (
     PPOConfig()
-    .experimental(_enable_new_api_stack=True)
+    .api_stack(enable_rl_module_and_learner=True)
     .environment("CartPole-v1")
     .framework("torch")
 )
 
 # Specify the catalog to use for the PPORLModule.
-config = config.rl_module(
-    rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyPPOCatalog)
-)
+config = config.rl_module(rl_module_spec=RLModuleSpec(catalog_class=MyPPOCatalog))
 # This is how RLlib constructs a PPORLModule
 # It will say "Hi from within PPORLModule!".
 ppo = config.build()

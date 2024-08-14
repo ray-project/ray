@@ -17,8 +17,8 @@ from ray_release.test import (
 )
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20231128.tar.gz"
-DATAPLANE_DIGEST = "abeba8bf3e5f44990934153fca4eca3ffcfc461f59b4aea9b0b5714246ec17b3"
+DATAPLANE_FILENAME = "dataplane_20240613.tar.gz"
+DATAPLANE_DIGEST = "b7c68dd3cf9ef05b2b1518a32729fc036f06ae83bae9b9ecd241e33b37868944"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
@@ -54,6 +54,7 @@ def build_champagne_image(
             [
                 "docker",
                 "build",
+                "--progress=plain",
                 "--build-arg",
                 f"BASE_IMAGE={ray_image}",
                 "-t",
@@ -84,6 +85,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
         [
             "docker",
             "build",
+            "--progress=plain",
             "--build-arg",
             f"BASE_IMAGE={test.get_anyscale_base_byod_image()}",
             "--build-arg",
@@ -108,8 +110,6 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     to_be_built = {}
     built = set()
     for test in tests:
-        if not test.is_byod_cluster():
-            continue
         to_be_built[test.get_anyscale_base_byod_image()] = test
 
     env = os.environ.copy()
@@ -148,6 +148,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                     [
                         "docker",
                         "build",
+                        "--progress=plain",
                         "--build-arg",
                         f"BASE_IMAGE={ray_image}",
                         "-t",
@@ -162,6 +163,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                     [
                         "docker",
                         "build",
+                        "--progress=plain",
                         "--build-arg",
                         f"BASE_IMAGE={byod_image}",
                         "--build-arg",

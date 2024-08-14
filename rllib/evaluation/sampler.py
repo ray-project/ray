@@ -35,7 +35,7 @@ from ray.rllib.offline import InputReader
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.framework import try_import_tf
@@ -82,7 +82,7 @@ class _NewEpisodeDefaultDict(defaultdict):
             return ret
 
 
-@DeveloperAPI
+@OldAPIStack
 class SamplerInput(InputReader, metaclass=ABCMeta):
     """Reads input experiences from an existing sampler."""
 
@@ -95,7 +95,6 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
         return concat_samples(batches)
 
     @abstractmethod
-    @DeveloperAPI
     def get_data(self) -> SampleBatchType:
         """Called by `self.next()` to return the next batch of data.
 
@@ -107,7 +106,6 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    @DeveloperAPI
     def get_metrics(self) -> List[RolloutMetrics]:
         """Returns list of episode metrics since the last call to this method.
 
@@ -120,7 +118,6 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    @DeveloperAPI
     def get_extra_batches(self) -> List[SampleBatchType]:
         """Returns list of extra batches since the last call to this method.
 
@@ -139,7 +136,7 @@ class SamplerInput(InputReader, metaclass=ABCMeta):
         raise NotImplementedError
 
 
-@DeveloperAPI
+@OldAPIStack
 class SyncSampler(SamplerInput):
     """Sync SamplerInput that collects experiences when `get_data()` is called."""
 
@@ -304,6 +301,7 @@ class SyncSampler(SamplerInput):
         return extra
 
 
+@OldAPIStack
 def _env_runner(
     worker: "RolloutWorker",
     base_env: BaseEnv,
@@ -476,6 +474,7 @@ def _env_runner(
             perf_stats.incr("env_render_time", time.time() - t5)
 
 
+@OldAPIStack
 def _process_observations(
     *,
     worker: "RolloutWorker",
@@ -894,6 +893,7 @@ def _process_observations(
     return active_envs, to_eval, outputs
 
 
+@OldAPIStack
 def _do_policy_eval(
     *,
     to_eval: Dict[PolicyID, List[_PolicyEvalData]],
@@ -952,6 +952,7 @@ def _do_policy_eval(
     return eval_results
 
 
+@OldAPIStack
 def _process_policy_eval_results(
     *,
     to_eval: Dict[PolicyID, List[_PolicyEvalData]],
@@ -1048,6 +1049,7 @@ def _process_policy_eval_results(
     return actions_to_send
 
 
+@OldAPIStack
 def _create_episode(active_episodes, env_id, callbacks, worker, base_env):
     # Make sure we are really creating a new episode here.
     assert env_id not in active_episodes
@@ -1066,6 +1068,7 @@ def _create_episode(active_episodes, env_id, callbacks, worker, base_env):
     return new_episode
 
 
+@OldAPIStack
 def _call_on_episode_start(episode, env_id, callbacks, worker, base_env):
     # Call each policy's Exploration.on_episode_start method.
     # Note: This may break the exploration (e.g. ParameterNoise) of

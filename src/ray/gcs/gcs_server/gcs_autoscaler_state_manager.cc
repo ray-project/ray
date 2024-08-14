@@ -25,7 +25,7 @@ namespace gcs {
 
 GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     const std::string &session_name,
-    const GcsNodeManager &gcs_node_manager,
+    GcsNodeManager &gcs_node_manager,
     GcsActorManager &gcs_actor_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
@@ -218,6 +218,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   new_data.set_object_pulls_queued(data.object_pulls_queued());
   new_data.set_idle_duration_ms(data.idle_duration_ms());
   new_data.set_is_draining(data.is_draining());
+  new_data.set_draining_deadline_timestamp_ms(data.draining_deadline_timestamp_ms());
 
   // Last update time
   iter->second.first = absl::Now();
@@ -353,10 +354,21 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  RAY_LOG(INFO) << "HandleDrainNode Request:" << request.DebugString();
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "HandleDrainNode " << node_id.Hex()
-                << ", reason: " << request.reason_message();
+                << ", reason: " << request.reason_message()
+                << ", deadline: " << request.deadline_timestamp_ms();
+
+  int64_t draining_deadline_timestamp_ms = request.deadline_timestamp_ms();
+  if (draining_deadline_timestamp_ms < 0) {
+    std::ostringstream stream;
+    stream << "Draining deadline must be non-negative, received "
+           << draining_deadline_timestamp_ms;
+    auto msg = stream.str();
+    RAY_LOG(WARNING) << msg;
+    send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+    return;
+  }
 
   auto maybe_node = gcs_node_manager_.GetAliveNode(node_id);
   if (!maybe_node.has_value()) {
@@ -374,19 +386,11 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     return;
   }
 
-  auto node = std::move(maybe_node.value());
-
-  // Set the death reason of the node.
-  auto death_info = node->mutable_death_info();
-  if (request.reason() == DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION) {
-    death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
-  } else {
-    death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_IDLE);
-  }
   if (RayConfig::instance().enable_reap_actor_death()) {
     gcs_actor_manager_.SetPreemptedAndPublish(node_id);
   }
 
+  auto node = std::move(maybe_node.value());
   rpc::Address raylet_address;
   raylet_address.set_raylet_id(node->node_id());
   raylet_address.set_ip_address(node->node_manager_address());
@@ -396,17 +400,16 @@ void GcsAutoscalerStateManager::HandleDrainNode(
   raylet_client->DrainRaylet(
       request.reason(),
       request.reason_message(),
-      [this, reply, send_reply_callback, node_id](
+      draining_deadline_timestamp_ms,
+      [this, request, reply, send_reply_callback, node_id](
           const Status &status, const rpc::DrainRayletReply &raylet_reply) {
         reply->set_is_accepted(raylet_reply.is_accepted());
 
-        // Unset the death reason of the node if the drain was rejected.
-        if (!raylet_reply.is_accepted()) {
-          auto node = gcs_node_manager_.GetAliveNode(node_id);
-          if (node.has_value()) {
-            auto death_info = node.value()->mutable_death_info();
-            death_info->set_reason(rpc::NodeDeathInfo::UNSPECIFIED);
-          }
+        if (raylet_reply.is_accepted()) {
+          gcs_node_manager_.SetNodeDraining(
+              node_id, std::make_shared<rpc::autoscaler::DrainNodeRequest>(request));
+        } else {
+          reply->set_rejection_reason_message(raylet_reply.rejection_reason_message());
         }
         send_reply_callback(status, nullptr, nullptr);
       });
