@@ -109,7 +109,7 @@ void TaskStatusEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   }
 }
 
-void TaskStatusEvent::ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) {
+void TaskStatusEvent::ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) {  
   // Base fields
   rpc_task_export_event_data->set_task_id(task_id_.Binary());
   rpc_task_export_event_data->set_job_id(job_id_.Binary());
@@ -149,8 +149,10 @@ void TaskStatusEvent::ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEvent
   }
 
   if (state_update_->task_log_info_.has_value()) {
+    rpc::ExportTaskEventData::TaskLogInfo export_task_log_info;
+    TaskLogInfoToExport(state_update_->task_log_info_.value(), &export_task_log_info);
     dst_state_update->mutable_task_log_info()->MergeFrom(
-        state_update_->task_log_info_.value());
+        export_task_log_info);
   }
 
   if (state_update_->pid_.has_value()) {

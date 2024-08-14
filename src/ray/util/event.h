@@ -123,9 +123,10 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual void Flush();
 
-  virtual std::string GetReporterKey() override { return "log.event.reporter"; }
+  virtual std::string GetReporterKey() override;
 
  protected:
+  std::string source_type_name_;
   std::string log_dir_;
   bool force_flush_;
   int rotate_max_file_size_;  // MB
@@ -347,7 +348,7 @@ class RayExportEvent {
 /// \param emit_event_to_log_file if True, it will emit the event to the process log file
 /// (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log file.
 /// \return void.
-void RayEventInit(rpc::Event_SourceType source_type,
+void RayEventInit(SourceTypeVariant source_type,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,
                   const std::string &event_level = "warning",

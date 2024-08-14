@@ -471,7 +471,19 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
   task_info->mutable_required_resources()->insert(resources_map.begin(),
                                                   resources_map.end());
-  task_info->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
+
+  auto export_runtime_env_info = task_info->mutable_runtime_env_info();
+  export_runtime_env_info->set_serialized_runtime_env(task_spec.RuntimeEnvInfo().serialized_runtime_env());
+  auto export_runtime_env_uris = export_runtime_env_info->mutable_uris();
+  export_runtime_env_uris->set_working_dir_uri(task_spec.RuntimeEnvInfo().uris().working_dir_uri());
+  export_runtime_env_uris->mutable_py_modules_uris()->CopyFrom(
+    task_spec.RuntimeEnvInfo().uris().py_modules_uris()
+  );
+  auto export_runtime_env_config = export_runtime_env_info->mutable_runtime_env_config();
+  export_runtime_env_config->set_setup_timeout_seconds(task_spec.RuntimeEnvInfo().runtime_env_config().setup_timeout_seconds());
+  export_runtime_env_config->set_eager_install(task_spec.RuntimeEnvInfo().runtime_env_config().eager_install());
+  export_runtime_env_config->mutable_log_files()->CopyFrom(task_spec.RuntimeEnvInfo().runtime_env_config().log_files());
+  
   const auto &pg_id = task_spec.PlacementGroupBundleId().first;
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
@@ -492,6 +504,15 @@ inline void FillExportTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_stat
   }
   (*state_updates->mutable_state_ts_ns())[task_status] = timestamp;
 }
+
+inline void TaskLogInfoToExport(const rpc::TaskLogInfo& src, rpc::ExportTaskEventData::TaskLogInfo* dest) {
+      dest->set_stdout_file(src.stdout_file());
+      dest->set_stderr_file(src.stderr_file());
+      dest->set_stdout_start(src.stdout_start());
+      dest->set_stdout_end(src.stdout_end());
+      dest->set_stderr_start(src.stderr_start());
+      dest->set_stderr_end(src.stderr_end());
+  }
 
 }  // namespace worker
 
