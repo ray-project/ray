@@ -245,14 +245,20 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         new_colocated_replica_ids = defaultdict(set)
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
 
+        self_actor_handle = (
+            ray.get_runtime_context().current_actor
+            if ray.get_runtime_context().get_actor_id() is not None
+            else None
+        )
         for r in replicas:
             # If on the proxy, replica needs to call back into the proxy with
             # `receive_asgi_messages` which can be blocked when GCS is down.
             # To prevent that from happening, push proxy handle eagerly
-            if self._handle_source == DeploymentHandleSource.PROXY:
-                r._actor_handle.push_proxy_handle.remote(
-                    ray.get_runtime_context().current_actor
-                )
+            if (
+                self._handle_source == DeploymentHandleSource.PROXY
+                and r.replica_id not in self._replicas
+            ):
+                r.push_proxy_handle(self_actor_handle)
 
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
@@ -276,6 +282,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 extra={"log_to_stderr": False},
             )
 
+        # Get list of new replicas
+        new_ids = new_replica_id_set - self._replica_id_set
+        replicas_to_ping = [new_replicas.get(id) for id in new_ids]
+
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
         self._colocated_replica_ids = new_colocated_replica_ids
@@ -285,8 +295,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._replica_queue_len_cache.remove_inactive_replicas(
             active_replica_ids=new_replica_id_set
         )
-        # Populate cache for all replicas
-        self._loop.create_task(self._probe_queue_lens(list(self._replicas.values()), 0))
+        # Populate cache for new replicas
+        self._loop.create_task(self._probe_queue_lens(replicas_to_ping, 0))
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
 
