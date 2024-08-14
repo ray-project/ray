@@ -145,10 +145,9 @@ void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_add
     const auto &channel_name =
         rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
     callback_service_->post(
-        [subscription_callback, msg = std::move(pub_message)]() mutable  // allow data to be moved
-      {
-          subscription_callback(std::move(msg));
-        },
+        [subscription_callback,
+         msg = std::move(pub_message)]() mutable  // allow data to be moved
+        { subscription_callback(std::move(msg)); },
         "Subscriber.HandlePublishedMessage_" + channel_name);
   }
 }
