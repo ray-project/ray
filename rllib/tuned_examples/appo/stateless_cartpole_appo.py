@@ -35,6 +35,7 @@ config = (
         lr=0.0003,
         num_sgd_iter=6,
         vf_loss_coeff=0.01,
+        grad_clip=20.0,
     )
     .rl_module(
         model_config_dict={
