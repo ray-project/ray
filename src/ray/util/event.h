@@ -123,7 +123,7 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual void Flush();
 
-  virtual std::string GetReporterKey() override {}
+  virtual std::string GetReporterKey() override;
 
  protected:
   std::string source_type_name_;

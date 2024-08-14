@@ -153,6 +153,7 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
   if (Event_SourceType_Name(event.source_type()) == source_type_name_){
     std::string result = EventToString(event, custom_fields);
     log_sink_->info(result);
+  }
 
   if (force_flush_) {
     Flush();
@@ -165,6 +166,7 @@ void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
   if (ExportEvent_SourceType_Name(export_event.source_type()) == source_type_name_){
     std::string result = ExportEventToString(export_event);
     log_sink_->info(result);
+  }
 
   if (force_flush_) {
     Flush();
