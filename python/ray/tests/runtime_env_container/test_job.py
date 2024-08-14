@@ -6,16 +6,24 @@ from ray._private.test_utils import wait_for_condition
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--image", type=str, help="The docker image to use for Ray worker")
+parser.add_argument(
+    "--use-image-uri-api",
+    action="store_true",
+    help="Whether to use the new `image_uri` API instead of the old `container` API.",
+)
 args = parser.parse_args()
 
-worker_pth = "/home/ray/anaconda3/lib/python3.8/site-packages/ray/_private/workers/default_worker.py"  # noqa
+if args.use_image_uri_api:
+    runtime_env = {"image_uri": args.image}
+else:
+    runtime_env = {"container": {"image": args.image}}
 
 
 ray.init()
 client = JobSubmissionClient()
 job_id = client.submit_job(
     entrypoint="cat file.txt",
-    runtime_env={"container": {"image": args.image, "worker_path": worker_pth}},
+    runtime_env=runtime_env,
 )
 
 
