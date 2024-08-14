@@ -177,6 +177,8 @@ def _select_next_nodes(
     top_priority_node = None
     next_nodes: List[_DAGOperationGraphNode] = []
     for _, candidates in actor_to_candidates.items():
+        if len(candidates) == 0:
+            continue
         if top_priority_node is None or candidates[0] < top_priority_node:
             top_priority_node = candidates[0]
     assert top_priority_node is not None
@@ -328,8 +330,10 @@ def _generate_actor_to_execution_schedule(
 
     visited_nodes = set()
 
-    # Topological sort
-    while actor_to_candidates:
+    # Use topological sort algorithm to generate the execution schedule. Each iteration
+    # pops a candidate node from `actor_to_candidates` and each DAG node consists of
+    # three operations: READ, COMPUTE, and WRITE.
+    for _ in range(len(graph) * 3):
         # The function `_select_next_nodes` will pop a candidate node from
         # `actor_to_candidates` and return a list of nodes that can be executed
         # in the next step. If multiple nodes are returned, only the NCCL write
@@ -348,11 +352,6 @@ def _generate_actor_to_execution_schedule(
                         actor_to_candidates[out_node.actor_handle._actor_id],
                         out_node,
                     )
-
-        delete_keys = []
-        for actor_id, candidates in actor_to_candidates.items():
-            if len(candidates) == 0:
-                delete_keys.append(actor_id)
-        for key in delete_keys:
-            del actor_to_candidates[key]
+    for _, candidates in actor_to_candidates.items():
+        assert len(candidates) == 0
     return actor_to_execution_schedule
