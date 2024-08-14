@@ -17,7 +17,6 @@ from typing import (
     Tuple,
 )
 
-import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (

@@ -497,12 +497,14 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler):
     r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
-    # TODO(zcin): good comment
+    # We need to wait until the initial ping from scheduler to replica
+    # finishes, which then resets the events in the testing structure
+    # so that the test can proceed.
     await async_wait_for_condition(lambda: not r1._has_queue_len_response.is_set())
 
-    for i in range(len(tasks)):
+    for _ in range(len(tasks)):
         r1.set_queue_len_response(0)
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
         # If the order was not FIFO, the fulfilled assignment may not be the front of
         # the list.
@@ -544,7 +546,9 @@ async def test_retried_tasks_scheduled_fifo(pow_2_scheduler):
     r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
-    # TODO(zcin): good comment
+    # We need to wait until the initial ping from scheduler to replica
+    # finishes, which then resets the events in the testing structure
+    # so that the test can proceed.
     await async_wait_for_condition(lambda: not r1._has_queue_len_response.is_set())
 
     # Check that the tasks are scheduled in the order they were created (not the.
@@ -1282,13 +1286,19 @@ class TestModelMultiplexing:
         r2.set_queue_len_response(0)
         s.update_replicas([r1, r2])
 
-        # TODO(zcin): good comment
-        await async_wait_for_condition(lambda: not r1._has_queue_len_response.is_set())
-        await async_wait_for_condition(lambda: not r2._has_queue_len_response.is_set())
+        # We need to wait until the initial ping from scheduler to replica
+        # finishes, which then resets the events in the testing structure
+        # so that the test can proceed.
+        await async_wait_for_condition(
+            lambda: not r1._has_queue_len_response.is_set(), retry_interval_ms=10
+        )
+        await async_wait_for_condition(
+            lambda: not r2._has_queue_len_response.is_set(), retry_interval_ms=10
+        )
 
         # In each iteration, allow one replica of w/ each model ID to be scheduled.
         # The tasks for each model ID should be scheduled in FIFO order.
-        for i in range(10):
+        for _ in range(10):
             r1.set_queue_len_response(0)
             r2.set_queue_len_response(0)
 
@@ -1504,8 +1514,9 @@ async def test_queue_len_cache_active_probing(pow_2_scheduler):
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
-    # TODO(zcin): good comment
-    assert len(r1.queue_len_deadline_history) == 1
+    # 0 probes from scheduling requests
+    # + 1 probe from when the replica set was updated with replica r1
+    assert len(r1.queue_len_deadline_history) - 1 == 0
 
     # Now time out the entry in the cache -- replica should be probed.
     TIMER.advance(staleness_timeout_s + 1)
@@ -1515,8 +1526,9 @@ async def test_queue_len_cache_active_probing(pow_2_scheduler):
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
-    # TODO(zcin): good comment
-    assert len(r1.queue_len_deadline_history) == 2
+    # 1 probe from scheduling requests
+    # + 1 probe from when the replica set was updated with replica r1
+    assert len(r1.queue_len_deadline_history) - 1 == 1
 
 
 @pytest.mark.asyncio
@@ -1543,8 +1555,9 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
-    # TODO(zcin): good comment
-    assert len(r1.queue_len_deadline_history) == 2
+    # 1 probe from scheduling requests
+    # + 1 probe from when the replica set was updated with replica r1
+    assert len(r1.queue_len_deadline_history) - 1 == 1
 
     # Now let the replica respond and accept the request, it should be scheduled.
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
@@ -1579,16 +1592,18 @@ async def test_queue_len_cache_background_probing(pow_2_scheduler):
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
-    # TODO(zcin): good comment
-    assert len(r1.queue_len_deadline_history) == 1
+    # 0 probes from scheduling requests
+    # + 1 probe from when the replica set was updated with replica r1
+    assert len(r1.queue_len_deadline_history) - 1 == 0
 
     r2.set_queue_len_response(3)
 
     def r2_was_probed():
         # Check that r2 was probed and the response was added to the cache.
-        # TODO(zcin): good comment
+        # 1 probe from scheduling requests
+        # + 1 probe from when the replica set was updated with replica r1
         assert (
-            len(r2.queue_len_deadline_history) == 2
+            len(r2.queue_len_deadline_history) - 1 == 1
             and s._replica_queue_len_cache.get(r2.replica_id) == 3
         )
         return True
@@ -1629,9 +1644,10 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_scheduler):
         else:
             assert replica in {r1, r2}
 
-        # TODO(zcin): good comment
-        assert len(r1.queue_len_deadline_history) == i + 2
-        assert len(r2.queue_len_deadline_history) == i + 2
+        # i+1 probes from scheduling requests
+        # + 1 probe from when the replica set was updated with replica r1
+        assert len(r1.queue_len_deadline_history) - 1 == i + 1
+        assert len(r2.queue_len_deadline_history) - 1 == i + 1
         assert s._replica_queue_len_cache.get(r1.replica_id) == r1_queue_len
         assert s._replica_queue_len_cache.get(r2.replica_id) == r2_queue_len
         TIMER.advance(staleness_timeout_s + 1)
