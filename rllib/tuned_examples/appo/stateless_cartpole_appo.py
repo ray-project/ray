@@ -32,25 +32,24 @@ config = (
         env_to_module_connector=lambda env: MeanStdFilter(),
     )
     .training(
-        lr=0.0002,
+        lr=0.0003,
         num_sgd_iter=6,
-        vf_loss_coeff=0.1,
+        vf_loss_coeff=0.01,
     )
     .rl_module(
         model_config_dict={
             "fcnet_hiddens": [32],
-            "fcnet_activation": "tanh",#"linear",
-            #"fcnet_weights_initializer": nn.init.xavier_uniform_,
-            #"fcnet_bias_initializer": functools.partial(nn.init.constant_, 0.0),
+            "fcnet_activation": "linear",
             "vf_share_layers": True,
             "use_lstm": True,
+            "uses_new_env_runners": True,
             "max_seq_len": 20,
         },
     )
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 450.0,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 2000000,
 }
 

@@ -190,9 +190,10 @@ py_test(
     main = "tuned_examples/appo/stateless_cartpole_appo.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
-    srcs = ["tuned_examples/appo/cartpole_appo.py"],
+    srcs = ["tuned_examples/appo/stateless_cartpole_appo.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
 )
+# MultiAgentCartPole
 py_test(
     name = "learning_tests_multi_agent_cartpole_appo",
     main = "tuned_examples/appo/multi_agent_cartpole_appo.py",
@@ -308,6 +309,7 @@ py_test(
 )
 
 # BC
+# CartPole
 py_test(
     name = "learning_tests_cartpole_bc",
     main = "tuned_examples/bc/cartpole_bc.py",
@@ -338,6 +340,7 @@ py_test(
 )
 
 # DQN
+# CartPole
 py_test(
     name = "learning_tests_cartpole_dqn",
     main = "tuned_examples/dqn/cartpole_dqn.py",
@@ -346,7 +349,7 @@ py_test(
     srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
-
+# MultiAgentCartPole
 py_test(
     name = "learning_tests_multi_agent_cartpole_dqn",
     main = "tuned_examples/dqn/multi_agent_cartpole_dqn.py",
@@ -368,6 +371,7 @@ py_test(
 )
 
 # IMPALA
+# CartPole
 py_test(
     name = "learning_tests_cartpole_impala",
     main = "tuned_examples/impala/cartpole_impala.py",
@@ -400,6 +404,7 @@ py_test(
     srcs = ["tuned_examples/impala/cartpole_impala.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
 )
+# MultiAgentCartPole
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala",
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
@@ -457,6 +462,7 @@ py_test(
 )
 
 # MARWIL
+# CartPole
 py_test(
     name = "learning_tests_cartpole_marwil",
     main = "tuned_examples/marwil/cartpole_marwil.py",
@@ -471,6 +477,7 @@ py_test(
 )
 
 # PPO
+# CartPole
 py_test(
     name = "learning_tests_cartpole_ppo",
     main = "tuned_examples/ppo/cartpole_ppo.py",
@@ -503,6 +510,7 @@ py_test(
     srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
 )
+# MultiAgentCartPole
 py_test(
     name = "learning_tests_multi_agent_cartpole_ppo",
     main = "tuned_examples/ppo/multi_agent_cartpole_ppo.py",
@@ -535,7 +543,7 @@ py_test(
     srcs = ["tuned_examples/ppo/multi_agent_cartpole_ppo.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
 )
-
+# CartPole (truncated)
 py_test(
     name = "learning_tests_cartpole_truncated_ppo",
     main = "tuned_examples/ppo/cartpole_truncated_ppo.py",
@@ -544,7 +552,7 @@ py_test(
     srcs = ["tuned_examples/ppo/cartpole_truncated_ppo.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
-
+# Pendulum
 py_test(
     name = "learning_tests_pendulum_ppo",
     main = "tuned_examples/ppo/pendulum_ppo.py",
@@ -577,6 +585,7 @@ py_test(
     srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
 )
+# MultiAgentPendulum
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo",
     main = "tuned_examples/ppo/multi_agent_pendulum_ppo.py",
@@ -642,6 +651,7 @@ py_test(
 )
 
 # SAC
+# Pendulum
 py_test(
     name = "learning_tests_pendulum_sac",
     main = "tuned_examples/sac/pendulum_sac.py",
