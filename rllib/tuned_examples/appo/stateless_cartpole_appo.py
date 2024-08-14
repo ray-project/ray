@@ -41,13 +41,10 @@ config = (
     )
     .rl_module(
         model_config_dict={
-            "fcnet_hiddens": [32],
-            "fcnet_activation": "linear",
             "vf_share_layers": True,
             "use_lstm": True,
-            "lstm_cell_size": 128,
             "uses_new_env_runners": True,
-            "max_seq_len": 20,
+            "max_seq_len": 50,
         },
     )
 )
