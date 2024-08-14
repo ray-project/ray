@@ -7,10 +7,31 @@ from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class ListifyDataForVectorEnv(ConnectorV2):
     """Performs conversion from ConnectorV2-style format to env/episode insertion.
+
+    Note: This is one of the default module-to-env ConnectorV2 pieces that
+    are added automatically by RLlib into every module-to-env connector pipeline,
+    unless `config.add_default_connectors_to_module_to_env_pipeline` is set to
+    False.
+
+    The default module-to-env connector pipeline is:
+    [
+        GetActions,
+        TensorToNumpy,
+        UnBatchToIndividualItems,
+        ModuleToAgentUnmapping,  # only in multi-agent setups!
+        RemoveSingleTsTimeRankFromBatch,
+
+        [0 or more user defined ConnectorV2 pieces],
+
+        NormalizeAndClipActions,
+        ListifyDataForVectorEnv,
+    ]
 
     Single agent case:
     Convert from:

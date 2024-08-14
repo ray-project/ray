@@ -390,3 +390,14 @@ table.autosummary tr > td:first-child > p > a > code > span {
   color: var(--pst-color-light);
   text-decoration: underline;
 }
+
+/* Prevent the the PyData theme Version Switcher from getting too large */
+.version-switcher__menu {
+  max-height: 40rem;
+  overflow-y: scroll;
+}
+
+/* Hide the RTD version switcher since we are using PyData theme one */
+#rtd-footer-container {
+  display: none;
+}

@@ -5,14 +5,14 @@ import numpy as np
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
+from ray.rllib.core.rl_module.multi_rl_module import (
+    MultiRLModule,
+    MultiRLModuleSpec,
 )
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.typing import RLModuleSpec
+from ray.rllib.utils.typing import RLModuleSpecType
 
 
 class BaseTestingAlgorithmConfig(AlgorithmConfig):
@@ -33,7 +33,7 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
             raise ValueError(f"Unsupported framework: {self.framework_str}")
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> "RLModuleSpec":
+    def get_default_rl_module_spec(self) -> "RLModuleSpecType":
         if self.framework_str == "tf2":
             from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 
@@ -45,7 +45,7 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
         else:
             raise ValueError(f"Unsupported framework: {self.framework_str}")
 
-        spec = SingleAgentRLModuleSpec(
+        spec = RLModuleSpec(
             module_class=cls,
             model_config_dict={"fcnet_hiddens": [32]},
         )
@@ -53,8 +53,8 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
         if self.is_multi_agent():
             # TODO (Kourosh): Make this more multi-agent for example with policy ids
             #  "1" and "2".
-            return MultiAgentRLModuleSpec(
-                marl_module_class=MultiAgentRLModule,
+            return MultiRLModuleSpec(
+                multi_rl_module_class=MultiRLModule,
                 module_specs={DEFAULT_MODULE_ID: spec},
             )
         else:
@@ -63,7 +63,7 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
 
 class BaseTestingLearner(Learner):
     @override(Learner)
-    def compute_loss_for_module(self, *, module_id, config=None, batch, fwd_out):
+    def compute_loss_for_module(self, *, module_id, config, batch, fwd_out):
         # This is to check if in the multi-gpu case, the weights across workers are
         # the same. It is really only needed during testing.
         if config.report_mean_weights:
