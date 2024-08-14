@@ -128,16 +128,6 @@ def build_app(cli_args: Dict[str, str]) -> serve.Application:
         accelerator = cli_args.pop("accelerator")
     else:
         accelerator = "GPU"
-    if accelerator == "HPU":
-        try:
-            from habana_frameworks.torch.distributed.hccl import (
-                initialize_distributed_hpu,
-            )
-
-            initialize_distributed_hpu()
-            torch.zeros(1).to("hpu")
-        except Exception:
-            raise Exception("Please check the environment: HPU devices not available.")
     parsed_args = parse_vllm_args(cli_args)
     engine_args = AsyncEngineArgs.from_cli_args(parsed_args)
     engine_args.worker_use_ray = True
