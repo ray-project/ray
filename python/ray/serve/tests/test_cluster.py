@@ -450,7 +450,8 @@ class TestHealthzAndRoutes:
 
         wait_for_condition(check_replicas_on_worker_nodes)
 
-        # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
+        # Ensure total actors of 2 proxies, 1 controller, and 2 replicas,
+        # and 2 nodes exist.
         wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
         assert len(ray.nodes()) == 2
 
@@ -499,9 +500,10 @@ class TestHealthzAndRoutes:
 
         wait_for_condition(_check)
 
-        # Ensure head node `/-/healthz` and `/-/routes` continue to return 200 and expected
-        # responses. Also, the worker node `/-/healthz` and `/-/routes` should return 503
-        # and unavailable responses.
+        # Ensure head node `/-/healthz` and `/-/routes` continue to
+        # return 200 and expected responses. Also, the worker node
+        # `/-/healthz` and `/-/routes` should return 503 and unavailable
+        # responses.
         wait_for_condition(
             condition_predictor=check_request,
             url="http://127.0.0.1:8000/-/healthz",

@@ -2,7 +2,6 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional, Tuple
 
-import ray
 from ray.serve._private.common import (
     ApplicationName,
     DeploymentHandleSource,

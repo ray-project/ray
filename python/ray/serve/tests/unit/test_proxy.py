@@ -323,12 +323,11 @@ class TestgRPCProxy:
             assert status.code == grpc.StatusCode.UNAVAILABLE
             assert status.message == DRAINING_MESSAGE
             assert status.is_error is True
-            # assert response.application_names == ["app"]
+            assert response.application_names == ["app"]
         else:
             assert status.code == grpc.StatusCode.UNAVAILABLE
             assert status.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
             assert status.is_error is True
-            # assert response.application_names == []
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("is_draining", [False, True])
@@ -510,12 +509,14 @@ class TestHTTPProxy:
             assert status.code == 503
             assert status.is_error is True
             assert status.message == DRAINING_MESSAGE
-            # self._check_asgi_messages(messages, status_code=503, body=DRAINING_MESSAGE)
+            self._check_asgi_messages(messages, status_code=503, body=DRAINING_MESSAGE)
         else:
             assert status.code == 503
             assert status.is_error is True
             assert status.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
-            # self._check_asgi_messages(messages, status_code=503, body=NO_ROUTES_MESSAGE)
+            self._check_asgi_messages(
+                messages, status_code=503, body=ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
+            )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("is_draining", [False, True])
