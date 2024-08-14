@@ -17,8 +17,13 @@ from ray.serve._private.proxy import (
     gRPCProxy,
 )
 from ray.serve._private.proxy_request_response import ProxyRequest
-from ray.serve._private.proxy_router import ProxyRouter
-from ray.serve._private.test_utils import FakeGrpcContext
+from ray.serve._private.proxy_router import (
+    NO_REPLICAS_MESSAGE,
+    NO_ROUTES_MESSAGE,
+    EndpointRouter,
+    ProxyRouter,
+)
+from ray.serve._private.test_utils import FakeGrpcContext, MockDeploymentHandle
 from ray.serve.generated import serve_pb2
 from ray.serve.grpc_util import RayServegRPCContext
 
@@ -696,37 +701,105 @@ class TestHTTPProxy:
         # Ensure after calling __call__, send.messages should be expected messages.
         assert send.messages == expected_messages
 
-    # @pytest.mark.asyncio
-    # async def test_health_request_errors_until_route_table_updated(self):
-    #     """Health endpoint should error until `update_routes` has been called."""
-    #     http_proxy = self.create_http_proxy()
-    #     proxy_request = FakeProxyRequest(
-    #         request_type="http",
-    #         is_health_request=True,
-    #     )
-    #
-    #     status, messages = await _consume_proxy_generator(
-    #         http_proxy.proxy_request(proxy_request)
-    #     )
-    #     assert status.code == 503
-    #     assert status.is_error is True
-    #     assert status.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
-    #     self._check_asgi_messages(
-    #         messages,
-    #         status_code=503,
-    #         body=ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE,
-    #     )
-    #
-    #     # Update route table, response should no longer error (even if empty).
-    #     http_proxy.update_routes({})
-    #
-    #     status, messages = await _consume_proxy_generator(
-    #         http_proxy.proxy_request(proxy_request)
-    #     )
-    #     assert status.code == 200
-    #     assert status.is_error is False
-    #     assert status.message == HEALTHY_MESSAGE
-    #     self._check_asgi_messages(messages, status_code=200, body=HEALTHY_MESSAGE)
+
+@pytest.mark.asyncio
+async def test_head_http_unhealthy_until_route_table_updated():
+    """Health endpoint should error until `update_routes` has been called."""
+
+    http_proxy = HTTPProxy(
+        node_id="fake-node-id",
+        node_ip_address="fake-node-ip-address",
+        # proxy is on head node
+        is_head=True,
+        proxy_router_class=EndpointRouter,
+        proxy_actor=FakeActorHandle(),
+        get_handle_override=lambda d, a: MockDeploymentHandle(d, a),
+    )
+    proxy_request = FakeProxyRequest(
+        request_type="http",
+        is_health_request=True,
+    )
+
+    status, messages = await _consume_proxy_generator(
+        http_proxy.proxy_request(proxy_request)
+    )
+    assert status.code == 503
+    assert status.is_error is True
+    assert status.message == NO_ROUTES_MESSAGE
+    assert messages[0]["headers"] is not None
+    assert messages[0]["status"] == 503
+    assert messages[1]["body"].decode("utf-8") == NO_ROUTES_MESSAGE
+
+    # Update route table, response should no longer error (even if empty).
+    http_proxy.update_routes({})
+
+    status, messages = await _consume_proxy_generator(
+        http_proxy.proxy_request(proxy_request)
+    )
+    assert status.code == 200
+    assert status.is_error is False
+    assert status.message == HEALTHY_MESSAGE
+    assert messages[0]["headers"] is not None
+    assert messages[0]["status"] == 200
+    assert messages[1]["body"].decode("utf-8") == HEALTHY_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_worker_http_unhealthy_until_replicas_populated():
+    """Health endpoint should error until handle's running replicas is populated."""
+
+    handle = MockDeploymentHandle("a", "b")
+
+    http_proxy = HTTPProxy(
+        node_id="fake-node-id",
+        node_ip_address="fake-node-ip-address",
+        # proxy is on worker node
+        is_head=False,
+        proxy_router_class=EndpointRouter,
+        proxy_actor=FakeActorHandle(),
+        get_handle_override=lambda *args: handle,
+    )
+    proxy_request = FakeProxyRequest(
+        request_type="http",
+        is_health_request=True,
+    )
+
+    status, messages = await _consume_proxy_generator(
+        http_proxy.proxy_request(proxy_request)
+    )
+    assert status.code == 503
+    assert status.is_error is True
+    assert status.message == NO_ROUTES_MESSAGE
+    assert messages[0]["headers"] is not None
+    assert messages[0]["status"] == 503
+    assert messages[1]["body"].decode("utf-8") == NO_ROUTES_MESSAGE
+
+    # Update route table, response should still error because running
+    # replicas is not yet populated.
+    http_proxy.update_routes({DeploymentID("a", "b"): EndpointInfo("/route")})
+
+    status, messages = await _consume_proxy_generator(
+        http_proxy.proxy_request(proxy_request)
+    )
+    assert status.code == 503
+    assert status.is_error is True
+    assert status.message == NO_REPLICAS_MESSAGE
+    assert messages[0]["headers"] is not None
+    assert messages[0]["status"] == 503
+    assert messages[1]["body"].decode("utf-8") == NO_REPLICAS_MESSAGE
+
+    # Populate running replicas. Now response should be healthy and return 200.
+    handle.set_running_replicas_populated(True)
+
+    status, messages = await _consume_proxy_generator(
+        http_proxy.proxy_request(proxy_request)
+    )
+    assert status.code == 200
+    assert status.is_error is False
+    assert status.message == HEALTHY_MESSAGE
+    assert messages[0]["headers"] is not None
+    assert messages[0]["status"] == 200
+    assert messages[1]["body"].decode("utf-8") == HEALTHY_MESSAGE
 
 
 if __name__ == "__main__":
