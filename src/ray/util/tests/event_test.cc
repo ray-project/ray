@@ -547,7 +547,8 @@ TEST_F(EventTest, TestRayEventInit) {
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
   custom_fields.emplace("task_id", "task 1");
-  RayEventInit(rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields, log_dir);
+  std::vector<SourceTypeVariant> source_types = {rpc::Event_SourceType::Event_SourceType_RAYLET};
+  RayEventInit(source_types, custom_fields, log_dir);
 
   RAY_EVENT(FATAL, "label") << "test error event";
 

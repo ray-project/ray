@@ -150,33 +150,26 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
   RAY_CHECK(Event_SourceType_IsValid(event.source_type()));
   RAY_CHECK(Event_Severity_IsValid(event.severity()));
   // Check if the event source type is for this reporter
-  std::string result = "";
   if (Event_SourceType_Name(event.source_type()) == source_type_name_){
-    result = EventToString(event, custom_fields);
-  } else {
-    result = "Skipping. " + EventToString(event, custom_fields);
-  }
-  
+    std::string result = EventToString(event, custom_fields);
+    log_sink_->info(result);
 
-  log_sink_->info(result);
-  if (force_flush_) {
-    Flush();
-  }
+    if (force_flush_) {
+      Flush();
+    }
+  } 
 }
 
 void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
   RAY_CHECK(ExportEvent_SourceType_IsValid(export_event.source_type()));
   // Check if the event source type is for this reporter
-  std::string result;
   if (ExportEvent_SourceType_Name(export_event.source_type()) == source_type_name_){
-    result = ExportEventToString(export_event);
-  } else {
-    result = "Skipping. " + ExportEventToString(export_event);
-  }
+    std::string result = ExportEventToString(export_event);
+    log_sink_->info(result);
 
-  log_sink_->info(result);
-  if (force_flush_) {
-    Flush();
+    if (force_flush_) {
+      Flush();
+    }
   }
 }
 
@@ -435,31 +428,34 @@ void RayExportEvent::SendEvent() {
 
 static absl::once_flag init_once_;
 
-void RayEventInit(SourceTypeVariant source_type,
+void RayEventInit(const std::vector<SourceTypeVariant> source_types,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,
                   const std::string &event_level,
                   bool emit_event_to_log_file) {
   absl::call_once(
       init_once_,
-      [&source_type, &custom_fields, &log_dir, &event_level, emit_event_to_log_file]() {
-        std::string source_type_name = "";
-        if (auto event_source_type_ptr = std::get_if<rpc::Event_SourceType>(&source_type)) {
-          // For non export events
-          RayEventContext::Instance().SetEventContext(std::get<rpc::Event_SourceType>(source_type), custom_fields);
-          source_type_name = Event_SourceType_Name(*event_source_type_ptr);
-        } else if (auto export_event_source_type_ptr =
-                 std::get_if<rpc::ExportEvent_SourceType>(&source_type)) {
-          // For export events
-          source_type_name = ExportEvent_SourceType_Name(*export_event_source_type_ptr);
-        }
-        auto event_dir = std::filesystem::path(log_dir) / std::filesystem::path("events");
-        ray::EventManager::Instance().AddReporter(
-            std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
-        SetEventLevel(event_level);
-        SetEmitEventToLogFile(emit_event_to_log_file);
-        RAY_LOG(INFO) << "Ray Event initialized for "
+      [&source_types, &custom_fields, &log_dir, &event_level, emit_event_to_log_file]() {
+        for (const auto& source_type : source_types) {
+          std::string source_type_name = "";
+          if (auto event_source_type_ptr = std::get_if<rpc::Event_SourceType>(&source_type)) {
+            // For non export events
+            RayEventContext::Instance().SetEventContext(std::get<rpc::Event_SourceType>(source_type), custom_fields);
+            source_type_name = Event_SourceType_Name(*event_source_type_ptr);
+          } else if (auto export_event_source_type_ptr =
+                  std::get_if<rpc::ExportEvent_SourceType>(&source_type)) {
+            // For export events
+            source_type_name = ExportEvent_SourceType_Name(*export_event_source_type_ptr);
+          }
+          auto event_dir = std::filesystem::path(log_dir) / std::filesystem::path("events");
+          ray::EventManager::Instance().AddReporter(
+              std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+          
+          RAY_LOG(INFO) << "Ray Event initialized for "
                       << source_type_name;
+        }
+        SetEventLevel(event_level);
+        SetEmitEventToLogFile(emit_event_to_log_file);    
       });
 }
 
