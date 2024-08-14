@@ -865,7 +865,6 @@ class Learner(Checkpointable):
         Returns:
             A dictionary mapping module IDs to individual loss terms.
         """
-        # loss_total = None
         loss_per_module = {}
         for module_id in fwd_out:
             module_batch = batch[module_id]

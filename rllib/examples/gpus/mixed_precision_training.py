@@ -78,7 +78,7 @@ class PPOTorchMixedPrecisionLearner(PPOTorchLearner):
 
     def apply_gradients(self, gradients_dict):
         # Make sure the parameters do not carry gradients on their own.
-        #for optim in self._optimizer_parameters:
+        # for optim in self._optimizer_parameters:
         #    optim.zero_grad(set_to_none=True)
 
         # Set the gradient of the parameters.
@@ -97,9 +97,7 @@ if __name__ == "__main__":
     assert (
         args.enable_new_api_stack
     ), "Must set --enable-new-api-stack when running this script!"
-    assert (
-        args.algo == "PPO"
-    ), "Must set --algo=PPO when running this script!"
+    assert args.algo == "PPO", "Must set --algo=PPO when running this script!"
 
     base_config = (
         PPOConfig()
@@ -107,12 +105,9 @@ if __name__ == "__main__":
         .api_stack(
             enable_rl_module_and_learner=True,
             enable_env_runner_and_connector_v2=True,
-        )
-        .environment("CartPole-v1")
+        ).environment("CartPole-v1")
         # Use a large network to demonstrate the advantage of mixed-precision training.
-        .rl_module(
-            model_config_dict={"fcnet_hiddens": [2048, 2048, 2048, 2048]}
-        )
+        .rl_module(model_config_dict={"fcnet_hiddens": [2048, 2048, 2048, 2048]})
     )
 
     # Activate mixed-precision training for our torch RLModule.
