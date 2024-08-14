@@ -52,7 +52,7 @@ class TestSelectNextNodes:
     local_idx: The DAG node's index in the actor's `executable_tasks` list.
     """
 
-    def test_two_candidates_on_same_actor(self):
+    def test_two_candidates_on_same_actor(self, monkeypatch):
         """
         Simulate the case where there are two candidates on the same actor.
         The candidate with the smaller index in the `executable_tasks` list
@@ -65,7 +65,8 @@ class TestSelectNextNodes:
         list should be selected first; therefore, the one on the left side will
         be selected first.
         """
-        fake_actor = "fake_actor"
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+        fake_actor = ActorHandle("fake_actor")
         # The DAG node has a global index of 1, and its index in the
         # actor's `executable_tasks` list is 0.
         dag_idx_1 = 1

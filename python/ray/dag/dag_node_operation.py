@@ -1,6 +1,6 @@
 from functools import total_ordering
 from enum import Enum
-from typing import Set, Tuple, List, Dict, Optional
+from typing import Set, Tuple, List, Dict
 import ray
 import heapq
 from collections import defaultdict
@@ -76,22 +76,40 @@ class _DAGOperationGraphNode:
 
     def __lt__(self, other: "_DAGOperationGraphNode"):
         """
-        Two _DAGOperationGraphNodes are comparable only when they belong to
-        the same actor. For operations on the same actor, if `local_idx` is smaller,
-        the DAGNode to which this operation belongs has a smaller `bind_index`.
+        This function defines the order of the nodes in the priority queue used in
+        `_select_next_nodes`. The priority queue is a min-heap, so the node with
+        higher priority is considered "less than" the other node.
         """
-        assert self.actor_handle == other.actor_handle
-        return self.operation.local_idx < other.operation.local_idx
+        # If two nodes belong to the same actor, select the one with
+        # the smaller `local_idx`.
+        if self.actor_handle == other.actor_handle:
+            return self.operation.local_idx < other.operation.local_idx
+        # If two nodes belong to different actors and one of them is an NCCL
+        # write node, select the one that is not an NCCL write node.
+        is_nccl_write = (
+            self.operation.type == _DAGNodeOperationType.WRITE and self.requires_nccl
+        )
+        other_is_nccl_write = (
+            other.operation.type == _DAGNodeOperationType.WRITE and other.requires_nccl
+        )
+        if is_nccl_write != other_is_nccl_write:
+            return not is_nccl_write
+        # If two nodes belong to different actors and both are either NCCL write
+        # nodes or neither are NCCL write nodes, select the one with the smaller
+        # `local_idx`. If they have the same `local_idx`, select the one with the
+        # smaller `dag_idx`.
+        if self.operation.local_idx != other.operation.local_idx:
+            return self.operation.local_idx < other.operation.local_idx
+        return self.dag_idx < other.dag_idx
 
     def __eq__(self, other: "_DAGOperationGraphNode"):
         """
-        Two _DAGOperationGraphNodes are comparable only when they belong to the
-        same actor. For operations on the same actor, two operations are equal
-        only when they have the same `local_idx` and `type`.
+        Two operations are equal only when they have the same `local_idx` and `type`
+        and belong to the same actor.
         """
-        assert self.actor_handle == other.actor_handle
         return (
-            self.operation.local_idx == other.operation.local_idx
+            self.actor_handle == other.actor_handle
+            and self.operation.local_idx == other.operation.local_idx
             and self.operation.type == other.operation.type
         )
 
@@ -117,19 +135,26 @@ def _select_next_nodes(
 ):
     """
     This function selects the next nodes for topological sort to generate execution
-    schedule. If there are multiple candidate _DAGOperationGraphNodes, select nodes
-    based on the following rules:
+    schedule. If there are multiple candidate _DAGOperationGraphNodes, select the node
+    with the top priority based on the following rules:
 
-    #1  If the nodes are not NCCL write nodes, select the one with the smallest
-        `bind_index`. If there are multiple candidate nodes with the smallest
-        `bind_index` among the actors to which they belong, any one of them is
-        acceptable, but the implementation ensures the result is deterministic.
-        For the implementation details, we maintain a priority queue for each actor,
-        where the head of the priority queue is the node with the smallest `bind_index`.
-    #2  If #1 cannot be satisfied, it means that all candidate nodes are NCCL write
-        nodes. In this case, select the one at the head of the priority queue and
-        its immediately downstream nodes, which are NCCL read nodes, regardless of
-        whether the downstream nodes are heads of their own priority queues.
+    #1  If two candidate nodes belong to the same actor, select the one with
+        the smaller `local_idx`.
+
+    #2  If two candidate nodes belong to different actors and both are either NCCL
+        write nodes or neither are NCCL write nodes, select the one with the smaller
+        `local_idx`. If they have the same `local_idx`, select the one with the
+        smaller `dag_idx`.
+
+    #3  If two candidate nodes belong to different actors and one of them is an NCCL
+        write node, select the one that is not an NCCL write node.
+
+    For the implementation details, we maintain a priority queue for each actor,
+    where the head of the priority queue is the node with the smallest `local_idx`.
+
+    If the selected node is an NCCL write node, select all its immediately downstream
+    nodes, which are NCCL read nodes, regardless of whether the downstream nodes are
+    heads of their own priority queues.
 
     This function may return multiple nodes if they are NCCL nodes. In that case,
     this function only removes the NCCL write node, which is also the head of a
@@ -149,38 +174,31 @@ def _select_next_nodes(
         A list of _DAGOperationGraphNodes to be placed into the corresponding
         execution schedules.
     """
+    top_priority_node = None
     next_nodes: List[_DAGOperationGraphNode] = []
     for _, candidates in actor_to_candidates.items():
-        if not (
-            candidates[0].requires_nccl
-            and candidates[0].operation.type == _DAGNodeOperationType.WRITE
-        ):
-            next_nodes.append(heapq.heappop(candidates))
-            assert len(next_nodes) == 1
-            return next_nodes
-
-    first_nccl_node: Optional[_DAGOperationGraphNode] = None
-    for _, candidates in actor_to_candidates.items():
-        if (
-            candidates[0].requires_nccl
-            and candidates[0].operation.type == _DAGNodeOperationType.WRITE
-        ):
-            first_nccl_node = candidates[0]
-            break
-
-    assert first_nccl_node is not None
+        if top_priority_node is None or candidates[0] < top_priority_node:
+            top_priority_node = candidates[0]
+    assert top_priority_node is not None
     next_nodes.append(
-        heapq.heappop(actor_to_candidates[first_nccl_node.actor_handle._actor_id])
+        heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
     )
+
+    if not (
+        top_priority_node.operation.type == _DAGNodeOperationType.WRITE
+        and top_priority_node.requires_nccl
+    ):
+        assert len(next_nodes) == 1
+        return next_nodes
 
     # An NCCL write node is picked. NCCL is a blocking operation, so we need to pick all
     # the corresponding NCCL read nodes to avoid a deadlock.
-    for downstream_node_metadata in first_nccl_node.out_edges:
+    for downstream_node_metadata in top_priority_node.out_edges:
         dag_idx, op_type = downstream_node_metadata[0], downstream_node_metadata[1]
         downstream_node = graph[dag_idx][op_type]
         assert downstream_node.operation.type == _DAGNodeOperationType.READ
         next_nodes.append(downstream_node)
-    assert len(next_nodes) == 1 + len(first_nccl_node.out_edges)
+    assert len(next_nodes) == 1 + len(top_priority_node.out_edges)
     return next_nodes
 
 
