@@ -477,9 +477,6 @@ TEST_F(EventTest, TestExportEvent) {
       rpc::Event_SourceType::Event_SourceType_RAYLET, log_dir));
   RayEventContext::Instance().SetEventContext(rpc::Event_SourceType::Event_SourceType_RAYLET, absl::flat_hash_map<std::string, std::string>());
 
-  // const std::vector<SourceTypeVariant> source_types = {rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK, rpc::Event_SourceType::Event_SourceType_RAYLET};
-  // RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir);
-
   std::shared_ptr<rpc::ExportTaskEventData> task_event_ptr = std::make_shared<rpc::ExportTaskEventData>();
   task_event_ptr->set_task_id("task_id0");
   task_event_ptr->set_attempt_number(1);

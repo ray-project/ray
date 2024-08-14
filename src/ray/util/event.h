@@ -340,10 +340,11 @@ class RayExportEvent {
 ///
 /// This function should be called when the main thread starts.
 /// Redundant calls in other thread don't take effect.
-/// \param source_types List of source types the current process can create events for. If there
-/// are multiple rpc::Event_SourceType source_types, the last one will be used as the source type
-/// for the RAY_EVENT macro.
-/// \param custom_fields The global custom fields. These are only set for rpc::Event_SourceType events.
+/// \param source_types List of source types the current process can create events for. If
+/// there are multiple rpc::Event_SourceType source_types, the last one will be used as
+/// the source type for the RAY_EVENT macro.
+/// \param custom_fields The global custom fields. These are only set for
+/// rpc::Event_SourceType events.
 /// \param log_dir The log directory to generate event subdirectory.
 /// \param event_level The input event level. It should be one of "info","warning",
 /// "error" and "fatal". You can also use capital letters for the options above.
