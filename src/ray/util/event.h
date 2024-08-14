@@ -123,9 +123,10 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual void Flush();
 
-  virtual std::string GetReporterKey() override { return "log.event.reporter"; }
+  virtual std::string GetReporterKey() override {}
 
  protected:
+  std::string source_type_name_;
   std::string log_dir_;
   bool force_flush_;
   int rotate_max_file_size_;  // MB
@@ -339,15 +340,15 @@ class RayExportEvent {
 ///
 /// This function should be called when the main thread starts.
 /// Redundant calls in other thread don't take effect.
-/// \param source_type The type of current process.
-/// \param custom_fields The global custom fields.
+/// \param source_types List of source types the current process can create events for.
+/// \param custom_fields The global custom fields. These are only set for rpc::Event_SourceType events.
 /// \param log_dir The log directory to generate event subdirectory.
 /// \param event_level The input event level. It should be one of "info","warning",
 /// "error" and "fatal". You can also use capital letters for the options above.
 /// \param emit_event_to_log_file if True, it will emit the event to the process log file
 /// (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log file.
 /// \return void.
-void RayEventInit(rpc::Event_SourceType source_type,
+void RayEventInit(const std::vector<SourceTypeVariant> source_types,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,
                   const std::string &event_level = "warning",
