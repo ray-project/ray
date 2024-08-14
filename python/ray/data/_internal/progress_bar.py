@@ -185,7 +185,6 @@ class ProgressBar:
                 ref_to_result[ref] = result
                 num_rows = extract_num_rows(result)
                 total_rows_processed += num_rows
-            # TODO(zhilong): Change the total to total_row when init progress bar
             self.update(total_rows_processed)
 
             with _canceled_threads_lock:

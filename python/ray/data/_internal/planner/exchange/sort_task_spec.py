@@ -165,6 +165,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_results = [
             sample_block.remote(block, n_samples, sort_key) for block in blocks
         ]
+        # TODO(zhilong): Update sort sample bar before finished.
         samples = sample_bar.fetch_until_complete(sample_results)
         del sample_results
         samples = [s for s in samples if len(s) > 0]
