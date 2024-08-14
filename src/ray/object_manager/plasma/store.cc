@@ -582,7 +582,7 @@ void PlasmaStore::ScheduleRecordMetrics() const {
 
 std::string PlasmaStore::GetDebugDump() const {
   std::stringstream buffer;
-  buffer << "========== Plasma store: =================\n";
+  buffer << "Plasma store debug dump: \n";
   buffer << "Current usage: " << (allocator_.Allocated() / 1e9) << " / "
          << (allocator_.GetFootprintLimit() / 1e9) << " GB\n";
   buffer << "- num bytes created total: "

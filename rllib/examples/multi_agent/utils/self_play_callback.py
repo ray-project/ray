@@ -3,7 +3,7 @@ from collections import defaultdict
 import numpy as np
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
@@ -61,7 +61,7 @@ class SelfPlayCallback(DefaultCallbacks):
             main_module = algorithm.get_module("main")
             algorithm.add_module(
                 module_id=new_module_id,
-                module_spec=SingleAgentRLModuleSpec.from_module(main_module),
+                module_spec=RLModuleSpec.from_module(main_module),
                 module_state=main_module.get_state(),
                 new_agent_to_module_mapping_fn=agent_to_module_mapping_fn,
             )

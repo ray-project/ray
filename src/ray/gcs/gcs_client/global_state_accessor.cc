@@ -244,7 +244,7 @@ uint32_t GlobalStateAccessor::GetWorkerDebuggerPort(const WorkerID &worker_id) {
     RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
         worker_id,
         [&promise](const Status &status,
-                   const boost::optional<rpc::WorkerTableData> &result) {
+                   const std::optional<rpc::WorkerTableData> &result) {
           RAY_CHECK_OK(status);
           if (result.has_value()) {
             promise.set_value(result->debugger_port());
@@ -378,7 +378,7 @@ std::string GlobalStateAccessor::GetSystemConfig() {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(
         [&promise](const Status &status,
-                   const boost::optional<std::string> &stored_raylet_config) {
+                   const std::optional<std::string> &stored_raylet_config) {
           RAY_CHECK_OK(status);
           promise.set_value(*stored_raylet_config);
         }));
@@ -442,7 +442,10 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id,
       }
 
       if (relevant_client_index < 0) {
-        status = Status::NotFound("GCS cannot find the node with node ID " + node_id);
+        status = Status::NotFound(
+            "GCS cannot find the node with node ID " + node_id +
+            ". The node registration may not be complete yet before the timeout." +
+            " Try increase the RAY_raylet_start_wait_time_s config.");
       } else {
         *node_info = nodes[relevant_client_index].SerializeAsString();
         return Status::OK();

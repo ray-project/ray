@@ -90,6 +90,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
+    // Create GCS client.
     ReconnectClient();
   }
 
@@ -110,6 +111,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     rpc::ResetServerCallExecutor();
   }
 
+  // Each GcsClient has its own const cluster_id, so to reconnect we re-create the client.
   void ReconnectClient() {
     // Reconnecting a client happens when the server restarts with a different cluster
     // id. So we nede to re-create the client with the new cluster id.
@@ -276,8 +278,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     rpc::ActorTableData actor_table_data;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
         actor_id,
-        [&actor_table_data, &promise](
-            Status status, const boost::optional<rpc::ActorTableData> &result) {
+        [&actor_table_data, &promise](Status status,
+                                      const std::optional<rpc::ActorTableData> &result) {
           assert(result);
           actor_table_data.CopyFrom(*result);
           promise.set_value(true);

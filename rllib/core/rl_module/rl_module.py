@@ -6,9 +6,9 @@ import gymnasium as gym
 import tree  # pip install dm_tree
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.marl_module import (
-        MultiAgentRLModule,
-        MultiAgentRLModuleSpec,
+    from ray.rllib.core.rl_module.multi_rl_module import (
+        MultiRLModule,
+        MultiRLModuleSpec,
     )
     from ray.rllib.core.models.catalog import Catalog
 
@@ -45,7 +45,7 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 @dataclass
-class SingleAgentRLModuleSpec:
+class RLModuleSpec:
     """Utility spec class to make constructing RLModules (in single-agent case) easier.
 
     Args:
@@ -56,8 +56,14 @@ class SingleAgentRLModuleSpec:
             one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
         inference_only: Whether the RLModule should be configured in its inference-only
-            state, in which any components not needed for pure action computing (such as
-            a value function or a target network) might be missing.
+            state, in which those components not needed for action computing (for
+            example a value function or a target network) might be missing.
+            Note that `inference_only=True` AND `learner_only=True` is not allowed.
+        learner_only: Whether this RLModule should only be built on Learner workers, but
+            NOT on EnvRunners. Useful for RLModules inside a MultiRLModule that are only
+            used for training, for example a shared value function in a multi-agent
+            setup or a world model in a curiosity-learning setup.
+            Note that `inference_only=True` AND `learner_only=True` is not allowed.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
         load_state_path: The path to the module state to load from. NOTE: This must be
@@ -68,6 +74,7 @@ class SingleAgentRLModuleSpec:
     observation_space: Optional[gym.Space] = None
     action_space: Optional[gym.Space] = None
     inference_only: bool = False
+    learner_only: bool = False
     model_config_dict: Optional[Dict[str, Any]] = None
     catalog_class: Optional[Type["Catalog"]] = None
     load_state_path: Optional[str] = None
@@ -78,6 +85,7 @@ class SingleAgentRLModuleSpec:
             observation_space=self.observation_space,
             action_space=self.action_space,
             inference_only=self.inference_only,
+            learner_only=self.learner_only,
             model_config_dict=self.model_config_dict or {},
             catalog_class=self.catalog_class,
         )
@@ -96,19 +104,18 @@ class SingleAgentRLModuleSpec:
         return module
 
     @classmethod
-    def from_module(cls, module: "RLModule") -> "SingleAgentRLModuleSpec":
-        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+    def from_module(cls, module: "RLModule") -> "RLModuleSpec":
+        from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 
-        if isinstance(module, MultiAgentRLModule):
-            raise ValueError(
-                "MultiAgentRLModule cannot be converted to SingleAgentRLModuleSpec."
-            )
+        if isinstance(module, MultiRLModule):
+            raise ValueError("MultiRLModule cannot be converted to RLModuleSpec.")
 
-        return SingleAgentRLModuleSpec(
+        return RLModuleSpec(
             module_class=type(module),
             observation_space=module.config.observation_space,
             action_space=module.config.action_space,
             inference_only=module.config.inference_only,
+            learner_only=module.config.learner_only,
             model_config_dict=module.config.model_config_dict,
             catalog_class=module.config.catalog_class,
         )
@@ -127,11 +134,12 @@ class SingleAgentRLModuleSpec:
         module_class = deserialize_type(d["module_class"])
         module_config = RLModuleConfig.from_dict(d["module_config"])
 
-        spec = SingleAgentRLModuleSpec(
+        spec = RLModuleSpec(
             module_class=module_class,
             observation_space=module_config.observation_space,
             action_space=module_config.action_space,
             inference_only=module_config.inference_only,
+            learner_only=module_config.learner_only,
             model_config_dict=module_config.model_config_dict,
             catalog_class=module_config.catalog_class,
         )
@@ -145,8 +153,8 @@ class SingleAgentRLModuleSpec:
             override: Whether to update all properties in `self` with those of `other.
                 If False, only update those properties in `self` that are not None.
         """
-        if not isinstance(other, SingleAgentRLModuleSpec):
-            raise ValueError("Can only update with another SingleAgentRLModuleSpec.")
+        if not isinstance(other, RLModuleSpec):
+            raise ValueError("Can only update with another RLModuleSpec.")
 
         # If the field is None in the other, keep the current field, otherwise update
         # with the new value.
@@ -155,10 +163,12 @@ class SingleAgentRLModuleSpec:
             self.observation_space = other.observation_space or self.observation_space
             self.action_space = other.action_space or self.action_space
             self.inference_only = other.inference_only or self.inference_only
+            self.learner_only = other.learner_only and self.learner_only
             self.model_config_dict = other.model_config_dict or self.model_config_dict
             self.catalog_class = other.catalog_class or self.catalog_class
             self.load_state_path = other.load_state_path or self.load_state_path
         # Only override, if the field is None in `self`.
+        # Do NOT override the boolean settings: `inference_only` and `learner_only`.
         else:
             self.module_class = self.module_class or other.module_class
             self.observation_space = self.observation_space or other.observation_space
@@ -167,14 +177,18 @@ class SingleAgentRLModuleSpec:
             self.catalog_class = self.catalog_class or other.catalog_class
             self.load_state_path = self.load_state_path or other.load_state_path
 
-    def as_multi_agent(self) -> "MultiAgentRLModuleSpec":
-        """Returns a MultiAgentRLModuleSpec (`self` under DEFAULT_MODULE_ID key)."""
-        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+    def as_multi_rl_module_spec(self) -> "MultiRLModuleSpec":
+        """Returns a MultiRLModuleSpec (`self` under DEFAULT_MODULE_ID key)."""
+        from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
-        return MultiAgentRLModuleSpec(
+        return MultiRLModuleSpec(
             module_specs={DEFAULT_MODULE_ID: self},
             load_state_path=self.load_state_path,
         )
+
+    @Deprecated(new="RLModuleSpec.as_multi_rl_module_spec()", error=True)
+    def as_multi_agent(self, *args, **kwargs):
+        pass
 
 
 @ExperimentalAPI
@@ -189,8 +203,14 @@ class RLModuleConfig:
             one-hot encoded observation space of the RLModule because of preprocessing.
         action_space: The action space of the RLModule.
         inference_only: Whether the RLModule should be configured in its inference-only
-            state, in which any components not needed for pure action computing (such as
-            a value function or a target network) might be missing.
+            state, in which those components not needed for action computing (for
+            example a value function or a target network) might be missing.
+            Note that `inference_only=True` AND `learner_only=True` is not allowed.
+        learner_only: Whether this RLModule should only be built on Learner workers, but
+            NOT on EnvRunners. Useful for RLModules inside a MultiRLModule that are only
+            used for training, for example a shared value function in a multi-agent
+            setup or a world model in a curiosity-learning setup.
+            Note that `inference_only=True` AND `learner_only=True` is not allowed.
         model_config_dict: The model config dict to use.
         catalog_class: The Catalog class to use.
     """
@@ -198,6 +218,7 @@ class RLModuleConfig:
     observation_space: gym.Space = None
     action_space: gym.Space = None
     inference_only: bool = False
+    learner_only: bool = False
     model_config_dict: Dict[str, Any] = field(default_factory=dict)
     catalog_class: Type["Catalog"] = None
 
@@ -223,6 +244,7 @@ class RLModuleConfig:
             "observation_space": gym_space_to_dict(self.observation_space),
             "action_space": gym_space_to_dict(self.action_space),
             "inference_only": self.inference_only,
+            "learner_only": self.learner_only,
             "model_config_dict": self.model_config_dict,
             "catalog_class_path": catalog_class_path,
         }
@@ -239,6 +261,7 @@ class RLModuleConfig:
             observation_space=gym_space_from_dict(d["observation_space"]),
             action_space=gym_space_from_dict(d["action_space"]),
             inference_only=d["inference_only"],
+            learner_only=d["learner_only"],
             model_config_dict=d["model_config_dict"],
             catalog_class=catalog_class,
         )
@@ -265,7 +288,7 @@ class RLModule(Checkpointable, abc.ABC):
         env = gym.make("CartPole-v1")
 
         # Create a single agent RL module spec.
-        module_spec = SingleAgentRLModuleSpec(
+        module_spec = RLModuleSpec(
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
@@ -302,7 +325,7 @@ class RLModule(Checkpointable, abc.ABC):
         env = gym.make("CartPole-v1")
 
         # Create a single agent RL module spec.
-        module_spec = SingleAgentRLModuleSpec(
+        module_spec = RLModuleSpec(
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
@@ -330,7 +353,7 @@ class RLModule(Checkpointable, abc.ABC):
         env = gym.make("CartPole-v1")
 
         # Create a single agent RL module spec.
-        module_spec = SingleAgentRLModuleSpec(
+        module_spec = RLModuleSpec(
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
@@ -726,13 +749,13 @@ class RLModule(Checkpointable, abc.ABC):
             {},  # **kwargs
         )
 
-    def as_multi_agent(self) -> "MultiAgentRLModule":
+    def as_multi_rl_module(self) -> "MultiRLModule":
         """Returns a multi-agent wrapper around this module."""
-        from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+        from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 
-        marl_module = MultiAgentRLModule()
-        marl_module.add_module(DEFAULT_MODULE_ID, self)
-        return marl_module
+        multi_rl_module = MultiRLModule()
+        multi_rl_module.add_module(DEFAULT_MODULE_ID, self)
+        return multi_rl_module
 
     def unwrapped(self) -> "RLModule":
         """Returns the underlying module if this module is a wrapper.
@@ -744,6 +767,10 @@ class RLModule(Checkpointable, abc.ABC):
             The underlying module.
         """
         return self
+
+    @Deprecated(new="RLModule.as_multi_rl_module()", error=True)
+    def as_multi_agent(self, *args, **kwargs):
+        pass
 
     @Deprecated(new="RLModule.save_to_path(...)", error=True)
     def save_state(self, *args, **kwargs):
