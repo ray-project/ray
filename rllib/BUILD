@@ -186,12 +186,12 @@ py_test(
 )
 # StatelessCartPole
 py_test(
-    name = "learning_tests_stateless_cartpole_appo_multi_gpu",
+    name = "learning_tests_stateless_cartpole_appo",
     main = "tuned_examples/appo/stateless_cartpole_appo.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/appo/stateless_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
 )
 # MultiAgentCartPole
 py_test(
@@ -403,6 +403,15 @@ py_test(
     size = "large",
     srcs = ["tuned_examples/impala/cartpole_impala.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+)
+# StatelessCartPole
+py_test(
+    name = "learning_tests_stateless_cartpole_impala",
+    main = "tuned_examples/impala/stateless_cartpole_impala.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "large",
+    srcs = ["tuned_examples/impala/stateless_cartpole_impala.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
 )
 # MultiAgentCartPole
 py_test(
