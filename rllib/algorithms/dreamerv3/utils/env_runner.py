@@ -9,7 +9,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from collections import defaultdict
 from functools import partial
-from typing import List, Tuple
+from typing import Collection, List, Optional, Tuple, Union
 
 import gymnasium as gym
 import numpy as np
@@ -17,14 +17,16 @@ import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
+from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     EPISODE_DURATION_SEC_MEAN,
@@ -46,7 +48,7 @@ from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.numpy import convert_to_numpy, one_hot
 from ray.rllib.utils.spaces.space_utils import batch, unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 _, tf, _ = try_import_tf()
@@ -171,7 +173,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         # Create our RLModule to compute actions with.
         policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
-        self.marl_module_spec = self.config.get_marl_module_spec(
+        self.multi_rl_module_spec = self.config.get_multi_rl_module_spec(
             policy_dict=policy_dict
         )
         if self.config.share_module_between_env_runner_and_learner:
@@ -181,7 +183,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # weight-synched each iteration).
         else:
             # TODO (sven): DreamerV3 is currently single-agent only.
-            self.module = self.marl_module_spec.build()[DEFAULT_MODULE_ID]
+            self.module = self.multi_rl_module_spec.build()[DEFAULT_MODULE_ID]
 
         self.metrics = MetricsLogger()
 
@@ -483,6 +485,15 @@ class DreamerV3EnvRunner(EnvRunner):
 
         return done_episodes_to_return
 
+    def get_spaces(self):
+        return {
+            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
+            DEFAULT_MODULE_ID: (
+                self.env.single_observation_space,
+                self.env.single_action_space,
+            ),
+        }
+
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
         for eps in self._done_episodes_for_metrics:
@@ -518,22 +529,30 @@ class DreamerV3EnvRunner(EnvRunner):
         # Return reduced metrics.
         return self.metrics.reduce()
 
-    def get_weights(self, policies, inference_only):
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
         """Returns the weights of our (single-agent) RLModule."""
         if self.module is None:
             assert self.config.share_module_between_env_runner_and_learner
             return {}
         else:
             return {
-                DEFAULT_MODULE_ID: self.module.get_state(inference_only=inference_only),
+                COMPONENT_RL_MODULE: {
+                    DEFAULT_MODULE_ID: self.module.get_state(**kwargs),
+                },
             }
 
-    def set_weights(self, weights, global_vars=None):
+    def set_state(self, state: StateDict) -> None:
         """Writes the weights of our (single-agent) RLModule."""
         if self.module is None:
             assert self.config.share_module_between_env_runner_and_learner
         else:
-            self.module.set_state(weights[DEFAULT_MODULE_ID])
+            self.module.set_state(state[COMPONENT_RL_MODULE][DEFAULT_MODULE_ID])
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -590,6 +609,20 @@ class DreamerV3EnvRunner(EnvRunner):
         self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min")
         self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max")
         self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max")
+
+    @Deprecated(
+        new="DreamerV3EnvRunner.get_state(components='rl_module')",
+        error=True,
+    )
+    def get_weights(self, *args, **kwargs):
+        pass
+
+    @Deprecated(
+        new="DreamerV3EnvRunner.get_state()",
+        error=True,
+    )
+    def set_weights(self, *args, **kwargs):
+        pass
 
 
 class NormalizedImageEnv(gym.ObservationWrapper):

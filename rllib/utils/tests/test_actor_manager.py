@@ -20,7 +20,8 @@ def load_random_numbers():
         "tests",
         "random_numbers.pkl",
     )
-    return pickle.load(open(pkl_file, "rb"))
+    with open(pkl_file, "rb") as f:
+        return pickle.load(f)
 
 
 RANDOM_NUMS = load_random_numbers()
@@ -341,7 +342,7 @@ class TestActorManager(unittest.TestCase):
         func = [functools.partial(f, i) for i in range(3)]
 
         with self.assertRaisesRegexp(AssertionError, "same number of callables") as _:
-            manager.foreach_actor_async(func, healthy_only=True),
+            manager.foreach_actor_async(func, healthy_only=True)
 
         manager.clear()
 

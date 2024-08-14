@@ -68,6 +68,7 @@ class tqdm:
         iterable: Optional[Iterable] = None,
         desc: Optional[str] = None,
         total: Optional[int] = None,
+        unit: Optional[str] = None,
         position: Optional[int] = None,
         flush_interval_s: Optional[float] = None,
     ):
@@ -82,6 +83,7 @@ class tqdm:
         self._iterable = iterable
         self._desc = desc or ""
         self._total = total
+        self._unit = unit or "it"
         self._ip = services.get_node_ip_address()
         self._pid = os.getpid()
         self._pos = position or 0
@@ -143,6 +145,7 @@ class tqdm:
             "pos": self._pos,
             "desc": self._desc,
             "total": self._total,
+            "unit": self._unit,
             "ip": self._ip,
             "pid": self._pid,
             "uuid": self._uuid,
@@ -176,9 +179,10 @@ class _Bar:
         self.bar = real_tqdm.tqdm(
             desc=state["desc"] + " " + str(state["pos"]),
             total=state["total"],
+            unit=state["unit"],
             position=pos_offset + state["pos"],
-            leave=False,
             dynamic_ncols=True,
+            unit_scale=True,
         )
         if state["x"]:
             self.bar.update(state["x"])
@@ -193,6 +197,7 @@ class _Bar:
         delta = state["x"] - self.state["x"]
         if delta:
             self.bar.update(delta)
+        self.bar.refresh()
         self.state = state
 
     def close(self):
@@ -237,8 +242,12 @@ class _BarGroup:
     def close_bar(self, state: ProgressBarState) -> None:
         """Remove a bar from this group."""
         bar = self.bars_by_uuid[state["uuid"]]
+        # Note: Hide and then unhide bars to prevent flashing of the
+        # last bar when we are closing multiple bars sequentially.
+        instance().hide_bars()
         bar.close()
         del self.bars_by_uuid[state["uuid"]]
+        instance().unhide_bars()
 
     def slots_required(self):
         """Return the number of pos slots we need to accomodate bars in this group."""
@@ -327,11 +336,15 @@ class _BarManager:
         state["desc"] = prefix + state["desc"]
         process = self._get_or_allocate_bar_group(state)
         if process.has_bar(state["uuid"]):
+            # Always call `update_bar` to sync any last remaining updates
+            # prior to closing. Otherwise, the displayed progress bars
+            # can be left incomplete, even after execution finishes.
+            # Fixes https://github.com/ray-project/ray/issues/44983
+            process.update_bar(state)
+
             if state["closed"]:
                 process.close_bar(state)
                 self._update_offsets()
-            else:
-                process.update_bar(state)
         else:
             process.allocate_bar(state)
             self._update_offsets()
