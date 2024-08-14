@@ -138,6 +138,7 @@ void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_add
   if (!maybe_subscription_callback.has_value()) {
     return;
   }
+
   const auto &subscription_callbacks = maybe_subscription_callback.value();
   for (const auto &subscription_callback : subscription_callbacks) {
     cum_processed_messages_++;
