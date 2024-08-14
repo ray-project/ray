@@ -6,11 +6,8 @@ import re
 import ray
 from ray._private.gcs_pubsub import (
     GcsAioPublisher,
-    GcsAioErrorSubscriber,
-    GcsAioLogSubscriber,
     GcsAioResourceUsageSubscriber,
 )
-from ray.core.generated.gcs_pb2 import ErrorTableData
 import pytest
 
 
@@ -33,26 +30,6 @@ def test_publish_and_subscribe_error_info(ray_start_regular):
     assert err2["error_message"] == "test error message 2"
 
     subscriber.close()
-
-
-@pytest.mark.asyncio
-async def test_aio_publish_and_subscribe_error_info(ray_start_regular):
-    address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_address"]
-
-    subscriber = GcsAioErrorSubscriber(address=gcs_server_addr)
-    await subscriber.subscribe()
-
-    publisher = GcsAioPublisher(address=gcs_server_addr)
-    err1 = ErrorTableData(error_message="test error message 1")
-    err2 = ErrorTableData(error_message="test error message 2")
-    await publisher.publish_error(b"aaa_id", err1)
-    await publisher.publish_error(b"bbb_id", err2)
-
-    assert await subscriber.poll() == (b"aaa_id", err1)
-    assert await subscriber.poll() == (b"bbb_id", err2)
-
-    await subscriber.close()
 
 
 def test_publish_and_subscribe_logs(ray_start_regular):
@@ -79,31 +56,6 @@ def test_publish_and_subscribe_logs(ray_start_regular):
     assert subscriber.poll() == log_batch
 
     subscriber.close()
-
-
-@pytest.mark.asyncio
-async def test_aio_publish_and_subscribe_logs(ray_start_regular):
-    address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_address"]
-
-    subscriber = GcsAioLogSubscriber(address=gcs_server_addr)
-    await subscriber.subscribe()
-
-    publisher = GcsAioPublisher(address=gcs_server_addr)
-    log_batch = {
-        "ip": "127.0.0.1",
-        "pid": "gcs",
-        "job": "0001",
-        "is_err": False,
-        "lines": ["line 1", "line 2"],
-        "actor_name": "test actor",
-        "task_name": "test task",
-    }
-    await publisher.publish_logs(log_batch)
-
-    assert await subscriber.poll() == log_batch
-
-    await subscriber.close()
 
 
 @pytest.mark.asyncio
