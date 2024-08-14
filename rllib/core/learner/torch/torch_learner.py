@@ -100,7 +100,7 @@ class TorchLearner(Learner):
 
         # Loss scalers for mixed precision training. Map optimizer names to
         # associated torch GradScaler objects.
-        self._amp_grad_scalers = defaultdict(lambda: torch.cuda.amp.GradScaler())
+        self._amp_grad_scalers = defaultdict(lambda: torch.amp.GradScaler(self._device))
 
     @OverrideToImplementCustomLogic
     @override(Learner)

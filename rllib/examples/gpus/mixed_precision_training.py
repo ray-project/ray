@@ -38,16 +38,15 @@ In the console output, you should see something like this:
 
 TODO (sven)
 """
+import torch
+
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-
-torch, _ = try_import_torch()
 
 
 parser = add_rllib_example_script_args(
@@ -70,7 +69,7 @@ class PPOTorchMixedPrecisionLearner(PPOTorchLearner):
         assert len(self.module) == 1 and DEFAULT_MODULE_ID in self.module
 
         # Create the torch gradient scaler instance to use for loss scaling.
-        self._grad_scaler = torch.cuda.amp.GradScaler()
+        self._grad_scaler = torch.amp.GradScaler(self._device)
 
     def compute_loss_for_module(self, *args, **kwargs):
         module_loss = super().compute_loss_for_module(*args, **kwargs)
