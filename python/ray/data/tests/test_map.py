@@ -1113,7 +1113,7 @@ def test_map_batches_async_exception_propagation(shutdown_only):
     ds = ds.map_batches(MyUDF, concurrency=2)
 
     with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
-        result = ds.materialize()
+        ds.materialize()
 
     assert "AssertionError" in str(exc_info.value)
     assert "assert False" in str(exc_info.value)
