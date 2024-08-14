@@ -1,3 +1,4 @@
+from ray.experimental.channel.gpu_communicator import GPUCommunicator
 import ray
 from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
@@ -166,6 +167,7 @@ class DAGNode(DAGNodeBase):
         enable_asyncio: bool = False,
         _asyncio_max_queue_size: Optional[int] = None,
         _max_buffered_results: Optional[int] = None,
+        _nccl_group: Optional["GPUCommunicator"] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -186,6 +188,11 @@ class DAGNode(DAGNodeBase):
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
+            _nccl_group: The NCCL group to use for this DAG. If None, the DAG
+                will create a NCCL group internally if NCCL communication is
+                needed. Providing a nccl group here allows reusing, which
+                avoids extra memory overhead when initializing a new NCCL group
+                from aDAG.
 
         Returns:
             A compiled DAG.
@@ -218,6 +225,7 @@ class DAGNode(DAGNodeBase):
             enable_asyncio,
             _asyncio_max_queue_size,
             _max_buffered_results,
+            _nccl_group,
         )
 
     def execute(

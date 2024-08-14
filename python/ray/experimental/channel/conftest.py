@@ -1,11 +1,13 @@
 import asyncio
 from collections import defaultdict
+from typing import Optional, Tuple
 from unittest import mock
 
 import torch
 
 import ray
 import ray.experimental.channel as ray_channel
+from ray.experimental.channel.gpu_communicator import TorchTensorAllocator
 
 
 @ray.remote(num_cpus=0)
@@ -74,13 +76,21 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
         ray.get(barrier.wait.remote(self.num_ops[barrier_key], tensor))
         self.num_ops[barrier_key] += 1
 
-    def recv(self, buf: torch.Tensor, peer_rank: int):
+    def recv(
+        self,
+        shape: Tuple[int],
+        dtype: torch.dtype,
+        peer_rank: int,
+        allocator: Optional[TorchTensorAllocator] = None,
+    ):
         # "Receive" the tensor from the barrier actor.
         barrier_key = f"barrier-{peer_rank}-{self.get_self_rank()}"
         barrier = ray.get_actor(name=barrier_key)
         received_tensor = ray.get(barrier.wait.remote(self.num_ops[barrier_key]))
+        buf = allocator(shape, dtype)
         buf[:] = received_tensor[:]
         self.num_ops[barrier_key] += 1
+        return buf
 
 
 def start_nccl_mock():

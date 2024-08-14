@@ -3,12 +3,11 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
+from ray.experimental.channel.gpu_communicator import TorchTensorAllocator
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import torch
-
-    from ray.experimental.channel.torch_tensor_nccl_channel import TorchTensorAllocator
 
 logger = logging.getLogger(__name__)
 

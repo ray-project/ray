@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import ray
-from ray.experimental.channel.nccl_group import _NcclGroup
+from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -112,7 +112,7 @@ class ChannelContext:
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
-        self.nccl_groups: Dict[str, "_NcclGroup"] = {}
+        self.nccl_groups: Dict[str, "GPUCommunicator"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":

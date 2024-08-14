@@ -9,6 +9,7 @@ import traceback
 from typing import NamedTuple
 
 from ray.experimental.channel.cached_channel import CachedChannel
+from ray.experimental.channel.gpu_communicator import GPUCommunicator
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.util.annotations import PublicAPI
@@ -34,6 +35,7 @@ from ray.experimental.channel.shared_memory_channel import (
 )
 
 from ray.experimental.channel.torch_tensor_nccl_channel import (
+    _set_nccl_group,
     _init_nccl_group,
     _destroy_nccl_group,
 )
@@ -529,6 +531,7 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         asyncio_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
+        nccl_group: Optional[GPUCommunicator] = None,
     ):
         """
         Args:
@@ -557,6 +560,9 @@ class CompiledDAG:
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
+            nccl_group: The NCCL group to use for this DAG. If None, the DAG
+                will create a NCCL group internally if NCCL communication is
+                needed.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -640,6 +646,7 @@ class CompiledDAG:
         # Type hints specified by the user for DAG (intermediate) outputs.
         self._type_hints = []
 
+        self._custom_nccl_group: Optional[GPUCommunicator] = nccl_group
         # Uniquely identifies the NCCL communicator that will be used within
         # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
@@ -916,7 +923,16 @@ class CompiledDAG:
         if None in nccl_actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
         if nccl_actors and self._nccl_group_id is None:
-            self._nccl_group_id = _init_nccl_group(nccl_actors)
+            if self._custom_nccl_group:
+                self._nccl_group_id = _set_nccl_group(
+                    self._custom_nccl_group, nccl_actors
+                )
+            else:
+                self._nccl_group_id = _init_nccl_group(nccl_actors)
+        elif self._custom_nccl_group:
+            raise ValueError(
+                "The DAG does not use NCCL, but a custom NCCL group was provided."
+            )
 
         if direct_input:
             self._input_num_positional_args = 1
@@ -1932,6 +1948,7 @@ def build_compiled_dag_from_ray_dag(
     enable_asyncio: bool = False,
     asyncio_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
+    nccl_group: Optional["GPUCommunicator"] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         execution_timeout,
@@ -1939,6 +1956,7 @@ def build_compiled_dag_from_ray_dag(
         enable_asyncio,
         asyncio_max_queue_size,
         max_buffered_results,
+        nccl_group,
     )
 
     def _build_compiled_dag(node):
