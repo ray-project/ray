@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import os
 import threading
 import time
 from copy import copy, deepcopy
@@ -230,6 +231,15 @@ class MockDeploymentHandle:
 
     def set_running_replicas_populated(self, val: bool):
         self._running_replicas_populated = val
+
+
+@serve.deployment
+class GetPID:
+    def __call__(self):
+        return os.getpid()
+
+
+get_pid_entrypoint = GetPID.bind()
 
 
 def check_ray_stopped():
