@@ -317,7 +317,8 @@ class RayEvent {
   std::ostringstream osstream_;
 };
 
-using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData>>;
+using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData>,
+                                        std::shared_ptr<rpc::ExportNodeData>>;
 class RayExportEvent {
  public:
   RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}
