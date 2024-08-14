@@ -319,6 +319,7 @@ def _generate_transform_fn_for_async_map_batches(
         # the queue as they become available.
         output_batch_queue = queue.Queue()
         exception_queue = queue.Queue()
+        SENTINEL = dict()  # Signal to stop processing
 
         async def process_batch(batch: DataBatch):
             try:
@@ -329,7 +330,6 @@ def _generate_transform_fn_for_async_map_batches(
                     output_batch_queue.put(output_batch)
             except Exception as e:
                 exception_queue.put(e)
-                SENTINEL = dict()  # Signal to stop processing
                 output_batch_queue.put(SENTINEL)
 
         async def process_all_batches():
@@ -356,7 +356,7 @@ def _generate_transform_fn_for_async_map_batches(
             # from the async generator, corresponding to a
             # single row from the input batch.
             out_batch = output_batch_queue.get()
-            if out_batch is None:
+            if out_batch is SENTINEL:
                 break
             _validate_batch_output(out_batch)
             yield out_batch
