@@ -72,6 +72,10 @@ class TaskEvent {
     return std::make_pair(task_id_, attempt_number_);
   }
 
+  virtual rpc::TaskStatus GetTaskStatus() const {
+    return rpc::TaskStatus::NIL;
+  }
+
  protected:
   /// Task Id.
   const TaskID task_id_ = TaskID::Nil();
@@ -137,6 +141,10 @@ class TaskStatusEvent : public TaskEvent {
   void ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
   bool IsProfileEvent() const override { return false; }
+
+  virtual rpc::TaskStatus GetTaskStatus() const override {
+    return task_status_;
+  }
 
  private:
   /// The task status change if it's a status change event.
@@ -311,6 +319,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///             status events being dropped.
   void GetTaskStatusEventsToSend(
       std::vector<std::unique_ptr<TaskEvent>> *status_events_to_send,
+      std::vector<std::unique_ptr<TaskEvent>> *dropped_status_events_to_write,
       absl::flat_hash_set<TaskAttempt> *dropped_task_attempts_to_send)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -341,6 +350,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///        status events being dropped.
   void WriteExportData(
       std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
+      std::vector<std::unique_ptr<TaskEvent>> &&dropped_status_events_to_write,
       std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send,
       absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send);
 
@@ -411,6 +421,11 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Circular buffered task status events.
   boost::circular_buffer<std::unique_ptr<TaskEvent>> status_events_
+      ABSL_GUARDED_BY(mutex_);
+  
+  /// Status events that were dropped but will still be written in 
+  /// the export API. Circular buffer to limit memory.
+  boost::circular_buffer<std::unique_ptr<TaskEvent>> dropped_status_events_for_export_
       ABSL_GUARDED_BY(mutex_);
 
   /// Buffered task attempts that were dropped due to status events being dropped.
