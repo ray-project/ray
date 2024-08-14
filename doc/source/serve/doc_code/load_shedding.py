@@ -33,11 +33,15 @@ class Requester:
 r = Requester.remote()
 serve.run(SlowDeployment.bind())
 
-# Send 4 requests first. 2 of these will be sent to the replica and 2 will
-# be queued in the proxy. These requests take a few seconds to execute.
-first_refs = [r.do_request.remote() for _ in range(4)]
+# Send 4 requests first.
+# 2 of these will be sent to the replica. These requests take a few seconds to execute.
+first_refs = [r.do_request.remote() for _ in range(2)]
 _, pending = ray.wait(first_refs, timeout=1)
-assert len(pending) == 4
+assert len(pending) == 2
+# 2 will be queued in the proxy. 
+queued_refs = [r.do_request.remote() for _ in range(2)]
+_, pending = ray.wait(queued_refs, timeout=0.1)
+assert len(pending) == 2
 
 # Send an additional 5 requests. These will be rejected immediately because
 # the replica and the proxy queue are already full.

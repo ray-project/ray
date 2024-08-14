@@ -64,7 +64,7 @@ class Read(AbstractMap):
             return BlockMetadata(None, None, None, None, None)
 
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
-        metadata = [read_task.get_metadata() for read_task in read_tasks]
+        metadata = [read_task.metadata for read_task in read_tasks]
 
         if all(meta.num_rows is not None for meta in metadata):
             num_rows = sum(meta.num_rows for meta in metadata)

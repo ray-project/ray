@@ -20,6 +20,7 @@ steps:
           # release test suite. We don't have release tests for Python 3.10 yet.
           - "3.9"
           - "3.11"
+          - "3.12"
         platform:
           - cu12.3.2-cudnn9
           - cpu

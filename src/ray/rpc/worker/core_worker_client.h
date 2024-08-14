@@ -420,7 +420,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
       auto rpc_callback =
           [this, this_ptr, seq_no, task_size, callback = std::move(pair.second)](
-              Status status, const rpc::PushTaskReply &reply) {
+              Status status, rpc::PushTaskReply &&reply) {
             {
               absl::MutexLock lock(&mutex_);
               if (seq_no > max_finished_seq_no_) {
@@ -430,7 +430,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
               RAY_CHECK(rpc_bytes_in_flight_ >= 0);
             }
             SendRequests();
-            callback(status, reply);
+            callback(status, std::move(reply));
           };
 
       RAY_UNUSED(INVOKE_RPC_CALL(CoreWorkerService,

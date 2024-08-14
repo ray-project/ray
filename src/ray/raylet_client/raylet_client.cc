@@ -364,7 +364,7 @@ void raylet::RayletClient::ReportWorkerBacklog(
   request.set_worker_id(worker_id.Binary());
   request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
   grpc_client_->ReportWorkerBacklog(
-      request, [](const Status &status, const rpc::ReportWorkerBacklogReply &reply) {
+      request, [](const Status &status, rpc::ReportWorkerBacklogReply &&reply) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Error reporting task backlog information: " << status;
         }
@@ -383,12 +383,12 @@ Status raylet::RayletClient::ReturnWorker(
   request.set_disconnect_worker(disconnect_worker);
   request.set_disconnect_worker_error_detail(disconnect_worker_error_detail);
   request.set_worker_exiting(worker_exiting);
-  grpc_client_->ReturnWorker(
-      request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Error returning worker: " << status;
-        }
-      });
+  grpc_client_->ReturnWorker(request,
+                             [](const Status &status, rpc::ReturnWorkerReply &&reply) {
+                               if (!status.ok()) {
+                                 RAY_LOG(INFO) << "Error returning worker: " << status;
+                               }
+                             });
   return Status::OK();
 }
 
@@ -398,12 +398,11 @@ void raylet::RayletClient::GetTaskFailureCause(
   rpc::GetTaskFailureCauseRequest request;
   request.set_task_id(task_id.Binary());
   grpc_client_->GetTaskFailureCause(
-      request,
-      [callback](const Status &status, const rpc::GetTaskFailureCauseReply &reply) {
+      request, [callback](const Status &status, rpc::GetTaskFailureCauseReply &&reply) {
         if (!status.ok()) {
           RAY_LOG(INFO) << "Error getting task result: " << status;
         }
-        callback(status, reply);
+        callback(status, std::move(reply));
       });
 }
 
@@ -453,15 +452,14 @@ void raylet::RayletClient::PushMutableObject(
 
     // TODO: Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(
-        request,
-        [callback](const Status &status, const rpc::PushMutableObjectReply &reply) {
+        request, [callback](const Status &status, rpc::PushMutableObjectReply &&reply) {
           if (!status.ok()) {
             RAY_LOG(ERROR) << "Error pushing mutable object: " << status;
           }
           if (reply.done()) {
             // The callback is only executed once the receiver node receives all chunks
             // for the mutable object write.
-            callback(status, reply);
+            callback(status, std::move(reply));
           }
         });
   }
@@ -476,13 +474,13 @@ void raylet::RayletClient::ReleaseUnusedActorWorkers(
   }
   grpc_client_->ReleaseUnusedActorWorkers(
       request,
-      [callback](const Status &status, const rpc::ReleaseUnusedActorWorkersReply &reply) {
+      [callback](const Status &status, rpc::ReleaseUnusedActorWorkersReply &&reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING)
               << "Error releasing workers from raylet, the raylet may have died:"
               << status;
         }
-        callback(status, reply);
+        callback(status, std::move(reply));
       });
 }
 
@@ -538,14 +536,13 @@ void raylet::RayletClient::ReleaseUnusedBundles(
     request.add_bundles_in_use()->CopyFrom(bundle);
   }
   grpc_client_->ReleaseUnusedBundles(
-      request,
-      [callback](const Status &status, const rpc::ReleaseUnusedBundlesReply &reply) {
+      request, [callback](const Status &status, rpc::ReleaseUnusedBundlesReply &&reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING)
               << "Error releasing bundles from raylet, the raylet may have died:"
               << status;
         }
-        callback(status, reply);
+        callback(status, std::move(reply));
       });
 }
 
@@ -564,9 +561,9 @@ void raylet::RayletClient::PinObjectIDs(
   }
   pins_in_flight_++;
   auto rpc_callback = [this, callback = std::move(callback)](
-                          Status status, const rpc::PinObjectIDsReply &reply) {
+                          Status status, rpc::PinObjectIDsReply &&reply) {
     pins_in_flight_--;
-    callback(status, reply);
+    callback(status, std::move(reply));
   };
   grpc_client_->PinObjectIDs(request, rpc_callback);
 }

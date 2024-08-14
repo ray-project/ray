@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/task_receiver.h"
 
 #include <thread>
 
@@ -25,19 +25,17 @@ using namespace ray::gcs;
 namespace ray {
 namespace core {
 
-void CoreWorkerDirectTaskReceiver::Init(
-    std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
-    rpc::Address rpc_address,
-    std::shared_ptr<DependencyWaiter> dependency_waiter) {
+void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
+                        rpc::Address rpc_address,
+                        std::shared_ptr<DependencyWaiter> dependency_waiter) {
   waiter_ = std::move(dependency_waiter);
   rpc_address_ = rpc_address;
   client_pool_ = client_pool;
 }
 
-void CoreWorkerDirectTaskReceiver::HandleTask(
-    const rpc::PushTaskRequest &request,
-    rpc::PushTaskReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
+                              rpc::PushTaskReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(waiter_ != nullptr) << "Must call init() prior to use";
   // Use `mutable_task_spec()` here as `task_spec()` returns a const reference
   // which doesn't work with std::move.
@@ -289,7 +287,7 @@ void CoreWorkerDirectTaskReceiver::HandleTask(
   }
 }
 
-void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
+void TaskReceiver::RunNormalTasksFromQueue() {
   // If the scheduling queue is empty, return.
   if (normal_scheduling_queue_->TaskQueueEmpty()) {
     return;
@@ -299,8 +297,8 @@ void CoreWorkerDirectTaskReceiver::RunNormalTasksFromQueue() {
   normal_scheduling_queue_->ScheduleRequests();
 }
 
-bool CoreWorkerDirectTaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
-                                                         const TaskID &task_id) {
+bool TaskReceiver::CancelQueuedActorTask(const WorkerID &caller_worker_id,
+                                         const TaskID &task_id) {
   auto it = actor_scheduling_queues_.find(caller_worker_id);
   if (it != actor_scheduling_queues_.end()) {
     return it->second->CancelTaskIfFound(task_id);
@@ -310,16 +308,16 @@ bool CoreWorkerDirectTaskReceiver::CancelQueuedActorTask(const WorkerID &caller_
   }
 }
 
-bool CoreWorkerDirectTaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
+bool TaskReceiver::CancelQueuedNormalTask(TaskID task_id) {
   // Look up the task to be canceled in the queue of normal tasks. If it is found and
   // removed successfully, return true.
   return normal_scheduling_queue_->CancelTaskIfFound(task_id);
 }
 
 /// Note that this method is only used for asyncio actor.
-void CoreWorkerDirectTaskReceiver::SetupActor(bool is_asyncio,
-                                              int fiber_max_concurrency,
-                                              bool execute_out_of_order) {
+void TaskReceiver::SetupActor(bool is_asyncio,
+                              int fiber_max_concurrency,
+                              bool execute_out_of_order) {
   RAY_CHECK(fiber_max_concurrency_ == 0)
       << "SetupActor should only be called at most once.";
   is_asyncio_ = is_asyncio;
@@ -327,13 +325,13 @@ void CoreWorkerDirectTaskReceiver::SetupActor(bool is_asyncio,
   execute_out_of_order_ = execute_out_of_order;
 }
 
-void CoreWorkerDirectTaskReceiver::Stop() {
+void TaskReceiver::Stop() {
   for (const auto &[_, scheduling_queue] : actor_scheduling_queues_) {
     scheduling_queue->Stop();
   }
 }
 
-void CoreWorkerDirectTaskReceiver::SetActorReprName(const std::string &repr_name) {
+void TaskReceiver::SetActorReprName(const std::string &repr_name) {
   actor_repr_name_ = repr_name;
 }
 
