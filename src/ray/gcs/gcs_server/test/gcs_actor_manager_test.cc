@@ -13,6 +13,8 @@
 // limitations under the License.
 
 #include <memory>
+#include <filesystem>
+#include <fstream>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -24,6 +26,7 @@
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "ray/util/event.h"
 // clang-format on
 
 namespace ray {
@@ -111,8 +114,29 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   instrumented_io_context &io_service_;
 };
 
+void ReadContentFromFile(std::vector<std::string> &vc,
+                         std::string log_file,
+                         std::string filter = "") {
+  std::string line;
+  std::ifstream read_file;
+  read_file.open(log_file, std::ios::binary);
+  while (std::getline(read_file, line)) {
+    if (filter.empty() || line.find(filter) != std::string::npos) {
+      vc.push_back(line);
+    }
+  }
+  read_file.close();
+}
+
 class GcsActorManagerTest : public ::testing::Test {
  public:
+  std::string GenerateLogDir() {
+    std::string log_dir_generate = std::string(5, ' ');
+    FillRandom(&log_dir_generate);
+    std::string log_dir = "event" + StringToHex(log_dir_generate);
+    return log_dir;
+  }
+
   GcsActorManagerTest()
       : mock_actor_scheduler_(new MockActorScheduler()), periodical_runner_(io_service_) {
     RayConfig::instance().initialize(
@@ -155,6 +179,7 @@ class GcsActorManagerTest : public ::testing::Test {
         *function_manager_,
         [](const ActorID &actor_id) {},
         [this](const rpc::Address &addr) { return worker_client_; });
+    log_dir_ = GenerateLogDir();
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -165,6 +190,7 @@ class GcsActorManagerTest : public ::testing::Test {
   virtual ~GcsActorManagerTest() {
     io_service_.stop();
     thread_io_service_->join();
+    std::filesystem::remove_all(log_dir_.c_str());
   }
 
   void WaitActorCreated(const ActorID &actor_id) {
@@ -286,9 +312,11 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   PeriodicalRunner periodical_runner_;
+  std::string log_dir_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {
+  RayEventInit(rpc::Event_SourceType::Event_SourceType_GCS, absl::flat_hash_map<std::string, std::string>(), log_dir_);
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
   rpc::CreateActorRequest create_actor_request;
@@ -296,6 +324,10 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       registered_actor->GetCreationTaskSpecification().GetMessage());
   RAY_CHECK_EQ(
       gcs_actor_manager_->CountFor(rpc::ActorTableData::DEPENDENCIES_UNREADY, ""), 1);
+  std::vector<std::string> vc;
+  // ReadContentFromFile(vc, log_dir_ + "/events/event_GCS.log");
+  // EXPECT_EQ((int)vc.size(), 1);
+  // std::cout << "DEGUG EXPORT ACTOR 0: " << vc[0] << "\n";
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   Status status = gcs_actor_manager_->CreateActor(
@@ -306,6 +338,9 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   RAY_CHECK_OK(status);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::PENDING_CREATION, ""),
                1);
+  // ReadContentFromFile(vc, log_dir_ + "/events/event_GCS.log");
+  // EXPECT_EQ((int)vc.size(), 2);
+  // std::cout << "DEGUG EXPORT ACTOR 1: " << vc[1] << "\n";
 
   ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
@@ -318,11 +353,20 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 1);
+  // ReadContentFromFile(vc, log_dir_ + "/events/event_GCS.log");
+  // EXPECT_EQ((int)vc.size(), 3);
+  // std::cout << "DEGUG EXPORT ACTOR 2: " << vc[2] << "\n";
 
   ASSERT_TRUE(worker_client_->Reply());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 0);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);
+  ReadContentFromFile(vc, log_dir_ + "/events/event_GCS.log");
+  // EXPECT_EQ((int)vc.size(), 4);
+  // std::cout << "DEGUG EXPORT ACTOR 3: " << vc[3] << "\n";
+  for (auto line: vc) {
+    std::cout << "DEGUG EXPORT ACTOR: " << line << "\n";
+  }
 }
 
 TEST_F(GcsActorManagerTest, TestDeadCount) {
