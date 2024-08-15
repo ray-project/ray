@@ -554,7 +554,7 @@ void GcsActorManager::HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
   if (no_restart) {
     DestroyActor(actor_id, GenKilledByApplicationCause(GetActor(actor_id)));
   } else {
-    KillActor(actor_id, force_kill, no_restart);
+    KillActor(actor_id, force_kill);
   }
 
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -1519,24 +1519,20 @@ void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &acto
 
 void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
                                                   const rpc::ActorDeathCause &death_cause,
-                                                  bool force_kill,
-                                                  bool no_restart) {
+                                                  bool force_kill) {
   rpc::KillActorRequest request;
   request.set_intended_actor_id(actor->GetActorID().Binary());
   request.mutable_death_cause()->CopyFrom(death_cause);
   request.set_force_kill(force_kill);
-  request.set_no_restart(no_restart);
   auto actor_client = worker_client_factory_(actor->GetAddress());
   RAY_LOG(DEBUG) << "Send request to kill actor " << actor->GetActorID() << " to worker "
                  << actor->GetWorkerID() << " at node " << actor->GetNodeID();
-  actor_client->KillActor(request, [](auto &status, auto &) {
+  actor_client->KillActor(request, [](auto &status, auto &&) {
     RAY_LOG(DEBUG) << "Killing status: " << status.ToString();
   });
 }
 
-void GcsActorManager::KillActor(const ActorID &actor_id,
-                                bool force_kill,
-                                bool no_restart) {
+void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
   RAY_LOG(DEBUG) << "Killing actor, job id = " << actor_id.JobId()
                  << ", actor id = " << actor_id << ", force_kill = " << force_kill;
   auto it = registered_actors_.find(actor_id);
@@ -1559,7 +1555,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id,
     // The actor has already been created. Destroy the process by force-killing
     // it.
     NotifyCoreWorkerToKillActor(
-        actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill, no_restart);
+        actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
   } else {
     const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
     RAY_LOG(DEBUG) << "The actor " << actor->GetActorID()
@@ -1568,7 +1564,7 @@ void GcsActorManager::KillActor(const ActorID &actor_id,
       // The actor is in phase of creating, so we need to notify the core
       // worker exit to avoid process and resource leak.
       NotifyCoreWorkerToKillActor(
-          actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill, no_restart);
+          actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
     }
     CancelActorInScheduling(actor, task_id);
     ReconstructActor(actor_id,

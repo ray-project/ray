@@ -10,6 +10,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 import ray
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -357,10 +358,14 @@ class Router:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 self._event_loop,
                 deployment_id,
+                handle_source,
                 _prefer_local_node_routing,
                 RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_node_id,
                 self_actor_id,
+                ray.get_runtime_context().current_actor
+                if ray.get_runtime_context().get_actor_id()
+                else None,
                 self_availability_zone,
                 use_replica_queue_len_cache=enable_queue_len_cache,
             )
@@ -371,21 +376,10 @@ class Router:
         # by the controller. That means it is not available until we get the first
         # update. This includes an optional autoscaling config.
         self.deployment_config: Optional[DeploymentConfig] = None
-        self.long_poll_client = LongPollClient(
-            controller_handle,
-            {
-                (
-                    LongPollNamespace.RUNNING_REPLICAS,
-                    deployment_id,
-                ): self.update_running_replicas,
-                (
-                    LongPollNamespace.DEPLOYMENT_CONFIG,
-                    deployment_id,
-                ): self.update_deployment_config,
-            },
-            call_in_event_loop=self._event_loop,
-        )
 
+        # Initializing `self._metrics_manager` before `self.long_poll_client` is
+        # necessary to avoid race condition where `self.update_deployment_config()`
+        # might be called before `self._metrics_manager` instance is created.
         self._metrics_manager = RouterMetricsManager(
             deployment_id,
             handle_id,
@@ -413,6 +407,21 @@ class Router:
                 ),
                 tag_keys=("deployment", "application", "handle", "actor_id"),
             ),
+        )
+
+        self.long_poll_client = LongPollClient(
+            controller_handle,
+            {
+                (
+                    LongPollNamespace.RUNNING_REPLICAS,
+                    deployment_id,
+                ): self.update_running_replicas,
+                (
+                    LongPollNamespace.DEPLOYMENT_CONFIG,
+                    deployment_id,
+                ): self.update_deployment_config,
+            },
+            call_in_event_loop=self._event_loop,
         )
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
@@ -519,6 +528,22 @@ class Router:
                 if obj_ref_gen is not None:
                     ray.cancel(obj_ref_gen)
 
+                raise
+            except ActorDiedError:
+                # Replica has died but controller hasn't notified the router yet.
+                # Don't consider this replica for requests in the future.
+                self._replica_scheduler.on_replica_actor_died(replica.replica_id)
+                logger.warning(
+                    f"{replica.replica_id} will not be considered for future "
+                    "requests because it has died."
+                )
+                raise
+            except ActorUnavailableError:
+                # There are network issues, or replica has died but GCS is down so
+                # ActorUnavailableError will be raised until GCS recovers. For the
+                # time being, invalidate the cache entry so that we don't try to
+                # send requests to this replica without actively probing.
+                self._replica_scheduler.on_replica_actor_unavailable(replica.replica_id)
                 raise
 
             # If the replica rejects the request, retry the scheduling process. The
