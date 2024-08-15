@@ -146,4 +146,9 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
                 sa_episode,
             )
 
+        # Signal to following connector pieces that the loss-mask which masks out
+        # invalid episode ts (for the extra added ts at the end) has already been
+        # added to `data`.
+        shared_data["_added_loss_mask_for_valid_episode_ts"] = True
+
         return data

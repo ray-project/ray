@@ -30,23 +30,24 @@ config = (
         env_to_module_connector=lambda env: MeanStdFilter(),
     )
     .training(
-        lr=0.0005,
+        lr=0.0005 * ((args.num_gpus or 1) ** 0.5),
         vf_loss_coeff=0.05,
         grad_clip=20.0,
+        entropy_coeff=0.0,
     )
     .rl_module(
         model_config_dict={
             "vf_share_layers": True,
             "use_lstm": True,
             "uses_new_env_runners": True,
-            "max_seq_len": 50,
+            "max_seq_len": 20,
         },
     )
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 250.0,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME: 1000000,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: 2000000,
 }
 
 
