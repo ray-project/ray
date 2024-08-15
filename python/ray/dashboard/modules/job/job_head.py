@@ -455,26 +455,19 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
 
         try:
-            driver_agent_http_address = job.driver_agent_http_address
-            driver_node_id = job.driver_node_id
-            if driver_agent_http_address is None:
-                resp = JobLogsResponse("")
-            else:
-                if driver_node_id not in self._agents:
-                    self._agents[driver_node_id] = JobAgentSubmissionClient(
-                        driver_agent_http_address
-                    )
-                job_agent_client = self._agents[driver_node_id]
-                resp = await job_agent_client.get_job_logs_internal(job.submission_id)
+            job_agent_client = self.get_job_driver_agent_client(job)
+            payload = (
+                await job_agent_client.get_job_logs_internal(job.submission_id)
+                if job_agent_client else JobLogsResponse("")
+            )
+            return Response(
+                text=json.dumps(dataclasses.asdict(payload)), content_type="application/json"
+            )
         except Exception:
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
-
-        return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
 
     @routes.get("/api/jobs/{job_or_submission_id}/logs/tail")
     async def tail_job_logs(self, req: Request) -> Response:
@@ -514,17 +507,22 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
             await asyncio.sleep(self.WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S)
 
-        driver_node_id = job.driver_node_id
-        if driver_node_id not in self._agents:
-            self._agents[driver_node_id] = JobAgentSubmissionClient(
-                driver_agent_http_address
-            )
-        job_agent_client = self._agents[driver_node_id]
+        job_agent_client = self.get_job_driver_agent_client(job)
 
         async for lines in job_agent_client.tail_job_logs(job.submission_id):
             await ws.send_str(lines)
 
         return ws
+
+    def get_job_driver_agent_client(self, job: JobDetails) -> Optional[JobAgentSubmissionClient]:
+        if job.driver_agent_http_address is None:
+            return None
+
+        driver_node_id = job.driver_node_id
+        if driver_node_id not in self._agents:
+            self._agents[driver_node_id] = JobAgentSubmissionClient(job.driver_agent_http_address)
+
+        return self._agents[driver_node_id]
 
     async def run(self, server):
         if not self._job_info_client:
