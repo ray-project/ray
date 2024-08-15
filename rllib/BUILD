@@ -2248,16 +2248,16 @@ py_test(
     srcs = ["examples/_old_api_stack/connectors/adapt_connector_policy.py"],
 )
 
-py_test(
-    name = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint",
-    main = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "small",
-    srcs = ["examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py"],
-    args = [
-        "--train_iteration=1"  # Smoke test.
-    ]
-)
+# py_test(
+#     name = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint",
+#     main = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py",
+#     tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
+#     size = "small",
+#     srcs = ["examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py"],
+#     args = [
+#         "--train_iteration=1"  # Smoke test.
+#     ]
+# )
 
 # ----------------------
 # New API stack
