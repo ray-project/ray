@@ -7,6 +7,7 @@ from typing import List
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
+from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils.annotations import override
@@ -193,12 +194,45 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                 getattr(samples_ds, self.output_write_method)(
                     path.as_posix(), **self.output_write_method_kwargs
                 )
-                logger.info("Wrote samples to storage.")
+                logger.info(
+                    f"Wrote final samples to storage at {path}. Note "
+                    "Note, final samples could be smaller in size than "
+                    f"`max_rows_per_file`, if defined."
+                )
             except Exception as e:
                 logger.error(e)
 
         # Finally return the samples as usual.
         return samples
+
+    @override(EnvRunner)
+    def stop(self) -> None:
+        """Writes the reamining samples to disk
+
+        Note, if the user defined `max_rows_per_file` the
+        number of rows for the remaining samples could be
+        less than the defined maximum row number by the user.
+        """
+        # If there are samples left over, convert them to a dataset.
+        if self._samples:
+            samples_ds = ray.data.from_items(self._samples)
+
+            # Try to write the dataset to disk/cloud storage.
+            try:
+                # Setup the path for writing data. Each run will be written to
+                # its own file. A run is a writing event. The path will look
+                # like. 'base_path/env-name/00000<WorkerID>-00000<RunID>'.
+                path = (
+                    Path(self.output_path)
+                    .joinpath(self.subdir_path)
+                    .joinpath(self.worker_path + f"-{self._sample_counter}".zfill(6))
+                )
+                getattr(samples_ds, self.output_write_method)(
+                    path.as_posix(), **self.output_write_method_kwargs
+                )
+                logger.info("Wrote samples to storage.")
+            except Exception as e:
+                logger.error(e)
 
     def _map_episodes_to_data(self, samples: List[EpisodeType]) -> None:
         """Converts list of episodes to list of single dict experiences.
@@ -231,7 +265,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                     Columns.ACTIONS: pack_if_needed(
                         to_jsonable_if_needed(sample.get_actions(i), action_space)
                     )
-                    if Columns.OBS in self.output_compress_columns
+                    if Columns.ACTIONS in self.output_compress_columns
                     else action_space.to_jsonable_if_needed(
                         sample.get_actions(i), action_space
                     ),
