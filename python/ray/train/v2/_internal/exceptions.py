@@ -1,9 +1,10 @@
 import os
-from typing import Dict
+from typing import Dict, Optional
 
 from ray.train.v2._internal.constants import (
     DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
     DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
+    REPORT_BARRIER_TIMEOUT_S_ENV_VAR,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
 )
@@ -106,3 +107,47 @@ class ControllerInitializationError(RayTrainError):
 
     def __init__(self, message: str = ""):
         super().__init__(message)
+
+
+class CollectiveTimeoutError(RayTrainError):
+    """Exception raised when an internal Ray Train collective operation of
+    the worker group times out.
+    """
+
+    def __init__(self, message: str = ""):
+        super().__init__(message)
+
+
+class BroadcastCollectiveTimeoutError(CollectiveTimeoutError):
+    """Exception raised when the broadcast operation times out.
+
+    There are two main reasons for the timeout:
+    1. If not all workers call `ray.train.report`, the entire worker group will
+        hang until the timeout before raising. This prevents indefinite worker
+        group hangs.
+    2. If a worker is slow in the training loop and fails to reach the broadcast
+        time, the collective will time out.
+    """
+
+    def __init__(self, time_elapsed: Dict[int, Optional[float]], timeout_s: float):
+        self._time_elapsed = time_elapsed
+        self._timeout_s = timeout_s
+        max_time_elapsed = max([t for t in time_elapsed.values() if t])
+        hanging_ranks = [i for i, t in time_elapsed.items() if t is None]
+
+        message = (
+            f"The checkpoint broadcast timed out after {max_time_elapsed} seconds. "
+            "It may be caused by slow workers or not all workers calling "
+            "`ray.train.report`. Please make sure all workers called `ray.train.report`"
+            f"\nThe following ranks are not reaching the collective operation: "
+            f"{hanging_ranks}\n"
+            f"The current collective timeout is set to {timeout_s} seconds. "
+            f"You can set the {REPORT_BARRIER_TIMEOUT_S_ENV_VAR} environment variable."
+        )
+        super().__init__(message)
+
+    def __reduce__(self):
+        return (
+            self.__class__,
+            (self._time_elapsed, self._timeout_s),
+        )

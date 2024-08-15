@@ -28,6 +28,15 @@ CHECKPOINT_MANAGER_SNAPSHOT_FILENAME = "checkpoint_manager_snapshot.json"
 # The coding scheme used to encode the checkpoint manager snapshot.
 CHECKPOINT_MANAGER_SNAPSHOT_CODING_SCHEME = "utf-8"
 
+# Timeout in seconds for `ray.train.report` to block on synchronization barriers,
+# after which a timeout error will be raised.
+REPORT_BARRIER_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_REPORT_BARRIER_TIMEOUT_S"
+DEFAULT_REPORT_BARRIER_TIMEOUT_S: float = 60 * 30
+# Time in seconds for `ray.train.report` to log a warning if it is waiting for sync
+# actor notification of releasing.
+REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR = "RAY_TRAIN_REPORT_BARRIER_WARN_INTERVAL_S"
+DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S: float = 60
+
 # V2 feature flag.
 V2_ENABLED_ENV_VAR = "RAY_TRAIN_V2_ENABLED"
 

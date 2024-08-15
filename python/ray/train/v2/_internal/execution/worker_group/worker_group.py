@@ -6,11 +6,16 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
 
 import ray
+from ray._private.ray_constants import env_float
 from ray.exceptions import GetTimeoutError, RayActorError
 from ray.train import Checkpoint
 from ray.train.v2._internal.constants import (
+    DEFAULT_REPORT_BARRIER_TIMEOUT_S,
+    DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
     DEFAULT_WORKER_GROUP_START_TIMEOUT_S,
     DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
+    REPORT_BARRIER_TIMEOUT_S_ENV_VAR,
+    REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
     WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR,
     get_env_vars_to_propagate,
@@ -132,6 +137,13 @@ class WorkerGroup:
                 DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S,
             )
         )
+        self._report_barrier_timeout_s = env_float(
+            REPORT_BARRIER_TIMEOUT_S_ENV_VAR, DEFAULT_REPORT_BARRIER_TIMEOUT_S
+        )
+        self._report_barrier_warn_interval_s = env_float(
+            REPORT_BARRIER_WARN_INTERVAL_S_ENV_VAR,
+            DEFAULT_REPORT_BARRIER_WARN_INTERVAL_S,
+        )
 
     def _create_workers(
         self,
@@ -237,7 +249,10 @@ class WorkerGroup:
                 node_id=ray.get_runtime_context().get_node_id(),
                 soft=False,
             )
-        ).remote()
+        ).remote(
+            timeout_s=self._report_barrier_timeout_s,
+            warn_interval_s=self._report_barrier_warn_interval_s,
+        )
 
         self._workers = self._create_workers(num_workers, remote_actor_cls)
 
