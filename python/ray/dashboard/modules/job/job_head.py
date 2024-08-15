@@ -5,7 +5,7 @@ import logging
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from random import sample
-from typing import AsyncIterator, Optional, List
+from typing import AsyncIterator, List, Optional
 
 import aiohttp.web
 from aiohttp.client import ClientResponse

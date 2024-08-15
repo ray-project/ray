@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Optional, List
+from typing import Any, List, Optional
 
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import (
@@ -169,7 +169,9 @@ class DataOrganizer:
         ]
 
     @classmethod
-    async def get_agent_infos(cls, target_node_ids: Optional[List[str]] = None) -> Dict[str, Dict[str, Any]]:
+    async def get_agent_infos(
+        cls, target_node_ids: Optional[List[str]] = None
+    ) -> Dict[str, Dict[str, Any]]:
         """Fetches running Agent (like HTTP/gRPC ports, IP, etc) running on every node
 
         :param target_node_ids: Target node ids to fetch agent info for. If omitted will
@@ -179,7 +181,9 @@ class DataOrganizer:
         # Return all available agent infos in case no target node-ids were provided
         target_node_ids = target_node_ids or DataSource.agents.keys()
 
-        missing_node_ids = [node_id for node_id in target_node_ids if node_id not in DataSource.agents]
+        missing_node_ids = [
+            node_id for node_id in target_node_ids if node_id not in DataSource.agents
+        ]
         if missing_node_ids:
             logger.warning(
                 f"Agent info was not found for {missing_node_ids}"
@@ -198,10 +202,7 @@ class DataOrganizer:
                 httpAddress=f"{node_ip}:{http_port}",
             )
 
-        return {
-            node_id: _create_agent_info(node_id)
-            for node_id in target_node_ids
-        }
+        return {node_id: _create_agent_info(node_id) for node_id in target_node_ids}
 
     @classmethod
     async def get_all_actors(cls):
