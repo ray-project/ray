@@ -284,8 +284,9 @@ class JobManager:
                     )
                 else:
                     logger.warning(
-                        f"Job supervisor for job {job_id} failed unexpectedly: {e}."
+                        f"Failed to reach Job supervisor for job {job_id}: {e}."
                     )
+
                     job_error_message = f"Unexpected error occurred: {e}"
                     job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
