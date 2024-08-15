@@ -992,6 +992,8 @@ class Worker:
 def get_gpu_ids() -> Union[List[int], List[str]]:
     """Get the IDs of the GPUs that are available to the worker.
 
+    This method should only be called inside of a task or actor, and not a driver.
+
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
     started up, then the IDs returned by this method will be a subset of the
     IDs in CUDA_VISIBLE_DEVICES. If not, the IDs will fall in the range

@@ -326,27 +326,8 @@ def deployment(
         `Deployment`
     """
 
-    if autoscaling_config not in [DEFAULT.VALUE, None]:
-        if (
-            isinstance(autoscaling_config, dict)
-            and "target_ongoing_requests" not in autoscaling_config
-        ) or (
-            isinstance(autoscaling_config, AutoscalingConfig)
-            and "target_ongoing_requests"
-            not in autoscaling_config.dict(exclude_unset=True)
-        ):
-            logger.warning(
-                "The default value for `target_ongoing_requests` has changed from 1.0 "
-                "to 2.0 in Ray 2.32.0."
-            )
-
     if max_ongoing_requests is None:
         raise ValueError("`max_ongoing_requests` must be non-null, got None.")
-    elif max_ongoing_requests is DEFAULT.VALUE:
-        logger.warning(
-            "The default value for `max_ongoing_requests` has changed from "
-            "100 to 5 in Ray 2.32.0."
-        )
 
     if num_replicas == "auto":
         num_replicas = None
@@ -391,12 +372,6 @@ def deployment(
             "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
             "deprecated. To specify a route prefix for an application, pass it into "
             "`serve.run` instead."
-        )
-
-    if max_ongoing_requests is DEFAULT.VALUE:
-        logger.warning(
-            "The default value for `max_ongoing_requests` has changed from 100 to 5 in "
-            "Ray 2.32.0."
         )
 
     if isinstance(logging_config, LoggingConfig):
