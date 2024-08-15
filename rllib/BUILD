@@ -1599,6 +1599,13 @@ py_test(
 )
 
 py_test(
+    name = "test_offline_env_runner",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_offline_env_runner.py"],
+)
+
+py_test(
     name = "test_offline_data",
     tags = ["team:rllib", "offline"],
     size = "small",
