@@ -330,7 +330,7 @@ class JobManager:
         return async_call_with_retry(
             _ping,
             exception_classes=(ray.exceptions.RpcError, asyncio.TimeoutError),
-            max_attempts=RAY_JOB_SUPERVISOR_PING_MAX_RETRIES,
+            max_attempts=RAY_JOB_SUPERVISOR_PING_MAX_RETRIES + 1,
             max_backoff_s=2,
             on_exception=lambda e: logger.warning(
                 f"Encountered failure pinging '{job_supervisor}'", exc_info=e
