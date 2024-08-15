@@ -42,7 +42,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # Set the worker-specific path name. Note, this is
         # specifically to enable multi-threaded writing into
         # the same directory.
-        self.worker_path = "run-" + f"{self.worker_index}".zfill(6) + "-"
+        self.worker_path = "run-" + f"{self.worker_index}".zfill(6)
 
         # If a specific filesystem is given, set it up. Note, this could
         # be `gcsfs` for GCS, `pyarrow` for S3 or `adlfs` for Azure Blob Storage.
@@ -193,7 +193,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                 getattr(samples_ds, self.output_write_method)(
                     path.as_posix(), **self.output_write_method_kwargs
                 )
-                logger.info("Wrote samples to storage.")
+                logger.info(f"Wrote samples to storage at {path}")
             except Exception as e:
                 logger.error(e)
 
@@ -224,24 +224,20 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                         to_jsonable_if_needed(sample.get_observations(i), obs_space)
                     )
                     if Columns.OBS in self.output_compress_columns
-                    else obs_space.to_jsonable_if_needed(
-                        sample.get_observations(i), obs_space
-                    ),
+                    else to_jsonable_if_needed(sample.get_observations(i), obs_space),
                     # Compress actions, if requested.
                     Columns.ACTIONS: pack_if_needed(
                         to_jsonable_if_needed(sample.get_actions(i), action_space)
                     )
                     if Columns.OBS in self.output_compress_columns
-                    else action_space.to_jsonable_if_needed(
-                        sample.get_actions(i), action_space
-                    ),
+                    else to_jsonable_if_needed(sample.get_actions(i), action_space),
                     Columns.REWARDS: sample.get_rewards(i),
                     # Compress next observations, if requested.
                     Columns.NEXT_OBS: pack_if_needed(
                         to_jsonable_if_needed(sample.get_observations(i + 1), obs_space)
                     )
                     if Columns.OBS in self.output_compress_columns
-                    else obs_space.to_jsonable_if_needed(
+                    else to_jsonable_if_needed(
                         sample.get_observations(i + 1), obs_space
                     ),
                     Columns.TERMINATEDS: False
