@@ -8,7 +8,7 @@ import time
 import traceback
 from typing import Any, Dict, Iterator, Optional, Union
 
-from python.ray._private.ray_constants import env_integer
+from ray._private.ray_constants import env_integer
 
 import ray
 import ray._private.ray_constants as ray_constants
