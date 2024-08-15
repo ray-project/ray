@@ -215,7 +215,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         # TODO(architkulkarni): Remove once State API exposes which
                         # node is the head node.
                         await self._gcs_aio_client.internal_kv_put(
-                            "head_node_id".encode(),
+                            ray_constants.KV_HEAD_NODE_ID_KEY,
                             node_id.encode(),
                             overwrite=True,
                             namespace=ray_constants.KV_NAMESPACE_JOB,

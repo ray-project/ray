@@ -408,6 +408,7 @@ KV_NAMESPACE_PDB = b"ray_pdb"
 KV_NAMESPACE_HEALTHCHECK = b"healthcheck"
 KV_NAMESPACE_JOB = b"job"
 KV_NAMESPACE_CLUSTER = b"cluster"
+KV_HEAD_NODE_ID_KEY = b"head_node_id"
 # TODO: Set package for runtime env
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.
