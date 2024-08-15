@@ -125,7 +125,6 @@ class DashboardHead:
         self._modules_to_load = modules_to_load
         self._modules_loaded = False
 
-        # TODO(ryw): convert each head's own TPE to use this.
         self._thread_pool_executor = ThreadPoolExecutor(
             thread_name_prefix="dashboard_head_tpe"
         )
