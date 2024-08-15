@@ -193,7 +193,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                 getattr(samples_ds, self.output_write_method)(
                     path.as_posix(), **self.output_write_method_kwargs
                 )
-                logger.info("Wrote samples to storage.")
+                logger.info(f"Wrote samples to storage at {path}")
             except Exception as e:
                 logger.error(e)
 
