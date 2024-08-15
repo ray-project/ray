@@ -323,10 +323,8 @@ class JobManager:
 
         while True:
             try:
-                with asyncio.timeout(RAY_JOB_SUPERVISOR_PING_TIMEOUT_S):
-                    await job_supervisor.ping.remote()
-
-            except ray.exceptions.RpcError as e:
+                await asyncio.wait_for(job_supervisor.ping.remote(), RAY_JOB_SUPERVISOR_PING_TIMEOUT_S)
+            except (ray.exceptions.RpcError, asyncio.TimeoutError) as e:
                 logger.warning(f"Encountered failure pinging '{job_supervisor}'", exc_info=e)
 
                 if attempt < RAY_JOB_SUPERVISOR_PING_MAX_RETRIES:
