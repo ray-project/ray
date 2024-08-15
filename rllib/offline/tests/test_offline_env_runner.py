@@ -21,12 +21,19 @@ class TestOfflineEnvRunner(unittest.TestCase):
                 enable_env_runner_and_connector_v2=True,
             )
             .env_runners(
+                # This defines how many rows per file we will
+                # have (given `num_rows_per_file` in the
+                # `output_write_method_kwargs` is not set).
                 rollout_fragment_length=1000,
                 num_env_runners=0,
+                # Note, this means that written episodes. if
+                # `output_write_episodes=True` will be incomplete
+                # in many cases.
                 batch_mode="truncate_episodes",
             )
             .environment("CartPole-v1")
             .rl_module(
+                # Use a small network for this test.
                 model_config_dict={
                     "fcnet_hiddens": [32],
                     "fcnet_activation": "linear",
@@ -40,7 +47,11 @@ class TestOfflineEnvRunner(unittest.TestCase):
         ray.shutdown()
 
     def test_offline_env_runner_record_episodes(self):
+        """Tests recording of episodes.
 
+        Note, in this case each row of the dataset is an episode
+        that could potentially contain hundreds of steps.
+        """
         data_dir = "local://" / self.base_path / "cartpole-episodes"
         config = self.config.offline_data(
             output=data_dir.as_posix(),
@@ -79,7 +90,11 @@ class TestOfflineEnvRunner(unittest.TestCase):
         shutil.rmtree(data_dir)
 
     def test_offline_env_runner_record_column_data(self):
+        """Tests recording of single time steps in column format.
 
+        Note, in this case each row in the dataset contains only a single
+        timestep of the agent.
+        """
         data_dir = "local://" / self.base_path / "cartpole-columns"
         config = self.config.offline_data(
             output=data_dir.as_posix(),
@@ -118,7 +133,11 @@ class TestOfflineEnvRunner(unittest.TestCase):
         shutil.rmtree(data_dir)
 
     def test_offline_env_runner_compress_columns(self):
+        """Tests recording of timesteps with compressed columns.
 
+        Note, `input_compress_columns` will compress only the columns
+        listed. `Columns.OBS` will also compress `Columns.NEXT_OBS`.
+        """
         data_dir = "local://" / self.base_path / "cartpole-columns"
         config = self.config.offline_data(
             output=data_dir.as_posix(),
@@ -159,6 +178,8 @@ class TestOfflineEnvRunner(unittest.TestCase):
             input_=[(data_path / "run-000001-00001").as_posix()],
             input_read_episodes=False,
             # Also uncompress files and columns.
+            # TODO (simon): Activate as soon as the bug is fixed
+            # in ray.data.
             # input_read_method_kwargs={
             #     "arrow_open_stream_args": {
             #         "compression": "gzip",
