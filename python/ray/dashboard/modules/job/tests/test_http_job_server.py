@@ -1,13 +1,24 @@
 import asyncio
+import json
+import logging
+import os
+import shutil
+import subprocess
 import sys
+import tempfile
+import time
+from pathlib import Path
 from typing import Optional
 from unittest.mock import patch
 
+import pytest
 import yaml
 
+import ray
 from ray._private.test_utils import (
     chdir,
     format_web_url,
+    wait_for_condition,
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
@@ -777,8 +788,11 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
             ),
         )
 
-        # Disable Head-node routing for the Ray job critical ops (enabling random agent sampling)
-        monkeypatch.setattr(f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False)
+        # Disable Head-node routing for the Ray job critical ops (enabling
+        # random agent sampling)
+        monkeypatch.setattr(
+            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False
+        )
 
         # Check only 1 agent present, only agent being returned
         add_agent(agent_1)
@@ -790,8 +804,11 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(job_head.get_target_agent(), timeout=3)
 
-        # Enable Head-node routing for the Ray job critical ops (disabling random agent sampling)
-        monkeypatch.setattr(f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", True)
+        # Enable Head-node routing for the Ray job critical ops (disabling
+        # random agent sampling)
+        monkeypatch.setattr(
+            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", True
+        )
 
         # Add 3 agents
         add_agent(agent_1)
@@ -814,8 +831,11 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
             job_agent_client = await job_head.get_target_agent()
             assert job_agent_client._agent_address == "http://1.1.1.1:1"
 
-        # Disable Head-node routing for the Ray job critical ops (enabling random agent sampling)
-        monkeypatch.setattr(f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False)
+        # Disable Head-node routing for the Ray job critical ops (enabling
+        # random agent sampling)
+        monkeypatch.setattr(
+            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False
+        )
 
         # Theoretically, the probability of failure is 1/3^100
         addresses_1 = set()

@@ -8,8 +8,6 @@ import time
 import traceback
 from typing import Any, Dict, Iterator, Optional, Union
 
-from ray.dashboard.modules.job.utils import get_head_node_id
-
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.event.event_logger import get_event_logger
@@ -31,6 +29,7 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
+from ray.dashboard.modules.job.utils import get_head_node_id
 from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray.runtime_env import RuntimeEnvConfig

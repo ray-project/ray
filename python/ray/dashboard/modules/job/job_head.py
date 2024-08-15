@@ -11,13 +11,11 @@ import aiohttp.web
 from aiohttp.client import ClientResponse
 from aiohttp.web import Request, Response
 
-from ray._private.ray_constants import env_bool
-from ray.dashboard.modules.job.utils import get_head_node_id
-
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._private.ray_constants import env_bool
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
@@ -38,6 +36,7 @@ from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
 from ray.dashboard.modules.job.utils import (
     find_job_by_ids,
     get_driver_jobs,
+    get_head_node_id,
     parse_and_validate_request,
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
