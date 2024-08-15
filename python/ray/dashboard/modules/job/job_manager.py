@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 # Configures max number of retries for network transport failures, before
 # `JobSupervisor` actor will be deemed unreachable
 RAY_JOB_SUPERVISOR_PING_MAX_RETRIES = env_integer(
-    "RAY_JOB_SUPERVISOR_PING_MAX_RETRIES", 5
+    "RAY_JOB_SUPERVISOR_PING_MAX_RETRIES", 3
 )
 # Configures timeout threshold for `JobSupervisor` actor to respond back to `JobManager`
 RAY_JOB_SUPERVISOR_PING_TIMEOUT_S = env_integer("RAY_JOB_SUPERVISOR_PING_TIMEOUT_S", 5)
@@ -244,7 +244,7 @@ class JobManager:
                         is_alive = False
                         continue
 
-                await self._ping(job_supervisor)
+                await self._ping_with_retries(job_supervisor)
 
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
@@ -336,31 +336,6 @@ class JobManager:
                 f"Encountered failure pinging '{job_supervisor}'", exc_info=e
             ),
         )
-
-    @staticmethod
-    async def _ping(job_supervisor: ActorHandle):
-        attempt = 0
-
-        while True:
-            try:
-                await asyncio.wait_for(
-                    job_supervisor.ping.remote(), RAY_JOB_SUPERVISOR_PING_TIMEOUT_S
-                )
-            except (ray.exceptions.RpcError, asyncio.TimeoutError) as e:
-                logger.warning(
-                    f"Encountered failure pinging '{job_supervisor}'", exc_info=e
-                )
-
-                if attempt < RAY_JOB_SUPERVISOR_PING_MAX_RETRIES:
-                    attempt += 1
-                    continue
-                else:
-                    logger.error(
-                        f"Failed to reach job supervisor '{job_supervisor}'"
-                        f" after {RAY_JOB_SUPERVISOR_PING_MAX_RETRIES} attempts",
-                        exc_info=e,
-                    )
-                    raise e
 
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
         """Handle the result of starting a job supervisor actor.
