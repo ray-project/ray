@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from typing import Optional, Any
 
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import (
@@ -178,6 +179,20 @@ class DataOrganizer:
                 httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
             )
         return agent_infos
+
+    @classmethod
+    async def get_agent_info(cls, node_id: str) -> Optional[Dict[str, Any]]:
+        if node_id not in DataSource.agents:
+            return None
+
+        (http_port, grpc_port) = DataSource.agents[node_id]
+
+        return dict(
+            ipAddress=DataSource.node_id_to_ip[node_id],
+            httpPort=int(http_port or -1),
+            grpcPort=int(grpc_port or -1),
+            httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
+        )
 
     @classmethod
     async def get_all_actors(cls):

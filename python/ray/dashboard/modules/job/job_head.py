@@ -39,6 +39,8 @@ from ray.dashboard.modules.job.utils import (
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 
+from python.ray.dashboard.modules.job.utils import get_head_node_id
+
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
@@ -165,6 +167,29 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # longer available (the corresponding agent process is dead)
         self._agents = dict()
 
+    async def get_head_node_agent(self) -> Optional[JobAgentSubmissionClient]:
+        """Retrieves HTTP client for `JobAgent` running on the Head node"""
+
+        head_node_id = await get_head_node_id(self._gcs_aio_client)
+
+        if not head_node_id:
+            logger.warning("Head node id has not yet been persisted in GCS")
+            return None
+
+        if head_node_id not in self._agents:
+            agent_info = DataOrganizer.get_agent_info(node_id=head_node_id)
+            if not agent_info:
+                logger.error("Head node agent's information was not found")
+                return None
+
+            node_ip = agent_info["ipAddress"]
+            http_port = agent_info["httpPort"]
+            agent_http_address = f"http://{node_ip}:{http_port}"
+
+            self._agents[head_node_id] = JobAgentSubmissionClient(agent_http_address)
+
+        return self._agents[head_node_id]
+
     async def choose_agent(self) -> Optional[JobAgentSubmissionClient]:
         """
         Try to disperse as much as possible to select one of
@@ -287,7 +312,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         try:
             job_agent_client = await asyncio.wait_for(
-                self.choose_agent(),
+                self.get_head_node_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.submit_job_internal(submit_request)
@@ -334,7 +359,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         try:
             job_agent_client = await asyncio.wait_for(
-                self.choose_agent(),
+                self.get_head_node_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.stop_job_internal(job.submission_id)
@@ -369,7 +394,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         try:
             job_agent_client = await asyncio.wait_for(
-                self.choose_agent(),
+                self.get_head_node_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.delete_job_internal(job.submission_id)
