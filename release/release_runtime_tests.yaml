@@ -60,6 +60,7 @@
   cluster:
     byod:
       type: gpu
+      post_build_script: byod_install_soundfile.sh
     cluster_compute: audio_batch_inference_benchmark_compute.yaml
 
   run:
