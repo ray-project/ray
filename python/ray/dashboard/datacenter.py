@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import Any, Optional, List
 
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import (
@@ -169,34 +169,39 @@ class DataOrganizer:
         ]
 
     @classmethod
-    async def get_all_agent_infos(cls):
-        agent_infos = dict()
-        for node_id, (http_port, grpc_port) in DataSource.agents.items():
-            agent_infos[node_id] = dict(
-                ipAddress=DataSource.node_id_to_ip[node_id],
-                httpPort=int(http_port or -1),
-                grpcPort=int(grpc_port or -1),
-                httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
-            )
-        return agent_infos
+    async def get_agent_infos(cls, target_node_ids: Optional[List[str]] = None) -> Dict[str, Dict[str, Any]]:
+        """Fetches running Agent (like HTTP/gRPC ports, IP, etc) running on every node
 
-    @classmethod
-    async def get_agent_info(cls, node_id: str) -> Optional[Dict[str, Any]]:
-        if node_id not in DataSource.agents:
-            logger.error(
-                f"Agent info was not found for '{node_id}'"
+        :param target_node_ids: Target node ids to fetch agent info for. If omitted will
+                                fetch the info for all agents
+        """
+
+        # Return all available agent infos in case no target node-ids were provided
+        target_node_ids = target_node_ids or DataSource.agents.keys()
+
+        missing_node_ids = [node_id for node_id in target_node_ids if node_id not in DataSource.agents]
+        if missing_node_ids:
+            logger.warning(
+                f"Agent info was not found for {missing_node_ids}"
                 f" (having agent infos for {list(DataSource.agents.keys())})"
             )
-            return None
+            return {}
 
-        (http_port, grpc_port) = DataSource.agents[node_id]
+        def _create_agent_info(node_id: str):
+            (http_port, grpc_port) = DataSource.agents[node_id]
+            node_ip = DataSource.node_id_to_ip[node_id]
 
-        return dict(
-            ipAddress=DataSource.node_id_to_ip[node_id],
-            httpPort=int(http_port or -1),
-            grpcPort=int(grpc_port or -1),
-            httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
-        )
+            return dict(
+                ipAddress=node_ip,
+                httpPort=int(http_port or -1),
+                grpcPort=int(grpc_port or -1),
+                httpAddress=f"{node_ip}:{http_port}",
+            )
+
+        return {
+            node_id: _create_agent_info(node_id)
+            for node_id in target_node_ids
+        }
 
     @classmethod
     async def get_all_actors(cls):

@@ -1483,7 +1483,7 @@ Integration tests
 
 
 @pytest.mark.asyncio
-async def test_state_data_source_client(ray_start_cluster):
+async def test_state_data_source_client_x(ray_start_cluster):
     cluster = ray_start_cluster
     # head
     cluster.add_node(num_cpus=2, dashboard_agent_listen_port=find_free_port())

@@ -5,7 +5,7 @@ import logging
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from random import sample
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, Optional, List
 
 import aiohttp.web
 from aiohttp.client import ClientResponse
@@ -194,17 +194,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                it is possible that the selected one already exists in
                `self._agents`.
         """
-        # the number of agents which has an available HTTP port.
-        while True:
-            raw_agent_infos = await DataOrganizer.get_all_agent_infos()
-            agent_infos = {
-                key: value
-                for key, value in raw_agent_infos.items()
-                if value.get("httpPort", -1) > 0
-            }
-            if len(agent_infos) > 0:
-                break
-            await asyncio.sleep(dashboard_consts.TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
+        # NOTE: Following call will block until there's at least 1 agent info
+        #       being populated from GCS
+        agent_infos = await self._fetch_agent_infos()
+
         # delete dead agents.
         for dead_node in set(self._agents) - set(agent_infos):
             client = self._agents.pop(dead_node)
@@ -237,10 +230,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             return None
 
         if head_node_id not in self._agents:
-            agent_info = await DataOrganizer.get_agent_info(node_id=head_node_id)
-            if not agent_info:
+            agent_infos = await self._fetch_agent_infos(target_node_ids=[head_node_id])
+            if head_node_id not in agent_infos:
                 logger.error("Head node agent's information was not found")
                 return None
+
+            agent_info = agent_infos[head_node_id]
 
             node_ip = agent_info["ipAddress"]
             http_port = agent_info["httpPort"]
@@ -249,6 +244,29 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             self._agents[head_node_id] = JobAgentSubmissionClient(agent_http_address)
 
         return self._agents[head_node_id]
+
+    @staticmethod
+    async def _fetch_agent_infos(target_node_ids: Optional[List[str]] = None):
+        """Fetches agent infos for nodes identified by provided node-ids (for all
+        nodes if not provided)
+
+        NOTE: This call will block until there's at least 1 valid agent info populated
+        """
+
+        while True:
+            raw_agent_infos = await DataOrganizer.get_agent_infos(target_node_ids)
+            if raw_agent_infos:
+                # Filter out invalid agent infos with unset HTTP port
+                agent_infos = {
+                    key: value
+                    for key, value in raw_agent_infos.items()
+                    if value.get("httpPort", -1) > 0
+                }
+
+                if len(agent_infos) > 0:
+                    return agent_infos
+
+            await asyncio.sleep(dashboard_consts.TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
 
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
