@@ -510,7 +510,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             status = job.status
             if status.is_terminal() and driver_agent_http_address is None:
                 # Job exited before supervisor actor started.
-                return
+                return ws
+
             await asyncio.sleep(self.WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S)
 
         driver_node_id = job.driver_node_id
