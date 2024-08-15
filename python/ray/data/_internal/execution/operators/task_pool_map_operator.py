@@ -111,6 +111,9 @@ class TaskPoolMapOperator(MapOperator):
     def base_resource_usage(self) -> ExecutionResources:
         return ExecutionResources()
 
+    def current_processor_usage(self) -> ExecutionResources:
+        return self.running_processor_usage()
+
     def running_processor_usage(self) -> ExecutionResources:
         num_active_workers = self.num_active_tasks()
         return ExecutionResources(

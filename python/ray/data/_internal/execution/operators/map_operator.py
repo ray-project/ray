@@ -404,11 +404,9 @@ class MapOperator(OneToOneOperator, ABC):
         self._data_tasks.clear()
         self._metadata_tasks.clear()
 
+    @abstractmethod
     def current_processor_usage(self) -> ExecutionResources:
-        # Both pending and running actors count towards our current resource usage.
-        usage = self.running_processor_usage()
-        usage.add(self.pending_processor_usage())
-        return usage
+        raise NotImplementedError
 
     @abstractmethod
     def running_processor_usage(self) -> ExecutionResources:
