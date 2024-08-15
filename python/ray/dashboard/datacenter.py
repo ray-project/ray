@@ -183,6 +183,10 @@ class DataOrganizer:
     @classmethod
     async def get_agent_info(cls, node_id: str) -> Optional[Dict[str, Any]]:
         if node_id not in DataSource.agents:
+            logger.error(
+                f"Agent info was not found for '{node_id}'"
+                f" (having agent infos for {list(DataSource.agents.keys())})"
+            )
             return None
 
         (http_port, grpc_port) = DataSource.agents[node_id]
