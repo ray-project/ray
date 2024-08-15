@@ -150,7 +150,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         blocks: List[ObjectRef[Block]],
         sort_key: SortKey,
         num_reducers: int,
-        sample_bar: ProgressBar,
+        sample_bar: Optional[ProgressBar] = None,
     ) -> List[T]:
         """
         Return (num_reducers - 1) items in ascending order from the blocks that
@@ -165,6 +165,12 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_results = [
             sample_block.remote(block, n_samples, sort_key) for block in blocks
         ]
+        if sample_bar is None:
+            sample_bar = ProgressBar(
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
+                len(sample_results),
+                unit="block",
+            )
         # TODO(zhilong): Update sort sample bar before finished.
         samples = sample_bar.fetch_until_complete(sample_results)
         del sample_results
