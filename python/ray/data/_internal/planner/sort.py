@@ -44,7 +44,12 @@ def generate_sort_fn(
 
         # Sample boundaries for sort key.
         if not sort_key.boundaries:
-            boundaries = SortTaskSpec.sample_boundaries(blocks, sort_key, num_outputs)
+            sample_bar = ctx.sub_progress_bar_dict[
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME
+            ]
+            boundaries = SortTaskSpec.sample_boundaries(
+                blocks, sort_key, num_outputs, sample_bar
+            )
         else:
             boundaries = [(b,) for b in sort_key.boundaries]
             num_outputs = len(boundaries) + 1
