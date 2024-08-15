@@ -28,39 +28,49 @@ async def async_call_with_retry(
     max_attempts: int = 3,
     initial_delay_s: float = 0.5,
     max_backoff_s: float = 5,
-    on_exception: Optional[Callable[[Exception], None]] = None
+    on_exception: Optional[Callable[[Exception], None]] = None,
 ) -> Any:
     """
-    Helper utility retrying a provided async function with exponential backoff policy.
+    Helper utility retrying a provided async function with exponential backoff
+    policy.
 
-    NOTE: We're currently hard-coding 2 as an exponent base, meaning that `initial_delay_s`
-          will be doubled with every retry attempt up to `max_backoff_s`.
+    NOTE: We're currently hard-coding 2 as an exponent base, meaning that
+          `initial_delay_s` will be doubled with every retry attempt up to
+          `max_backoff_s`.
 
     Args:
         c: Coroutine to be awaited on.
-        exception_classes: list of exception classes that should be retried (note that, all of
-                            the exceptions have to inherit from `BaseException` and could NOT
-                            extend `CancelledError`).
+        exception_classes: list of exception classes that should be retried (note that,
+                            all of the exceptions have to inherit from `BaseException`
+                            and could NOT extend `CancelledError`).
         max_attempts: The maximum number of attempts to invoke.
         initial_delay_s: Initial delay before the first retry
         max_backoff_s: The maximum number of seconds to backoff.
         on_exception: Callback to be invoked with an exception being retried.
     """
-    assert all([issubclass(c, BaseException) for c in exception_classes]), \
-        "Provided exception classes have to inherit from BaseException"
+    assert all(
+        [issubclass(c, BaseException) for c in exception_classes]
+    ), "Provided exception classes have to inherit from BaseException"
 
-    assert not any([issubclass(c, CancelledError) for c in exception_classes]), \
-        "`CancelledError` should not be retried"
+    assert not any(
+        [issubclass(c, CancelledError) for c in exception_classes]
+    ), "`CancelledError` should not be retried"
 
-    assert initial_delay_s >= 0, f"`initial_delay_s`, must be non-negative value (got {initial_delay_s}"
-    assert max_backoff_s >= 0, f"`max_backoff_s`, must be non-negative value (got {max_backoff_s}"
+    assert (
+        initial_delay_s >= 0
+    ), f"`initial_delay_s`, must be non-negative value (got {initial_delay_s}"
+    assert (
+        max_backoff_s >= 0
+    ), f"`max_backoff_s`, must be non-negative value (got {max_backoff_s}"
     assert max_attempts >= 1, f"`max_attempts` must be >= 1 (got {max_attempts})"
 
     for i in range(max_attempts):
         try:
             return await f()
         except Exception as e:
-            is_retryable = any([isinstance(e, exc_class) for exc_class in exception_classes])
+            is_retryable = any(
+                [isinstance(e, exc_class) for exc_class in exception_classes]
+            )
             if is_retryable and i + 1 < max_attempts:
                 # Invoke callback if provided
                 if on_exception is not None:

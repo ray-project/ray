@@ -324,8 +324,7 @@ class JobManager:
         async def _ping():
             # NOTE: We add a timeout to make our pings aren't hanging forever
             await asyncio.wait_for(
-                job_supervisor.ping.remote(),
-                RAY_JOB_SUPERVISOR_PING_TIMEOUT_S
+                job_supervisor.ping.remote(), RAY_JOB_SUPERVISOR_PING_TIMEOUT_S
             )
 
         return async_call_with_retry(
@@ -335,7 +334,7 @@ class JobManager:
             max_backoff_s=2,
             on_exception=lambda e: logger.warning(
                 f"Encountered failure pinging '{job_supervisor}'", exc_info=e
-            )
+            ),
         )
 
     @staticmethod
