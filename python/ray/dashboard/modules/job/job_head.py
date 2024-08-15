@@ -190,54 +190,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return self._agents[head_node_id]
 
-    async def choose_agent(self) -> Optional[JobAgentSubmissionClient]:
-        """
-        Try to disperse as much as possible to select one of
-        the `CANDIDATE_AGENT_NUMBER` agents to solve requests.
-        the agents will not pop from `self._agents` unless
-        it's dead. Saved in `self._agents` is the agent that was
-        used before.
-        Strategy:
-            1. if the number of `self._agents` has reached
-               `CANDIDATE_AGENT_NUMBER`, randomly select one agent from
-               `self._agents`.
-            2. if not, randomly select one agent from all available agents,
-               it is possible that the selected one already exists in
-               `self._agents`.
-        """
-        # the number of agents which has an available HTTP port.
-        while True:
-            raw_agent_infos = await DataOrganizer.get_all_agent_infos()
-            agent_infos = {
-                key: value
-                for key, value in raw_agent_infos.items()
-                if value.get("httpPort", -1) > 0
-            }
-            if len(agent_infos) > 0:
-                break
-            await asyncio.sleep(dashboard_consts.TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
-        # delete dead agents.
-        for dead_node in set(self._agents) - set(agent_infos):
-            client = self._agents.pop(dead_node)
-            await client.close()
-
-        if len(self._agents) >= dashboard_consts.CANDIDATE_AGENT_NUMBER:
-            node_id = sample(list(set(self._agents)), 1)[0]
-            return self._agents[node_id]
-        else:
-            # Randomly select one from among all agents, it is possible that
-            # the selected one already exists in `self._agents`
-            node_id = sample(sorted(agent_infos), 1)[0]
-            agent_info = agent_infos[node_id]
-
-            if node_id not in self._agents:
-                node_ip = agent_info["ipAddress"]
-                http_port = agent_info["httpPort"]
-                agent_http_address = f"http://{node_ip}:{http_port}"
-                self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
-
-            return self._agents[node_id]
-
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
         # NOTE(edoakes): CURRENT_VERSION should be bumped and checked on the
