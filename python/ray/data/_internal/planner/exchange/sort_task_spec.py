@@ -168,8 +168,8 @@ class SortTaskSpec(ExchangeTaskSpec):
         if sample_bar is None:
             sample_bar = ProgressBar(
                 SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
-                len(sample_results),
-                unit="block",
+                len(blocks) * n_samples,
+                unit="rows",
             )
         # TODO(zhilong): Update sort sample bar before finished.
         samples = sample_bar.fetch_until_complete(sample_results)
