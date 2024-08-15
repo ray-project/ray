@@ -153,7 +153,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        self._dashboard_head = dashboard_head
+        self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._job_info_client = None
         self._upload_package_thread_pool_executor = ThreadPoolExecutor(
             thread_name_prefix="job_head.upload_package"
@@ -317,7 +317,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def stop_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client,
+            self._gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -352,7 +352,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def delete_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client,
+            self._gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -387,7 +387,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client,
+            self._gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -408,7 +408,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/jobs/")
     async def list_jobs(self, req: Request) -> Response:
         driver_jobs, submission_job_drivers = await get_driver_jobs(
-            self._dashboard_head.gcs_aio_client
+            self._gcs_aio_client
         )
 
         submission_jobs = await self._job_info_client.get_all_jobs()
@@ -438,7 +438,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client,
+            self._gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -473,7 +473,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def tail_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client,
+            self._gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -495,7 +495,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         driver_agent_http_address = None
         while driver_agent_http_address is None:
             job = await find_job_by_ids(
-                self._dashboard_head.gcs_aio_client,
+                self._gcs_aio_client,
                 self._job_info_client,
                 job_or_submission_id,
             )
@@ -527,7 +527,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def run(self, server):
         if not self._job_info_client:
             self._job_info_client = JobInfoStorageClient(
-                self._dashboard_head.gcs_aio_client
+                self._gcs_aio_client
             )
 
     @staticmethod
