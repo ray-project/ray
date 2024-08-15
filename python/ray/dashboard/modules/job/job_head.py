@@ -4,7 +4,6 @@ import json
 import logging
 import traceback
 from concurrent.futures import ThreadPoolExecutor
-from random import sample
 from typing import AsyncIterator, Optional
 
 import aiohttp.web
