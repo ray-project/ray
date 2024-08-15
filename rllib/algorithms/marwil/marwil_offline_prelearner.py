@@ -18,6 +18,22 @@ from ray.rllib.utils.typing import EpisodeType, TensorType
 
 
 class MARWILOfflinePreLearner(OfflinePreLearner):
+    """`OfflinePreLearner` class for MARWIL
+
+    Monotonic Advantage Re-Weighted Imitation Learning (MARWIL relies on
+    Generalized Advantage Estimation (GAE) for loss computation. This
+    particular computation is not included in the default
+    `OfflinePreLearner` and is added in this class. Similar to `PPO` a
+    `_compute_values` and `_compute_gae_from_episodes` define the logic
+    for GAE calculations.
+
+    Note, GAE calculations rely heavily on the current state of the value
+    network, which is part of the `OfflinePreLearner`'s `_module`. Weigths
+    should be periodically snyched with the current weights of the
+    `Learner``s module, otherwise GAE calculation will accumulate bias
+    over time.
+    """
+
     @OverrideToImplementCustomLogic
     @override(OfflinePreLearner)
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, MultiAgentBatch]:
