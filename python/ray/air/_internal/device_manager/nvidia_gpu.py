@@ -10,7 +10,7 @@ from ray.air._internal.device_manager.torch_device_manager import TorchDeviceMan
 class CUDATorchDeviceManager(TorchDeviceManager):
     """CUDA device manager"""
 
-    def is_device_available(self) -> bool():
+    def is_available(self) -> bool():
         return torch.cuda.is_available()
 
     def get_devices(self) -> List[torch.device]:

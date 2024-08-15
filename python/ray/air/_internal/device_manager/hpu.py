@@ -12,19 +12,25 @@ if HPU_PACKAGE_AVAILABLE:
 class HPUTorchDeviceManager(TorchDeviceManager):
     """HPU device manager"""
 
-    def is_device_available(self) -> bool():
+    @staticmethod
+    def register_custom_torch_dist_backend():
+        if HPU_PACKAGE_AVAILABLE:
+            import habana_frameworks.torch.core  # noqa: F401
+            import habana_frameworks.torch.distributed.hccl  # noqa: F401
+
+    def is_available(self) -> bool():
         if not HPU_PACKAGE_AVAILABLE:
             return False
 
         return torch_hpu.is_available()
 
     def get_devices(self) -> List[torch.device]:
-        if HPU_PACKAGE_AVAILABLE and torch_hpu.is_available():
-            devices = [torch.device("hpu")]
-        else:
-            devices = [torch.device("cpu")]
+        if not self.is_available():
+            raise RuntimeError(
+                "Using HPUTorchDeviceManager but torch hpu is not available."
+            )
 
-        return devices
+        return [torch.device("hpu")]
 
     def set_device(self, device: Union[torch.device, int, str, None]):
         torch_hpu.set_device(device)

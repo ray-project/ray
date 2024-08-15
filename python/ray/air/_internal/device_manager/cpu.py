@@ -8,7 +8,7 @@ from ray.air._internal.device_manager.torch_device_manager import TorchDeviceMan
 class CPUTorchDeviceManager(TorchDeviceManager):
     """CPU device manager"""
 
-    def is_device_available(self) -> bool():
+    def is_available(self) -> bool():
         return True
 
     def get_devices(self) -> List[torch.device]:

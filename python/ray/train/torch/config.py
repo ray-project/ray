@@ -10,7 +10,7 @@ import torch.distributed as dist
 import ray
 from ray.air._internal.device_manager import (
     init_torch_device_manager,
-    try_register_torch_accelerator_module,
+    register_custom_torch_dist_backend,
 )
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
@@ -109,7 +109,7 @@ def _setup_torch_process_group(
         )
         os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
     elif backend == "hccl":
-        try_register_torch_accelerator_module(backend)
+        register_custom_torch_dist_backend(backend)
 
     dist.init_process_group(
         backend=backend,

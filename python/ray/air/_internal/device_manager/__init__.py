@@ -3,13 +3,9 @@ from typing import Optional, Type
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
 from ray.air._internal.device_manager.cpu import CPUTorchDeviceManager
 from ray.air._internal.device_manager.hpu import HPUTorchDeviceManager
-from ray.air._internal.device_manager.npu import (
-    NPU_TORCH_PACKAGE_AVAILABLE,
-    NPUTorchDeviceManager,
-)
+from ray.air._internal.device_manager.npu import NPUTorchDeviceManager
 from ray.air._internal.device_manager.nvidia_gpu import CUDATorchDeviceManager
 from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
 
@@ -26,22 +22,12 @@ SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER = {
 }
 
 
-def try_register_torch_accelerator_module(backend=None) -> None:
-    try:
-        if HPU_PACKAGE_AVAILABLE:
-            import habana_frameworks.torch.hpu  # noqa: F401
+def register_custom_torch_dist_backend(backend: Optional[str] = None) -> None:
+    if backend == "hccl":
+        # The name for the communication backend of Habana and torch-npu is the same.
+        HPUTorchDeviceManager.register_custom_torch_dist_backend()
 
-            if backend == "hccl":
-                import habana_frameworks.torch.core  # noqa: F401
-                import habana_frameworks.torch.distributed.hccl  # noqa: F401
-
-        if NPU_TORCH_PACKAGE_AVAILABLE:
-            import torch_npu  # noqa: F401
-
-    except ImportError:
-        raise ImportError(
-            "PyTorch extension modules for accelerators exist but failed to import."
-        )
+        NPUTorchDeviceManager.register_custom_torch_dist_backend()
 
 
 def get_torch_device_manager_cls_by_resources(
@@ -95,7 +81,7 @@ __all__ = [
     CUDATorchDeviceManager,
     HPUTorchDeviceManager,
     NPUTorchDeviceManager,
-    try_register_torch_accelerator_module,
+    register_custom_torch_dist_backend,
     get_torch_device_manager,
     init_torch_device_manager,
 ]

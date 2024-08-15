@@ -1,5 +1,4 @@
 import os
-from functools import lru_cache
 from importlib.util import find_spec
 from typing import List, Union
 
@@ -10,7 +9,6 @@ import ray._private.ray_constants as ray_constants
 from ray.air._internal.device_manager.torch_device_manager import TorchDeviceManager
 
 
-@lru_cache()
 def is_package_present(package_name: str) -> bool:
     try:
         return find_spec(package_name) is not None
@@ -28,7 +26,12 @@ if NPU_TORCH_PACKAGE_AVAILABLE:
 class NPUTorchDeviceManager(TorchDeviceManager):
     """Ascend NPU device manager"""
 
-    def is_device_available(self) -> bool:
+    @staticmethod
+    def register_custom_torch_dist_backend():
+        if NPU_TORCH_PACKAGE_AVAILABLE:
+            import torch_npu  # noqa: F401, F811
+
+    def is_available(self) -> bool:
         if not NPU_TORCH_PACKAGE_AVAILABLE:
             return False
 

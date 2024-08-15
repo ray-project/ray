@@ -20,16 +20,11 @@ from torch.utils.data import (
 )
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray.air._internal.device_manager import (
-    get_torch_device_manager,
-    try_register_torch_accelerator_module,
-)
+from ray.air._internal.device_manager import get_torch_device_manager
 from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.session import get_accelerator, set_accelerator
 from ray.util.annotations import Deprecated, PublicAPI
-
-try_register_torch_accelerator_module()
 
 if Version(torch.__version__) < Version("1.11.0"):
     FullyShardedDataParallel = None

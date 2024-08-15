@@ -10,7 +10,7 @@ class TorchDeviceManager(ABC):
     an acclerator family in Ray AI Library.
     """
 
-    def is_device_available(self) -> bool:
+    def is_available(self) -> bool:
         """Validate if device is available."""
         ...
 
