@@ -138,10 +138,6 @@ class IcebergDatasource(Datasource):
                 ),
             )
 
-            # smallest_chunk = min(chunk_sizes, key=chunk_sizes.get)
-            # chunks[smallest_chunk].append(plan_file)
-            # # Update the size of the chunk after adding the file to it
-            # chunk_sizes[smallest_chunk] += plan_file.file.file_size_in_bytes
 
         return chunks
 
