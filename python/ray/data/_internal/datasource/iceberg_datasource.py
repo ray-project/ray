@@ -138,7 +138,6 @@ class IcebergDatasource(Datasource):
                 ),
             )
 
-
         return chunks
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
