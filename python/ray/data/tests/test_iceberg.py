@@ -30,8 +30,8 @@ _CATALOG_KWARGS = {
 }
 
 
-@pytest.fixture(autouse=True, scope="function")
-def pyiceberg_full_mock(monkeypatch):
+@pytest.fixture(autouse=True, scope="session")
+def pyiceberg_table():
     from pyiceberg.catalog.sql import SqlCatalog
 
     if not os.path.exists(_WAREHOUSE_PATH):
@@ -104,7 +104,7 @@ def pyiceberg_full_mock(monkeypatch):
     Version(pa.__version__) < Version("9.0.0"),
     reason="PyIceberg depends on pyarrow>=9.0.0",
 )
-def test_get_catalog(monkeypatch):
+def test_get_catalog():
     # NOTE: Iceberg only works with PyArrow 9 or above.
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:
@@ -124,7 +124,7 @@ def test_get_catalog(monkeypatch):
     Version(pa.__version__) < Version("9.0.0"),
     reason="PyIceberg depends on pyarrow>=9.0.0",
 )
-def test_plan_files(monkeypatch):
+def test_plan_files():
     # NOTE: Iceberg only works with PyArrow 9 or above.
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:
@@ -144,7 +144,7 @@ def test_plan_files(monkeypatch):
     Version(pa.__version__) < Version("9.0.0"),
     reason="PyIceberg depends on pyarrow>=9.0.0",
 )
-def test_chunk_plan_files(monkeypatch):
+def test_chunk_plan_files():
     # NOTE: Iceberg only works with PyArrow 9 or above.
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:
@@ -158,20 +158,20 @@ def test_chunk_plan_files(monkeypatch):
     )
 
     chunks = iceberg_ds._distribute_tasks_into_equal_chunks(iceberg_ds.plan_files, 5)
-    assert (len(c) == 2 for c in chunks)
+    assert (len(c) == 2 for c in chunks), chunks
 
     chunks = iceberg_ds._distribute_tasks_into_equal_chunks(iceberg_ds.plan_files, 20)
     assert (
         sum(len(c) == 1 for c in chunks) == 10
         and sum(len(c) == 0 for c in chunks) == 10
-    )
+    ), chunks
 
 
 @pytest.mark.skipif(
     Version(pa.__version__) < Version("9.0.0"),
     reason="PyIceberg depends on pyarrow>=9.0.0",
 )
-def test_get_read_tasks(monkeypatch):
+def test_get_read_tasks():
     # NOTE: Iceberg only works with PyArrow 9 or above.
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:
@@ -192,7 +192,7 @@ def test_get_read_tasks(monkeypatch):
     Version(pa.__version__) < Version("9.0.0"),
     reason="PyIceberg depends on pyarrow>=9.0.0",
 )
-def test_filtered_read(monkeypatch):
+def test_filtered_read():
     # NOTE: Iceberg only works with PyArrow 9 or above.
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:
@@ -218,7 +218,7 @@ def test_filtered_read(monkeypatch):
     Version(pa.__version__) < Version("9.0.0"),
     reason="PyIceberg depends on pyarrow>=9.0.0",
 )
-def test_read_basic(monkeypatch):
+def test_read_basic():
     # NOTE: Iceberg only works with PyArrow 9 or above.
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:

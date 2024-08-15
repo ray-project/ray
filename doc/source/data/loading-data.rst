@@ -539,7 +539,6 @@ Ray Data interoperates with distributed data processing frameworks like
         the distributed files that underlie the Iceberg table.
 
         ..
-            TODO: This code snippet might not work correctly. We should test it.
 
         .. testcode::
             :skipif: True

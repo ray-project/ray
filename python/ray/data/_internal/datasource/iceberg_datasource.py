@@ -2,6 +2,7 @@
 Module to read an iceberg table into a Ray Dataset, by using the Ray Datasource API.
 """
 
+import heapq
 import itertools
 import logging
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Set, Tuple, Union
@@ -57,15 +58,14 @@ class IcebergDatasource(Datasource):
         from pyiceberg.expressions import AlwaysTrue
 
         self._scan_kwargs = scan_kwargs if scan_kwargs is not None else {}
-
-        self.table_identifier = table_identifier
-
         self._catalog_kwargs = catalog_kwargs if catalog_kwargs is not None else {}
 
         if "name" in self._catalog_kwargs:
             self._catalog_name = self._catalog_kwargs.pop("name")
         else:
             self._catalog_name = "default"
+
+        self.table_identifier = table_identifier
 
         self._row_filter = row_filter if row_filter is not None else AlwaysTrue()
         self._selected_fields = selected_fields
@@ -119,17 +119,30 @@ class IcebergDatasource(Datasource):
         across tasks, based on their file size, as evenly as possible
         """
         chunks = [list() for _ in range(n_chunks)]
-        chunk_sizes = {chunk: 0 for chunk in range(n_chunks)}
 
-        # From largest to smallest, add the plan files ot the smallest chunk one at a
+        chunk_sizes = [(0, chunk_id) for chunk_id in range(n_chunks)]
+        heapq.heapify(chunk_sizes)
+        # chunk_sizes = {chunk: 0 for chunk in range(n_chunks)}
+
+        # From largest to smallest, add the plan files to the smallest chunk one at a
         # time
         for plan_file in sorted(
             plan_files, key=lambda f: f.file.file_size_in_bytes, reverse=True
         ):
-            smallest_chunk = min(chunk_sizes, key=chunk_sizes.get)
-            chunks[smallest_chunk].append(plan_file)
-            # Update the size of the chunk after adding the file to it
-            chunk_sizes[smallest_chunk] += plan_file.file.file_size_in_bytes
+            smallest_chunk = heapq.heappop(chunk_sizes)
+            chunks[smallest_chunk[1]].append(plan_file)
+            heapq.heappush(
+                chunk_sizes,
+                (
+                    smallest_chunk[0] + plan_file.file.file_size_in_bytes,
+                    smallest_chunk[1],
+                ),
+            )
+
+            # smallest_chunk = min(chunk_sizes, key=chunk_sizes.get)
+            # chunks[smallest_chunk].append(plan_file)
+            # # Update the size of the chunk after adding the file to it
+            # chunk_sizes[smallest_chunk] += plan_file.file.file_size_in_bytes
 
         return chunks
 

@@ -3029,8 +3029,9 @@ def read_iceberg(
     """Create a :class:`~ray.data.Dataset` from an Iceberg table.
 
     The table to read from is specified using a fully qualified ``table_identifier``.
-    Using PyIceberg, any intended row filters, snapshot IDs, etc. are applied,
-    and the files that satisfy the query are distributed across Ray read tasks.
+    Using PyIceberg, any intended row filters, selection of specific fields and
+    picking of a particular snapshot ID are applied, and the files that satisfy
+    the query are distributed across Ray read tasks.
     The number of output blocks is determined by ``override_num_blocks``
     which can be requested from this interface or automatically chosen if
     unspecified.
@@ -3055,7 +3056,7 @@ def read_iceberg(
             to use to filter the data *prior* to reading
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         selected_fields: Which columns from the data to read, passed directly to
-            PyIceberg's load functions
+            PyIceberg's load functions. Should be an tuple of string column names.
         snapshot_id: Optional snapshot ID for the Iceberg table, by default the latest
             snapshot is used
         scan_kwargs: Optional arguments to pass to PyIceberg's Table.scan() function
