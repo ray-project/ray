@@ -192,7 +192,7 @@ Nevergrad (tune.search.nevergrad.NevergradSearch)
 .. autosummary::
     :nosignatures:
     :toctree: doc/
-    
+
     nevergrad.NevergradSearch
 
 .. _tune-optuna:
