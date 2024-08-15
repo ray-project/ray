@@ -162,6 +162,25 @@ class DataOrganizer:
         ]
 
     @classmethod
+    async def get_all_node_details(cls):
+        return [
+            await DataOrganizer.get_node_info(node_id)
+            for node_id in DataSource.nodes.keys()
+        ]
+
+    @classmethod
+    async def get_all_agent_infos(cls):
+        agent_infos = dict()
+        for node_id, (http_port, grpc_port) in DataSource.agents.items():
+            agent_infos[node_id] = dict(
+                ipAddress=DataSource.node_id_to_ip[node_id],
+                httpPort=int(http_port or -1),
+                grpcPort=int(grpc_port or -1),
+                httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
+            )
+        return agent_infos
+
+    @classmethod
     async def get_agent_info(cls, node_id: str) -> Optional[Dict[str, Any]]:
         if node_id not in DataSource.agents:
             return None
