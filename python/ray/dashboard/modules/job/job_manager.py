@@ -8,6 +8,8 @@ import time
 import traceback
 from typing import Any, Dict, Iterator, Optional, Union
 
+from python.ray.dashboard.modules.job.utils import get_head_node_id
+
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.event.event_logger import get_event_logger
@@ -36,8 +38,6 @@ from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     SchedulingStrategyT,
 )
-
-from python.ray.dashboard.modules.job.utils import get_head_node_id
 
 logger = logging.getLogger(__name__)
 

@@ -11,6 +11,8 @@ import aiohttp.web
 from aiohttp.client import ClientResponse
 from aiohttp.web import Request, Response
 
+from python.ray.dashboard.modules.job.utils import get_head_node_id
+
 import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as optional_utils
@@ -38,8 +40,6 @@ from ray.dashboard.modules.job.utils import (
     parse_and_validate_request,
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
-
-from python.ray.dashboard.modules.job.utils import get_head_node_id
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -435,10 +435,12 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             job_agent_client = self.get_job_driver_agent_client(job)
             payload = (
                 await job_agent_client.get_job_logs_internal(job.submission_id)
-                if job_agent_client else JobLogsResponse("")
+                if job_agent_client
+                else JobLogsResponse("")
             )
             return Response(
-                text=json.dumps(dataclasses.asdict(payload)), content_type="application/json"
+                text=json.dumps(dataclasses.asdict(payload)),
+                content_type="application/json",
             )
         except Exception:
             return Response(
@@ -491,21 +493,23 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         return ws
 
-    def get_job_driver_agent_client(self, job: JobDetails) -> Optional[JobAgentSubmissionClient]:
+    def get_job_driver_agent_client(
+        self, job: JobDetails
+    ) -> Optional[JobAgentSubmissionClient]:
         if job.driver_agent_http_address is None:
             return None
 
         driver_node_id = job.driver_node_id
         if driver_node_id not in self._agents:
-            self._agents[driver_node_id] = JobAgentSubmissionClient(job.driver_agent_http_address)
+            self._agents[driver_node_id] = JobAgentSubmissionClient(
+                job.driver_agent_http_address
+            )
 
         return self._agents[driver_node_id]
 
     async def run(self, server):
         if not self._job_info_client:
-            self._job_info_client = JobInfoStorageClient(
-                self._gcs_aio_client
-            )
+            self._job_info_client = JobInfoStorageClient(self._gcs_aio_client)
 
     @staticmethod
     def is_minimal_module():

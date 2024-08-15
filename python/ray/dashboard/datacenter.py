@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Optional, Any
+from typing import Any, Optional
 
 import ray.dashboard.consts as dashboard_consts
 from ray.dashboard.utils import (
