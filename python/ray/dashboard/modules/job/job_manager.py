@@ -10,6 +10,7 @@ from typing import Any, Dict, Iterator, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.async_utils import async_call_with_retry
 from ray._private.event.event_logger import get_event_logger
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_constants import env_integer
@@ -47,7 +48,7 @@ RAY_JOB_SUPERVISOR_PING_MAX_RETRIES = env_integer(
     "RAY_JOB_SUPERVISOR_PING_MAX_RETRIES", 5
 )
 # Configures timeout threshold for `JobSupervisor` actor to respond back to `JobManager`
-RAY_JOB_SUPERVISOR_PING_TIMEOUT_S = env_integer("RAY_JOB_SUPERVISOR_PING_TIMEOUT_S", 10)
+RAY_JOB_SUPERVISOR_PING_TIMEOUT_S = env_integer("RAY_JOB_SUPERVISOR_PING_TIMEOUT_S", 5)
 
 
 def generate_job_id() -> str:
@@ -317,6 +318,25 @@ class JobManager:
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
+
+    @staticmethod
+    async def _ping_with_retries(job_supervisor: ActorHandle):
+        async def _ping():
+            # NOTE: We add a timeout to make our pings aren't hanging forever
+            await asyncio.wait_for(
+                job_supervisor.ping.remote(),
+                RAY_JOB_SUPERVISOR_PING_TIMEOUT_S
+            )
+
+        return async_call_with_retry(
+            _ping,
+            exception_classes=(ray.exceptions.RpcError, asyncio.TimeoutError),
+            max_attempts=RAY_JOB_SUPERVISOR_PING_MAX_RETRIES,
+            max_backoff_s=2,
+            on_exception=lambda e: logger.warning(
+                f"Encountered failure pinging '{job_supervisor}'", exc_info=e
+            )
+        )
 
     @staticmethod
     async def _ping(job_supervisor: ActorHandle):
