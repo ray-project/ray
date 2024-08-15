@@ -255,16 +255,15 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         while True:
             raw_agent_infos = await DataOrganizer.get_agent_infos(target_node_ids)
-            if raw_agent_infos:
-                # Filter out invalid agent infos with unset HTTP port
-                agent_infos = {
-                    key: value
-                    for key, value in raw_agent_infos.items()
-                    if value.get("httpPort", -1) > 0
-                }
+            # Filter out invalid agent infos with unset HTTP port
+            agent_infos = {
+                key: value
+                for key, value in raw_agent_infos.items()
+                if value.get("httpPort", -1) > 0
+            }
 
-                if len(agent_infos) > 0:
-                    return agent_infos
+            if len(agent_infos) > 0:
+                return agent_infos
 
             await asyncio.sleep(dashboard_consts.TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
 
