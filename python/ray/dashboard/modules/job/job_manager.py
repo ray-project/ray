@@ -37,6 +37,8 @@ from ray.util.scheduling_strategies import (
     SchedulingStrategyT,
 )
 
+from python.ray.dashboard.modules.job.utils import get_head_node_id
+
 logger = logging.getLogger(__name__)
 
 
@@ -397,12 +399,8 @@ class JobManager:
         # If the user did not specify any resources or set the driver on worker nodes
         # env var, we will run the driver on the head node.
 
-        head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
-            "head_node_id".encode(),
-            namespace=ray_constants.KV_NAMESPACE_JOB,
-            timeout=30,
-        )
-        if head_node_id_bytes is None:
+        head_node_id = await get_head_node_id(self._gcs_aio_client)
+        if head_node_id is None:
             logger.info(
                 "Head node ID not found in GCS. Using Ray's default actor "
                 "scheduling strategy for the job driver instead of running "
@@ -410,7 +408,6 @@ class JobManager:
             )
             scheduling_strategy = "DEFAULT"
         else:
-            head_node_id = head_node_id_bytes.decode()
             logger.info(
                 "Head node ID found in GCS; scheduling job driver on "
                 f"head node {head_node_id}"
