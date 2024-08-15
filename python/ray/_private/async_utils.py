@@ -82,6 +82,7 @@ async def async_call_with_retry(
             else:
                 raise e
 
+    raise ValueError("This part should not be reachable")
 
 def enable_monitor_loop_lag(
     callback: Callable[[float], None],
