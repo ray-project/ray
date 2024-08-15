@@ -318,8 +318,6 @@ def _generate_transform_fn_for_async_map_batches(
         # generators, and in the main event loop, yield them from
         # the queue as they become available.
         output_batch_queue = queue.Queue()
-        exception_queue = queue.Queue()
-        SENTINEL = dict()  # Signal to stop processing
 
         async def process_batch(batch: DataBatch):
             try:
@@ -329,8 +327,9 @@ def _generate_transform_fn_for_async_map_batches(
                 async for output_batch in output_batch_iterator:
                     output_batch_queue.put(output_batch)
             except Exception as e:
-                exception_queue.put(e)
-                output_batch_queue.put(SENTINEL)
+                output_batch_queue.put(
+                    e
+                )  # Put the exception into the queue to signal an error
 
         async def process_all_batches():
             loop = ray.data._map_actor_context.udf_map_asyncio_loop
@@ -350,19 +349,14 @@ def _generate_transform_fn_for_async_map_batches(
 
         # Yield results as they become available.
         while not future.done():
-            if not exception_queue.empty():
-                raise exception_queue.get()
             # Here, `out_batch` is a one-row output batch
             # from the async generator, corresponding to a
             # single row from the input batch.
             out_batch = output_batch_queue.get()
-            if out_batch is SENTINEL:
-                break
+            if isinstance(out_batch, Exception):
+                raise out_batch
             _validate_batch_output(out_batch)
             yield out_batch
-
-        if not exception_queue.empty():
-            raise exception_queue.get()
 
     return transform_fn
 
