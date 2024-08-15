@@ -337,13 +337,14 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     num_items=len(seq_lens),
                     single_agent_episode=sa_episode,
                 )
-                self.add_n_batch_items(
-                    batch=data,
-                    column=Columns.LOSS_MASK,
-                    items_to_add=mask,
-                    num_items=len(mask),
-                    single_agent_episode=sa_episode,
-                )
+                if not shared_data.get("_added_loss_mask_for_valid_episode_ts"):
+                    self.add_n_batch_items(
+                        batch=data,
+                        column=Columns.LOSS_MASK,
+                        items_to_add=mask,
+                        num_items=len(mask),
+                        single_agent_episode=sa_episode,
+                    )
             else:
                 assert not sa_episode.is_finalized
 
