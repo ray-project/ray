@@ -8,12 +8,11 @@ import time
 import traceback
 from typing import Any, Dict, Iterator, Optional, Union
 
-from ray._private.ray_constants import env_integer
-
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.event.event_logger import get_event_logger
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.ray_constants import env_integer
 from ray._private.utils import run_background_task
 from ray.actor import ActorHandle
 from ray.core.generated.event_pb2 import Event
@@ -44,7 +43,9 @@ logger = logging.getLogger(__name__)
 
 # Configures max number of retries for network transport failures, before
 # `JobSupervisor` actor will be deemed unreachable
-RAY_JOB_SUPERVISOR_PING_MAX_RETRIES = env_integer("RAY_JOB_SUPERVISOR_PING_MAX_RETRIES", 5)
+RAY_JOB_SUPERVISOR_PING_MAX_RETRIES = env_integer(
+    "RAY_JOB_SUPERVISOR_PING_MAX_RETRIES", 5
+)
 # Configures timeout threshold for `JobSupervisor` actor to respond back to `JobManager`
 RAY_JOB_SUPERVISOR_PING_TIMEOUT_S = env_integer("RAY_JOB_SUPERVISOR_PING_TIMEOUT_S", 10)
 
@@ -323,16 +324,23 @@ class JobManager:
 
         while True:
             try:
-                await asyncio.wait_for(job_supervisor.ping.remote(), RAY_JOB_SUPERVISOR_PING_TIMEOUT_S)
+                await asyncio.wait_for(
+                    job_supervisor.ping.remote(), RAY_JOB_SUPERVISOR_PING_TIMEOUT_S
+                )
             except (ray.exceptions.RpcError, asyncio.TimeoutError) as e:
-                logger.warning(f"Encountered failure pinging '{job_supervisor}'", exc_info=e)
+                logger.warning(
+                    f"Encountered failure pinging '{job_supervisor}'", exc_info=e
+                )
 
                 if attempt < RAY_JOB_SUPERVISOR_PING_MAX_RETRIES:
                     attempt += 1
                     continue
                 else:
-                    logger.error(f"Failed to reach job supervisor '{job_supervisor}'"
-                                 f" after {RAY_JOB_SUPERVISOR_PING_MAX_RETRIES} attempts", exc_info=e)
+                    logger.error(
+                        f"Failed to reach job supervisor '{job_supervisor}'"
+                        f" after {RAY_JOB_SUPERVISOR_PING_MAX_RETRIES} attempts",
+                        exc_info=e,
+                    )
                     raise e
 
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
