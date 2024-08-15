@@ -122,7 +122,6 @@ class IcebergDatasource(Datasource):
 
         chunk_sizes = [(0, chunk_id) for chunk_id in range(n_chunks)]
         heapq.heapify(chunk_sizes)
-        # chunk_sizes = {chunk: 0 for chunk in range(n_chunks)}
 
         # From largest to smallest, add the plan files to the smallest chunk one at a
         # time
