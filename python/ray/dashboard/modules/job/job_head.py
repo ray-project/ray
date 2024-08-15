@@ -237,7 +237,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             return None
 
         if head_node_id not in self._agents:
-            agent_info = DataOrganizer.get_agent_info(node_id=head_node_id)
+            agent_info = await DataOrganizer.get_agent_info(node_id=head_node_id)
             if not agent_info:
                 logger.error("Head node agent's information was not found")
                 return None
