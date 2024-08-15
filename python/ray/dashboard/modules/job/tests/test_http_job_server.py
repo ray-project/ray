@@ -1,24 +1,13 @@
 import asyncio
-import json
-import logging
-import os
-import shutil
-import subprocess
 import sys
-import tempfile
-import time
-from pathlib import Path
 from typing import Optional
 from unittest.mock import patch
 
-import pytest
 import yaml
 
-import ray
 from ray._private.test_utils import (
     chdir,
     format_web_url,
-    wait_for_condition,
     wait_until_server_available,
 )
 from ray.dashboard.modules.dashboard_sdk import ClusterInfo, parse_cluster_info
@@ -729,9 +718,7 @@ ray.init(address="auto")
 
 
 @pytest.mark.asyncio
-async def test_job_head_choose_job_agent(monkeypatch):
-    monkeypatch.setattr(f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False)
-
+async def test_job_head_pick_random_job_agent(monkeypatch):
     with set_env_var("CANDIDATE_AGENT_NUMBER", "2"):
         import importlib
 
@@ -760,8 +747,10 @@ async def test_job_head_choose_job_agent(monkeypatch):
             DataSource.node_id_to_ip.pop(node_id)
             DataSource.agents.pop(node_id)
 
+        head_node_id = "node1"
+
         agent_1 = (
-            "node1",
+            head_node_id,
             dict(
                 ipAddress="1.1.1.1",
                 httpPort=1,
@@ -788,17 +777,45 @@ async def test_job_head_choose_job_agent(monkeypatch):
             ),
         )
 
+        # Disable Head-node routing for the Ray job critical ops (enabling random agent sampling)
+        monkeypatch.setattr(f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False)
+
+        # Check only 1 agent present, only agent being returned
         add_agent(agent_1)
         job_agent_client = await job_head.get_target_agent()
         assert job_agent_client._agent_address == "http://1.1.1.1:1"
 
+        # Remove only agent, no agents present, should time out
         del_agent(agent_1)
         with pytest.raises(asyncio.TimeoutError):
             await asyncio.wait_for(job_head.get_target_agent(), timeout=3)
 
+        # Enable Head-node routing for the Ray job critical ops (disabling random agent sampling)
+        monkeypatch.setattr(f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", True)
+
+        # Add 3 agents
         add_agent(agent_1)
         add_agent(agent_2)
         add_agent(agent_3)
+
+        # Mock GCS client
+        class _MockedGCSClient:
+            async def internal_kv_get(self, key: bytes, **kwargs):
+                if key == ray_constants.KV_HEAD_NODE_ID_KEY:
+                    return head_node_id.encode()
+
+                return None
+
+        job_head._gcs_aio_client = _MockedGCSClient()
+
+        # Make sure returned agent is a head-node
+        # NOTE: We run 3 tims to make sure we're not hitting branch probabilistically
+        for _ in range(3):
+            job_agent_client = await job_head.get_target_agent()
+            assert job_agent_client._agent_address == "http://1.1.1.1:1"
+
+        # Disable Head-node routing for the Ray job critical ops (enabling random agent sampling)
+        monkeypatch.setattr(f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False)
 
         # Theoretically, the probability of failure is 1/3^100
         addresses_1 = set()
