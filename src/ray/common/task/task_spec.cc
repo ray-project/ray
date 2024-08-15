@@ -594,15 +594,13 @@ std::string TaskSpecification::CallSiteString() const {
 }
 
 WorkerCacheKey::WorkerCacheKey(
-    const std::string serialized_runtime_env,
+    std::string serialized_runtime_env,
     const absl::flat_hash_map<std::string, double> &required_resources,
     bool is_actor,
     bool is_gpu,
     bool is_root_detached_actor)
-    : serialized_runtime_env(serialized_runtime_env),
-      required_resources(RayConfig::instance().worker_resource_limits_enabled()
-                             ? required_resources
-                             : absl::flat_hash_map<std::string, double>{}),
+    : serialized_runtime_env(std::move(serialized_runtime_env)),
+      required_resources(required_resources),
       is_actor(is_actor && RayConfig::instance().isolate_workers_across_task_types()),
       is_gpu(is_gpu && RayConfig::instance().isolate_workers_across_resource_types()),
       is_root_detached_actor(is_root_detached_actor),

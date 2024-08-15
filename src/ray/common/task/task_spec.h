@@ -533,7 +533,7 @@ class WorkerCacheKey {
   ///         tasks or actors whose root ancestor is a detached actor. This is set
   ///         to prevent worker reuse between tasks whose root is the driver process
   ///         and tasks whose root is a detached actor.
-  WorkerCacheKey(const std::string serialized_runtime_env,
+  WorkerCacheKey(std::string serialized_runtime_env,
                  const absl::flat_hash_map<std::string, double> &required_resources,
                  bool is_actor,
                  bool is_gpu,
