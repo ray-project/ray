@@ -3,7 +3,6 @@ import logging
 import os
 import time
 from collections import OrderedDict, defaultdict
-from concurrent.futures import ThreadPoolExecutor
 from typing import Union
 
 import aiohttp.web
@@ -31,9 +30,6 @@ class EventHead(
         self._event_dir = os.path.join(self._dashboard_head.log_dir, "events")
         os.makedirs(self._event_dir, exist_ok=True)
         self._monitor: Union[asyncio.Task, None] = None
-        self.monitor_thread_pool_executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="event_monitor"
-        )
         self.total_report_events_count = 0
         self.total_events_received = 0
         self.module_started = time.monotonic()
@@ -111,7 +107,7 @@ class EventHead(
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),
-            self.monitor_thread_pool_executor,
+            self._dashboard_head._thread_pool_executor,
         )
 
     @staticmethod

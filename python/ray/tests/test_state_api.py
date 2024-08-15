@@ -4,6 +4,7 @@ import json
 import sys
 import signal
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple
 from unittest.mock import MagicMock, AsyncMock
 
@@ -130,7 +131,9 @@ Unit tests
 @pytest.fixture
 def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
-    manager = StateAPIManager(data_source_client)
+    manager = StateAPIManager(
+        data_source_client, thread_pool_executor=ThreadPoolExecutor()
+    )
     yield manager
 
 

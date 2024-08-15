@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import threading
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Set
@@ -124,6 +124,11 @@ class DashboardHead:
         self.http_port_retries = http_port_retries
         self._modules_to_load = modules_to_load
         self._modules_loaded = False
+
+        # TODO(ryw): convert each head's own TPE to use this.
+        self._thread_pool_executor = ThreadPoolExecutor(
+            thread_name_prefix="dashboard_head_tpe"
+        )
 
         self.gcs_address = None
         assert gcs_address is not None
@@ -372,7 +377,7 @@ class DashboardHead:
             self._gcs_check_alive(),
             _async_notify(),
             DataOrganizer.purge(),
-            DataOrganizer.organize(),
+            DataOrganizer.organize(self._thread_pool_executor),
         ]
         for m in modules:
             concurrent_tasks.append(m.run(self.server))

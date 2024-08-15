@@ -548,7 +548,10 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         self._state_api_data_source_client = StateDataSourceClient(
             gcs_channel, self._dashboard_head.gcs_aio_client
         )
-        self._state_api = StateAPIManager(self._state_api_data_source_client)
+        self._state_api = StateAPIManager(
+            self._state_api_data_source_client,
+            self._dashboard_head._thread_pool_executor,
+        )
         self._log_api = LogsManager(self._state_api_data_source_client)
 
     @staticmethod

@@ -1,7 +1,9 @@
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 import ray.dashboard.consts as dashboard_consts
+from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.utils import (
     Dict,
     MutableNotificationDict,
@@ -66,12 +68,19 @@ class DataOrganizer:
 
     @classmethod
     @async_loop_forever(dashboard_consts.ORGANIZE_DATA_INTERVAL_SECONDS)
-    async def organize(cls):
+    async def organize(cls, thread_pool_executor: ThreadPoolExecutor):
+        await get_or_create_event_loop().run_in_executor(
+            thread_pool_executor,
+            cls.sync_organize,
+        )
+
+    @classmethod
+    def sync_organize(cls):
         node_workers = {}
         core_worker_stats = {}
-        # await inside for loop, so we create a copy of keys().
+        # nodes may change during process, so we create a copy of keys().
         for node_id in list(DataSource.nodes.keys()):
-            workers = await cls.get_node_workers(node_id)
+            workers = cls.get_node_workers(node_id)
             for worker in workers:
                 for stats in worker.get("coreWorkerStats", []):
                     worker_id = stats["workerId"]
@@ -81,7 +90,7 @@ class DataOrganizer:
         DataSource.core_worker_stats.reset(core_worker_stats)
 
     @classmethod
-    async def get_node_workers(cls, node_id):
+    def get_node_workers(cls, node_id):
         workers = []
         node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
         node_stats = DataSource.node_stats.get(node_id, {})

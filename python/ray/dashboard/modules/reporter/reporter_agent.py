@@ -1225,7 +1225,9 @@ class ReporterAgent(
                 # NOTE: Stats collection is executed inside the thread-pool
                 #       executor (TPE) to avoid blocking the Dashboard's event-loop
                 json_payload = await loop.run_in_executor(
-                    None, self._compose_stats_payload, autoscaler_status_json_bytes
+                    self._dashboard_agent.thread_pool_executor,
+                    self._compose_stats_payload,
+                    autoscaler_status_json_bytes,
                 )
 
                 await publisher.publish_resource_usage(self._key, json_payload)
