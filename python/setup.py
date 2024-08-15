@@ -1,3 +1,6 @@
+# demo that changing a line in setup.py will not trigger
+# codeowner reviews
+
 import argparse
 import errno
 import io
