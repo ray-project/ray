@@ -729,7 +729,9 @@ ray.init(address="auto")
 
 
 @pytest.mark.asyncio
-async def test_job_head_choose_job_agent():
+async def test_job_head_choose_job_agent(monkeypatch):
+    monkeypatch.setattr(f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False)
+
     with set_env_var("CANDIDATE_AGENT_NUMBER", "2"):
         import importlib
 
@@ -787,12 +789,12 @@ async def test_job_head_choose_job_agent():
         )
 
         add_agent(agent_1)
-        job_agent_client = await job_head.choose_agent()
+        job_agent_client = await job_head.get_target_agent()
         assert job_agent_client._agent_address == "http://1.1.1.1:1"
 
         del_agent(agent_1)
         with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(job_head.choose_agent(), timeout=3)
+            await asyncio.wait_for(job_head.get_target_agent(), timeout=3)
 
         add_agent(agent_1)
         add_agent(agent_2)
@@ -801,12 +803,12 @@ async def test_job_head_choose_job_agent():
         # Theoretically, the probability of failure is 1/3^100
         addresses_1 = set()
         for address in range(100):
-            job_agent_client = await job_head.choose_agent()
+            job_agent_client = await job_head.get_target_agent()
             addresses_1.add(job_agent_client._agent_address)
         assert len(addresses_1) == 2
         addresses_2 = set()
         for address in range(100):
-            job_agent_client = await job_head.choose_agent()
+            job_agent_client = await job_head.get_target_agent()
             addresses_2.add(job_agent_client._agent_address)
         assert len(addresses_2) == 2 and addresses_1 == addresses_2
 
@@ -818,13 +820,13 @@ async def test_job_head_choose_job_agent():
         # Theoretically, the probability of failure is 1/2^100
         addresses_3 = set()
         for address in range(100):
-            job_agent_client = await job_head.choose_agent()
+            job_agent_client = await job_head.get_target_agent()
             addresses_3.add(job_agent_client._agent_address)
         assert len(addresses_3) == 2
         assert addresses_2 - addresses_3 == {f"http://{agent[1]['httpAddress']}"}
         addresses_4 = set()
         for address in range(100):
-            job_agent_client = await job_head.choose_agent()
+            job_agent_client = await job_head.get_target_agent()
             addresses_4.add(job_agent_client._agent_address)
         assert addresses_4 == addresses_3
 
@@ -834,7 +836,7 @@ async def test_job_head_choose_job_agent():
         del_agent(agent)
         address = None
         for _ in range(3):
-            job_agent_client = await job_head.choose_agent()
+            job_agent_client = await job_head.get_target_agent()
             assert address is None or address == job_agent_client._agent_address
             address = job_agent_client._agent_address
 
