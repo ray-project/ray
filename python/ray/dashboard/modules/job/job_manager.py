@@ -8,6 +8,8 @@ import time
 import traceback
 from typing import Any, Dict, Iterator, Optional, Union
 
+from python.ray._private.ray_constants import env_integer
+
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.event.event_logger import get_event_logger
@@ -38,6 +40,13 @@ from ray.util.scheduling_strategies import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Configures max number of retries for network transport failures, before
+# `JobSupervisor` actor will be deemed unreachable
+RAY_JOB_SUPERVISOR_PING_MAX_RETRIES = env_integer("RAY_JOB_SUPERVISOR_PING_MAX_RETRIES", 5)
+# Configures timeout threshold for `JobSupervisor` actor to respond back to `JobManager`
+RAY_JOB_SUPERVISOR_PING_TIMEOUT_S = env_integer("RAY_JOB_SUPERVISOR_PING_TIMEOUT_S", 10)
 
 
 def generate_job_id() -> str:
@@ -233,7 +242,7 @@ class JobManager:
                         is_alive = False
                         continue
 
-                await job_supervisor.ping.remote()
+                await self._ping(job_supervisor)
 
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
@@ -306,6 +315,26 @@ class JobManager:
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
+
+    @staticmethod
+    async def _ping(job_supervisor: ActorHandle):
+        attempt = 0
+
+        while True:
+            try:
+                with asyncio.timeout(RAY_JOB_SUPERVISOR_PING_TIMEOUT_S):
+                    await job_supervisor.ping.remote()
+
+            except ray.exceptions.RpcError as e:
+                logger.warning(f"Encountered failure pinging '{job_supervisor}'", exc_info=e)
+
+                if attempt < RAY_JOB_SUPERVISOR_PING_MAX_RETRIES:
+                    attempt += 1
+                    continue
+                else:
+                    logger.error(f"Failed to reach job supervisor '{job_supervisor}'"
+                                 f" after {RAY_JOB_SUPERVISOR_PING_MAX_RETRIES} attempts", exc_info=e)
+                    raise e
 
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
         """Handle the result of starting a job supervisor actor.
