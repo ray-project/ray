@@ -190,6 +190,21 @@ class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
   }
 };
 
+class TaskEventTestWriteExport : public TaskEventBufferTest {
+ public:
+  TaskEventTestWriteExport() : TaskEventBufferTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_status_events_buffer_on_worker": 10,
+  "task_events_max_num_profile_events_buffer_on_worker": 5,
+  "task_events_send_batch_size": 100
+}
+  )");
+  }
+};
+
 void ReadContentFromFile(std::vector<std::string> &vc,
                          std::string log_file,
                          std::string filter = "") {
@@ -279,8 +294,10 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
 
-TEST_F(TaskEventBufferTest, TestWriteTaskExportEvents) {
-  size_t num_events = 3;
+TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
+  // {"task_events_max_num_status_events_buffer_on_worker": 10} in TaskEventBufferTest
+  // so set greater num_events to verify dropped events are also sent.
+  size_t num_events = 20;
   auto task_ids = GenTaskIDs(num_events);
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
@@ -305,13 +322,13 @@ TEST_F(TaskEventBufferTest, TestWriteTaskExportEvents) {
     task_event_buffer_->AddTaskEvent(std::move(task_event));
   }
 
-  ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), num_events);
-
   task_event_buffer_->FlushEvents(false);
 
   std::vector<std::string> vc;
   ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
   EXPECT_EQ((int)vc.size(), num_events);
+  json event_data_arr_json = {};
+  json expected_event_data_arr_json = {};
   for (int i = 0; i < num_events; i++){
     json export_event_as_json = json::parse(vc[i]);
     EXPECT_EQ(export_event_as_json["source_type"].get<std::string>(), "EXPORT_TASK");
@@ -320,12 +337,20 @@ TEST_F(TaskEventBufferTest, TestWriteTaskExportEvents) {
     EXPECT_EQ(export_event_as_json.contains("event_data"), true);
 
     json event_data = export_event_as_json["event_data"].get<json>();
+    event_data_arr_json.push_back(event_data);
     
     std::string expected_event_data_str;
     RAY_CHECK(google::protobuf::util::MessageToJsonString(*expected_data[i], &expected_event_data_str, options).ok());
     json expected_event_data = json::parse(expected_event_data_str);
-    EXPECT_EQ(event_data, expected_event_data);
+    expected_event_data_arr_json.push_back(expected_event_data);
   }
+  std::vector<json> event_data_arr_vec = event_data_arr_json.get<std::vector<json>>();
+  std::vector<json> expected_event_data_arr_vec = expected_event_data_arr_json.get<std::vector<nlohmann::json>>();
+  
+  std::sort(event_data_arr_vec.begin(), event_data_arr_vec.end());
+  std::sort(expected_event_data_arr_vec.begin(), expected_event_data_arr_vec.end());
+  
+  EXPECT_EQ(event_data_arr_vec, expected_event_data_arr_vec);
 
   // Expect no more events.
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
