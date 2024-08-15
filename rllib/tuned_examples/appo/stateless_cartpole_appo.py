@@ -30,7 +30,7 @@ config = (
         env_to_module_connector=lambda env: MeanStdFilter(),
     )
     .training(
-        lr=0.0005,
+        lr=0.0005 * ((args.num_gpus or 1) ** 0.5),
         num_sgd_iter=6,
         vf_loss_coeff=0.05,
         grad_clip=20.0,

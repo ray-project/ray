@@ -120,16 +120,27 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         # the interface of that base-class not the actual implementation.
         self.config = self.unwrapped().config
 
+    @override(RLModule)
     def get_train_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
         return self.unwrapped().get_train_action_dist_cls(*args, **kwargs)
 
+    @override(RLModule)
     def get_exploration_action_dist_cls(
         self, *args, **kwargs
     ) -> Type[TorchDistribution]:
         return self.unwrapped().get_exploration_action_dist_cls(*args, **kwargs)
 
+    @override(RLModule)
     def get_inference_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
         return self.unwrapped().get_inference_action_dist_cls(*args, **kwargs)
+
+    @override(RLModule)
+    def get_initial_state(self) -> Any:
+        return self.unwrapped().get_initial_state()
+
+    @override(RLModule)
+    def is_stateful(self) -> bool:
+        return self.unwrapped().is_stateful()
 
     @override(RLModule)
     def _forward_train(self, *args, **kwargs):
