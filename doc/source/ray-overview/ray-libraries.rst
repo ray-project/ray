@@ -352,6 +352,25 @@ more information.
 
             RayDP Integration
 
+    .. grid-item-card::
+
+        .. figure:: ../images/runhouse.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/run-house/runhouse?style=social)]
+                :target: https://github.com/run-house/runhouse
+
+            Runhouse is an open-source package that makes it simple to launch and form Ray clusters and instantly dispatch regular Python for execution onto that remote compute. With Runhouse you can program complex and efficient ML workflows with a high degree of hardware control, while retaining the iteration and debugability of "local" Python execution. 
+
+        +++
+        .. button-link:: https://www.run.house/docs/tutorials/quick-start-cloud
+            :color: primary
+            :outline:
+            :expand:
+
+            Runhouse Integration
 
     .. grid-item-card::
 
