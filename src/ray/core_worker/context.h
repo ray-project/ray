@@ -91,6 +91,7 @@ class WorkerContext {
 
   void ResetCurrentTask();
 
+  /// NOTE: This method can't be used in fiber/async actor context.
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
   const ActorID &GetCurrentActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
@@ -165,6 +166,7 @@ class WorkerContext {
   mutable absl::Mutex mutex_;
 
  private:
+  /// NOTE: This method can't be used in fiber/async actor context.
   WorkerThreadContext &GetThreadContext() const;
 
   /// Per-thread worker context.

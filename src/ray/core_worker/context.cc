@@ -324,6 +324,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
 
 void WorkerContext::ResetCurrentTask() { GetThreadContext().ResetCurrentTask(); }
 
+/// NOTE: This method can't be used in fiber/async actor context.
 std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
@@ -416,6 +417,7 @@ const ObjectID WorkerContext::GetGeneratorReturnId(
   return ObjectID::FromIndex(current_task_id, current_put_index);
 }
 
+/// NOTE: This method can't be used in fiber/async actor context.
 WorkerThreadContext &WorkerContext::GetThreadContext() const {
   if (thread_context_ == nullptr) {
     absl::ReaderMutexLock lock(&mutex_);
