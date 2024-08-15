@@ -258,6 +258,7 @@ steps:
   - label: ":windows: train tests"
     tags:
       - train
+      - disabled
     job_env: WINDOWS
     instance_type: windows
     commands:

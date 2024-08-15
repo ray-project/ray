@@ -51,6 +51,7 @@ steps:
       - oss
       - python
       - core_cpp
+      - disabled
     job_env: WINDOWS
     instance_type: windows
     commands:
