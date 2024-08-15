@@ -361,9 +361,9 @@ class StreamingExecutor(Executor, threading.Thread):
             f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
             f"{running_usage.object_store_memory_str()}/"
             f"{limits.object_store_memory_str()} object_store_memory; "
-            "Pending actors: "
-            f"{pending_usage.cpu:.4g} on CPU, "
-            f"{pending_usage.gpu:.4g} on GPU"
+            "Pending: "
+            f"{pending_usage.cpu:.4g} CPU, "
+            f"{pending_usage.gpu:.4g} GPU"
         )
         if self._global_info:
             self._global_info.set_description(resources_status)
