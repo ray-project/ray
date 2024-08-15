@@ -8,7 +8,7 @@ import time
 import traceback
 from typing import Any, Dict, Iterator, Optional, Union
 
-from python.ray.dashboard.modules.job.utils import get_head_node_id
+from ray.dashboard.modules.job.utils import get_head_node_id
 
 import ray
 import ray._private.ray_constants as ray_constants

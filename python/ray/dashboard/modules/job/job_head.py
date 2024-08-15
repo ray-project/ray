@@ -10,7 +10,7 @@ import aiohttp.web
 from aiohttp.client import ClientResponse
 from aiohttp.web import Request, Response
 
-from python.ray.dashboard.modules.job.utils import get_head_node_id
+from ray.dashboard.modules.job.utils import get_head_node_id
 
 import ray
 import ray.dashboard.consts as dashboard_consts
