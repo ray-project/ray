@@ -235,7 +235,7 @@ class ActorMethod:
         num_returns=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
-    ) -> Union["ray.dag.ClassMethodNode", Tuple["ray.dag.ClassMethodOutputNode", ...],]:
+    ) -> Union["ray.dag.ClassMethodNode", Tuple["ray.dag.ClassMethodOutputNode", ...]]:
         from ray.dag.class_node import (
             BIND_INDEX_KEY,
             PARENT_CLASS_NODE_KEY,

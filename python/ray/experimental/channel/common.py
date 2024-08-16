@@ -238,14 +238,12 @@ class ReaderInterface:
     def __init__(
         self,
         input_channels: List[ChannelInterface],
-        input_idxs: List[Optional[int]],
     ):
         assert isinstance(input_channels, list)
         for chan in input_channels:
             assert isinstance(chan, ChannelInterface)
 
         self._input_channels = input_channels
-        self._input_idxs = input_idxs
         self._closed = False
         self._num_reads = 0
 
@@ -296,23 +294,17 @@ class SynchronousReader(ReaderInterface):
     def __init__(
         self,
         input_channels: List[ChannelInterface],
-        input_idxs: List[Optional[int]],
     ):
-        super().__init__(input_channels, input_idxs)
+        super().__init__(input_channels)
 
     def start(self):
         pass
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
         results = []
-        for i, c in enumerate(self._input_channels):
+        for c in self._input_channels:
             start_time = time.monotonic()
-            result = c.read(timeout)
-            idx = self._input_idxs[i]
-            if idx is not None:
-                assert isinstance(result, tuple)
-                result = result[idx]
-            results.append(result)
+            results.append(c.read(timeout))
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
@@ -332,14 +324,9 @@ class AwaitableBackgroundReader(ReaderInterface):
     def __init__(
         self,
         input_channels: List[ChannelInterface],
-        input_idxs: List[Optional[int]],
         fut_queue: asyncio.Queue,
     ):
-        for idx in input_idxs:
-            assert (
-                idx is None
-            ), "Input index is not supported in AwaitableBackgroundReader"
-        super().__init__(input_channels, input_idxs)
+        super().__init__(input_channels)
         self._fut_queue = fut_queue
         self._background_task = None
         self._background_task_executor = concurrent.futures.ThreadPoolExecutor(

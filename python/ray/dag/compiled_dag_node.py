@@ -128,9 +128,7 @@ def _prep_task(self, task: "ExecutableTask") -> None:
         typ_hint.register_custom_serializer()
     task.output_type_hint.register_custom_serializer()
 
-    input_reader: ReaderInterface = SynchronousReader(
-        task.input_channels, task.input_idxs
-    )
+    input_reader: ReaderInterface = SynchronousReader(task.input_channels)
     assert len(task.output_channels) > 0
     output_writer: WriterInterface = SynchronousWriter(
         task.output_channels, task.output_idxs
@@ -365,7 +363,6 @@ class ExecutableTask:
         self.output_type_hint: "ChannelOutputType" = task.dag_node.type_hint
 
         self.input_channels: List[ChannelInterface] = []
-        self.input_idxs: List[Optional[int]] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
         self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
 
@@ -374,7 +371,6 @@ class ExecutableTask:
         input_channel_to_idx: dict[ChannelInterface, int] = {}
 
         for arg in resolved_args:
-            input_idx = None
             if isinstance(arg, ChannelInterface) or isinstance(arg, DAGInputAdapter):
                 if isinstance(arg, ChannelInterface):
                     channel = arg
@@ -388,7 +384,6 @@ class ExecutableTask:
                 else:
                     # Add a new channel to the list of input channels.
                     self.input_channels.append(channel)
-                    self.input_idxs.append(input_idx)
                     channel_idx = len(self.input_channels) - 1
                     input_channel_to_idx[channel] = channel_idx
 
@@ -1110,14 +1105,12 @@ class CompiledDAG:
 
         assert self.output_task_idx is not None
         self.dag_output_channels = []
-        self.dag_output_idxs: List[Optional[int]] = []
         for output in self.idx_to_task[self.output_task_idx].args:
             assert isinstance(output, DAGNode)
             output_idx = self.dag_node_to_idx[output]
             task = self.idx_to_task[output_idx]
             assert len(task.output_channels) == 1
             self.dag_output_channels.append(task.output_channels[0])
-            self.dag_output_idxs.append(None)
             # Register custom serializers for DAG outputs.
             output.type_hint.register_custom_serializer()
 
@@ -1142,14 +1135,11 @@ class CompiledDAG:
             )
             self._dag_output_fetcher = AwaitableBackgroundReader(
                 self.dag_output_channels,
-                self.dag_output_idxs,
                 self._fut_queue,
             )
         else:
             self._dag_submitter = SynchronousWriter([self.dag_input_channel], [None])
-            self._dag_output_fetcher = SynchronousReader(
-                self.dag_output_channels, self.dag_output_idxs
-            )
+            self._dag_output_fetcher = SynchronousReader(self.dag_output_channels)
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
