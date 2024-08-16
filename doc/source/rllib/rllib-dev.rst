@@ -14,7 +14,7 @@ as these steps should have already created the necessary symlinks.
 
 When using the `setup-dev.py script <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__,
 make sure that your git branch is in sync with the installed Ray binaries, meaning you are up-to-date on `master <https://github.com/ray-project/ray>`__
-and have the latest `wheel <https://docs.ray.io/en/master/installation.html>`__ installed.
+and have the latest `wheel <https://docs.ray.io/en/master/ray-overview/installation.html#daily-releases-nightlies>`__ installed.
 
 .. code-block:: bash
 
@@ -70,7 +70,20 @@ New feature developments, discussions, and upcoming priorities are tracked on th
 API Stability
 =============
 
-Objects and methods annotated with ``@PublicAPI``, ``@DeveloperAPI``, or ``@OldAPIStack``
+New API stack vs Old API stack
+------------------------------
+
+Starting in Ray 2.10, you can opt-in to the alpha version of a "new API stack", a fundamental overhaul from the ground up with respect to architecture,
+design principles, code base, and user facing APIs.
+
+:ref:`See here for more details <rllib-new-api-stack-guide>` on this effort and how to activate the new API stack through your config.
+
+
+API Decorators in the Codebase
+------------------------------
+
+Objects and methods annotated with ``@PublicAPI`` (new API stack),
+``@DeveloperAPI`` (new API stack), or ``@OldAPIStack`` (old API stack)
 have the following API compatibility guarantees:
 
 .. autofunction:: ray.util.annotations.PublicAPI
@@ -81,15 +94,6 @@ have the following API compatibility guarantees:
 
 .. autofunction:: ray.rllib.utils.annotations.OldAPIStack
     :noindex:
-
-
-New API stack vs Old API stack
-------------------------------
-
-Starting in Ray 2.10, you can opt-in to the alpha version of a "new API stack", a fundamental overhaul from the ground up with respect to architecture,
-design principles, code base, and user facing APIs.
-
-:ref:`See here for more details <rllib-new-api-stack-guide>` on this effort and how to activate the new API stack through your config.
 
 
 Benchmarks

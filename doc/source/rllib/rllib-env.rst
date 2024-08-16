@@ -7,122 +7,92 @@
 Environments
 ============
 
-RLlib works with several different types of environments, including `Farama-Foundation Gymnasium <https://gymnasium.farama.org/>`__,
-user-defined environments, multi-agent (for example `PettingZoo <https://pettingzoo.farama.org/>`__), and vectorized environments.
+RLlib works with several different types of environments, including `Farama-Foundation Gymnasium <https://gymnasium.farama.org/>`__, user-defined, multi-agent, and also batched environments.
 
 .. tip::
 
-    Not all environments' action spaces work with all of RLlib's algorithms.
-    See the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
+    Not all environments work with all algorithms. See the `algorithm overview <rllib-algorithms.html#available-algorithms-overview>`__ for more information.
+
+.. image:: images/rllib-envs.svg
 
 .. _configuring-environments:
-
 
 Configuring Environments
 ------------------------
 
-You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a `gymnasium environment name <https://gymnasium.farama.org/>`__.
-Custom env classes passed directly to the algorithm must take a single ``config`` parameter in their constructor:
+You can pass either a string name or a Python class to specify an environment. By default, strings will be interpreted as a gym `environment name <https://www.gymlibrary.dev/>`__.
+Custom env classes passed directly to the algorithm must take a single ``env_config`` parameter in their constructor:
 
-.. testcode::
+.. code-block:: python
 
     import gymnasium as gym
-    import numpy as np
-
-    from ray.rllib.algorithms.ppo import PPOConfig
+    import ray
+    from ray.rllib.algorithms import ppo
 
     class MyEnv(gym.Env):
-        def __init__(self, config=None):
-            self.action_space = gym.spaces.Discrete(2)
-            self.observation_space = gym.spaces.Box(-1.0, 1.0, (1,))
-
-        def reset(self, seed=None, options=None):
-            # Return (reset) observation and info dict.
-            return np.array([1.0]), {}
-
+        def __init__(self, env_config):
+            self.action_space = <gym.Space>
+            self.observation_space = <gym.Space>
+        def reset(self, seed, options):
+            return <obs>, <info>
         def step(self, action):
-            # Return next observation, reward, terminated, truncated, and info dict.
-            return np.array([1.0]), 1.0, False, False, {}
+            return <obs>, <reward: float>, <terminated: bool>, <truncated: bool>, <info: dict>
 
-    config = (
-        PPOConfig()
-        .environment(
-            MyEnv,
-            env_config={},  # config to pass to env class
-        )
-    )
-    algo = config.build()
-    print(algo.train())
+    ray.init()
+    algo = ppo.PPO(env=MyEnv, config={
+        "env_config": {},  # config to pass to env class
+    })
 
-You can also register a custom env creator function with Ray Tune using a string name and a constructor function (or lambda).
-This function must take a single ``config`` (dict) parameter and return a `gym.Env` instance:
+    while True:
+        print(algo.train())
+
+You can also register a custom env creator function with a string name. This function must take a single ``env_config`` (dict) parameter and return an env instance:
 
 .. code-block:: python
 
     from ray.tune.registry import register_env
 
-    def env_creator(config):
-        return MyEnv(config)  # return a gym.Env instance.
+    def env_creator(env_config):
+        return MyEnv(...)  # return an env instance
 
     register_env("my_env", env_creator)
-    config = (
-        PPOConfig()
-        .environment("my_env")
-    )
-    algo = config.build()
+    algo = ppo.PPO(env="my_env")
 
-
-For a full runnable code example using the custom environment API, see the `custom_gym_env.py example script <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__.
+For a full runnable code example using the custom environment API, see `custom_env.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__.
 
 .. warning::
 
-    Due the distributed nature of Ray, the gymnasium registry isn't compatible with Ray.
-    Instead, always use the registration flows documented above to ensure all remote Ray actors can access the environment.
+   The gymnasium registry isn't compatible with Ray. Instead, always use the registration flows documented above to ensure Ray workers can access the environment.
 
-In the above example, note that the ``env_creator`` function takes a ``config`` arg. This should always be a dict containing any needed constructor options.
-In your custom ``env_creator`` function, however, you can also access additional properties (not keys) in this ``config``, for example ``config.worker_index``
-to get the index of the remote EnvRunner (starting from 1 and going up to your configured ``num_env_runners``), ``config.vector_index`` to get the worker
-env id within the worker (if ``num_envs_per_env_runner > 0``), as well as ``config.num_workers`` to get the total number of remote EnvRunners used.
-This can be useful if you want to train over an ensemble of different environments and would like for individual environment copies to behave slightly
-differently.
-For example:
+In the above example, note that the ``env_creator`` function takes in an ``env_config`` object.
+This is a dict containing options passed in through your algorithm.
+You can also access ``env_config.worker_index`` and ``env_config.vector_index`` to get the worker id and env id within the worker (if ``num_envs_per_env_runner > 0``).
+This can be useful if you want to train over an ensemble of different environments, for example:
 
 .. code-block:: python
 
-    class EnvDependingOnWorkerAndVectorIndex(gym.Env):
-        def __init__(self, config):
+    class MultiEnv(gym.Env):
+        def __init__(self, env_config):
             # pick actual env based on worker and env indexes
             self.env = gym.make(
-                choose_env_for(config.worker_index, config.vector_index)
-            )
+                choose_env_for(env_config.worker_index, env_config.vector_index))
             self.action_space = self.env.action_space
             self.observation_space = self.env.observation_space
-
         def reset(self, seed, options):
             return self.env.reset(seed, options)
-
         def step(self, action):
             return self.env.step(action)
 
-    register_env("multi_env", lambda config: MultiEnv(config))
+    register_env("multienv", lambda config: MultiEnv(config))
 
 .. tip::
 
-    When using logging inside an environment, the logging configuration needs to be done inside the environment,
-    which runs inside Ray workers. Any configurations outside of the environment, e.g., before starting Ray will be ignored.
-    Use the following code snippet to connect to the Ray logging instance from within your code:
-    `import logging; logger = logging.getLogger('ray.rllib')`
+   When using logging in an environment, the logging configuration needs to be done inside the environment, which runs inside Ray workers. Any configurations outside the environment, e.g., before starting Ray will be ignored.
 
+Gymnasium
+----------
 
-Farama Gymnasium
-----------------
-
-RLlib uses `Farama's Gymnasium API <https://gymnasium.farama.org/>`__ as its environment interface for single-agent training.
-For more information on how to implement a custom `Farama Gymnasium <https://gymnasium.farama.org/>`__ environment, see the
-`gymnasium.Env class definition <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__.
-You can find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__ example
-useful as a reference.
-
+RLlib uses Gymnasium as its environment interface for single-agent training. For more information on how to implement a custom Gymnasium environment, see the `gymnasium.Env class definition <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__. You may find the `SimpleCorridor <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_env.py>`__ example useful as a reference.
 
 Performance
 ~~~~~~~~~~~
@@ -131,7 +101,7 @@ Performance
 
     Also check out the `scaling guide <rllib-training.html#scaling-guide>`__ for RLlib training.
 
-There are two ways to scale sample collection with Gym environments:
+There are two ways to scale experience collection with Gym environments:
 
     1. **Vectorization within a single process:** Though many envs can achieve high frame rates per core, their throughput is limited in practice by policy evaluation between steps. For example, even small TensorFlow models incur a couple milliseconds of latency to evaluate. This can be worked around by creating multiple envs per process and batching policy evaluations across these envs.
 
@@ -166,10 +136,9 @@ For example, in a traffic simulation, there may be multiple "car" and "traffic l
 acting simultaneously. Whereas in a board game, you may have two or more agents acting in a turn-base fashion.
 
 The mental model for multi-agent in RLlib is as follows:
-(1) Your environment (a sub-class of :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`) returns dictionaries mapping AgentIDs (str, which the env can chose at will)
-to individual agents' observations, rewards, terminated/truncated-flags, and info dicts.
-(2) You define (some of) the RLModules (policies) that are available up front (you can also add new RLModules on-the-fly during training), and
-(3) You define a function that maps AgentIDs to one of the available RLModule IDs, which is then to be used for computing actions for this particular agent.
+(1) Your environment (a sub-class of :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`) returns dictionaries mapping agent IDs (e.g. strings; the env can chose these arbitrarily) to individual agents' observations, rewards, and done-flags.
+(2) You define (some of) the policies that are available up front (you can also add new policies on-the-fly throughout training), and
+(3) You define a function that maps an env-produced agent ID to any available policy ID, which is then to be used for computing actions for this particular agent.
 
 This is summarized by the below figure:
 
@@ -180,6 +149,7 @@ agent IDs in an observation dict, for which you expect to receive actions in the
 
 This API allows you to implement any type of multi-agent environment, from `turn-based games <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_with_open_spiel.py>`__
 over environments, in which `all agents always act simultaneously <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/classes/multi_agent.py>`__, to anything in between.
+
 
 
 Here is an example of an env, in which all agents always step simultaneously:
@@ -204,7 +174,7 @@ Here is an example of an env, in which all agents always step simultaneously:
 
     # In the following call to `step`, actions should be provided for each
     # agent that returned an observation before:
-    observations, rewards, terminateds, truncateds, infos = env.step(
+    new_obs, rewards, dones, infos = env.step(
         actions={"car_1": ..., "car_2": ..., "traffic_light_1": ...})
 
     # Similarly, new_obs, rewards, dones, etc. also become dicts.
@@ -212,12 +182,12 @@ Here is an example of an env, in which all agents always step simultaneously:
     # ... {"car_1": 3, "car_2": -1, "traffic_light_1": 0}
 
     # Individual agents can early exit; The entire episode is done when
-    # terminateds["__all__"] = True.
-    print(terminateds)
+    # dones["__all__"] = True.
+    print(dones)
     # ... {"car_2": True, "__all__": False}
 
 
-Here is another example, where agents step one after the other (turn-based game):
+And another example, where agents step one after the other (turn-based game):
 
 .. code-block:: python
 
