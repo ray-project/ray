@@ -810,7 +810,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             )
         )
 
-        self.num_envs: int = self.env.unwrapped.num_envs
+        self.num_envs: int = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_env_runner
 
         # Set the flag to reset all envs upon the next `sample()` call.

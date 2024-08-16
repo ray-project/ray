@@ -58,6 +58,7 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED_LIFETIME,
     NUM_TARGET_UPDATES,
+    REPLAY_BUFFER_ADD_DATA_TIMER,
     REPLAY_BUFFER_SAMPLE_TIMER,
     REPLAY_BUFFER_UPDATE_PRIOS_TIMER,
     SAMPLE_TIMER,
@@ -628,12 +629,14 @@ class DQN(Algorithm):
                     _uses_new_env_runners=True,
                     _return_metrics=True,
                 )
-            # Add the sampled experiences to the replay buffer.
-            self.local_replay_buffer.add(episodes)
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.merge_and_log_n_dicts(
                 env_runner_results, key=ENV_RUNNER_RESULTS
             )
+
+            # Add the sampled experiences to the replay buffer.
+            with self.metrics.log_time((TIMERS, REPLAY_BUFFER_ADD_DATA_TIMER)):
+                self.local_replay_buffer.add(episodes)
 
         self.metrics.log_dict(
             self.metrics.peek(

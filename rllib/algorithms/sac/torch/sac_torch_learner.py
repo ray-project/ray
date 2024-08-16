@@ -163,6 +163,10 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
 
         # For the actor (policy) loss we need sampled actions from the current policy
         # evaluated at the current observations.
+        # Note that the `q_curr` tensor below has the q-net's gradients ignored, while
+        # having the policy's gradients registered. The policy net was used to rsample
+        # actions used to compute `q_curr` (by passing these actions through the q-net).
+        # Hence, we can't do `fwd_out[q_curr].detach()`!
         # Note further, we minimize here, while the original equation in Haarnoja et
         # al. (2018) considers maximization.
         actor_loss = torch.mean(
@@ -242,8 +246,6 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
                     retain_graph=True
                 )
                 # Store the gradients for the component and module.
-                # TODO (simon): Check another time the graph for overlapping
-                # gradients.
                 grads.update(
                     {
                         pid: p.grad
