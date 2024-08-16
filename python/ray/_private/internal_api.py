@@ -240,6 +240,7 @@ def free(object_refs: list, local_only: bool = False):
 def get_local_lineage_reconstruction_tasks() -> List[
     Tuple[common_pb2.LineageReconstructionTask, int]
 ]:
+    """Returns Map[LineageReconstructionTask, count] as a list of pair."""
     worker = ray._private.worker.global_worker
     worker.check_connected()
     return worker.core_worker.get_local_lineage_reconstruction_tasks()
