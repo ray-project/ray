@@ -29,7 +29,7 @@ register_env(
 
 config = (
     SACConfig()
-    .environment(env="multi_agent_pendulum")
+    .environment("multi_agent_pendulum")
     .training(
         initial_alpha=1.001,
         lr=0.001 * ((args.num_gpus or 1) ** 0.5),
