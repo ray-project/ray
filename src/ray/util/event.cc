@@ -62,7 +62,6 @@ LogEventReporter::LogEventReporter(SourceTypeVariant source_type,
     RAY_LOG(FATAL) << "source_type argument of LogEventReporter is not of type"
                    << "rpc::Event_SourceType or rpc::ExportEvent_SourceType.";
   }
-  source_type_name_ = source_type_name;
   file_name_ = "event_" + source_type_name +
                (add_pid_to_file ? "_" + std::to_string(getpid()) : "") + ".log";
 
@@ -149,12 +148,9 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
 void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields) {
   RAY_CHECK(Event_SourceType_IsValid(event.source_type()));
   RAY_CHECK(Event_Severity_IsValid(event.severity()));
-  // Only write event if the event source type is for this reporter
-  if (Event_SourceType_Name(event.source_type()) == source_type_name_) {
-    std::string result = EventToString(event, custom_fields);
-    log_sink_->info(result);
-  }
+  std::string result = EventToString(event, custom_fields);
 
+  log_sink_->info(result);
   if (force_flush_) {
     Flush();
   }
@@ -162,21 +158,12 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
 
 void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
   RAY_CHECK(ExportEvent_SourceType_IsValid(export_event.source_type()));
-  // Only write event if the event source type is for this reporter
-  if (ExportEvent_SourceType_Name(export_event.source_type()) == source_type_name_) {
-    std::string result = ExportEventToString(export_event);
-    log_sink_->info(result);
-  }
+  std::string result = ExportEventToString(export_event);
 
+  log_sink_->info(result);
   if (force_flush_) {
     Flush();
   }
-}
-
-std::string LogEventReporter::GetReporterKey() {
-  // Reporter key should include the source_type_name_ so the EventManager can
-  // have multiple LogEventReporter corresponding to different sources/files.
-  return "log.event.reporter." + source_type_name_;
 }
 
 ///
@@ -202,8 +189,9 @@ void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
 }
 
 void EventManager::PublishExportEvent(const rpc::ExportEvent &export_event) {
-  for (const auto &element : reporter_map_) {
-    (element.second)->ReportExportEvent(export_event);
+  auto element = export_log_reporter_map_.find(export_event.source_type());
+  if (element != export_log_reporter_map_.end()) {
+    (element->second)->ReportExportEvent(export_event);
   }
 }
 
@@ -211,7 +199,15 @@ void EventManager::AddReporter(std::shared_ptr<BaseEventReporter> reporter) {
   reporter_map_.emplace(reporter->GetReporterKey(), reporter);
 }
 
-void EventManager::ClearReporters() { reporter_map_.clear(); }
+void EventManager::AddExportReporter(rpc::ExportEvent_SourceType source_type,
+                                     std::shared_ptr<LogEventReporter> reporter) {
+  export_log_reporter_map_.emplace(source_type, reporter);
+}
+
+void EventManager::ClearReporters() {
+  reporter_map_.clear();
+  export_log_reporter_map_.clear();
+}
 ///
 /// RayEventContext
 ///
@@ -430,6 +426,35 @@ void RayExportEvent::SendEvent() {
 
 static absl::once_flag init_once_;
 
+void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
+                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
+                   const std::string &log_dir,
+                   const std::string &event_level,
+                   bool emit_event_to_log_file) {
+  for (const auto &source_type : source_types) {
+    std::string source_type_name = "";
+    auto event_dir = std::filesystem::path(log_dir) / std::filesystem::path("events");
+    if (auto event_source_type_ptr = std::get_if<rpc::Event_SourceType>(&source_type)) {
+      // Set custom fields for non export events
+      RayEventContext::Instance().SetEventContext(
+          std::get<rpc::Event_SourceType>(source_type), custom_fields);
+      source_type_name = Event_SourceType_Name(*event_source_type_ptr);
+      ray::EventManager::Instance().AddReporter(
+          std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+    } else if (auto export_event_source_type_ptr =
+                   std::get_if<rpc::ExportEvent_SourceType>(&source_type)) {
+      // For export events
+      source_type_name = ExportEvent_SourceType_Name(*export_event_source_type_ptr);
+      ray::EventManager::Instance().AddExportReporter(
+          *export_event_source_type_ptr,
+          std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+    }
+    RAY_LOG(INFO) << "Ray Event initialized for " << source_type_name;
+  }
+  SetEventLevel(event_level);
+  SetEmitEventToLogFile(emit_event_to_log_file);
+}
+
 void RayEventInit(const std::vector<SourceTypeVariant> source_types,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,
@@ -438,27 +463,8 @@ void RayEventInit(const std::vector<SourceTypeVariant> source_types,
   absl::call_once(
       init_once_,
       [&source_types, &custom_fields, &log_dir, &event_level, emit_event_to_log_file]() {
-        for (const auto &source_type : source_types) {
-          std::string source_type_name = "";
-          if (auto event_source_type_ptr =
-                  std::get_if<rpc::Event_SourceType>(&source_type)) {
-            // Set custom fields for non export events
-            RayEventContext::Instance().SetEventContext(
-                std::get<rpc::Event_SourceType>(source_type), custom_fields);
-            source_type_name = Event_SourceType_Name(*event_source_type_ptr);
-          } else if (auto export_event_source_type_ptr =
-                         std::get_if<rpc::ExportEvent_SourceType>(&source_type)) {
-            // For export events
-            source_type_name = ExportEvent_SourceType_Name(*export_event_source_type_ptr);
-          }
-          auto event_dir =
-              std::filesystem::path(log_dir) / std::filesystem::path("events");
-          ray::EventManager::Instance().AddReporter(
-              std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
-          RAY_LOG(INFO) << "Ray Event initialized for " << source_type_name;
-        }
-        SetEventLevel(event_level);
-        SetEmitEventToLogFile(emit_event_to_log_file);
+        RayEventInit_(
+            source_types, custom_fields, log_dir, event_level, emit_event_to_log_file);
       });
 }
 

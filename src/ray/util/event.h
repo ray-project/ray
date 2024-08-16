@@ -106,6 +106,10 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual ~LogEventReporter();
 
+  virtual void Report(const rpc::Event &event, const json &custom_fields) override;
+
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
+
  private:
   virtual std::string replaceLineFeed(std::string message);
 
@@ -115,18 +119,13 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual void Init() override {}
 
-  virtual void Report(const rpc::Event &event, const json &custom_fields) override;
-
-  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
-
   virtual void Close() override {}
 
   virtual void Flush();
 
-  virtual std::string GetReporterKey() override;
+  virtual std::string GetReporterKey() override { return "log.event.reporter"; }
 
  protected:
-  std::string source_type_name_;
   std::string log_dir_;
   bool force_flush_;
   int rotate_max_file_size_;  // MB
@@ -158,6 +157,9 @@ class EventManager final {
   // a process.
   void AddReporter(std::shared_ptr<BaseEventReporter> reporter);
 
+  void AddExportReporter(rpc::ExportEvent_SourceType source_type,
+                         std::shared_ptr<LogEventReporter> reporter);
+
   void ClearReporters();
 
  private:
@@ -169,6 +171,8 @@ class EventManager final {
 
  private:
   absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
+  absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+      export_log_reporter_map_;
 };
 
 // store the event context. Different workers of a process in core_worker have different
@@ -356,5 +360,15 @@ void RayEventInit(const std::vector<SourceTypeVariant> source_types,
                   const std::string &log_dir,
                   const std::string &event_level = "warning",
                   bool emit_event_to_log_file = false);
+
+/// Logic called by RayEventInit. This function can be called multiple times,
+/// and has been separated out so RayEventInit can be called multiple times in
+/// tests.
+/// **Note**: This should only be called from tests.
+void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
+                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
+                   const std::string &log_dir,
+                   const std::string &event_level,
+                   bool emit_event_to_log_file);
 
 }  // namespace ray
