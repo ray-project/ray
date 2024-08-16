@@ -6,6 +6,7 @@ from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
 from gymnasium.spaces import Dict as GymDict
 from gymnasium.spaces import Tuple as GymTuple
 import inspect
+import json
 import logging
 import numpy as np
 import os
@@ -30,18 +31,24 @@ import yaml
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib.common import SupportedFileType
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.train import load_experiments_from_file
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
-    NUM_ENV_STEPS_SAMPLED,
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_EPISODES_LIFETIME,
 )
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
 
@@ -97,7 +104,7 @@ def add_rllib_example_script_args(
     parser.add_argument(
         "--enable-new-api-stack",
         action="store_true",
-        help="Whether to use the _enable_new_api_stack config setting.",
+        help="Whether to use the `enable_rl_module_and_learner` config setting.",
     )
     parser.add_argument(
         "--framework",
@@ -106,9 +113,15 @@ def add_rllib_example_script_args(
         help="The DL framework specifier.",
     )
     parser.add_argument(
+        "--env",
+        type=str,
+        default=None,
+        help="The gym.Env identifier to run the experiment with.",
+    )
+    parser.add_argument(
         "--num-env-runners",
         type=int,
-        default=2,
+        default=None,
         help="The number of (remote) EnvRunners to use for the experiment.",
     )
     parser.add_argument(
@@ -119,6 +132,64 @@ def add_rllib_example_script_args(
         "multi-agent with the environment simply cloned n times and each agent acting "
         "independently at every single timestep. The overall reward for this "
         "experiment is then the sum over all individual agents' rewards.",
+    )
+
+    # Evaluation options.
+    parser.add_argument(
+        "--evaluation-num-env-runners",
+        type=int,
+        default=0,
+        help="The number of evaluation (remote) EnvRunners to use for the experiment.",
+    )
+    parser.add_argument(
+        "--evaluation-interval",
+        type=int,
+        default=0,
+        help="Every how many iterations to run one round of evaluation. "
+        "Use 0 (default) to disable evaluation.",
+    )
+    parser.add_argument(
+        "--evaluation-duration",
+        type=lambda v: v if v == "auto" else int(v),
+        default=10,
+        help="The number of evaluation units to run each evaluation round. "
+        "Use `--evaluation-duration-unit` to count either in 'episodes' "
+        "or 'timesteps'. If 'auto', will run as many as possible during train pass ("
+        "`--evaluation-parallel-to-training` must be set then).",
+    )
+    parser.add_argument(
+        "--evaluation-duration-unit",
+        type=str,
+        default="episodes",
+        choices=["episodes", "timesteps"],
+        help="The evaluation duration unit to count by. One of 'episodes' or "
+        "'timesteps'. This unit will be run `--evaluation-duration` times in each "
+        "evaluation round. If `--evaluation-duration=auto`, this setting does not "
+        "matter.",
+    )
+    parser.add_argument(
+        "--evaluation-parallel-to-training",
+        action="store_true",
+        help="Whether to run evaluation parallel to training. This might help speed up "
+        "your overall iteration time. Be aware that when using this option, your "
+        "reported evaluation results are referring to one iteration before the current "
+        "one.",
+    )
+
+    # RLlib logging options.
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="The output directory to write trajectories to, which are collected by "
+        "the algo's EnvRunners.",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default=None,  # None -> use default
+        choices=["INFO", "DEBUG", "WARN", "ERROR"],
+        help="The log-level to be used by the RLlib logger.",
     )
 
     # tune.Tuner options.
@@ -207,11 +278,26 @@ def add_rllib_example_script_args(
         "be achieved within --stop-timesteps AND --stop-iters, otherwise this "
         "script will throw an exception at the end.",
     )
+    parser.add_argument(
+        "--as-release-test",
+        action="store_true",
+        help="Whether this script should be run as a release test. If set, "
+        "all that applies to the --as-test option is true, plus, a short JSON summary "
+        "will be written into a results file whose location is given by the ENV "
+        "variable `TEST_OUTPUT_JSON`.",
+    )
 
     # Learner scaling options.
     # Old API stack: config.num_gpus.
-    # New API stack: config.num_learner_workers (w/ num_gpus_per_learner_worker=1).
-    parser.add_argument("--num-gpus", type=int, default=0)
+    # New API stack: config.num_learners (w/ num_gpus_per_learner=1).
+    parser.add_argument(
+        "--num-gpus",
+        type=int,
+        default=0,
+        help="The number of GPUs/Learners to use. If none or not enough GPUs "
+        "are available, will still create `--num-gpus` Learners, but place them on one "
+        "CPU each, instead.",
+    )
 
     # Ray init options.
     parser.add_argument("--num-cpus", type=int, default=0)
@@ -244,10 +330,8 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         false: Whether to check that x and y are NOT the same.
     """
     # A dict type.
-    if isinstance(x, (dict, NestedDict)):
-        assert isinstance(
-            y, (dict, NestedDict)
-        ), "ERROR: If x is dict, y needs to be a dict as well!"
+    if isinstance(x, dict):
+        assert isinstance(y, dict), "ERROR: If x is dict, y needs to be a dict as well!"
         y_keys = set(x.keys())
         for key, value in x.items():
             assert key in y, f"ERROR: y does not have x's key='{key}'! y={y}"
@@ -377,7 +461,7 @@ def check_compute_single_action(
     try:
         # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(algorithm.workers.local_worker().get_policies_to_train()))
+        pid = next(iter(algorithm.env_runner.get_policies_to_train()))
         pol = algorithm.get_policy(pid)
     except AttributeError:
         pol = algorithm.policy
@@ -419,7 +503,7 @@ def check_compute_single_action(
                 input_dict[SampleBatch.PREV_ACTIONS] = action_in
                 input_dict[SampleBatch.PREV_REWARDS] = reward_in
             if state_in:
-                if what.config.get("_enable_new_api_stack", False):
+                if what.config.get("enable_rl_module_and_learner", False):
                     input_dict["state_in"] = state_in
                 else:
                     for i, s in enumerate(state_in):
@@ -516,12 +600,12 @@ def check_compute_single_action(
         if what is algorithm:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(algorithm, "workers", None)
+            worker_set = getattr(algorithm, "env_runner_group", None)
             assert worker_set
-            if not worker_set.local_worker():
+            if not worker_set.local_env_runner:
                 obs_space = algorithm.get_policy(pid).observation_space
             else:
-                obs_space = worker_set.local_worker().for_policy(
+                obs_space = worker_set.local_env_runner.for_policy(
                     lambda p: p.observation_space, policy_id=pid
                 )
             obs_space = getattr(obs_space, "original_space", obs_space)
@@ -600,29 +684,31 @@ def check_learning_achieved(
     tune_results: "tune.ResultGrid",
     min_value: float,
     evaluation: Optional[bool] = None,
-    metric: str = "sampler_results/episode_reward_mean",
+    metric: str = f"{ENV_RUNNER_RESULTS}/episode_return_mean",
 ):
     """Throws an error if `min_reward` is not reached within tune_results.
 
     Checks the last iteration found in tune_results for its
-    "episode_reward_mean" value and compares it to `min_reward`.
+    "episode_return_mean" value and compares it to `min_reward`.
 
     Args:
         tune_results: The tune.Tuner().fit() returned results object.
         min_reward: The min reward that must be reached.
-        evaluation: If True, use `evaluation/sampler_results/[metric]`, if False, use
-            `sampler_results/[metric]`, if None, use evaluation sampler results if
+        evaluation: If True, use `evaluation/env_runners/[metric]`, if False, use
+            `env_runners/[metric]`, if None, use evaluation sampler results if
             available otherwise, use train sampler results.
 
     Raises:
         ValueError: If `min_reward` not reached.
     """
-    # Get maximum reward of all trials
-    # (check if at least one trial achieved some learning)
+    # Get maximum value of `metrics` over all trials
+    # (check if at least one trial achieved some learning, not just the final one).
     recorded_values = []
     for _, row in tune_results.get_dataframe().iterrows():
-        if evaluation or (evaluation is None and f"evaluation/{metric}" in row):
-            recorded_values.append(row[f"evaluation/{metric}"])
+        if evaluation or (
+            evaluation is None and f"{EVALUATION_RESULTS}/{metric}" in row
+        ):
+            recorded_values.append(row[f"{EVALUATION_RESULTS}/{metric}"])
         else:
             recorded_values.append(row[metric])
     best_value = max(recorded_values)
@@ -682,6 +768,82 @@ def check_off_policyness(
     return off_policy_ness
 
 
+def check_train_results_new_api_stack(train_results: ResultDict) -> None:
+    """Checks proper structure of a Algorithm.train() returned dict.
+
+    Args:
+        train_results: The train results dict to check.
+
+    Raises:
+        AssertionError: If `train_results` doesn't have the proper structure or
+            data in it.
+    """
+    # Import these here to avoid circular dependencies.
+    from ray.rllib.core import DEFAULT_MODULE_ID
+    from ray.rllib.utils.metrics import (
+        ENV_RUNNER_RESULTS,
+        FAULT_TOLERANCE_STATS,
+        LEARNER_RESULTS,
+        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+        TIMERS,
+    )
+
+    # Assert that some keys are where we would expect them.
+    for key in [
+        ENV_RUNNER_RESULTS,
+        FAULT_TOLERANCE_STATS,
+        LEARNER_RESULTS,
+        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME,
+        TIMERS,
+        TRAINING_ITERATION,
+        "config",
+    ]:
+        assert (
+            key in train_results
+        ), f"'{key}' not found in `train_results` ({train_results})!"
+
+    # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
+    assert isinstance(
+        train_results["config"], dict
+    ), "`config` in results not a python dict!"
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    is_multi_agent = (
+        AlgorithmConfig()
+        .update_from_dict({"policies": train_results["config"]["policies"]})
+        .is_multi_agent()
+    )
+
+    # Check in particular the "info" dict.
+    learner_results = train_results[LEARNER_RESULTS]
+
+    # Make sure we have a `DEFAULT_MODULE_ID key if we are not in a
+    # multi-agent setup.
+    if not is_multi_agent:
+        assert len(learner_results) == 0 or DEFAULT_MODULE_ID in learner_results, (
+            f"'{DEFAULT_MODULE_ID}' not found in "
+            f"train_results['{LEARNER_RESULTS}']!"
+        )
+
+    for module_id, module_metrics in learner_results.items():
+        # The ModuleID can be __all_modules__ in multi-agent case when the new learner
+        # stack is enabled.
+        if module_id == "__all_modules__":
+            continue
+
+        # On the new API stack, policy has no LEARNER_STATS_KEY under it anymore.
+        for key, value in module_metrics.items():
+            # Min- and max-stats should be single values.
+            if key.endswith("_min") or key.endswith("_max"):
+                assert np.isscalar(value), f"'key' value not a scalar ({value})!"
+
+    return train_results
+
+
+@OldAPIStack
 def check_train_results(train_results: ResultDict):
     """Checks proper structure of a Algorithm.train() returned dict.
 
@@ -698,32 +860,38 @@ def check_train_results(train_results: ResultDict):
 
     # Assert that some keys are where we would expect them.
     for key in [
-        "agent_timesteps_total",
         "config",
         "custom_metrics",
+        ENV_RUNNER_RESULTS,
+        "info",
+        "iterations_since_restore",
+        "num_healthy_workers",
+        "perf",
+        "time_since_restore",
+        "time_this_iter_s",
+        "timers",
+        "time_total_s",
+        TRAINING_ITERATION,
+    ]:
+        assert (
+            key in train_results
+        ), f"'{key}' not found in `train_results` ({train_results})!"
+
+    for key in [
         "episode_len_mean",
         "episode_reward_max",
         "episode_reward_mean",
         "episode_reward_min",
         "hist_stats",
-        "info",
-        "iterations_since_restore",
-        "num_healthy_workers",
-        "perf",
         "policy_reward_max",
         "policy_reward_mean",
         "policy_reward_min",
         "sampler_perf",
-        "time_since_restore",
-        "time_this_iter_s",
-        "timesteps_total",
-        "timers",
-        "time_total_s",
-        "training_iteration",
     ]:
-        assert (
-            key in train_results
-        ), f"'{key}' not found in `train_results` ({train_results})!"
+        assert key in train_results[ENV_RUNNER_RESULTS], (
+            f"'{key}' not found in `train_results[ENV_RUNNER_RESULTS]` "
+            f"({train_results[ENV_RUNNER_RESULTS]})!"
+        )
 
     # Make sure, `config` is an actual dict, not an AlgorithmConfig object.
     assert isinstance(
@@ -813,7 +981,7 @@ def framework_iterator(
 
     for fw in frameworks:
         # Skip tf if on new API stack.
-        if fw == "tf" and config.get("_enable_new_api_stack", False):
+        if fw == "tf" and config.get("enable_rl_module_and_learner", False):
             logger.warning("Skipping `framework=tf` (new API stack configured)!")
             continue
         # Skip if tf/tf2 and py >= 3.11.
@@ -982,9 +1150,9 @@ def run_learning_tests_from_yaml_or_py(
 
             check_eval = should_check_eval(e)
             episode_reward_key = (
-                "sampler_results/episode_reward_mean"
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
                 if not check_eval
-                else "evaluation/sampler_results/episode_reward_mean"
+                else f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
             )
 
             # For smoke-tests, we just run for n min.
@@ -1058,13 +1226,16 @@ def run_learning_tests_from_yaml_or_py(
             verbose=2,
             progress_reporter=CLIReporter(
                 metric_columns={
-                    "training_iteration": "iter",
+                    TRAINING_ITERATION: "iter",
                     "time_total_s": "time_total_s",
-                    NUM_ENV_STEPS_SAMPLED: "ts (sampled)",
-                    NUM_ENV_STEPS_TRAINED: "ts (trained)",
-                    "episodes_this_iter": "train_episodes",
-                    "episode_reward_mean": "reward_mean",
-                    "evaluation/episode_reward_mean": "eval_reward_mean",
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts (sampled)",
+                    NUM_ENV_STEPS_TRAINED_LIFETIME: "ts (trained)",
+                    NUM_EPISODES_LIFETIME: "train_episodes",
+                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "reward_mean",
+                    (
+                        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
+                        f"{EPISODE_RETURN_MEAN}"
+                    ): "eval_reward_mean",
                 },
                 parameter_columns=["framework"],
                 sort_by_metric=True,
@@ -1104,20 +1275,21 @@ def run_learning_tests_from_yaml_or_py(
             else:
                 # Use best_result's reward to check min_reward.
                 if check_eval:
-                    episode_reward_mean = np.mean(
+                    episode_return_mean = np.mean(
                         [
                             t.metric_analysis[
-                                "evaluation/sampler_results/episode_reward_mean"
+                                f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
+                                f"{EPISODE_RETURN_MEAN}"
                             ]["max"]
                             for t in trials_for_experiment
                         ]
                     )
                 else:
-                    episode_reward_mean = np.mean(
+                    episode_return_mean = np.mean(
                         [
-                            t.metric_analysis["sampler_results/episode_reward_mean"][
-                                "max"
-                            ]
+                            t.metric_analysis[
+                                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+                            ]["max"]
                             for t in trials_for_experiment
                         ]
                     )
@@ -1143,7 +1315,7 @@ def run_learning_tests_from_yaml_or_py(
 
                 # Record performance.
                 stats[experiment] = {
-                    "episode_reward_mean": float(episode_reward_mean),
+                    "episode_reward_mean": float(episode_return_mean),
                     "throughput": (
                         float(throughput) if throughput is not None else 0.0
                     ),
@@ -1155,12 +1327,12 @@ def run_learning_tests_from_yaml_or_py(
                 )
 
                 # We failed to reach desired reward or the desired throughput.
-                if (desired_reward and episode_reward_mean < desired_reward) or (
+                if (desired_reward and episode_return_mean < desired_reward) or (
                     desired_throughput and throughput < desired_throughput
                 ):
                     print(
                         " ... Not successful: Actual "
-                        f"reward={episode_reward_mean}; "
+                        f"return={episode_return_mean}; "
                         f"actual throughput={throughput}"
                     )
                     checks[experiment]["failures"] += 1
@@ -1168,7 +1340,7 @@ def run_learning_tests_from_yaml_or_py(
                 else:
                     print(
                         " ... Successful: (mark ok). Actual "
-                        f"reward={episode_reward_mean}; "
+                        f"return={episode_return_mean}; "
                         f"actual throughput={throughput}"
                     )
                     checks[experiment]["passed"] = True
@@ -1194,81 +1366,177 @@ def run_learning_tests_from_yaml_or_py(
     return result
 
 
+# TODO (sven): Make this the de-facto, well documented, and unified utility for most of
+#  our tests:
+#  - CI (label: "learning_tests")
+#  - release tests (benchmarks)
+#  - example scripts
 def run_rllib_example_script_experiment(
     base_config: "AlgorithmConfig",
-    args: argparse.Namespace,
+    args: Optional[argparse.Namespace] = None,
     *,
     stop: Optional[Dict] = None,
-    success_metric: str = "sampler_results/episode_reward_mean",
+    success_metric: Optional[Dict] = None,
+    trainable: Optional[Type] = None,
+    tune_callbacks: Optional[List] = None,
+    keep_config: bool = False,
+    scheduler=None,
+    progress_reporter=None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
     There are some constraints on what properties must be defined in `args`.
-    It should ideally be generated via the ``
+    It should ideally be generated via calling
+    `args = add_rllib_example_script_args()`, which can be found in this very module
+    here.
+
+    The function sets up an Algorithm object from the given config (altered by the
+    contents of `args`), then runs the Algorithm via Tune (or manually, if
+    `args.no_tune` is set to True) using the stopping criteria in `stop`.
+
+    At the end of the experiment, if `args.as_test` is True, checks, whether the
+    Algorithm reached the `success_metric` (if None, use `env_runners/
+    episode_return_mean` with a minimum value of `args.stop_reward`).
+
+    See https://github.com/ray-project/ray/tree/master/rllib/examples for an overview
+    of all supported command line options.
 
     Args:
         base_config: The AlgorithmConfig object to use for this experiment. This base
             config will be automatically "extended" based on some of the provided
             `args`. For example, `args.num_env_runners` is used to set
-            `config.num_rollout_workers`, etc..
-        args: A argparse.Namespace object which must have the following properties
-            defined: `stop_iters`, `stop_reward`, `stop_timesteps`, `no_tune`,
-            `verbose`, `checkpoint_freq`, `as_test`. Optionally, for wandb logging:
-            `wandb_key`, `wandb_project`, `wandb_run_name`.
+            `config.num_env_runners`, etc..
+        args: A argparse.Namespace object, ideally returned by calling
+            `args = add_rllib_example_script_args()`. It must have the following
+            properties defined: `stop_iters`, `stop_reward`, `stop_timesteps`,
+            `no_tune`, `verbose`, `checkpoint_freq`, `as_test`. Optionally, for WandB
+            logging: `wandb_key`, `wandb_project`, `wandb_run_name`.
+        stop: An optional dict mapping ResultDict key strings (using "/" in case of
+            nesting, e.g. "env_runners/episode_return_mean" for referring to
+            `result_dict['env_runners']['episode_return_mean']` to minimum
+            values, reaching of which will stop the experiment). Default is:
+            {
+            "env_runners/episode_return_mean": args.stop_reward,
+            "training_iteration": args.stop_iters,
+            "num_env_steps_sampled_lifetime": args.stop_timesteps,
+            }
+        success_metric: Only relevant if `args.as_test` is True.
+            A dict mapping a single(!) ResultDict key string (using "/" in
+            case of nesting, e.g. "env_runners/episode_return_mean" for referring
+            to `result_dict['env_runners']['episode_return_mean']` to a single(!)
+            minimum value to be reached in order for the experiment to count as
+            successful. If `args.as_test` is True AND this `success_metric` is not
+            reached with the bounds defined by `stop`, will raise an Exception.
+        trainable: The Trainable sub-class to run in the tune.Tuner. If None (default),
+            use the registered RLlib Algorithm class specified by args.algo.
+        tune_callbacks: A list of Tune callbacks to configure with the tune.Tuner.
+            In case `args.wandb_key` is provided, appends a WandB logger to this
+            list.
+        keep_config: Set this to True, if you don't want this utility to change the
+            given `base_config` in any way and leave it as-is. This is helpful
+            for those example scripts which demonstrate how to set config settings
+            that are taken care of automatically in this function otherwise (e.g.
+            `num_env_runners`).
 
     Returns:
         The last ResultDict from a --no-tune run OR the tune.Tuner.fit()
         results.
     """
+    if args is None:
+        parser = add_rllib_example_script_args()
+        args = parser.parse_args()
+
+    # If run --as-release-test, --as-test must also be set.
+    if args.as_release_test:
+        args.as_test = True
+
+    # Initialize Ray.
     ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
 
-    stop = stop or {
-        "training_iteration": args.stop_iters,
-        "sampler_results/episode_reward_mean": args.stop_reward,
-        "timesteps_total": args.stop_timesteps,
-    }
+    # Define one or more stopping criteria.
+    if stop is None:
+        stop = {
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+            f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+            TRAINING_ITERATION: args.stop_iters,
+        }
 
-    from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
-    from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+    config = base_config
 
-    # Extend the `base_config` based on provided `args`.
-    config = (
-        base_config.framework(args.framework)
-        .experimental(_enable_new_api_stack=args.enable_new_api_stack)
-        .rollouts(
-            num_rollout_workers=args.num_env_runners,
-            # Set up the correct env-runner to use depending on
-            # old-stack/new-stack and multi-agent settings.
-            env_runner_cls=(
-                None
-                if not args.enable_new_api_stack
-                else (
-                    SingleAgentEnvRunner
-                    if args.num_agents == 0
-                    else MultiAgentEnvRunner
-                )
-            ),
-        )
-        .resources(
-            # Old stack.
-            num_gpus=0 if args.enable_new_api_stack else args.num_gpus,
-            # New stack.
-            num_learner_workers=args.num_gpus,
-            num_gpus_per_learner_worker=1 if torch.cuda.is_available() else 0,
-            num_cpus_for_local_worker=1,
-        )
-    )
+    # Enhance the `base_config`, based on provided `args`.
+    if not keep_config:
+        # Set the framework.
+        config.framework(args.framework)
 
+        # Add an env specifier (only if not already set in config)?
+        if args.env is not None and config.env is None:
+            config.environment(args.env)
+
+        # Enable the new API stack?
+        if args.enable_new_api_stack:
+            config.api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+
+        # Define EnvRunner/RolloutWorker scaling and behavior.
+        if args.num_env_runners is not None:
+            config.env_runners(num_env_runners=args.num_env_runners)
+
+        # Define compute resources used automatically (only using the --num-gpus arg).
+        # New stack.
+        if config.enable_rl_module_and_learner:
+            # Define compute resources used.
+            config.resources(num_gpus=0)
+            config.learners(
+                num_learners=args.num_gpus,
+                num_gpus_per_learner=(
+                    1
+                    if torch and torch.cuda.is_available() and args.num_gpus > 0
+                    else 0
+                ),
+            )
+            config.resources(num_gpus=0)
+        # Old stack.
+        else:
+            config.resources(num_gpus=args.num_gpus)
+
+        # Evaluation setup.
+        if args.evaluation_interval > 0:
+            config.evaluation(
+                evaluation_num_env_runners=args.evaluation_num_env_runners,
+                evaluation_interval=args.evaluation_interval,
+                evaluation_duration=args.evaluation_duration,
+                evaluation_duration_unit=args.evaluation_duration_unit,
+                evaluation_parallel_to_training=args.evaluation_parallel_to_training,
+            )
+
+        # Set the log-level (if applicable).
+        if args.log_level is not None:
+            config.debugging(log_level=args.log_level)
+
+        # Set the output dir (if applicable).
+        if args.output is not None:
+            config.offline_data(output=args.output)
+
+    # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
+        assert not args.as_test and not args.as_release_test
         algo = config.build()
-        for iter in range(args.stop_iters):
+        for i in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
             results = algo.train()
-            print(f"R={results['sampler_results']['episode_reward_mean']}", end="")
-            if "evaluation" in results:
-                Reval = results["evaluation"]["sampler_results"]["episode_reward_mean"]
+            if ENV_RUNNER_RESULTS in results:
+                print(
+                    f"iter={i} R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}",
+                    end="",
+                )
+            if EVALUATION_RESULTS in results:
+                Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
+                    EPISODE_RETURN_MEAN
+                ]
                 print(f" R(eval)={Reval}", end="")
             print()
-            for key, value in stop.items():
+            for key, threshold in stop.items():
                 val = results
                 for k in key.split("/"):
                     try:
@@ -1276,38 +1544,46 @@ def run_rllib_example_script_experiment(
                     except KeyError:
                         val = None
                         break
-                if val is not None and val >= value:
-                    print(f"Stop criterium ({key}={value}) fulfilled!")
+                if val is not None and not np.isnan(val) and val >= threshold:
+                    print(f"Stop criterium ({key}={threshold}) fulfilled!")
+                    ray.shutdown()
                     return results
+
+        ray.shutdown()
         return results
 
-    callbacks = None
+    # Run the experiment using Ray Tune.
+
+    # Log results using WandB.
+    tune_callbacks = tune_callbacks or []
     if hasattr(args, "wandb_key") and args.wandb_key is not None:
         project = args.wandb_project or (
             args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
         )
-        callbacks = [
+        tune_callbacks.append(
             WandbLoggerCallback(
                 api_key=args.wandb_key,
                 project=project,
                 upload_checkpoints=True,
                 **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
             )
-        ]
+        )
 
-    progress_reporter = None
+    # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
-    if args.num_agents > 0:
+    if progress_reporter is None and args.num_agents > 0:
         progress_reporter = CLIReporter(
             metric_columns={
                 **{
-                    "training_iteration": "iter",
+                    TRAINING_ITERATION: "iter",
                     "time_total_s": "total time (s)",
-                    "timesteps_total": "ts",
-                    "sampler_results/episode_reward_mean": "combined reward",
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: "ts",
+                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": "combined return",
                 },
                 **{
-                    f"policy_reward_mean/{pid}": f"reward {pid}"
+                    (
+                        f"{ENV_RUNNER_RESULTS}/module_episode_returns_mean/" f"{pid}"
+                    ): f"return {pid}"
                     for pid in config.policies
                 },
             },
@@ -1317,28 +1593,90 @@ def run_rllib_example_script_experiment(
     # `CLIReporter`.
     os.environ["RAY_AIR_NEW_OUTPUT"] = "0"
 
+    # Run the actual experiment (using Tune).
+    start_time = time.time()
     results = tune.Tuner(
-        config.algo_class,
+        trainable or config.algo_class,
         param_space=config,
         run_config=air.RunConfig(
             stop=stop,
             verbose=args.verbose,
-            callbacks=callbacks,
+            callbacks=tune_callbacks,
             checkpoint_config=air.CheckpointConfig(
                 checkpoint_frequency=args.checkpoint_freq,
                 checkpoint_at_end=args.checkpoint_at_end,
             ),
             progress_reporter=progress_reporter,
         ),
-        tune_config=tune.TuneConfig(num_samples=args.num_samples),
+        tune_config=tune.TuneConfig(
+            num_samples=args.num_samples,
+            scheduler=scheduler,
+        ),
     ).fit()
+    time_taken = time.time() - start_time
 
+    ray.shutdown()
+
+    # If run as a test, check whether we reached the specified success criteria.
+    test_passed = False
     if args.as_test:
-        check_learning_achieved(
-            results,
-            args.stop_reward,
-            metric=success_metric,
+        # Success metric not provided, try extracting it from `stop`.
+        if success_metric is None:
+            for try_it in [
+                f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}",
+            ]:
+                if try_it in stop:
+                    success_metric = {try_it: stop[try_it]}
+                    break
+            if success_metric is None:
+                success_metric = {
+                    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+                }
+        # TODO (sven): Make this work for more than one metric (AND-logic?).
+        # Get maximum value of `metric` over all trials
+        # (check if at least one trial achieved some learning, not just the final one).
+        success_metric_key, success_metric_value = next(iter(success_metric.items()))
+        best_value = max(
+            row[success_metric_key] for _, row in results.get_dataframe().iterrows()
         )
+        if best_value >= success_metric_value:
+            test_passed = True
+            print(f"`{success_metric_key}` of {success_metric_value} reached! ok")
+
+        if args.as_release_test:
+            trial = results._experiment_analysis.trials[0]
+            stats = trial.last_result
+            stats.pop("config", None)
+            json_summary = {
+                "time_taken": float(time_taken),
+                "trial_states": [trial.status],
+                "last_update": float(time.time()),
+                "stats": stats,
+                "passed": [test_passed],
+                "not_passed": [not test_passed],
+                "failures": {str(trial): 1} if not test_passed else {},
+            }
+            with open(
+                os.environ.get("TEST_OUTPUT_JSON", "/tmp/learning_test.json"),
+                "wt",
+            ) as f:
+                try:
+                    json.dump(json_summary, f)
+                # Something went wrong writing json. Try again w/ simplified stats.
+                except Exception:
+                    from ray.rllib.algorithms.algorithm import Algorithm
+
+                    simplified_stats = {
+                        k: stats[k] for k in Algorithm._progress_metrics if k in stats
+                    }
+                    json_summary["stats"] = simplified_stats
+                    json.dump(json_summary, f)
+
+        if not test_passed:
+            raise ValueError(
+                f"`{success_metric_key}` of {success_metric_value} not reached!"
+            )
 
     return results
 
@@ -1436,7 +1774,7 @@ def check_reproducibilty(
         num_gpus: int(os.environ.get("RLLIB_NUM_GPUS", "0"))
         num_workers: 0 (only local workers) or
                      4 ((1) local workers + (4) remote workers)
-        num_envs_per_worker: 2
+        num_envs_per_env_runner: 2
 
     Args:
         algo_class: Algorithm class to test.
@@ -1453,21 +1791,22 @@ def check_reproducibilty(
     from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
     from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 
-    stop_dict = {
-        "training_iteration": training_iteration,
-    }
+    stop_dict = {TRAINING_ITERATION: training_iteration}
     # use 0 and 2 workers (for more that 4 workers we have to make sure the instance
     # type in ci build has enough resources)
     for num_workers in [0, 2]:
         algo_config = (
-            algo_config.debugging(seed=42)
-            .resources(
-                # old API
-                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-                # new API
-                num_gpus_per_learner_worker=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            algo_config.debugging(seed=42).env_runners(
+                num_env_runners=num_workers, num_envs_per_env_runner=2
             )
-            .rollouts(num_rollout_workers=num_workers, num_envs_per_worker=2)
+            # new API
+            .learners(
+                num_gpus_per_learner=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            )
+            # old API
+            .resources(
+                num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
+            )
         )
 
         for fw in framework_iterator(algo_config, **fw_kwargs):
@@ -1493,12 +1832,15 @@ def check_reproducibilty(
             results2 = results2.get_best_result().metrics
 
             # Test rollout behavior.
-            check(results1["hist_stats"], results2["hist_stats"])
+            check(
+                results1[ENV_RUNNER_RESULTS]["hist_stats"],
+                results2[ENV_RUNNER_RESULTS]["hist_stats"],
+            )
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
-            if algo_config._enable_new_api_stack:
+            if algo_config.enable_rl_module_and_learner:
                 check(
                     results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
                     results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
@@ -1576,18 +1918,26 @@ class ModelChecker:
         from ray.rllib.core.models.specs.specs_dict import SpecDict
 
         if isinstance(model.input_specs, SpecDict):
-            inputs = {}
-            for key, spec in model.input_specs.items():
-                dict_ = inputs
-                for i, sub_key in enumerate(key):
-                    if sub_key not in dict_:
-                        dict_[sub_key] = {}
-                    if i < len(key) - 1:
-                        dict_ = dict_[sub_key]
-                if spec is not None:
-                    dict_[sub_key] = spec.fill(self.random_fill_input_value)
+            # inputs = {}
+
+            def _fill(s):
+                if s is not None:
+                    return s.fill(self.random_fill_input_value)
                 else:
-                    dict_[sub_key] = None
+                    return None
+
+            inputs = tree.map_structure(_fill, dict(model.input_specs))
+            # for key, spec in model.input_specs.items():
+            #    dict_ = inputs
+            #    for i, sub_key in enumerate(key):
+            #        if sub_key not in dict_:
+            #            dict_[sub_key] = {}
+            #        if i < len(key) - 1:
+            #            dict_ = dict_[sub_key]
+            #    if spec is not None:
+            #        dict_[sub_key] = spec.fill(self.random_fill_input_value)
+            #    else:
+            #        dict_[sub_key] = None
         else:
             inputs = model.input_specs.fill(self.random_fill_input_value)
 
@@ -1656,7 +2006,7 @@ def test_ckpt_restore(
     tf2=False,
     replay_buffer=False,
     run_restored_algorithm=True,
-    eval_workerset=False,
+    eval_env_runner_group=False,
 ):
     """Test that after an algorithm is trained, its checkpoint can be restored.
 
@@ -1671,6 +2021,8 @@ def test_ckpt_restore(
         object_store: Whether to test checkpointing with objects from the object store.
         replay_buffer: Whether to test checkpointing with replay buffers.
         run_restored_algorithm: Whether to run the restored algorithm after restoring.
+        eval_env_runner_group: Whether to also inspect the eval EnvRunnerGroup of the
+            Algorithm.
 
     """
     # config = algorithms_and_configs[algo_name].to_dict()
@@ -1726,21 +2078,17 @@ def test_ckpt_restore(
             ]._storage[42 : 42 + 42]
             check(data, new_data)
 
-        # Check, whether the eval worker sets have the same policies and
+        # Check, whether the eval EnvRunnerGroup has the same policies and
         # `policy_mapping_fn`.
-        if eval_workerset:
-            eval_mapping_src = inspect.getsource(
-                alg1.evaluation_workers.local_worker().policy_mapping_fn
+        if eval_env_runner_group:
+            eval_mapping_src = inspect.getsource(alg1.eval_env_runner.policy_mapping_fn)
+            check(
+                eval_mapping_src,
+                inspect.getsource(alg2.eval_env_runner.policy_mapping_fn),
             )
             check(
                 eval_mapping_src,
-                inspect.getsource(
-                    alg2.evaluation_workers.local_worker().policy_mapping_fn
-                ),
-            )
-            check(
-                eval_mapping_src,
-                inspect.getsource(alg2.workers.local_worker().policy_mapping_fn),
+                inspect.getsource(alg2.env_runner.policy_mapping_fn),
                 false=True,
             )
 
@@ -1861,7 +2209,7 @@ def check_supported_spaces(
         config_copy = config.copy()
         config_copy.validate()
         # If RLModules are enabled, we need to skip a few tests for now:
-        if config_copy._enable_new_api_stack:
+        if config_copy.enable_rl_module_and_learner:
             # Skip PPO cases in which RLModules don't support the given spaces yet.
             if o_name not in rlmodule_supported_observation_spaces:
                 logger.warning(
@@ -1940,7 +2288,7 @@ def check_supported_spaces(
     if not frameworks:
         frameworks = ("tf2", "tf", "torch")
 
-    if config._enable_new_api_stack:
+    if config.enable_rl_module_and_learner:
         # Only test the frameworks that are supported by RLModules.
         frameworks = tuple(
             fw for fw in frameworks if fw in rlmodule_supported_frameworks

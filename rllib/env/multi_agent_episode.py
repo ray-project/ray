@@ -1,5 +1,6 @@
 from collections import defaultdict
 import copy
+import time
 from typing import (
     Any,
     Callable,
@@ -14,7 +15,6 @@ from typing import (
 import uuid
 
 import gymnasium as gym
-import numpy as np
 
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
@@ -27,7 +27,7 @@ from ray.util.annotations import PublicAPI
 
 
 # TODO (simon): Include cases in which the number of agents in an
-# episode are shrinking or growing during the episode itself.
+#  episode are shrinking or growing during the episode itself.
 @PublicAPI(stability="alpha")
 class MultiAgentEpisode:
     """Stores multi-agent episode data.
@@ -58,6 +58,30 @@ class MultiAgentEpisode:
     up to here, b/c there is nothing to learn from these "premature" rewards.
     """
 
+    __slots__ = (
+        "id_",
+        "agent_to_module_mapping_fn",
+        "_agent_to_module_mapping",
+        "observation_space",
+        "action_space",
+        "env_t_started",
+        "env_t",
+        "agent_t_started",
+        "env_t_to_agent_t",
+        "_hanging_actions_end",
+        "_hanging_extra_model_outputs_end",
+        "_hanging_rewards_end",
+        "_hanging_actions_begin",
+        "_hanging_extra_model_outputs_begin",
+        "_hanging_rewards_begin",
+        "is_terminated",
+        "is_truncated",
+        "agent_episodes",
+        "_temporary_timestep_data",
+        "_start_time",
+        "_last_step_time",
+    )
+
     SKIP_ENV_TS_TAG = "S"
 
     def __init__(
@@ -72,7 +96,6 @@ class MultiAgentEpisode:
         rewards: Optional[List[MultiAgentDict]] = None,
         terminateds: Union[MultiAgentDict, bool] = False,
         truncateds: Union[MultiAgentDict, bool] = False,
-        render_images: Optional[List[np.ndarray]] = None,
         extra_model_outputs: Optional[List[MultiAgentDict]] = None,
         env_t_started: Optional[int] = None,
         agent_t_started: Optional[Dict[AgentID, int]] = None,
@@ -124,8 +147,6 @@ class MultiAgentEpisode:
                 truncated. A special __all__ key in these dicts indicates, whether the
                 episode is truncated for all agents.
                 The default is `False`, i.e. the episode has not been truncated.
-            render_images: A list of RGB uint8 images from rendering
-                the multi-agent environment.
             extra_model_outputs: A list of dictionaries mapping agent IDs to their
                 corresponding extra model outputs. Each of these "outputs" is a dict
                 mapping keys (str) to model output values, for example for
@@ -181,7 +202,7 @@ class MultiAgentEpisode:
         # via the `module_for()` API even before the agent has entered the episode
         # (and has its SingleAgentEpisode created), we store all aldeary done mappings
         # in this dict here.
-        self._agent_to_module_mapping: Dict[AgentID, ModuleID] = {}
+        self._agent_to_module_mapping: Dict[AgentID, ModuleID] = agent_module_ids or {}
 
         # Lookback buffer length is not provided. Interpret all provided data as
         # lookback buffer.
@@ -221,14 +242,21 @@ class MultiAgentEpisode:
             AgentID, InfiniteLookbackBuffer
         ] = defaultdict(InfiniteLookbackBuffer)
 
-        # In the `MultiAgentEpisode` we need these buffers to keep track of actions,
-        # that happen when an agent got observations and acted, but did not receive
-        # a next observation, yet. In this case we buffer the action, add the rewards,
-        # and record `is_terminated/is_truncated` until the next observation is
-        # received.
-        self._agent_buffered_actions = {}
-        self._agent_buffered_extra_model_outputs = defaultdict(dict)
-        self._agent_buffered_rewards = {}
+        # Create caches for hanging actions/rewards/extra_model_outputs.
+        # When an agent gets an observation (and then sends an action), but does not
+        # receive immediately a next observation, we store the "hanging" action (and
+        # related rewards and extra model outputs) in the caches postfixed w/ `_end`
+        # until the next observation is received.
+        self._hanging_actions_end = {}
+        self._hanging_extra_model_outputs_end = defaultdict(dict)
+        self._hanging_rewards_end = defaultdict(float)
+
+        # In case of a `cut()` or `slice()`, we also need to store the hanging actions,
+        # rewards, and extra model outputs that were already "hanging" in preceeding
+        # episode slice.
+        self._hanging_actions_begin = {}
+        self._hanging_extra_model_outputs_begin = defaultdict(dict)
+        self._hanging_rewards_begin = defaultdict(float)
 
         # If this is an ongoing episode than the last `__all__` should be `False`
         self.is_terminated: bool = (
@@ -259,16 +287,13 @@ class MultiAgentEpisode:
             len_lookback_buffer=len_lookback_buffer,
         )
 
-        # TODO (sven): Remove this in favor of logging render images from an env inside
-        #  custom callbacks and using a to-be-designed metrics logger. Render images
-        #  from the env should NOT be stored in an episode (b/c they have nothing to do
-        #  with the data to be learned from, which should be the only thing an episode
-        #  has to be concerned with).
-        # RGB uint8 images from rendering the env.
-        assert render_images is None or observations is not None
-        self.render_images: Union[List[np.ndarray], List[object]] = (
-            [] if render_images is None else render_images
-        )
+        # Caches for temporary per-timestep data. May be used to store custom metrics
+        # from within a callback for the ongoing episode (e.g. render images).
+        self._temporary_timestep_data = defaultdict(list)
+
+        # Keep timer stats on deltas between steps.
+        self._start_time = None
+        self._last_step_time = None
 
         # Validate ourselves.
         self.validate()
@@ -278,7 +303,6 @@ class MultiAgentEpisode:
         *,
         observations: MultiAgentDict,
         infos: Optional[MultiAgentDict] = None,
-        render_image: Optional[np.ndarray] = None,
     ) -> None:
         """Stores initial observation.
 
@@ -290,19 +314,12 @@ class MultiAgentEpisode:
                 the agent IDs in `infos` must be a subset of those in `observations`
                 meaning it would not be allowed to have an agent with an info dict,
                 but not with an observation.
-            render_image: A (global) RGB uint8 image from rendering the environment
-                (for all agents).
         """
         assert not self.is_done
         # Assume that this episode is completely empty and has not stepped yet.
         # Leave self.env_t (and self.env_t_started) at 0.
         assert self.env_t == self.env_t_started == 0
         infos = infos or {}
-
-        # Note that we store the render images into the `MultiAgentEpisode`
-        # instead into each `SingleAgentEpisode`.
-        if render_image is not None:
-            self.render_images.append(render_image)
 
         # Note, all agents will have an initial observation, some may have an initial
         # info dict as well.
@@ -325,6 +342,12 @@ class MultiAgentEpisode:
                 infos=infos.get(agent_id),
             )
 
+        # Validate our data.
+        self.validate()
+
+        # Start the timer for this episode.
+        self._start_time = time.perf_counter()
+
     def add_env_step(
         self,
         observations: MultiAgentDict,
@@ -334,7 +357,6 @@ class MultiAgentEpisode:
         *,
         terminateds: Optional[MultiAgentDict] = None,
         truncateds: Optional[MultiAgentDict] = None,
-        render_image: Optional[np.ndarray] = None,
         extra_model_outputs: Optional[MultiAgentDict] = None,
     ) -> None:
         """Adds a timestep to the episode.
@@ -360,7 +382,6 @@ class MultiAgentEpisode:
                 indicating, whether the environment has been truncated for them.
                 A special `__all__` key indicates that the episode is `truncated` for
                 all agent IDs.
-            render_image: An RGB uint8 image from rendering the environment.
             extra_model_outputs: A dictionary mapping agent IDs to their
                 corresponding specific model outputs (also in a dictionary; e.g.
                 `vf_preds` for PPO).
@@ -380,17 +401,21 @@ class MultiAgentEpisode:
         # Increase (global) env step by one.
         self.env_t += 1
 
-        # TODO (sven, simon): Will there still be an `__all__` that is
-        #  terminated or truncated?
-        # TODO (simon): Maybe allow user to not provide this and then `__all__` is
-        #  False?
+        # Find out, whether this episode is terminated/truncated (for all agents).
+        # Case 1: all agents are terminated or all are truncated.
         self.is_terminated = terminateds.get("__all__", False)
         self.is_truncated = truncateds.get("__all__", False)
-
-        # Note that we store the render images into the `MultiAgentEpisode`
-        # instead of storing them into each `SingleAgentEpisode`.
-        if render_image is not None:
-            self.render_images.append(render_image)
+        # Find all agents that were done at prior timesteps and add the agents that are
+        # done at the present timestep.
+        agents_done = set(
+            [aid for aid, sa_eps in self.agent_episodes.items() if sa_eps.is_done]
+            + [aid for aid in terminateds if terminateds[aid]]
+            + [aid for aid in truncateds if truncateds[aid]]
+        )
+        # Case 2: Some agents are truncated and the others are terminated -> Declare
+        # this episode as terminated.
+        if all(aid in set(agents_done) for aid in self.agent_ids):
+            self.is_terminated = True
 
         # For all agents that are not stepping in this env step, but that are not done
         # yet -> Add a skip tag to their env- to agent-step mappings.
@@ -415,14 +440,15 @@ class MultiAgentEpisode:
         ) - {"__all__"}
         for agent_id in agent_ids_with_data:
             if agent_id not in self.agent_episodes:
-                self.agent_episodes[agent_id] = SingleAgentEpisode(
+                sa_episode = SingleAgentEpisode(
                     agent_id=agent_id,
                     module_id=self.module_for(agent_id),
                     multi_agent_episode_id=self.id_,
                     observation_space=self.observation_space.get(agent_id),
                     action_space=self.action_space.get(agent_id),
                 )
-            sa_episode: SingleAgentEpisode = self.agent_episodes[agent_id]
+            else:
+                sa_episode = self.agent_episodes.get(agent_id)
 
             # Collect value to be passed (at end of for-loop) into `add_env_step()`
             # call.
@@ -463,33 +489,32 @@ class MultiAgentEpisode:
                         f"receive any reward from the env!"
                     )
 
-            # CASE 2: Step gets completed with a buffered action OR first observation.
+            # CASE 2: Step gets completed with a hanging action OR first observation.
             # ------------------------------------------------------------------------
             # We have an observation, but no action ->
-            # a) Action (and extra model outputs) must be buffered already. Also use
-            # collected buffered rewards.
+            # a) Action (and extra model outputs) must be hanging already. Also use
+            # collected hanging rewards.
             # b) The observation is the first observation for this agent ID.
             elif _observation is not None and _action is None:
-                _action = self._agent_buffered_actions.pop(agent_id, None)
+                _action = self._hanging_actions_end.pop(agent_id, None)
 
-                # We have a buffered action (the agent had acted after the previous
+                # We have a hanging action (the agent had acted after the previous
                 # observation, but the env had not responded - until now - with another
                 # observation).
-                # ...[buffered action] ... ... -> next obs + (reward)? ...
+                # ...[hanging action] ... ... -> next obs + (reward)? ...
                 if _action is not None:
                     # Get the extra model output if available.
-                    _extra_model_outputs = self._agent_buffered_extra_model_outputs.pop(
+                    _extra_model_outputs = self._hanging_extra_model_outputs_end.pop(
                         agent_id, None
                     )
-                    _reward = self._agent_buffered_rewards.pop(agent_id, 0.0) + _reward
-                    # _agent_step = len(sa_episode)
-                # First observation for this agent, we have no buffered action.
+                    _reward = self._hanging_rewards_end.pop(agent_id, 0.0) + _reward
+                # First observation for this agent, we have no hanging action.
                 # ... [done]? ... -> [1st obs for agent ID]
                 else:
                     # The agent is already done -> The agent thus has never stepped once
                     # and we do not have to create a SingleAgentEpisode for it.
                     if _terminated or _truncated:
-                        self._del_buffers(agent_id)
+                        self._del_hanging(agent_id)
                         continue
                     # This must be the agent's initial observation.
                     else:
@@ -499,16 +524,20 @@ class MultiAgentEpisode:
                         )
                         # Make `add_env_reset` call and continue with next agent.
                         sa_episode.add_env_reset(observation=_observation, infos=_infos)
+                        # Add possible reward to begin cache.
+                        self._hanging_rewards_begin[agent_id] += _reward
+                        # Now that the SAEps is valid, add it to our dict.
+                        self.agent_episodes[agent_id] = sa_episode
                         continue
 
             # CASE 3: Step is started (by an action), but not completed (no next obs).
             # ------------------------------------------------------------------------
-            # We have no observation, but we have an action to be buffered (and used
-            # when we do receive the next obs for this agent in the future).
+            # We have no observation, but we have a hanging action (used when we receive
+            # the next obs for this agent in the future).
             elif agent_id not in observations and agent_id in actions:
                 # Agent got truncated -> Error b/c we would need a last (truncation)
                 # observation for this (otherwise, e.g. bootstrapping would not work).
-                # [previous obs] [action] (to be buffered) ... ... [truncated]
+                # [previous obs] [action] (hanging) ... ... [truncated]
                 if _truncated:
                     raise MultiAgentEnvError(
                         f"Agent {agent_id} acted and then got truncated, but did NOT "
@@ -516,7 +545,7 @@ class MultiAgentEpisode:
                         "value function bootstrapping!"
                     )
                 # Agent got terminated.
-                # [previous obs] [action] (to be buffered) ... ... [terminated]
+                # [previous obs] [action] (hanging) ... ... [terminated]
                 elif _terminated:
                     # If the agent was terminated and no observation is provided,
                     # duplicate the previous one (this is a technical "fix" to properly
@@ -525,13 +554,13 @@ class MultiAgentEpisode:
                     _observation = sa_episode.get_observations(-1)
                     _infos = sa_episode.get_infos(-1)
                 # Agent is still alive.
-                # [previous obs] [action] (to be buffered) ...
+                # [previous obs] [action] (hanging) ...
                 else:
-                    # Buffer action, reward, and extra_model_outputs.
-                    assert agent_id not in self._agent_buffered_actions
-                    self._agent_buffered_actions[agent_id] = _action
-                    self._agent_buffered_rewards[agent_id] = _reward
-                    self._agent_buffered_extra_model_outputs[
+                    # Hanging action, reward, and extra_model_outputs.
+                    assert agent_id not in self._hanging_actions_end
+                    self._hanging_actions_end[agent_id] = _action
+                    self._hanging_rewards_end[agent_id] = _reward
+                    self._hanging_extra_model_outputs_end[
                         agent_id
                     ] = _extra_model_outputs
 
@@ -540,7 +569,7 @@ class MultiAgentEpisode:
             # --------------------------------------------------------------------------
             # Record reward and terminated/truncated flags.
             else:
-                _action = self._agent_buffered_actions.get(agent_id)
+                _action = self._hanging_actions_end.get(agent_id)
 
                 # Agent is done.
                 if _terminated or _truncated:
@@ -548,7 +577,7 @@ class MultiAgentEpisode:
                     # part of this episode.
                     # ... ... [other agents doing stuff] ... ... [agent done]
                     if _action is None:
-                        self._del_buffers(agent_id)
+                        self._del_hanging(agent_id)
                         continue
 
                     # Agent got truncated -> Error b/c we would need a last (truncation)
@@ -561,7 +590,7 @@ class MultiAgentEpisode:
                             "for e.g. value function bootstrapping!"
                         )
 
-                    # [obs] ... ... [buffered action] ... ... [done]
+                    # [obs] ... ... [hanging action] ... ... [done]
                     # If the agent was terminated and no observation is provided,
                     # duplicate the previous one (this is a technical "fix" to properly
                     # complete the single agent episode; this last observation is never
@@ -569,17 +598,20 @@ class MultiAgentEpisode:
                     _observation = sa_episode.get_observations(-1)
                     _infos = sa_episode.get_infos(-1)
                     # `_action` is already `get` above. We don't need to pop out from
-                    # the buffer as it gets wiped out anyway below b/c the agent is
+                    # the cache as it gets wiped out anyway below b/c the agent is
                     # done.
-                    _extra_model_outputs = self._agent_buffered_extra_model_outputs.pop(
+                    _extra_model_outputs = self._hanging_extra_model_outputs_end.pop(
                         agent_id, None
                     )
-                    _reward = self._agent_buffered_rewards.pop(agent_id, 0.0) + _reward
-                # The agent is still alive, just add current reward to buffer.
+                    _reward = self._hanging_rewards_end.pop(agent_id, 0.0) + _reward
+                # The agent is still alive, just add current reward to cache.
                 else:
-                    self._agent_buffered_rewards[agent_id] = (
-                        self._agent_buffered_rewards.get(agent_id, 0.0) + _reward
-                    )
+                    # But has never stepped in this episode -> add to begin cache.
+                    if agent_id not in self.agent_episodes:
+                        self._hanging_rewards_begin[agent_id] += _reward
+                    # Otherwise, add to end cache.
+                    else:
+                        self._hanging_rewards_end[agent_id] += _reward
 
             # If agent is stepping, add timestep to `SingleAgentEpisode`.
             if _observation is not None:
@@ -597,10 +629,18 @@ class MultiAgentEpisode:
                     len(sa_episode) + sa_episode.observations.lookback
                 )
 
-            # Agent is also done. -> Erase all buffered values for this agent
+            # Agent is also done. -> Erase all hanging values for this agent
             # (they should be empty at this point anyways).
             if _terminated or _truncated:
-                self._del_buffers(agent_id)
+                self._del_hanging(agent_id)
+
+        # Validate our data.
+        self.validate()
+
+        # Step time stats.
+        self._last_step_time = time.perf_counter()
+        if self._start_time is None:
+            self._start_time = self._last_step_time
 
     def validate(self) -> None:
         """Validates the episode's data.
@@ -613,7 +653,7 @@ class MultiAgentEpisode:
             eps.validate()
 
         # TODO (sven): Validate MultiAgentEpisode specifics, like the timestep mappings,
-        #  action/reward buffers, etc..
+        #  action/reward caches, etc..
 
     @property
     def is_finalized(self) -> bool:
@@ -755,6 +795,109 @@ class MultiAgentEpisode:
 
         return self
 
+    def concat_episode(self, other: "MultiAgentEpisode") -> None:
+        """Adds the given `other` MultiAgentEpisode to the right side of self.
+
+        In order for this to work, both chunks (`self` and `other`) must fit
+        together. This is checked by the IDs (must be identical), the time step counters
+        (`self.env_t` must be the same as `episode_chunk.env_t_started`), as well as the
+        observations/infos of the individual agents at the concatenation boundaries.
+        Also, `self.is_done` must not be True, meaning `self.is_terminated` and
+        `self.is_truncated` are both False.
+
+        Args:
+            other: The other `MultiAgentEpisode` to be concatenated to this one.
+
+        Returns: A `MultiAgentEpisode` instance containing the concatenated data
+            from both episodes (`self` and `other`).
+        """
+        # Make sure the IDs match.
+        assert other.id_ == self.id_
+        # NOTE (sven): This is what we agreed on. As the replay buffers must be
+        # able to concatenate.
+        assert not self.is_done
+        # Make sure the timesteps match.
+        assert self.env_t == other.env_t_started
+        # Validate `other`.
+        other.validate()
+
+        # Concatenate the individual SingleAgentEpisodes from both chunks.
+        all_agent_ids = set(self.agent_ids) | set(other.agent_ids)
+        for agent_id in all_agent_ids:
+            sa_episode = self.agent_episodes.get(agent_id)
+
+            # If agent is only in the new episode chunk -> Store all the data of `other`
+            # wrt agent in `self`.
+            if sa_episode is None:
+                self.agent_episodes[agent_id] = other.agent_episodes[agent_id]
+                self.env_t_to_agent_t[agent_id] = other.env_t_to_agent_t[agent_id]
+                self.agent_t_started[agent_id] = other.agent_t_started[agent_id]
+                self._copy_hanging(agent_id, other)
+
+            # If the agent was done in `self`, ignore and continue. There should not be
+            # any data of that agent in `other`.
+            elif sa_episode.is_done:
+                continue
+
+            # If the agent has data in both chunks, concatenate on the single-agent
+            # level, thereby making sure the hanging values (begin and end) match.
+            elif agent_id in other.agent_episodes:
+                # If `other` has hanging (end) values -> Add these to `self`'s agent
+                # SingleAgentEpisode (as a new timestep) and only then concatenate.
+                # Otherwise, the concatentaion would fail b/c of missing data.
+                if agent_id in self._hanging_actions_end:
+                    assert agent_id in self._hanging_extra_model_outputs_end
+                    sa_episode.add_env_step(
+                        observation=other.agent_episodes[agent_id].get_observations(0),
+                        infos=other.agent_episodes[agent_id].get_infos(0),
+                        action=self._hanging_actions_end[agent_id],
+                        reward=(
+                            self._hanging_rewards_end[agent_id]
+                            + other._hanging_rewards_begin[agent_id]
+                        ),
+                        extra_model_outputs=(
+                            self._hanging_extra_model_outputs_end[agent_id]
+                        ),
+                    )
+                sa_episode.concat_episode(other.agent_episodes[agent_id])
+                # Override `self`'s hanging (end) values with `other`'s hanging (end).
+                if agent_id in other._hanging_actions_end:
+                    self._hanging_actions_end[agent_id] = copy.deepcopy(
+                        other._hanging_actions_end[agent_id]
+                    )
+                    self._hanging_rewards_end[agent_id] = other._hanging_rewards_end[
+                        agent_id
+                    ]
+                    self._hanging_extra_model_outputs_end[agent_id] = copy.deepcopy(
+                        other._hanging_extra_model_outputs_end[agent_id]
+                    )
+
+                # Concatenate the env- to agent-timestep mappings.
+                j = self.env_t
+                for i, val in enumerate(other.env_t_to_agent_t[agent_id][1:]):
+                    if val == self.SKIP_ENV_TS_TAG:
+                        self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
+                    else:
+                        self.env_t_to_agent_t[agent_id].append(i + 1 + j)
+
+            # Otherwise, the agent is only in `self` and not done. All data is stored
+            # already -> skip
+            # else: pass
+
+        # Update all timestep counters.
+        self.env_t = other.env_t
+        # Check, if the episode is terminated or truncated.
+        if other.is_terminated:
+            self.is_terminated = True
+        elif other.is_truncated:
+            self.is_truncated = True
+
+        # Erase all temporary timestep data caches.
+        self._temporary_timestep_data.clear()
+
+        # Validate.
+        self.validate()
+
     def cut(self, len_lookback_buffer: int = 0) -> "MultiAgentEpisode":
         """Returns a successor episode chunk (of len=0) continuing from this Episode.
 
@@ -796,16 +939,14 @@ class MultiAgentEpisode:
                 "Can't call `MultiAgentEpisode.cut()` when the episode is already done!"
             )
 
-        # If there is data (e.g. actions) in the agents' buffers, we might have to
-        # re-adjust the lookback len further into the past to make sure that these
+        # If there is hanging data (e.g. actions) in the agents' caches, we might have
+        # to re-adjust the lookback len further into the past to make sure that these
         # agents have at least one observation to look back to.
-        for agent_id, agent_actions in self._agent_buffered_actions.items():
+        for agent_id, agent_actions in self._hanging_actions_end.items():
             assert self.env_t_to_agent_t[agent_id].get(-1) == self.SKIP_ENV_TS_TAG
             for i in range(1, self.env_t_to_agent_t[agent_id].lookback + 1):
                 if (
-                    self.env_t_to_agent_t[agent_id].get(
-                        -i, neg_indices_left_of_zero=True
-                    )
+                    self.env_t_to_agent_t[agent_id].get(-i, neg_index_as_lookback=True)
                     != self.SKIP_ENV_TS_TAG
                 ):
                     len_lookback_buffer = max(len_lookback_buffer, i)
@@ -822,13 +963,6 @@ class MultiAgentEpisode:
         successor = MultiAgentEpisode(
             # Same ID.
             id_=self.id_,
-            # Same agent IDs.
-            # Same single agents' episode IDs.
-            agent_episode_ids=self.agent_episode_ids,
-            agent_module_ids={
-                aid: self.agent_episodes[aid].module_id for aid in self.agent_ids
-            },
-            agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
             observations=self.get_observations(
                 indices=indices_obs_and_infos, return_list=True
             ),
@@ -846,16 +980,29 @@ class MultiAgentEpisode:
             ),
             terminateds=self.get_terminateds(),
             truncateds=self.get_truncateds(),
-            # Continue with `self`'s current timestep.
+            # Continue with `self`'s current timesteps.
             env_t_started=self.env_t,
+            agent_t_started={
+                aid: self.agent_episodes[aid].t
+                for aid in self.agent_ids
+                if not self.agent_episodes[aid].is_done
+            },
+            # Same AgentIDs and SingleAgentEpisode IDs.
+            agent_episode_ids=self.agent_episode_ids,
+            agent_module_ids={
+                aid: self.agent_episodes[aid].module_id for aid in self.agent_ids
+            },
+            agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
+            # All data we provided to the c'tor goes into the lookback buffer.
             len_lookback_buffer="auto",
         )
 
-        # Copy over the current buffer values.
-        successor._agent_buffered_actions = copy.deepcopy(self._agent_buffered_actions)
-        successor._agent_buffered_rewards = self._agent_buffered_rewards.copy()
-        successor._agent_buffered_extra_model_outputs = copy.deepcopy(
-            self._agent_buffered_extra_model_outputs
+        # Copy over the hanging (end) values into the hanging (begin) chaches of the
+        # successor.
+        successor._hanging_actions_begin = copy.deepcopy(self._hanging_actions_end)
+        successor._hanging_rewards_begin = self._hanging_rewards_end.copy()
+        successor._hanging_extra_model_outputs_begin = copy.deepcopy(
+            self._hanging_extra_model_outputs_end
         )
 
         return successor
@@ -903,7 +1050,7 @@ class MultiAgentEpisode:
         *,
         env_steps: bool = True,
         # global_indices: bool = False,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         return_list: bool = False,
@@ -917,7 +1064,7 @@ class MultiAgentEpisode:
                 individual observations in a batch of size len(indices).
                 A slice object is interpreted as a range of observations to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all observations (from ts=0 to the end).
@@ -926,14 +1073,14 @@ class MultiAgentEpisode:
                 this episode.
             env_steps: Whether `indices` should be interpreted as environment time steps
                 (True) or per-agent timesteps (False).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with agent A's observations
                 [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the lookback buffer range
                 (ts=0 item is 7), will respond to `get_observations(-1, agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `6`} and to
+                neg_index_as_lookback=True)` with {A: `6`} and to
                 `get_observations(slice(-2, 1), agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `[5, 6,  7]`}.
+                neg_index_as_lookback=True)` with {A: `[5, 6,  7]`}.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
@@ -968,7 +1115,7 @@ class MultiAgentEpisode:
             indices=indices,
             agent_ids=agent_ids,
             env_steps=env_steps,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             one_hot_discrete=one_hot_discrete,
             return_list=return_list,
@@ -980,7 +1127,7 @@ class MultiAgentEpisode:
         agent_ids: Optional[Union[Collection[AgentID], AgentID]] = None,
         *,
         env_steps: bool = True,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         return_list: bool = False,
     ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
@@ -993,7 +1140,7 @@ class MultiAgentEpisode:
                 individual info dicts in a list of size len(indices).
                 A slice object is interpreted as a range of info dicts to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all infos (from ts=0 to the end).
@@ -1002,14 +1149,14 @@ class MultiAgentEpisode:
                 this episode.
             env_steps: Whether `indices` should be interpreted as environment time steps
                 (True) or per-agent timesteps (False).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with agent A's info dicts
                 [{"l":4}, {"l":5}, {"l":6},  {"a":7}, {"b":8}, {"c":9}], where the
                 first 3 items are the lookback buffer (ts=0 item is {"a": 7}), will
-                respond to `get_infos(-1, agent_ids=A, neg_indices_left_of_zero=True)`
+                respond to `get_infos(-1, agent_ids=A, neg_index_as_lookback=True)`
                 with `{A: {"l":6}}` and to
-                `get_infos(slice(-2, 1), agent_ids=A, neg_indices_left_of_zero=True)`
+                `get_infos(slice(-2, 1), agent_ids=A, neg_index_as_lookback=True)`
                 with `{A: [{"l":5}, {"l":6},  {"a":7}]}`.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
@@ -1041,7 +1188,7 @@ class MultiAgentEpisode:
             indices=indices,
             agent_ids=agent_ids,
             env_steps=env_steps,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             return_list=return_list,
         )
@@ -1052,7 +1199,7 @@ class MultiAgentEpisode:
         agent_ids: Optional[Union[Collection[AgentID], AgentID]] = None,
         *,
         env_steps: bool = True,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         return_list: bool = False,
@@ -1066,7 +1213,7 @@ class MultiAgentEpisode:
                 individual actions in a batch of size len(indices).
                 A slice object is interpreted as a range of actions to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all actions (from ts=0 to the end).
@@ -1075,14 +1222,14 @@ class MultiAgentEpisode:
                 this episode.
             env_steps: Whether `indices` should be interpreted as environment time steps
                 (True) or per-agent timesteps (False).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with agent A's actions
                 [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the lookback buffer range
                 (ts=0 item is 7), will respond to `get_actions(-1, agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `6`} and to
+                neg_index_as_lookback=True)` with {A: `6`} and to
                 `get_actions(slice(-2, 1), agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `[5, 6,  7]`}.
+                neg_index_as_lookback=True)` with {A: `[5, 6,  7]`}.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
@@ -1117,7 +1264,7 @@ class MultiAgentEpisode:
             indices=indices,
             agent_ids=agent_ids,
             env_steps=env_steps,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             one_hot_discrete=one_hot_discrete,
             return_list=return_list,
@@ -1129,7 +1276,7 @@ class MultiAgentEpisode:
         agent_ids: Optional[Union[Collection[AgentID], AgentID]] = None,
         *,
         env_steps: bool = True,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[float] = None,
         return_list: bool = False,
     ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
@@ -1142,7 +1289,7 @@ class MultiAgentEpisode:
                 individual rewards in a batch of size len(indices).
                 A slice object is interpreted as a range of rewards to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all rewards (from ts=0 to the end).
@@ -1151,14 +1298,14 @@ class MultiAgentEpisode:
                 this episode.
             env_steps: Whether `indices` should be interpreted as environment time steps
                 (True) or per-agent timesteps (False).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with agent A's rewards
                 [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the lookback buffer range
                 (ts=0 item is 7), will respond to `get_rewards(-1, agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `6`} and to
+                neg_index_as_lookback=True)` with {A: `6`} and to
                 `get_rewards(slice(-2, 1), agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `[5, 6,  7]`}.
+                neg_index_as_lookback=True)` with {A: `[5, 6,  7]`}.
             fill: An optional float value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
@@ -1188,7 +1335,7 @@ class MultiAgentEpisode:
             indices=indices,
             agent_ids=agent_ids,
             env_steps=env_steps,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             return_list=return_list,
         )
@@ -1200,7 +1347,7 @@ class MultiAgentEpisode:
         agent_ids: Optional[Union[Collection[AgentID], AgentID]] = None,
         *,
         env_steps: bool = True,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         return_list: bool = False,
     ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
@@ -1216,7 +1363,7 @@ class MultiAgentEpisode:
                 A slice object is interpreted as a range of extra model outputs to be
                 returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all extra model outputs (from ts=0 to the end).
@@ -1225,14 +1372,14 @@ class MultiAgentEpisode:
                 all agents in this episode.
             env_steps: Whether `indices` should be interpreted as environment time steps
                 (True) or per-agent timesteps (False).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with agent A's actions
                 [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the lookback buffer range
                 (ts=0 item is 7), will respond to `get_actions(-1, agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `6`} and to
+                neg_index_as_lookback=True)` with {A: `6`} and to
                 `get_actions(slice(-2, 1), agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `[5, 6,  7]`}.
+                neg_index_as_lookback=True)` with {A: `[5, 6,  7]`}.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
@@ -1268,7 +1415,7 @@ class MultiAgentEpisode:
             indices=indices,
             agent_ids=agent_ids,
             env_steps=env_steps,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             return_list=return_list,
         )
@@ -1290,6 +1437,48 @@ class MultiAgentEpisode:
         truncateds.update({"__all__": self.is_terminated})
         return truncateds
 
+    def add_temporary_timestep_data(self, key: str, data: Any) -> None:
+        """Temporarily adds (until `finalized()` called) per-timestep data to self.
+
+        The given `data` is appended to a list (`self._temporary_timestep_data`), which
+        is cleared upon calling `self.finalize()`. To get the thus-far accumulated
+        temporary timestep data for a certain key, use the `get_temporary_timestep_data`
+        API.
+        Note that the size of the per timestep list is NOT checked or validated against
+        the other, non-temporary data in this episode (like observations).
+
+        Args:
+            key: The key under which to find the list to append `data` to. If `data` is
+                the first data to be added for this key, start a new list.
+            data: The data item (representing a single timestep) to be stored.
+        """
+        if self.is_finalized:
+            raise ValueError(
+                "Cannot use the `add_temporary_timestep_data` API on an already "
+                f"finalized {type(self).__name__}!"
+            )
+        self._temporary_timestep_data[key].append(data)
+
+    def get_temporary_timestep_data(self, key: str) -> List[Any]:
+        """Returns all temporarily stored data items (list) under the given key.
+
+        Note that all temporary timestep data is erased/cleared when calling
+        `self.finalize()`.
+
+        Returns:
+            The current list storing temporary timestep data under `key`.
+        """
+        if self.is_finalized:
+            raise ValueError(
+                "Cannot use the `get_temporary_timestep_data` API on an already "
+                f"finalized {type(self).__name__}! All temporary data has been erased "
+                f"upon `{type(self).__name__}.finalize()`."
+            )
+        try:
+            return self._temporary_timestep_data[key]
+        except KeyError:
+            raise KeyError(f"Key {key} not found in temporary timestep data!")
+
     def slice(self, slice_: slice) -> "MultiAgentEpisode":
         """Returns a slice of this episode with the given slice object.
 
@@ -1301,7 +1490,8 @@ class MultiAgentEpisode:
         - In case `slice_` ends - for a certain agent - in an env step, where that
         particular agent does not have an observation, the previous observation will
         be included, but the next action and sum of rewards until this point will
-        be stored in the agent's buffer for the returned MultiAgentEpisode slice.
+        be stored in the agent's hanging values caches for the returned
+        MultiAgentEpisode slice.
 
         .. testcode::
 
@@ -1341,14 +1531,14 @@ class MultiAgentEpisode:
             check((a0.is_done, a1.is_done), (False, False))
 
             # If a slice ends in a "gap" for an agent, expect actions and rewards to be
-            # cached in the agent's buffer.
+            # cached for this agent.
             slice = episode[:2]
             a0 = slice.agent_episodes["a0"]
             check(a0.observations, [0])
             check(a0.actions, [])
             check(a0.rewards, [])
-            check(slice._agent_buffered_actions["a0"], 0)
-            check(slice._agent_buffered_rewards["a0"], 0.1)
+            check(slice._hanging_actions_end["a0"], 0)
+            check(slice._hanging_rewards_end["a0"], 0.1)
 
         Args:
             slice_: The slice object to use for slicing. This should exclude the
@@ -1407,24 +1597,33 @@ class MultiAgentEpisode:
                 "episode have the exact same size!"
             )
 
-        # Determine terminateds/truncateds.
+        # Determine terminateds/truncateds and when (in agent timesteps) the
+        # single-agent episode slices start.
         terminateds = {}
         truncateds = {}
+        agent_t_started = {}
         for aid, sa_episode in self.agent_episodes.items():
+            mapping = self.env_t_to_agent_t[aid]
             # If the (agent) timestep directly at the slice stop boundary is equal to
             # the length of the single-agent episode of this agent -> Use the
             # single-agent episode's terminated/truncated flags.
-            # If `stop` is already beyond this agents single-agent episode, then we
+            # If `stop` is already beyond this agent's single-agent episode, then we
             # don't have to keep track of this: The MultiAgentEpisode initializer will
-            # automatically determine that this agent must be done (b/c has no action
+            # automatically determine that this agent must be done (b/c it has no action
             # following its final observation).
             if (
-                stop < len(self.env_t_to_agent_t[aid])
-                and self.env_t_to_agent_t[aid][stop] != self.SKIP_ENV_TS_TAG
-                and len(sa_episode) == self.env_t_to_agent_t[aid][stop]
+                stop < len(mapping)
+                and mapping[stop] != self.SKIP_ENV_TS_TAG
+                and len(sa_episode) == mapping[stop]
             ):
                 terminateds[aid] = sa_episode.is_terminated
                 truncateds[aid] = sa_episode.is_truncated
+            # Determine this agent's t_started.
+            if start < len(mapping):
+                for i in range(start, len(mapping)):
+                    if mapping[i] != self.SKIP_ENV_TS_TAG:
+                        agent_t_started[aid] = sa_episode.t_started + mapping[i]
+                        break
         terminateds["__all__"] = all(
             terminateds.get(aid) for aid in self.agent_episodes
         )
@@ -1433,22 +1632,22 @@ class MultiAgentEpisode:
         # Determine all other slice contents.
         observations = self.get_observations(
             slice(start - ref_lookback, stop + 1),
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
             return_list=True,
         )
         actions = self.get_actions(
             slice(start - ref_lookback, stop),
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
             return_list=True,
         )
         rewards = self.get_rewards(
             slice(start - ref_lookback, stop),
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
             return_list=True,
         )
         extra_model_outputs = self.get_extra_model_outputs(
             indices=slice(start - ref_lookback, stop),
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
             return_list=True,
         )
 
@@ -1465,14 +1664,16 @@ class MultiAgentEpisode:
             terminateds=terminateds,
             truncateds=truncateds,
             len_lookback_buffer=ref_lookback,
+            env_t_started=self.env_t_started + start,
             agent_episode_ids={
                 aid: eid.id_ for aid, eid in self.agent_episodes.items()
             },
+            agent_t_started=agent_t_started,
             agent_module_ids=self._agent_to_module_mapping,
             agent_to_module_mapping_fn=self.agent_to_module_mapping_fn,
         )
 
-        # Finalize slice if `self` is finalized.
+        # Finalize slice if `self` is also finalized.
         if self.is_finalized:
             ma_episode.finalize()
 
@@ -1506,26 +1707,35 @@ class MultiAgentEpisode:
         )
 
     def print(self) -> None:
+        """Prints this MultiAgentEpisode as a table of observations for the agents."""
+
         # Find the maximum timestep across all agents to determine the grid width.
-        max_ts = max(len(ts) for ts in self.env_t_to_agent_t.values())
+        max_ts = max(ts.len_incl_lookback() for ts in self.env_t_to_agent_t.values())
+        lookback = next(iter(self.env_t_to_agent_t.values())).lookback
+        longest_agent = max(len(aid) for aid in self.agent_ids)
         # Construct the header.
-        header = "ts   " + " ".join(str(i) for i in range(max_ts)) + "\n"
+        header = (
+            "ts"
+            + (" " * longest_agent)
+            + "   ".join(str(i) for i in range(-lookback, max_ts - lookback))
+            + "\n"
+        )
         # Construct each agent's row.
         rows = []
-        for agent, timesteps in self.env_t_to_agent_t.items():
-            row = f"{agent}  "
-            for t in timesteps:
+        for agent, inf_buffer in self.env_t_to_agent_t.items():
+            row = f"{agent}  " + (" " * (longest_agent - len(agent)))
+            for t in inf_buffer.data:
                 # Two spaces for alignment.
                 if t == "S":
-                    row += "  "
+                    row += "    "
                 # Mark the step with an x.
                 else:
-                    row += "x "
+                    row += " x  "
             # Remove trailing space for alignment.
             rows.append(row.rstrip())
 
         # Join all components into a final string
-        return header + "\n".join(rows)
+        print(header + "\n".join(rows))
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the state of a multi-agent episode.
@@ -1533,57 +1743,89 @@ class MultiAgentEpisode:
         Note that from an episode's state the episode itself can
         be recreated.
 
-        Returns: A dicitonary containing pickable data fro a
+        Returns: A dicitonary containing pickable data for a
             `MultiAgentEpisode`.
         """
-        # TODO (simon): Add the buffers.
-        return list(
-            {
-                "id_": self.id_,
-                "agent_ids": self.agent_ids,
-                "env_t_to_agent_t": self.env_t_to_agent_t,
-                "global_actions_t": self.global_actions_t,
-                "partial_rewards_t": self.partial_rewards_t,
-                "partial_rewards": self.partial_rewards,
-                "agent_episodes": list(
-                    {
-                        agent_id: agent_eps.get_state()
-                        for agent_id, agent_eps in self.agent_episodes.items()
-                    }.items()
-                ),
-                "env_t_started": self.env_t_started,
-                "env_t": self.env_t,
-                "ts_carriage_return": self.ts_carriage_return,
-                "is_terminated": self.is_terminated,
-                "is_truncated": self.is_truncated,
-            }.items()
-        )
+        return {
+            "id_": self.id_,
+            "agent_to_module_mapping_fn": self.agent_to_module_mapping_fn,
+            "_agent_to_module_mapping": self._agent_to_module_mapping,
+            "observation_space": self.observation_space,
+            "action_space": self.action_space,
+            "env_t_started": self.env_t_started,
+            "env_t": self.env_t,
+            "agent_t_started": self.agent_t_started,
+            # TODO (simon): Check, if we can store the `InfiniteLookbackBuffer`
+            "env_t_to_agent_t": self.env_t_to_agent_t,
+            "_hanging_actions_end": self._hanging_actions_end,
+            "_hanging_extra_model_outputs_end": (self._hanging_extra_model_outputs_end),
+            "_hanging_rewards_end": self._hanging_rewards_end,
+            "_hanging_actions_begin": self._hanging_actions_begin,
+            "_hanging_extra_model_outputs_begin": (
+                self._hanging_extra_model_outputs_begin
+            ),
+            "_hanging_rewards_begin": self._hanging_rewards_begin,
+            "is_terminated": self.is_terminated,
+            "is_truncated": self.is_truncated,
+            "agent_episodes": list(
+                {
+                    agent_id: agent_eps.get_state()
+                    for agent_id, agent_eps in self.agent_episodes.items()
+                }.items()
+            ),
+            "_start_time": self._start_time,
+            "_last_step_time": self._last_step_time,
+        }
 
     @staticmethod
-    def from_state(state) -> None:
+    def from_state(state: Dict[str, Any]) -> "MultiAgentEpisode":
         """Creates a multi-agent episode from a state dictionary.
 
         See `MultiAgentEpisode.get_state()` for creating a state for
         a `MultiAgentEpisode` pickable state. For recreating a
         `MultiAgentEpisode` from a state, this state has to be complete,
         i.e. all data must have been stored in the state.
+
+        Args:
+            state: A dict containing all data required to recreate a MultiAgentEpisode`.
+                See `MultiAgentEpisode.get_state()`.
+
+        Returns:
+            A `MultiAgentEpisode` instance created from the state data.
         """
-        # TODO (simon): Add the buffers.
-        episode = MultiAgentEpisode(id=state[0][1])
-        episode._agent_ids = state[1][1]
-        episode.env_t_to_agent_t = state[2][1]
-        episode.global_actions_t = state[3][1]
-        episode.partial_rewards_t = state[4][1]
-        episode.partial_rewards = state[5][1]
+        # Create an empty `MultiAgentEpisode` instance.
+        episode = MultiAgentEpisode(id_=state["id_"])
+        # Fill the instance with the state data.
+        episode.agent_to_module_mapping_fn = state["agent_to_module_mapping_fn"]
+        episode._agent_to_module_mapping = state["_agent_to_module_mapping"]
+        episode.observation_space = state["observation_space"]
+        episode.action_space = state["action_space"]
+        episode.env_t_started = state["env_t_started"]
+        episode.env_t = state["env_t"]
+        episode.agent_t_started = state["agent_t_started"]
+        episode.env_t_to_agent_t = state["env_t_to_agent_t"]
+        episode._hanging_actions_end = state["_hanging_actions_end"]
+        episode._hanging_extra_model_outputs_end = state[
+            "_hanging_extra_model_outputs_end"
+        ]
+        episode._hanging_rewards_end = state["_hanging_rewards_end"]
+        episode._hanging_actions_begin = state["_hanging_actions_begin"]
+        episode._hanging_extra_model_outputs_begin = state[
+            "_hanging_extra_model_outputs_begin"
+        ]
+        episode._hanging_rewards_begin = state["_hanging_rewards_begin"]
+        episode.is_terminated = state["is_terminated"]
+        episode.is_truncated = state["is_truncated"]
         episode.agent_episodes = {
             agent_id: SingleAgentEpisode.from_state(agent_state)
-            for agent_id, agent_state in state[6][1]
+            for agent_id, agent_state in state["agent_episodes"]
         }
-        episode.env_t_started = state[7][1]
-        episode.env_t = state[8][1]
-        episode.ts_carriage_return = state[9][1]
-        episode.is_terminated = state[10][1]
-        episode.is_trcunated = state[11][1]
+        episode._start_time = state["_start_time"]
+        episode._last_step_time = state["_last_step_time"]
+
+        # Validate the episode.
+        episode.validate()
+
         return episode
 
     def get_sample_batch(self) -> MultiAgentBatch:
@@ -1610,27 +1852,30 @@ class MultiAgentEpisode:
 
     def get_return(
         self,
-        consider_buffer: bool = False,
+        include_hanging_rewards: bool = False,
     ) -> float:
         """Returns all-agent return.
 
         Args:
-            consider_buffer: Whether we should also consider
-                buffered rewards wehn calculating the overall return. Agents might
+            include_hanging_rewards: Whether we should also consider
+                hanging rewards wehn calculating the overall return. Agents might
                 have received partial rewards, i.e. rewards without an
-                observation. These are stored to the buffer for each agent and added up
-                until the next observation is received by that agent.
+                observation. These are stored in the "hanging" caches (begin and end)
+                for each agent and added up until the next observation is received by
+                that agent.
 
         Returns:
-            The sum of all single-agents' returns (maybe including the buffered
+            The sum of all single-agents' returns (maybe including the hanging
             rewards per agent).
         """
         env_return = sum(
             agent_eps.get_return() for agent_eps in self.agent_episodes.values()
         )
-        if consider_buffer:
-            for buffered_r in self._agent_buffered_rewards.values():
-                env_return += buffered_r
+        if include_hanging_rewards:
+            for hanging_r in self._hanging_rewards_begin.values():
+                env_return += hanging_r
+            for hanging_r in self._hanging_rewards_end.values():
+                env_return += hanging_r
 
         return env_return
 
@@ -1641,7 +1886,7 @@ class MultiAgentEpisode:
         `env.step()` call.
 
         Returns:
-            A set of AgentIDs that are suposed to send actions to the next `env.step()`
+            A set of AgentIDs that are supposed to send actions to the next `env.step()`
             call.
         """
         return {
@@ -1663,6 +1908,12 @@ class MultiAgentEpisode:
             their single agent episodes are done or not.
         """
         return set(self.get_observations(-1).keys())
+
+    def get_duration_s(self) -> float:
+        """Returns the duration of this Episode (chunk) in seconds."""
+        if self._last_step_time is None:
+            return 0.0
+        return self._last_step_time - self._start_time
 
     def env_steps(self) -> int:
         """Returns the number of environment steps.
@@ -1722,7 +1973,7 @@ class MultiAgentEpisode:
             rewards = []
             extra_model_outputs = []
 
-        # Infos and extra_model_outputs are allowed to be None -> Fill them with
+        # Infos and `extra_model_outputs` are allowed to be None -> Fill them with
         # proper dummy values, if so.
         if infos is None:
             infos = [{} for _ in range(len(observations))]
@@ -1743,11 +1994,11 @@ class MultiAgentEpisode:
         agent_module_ids = agent_module_ids or {}
 
         # Step through all observations and interpret these as the (global) env steps.
-        env_t = self.env_t - len_lookback_buffer
+        env_t = self.env_t_started - len_lookback_buffer
         for data_idx, (obs, inf) in enumerate(zip(observations, infos)):
             # If we do have actions/extra outs/rewards for this timestep, use the data.
             # It may be that these lists have the same length as the observations list,
-            # in which case the data will be buffered (agent did step/send an action,
+            # in which case the data will be cached (agent did step/send an action,
             # but the step has not been concluded yet by the env).
             act = actions[data_idx] if len(actions) > data_idx else {}
             extra_outs = (
@@ -1763,17 +2014,17 @@ class MultiAgentEpisode:
                 observations_per_agent[agent_id].append(agent_obs)
                 infos_per_agent[agent_id].append(inf.get(agent_id, {}))
 
-                # Pull out buffered action (if not first obs for this agent) and
+                # Pull out hanging action (if not first obs for this agent) and
                 # complete step for agent.
                 if len(observations_per_agent[agent_id]) > 1:
                     actions_per_agent[agent_id].append(
-                        self._agent_buffered_actions.pop(agent_id)
+                        self._hanging_actions_end.pop(agent_id)
                     )
                     extra_model_outputs_per_agent[agent_id].append(
-                        self._agent_buffered_extra_model_outputs.pop(agent_id)
+                        self._hanging_extra_model_outputs_end.pop(agent_id)
                     )
                     rewards_per_agent[agent_id].append(
-                        self._agent_buffered_rewards.pop(agent_id)
+                        self._hanging_rewards_end.pop(agent_id)
                     )
                 # First obs for this agent. Make sure the agent's mapping is
                 # appropriately prepended with self.SKIP_ENV_TS_TAG tags.
@@ -1785,22 +2036,18 @@ class MultiAgentEpisode:
 
                 # Agent is still continuing (has an action for the next step).
                 if agent_id in act:
-                    # Always push actions/extra outputs into buffer, then remove them
+                    # Always push actions/extra outputs into cache, then remove them
                     # from there, once the next observation comes in. Same for rewards.
-                    self._agent_buffered_actions[agent_id] = act[agent_id]
-                    self._agent_buffered_extra_model_outputs[agent_id] = extra_outs.get(
+                    self._hanging_actions_end[agent_id] = act[agent_id]
+                    self._hanging_extra_model_outputs_end[agent_id] = extra_outs.get(
                         agent_id, {}
                     )
-                    self._agent_buffered_rewards[
-                        agent_id
-                    ] = self._agent_buffered_rewards.get(agent_id, 0.0) + rew.get(
-                        agent_id, 0.0
-                    )
+                    self._hanging_rewards_end[agent_id] += rew.get(agent_id, 0.0)
                 # Agent is done (has no action for the next step).
                 elif terminateds.get(agent_id) or truncateds.get(agent_id):
                     done_per_agent[agent_id] = True
                 # There is more (global) action/reward data. This agent must therefore
-                # be done. Auto-add it to terminateds.
+                # be done. Automatically add it to `done_per_agent` and `terminateds`.
                 elif data_idx < len(observations) - 1:
                     done_per_agent[agent_id] = terminateds[agent_id] = True
 
@@ -1809,12 +2056,16 @@ class MultiAgentEpisode:
                     len(observations_per_agent[agent_id]) - 1
                 )
 
-            # Those agents that did NOT step get None added to their mapping.
+            # Those agents that did NOT step:
+            # - Get self.SKIP_ENV_TS_TAG added to their env_t_to_agent_t mapping.
+            # - Get their reward (if any) added up.
             for agent_id in all_agent_ids:
                 if agent_id not in obs and agent_id not in done_per_agent:
                     self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
+                    self._hanging_rewards_end[agent_id] += rew.get(agent_id, 0.0)
 
-            # Update per-agent lookback buffer and t_started counters.
+            # Update per-agent lookback buffer sizes to be used when creating the
+            # indiviual `SingleAgentEpisode` objects below.
             for agent_id in all_agent_ids:
                 if env_t < self.env_t_started:
                     if agent_id not in done_per_agent:
@@ -1852,7 +2103,7 @@ class MultiAgentEpisode:
                 s != self.SKIP_ENV_TS_TAG
                 for s in self.env_t_to_agent_t[agent_id].get(
                     slice(-len_lookback_buffer_per_agent[agent_id], 0),
-                    neg_indices_left_of_zero=True,
+                    neg_index_as_lookback=True,
                 )
             )
             # Try to figure out the module ID for this agent.
@@ -1900,7 +2151,7 @@ class MultiAgentEpisode:
         indices,
         agent_ids=None,
         env_steps=True,
-        neg_indices_left_of_zero=False,
+        neg_index_as_lookback=False,
         fill=None,
         one_hot_discrete=False,
         return_list=False,
@@ -1912,7 +2163,7 @@ class MultiAgentEpisode:
             what=what,
             indices=indices,
             agent_ids=agent_ids,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             # Rewards and infos do not support one_hot_discrete option.
             one_hot_discrete=dict(
@@ -1945,7 +2196,7 @@ class MultiAgentEpisode:
         what,
         indices,
         agent_ids,
-        neg_indices_left_of_zero,
+        neg_index_as_lookback,
         fill,
         one_hot_discrete,
         extra_model_outputs_key,
@@ -1955,15 +2206,15 @@ class MultiAgentEpisode:
             if agent_id not in agent_ids:
                 continue
             inf_lookback_buffer = getattr(sa_episode, what)
-            buffer_val = self._get_buffer_value(what, agent_id)
+            hanging_val = self._get_hanging_value(what, agent_id)
             if extra_model_outputs_key is not None:
                 inf_lookback_buffer = inf_lookback_buffer[extra_model_outputs_key]
-                buffer_val = buffer_val[extra_model_outputs_key]
+                hanging_val = hanging_val[extra_model_outputs_key]
             agent_value = inf_lookback_buffer.get(
                 indices=indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
                 fill=fill,
-                _add_last_ts_value=buffer_val,
+                _add_last_ts_value=hanging_val,
                 **one_hot_discrete,
             )
             if agent_value is None or agent_value == []:
@@ -1977,7 +2228,7 @@ class MultiAgentEpisode:
         what: str,
         indices: Union[int, slice, List[int]],
         agent_ids: Collection[AgentID],
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         extra_model_outputs_key: Optional[str] = None,
@@ -1996,17 +2247,17 @@ class MultiAgentEpisode:
                 individual data in a batch of size len(indices).
                 A slice object is interpreted as a range of data to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
             agent_ids: A collection of AgentIDs to filter for. Only data for those
                 agents will be returned, all other agents will be ignored.
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
-                respond to `get(-1, neg_indices_left_of_zero=True)` with `6` and to
-                `get(slice(-2, 1), neg_indices_left_of_zero=True)` with `[5, 6,  7]`.
+                respond to `get(-1, neg_index_as_lookback=True)` with `6` and to
+                `get(slice(-2, 1), neg_index_as_lookback=True)` with `[5, 6,  7]`.
             fill: An optional float value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the buffer's boundaries (including the
@@ -2038,7 +2289,7 @@ class MultiAgentEpisode:
                 continue
             agent_indices[agent_id] = self.env_t_to_agent_t[agent_id].get(
                 indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
                 fill=self.SKIP_ENV_TS_TAG,
                 # For those records where there is no "hanging" last timestep (all
                 # other than obs and infos), we have to ignore the last entry in
@@ -2051,7 +2302,7 @@ class MultiAgentEpisode:
         for i in range(len(next(iter(agent_indices.values())))):
             ret2 = {}
             for agent_id, idxes in agent_indices.items():
-                buffer_val = self._get_buffer_value(what, agent_id)
+                hanging_val = self._get_hanging_value(what, agent_id)
                 (
                     inf_lookback_buffer,
                     indices_to_use,
@@ -2059,7 +2310,7 @@ class MultiAgentEpisode:
                     agent_id,
                     what,
                     extra_model_outputs_key,
-                    buffer_val,
+                    hanging_val,
                     filter_for_skip_indices=idxes[i],
                 )
                 agent_value = self._get_single_agent_data_by_index(
@@ -2069,7 +2320,7 @@ class MultiAgentEpisode:
                     index_incl_lookback=indices_to_use,
                     fill=fill,
                     one_hot_discrete=one_hot_discrete,
-                    buffer_val=buffer_val,
+                    hanging_val=hanging_val,
                     extra_model_outputs_key=extra_model_outputs_key,
                 )
                 if agent_value is not None:
@@ -2083,7 +2334,7 @@ class MultiAgentEpisode:
         what: str,
         indices: Union[int, slice, List[int]],
         agent_ids: Collection[AgentID],
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         extra_model_outputs_key: Optional[str] = None,
@@ -2102,17 +2353,17 @@ class MultiAgentEpisode:
                 individual data in a batch of size len(indices).
                 A slice object is interpreted as a range of data to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
             agent_ids: A collection of AgentIDs to filter for. Only data for those
                 agents will be returned, all other agents will be ignored.
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
-                respond to `get(-1, neg_indices_left_of_zero=True)` with `6` and to
-                `get(slice(-2, 1), neg_indices_left_of_zero=True)` with `[5, 6,  7]`.
+                respond to `get(-1, neg_index_as_lookback=True)` with `6` and to
+                `get(slice(-2, 1), neg_index_as_lookback=True)` with `[5, 6,  7]`.
             fill: An optional float value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the buffer's boundaries (including the
@@ -2142,10 +2393,10 @@ class MultiAgentEpisode:
         for agent_id, sa_episode in self.agent_episodes.items():
             if agent_id not in agent_ids:
                 continue
-            buffer_val = self._get_buffer_value(what, agent_id)
+            hanging_val = self._get_hanging_value(what, agent_id)
             agent_indices = self.env_t_to_agent_t[agent_id].get(
                 indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
                 fill=self.SKIP_ENV_TS_TAG if fill is not None else None,
                 # For those records where there is no "hanging" last timestep (all
                 # other than obs and infos), we have to ignore the last entry in
@@ -2156,7 +2407,7 @@ class MultiAgentEpisode:
                 agent_id,
                 what,
                 extra_model_outputs_key,
-                buffer_val,
+                hanging_val,
                 filter_for_skip_indices=agent_indices,
             )
             if isinstance(agent_indices, list):
@@ -2166,7 +2417,7 @@ class MultiAgentEpisode:
                     indices_incl_lookback=agent_indices,
                     fill=fill,
                     one_hot_discrete=one_hot_discrete,
-                    buffer_val=buffer_val,
+                    hanging_val=hanging_val,
                     extra_model_outputs_key=extra_model_outputs_key,
                 )
                 if len(agent_values) > 0:
@@ -2179,7 +2430,7 @@ class MultiAgentEpisode:
                     index_incl_lookback=agent_indices,
                     fill=fill,
                     one_hot_discrete=one_hot_discrete,
-                    buffer_val=buffer_val,
+                    hanging_val=hanging_val,
                     extra_model_outputs_key=extra_model_outputs_key,
                 )
                 if agent_values is not None:
@@ -2196,7 +2447,7 @@ class MultiAgentEpisode:
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         extra_model_outputs_key: Optional[str] = None,
-        buffer_val: Optional[Any] = None,
+        hanging_val: Optional[Any] = None,
     ) -> Any:
         """Returns single data item from the episode based on given (env step) index.
 
@@ -2232,12 +2483,12 @@ class MultiAgentEpisode:
             extra_model_outputs_key: Only if what is "extra_model_outputs", this
                 specifies the sub-key (str) inside the extra_model_outputs dict, e.g.
                 STATE_OUT or ACTION_DIST_INPUTS.
-            buffer_val: In case we are pulling actions, rewards, or extra_model_outputs
-                data, there might be information "in-flight" (buffered). For example,
+            hanging_val: In case we are pulling actions, rewards, or extra_model_outputs
+                data, there might be information "hanging" (cached). For example,
                 if an agent receives an observation o0 and then immediately sends an
                 action a0 back, but then does NOT immediately reveive a next
-                observation, a0 is now buffered (not fully logged yet with this
-                episode). The currently buffered value must be provided here to be able
+                observation, a0 is now cached (not fully logged yet with this
+                episode). The currently cached value must be provided here to be able
                 to return it in case the index is -1 (most recent timestep).
 
         Returns:
@@ -2252,7 +2503,7 @@ class MultiAgentEpisode:
             # Provide filled value for this agent.
             return getattr(sa_episode, f"get_{what}")(
                 indices=1000000000000,
-                neg_indices_left_of_zero=False,
+                neg_index_as_lookback=False,
                 fill=fill,
                 **dict(
                     {}
@@ -2272,9 +2523,9 @@ class MultiAgentEpisode:
                     return {
                         key: sub_buffer.get(
                             indices=index_incl_lookback - sub_buffer.lookback,
-                            neg_indices_left_of_zero=True,
+                            neg_index_as_lookback=True,
                             fill=fill,
-                            _add_last_ts_value=buffer_val,
+                            _add_last_ts_value=hanging_val,
                             **one_hot_discrete,
                         )
                         for key, sub_buffer in inf_lookback_buffer.items()
@@ -2283,9 +2534,9 @@ class MultiAgentEpisode:
             # Extract data directly from the infinite lookback buffer object.
             return inf_lookback_buffer.get(
                 indices=index_incl_lookback - inf_lookback_buffer.lookback,
-                neg_indices_left_of_zero=True,
+                neg_index_as_lookback=True,
                 fill=fill,
-                _add_last_ts_value=buffer_val,
+                _add_last_ts_value=hanging_val,
                 **one_hot_discrete,
             )
 
@@ -2298,7 +2549,7 @@ class MultiAgentEpisode:
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         extra_model_outputs_key: Optional[str] = None,
-        buffer_val: Optional[Any] = None,
+        hanging_val: Optional[Any] = None,
     ) -> Any:
         """Returns single data item from the episode based on given (env step) indices.
 
@@ -2335,12 +2586,12 @@ class MultiAgentEpisode:
             extra_model_outputs_key: Only if what is "extra_model_outputs", this
                 specifies the sub-key (str) inside the extra_model_outputs dict, e.g.
                 STATE_OUT or ACTION_DIST_INPUTS.
-            buffer_val: In case we are pulling actions, rewards, or extra_model_outputs
-                data, there might be information "in-flight" (buffered). For example,
+            hanging_val: In case we are pulling actions, rewards, or extra_model_outputs
+                data, there might be information "hanging" (cached). For example,
                 if an agent receives an observation o0 and then immediately sends an
                 action a0 back, but then does NOT immediately reveive a next
-                observation, a0 is now buffered (not fully logged yet with this
-                episode). The currently buffered value must be provided here to be able
+                observation, a0 is now cached (not fully logged yet with this
+                episode). The currently cached value must be provided here to be able
                 to return it in case the index is -1 (most recent timestep).
 
         Returns:
@@ -2358,7 +2609,7 @@ class MultiAgentEpisode:
         if self.SKIP_ENV_TS_TAG in indices_incl_lookback and fill is not None:
             single_fill_value = inf_lookback_buffer.get(
                 indices=1000000000000,
-                neg_indices_left_of_zero=False,
+                neg_index_as_lookback=False,
                 fill=fill,
                 **one_hot_discrete,
             )
@@ -2370,9 +2621,9 @@ class MultiAgentEpisode:
                     ret.append(
                         inf_lookback_buffer.get(
                             indices=i - getattr(sa_episode, what).lookback,
-                            neg_indices_left_of_zero=True,
+                            neg_index_as_lookback=True,
                             fill=fill,
-                            _add_last_ts_value=buffer_val,
+                            _add_last_ts_value=hanging_val,
                             **one_hot_discrete,
                         )
                     )
@@ -2387,31 +2638,56 @@ class MultiAgentEpisode:
             ]
             ret = inf_lookback_buffer.get(
                 indices=indices,
-                neg_indices_left_of_zero=True,
+                neg_index_as_lookback=True,
                 fill=fill,
-                _add_last_ts_value=buffer_val,
+                _add_last_ts_value=hanging_val,
                 **one_hot_discrete,
             )
         return ret
 
-    def _get_buffer_value(self, what: str, agent_id: AgentID) -> Any:
-        """Returns the buffered action/reward/extra_model_outputs for given agent."""
+    def _get_hanging_value(self, what: str, agent_id: AgentID) -> Any:
+        """Returns the hanging action/reward/extra_model_outputs for given agent."""
         if what == "actions":
-            return self._agent_buffered_actions.get(agent_id)
+            return self._hanging_actions_end.get(agent_id)
         elif what == "extra_model_outputs":
-            return self._agent_buffered_extra_model_outputs.get(agent_id)
+            return self._hanging_extra_model_outputs_end.get(agent_id)
         elif what == "rewards":
-            return self._agent_buffered_rewards.get(agent_id)
+            return self._hanging_rewards_end.get(agent_id)
 
-    def _del_buffers(self, agent_id: AgentID) -> None:
-        """Deletes all action, reward, extra_model_outputs buffers for given agent."""
-        self._agent_buffered_actions.pop(agent_id, None)
-        self._agent_buffered_extra_model_outputs.pop(agent_id, None)
-        self._agent_buffered_rewards.pop(agent_id, None)
+    def _copy_hanging(self, agent_id: AgentID, other: "MultiAgentEpisode") -> None:
+        """Copies hanging action, reward, extra_model_outputs from `other` to `self."""
+        if agent_id in other._hanging_actions_begin:
+            self._hanging_actions_begin[agent_id] = copy.deepcopy(
+                other._hanging_actions_begin[agent_id]
+            )
+            self._hanging_rewards_begin[agent_id] = other._hanging_rewards_begin[
+                agent_id
+            ]
+            self._hanging_extra_model_outputs_begin[agent_id] = copy.deepcopy(
+                other._hanging_extra_model_outputs_begin[agent_id]
+            )
+        if agent_id in other._hanging_actions_end:
+            self._hanging_actions_end[agent_id] = copy.deepcopy(
+                other._hanging_actions_end[agent_id]
+            )
+            self._hanging_rewards_end[agent_id] = other._hanging_rewards_end[agent_id]
+            self._hanging_extra_model_outputs_end[agent_id] = copy.deepcopy(
+                other._hanging_extra_model_outputs_end[agent_id]
+            )
+
+    def _del_hanging(self, agent_id: AgentID) -> None:
+        """Deletes all hanging action, reward, extra_model_outputs of given agent."""
+        self._hanging_actions_begin.pop(agent_id, None)
+        self._hanging_extra_model_outputs_begin.pop(agent_id, None)
+        self._hanging_rewards_begin.pop(agent_id, None)
+
+        self._hanging_actions_end.pop(agent_id, None)
+        self._hanging_extra_model_outputs_end.pop(agent_id, None)
+        self._hanging_rewards_end.pop(agent_id, None)
 
     def _del_agent(self, agent_id: AgentID) -> None:
         """Deletes all data of given agent from this episode."""
-        self._del_buffers(agent_id)
+        self._del_hanging(agent_id)
         self.agent_episodes.pop(agent_id, None)
         self.agent_ids.discard(agent_id)
         self.env_t_to_agent_t.pop(agent_id, None)
@@ -2423,7 +2699,7 @@ class MultiAgentEpisode:
         agent_id: AgentID,
         what: str,
         extra_model_outputs_key: Optional[str] = None,
-        buffer_val: Optional[Any] = None,
+        hanging_val: Optional[Any] = None,
         filter_for_skip_indices=None,
     ):
         """Returns a single InfiniteLookbackBuffer or a dict of such.
@@ -2451,7 +2727,7 @@ class MultiAgentEpisode:
             inf_lookback_buffer_len = (
                 len(inf_lookback_buffer)
                 + inf_lookback_buffer.lookback
-                + (buffer_val is not None)
+                + (hanging_val is not None)
             )
             ignore_last_ts = what not in ["observations", "infos"]
             if isinstance(filter_for_skip_indices, list):

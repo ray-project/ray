@@ -287,7 +287,7 @@ void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &cli
                 if (!status.ok()) {
                   RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
                       << "Send pull " << object_id << " request to client " << client_id
-                      << " failed due to" << status.message();
+                      << " failed due to " << status.message();
                 }
               });
         },

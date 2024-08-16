@@ -1,25 +1,23 @@
 import builtins
-import copy
-import json
 import logging
 import os
 import sys
 import traceback
-from typing import Optional, Tuple
+from typing import Any, Optional, Tuple
 
 import ray
+from ray._private.ray_logging.filters import CoreContextFilter
+from ray._private.ray_logging.formatters import JSONFormatter
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_CPU_PROFILING,
     RAY_SERVE_ENABLE_JSON_LOGGING,
     RAY_SERVE_ENABLE_MEMORY_PROFILING,
     RAY_SERVE_LOG_TO_STDERR,
-    SERVE_LOG_ACTOR_ID,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_COMPONENT_ID,
     SERVE_LOG_DEPLOYMENT,
-    SERVE_LOG_EXTRA_FIELDS,
     SERVE_LOG_LEVEL_NAME,
     SERVE_LOG_MESSAGE,
     SERVE_LOG_RECORD_FORMAT,
@@ -27,7 +25,7 @@ from ray.serve._private.constants import (
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
     SERVE_LOG_TIME,
-    SERVE_LOG_WORKER_ID,
+    SERVE_LOG_UNWANTED_ATTRS,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.utils import get_component_file_name
@@ -42,18 +40,11 @@ except ImportError:
 buildin_print = builtins.print
 
 
-class ServeJSONFormatter(logging.Formatter):
-    """Serve Logging Json Formatter
+class ServeComponentFilter(logging.Filter):
+    """Serve component filter.
 
-    The formatter will generate the json log format on the fly
-    based on the field of record.
+    The filter will add the component name, id, and type to the log record.
     """
-
-    ADD_IF_EXIST_FIELDS = [
-        SERVE_LOG_REQUEST_ID,
-        SERVE_LOG_ROUTE,
-        SERVE_LOG_APPLICATION,
-    ]
 
     def __init__(
         self,
@@ -61,67 +52,62 @@ class ServeJSONFormatter(logging.Formatter):
         component_id: str,
         component_type: Optional[ServeComponentType] = None,
     ):
-        self.component_log_fmt = {
-            SERVE_LOG_LEVEL_NAME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_LEVEL_NAME],
-            SERVE_LOG_TIME: SERVE_LOG_RECORD_FORMAT[SERVE_LOG_TIME],
-        }
-        try:
-            runtime_context = ray.get_runtime_context()
-            actor_id = runtime_context.get_actor_id()
-            if actor_id:
-                self.component_log_fmt[SERVE_LOG_ACTOR_ID] = actor_id
-            worker_id = runtime_context.get_worker_id()
-            if worker_id:
-                self.component_log_fmt[SERVE_LOG_WORKER_ID] = worker_id
-        except Exception:
-            # If get_runtime_context() fails for any reason, do nothing (no adding
-            # actor_id and/or worker_id to the fmt)
-            pass
+        self.component_name = component_name
+        self.component_id = component_id
+        self.component_type = component_type
 
-        if component_type and component_type == ServeComponentType.REPLICA:
-            self.component_log_fmt[SERVE_LOG_DEPLOYMENT] = component_name
-            self.component_log_fmt[SERVE_LOG_REPLICA] = component_id
-            self.component_log_fmt[SERVE_LOG_COMPONENT] = component_type
-        else:
-            self.component_log_fmt[SERVE_LOG_COMPONENT] = component_name
-            self.component_log_fmt[SERVE_LOG_COMPONENT_ID] = component_id
-        self.message_formatter = logging.Formatter(
-            SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE]
-        )
-        self.asctime_formatter = logging.Formatter("%(asctime)s")
+    def filter(self, record: logging.LogRecord) -> bool:
+        """Add component attributes to the log record.
 
-    def format(self, record: logging.LogRecord) -> str:
-        """Format the log record into json format.
-
-        Args:
-            record: The log record to be formatted.
-
-            Returns:
-                The formatted log record in json format.
+        Note: the filter doesn't do any filtering, it only adds the component
+        attributes.
         """
-        record_format = copy.deepcopy(self.component_log_fmt)
-        record_attributes = copy.deepcopy(record.__dict__)
-        record_format[SERVE_LOG_LEVEL_NAME] = record.levelname
-        record_format[SERVE_LOG_TIME] = self.asctime_formatter.format(record)
+        if self.component_type and self.component_type == ServeComponentType.REPLICA:
+            setattr(record, SERVE_LOG_DEPLOYMENT, self.component_name)
+            setattr(record, SERVE_LOG_REPLICA, self.component_id)
+            setattr(record, SERVE_LOG_COMPONENT, self.component_type)
+        else:
+            setattr(record, SERVE_LOG_COMPONENT, self.component_name)
+            setattr(record, SERVE_LOG_REPLICA, self.component_id)
 
-        for field in ServeJSONFormatter.ADD_IF_EXIST_FIELDS:
-            if field in record_attributes:
-                record_format[field] = record_attributes[field]
+        return True
 
-        record_format[SERVE_LOG_MESSAGE] = self.message_formatter.format(record)
 
-        if SERVE_LOG_EXTRA_FIELDS in record_attributes:
-            if not isinstance(record_attributes[SERVE_LOG_EXTRA_FIELDS], dict):
-                raise ValueError(
-                    f"Expected a dictionary passing into {SERVE_LOG_EXTRA_FIELDS}, "
-                    f"but got {type(record_attributes[SERVE_LOG_EXTRA_FIELDS])}"
-                )
-            for k, v in record_attributes[SERVE_LOG_EXTRA_FIELDS].items():
-                if k in record_format:
-                    raise KeyError(f"Found duplicated key in the log record: {k}")
-                record_format[k] = v
+class ServeContextFilter(logging.Filter):
+    """Serve context filter.
 
-        return json.dumps(record_format)
+    The filter will add the route, request id, app name to the log record.
+
+    Note: the filter doesn't do any filtering, it only adds the serve request context
+    attributes.
+    """
+
+    def filter(self, record):
+        request_context = ray.serve.context._serve_request_context.get()
+        if request_context.route:
+            setattr(record, SERVE_LOG_ROUTE, request_context.route)
+        if request_context.request_id:
+            setattr(record, SERVE_LOG_REQUEST_ID, request_context.request_id)
+        if request_context.app_name:
+            setattr(record, SERVE_LOG_APPLICATION, request_context.app_name)
+        return True
+
+
+class ServeLogAttributeRemovalFilter(logging.Filter):
+    """Serve log attribute removal filter.
+
+    The filter will remove unwanted attributes on the log record so they won't be
+    included in the structured logs.
+
+    Note: the filter doesn't do any filtering, it only removes unwanted attributes.
+    """
+
+    def filter(self, record):
+        for key in SERVE_LOG_UNWANTED_ATTRS:
+            if hasattr(record, key):
+                delattr(record, key)
+
+        return True
 
 
 class ServeFormatter(logging.Formatter):
@@ -210,13 +196,18 @@ class StreamToLogger(object):
     This comes from https://stackoverflow.com/a/36296215 directly.
     """
 
-    def __init__(self, logger, log_level):
-        self.logger = logger
-        self.log_level = log_level
-        self.linebuf = ""
+    def __init__(self, logger: logging.Logger, log_level: int, original_object: Any):
+        self._logger = logger
+        self._log_level = log_level
+        self._original_object = original_object
+        self._linebuf = ""
+
+    def __getattr__(self, attr: str) -> Any:
+        # getting attributes from the original object
+        return getattr(self._original_object, attr)
 
     @staticmethod
-    def get_stacklevel():
+    def get_stacklevel() -> int:
         """Rewind stack to get the stacklevel for the user code.
 
         Going from the back of the traceback and traverse until it's no longer in
@@ -231,9 +222,9 @@ class StreamToLogger(object):
                 return index
         return 1
 
-    def write(self, buf):
-        temp_linebuf = self.linebuf + buf
-        self.linebuf = ""
+    def write(self, buf: str):
+        temp_linebuf = self._linebuf + buf
+        self._linebuf = ""
         for line in temp_linebuf.splitlines(True):
             # From the io.TextIOWrapper docs:
             #   On output, if newline is None, any '\n' characters written
@@ -241,22 +232,22 @@ class StreamToLogger(object):
             # By default sys.stdout.write() expects '\n' newlines and then
             # translates them so this is still cross-platform.
             if line[-1] == "\n":
-                self.logger.log(
-                    self.log_level,
+                self._logger.log(
+                    self._log_level,
                     line.rstrip(),
                     stacklevel=self.get_stacklevel(),
                 )
             else:
-                self.linebuf += line
+                self._linebuf += line
 
     def flush(self):
-        if self.linebuf != "":
-            self.logger.log(
-                self.log_level,
-                self.linebuf.rstrip(),
+        if self._linebuf != "":
+            self._logger.log(
+                self._log_level,
+                self._linebuf.rstrip(),
                 stacklevel=self.get_stacklevel(),
             )
-        self.linebuf = ""
+        self._linebuf = ""
 
     def isatty(self) -> bool:
         return True
@@ -300,26 +291,12 @@ def configure_component_logger(
     logger.setLevel(logging_config.log_level)
     logger.handlers.clear()
 
-    factory = logging.getLogRecordFactory()
-
-    def record_factory(*args, **kwargs):
-        request_context = ray.serve.context._serve_request_context.get()
-        record = factory(*args, **kwargs)
-        if request_context.route:
-            setattr(record, SERVE_LOG_ROUTE, request_context.route)
-        if request_context.request_id:
-            setattr(record, SERVE_LOG_REQUEST_ID, request_context.request_id)
-        if request_context.app_name:
-            setattr(record, SERVE_LOG_APPLICATION, request_context.app_name)
-        return record
-
-    logging.setLogRecordFactory(record_factory)
-
     # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True.
     if RAY_SERVE_LOG_TO_STDERR:
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(ServeFormatter(component_name, component_id))
         stream_handler.addFilter(log_to_stderr_filter)
+        stream_handler.addFilter(ServeContextFilter())
         logger.addHandler(stream_handler)
 
     if logging_config.logs_dir:
@@ -351,20 +328,26 @@ def configure_component_logger(
             "'LoggingConfig' to enable json format."
         )
     if RAY_SERVE_ENABLE_JSON_LOGGING or logging_config.encoding == EncodingType.JSON:
-        file_handler.setFormatter(
-            ServeJSONFormatter(component_name, component_id, component_type)
+        file_handler.addFilter(CoreContextFilter())
+        file_handler.addFilter(ServeContextFilter())
+        file_handler.addFilter(
+            ServeComponentFilter(component_name, component_id, component_type)
         )
+        file_handler.setFormatter(JSONFormatter())
     else:
         file_handler.setFormatter(ServeFormatter(component_name, component_id))
 
     if logging_config.enable_access_log is False:
         file_handler.addFilter(log_access_log_filter)
 
+    # Remove unwanted attributes from the log record.
+    file_handler.addFilter(ServeLogAttributeRemovalFilter())
+
     # Redirect print, stdout, and stderr to Serve logger.
     if not RAY_SERVE_LOG_TO_STDERR:
         builtins.print = redirected_print
-        sys.stdout = StreamToLogger(logger, logging.INFO)
-        sys.stderr = StreamToLogger(logger, logging.INFO)
+        sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
+        sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
 
     logger.addHandler(file_handler)
 

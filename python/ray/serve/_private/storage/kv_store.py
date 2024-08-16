@@ -2,12 +2,12 @@ import logging
 from typing import Optional
 
 import ray
+import ray.serve._private.constants as serve_constants
 from ray._private import ray_constants
 from ray._raylet import GcsClient
-from ray.serve._private.constants import RAY_SERVE_KV_TIMEOUT_S, SERVE_LOGGER_NAME
 from ray.serve._private.storage.kv_store_base import KVStoreBase
 
-logger = logging.getLogger(SERVE_LOGGER_NAME)
+logger = logging.getLogger(serve_constants.SERVE_LOGGER_NAME)
 
 
 def get_storage_key(namespace: str, storage_key: str) -> str:
@@ -37,7 +37,7 @@ class RayInternalKVStore(KVStoreBase):
             self.gcs_client = gcs_client
         else:
             self.gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-        self.timeout = RAY_SERVE_KV_TIMEOUT_S
+        self.timeout = serve_constants.RAY_SERVE_KV_TIMEOUT_S
         self.namespace = namespace or ""
 
     def get_storage_key(self, key: str) -> str:

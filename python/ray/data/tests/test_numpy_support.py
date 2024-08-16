@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import numpy as np
 import pytest
 import torch
@@ -44,6 +46,51 @@ def test_list_of_objects(ray_start_regular_shared):
     data = [1, 2, 3, UserObj()]
     output = do_map_batches(data)
     assert_structure_equals(output, np.array([1, 2, 3, UserObj()]))
+
+
+DATETIME_DAY_PRECISION = datetime(year=2024, month=1, day=1)
+DATETIME_HOUR_PRECISION = datetime(year=2024, month=1, day=1, hour=1)
+DATETIME_MIN_PRECISION = datetime(year=2024, month=1, day=1, minute=1)
+DATETIME_SEC_PRECISION = datetime(year=2024, month=1, day=1, second=1)
+DATETIME_MILLISEC_PRECISION = datetime(year=2024, month=1, day=1, microsecond=1000)
+DATETIME_MICROSEC_PRECISION = datetime(year=2024, month=1, day=1, microsecond=1)
+
+DATETIME64_DAY_PRECISION = np.datetime64("2024-01-01")
+DATETIME64_HOUR_PRECISION = np.datetime64("2024-01-01T01:00", "s")
+DATETIME64_MIN_PRECISION = np.datetime64("2024-01-01T00:01", "s")
+DATETIME64_SEC_PRECISION = np.datetime64("2024-01-01T00:00:01")
+DATETIME64_MILLISEC_PRECISION = np.datetime64("2024-01-01T00:00:00.001")
+DATETIME64_MICROSEC_PRECISION = np.datetime64("2024-01-01T00:00:00.000001")
+
+
+@pytest.mark.parametrize(
+    "data,expected_output",
+    [
+        ([DATETIME_DAY_PRECISION], np.array([DATETIME64_DAY_PRECISION])),
+        ([DATETIME_HOUR_PRECISION], np.array([DATETIME64_HOUR_PRECISION])),
+        ([DATETIME_MIN_PRECISION], np.array([DATETIME64_MIN_PRECISION])),
+        ([DATETIME_SEC_PRECISION], np.array([DATETIME64_SEC_PRECISION])),
+        ([DATETIME_MILLISEC_PRECISION], np.array([DATETIME64_MILLISEC_PRECISION])),
+        ([DATETIME_MICROSEC_PRECISION], np.array([DATETIME64_MICROSEC_PRECISION])),
+        (
+            [DATETIME_MICROSEC_PRECISION, DATETIME_MILLISEC_PRECISION],
+            np.array(
+                [DATETIME64_MICROSEC_PRECISION, DATETIME_MILLISEC_PRECISION],
+                dtype="datetime64[us]",
+            ),
+        ),
+        (
+            [DATETIME_SEC_PRECISION, DATETIME_MILLISEC_PRECISION],
+            np.array(
+                [DATETIME64_SEC_PRECISION, DATETIME_MILLISEC_PRECISION],
+                dtype="datetime64[ms]",
+            ),
+        ),
+    ],
+)
+def test_list_of_datetimes(data, expected_output, ray_start_regular_shared):
+    output = do_map_batches(data)
+    assert_structure_equals(output, expected_output)
 
 
 def test_array_like(ray_start_regular_shared):

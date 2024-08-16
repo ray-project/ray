@@ -75,7 +75,7 @@ class RemoteFunction:
             return the resulting ObjectRefs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
-        _last_export_session_and_job: A pair of the last exported session
+        _last_export_cluster_and_job: A pair of the last exported cluster
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
             export the remote function again. It is imperfect in the sense that
@@ -130,7 +130,7 @@ class RemoteFunction:
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._decorator = getattr(function, "__ray_invocation_decorator__", None)
-        self._last_export_session_and_job = None
+        self._last_export_cluster_and_job = None
         self._uuid = uuid.uuid4()
 
         # Override task.remote's signature and docstring
@@ -151,7 +151,6 @@ class RemoteFunction:
     def __getstate__(self):
         attrs = self.__dict__.copy()
         del attrs["_inject_lock"]
-        attrs["_last_export_session_and_job"] = None
         return attrs
 
     def __setstate__(self, state):
@@ -284,11 +283,11 @@ class RemoteFunction:
                     self._function
                 )
 
-        # If this function was not exported in this session and job, we need to
+        # If this function was not exported in this cluster and job, we need to
         # export this function again, because the current GCS doesn't have it.
         if (
             not self._is_cross_language
-            and self._last_export_session_and_job != worker.current_session_and_job
+            and self._last_export_cluster_and_job != worker.current_cluster_and_job
         ):
             self._function_descriptor = PythonFunctionDescriptor.from_function(
                 self._function, self._uuid
@@ -307,7 +306,7 @@ class RemoteFunction:
                 f"Could not serialize the function {self._function_descriptor.repr}",
             )
 
-            self._last_export_session_and_job = worker.current_session_and_job
+            self._last_export_cluster_and_job = worker.current_cluster_and_job
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs

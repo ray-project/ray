@@ -16,7 +16,9 @@ from ray.rllib.utils.test_utils import framework_iterator
 def _do_checkpoint_twice_test(framework):
     # Checks if we can load a policy from a checkpoint (at least) twice
     config = (
-        PPOConfig().rollouts(num_rollout_workers=0).evaluation(evaluation_num_workers=0)
+        PPOConfig()
+        .env_runners(num_env_runners=0)
+        .evaluation(evaluation_num_env_runners=0)
     )
     for fw in framework_iterator(config, frameworks=[framework]):
         algo1 = config.build(env="CartPole-v1")
@@ -60,7 +62,9 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
     def test_add_policy_connector_enabled(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = (
-                APPOConfig().environment("CartPole-v1").rollouts(enable_connectors=True)
+                APPOConfig()
+                .environment("CartPole-v1")
+                .env_runners(enable_connectors=True)
             )
             algo = config.build()
             algo.train()
@@ -109,10 +113,10 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
             .environment(
                 observation_space=obs_space, action_space=gym.spaces.Discrete(2)
             )
-            # Note (Artur): We have to choose num_rollout_workers=0 here, because
+            # Note (Artur): We have to choose num_env_runners=0 here, because
             # otherwise RolloutWorker will be health-checked without an env which
             # raises an error. You could also disable the health-check here.
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .build()
             .get_policy()
         )

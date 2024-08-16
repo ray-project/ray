@@ -4,6 +4,9 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
+from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
+    AutoscalingActorPool,
+)
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -180,8 +183,10 @@ class PhysicalOperator(Operator):
         self._target_max_block_size = target_max_block_size
         self._started = False
         self._in_task_submission_backpressure = False
+        self._in_task_output_backpressure = False
         self._metrics = OpRuntimeMetrics(self)
-        self._estimated_output_blocks = None
+        self._estimated_num_output_bundles = None
+        self._estimated_output_num_rows = None
         self._execution_completed = False
 
     def __reduce__(self):
@@ -260,17 +265,31 @@ class PhysicalOperator(Operator):
         """
         return ""
 
-    def num_outputs_total(self) -> int:
-        """Returns the total number of output bundles of this operator.
+    def num_outputs_total(self) -> Optional[int]:
+        """Returns the total number of output bundles of this operator,
+        or ``None`` if unable to provide a reasonable estimate (for example,
+        if no tasks have finished yet).
 
         The value returned may be an estimate based off the consumption so far.
         This is useful for reporting progress.
+
+        Subclasses should either override this method, or update
+        ``self._estimated_num_output_bundles`` appropriately.
         """
-        if self._estimated_output_blocks is not None:
-            return self._estimated_output_blocks
-        if len(self.input_dependencies) == 1:
-            return self.input_dependencies[0].num_outputs_total()
-        raise AttributeError
+        return self._estimated_num_output_bundles
+
+    def num_output_rows_total(self) -> Optional[int]:
+        """Returns the total number of output rows of this operator,
+        or ``None`` if unable to provide a reasonable estimate (for example,
+        if no tasks have finished yet).
+
+        The value returned may be an estimate based off the consumption so far.
+        This is useful for reporting progress.
+
+        Subclasses should either override this method, or update
+        ``self._estimated_output_num_rows`` appropriately.
+        """
+        return self._estimated_output_num_rows
 
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.
@@ -348,11 +367,24 @@ class PhysicalOperator(Operator):
         raise NotImplementedError
 
     def get_active_tasks(self) -> List[OpTask]:
-        """Get a list of the active tasks of this operator."""
+        """Get a list of the active tasks of this operator.
+
+        Subclasses should return *all* running normal/actor tasks. The
+        StreamingExecutor will wait on these tasks and trigger callbacks.
+        """
         return []
 
     def num_active_tasks(self) -> int:
         """Return the number of active tasks.
+
+        This method is used for 2 purposes:
+        * Determine if this operator is completed.
+        * Displaying active task info in the progress bar.
+        Thus, the return value can be less than `len(get_active_tasks())`,
+        if some tasks are not needed for the above purposes. E.g., for the
+        actor pool map operator, readiness checking tasks can be excluded
+        from `num_active_tasks`, but they should be included in
+        `get_active_tasks`.
 
         Subclasses can override this as a performance optimization.
         """
@@ -400,29 +432,13 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def incremental_resource_usage(
-        self, consider_autoscaling=True
-    ) -> ExecutionResources:
+    def incremental_resource_usage(self) -> ExecutionResources:
         """Returns the incremental resources required for processing another input.
 
         For example, an operator that launches a task per input could return
         ExecutionResources(cpu=1) as its incremental usage.
-
-        Args:
-            consider_autoscaling: Whether to consider the possibility of autoscaling.
         """
         return ExecutionResources()
-
-    def notify_resource_usage(
-        self, input_queue_size: int, under_resource_limits: bool
-    ) -> None:
-        """Called periodically by the executor.
-
-        Args:
-            input_queue_size: The number of inputs queued outside this operator.
-            under_resource_limits: Whether this operator is under resource limits.
-        """
-        pass
 
     def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
         """Called periodically from the executor to update internal in backpressure
@@ -435,3 +451,26 @@ class PhysicalOperator(Operator):
         if self._in_task_submission_backpressure != in_backpressure:
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
+
+    def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
+        """Return a list of `AutoscalingActorPool`s managed by this operator."""
+        return []
+
+    def implements_accurate_memory_accounting(self) -> bool:
+        """Return whether this operator implements accurate memory accounting.
+
+        An operator that implements accurate memory accounting should should properly
+        report its memory usage via the following APIs:
+          - `self._metrics.on_input_queued`.
+          - `self._metrics.on_input_dequeued`.
+          - `self._metrics.on_output_queued`.
+          - `self._metrics.on_output_dequeued`.
+        """
+        # TODO(hchen): Currently we only enable `ReservationOpResourceAllocator` when
+        # all operators in the dataset have implemented accurate memory accounting.
+        # Eventually all operators should implement accurate memory accounting.
+        return False
+
+    def supports_fusion(self) -> bool:
+        """Returns ```True``` if this operator can be fused with other operators."""
+        return False

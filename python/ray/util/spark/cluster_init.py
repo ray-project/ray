@@ -144,11 +144,11 @@ class RayClusterOnSpark:
             else:
                 try:
                     __import__("ray.dashboard.optional_deps")
-                except ModuleNotFoundError:
+                except ModuleNotFoundError as e:
                     _logger.warning(
                         "Dependencies to launch the optional dashboard API "
                         "server cannot be found. They can be installed with "
-                        "pip install ray[default]."
+                        f"pip install ray[default], root cause: ({repr(e)})"
                     )
 
             if self.autoscale:
@@ -1022,9 +1022,30 @@ def _setup_ray_cluster_internal(
     if num_cpus_worker_node is not None and num_cpus_worker_node <= 0:
         raise ValueError("Argument `num_cpus_worker_node` value must be > 0.")
 
-    num_spark_task_gpus = int(
+    # note: spark.task.resource.gpu.amount config might be fractional value like 0.5
+    default_num_spark_task_gpus = float(
         spark.sparkContext.getConf().get("spark.task.resource.gpu.amount", "0")
     )
+    rounded_num_spark_task_gpus = int(default_num_spark_task_gpus)
+    if default_num_spark_task_gpus > 0:
+        warn_msg = (
+            "You configured 'spark.task.resource.gpu.amount' to "
+            f"{default_num_spark_task_gpus},"
+            "we recommend setting this value to 0 so that Spark jobs do not "
+            "reserve GPU resources, preventing Ray-on-Spark workloads from having the "
+            "maximum number of GPUs available."
+        )
+
+        if is_in_databricks_runtime():
+            from ray.util.spark.databricks_hook import (
+                get_databricks_display_html_function,
+            )
+
+            get_databricks_display_html_function()(
+                f"<b style='color:red;'>{warn_msg}</b>"
+            )
+        else:
+            _logger.warning(warn_msg)
 
     if num_gpus_worker_node is not None and num_gpus_worker_node < 0:
         raise ValueError("Argument `num_gpus_worker_node` value must be >= 0.")
@@ -1037,10 +1058,7 @@ def _setup_ray_cluster_internal(
         )
 
         num_cpus_spark_worker = _get_cpu_cores()
-        if num_spark_task_gpus == 0:
-            num_gpus_spark_worker = 0
-        else:
-            num_gpus_spark_worker = _get_num_physical_gpus()
+        num_gpus_spark_worker = _get_num_physical_gpus()
         total_mem_bytes = _get_spark_worker_total_physical_memory()
 
         return (
@@ -1068,9 +1086,9 @@ def _setup_ray_cluster_internal(
                 "`num_gpus_worker_node` values. Without setting the 2 arguments, "
                 "per-Ray worker node will be assigned with number of "
                 f"'spark.task.cpus' (equals to {num_spark_task_cpus}) cpu cores "
-                "and number of 'spark.task.resource.gpu.amount' "
-                f"(equals to {num_spark_task_gpus}) GPUs. To enable spark stage "
-                "scheduling, you need to upgrade spark to 3.4 version or use "
+                "and rounded down number of 'spark.task.resource.gpu.amount' "
+                f"(equals to {rounded_num_spark_task_gpus}) GPUs. To enable spark "
+                f"stage scheduling, you need to upgrade spark to 3.4 version or use "
                 "Databricks Runtime 12.x, and you cannot use spark local mode."
             )
     elif num_cpus_worker_node is None and num_gpus_worker_node is None:
@@ -1089,7 +1107,7 @@ def _setup_ray_cluster_internal(
             res_profile = None
 
             num_cpus_worker_node = num_spark_task_cpus
-            num_gpus_worker_node = num_spark_task_gpus
+            num_gpus_worker_node = rounded_num_spark_task_gpus
     else:
         raise ValueError(
             "'num_cpus_worker_node' and 'num_gpus_worker_node' arguments must be"
@@ -1297,7 +1315,7 @@ def _setup_ray_cluster_internal(
     return cluster.address, remote_connection_address
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI
 def setup_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -1361,7 +1379,7 @@ def setup_ray_cluster(
         num_gpus_worker_node: Number of gpus available to per-ray worker node, if not
             provided, if spark stage scheduling is supported, 'num_gpus_worker_node'
             value equals to number of GPUs per spark worker node, otherwise
-            it uses spark application configuration
+            it uses rounded down value of spark application configuration
             'spark.task.resource.gpu.amount' instead.
             This argument is only available on spark cluster that is configured with
             'gpu' resources.
@@ -1464,6 +1482,7 @@ def setup_ray_cluster(
     )
 
 
+@PublicAPI
 def setup_global_ray_cluster(
     *,
     max_worker_nodes: int,
@@ -1734,7 +1753,7 @@ def _start_ray_worker_nodes(
     job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI
 def shutdown_ray_cluster() -> None:
     """
     Shut down the active ray cluster.

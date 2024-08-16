@@ -5,8 +5,8 @@ import ray
 import ray.train
 from ray.train import CheckpointConfig
 from ray.tune import register_trainable
-from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.error import TuneError
+from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.utils import diagnose_serialization
 
 
@@ -112,7 +112,8 @@ class ValidateUtilTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

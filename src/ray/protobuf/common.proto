@@ -22,6 +22,8 @@ import "src/ray/protobuf/runtime_env_common.proto";
 option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
+// Note: The Language enum is used in the export API so it is public
+// and any modifications must be backward compatible.
 enum Language {
   PYTHON = 0;
   JAVA = 1;
@@ -178,6 +180,8 @@ message ConcurrencyGroup {
 // TODO(hchen): We may want to make these errors more specific. E.g., we may
 // want to distinguish between intentional and expected actor failures, and
 // between worker process failure and node failure.
+// Note: The ErrorType enum is used in the export API so it is public
+// and any modifications must be backward compatible.
 enum ErrorType {
   // Indicates that a task failed because the worker died unexpectedly while
   // executing it.
@@ -249,6 +253,10 @@ enum ErrorType {
   // ray.ObjectRefGenerator. It should never be returned directly to
   // application code (instead raise StopIteration).
   END_OF_STREAMING_GENERATOR = 24;
+  // Actor is unavailable. Maybe there is a temporary network failure. Difference from
+  // ACTOR_DIED is that the actor may still be alive and may become available again
+  // after some retries.
+  ACTOR_UNAVAILABLE = 25;
 }
 
 /// The information per ray error type.
@@ -259,6 +267,8 @@ message RayErrorInfo {
     ActorDeathCause actor_died_error = 2;
     // for ErrorType::RUNTIME_ENV_SETUP_FAILED
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
+    // for ErrorType::ACTOR_UNAVAILABLE
+    ActorUnavailableContext actor_unavailable_error = 4;
   }
   string error_message = 5;
   // The type of error that caused the exception.
@@ -300,6 +310,20 @@ message RayException {
   bytes serialized_exception = 2;
   // The formatted exception string.
   string formatted_exception_string = 3;
+}
+
+message NodeDeathInfo {
+  // TODO(sang): Update drain reason
+  enum Reason {
+    UNSPECIFIED = 0;
+    EXPECTED_TERMINATION = 1;
+    UNEXPECTED_TERMINATION = 2;
+    AUTOSCALER_DRAIN_PREEMPTED = 3;
+    AUTOSCALER_DRAIN_IDLE = 4;
+  }
+  Reason reason = 1;
+  // A message describing the reason for the node death.
+  string reason_message = 2;
 }
 
 message ActorDeathCause {
@@ -344,8 +368,8 @@ message ActorDiedErrorContext {
   // Whether the actor had never started running before it died, i.e. it was cancelled
   // before scheduling had completed.
   bool never_started = 10;
-  // Whether the actor was on a preempted node.
-  bool preempted = 11;
+  // The node death info, if node death is the cause of actor death.
+  optional NodeDeathInfo node_death_info = 11;
 }
 
 // Context for task OOM.
@@ -358,6 +382,10 @@ message OomContext {
 }
 
 // ---Actor death contexts end----
+
+message ActorUnavailableContext {
+  optional bytes actor_id = 1;
+}
 
 message JobConfig {
   enum ActorLifetime {
@@ -384,6 +412,8 @@ message JobConfig {
   // System paths of the driver scripts. Python workers need to search
   // these paths to load modules.
   repeated string py_driver_sys_path = 8;
+  // Python logging configurations that will be passed to Ray tasks/actors.
+  bytes serialized_py_logging_config = 9;
 }
 
 message StreamingGeneratorReturnIdInfo {
@@ -499,6 +529,10 @@ message TaskSpec {
   int64 generator_backpressure_num_objects = 38;
   // Boolean if task events enabled, i.e tasks events would be reported.
   bool enable_task_events = 39;
+  // If this task is originated from a detached actor,
+  // this field contains the detached actor id.
+  // Otherwise it's empty and is originated from a driver.
+  bytes root_detached_actor_id = 40;
 }
 
 message TaskInfoEntry {

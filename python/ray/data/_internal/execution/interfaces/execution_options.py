@@ -1,5 +1,5 @@
 import os
-from typing import List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
@@ -34,6 +34,20 @@ class ExecutionResources:
         self._gpu = gpu
         self._object_store_memory = object_store_memory
         self._default_to_inf = default_to_inf
+
+    @classmethod
+    def from_resource_dict(
+        cls,
+        resource_dict: Dict[str, float],
+        default_to_inf: bool = False,
+    ):
+        """Create an ExecutionResources object from a resource dict."""
+        return ExecutionResources(
+            cpu=resource_dict.get("CPU", None),
+            gpu=resource_dict.get("GPU", None),
+            object_store_memory=resource_dict.get("object_store_memory", None),
+            default_to_inf=default_to_inf,
+        )
 
     @classmethod
     def for_limits(
@@ -268,6 +282,10 @@ class ExecutionOptions:
             gpu=value._gpu,
             object_store_memory=value._object_store_memory,
         )
+
+    def is_resource_limits_default(self):
+        """Returns True if resource_limits is the default value."""
+        return self._resource_limits == ExecutionResources.for_limits()
 
     def validate(self) -> None:
         """Validate the options."""

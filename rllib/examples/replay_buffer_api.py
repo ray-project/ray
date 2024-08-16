@@ -1,3 +1,5 @@
+# @OldAPIStack
+
 # __sphinx_doc_replay_buffer_api_example_script_begin__
 """Simple example of how to modify replay buffer behaviour.
 
@@ -11,8 +13,10 @@ import argparse
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
 from ray.rllib.utils.replay_buffers.replay_buffer import StorageUnit
 
 tf1, tf, tfv = try_import_tf()
@@ -55,7 +59,7 @@ if __name__ == "__main__":
         DQNConfig()
         .environment("CartPole-v1")
         .framework(framework=args.framework)
-        .rollouts(num_rollout_workers=4)
+        .env_runners(num_env_runners=4)
         .training(
             model=dict(use_lstm=True, lstm_cell_size=64, max_seq_len=20),
             replay_buffer_config=replay_buffer_config,
@@ -63,8 +67,8 @@ if __name__ == "__main__":
     )
 
     stop_config = {
-        "timesteps_total": args.stop_timesteps,
-        "training_iteration": args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        TRAINING_ITERATION: args.stop_iters,
     }
 
     results = tune.Tuner(

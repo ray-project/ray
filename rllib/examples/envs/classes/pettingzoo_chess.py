@@ -113,9 +113,6 @@ class MultiAgentChess(MultiAgentEnv):
         else:
             self.env = env
         self.env.reset()
-        # TODO (avnishn): Remove this after making petting zoo env compatible with
-        #  check_env.
-        self._skip_env_checking = True
 
         self.config = config
         if self.config is None:

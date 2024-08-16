@@ -1,12 +1,14 @@
 import math
-import numpy as np
+import sys
+import unittest
 
+import numpy as np
 import pytest
+
 import ray
 from ray import train, tune
-from ray.tune.stopper import ExperimentPlateauStopper
 from ray.tune.search import ConcurrencyLimiter
-import unittest
+from ray.tune.stopper import ExperimentPlateauStopper
 
 
 def loss(config):
@@ -78,6 +80,9 @@ class ConvergenceTest(unittest.TestCase):
         assert len(analysis.trials) < 50
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-5)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testConvergenceHEBO(self):
         from ray.tune.search.hebo import HEBOSearch
 
@@ -98,8 +103,9 @@ class ConvergenceTest(unittest.TestCase):
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
 
     def testConvergenceNevergrad(self):
-        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.search.nevergrad import NevergradSearch
 
         np.random.seed(0)
         searcher = NevergradSearch(optimizer=ng.optimizers.PSO)
@@ -135,6 +141,4 @@ class ConvergenceTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

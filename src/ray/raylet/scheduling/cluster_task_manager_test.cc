@@ -185,7 +185,7 @@ RayTask CreateTask(
     }
   }
 
-  spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy);
+  spec_builder.SetNormalTaskSpec(0, false, "", scheduling_strategy, ActorID::Nil());
 
   return RayTask(spec_builder.Build());
 }
@@ -544,7 +544,7 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
-  const WorkerCacheKey env_A = {serialized_runtime_env_A, {}, false, false};
+  const WorkerCacheKey env_A = {serialized_runtime_env_A, {}, false, false, false};
   const int runtime_env_hash_A = env_A.IntHash();
   std::shared_ptr<MockWorker> worker_A =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);
@@ -743,8 +743,9 @@ TEST_F(ClusterTaskManagerTest, DrainingWhileResolving) {
   ASSERT_EQ(pool_.workers.size(), 1);
 
   // Drain the local node.
-  scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-      std::numeric_limits<int64_t>::max());
+  rpc::DrainRayletRequest drain_request;
+  drain_request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  scheduler_->GetLocalResourceManager().SetLocalNodeDraining(drain_request);
 
   // Arg is resolved.
   missing_objects_.erase(missing_arg);
@@ -1077,8 +1078,9 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerAfterDrainingTest) {
   AddNode(remote_node_id, 5);
 
   // Drain the local node.
-  scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-      std::numeric_limits<int64_t>::max());
+  rpc::DrainRayletRequest drain_request;
+  drain_request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  scheduler_->GetLocalResourceManager().SetLocalNodeDraining(drain_request);
 
   pool_.callbacks[task1.GetTaskSpecification().GetRuntimeEnvHash()].front()(
       nullptr, PopWorkerStatus::WorkerPendingRegistration, "");
@@ -1129,6 +1131,21 @@ TEST_F(ClusterTaskManagerTest, NotOKPopWorkerTest) {
   ASSERT_EQ(NumRunningTasks(), 0);
   ASSERT_TRUE(reply.canceled());
   ASSERT_EQ(reply.scheduling_failure_message(), runtime_env_error_msg);
+
+  // Test that local task manager handles PopWorkerStatus::JobFinished correctly.
+  callback_called = false;
+  reply.Clear();
+  RayTask task3 = CreateTask({{ray::kCPU_ResourceLabel, 1}});
+  task_manager_.QueueAndScheduleTask(task3, false, false, &reply, callback);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 1);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
+  ASSERT_EQ(NumRunningTasks(), 1);
+  pool_.TriggerCallbacksWithNotOKStatus(PopWorkerStatus::JobFinished);
+  // The task should be removed from the dispatch queue.
+  ASSERT_FALSE(callback_called);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING_FOR_WORKER), 0);
+  ASSERT_EQ(NumTasksToDispatchWithStatus(internal::WorkStatus::WAITING), 0);
+  ASSERT_EQ(NumRunningTasks(), 0);
 
   AssertNoLeaks();
 }
@@ -1201,7 +1218,6 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   callback_called = false;
   reply.Clear();
   ASSERT_FALSE(task_manager_.CancelTask(task2.GetTaskSpecification().TaskId()));
-  // Task2 will not execute.
   ASSERT_FALSE(reply.canceled());
   ASSERT_FALSE(callback_called);
   ASSERT_EQ(pool_.workers.size(), 0);
@@ -1211,6 +1227,22 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task2.GetTaskSpecification().TaskId());
+
+  RayTask task3 = CreateTask({{ray::kCPU_ResourceLabel, 2}});
+  rpc::RequestWorkerLeaseReply reply3;
+  RayTask task4 = CreateTask({{ray::kCPU_ResourceLabel, 200}});
+  rpc::RequestWorkerLeaseReply reply4;
+  // Task 3 should be popping worker
+  task_manager_.QueueAndScheduleTask(task3, false, false, &reply3, callback);
+  // Task 4 is infeasible
+  task_manager_.QueueAndScheduleTask(task4, false, false, &reply4, callback);
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(task_manager_.CancelTasks(
+      [](const std::shared_ptr<internal::Work> &work) { return true; },
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      ""));
+  ASSERT_TRUE(reply3.canceled());
+  ASSERT_TRUE(reply4.canceled());
 
   AssertNoLeaks();
 }
@@ -2620,8 +2652,9 @@ TEST_F(ClusterTaskManagerTest, PopWorkerBeforeDraining) {
   task_manager_.QueueAndScheduleTask(task, false, false, &reply, callback);
 
   // Drain the local node.
-  scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-      std::numeric_limits<int64_t>::max());
+  rpc::DrainRayletRequest drain_request;
+  drain_request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  scheduler_->GetLocalResourceManager().SetLocalNodeDraining(drain_request);
 
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
@@ -2659,8 +2692,9 @@ TEST_F(ClusterTaskManagerTest, UnscheduleableWhileDraining) {
   AddNode(remote_node_id, 5);
 
   // Drain the local node.
-  scheduler_->GetLocalResourceManager().SetLocalNodeDraining(
-      std::numeric_limits<int64_t>::max());
+  rpc::DrainRayletRequest drain_request;
+  drain_request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  scheduler_->GetLocalResourceManager().SetLocalNodeDraining(drain_request);
 
   RayTask spillback_task = CreateTask({{ray::kCPU_ResourceLabel, 1}});
   rpc::RequestWorkerLeaseReply spillback_reply;

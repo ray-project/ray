@@ -78,7 +78,7 @@ class TestCallbacks(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .callbacks(EpisodeAndSampleCallbacks)
             .training(train_batch_size=50, sgd_minibatch_size=50, num_sgd_iter=1)
         )
@@ -86,7 +86,7 @@ class TestCallbacks(unittest.TestCase):
             algo = config.build()
             algo.train()
             algo.train()
-            callback_obj = algo.workers.local_worker().callbacks
+            callback_obj = algo.env_runner.callbacks
             self.assertGreater(callback_obj.counts["sample"], 0)
             self.assertGreater(callback_obj.counts["start"], 0)
             self.assertGreater(callback_obj.counts["end"], 0)
@@ -99,7 +99,7 @@ class TestCallbacks(unittest.TestCase):
             dqn.DQNConfig().environment("CartPole-v1")
             # Create 4 sub-environments per remote worker.
             # Create 2 remote workers.
-            .rollouts(num_envs_per_worker=4, num_rollout_workers=2)
+            .env_runners(num_envs_per_env_runner=4, num_env_runners=2)
         )
 
         for callbacks in (
@@ -112,10 +112,10 @@ class TestCallbacks(unittest.TestCase):
                 algo = config.build()
                 # Fake the counter on the local worker (doesn't have an env) and
                 # set it to -1 so the below `foreach_worker()` won't fail.
-                algo.workers.local_worker().sum_sub_env_vector_indices = -1
+                algo.env_runner.sum_sub_env_vector_indices = -1
 
                 # Get sub-env vector index sums from the 2 remote workers:
-                sum_sub_env_vector_indices = algo.workers.foreach_worker(
+                sum_sub_env_vector_indices = algo.env_runner_group.foreach_worker(
                     lambda w: w.sum_sub_env_vector_indices
                 )
                 # Local worker has no environments -> Expect the -1 special
@@ -131,14 +131,14 @@ class TestCallbacks(unittest.TestCase):
         config = (
             dqn.DQNConfig()
             .environment("CartPole-v1")
-            .rollouts(
+            .env_runners(
                 # Make each sub-environment a ray actor.
                 remote_worker_envs=True,
                 # Create 2 remote workers.
-                num_rollout_workers=2,
+                num_env_runners=2,
                 # Create 4 sub-environments (ray remote actors) per remote
                 # worker.
-                num_envs_per_worker=4,
+                num_envs_per_env_runner=4,
             )
         )
 
@@ -152,10 +152,10 @@ class TestCallbacks(unittest.TestCase):
                 algo = config.build()
                 # Fake the counter on the local worker (doesn't have an env) and
                 # set it to -1 so the below `foreach_worker()` won't fail.
-                algo.workers.local_worker().sum_sub_env_vector_indices = -1
+                algo.env_runner.sum_sub_env_vector_indices = -1
 
                 # Get sub-env vector index sums from the 2 remote workers:
-                sum_sub_env_vector_indices = algo.workers.foreach_worker(
+                sum_sub_env_vector_indices = algo.env_runner_group.foreach_worker(
                     lambda w: w.sum_sub_env_vector_indices
                 )
                 # Local worker has no environments -> Expect the -1 special
@@ -179,13 +179,13 @@ class TestCallbacks(unittest.TestCase):
                     "p_terminated": 0.0,
                 },
             )
-            .rollouts(num_envs_per_worker=2, num_rollout_workers=1)
+            .env_runners(num_envs_per_env_runner=2, num_env_runners=1)
             .callbacks(OnEpisodeCreatedCallback)
         )
 
         # Test with and without Connectors.
         for connector in [True, False]:
-            config.rollouts(enable_connectors=connector)
+            config.env_runners(enable_connectors=connector)
             algo = config.build()
             algo.train()
             # Two sub-environments share 1000 steps in the first training iteration
@@ -196,9 +196,9 @@ class TestCallbacks(unittest.TestCase):
             # -> 3 episodes created [per sub-env] = 6 episodes total
             self.assertEqual(
                 6,
-                algo.workers.foreach_worker(
+                algo.env_runner_group.foreach_worker(
                     lambda w: w.callbacks._reset_counter,
-                    local_worker=False,
+                    local_env_runner=False,
                 )[0],
             )
             algo.stop()

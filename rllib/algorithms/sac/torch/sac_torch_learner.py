@@ -1,7 +1,9 @@
-from typing import Dict, Mapping
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from typing import Any, Dict
 
-# from ray.rllib.algorithms.dqn.dqn_tf_policy import PRIO_WEIGHTS
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
+    DQNRainbowTorchLearner,
+)
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.sac.sac_learner import (
     LOGPS_KEY,
@@ -12,35 +14,34 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_PREDS,
     QF_TWIN_LOSS_KEY,
     QF_TWIN_PREDS,
-    TD_ERROR_KEY,
+    TD_ERROR_MEAN_KEY,
     SACLearner,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import (
     POLICY_LOSS_KEY,
 )
-from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-from ray.rllib.policy.sample_batch import SampleBatch, DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
 from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 
 
 torch, nn = try_import_torch()
 
 
-class SACTorchLearner(SACLearner, TorchLearner):
+class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     """Implements `torch`-specific SAC loss logic on top of `SACLearner`
 
     This ' Learner' class implements the loss in its
-    `self.compute_loss_for_module()` method. In addition it updates
+    `self.compute_loss_for_module()` method. In addition, it updates
     target networks in its inherited method `_update_module_target_networks`.
     """
 
     # TODO (simon): Set different learning rates for optimizers.
-    @override(TorchLearner)
+    @override(DQNRainbowTorchLearner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
+        self, module_id: ModuleID, config: AlgorithmConfig = None
     ) -> None:
         # Receive the module.
         module = self._module[module_id]
@@ -57,10 +58,10 @@ class SACTorchLearner(SACLearner, TorchLearner):
             optimizer_name="qf",
             optimizer=optim_critic,
             params=params_critic,
-            lr_or_lr_schedule=self.config.lr,
+            lr_or_lr_schedule=config.lr,
         )
         # If necessary register also an optimizer for a twin Q network.
-        if self.config.twin_q:
+        if config.twin_q:
             params_twin_critic = self.get_parameters(
                 module.qf_twin_encoder
             ) + self.get_parameters(module.qf_twin)
@@ -71,7 +72,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
                 optimizer_name="qf_twin",
                 optimizer=optim_twin_critic,
                 params=params_twin_critic,
-                lr_or_lr_schedule=self.config.lr,
+                lr_or_lr_schedule=config.lr,
             )
 
         # Define the optimizer for the actor.
@@ -85,7 +86,7 @@ class SACTorchLearner(SACLearner, TorchLearner):
             optimizer_name="policy",
             optimizer=optim_actor,
             params=params_actor,
-            lr_or_lr_schedule=self.config.lr,
+            lr_or_lr_schedule=config.lr,
         )
 
         # Define the optimizer for the temperature.
@@ -96,58 +97,31 @@ class SACTorchLearner(SACLearner, TorchLearner):
             optimizer_name="alpha",
             optimizer=optim_temperature,
             params=[temperature],
-            lr_or_lr_schedule=self.config.lr,
+            lr_or_lr_schedule=config.lr,
         )
 
-    @override(TorchLearner)
-    def compute_gradients(
-        self, loss_per_module: Dict[str, TensorType], **kwargs
-    ) -> ParamDict:
-        for optim in self._optimizer_parameters:
-            optim.zero_grad(set_to_none=True)
-
-        grads = {}
-
-        # Calculate gradients for each loss by its optimizer.
-        # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
-        # need to either add to or change in the `Learner` constants.
-        for component in (
-            ["qf", "policy", "alpha"] + ["qf_twin"] if self.config.twin_q else []
-        ):
-            self._metrics[DEFAULT_POLICY_ID][component + "_loss"].backward(
-                retain_graph=True
-            )
-            grads.update(
-                {
-                    pid: p.grad
-                    for pid, p in self.filter_param_dict_for_optimizer(
-                        self._params, self.get_optimizer(optimizer_name=component)
-                    ).items()
-                }
-            )
-
-        return grads
-
-    @override(TorchLearner)
+    @override(DQNRainbowTorchLearner)
     def compute_loss_for_module(
         self,
         *,
         module_id: ModuleID,
         config: SACConfig,
-        batch: NestedDict,
-        fwd_out: Mapping[str, TensorType]
+        batch: Dict[str, Any],
+        fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # Only for debugging.
-        deterministic = self.config._deterministic_loss
+        deterministic = config._deterministic_loss
 
         # Receive the current alpha hyperparameter.
         alpha = torch.exp(self.curr_log_alpha[module_id])
 
+        module = self.module[module_id].unwrapped()
+
         # Get the train action distribution for the current policy and current state.
         # This is needed for the policy (actor) loss in SAC.
-        action_dist_class = self.module[module_id].get_train_action_dist_cls()
+        action_dist_class = module.get_train_action_dist_cls()
         action_dist_curr = action_dist_class.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
         # Get the train action distribution for the current policy and next state.
         # For the Q (critic) loss in SAC, we need to sample from the current policy at
@@ -180,64 +154,43 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # Get Q-values for the actually selected actions during rollout.
         # In the critic loss we use these as predictions.
         q_selected = fwd_out[QF_PREDS]
-        if self.config.twin_q:
+        if config.twin_q:
             q_twin_selected = fwd_out[QF_TWIN_PREDS]
 
         # Compute Q-values for the current policy in the current state with
         # the sampled actions.
-        q_batch_curr = NestedDict(
-            {
-                SampleBatch.OBS: batch[SampleBatch.OBS],
-                SampleBatch.ACTIONS: actions_curr,
-            }
-        )
-        q_curr = self.module[module_id]._qf_forward_train(q_batch_curr)[QF_PREDS]
-        # If a twin Q network should be used, calculate twin Q-values and use the
-        # minimum.
-        if self.config.twin_q:
-            q_twin_curr = self.module[module_id]._qf_twin_forward_train(q_batch_curr)[
-                QF_PREDS
-            ]
-            q_curr = torch.min(q_curr, q_twin_curr)
+        q_batch_curr = {
+            Columns.OBS: batch[Columns.OBS],
+            Columns.ACTIONS: actions_curr,
+        }
+        q_curr = module.compute_q_values(q_batch_curr)
 
         # Compute Q-values from the target Q network for the next state with the
         # sampled actions for the next state.
-        q_batch_next = NestedDict(
-            {
-                SampleBatch.OBS: batch[SampleBatch.NEXT_OBS],
-                SampleBatch.ACTIONS: actions_next,
-            }
-        )
-        q_target_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[
-            QF_PREDS
-        ]
-        # If a twin Q network should be used, calculate twin Q-values and use the
-        # minimum.
-        if self.config.twin_q:
-            q_target_twin_next = self.module[module_id]._qf_target_twin_forward_train(
-                q_batch_next
-            )[QF_PREDS]
-            q_target_next = torch.min(q_target_next, q_target_twin_next)
+        q_batch_next = {
+            Columns.OBS: batch[Columns.NEXT_OBS],
+            Columns.ACTIONS: actions_next,
+        }
+        q_target_next = module.forward_target(q_batch_next)
 
         # Compute value function for next state (see eq. (3) in Haarnoja et al. (2018)).
         # Note, we use here the sampled actions in the log probabilities.
         q_target_next -= alpha * logps_next
         # Now mask all Q-values with terminated next states in the targets.
-        q_next_masked = (1.0 - batch[SampleBatch.TERMINATEDS].float()) * q_target_next
+        q_next_masked = (1.0 - batch[Columns.TERMINATEDS].float()) * q_target_next
 
         # Compute the right hand side of the Bellman equation.
         # Detach this node from the computation graph as we do not want to
         # backpropagate through the target network when optimizing the Q loss.
         q_selected_target = (
-            batch[SampleBatch.REWARDS]
-            + (self.config.gamma ** batch["n_steps"]) * q_next_masked
+            batch[Columns.REWARDS] + (config.gamma ** batch["n_step"]) * q_next_masked
         ).detach()
 
         # Calculate the TD-error. Note, this is needed for the priority weights in
         # the replay buffer.
         td_error = torch.abs(q_selected - q_selected_target)
         # If a twin Q network should be used, add the TD error of the twin Q network.
-        if self.config.twin_q:
+        if config.twin_q:
             td_error += torch.abs(q_twin_selected - q_selected_target)
             # Rescale the TD error.
             td_error *= 0.5
@@ -247,15 +200,13 @@ class SACTorchLearner(SACLearner, TorchLearner):
         # Note further, we use here the Huber loss instead of the mean squared error
         # as it improves training performance.
         critic_loss = torch.mean(
-            # TODO (simon): Introduce priority weights when episode buffer is ready.
-            # batch[PRIO_WEIGHTS] *
             batch["weights"]
             * torch.nn.HuberLoss(reduction="none", delta=1.0)(
                 q_selected, q_selected_target
             )
         )
         # If a twin Q network should be used, add the critic loss of the twin Q network.
-        if self.config.twin_q:
+        if config.twin_q:
             critic_twin_loss = torch.mean(
                 batch["weights"]
                 * torch.nn.HuberLoss(reduction="none", delta=1.0)(
@@ -280,18 +231,27 @@ class SACTorchLearner(SACLearner, TorchLearner):
 
         total_loss = actor_loss + critic_loss + alpha_loss
         # If twin Q networks should be used, add the critic loss of the twin Q network.
-        if self.config.twin_q:
+        if config.twin_q:
+            # TODO (simon): Check, if we need to multiply the critic_loss then with 0.5.
             total_loss += critic_twin_loss
 
-        self.register_metrics(
-            module_id,
+        # Log the TD-error with reduce=None, such that - in case we have n parallel
+        # Learners - we will re-concatenate the produced TD-error tensors to yield
+        # a 1:1 representation of the original batch.
+        self.metrics.log_value(
+            key=(module_id, TD_ERROR_KEY),
+            value=td_error,
+            reduce=None,
+            clear_on_reduce=True,
+        )
+        # Log other important loss stats (reduce=mean (default), but with window=1
+        # in order to keep them history free).
+        self.metrics.log_dict(
             {
                 POLICY_LOSS_KEY: actor_loss,
                 QF_LOSS_KEY: critic_loss,
-                TD_ERROR_KEY: td_error,
                 "alpha_loss": alpha_loss,
                 "alpha_value": alpha,
-                # TODO (Sven): Do we really need this? We have alpha.
                 "log_alpha_value": torch.log(alpha),
                 "target_entropy": self.target_entropy[module_id],
                 "actions_curr_policy": torch.mean(actions_curr),
@@ -299,35 +259,50 @@ class SACTorchLearner(SACLearner, TorchLearner):
                 QF_MEAN_KEY: torch.mean(q_curr),
                 QF_MAX_KEY: torch.max(q_curr),
                 QF_MIN_KEY: torch.min(q_curr),
+                TD_ERROR_MEAN_KEY: torch.mean(td_error),
             },
+            key=module_id,
+            window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
         # If twin Q networks should be used add a critic loss for the twin Q network.
         # Note, we need this in the `self.compute_gradients()` to optimize.
-        if self.config.twin_q:
-            self.register_metrics(
-                module_id,
+        if config.twin_q:
+            self.metrics.log_dict(
                 {
                     QF_TWIN_LOSS_KEY: critic_twin_loss,
                 },
+                key=module_id,
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
         return total_loss
 
-    @override(SACLearner)
-    def _update_module_target_networks(
-        self, module_id: ModuleID, config: SACConfig
-    ) -> None:
-        module = self.module[module_id]
+    @override(DQNRainbowTorchLearner)
+    def compute_gradients(
+        self, loss_per_module: Dict[str, TensorType], **kwargs
+    ) -> ParamDict:
+        grads = {}
+        for module_id in set(loss_per_module.keys()) - {ALL_MODULES}:
+            # Loop through optimizers registered for this module.
+            for optim_name, optim in self.get_optimizers_for_module(module_id):
+                # Zero the gradients. Note, we need to reset the gradients b/c
+                # each component for a module operates on the same graph.
+                optim.zero_grad(set_to_none=True)
 
-        # Note, we have pairs of encoder and head networks.
-        target_current_network_pairs = module.get_target_network_pairs()
-        for target_network, current_network in target_current_network_pairs:
-            # Get the current parameters from the Q network.
-            current_state_dict = current_network.state_dict()
-            # Use here Polyak averaging.
-            new_state_dict = {
-                k: config.tau * current_state_dict[k] + (1 - config.tau) * v
-                for k, v in target_network.state_dict().items()
-            }
-            # Apply the new parameters to the target Q network.
-            target_network.load_state_dict(new_state_dict)
+                # Compute the gradients for the component and module.
+                self.metrics.peek((module_id, optim_name + "_loss")).backward(
+                    retain_graph=True
+                )
+                # Store the gradients for the component and module.
+                # TODO (simon): Check another time the graph for overlapping
+                # gradients.
+                grads.update(
+                    {
+                        pid: p.grad.clone()
+                        for pid, p in self.filter_param_dict_for_optimizer(
+                            self._params, optim
+                        ).items()
+                    }
+                )
+
+        return grads

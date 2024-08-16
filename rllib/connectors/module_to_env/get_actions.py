@@ -6,10 +6,31 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class GetActions(ConnectorV2):
     """Connector piece sampling actions from ACTION_DIST_INPUTS from an RLModule.
+
+    Note: This is one of the default module-to-env ConnectorV2 pieces that
+    are added automatically by RLlib into every module-to-env connector pipeline,
+    unless `config.add_default_connectors_to_module_to_env_pipeline` is set to
+    False.
+
+    The default module-to-env connector pipeline is:
+    [
+        GetActions,
+        TensorToNumpy,
+        UnBatchToIndividualItems,
+        ModuleToAgentUnmapping,  # only in multi-agent setups!
+        RemoveSingleTsTimeRankFromBatch,
+
+        [0 or more user defined ConnectorV2 pieces],
+
+        NormalizeAndClipActions,
+        ListifyDataForVectorEnv,
+    ]
 
     If necessary, this connector samples actions, given action dist. inputs and a
     dist. class.
@@ -49,7 +70,6 @@ class GetActions(ConnectorV2):
 
         # ACTION_DIST_INPUTS field returned by `forward_exploration|inference()` ->
         # Create a new action distribution object.
-        action_dist = None
         if Columns.ACTION_DIST_INPUTS in data:
             if explore:
                 action_dist_class = sa_rl_module.get_exploration_action_dist_cls()

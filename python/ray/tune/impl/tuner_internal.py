@@ -1,36 +1,35 @@
 import copy
 import io
-import math
 import logging
+import math
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
     List,
     Optional,
+    Tuple,
     Type,
     Union,
-    TYPE_CHECKING,
-    Tuple,
 )
 
 import pyarrow.fs
 
 import ray.cloudpickle as pickle
-from ray.util import inspect_serializability
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train._internal.storage import StorageContext, get_fs_and_path
 from ray.tune import Experiment, ExperimentAnalysis, ResumeConfig, TuneError
-from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
-from ray.tune.tune import run
+from ray.tune.tune import _Config, run
 from ray.tune.tune_config import TuneConfig
 from ray.tune.utils import flatten_dict
+from ray.util import inspect_serializability
 
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
@@ -570,9 +569,6 @@ class TunerInternal:
             trial_name_creator=self._tune_config.trial_name_creator,
             trial_dirname_creator=self._tune_config.trial_dirname_creator,
             _entrypoint=self._entrypoint,
-            # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
-            # For now, keep accepting both options.
-            local_dir=self._run_config.local_dir,
             # Deprecated
             chdir_to_trial_dir=self._tune_config.chdir_to_trial_dir,
         )

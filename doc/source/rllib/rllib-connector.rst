@@ -21,7 +21,7 @@ By consolidating these transformations under the framework of connectors, users 
 - Allow policies to be adapted to work with different versions of an environment.
 - Run inference with RLlib policies without worrying about the exact trajectory view requirements or state inputs.
 
-Connectors can be enabled by setting the ``enable_connectors`` parameter to ``True`` with ``AlgorithmConfig.rollouts()`` API.
+Connectors can be enabled by setting the ``enable_connectors`` parameter to ``True`` with ``AlgorithmConfig.env_runners()`` API.
 
 Key Concepts
 ------------
@@ -247,7 +247,7 @@ See `Notable TODOs`_.
 Adapting a Policy for Different Environments
 --------------------------------------------
 
-It is not uncommon for user environments to go through active development iterations.
+It's common for user environments to go through active development iterations.
 Policies trained with an older version of an environment may be rendered useless for updated environments.
 While env wrapper helps with this problem in many cases, connectors allow policies trained with
 different environments to work together at the same time.

@@ -43,7 +43,7 @@ kubectl exec -it $RAY_POD -n $YOUR_NAMESPACE -- bash
 
 ```bash
 export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
-kubectl port-forward $RAY_POD -n $YOUR_NAMESPACE --address 0.0.0.0 8265:8265
+kubectl port-forward $RAY_POD -n $YOUR_NAMESPACE 8265:8265
 # Check $YOUR_IP:8265 in your browser to access the dashboard.
 # For most cases, 127.0.0.1:8265 or localhost:8265 should work.
 ```

@@ -1,23 +1,22 @@
 import os
+import unittest
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 import pytest
-import unittest
-from typing import Optional
-
 from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 import ray
 from ray import train, tune
+from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
+from ray.data.block import BlockMetadata
 from ray.train import CheckpointConfig, RunConfig, ScalingConfig
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
-from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
-from ray.data.block import BlockMetadata
-from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
@@ -523,18 +522,18 @@ def test_invalid_param_space(shutdown_only):
 
 
 def test_tuner_restore_classmethod():
-    tuner = Tuner("PPO")
+    tuner = Tuner(lambda x: None)
 
     # Calling `tuner.restore()` on an instance should raise an AttributeError
     with pytest.raises(AttributeError):
-        tuner.restore("/", "PPO")
+        tuner.restore("/", lambda x: None)
 
     # Calling `Tuner.restore()` on the class should work. This will throw a
     # FileNotFoundError because no checkpoint exists at that location. Since
     # this happens in the downstream restoration code, this means that the
     # classmethod check successfully passed.
     with pytest.raises(FileNotFoundError):
-        tuner = Tuner.restore("/invalid", "PPO")
+        tuner = Tuner.restore("/invalid", lambda x: None)
 
 
 if __name__ == "__main__":

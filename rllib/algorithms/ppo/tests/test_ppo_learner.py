@@ -56,11 +56,9 @@ class TestPPO(unittest.TestCase):
     def test_loss(self):
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
-            )
+            .env_runners(num_env_runners=0)
             .training(
                 gamma=0.99,
                 model=dict(
@@ -100,14 +98,14 @@ class TestPPO(unittest.TestCase):
 
             algo.stop()
 
-    def test_save_load_state(self):
+    def test_save_to_path_and_restore_from_path(self):
         """Tests saving and loading the state of the PPO Learner Group."""
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
             )
             .training(
                 gamma=0.99,
@@ -126,8 +124,8 @@ class TestPPO(unittest.TestCase):
             learner_group1 = algo_config.build_learner_group(env=self.ENV)
             learner_group2 = algo_config.build_learner_group(env=self.ENV)
             with tempfile.TemporaryDirectory() as tmpdir:
-                learner_group1.save_state(tmpdir)
-                learner_group2.load_state(tmpdir)
+                learner_group1.save_to_path(tmpdir)
+                learner_group2.restore_from_path(tmpdir)
                 # Remove functions from state b/c they are not comparable via `check`.
                 s1 = learner_group1.get_state()
                 s2 = learner_group2.get_state()
@@ -142,11 +140,12 @@ class TestPPO(unittest.TestCase):
         initial_kl_coeff = 0.01
         config = (
             ppo.PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 rollout_fragment_length=50,
+                exploration_config={},
             )
             .training(
                 gamma=0.99,
@@ -157,7 +156,6 @@ class TestPPO(unittest.TestCase):
                 ),
                 kl_coeff=initial_kl_coeff,
             )
-            .exploration(exploration_config={})
             .environment("multi_agent_cartpole")
             .multi_agent(
                 policies={"p0", "p1"},

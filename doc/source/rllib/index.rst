@@ -125,7 +125,6 @@ click on the dropdowns below:
 
     *  Offline
 
-       -  |pytorch| |tensorflow| :ref:`Conservative Q-Learning (CQL) <cql>`
        -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
 
 
@@ -167,7 +166,7 @@ Feature Overview
 
         **RLlib Algorithms**
         ^^^
-        Check out the many available RL algorithms of RLlib for model-free and model-based
+        See the many available RL algorithms of RLlib for model-free and model-based
         RL, on-policy and off-policy training, multi-agent RL, and more.
         +++
         .. button-ref:: rllib-algorithms-doc

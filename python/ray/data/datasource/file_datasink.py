@@ -1,6 +1,7 @@
 import logging
 import posixpath
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from urllib.parse import urlparse
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -8,7 +9,6 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _is_local_scheme, call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.block_path_provider import BlockWritePathProvider
 from ray.data.datasource.datasink import Datasink
 from ray.data.datasource.filename_provider import (
     FilenameProvider,
@@ -36,7 +36,6 @@ class _FileDatasink(Datasink):
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
         file_format: Optional[str] = None,
     ):
@@ -58,13 +57,6 @@ class _FileDatasink(Datasink):
         if open_stream_args is None:
             open_stream_args = {}
 
-        if block_path_provider is not None:
-            raise DeprecationWarning(
-                "`block_path_provider` has been deprecated in favor of "
-                "`filename_provider`. For more information, see "
-                "https://docs.ray.io/en/master/data/api/doc/ray.data.datasource.FilenameProvider.html",  # noqa: E501
-            )
-
         if filename_provider is None:
             filename_provider = _DefaultFilenameProvider(
                 dataset_uuid=dataset_uuid, file_format=file_format
@@ -78,7 +70,6 @@ class _FileDatasink(Datasink):
         self.try_create_dir = try_create_dir
         self.open_stream_args = open_stream_args
         self.filename_provider = filename_provider
-        self.block_path_provider = block_path_provider
         self.dataset_uuid = dataset_uuid
         self.file_format = file_format
 
@@ -94,7 +85,24 @@ class _FileDatasink(Datasink):
         """
         from pyarrow.fs import FileType
 
-        if self.try_create_dir:
+        # We should skip creating directories in s3 unless the user specifically
+        # overrides this behavior. PyArrow's s3fs implementation for create_dir
+        # will attempt to check if the parent directory exists before trying to
+        # create the directory (with recursive=True it will try to do this to
+        # all of the directories until the root of the bucket). An IAM Policy that
+        # restricts access to a subset of prefixes within the bucket might cause
+        # the creation of the directory to fail even if the permissions should
+        # allow the data can be written to the specified path. For example if a
+        # a policy only allows users to write blobs prefixed with s3://bucket/foo
+        # a call to create_dir for s3://bucket/foo/bar will fail even though it
+        # should not.
+        parsed_uri = urlparse(self.path)
+        is_s3_uri = parsed_uri.scheme == "s3"
+        skip_create_dir_for_s3 = (
+            is_s3_uri and not DataContext.get_current().s3_try_create_dir
+        )
+
+        if self.try_create_dir and not skip_create_dir_for_s3:
             if self.filesystem.get_file_info(self.path).type is FileType.NotFound:
                 # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
                 # add a query arg enabling bucket creation if an S3 URI is provided.
@@ -191,7 +199,7 @@ class RowBasedFileDatasink(_FileDatasink):
             call_with_retry(
                 write_row_to_path,
                 description=f"write '{write_path}'",
-                match=DataContext.get_current().write_file_retry_on_errors,
+                match=DataContext.get_current().retried_io_errors,
                 max_attempts=WRITE_FILE_MAX_ATTEMPTS,
                 max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
             )
@@ -246,7 +254,7 @@ class BlockBasedFileDatasink(_FileDatasink):
         call_with_retry(
             write_block_to_path,
             description=f"write '{write_path}'",
-            match=DataContext.get_current().write_file_retry_on_errors,
+            match=DataContext.get_current().retried_io_errors,
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )

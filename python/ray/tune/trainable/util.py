@@ -1,7 +1,7 @@
 import inspect
 import logging
 import types
-from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
 
 import ray
 from ray.tune.execution.placement_groups import (

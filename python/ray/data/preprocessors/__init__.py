@@ -1,4 +1,3 @@
-from ray.data.preprocessors.batch_mapper import BatchMapper
 from ray.data.preprocessors.chain import Chain
 from ray.data.preprocessors.concatenator import Concatenator
 from ray.data.preprocessors.discretizer import (
@@ -27,7 +26,6 @@ from ray.data.preprocessors.transformer import PowerTransformer
 from ray.data.preprocessors.vectorizer import CountVectorizer, HashingVectorizer
 
 __all__ = [
-    "BatchMapper",
     "Categorizer",
     "CountVectorizer",
     "Chain",

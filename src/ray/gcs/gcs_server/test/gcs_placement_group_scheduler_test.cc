@@ -125,7 +125,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   }
 
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
-    gcs_node_manager_->RemoveNode(NodeID::FromBinary(node->node_id()));
+    rpc::NodeDeathInfo death_info;
+    gcs_node_manager_->RemoveNode(NodeID::FromBinary(node->node_id()), death_info);
     gcs_resource_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
   }
 
@@ -993,7 +994,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeErrorDuringCommittingResources) {
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   // node1 is experiencing transient connection failure.
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources(
-      ray::Status::GrpcUnavailable("unavailable")));
+      ray::Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 

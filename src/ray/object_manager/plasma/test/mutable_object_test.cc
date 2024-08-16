@@ -79,7 +79,7 @@ void Read(PlasmaObjectHeader *header,
   int64_t version_to_read = 1;
   for (size_t i = 0; i < num_reads; i++) {
     int64_t version_read = 0;
-    if (!header->ReadAcquire(sem, version_to_read, &version_read).ok()) {
+    if (!header->ReadAcquire(sem, version_to_read, version_read).ok()) {
       data_results.push_back("error");
       metadata_results.push_back("error");
       return;
@@ -113,6 +113,7 @@ std::unique_ptr<plasma::MutableObject> MakeObject() {
   info.allocated_size = kPayloadSize;
 
   uint8_t *ptr = static_cast<uint8_t *>(malloc(kSize));
+  RAY_CHECK(ptr);
   auto ret = std::make_unique<plasma::MutableObject>(ptr, info);
   ret->header->Init();
   return ret;
@@ -122,17 +123,19 @@ std::unique_ptr<plasma::MutableObject> MakeObject() {
 
 // Tests that a single reader can read from a single writer.
 TEST(MutableObjectTest, TestBasic) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(
+        manager.RegisterChannel(object_id, std::move(object), /*reader=*/true).ok());
   }
-  manager.OpenSemaphores(object_id);
-  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
+  PlasmaObjectHeader::Semaphores sem;
+  ASSERT_TRUE(manager.GetSemaphores(object_id, sem));
 
   std::vector<std::string> data_results;
   std::vector<std::string> metadata_results;
@@ -167,17 +170,19 @@ TEST(MutableObjectTest, TestBasic) {
 
 // Tests that multiple readers can read from a single writer.
 TEST(MutableObjectTest, TestMultipleReaders) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(
+        manager.RegisterChannel(object_id, std::move(object), /*reader=*/true).ok());
   }
-  manager.OpenSemaphores(object_id);
-  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
+  PlasmaObjectHeader::Semaphores sem;
+  ASSERT_TRUE(manager.GetSemaphores(object_id, sem));
 
   std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
                                                      std::vector<std::string>());
@@ -222,17 +227,19 @@ TEST(MutableObjectTest, TestMultipleReaders) {
 
 // Tests that multiple readers can detect a failure initiated by the writer.
 TEST(MutableObjectTest, TestWriterFails) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(
+        manager.RegisterChannel(object_id, std::move(object), /*reader=*/true).ok());
   }
-  manager.OpenSemaphores(object_id);
-  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
+  PlasmaObjectHeader::Semaphores sem;
+  ASSERT_TRUE(manager.GetSemaphores(object_id, sem));
 
   std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
                                                      std::vector<std::string>());
@@ -287,17 +294,19 @@ TEST(MutableObjectTest, TestWriterFails) {
 // Tests that multiple readers can detect a failure initiated by the writer after
 // `WriteAcquire()` is called.
 TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(
+        manager.RegisterChannel(object_id, std::move(object), /*reader=*/true).ok());
   }
-  manager.OpenSemaphores(object_id);
-  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
+  PlasmaObjectHeader::Semaphores sem;
+  ASSERT_TRUE(manager.GetSemaphores(object_id, sem));
 
   std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
                                                      std::vector<std::string>());
@@ -354,17 +363,19 @@ TEST(MutableObjectTest, TestWriterFailsAfterAcquire) {
 
 // Tests that multiple readers can detect a failure initiated by another reader.
 TEST(MutableObjectTest, TestReaderFails) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(
+        manager.RegisterChannel(object_id, std::move(object), /*reader=*/true).ok());
   }
-  manager.OpenSemaphores(object_id);
-  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
+  PlasmaObjectHeader::Semaphores sem;
+  ASSERT_TRUE(manager.GetSemaphores(object_id, sem));
 
   std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
                                                      std::vector<std::string>());
@@ -425,17 +436,19 @@ TEST(MutableObjectTest, TestReaderFails) {
 
 // Tests that a writer can detect a failure while it is in `WriteAcquire()`.
 TEST(MutableObjectTest, TestWriteAcquireDuringFailure) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(
+        manager.RegisterChannel(object_id, std::move(object), /*reader=*/false).ok());
   }
-  manager.OpenSemaphores(object_id);
-  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
+  PlasmaObjectHeader::Semaphores sem;
+  ASSERT_TRUE(manager.GetSemaphores(object_id, sem));
 
   ASSERT_EQ(sem_wait(sem.object_sem), 0);
   ASSERT_EQ(sem_wait(sem.header_sem), 0);
@@ -459,17 +472,19 @@ TEST(MutableObjectTest, TestWriteAcquireDuringFailure) {
 
 // Tests that a reader can detect a failure while it is in `ReadAcquire()`.
 TEST(MutableObjectTest, TestReadAcquireDuringFailure) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(
+        manager.RegisterChannel(object_id, std::move(object), /*reader=*/true).ok());
   }
-  manager.OpenSemaphores(object_id);
-  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
+  PlasmaObjectHeader::Semaphores sem;
+  ASSERT_TRUE(manager.GetSemaphores(object_id, sem));
 
   std::vector<std::string> data_results;
   std::vector<std::string> metadata_results;
@@ -519,17 +534,19 @@ TEST(MutableObjectTest, TestReadAcquireDuringFailure) {
 
 // Tests that multiple readers can detect a failure while they are in `ReadAcquire()`.
 TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
-  experimental::MutableObjectManager manager;
+  MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
   plasma::PlasmaObjectHeader *header;
   {
     std::unique_ptr<plasma::MutableObject> object = MakeObject();
     header = object->header;
     header->Init();
-    ASSERT_TRUE(manager.RegisterReaderChannel(object_id, std::move(object)).ok());
+    ASSERT_TRUE(
+        manager.RegisterChannel(object_id, std::move(object), /*reader=*/true).ok());
   }
-  manager.OpenSemaphores(object_id);
-  PlasmaObjectHeader::Semaphores sem = manager.GetSemaphores(object_id);
+  manager.OpenSemaphores(object_id, header);
+  PlasmaObjectHeader::Semaphores sem;
+  ASSERT_TRUE(manager.GetSemaphores(object_id, sem));
 
   std::vector<std::vector<std::string>> data_results(/*count=*/kNumReaders,
                                                      std::vector<std::string>());
@@ -596,6 +613,39 @@ TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
     ASSERT_EQ(data_results[i].back(), "error");
     ASSERT_EQ(metadata_results[i].back(), "error");
   }
+}
+
+// Tests that MutableObjectManager instances destruct properly when there are multiple
+// instances.
+// The core worker and the raylet each have their own MutableObjectManager instance, and
+// when both a reader and a writer are on the same machine, the reader and writer will
+// each register the same object with separate MutableObjectManager instances. Thus, we
+// must ensure that the object and its associated metadata (such as the semaphores) are
+// destructed the proper number of times.
+TEST(MutableObjectTest, TestMutableObjectManagerDestruct) {
+  MutableObjectManager manager1;
+  MutableObjectManager manager2;
+  ObjectID object_id = ObjectID::FromRandom();
+  std::string unique_name;
+
+  {
+    std::unique_ptr<plasma::MutableObject> object1 = MakeObject();
+    object1->header->Init();
+    unique_name = std::string(object1->header->unique_name);
+    ASSERT_TRUE(
+        manager1.RegisterChannel(object_id, std::move(object1), /*reader=*/true).ok());
+  }
+  {
+    std::unique_ptr<plasma::MutableObject> object2 = MakeObject();
+    object2->header->Init();
+    memset(object2->header->unique_name, 0, sizeof(object2->header->unique_name));
+    memcpy(object2->header->unique_name, unique_name.c_str(), unique_name.size());
+    ASSERT_TRUE(
+        manager2.RegisterChannel(object_id, std::move(object2), /*reader=*/false).ok());
+  }
+  // The purpose of this test is to ensure that neither the MutableObjectManager instance
+  // destructor crashes when the two instances go out of scope below at the end of this
+  // function.
 }
 
 #endif  // defined(__APPLE__) || defined(__linux__)

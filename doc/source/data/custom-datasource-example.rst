@@ -30,7 +30,7 @@ It provides file-specific functionality on top of the
 :class:`~ray.data.Datasource` interface.
 
 To subclass :class:`~ray.data.datasource.FileBasedDatasource`, implement the constructor 
-and :meth:`~ray.data.datasource.FileBasedDatasource._read_stream`.
+and ``_read_stream``.
 
 Implement the constructor
 =========================

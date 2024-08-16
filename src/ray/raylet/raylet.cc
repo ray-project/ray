@@ -17,9 +17,9 @@
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <iostream>
 
 #include "ray/common/client_connection.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
 #include "ray/util/util.h"
 
@@ -65,7 +65,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client,
                int metrics_export_port,
-               bool is_head_node)
+               bool is_head_node,
+               std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
     : self_node_id_(self_node_id),
       gcs_client_(gcs_client),
       node_manager_(main_service,
@@ -73,7 +74,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
                     node_name,
                     node_manager_config,
                     object_manager_config,
-                    gcs_client_),
+                    gcs_client_,
+                    shutdown_raylet_gracefully),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
@@ -116,8 +118,12 @@ void Raylet::Start() {
   DoAccept();
 }
 
+void Raylet::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+                            std::function<void()> unregister_done_callback) {
+  gcs_client_->Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
+}
+
 void Raylet::Stop() {
-  RAY_CHECK_OK(gcs_client_->Nodes().DrainSelf());
   node_manager_.Stop();
   acceptor_.close();
 }

@@ -298,10 +298,10 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
             assert metric in metric_names, f"metric {metric} not in {metric_names}"
 
         for sample in metric_samples:
-            if sample.name in _METRICS:
-                assert sample.labels["SessionName"] == session_name
-            if sample.name in _DASHBOARD_METRICS:
-                assert sample.labels["SessionName"] == session_name
+            # All Ray metrics have label "Version" and "SessionName".
+            if sample.name in _METRICS or sample.name in _DASHBOARD_METRICS:
+                assert sample.labels.get("Version") == ray.__version__, sample
+                assert sample.labels["SessionName"] == session_name, sample
 
         # Make sure the numeric values are correct
         test_counter_sample = [m for m in metric_samples if "test_counter" in m.name][0]

@@ -1,7 +1,7 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 # ***********************************************************************************
-# IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
+# IMPORTANT NOTE: This script uses the old API stack and will soon be replaced by
 # `ray.rllib.examples.multi_agent.pettingzoo_shared_value_function.py`!
 # ***********************************************************************************
 
@@ -23,6 +23,7 @@ import argparse
 import os
 
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples._old_api_stack.models.centralized_critic_models import (
@@ -32,6 +33,11 @@ from ray.rllib.examples._old_api_stack.models.centralized_critic_models import (
 from ray.rllib.examples.envs.classes.two_step_game import TwoStepGame
 from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 
 parser = argparse.ArgumentParser()
@@ -70,7 +76,7 @@ class FillInActions(DefaultCallbacks):
         policies,
         postprocessed_batch,
         original_batches,
-        **kwargs
+        **kwargs,
     ):
         to_update = postprocessed_batch[SampleBatch.CUR_OBS]
         other_id = 1 if agent_id == 0 else 0
@@ -127,9 +133,9 @@ if __name__ == "__main__":
         PPOConfig()
         .environment(TwoStepGame)
         .framework(args.framework)
-        .rollouts(
+        .env_runners(
             batch_mode="complete_episodes",
-            num_rollout_workers=0,
+            num_env_runners=0,
             # TODO(avnishn) make a new example compatible w connectors.
             enable_connectors=False,
         )
@@ -150,9 +156,9 @@ if __name__ == "__main__":
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     tuner = tune.Tuner(

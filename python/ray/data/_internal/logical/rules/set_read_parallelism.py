@@ -22,7 +22,7 @@ def compute_additional_split_factor(
     cur_additional_split_factor: Optional[int] = None,
 ) -> Tuple[int, str, int, Optional[int]]:
     ctx = DataContext.get_current()
-    detected_parallelism, reason, _, _ = _autodetect_parallelism(
+    detected_parallelism, reason, _ = _autodetect_parallelism(
         parallelism, target_max_block_size, ctx, datasource_or_legacy_reader, mem_size
     )
     num_read_tasks = len(

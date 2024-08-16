@@ -111,7 +111,7 @@ class NodeManagerWorkerClient
 
   /// Release unused workers.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         ReleaseUnusedWorkers,
+                         ReleaseUnusedActorWorkers,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
@@ -188,6 +188,16 @@ class NodeManagerWorkerClient
 
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetTaskFailureCause,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         RegisterMutableObject,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         PushMutableObject,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

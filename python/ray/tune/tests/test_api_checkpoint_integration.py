@@ -1,22 +1,21 @@
 import os
+import sys
 import tempfile
 from pathlib import Path
 
 import pytest
-import sys
 
 import ray
 from ray import train
 from ray.air import ScalingConfig
-from ray.train import CheckpointConfig
-from ray.air.execution import FixedResourceManager
 from ray.air.constants import TRAINING_ITERATION
+from ray.air.execution import FixedResourceManager
+from ray.train import CheckpointConfig
 from ray.train._internal.storage import StorageContext
+from ray.train.tests.util import mock_storage_context
 from ray.tune import Trainable, register_trainable
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
-
-from ray.train.tests.util import mock_storage_context
 
 STORAGE = mock_storage_context()
 

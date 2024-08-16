@@ -13,8 +13,13 @@ def test_request_metadata():
     is_grpc_request should return True.
     """
     request_id = "request-id"
+    internal_request_id = "internal-request-id"
     endpoint = "endpoint"
-    request_metadata = RequestMetadata(request_id=request_id, endpoint=endpoint)
+    request_metadata = RequestMetadata(
+        request_id=request_id,
+        internal_request_id=internal_request_id,
+        endpoint=endpoint,
+    )
 
     # Ensure the default values are set correctly.
     assert request_metadata.request_id == request_id

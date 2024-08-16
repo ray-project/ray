@@ -177,7 +177,12 @@ def _build_python_executable_command_memory_profileable(
 
 
 def _get_gcs_client_options(gcs_server_address):
-    return GcsClientOptions.from_gcs_address(gcs_server_address)
+    return GcsClientOptions.create(
+        gcs_server_address,
+        None,
+        allow_cluster_id_nil=True,
+        fetch_cluster_id_if_nil=False,
+    )
 
 
 def serialize_config(config):
@@ -448,7 +453,9 @@ def wait_for_node(
         TimeoutError: An exception is raised if the timeout expires before
             the node appears in the client table.
     """
-    gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
+    gcs_options = GcsClientOptions.create(
+        gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
+    )
     global_state = ray._private.state.GlobalState()
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
@@ -474,6 +481,16 @@ def get_node_to_connect_for_driver(gcs_address, node_ip_address):
     gcs_options = _get_gcs_client_options(gcs_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
+
+
+def get_node(gcs_address, node_id):
+    """
+    Get the node information from the global state accessor.
+    """
+    global_state = ray._private.state.GlobalState()
+    gcs_options = _get_gcs_client_options(gcs_address)
+    global_state._initialize_global_state(gcs_options)
+    return global_state.get_node(node_id)
 
 
 def get_webui_url_from_internal_kv():
@@ -1462,6 +1479,7 @@ def start_gcs_server(
         f"--metrics-agent-port={metrics_agent_port}",
         f"--node-ip-address={node_ip_address}",
         f"--session-name={session_name}",
+        f"--ray-commit={ray.__commit__}",
     ]
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
@@ -1486,6 +1504,7 @@ def start_gcs_server(
 def start_raylet(
     redis_address: str,
     gcs_address: str,
+    node_id: str,
     node_ip_address: str,
     node_manager_port: int,
     raylet_name: str,
@@ -1533,6 +1552,7 @@ def start_raylet(
     Args:
         redis_address: The address of the primary Redis server.
         gcs_address: The address of GCS server.
+        node_id: The hex ID of this node.
         node_ip_address: The IP address of this node.
         node_manager_port: The port to use for the node manager. If it's
             0, a random port will be used.
@@ -1757,6 +1777,7 @@ def start_raylet(
         f"--min_worker_port={min_worker_port}",
         f"--max_worker_port={max_worker_port}",
         f"--node_manager_port={node_manager_port}",
+        f"--node_id={node_id}",
         f"--node_ip_address={node_ip_address}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",

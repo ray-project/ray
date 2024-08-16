@@ -4,9 +4,7 @@ import time
 import uuid
 from typing import Dict, Iterator, List, Optional
 
-from ray.data._internal.execution.autoscaling_requester import (
-    get_or_create_autoscaling_requester_actor,
-)
+from ray.data._internal.execution.autoscaler import create_autoscaler
 from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
@@ -22,7 +20,6 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import (
-    AutoscalingState,
     OpState,
     Topology,
     build_streaming_topology,
@@ -30,10 +27,10 @@ from ray.data._internal.execution.streaming_executor_state import (
     select_operator_to_run,
     update_operator_states,
 )
-from ray.data._internal.logging import get_log_path
+from ray.data._internal.logging import get_log_directory
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsManager
-from ray.data.context import DataContext
+from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +60,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._global_info: Optional[ProgressBar] = None
 
         self._execution_id = uuid.uuid4().hex
-        self._autoscaling_state = AutoscalingState()
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -106,24 +102,39 @@ class StreamingExecutor(Executor, threading.Thread):
             context = DataContext.get_current()
             if context.print_on_execution_start:
                 message = "Starting execution of Dataset."
-                log_path = get_log_path()
+                log_path = get_log_directory()
                 if log_path is not None:
-                    message += f" Full log is in {log_path}"
+                    message += f" Full logs are in {log_path}"
                 logger.info(message)
                 logger.info(f"Execution plan of Dataset: {dag}")
 
             logger.debug("Execution config: %s", self._options)
 
+            # Note: DAG must be initialized in order to query num_outputs_total.
+            # Note: Initialize global progress bar before building the streaming
+            # topology so bars are created in the same order as they should be
+            # displayed. This is done to ensure correct ordering within notebooks.
+            # TODO(zhilong): Implement num_output_rows_total for all
+            # AllToAllOperators
+            self._global_info = ProgressBar(
+                "Running", dag.num_output_rows_total(), unit="row"
+            )
+
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
-        self._resource_manager = ResourceManager(self._topology, self._options)
+        self._resource_manager = ResourceManager(
+            self._topology,
+            self._options,
+            lambda: self._autoscaler.get_total_resources(),
+        )
         self._backpressure_policies = get_backpressure_policies(self._topology)
+        self._autoscaler = create_autoscaler(
+            self._topology,
+            self._resource_manager,
+            self._execution_id,
+        )
 
         self._has_op_completed = {op: False for op in self._topology}
-
-        if not isinstance(dag, InputDataBuffer):
-            # Note: DAG must be initialized in order to query num_outputs_total.
-            self._global_info = ProgressBar("Running", dag.num_outputs_total())
 
         self._output_node: OpState = self._topology[dag]
         StatsManager.register_dataset_to_stats_actor(
@@ -143,7 +154,9 @@ class StreamingExecutor(Executor, threading.Thread):
                         output_split_idx
                     )
                     if self._outer._global_info:
-                        self._outer._global_info.update(1, dag.num_outputs_total())
+                        self._outer._global_info.update(
+                            item.num_rows(), dag.num_output_rows_total()
+                        )
                     return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
@@ -190,13 +203,21 @@ class StreamingExecutor(Executor, threading.Thread):
             # Close the progress bars from top to bottom to avoid them jumping
             # around in the console after completion.
             if self._global_info:
+                # Set the appropriate description that summarizes
+                # the result of dataset execution.
+                if execution_completed:
+                    prog_bar_msg = (
+                        f"{OK_PREFIX} Dataset execution finished in "
+                        f"{self._final_stats.time_total_s:.2f} seconds"
+                    )
+                else:
+                    prog_bar_msg = f"{WARN_PREFIX} Dataset execution failed"
+                self._global_info.set_description(prog_bar_msg)
                 self._global_info.close()
             for op, state in self._topology.items():
                 op.shutdown()
                 state.close_progress_bars()
-            # Make request for zero resources to autoscaler for this execution.
-            actor = get_or_create_autoscaling_requester_actor()
-            actor.request_resources.remote({}, self._execution_id)
+            self._autoscaler.on_executor_shutdown()
 
     def run(self):
         """Run the control loop in a helper thread.
@@ -279,9 +300,8 @@ class StreamingExecutor(Executor, threading.Thread):
             topology,
             self._resource_manager,
             self._backpressure_policies,
+            self._autoscaler,
             ensure_at_least_one_running=self._consumer_idling(),
-            execution_id=self._execution_id,
-            autoscaling_state=self._autoscaling_state,
         )
 
         i = 0
@@ -295,9 +315,8 @@ class StreamingExecutor(Executor, threading.Thread):
                 topology,
                 self._resource_manager,
                 self._backpressure_policies,
+                self._autoscaler,
                 ensure_at_least_one_running=self._consumer_idling(),
-                execution_id=self._execution_id,
-                autoscaling_state=self._autoscaling_state,
             )
 
         update_operator_states(topology)
@@ -305,6 +324,9 @@ class StreamingExecutor(Executor, threading.Thread):
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():
             op_state.refresh_progress_bar(self._resource_manager)
+        # Refresh the global progress bar to update elapsed time progress.
+        if self._global_info:
+            self._global_info.refresh()
 
         self._update_stats_metrics(state="RUNNING")
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
@@ -334,8 +356,8 @@ class StreamingExecutor(Executor, threading.Thread):
         limits = self._resource_manager.get_global_limits()
         resources_status = (
             "Running: "
-            f"{cur_usage.cpu}/{limits.cpu} CPU, "
-            f"{cur_usage.gpu}/{limits.gpu} GPU, "
+            f"{cur_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
+            f"{cur_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
             f"{cur_usage.object_store_memory_str()}/"
             f"{limits.object_store_memory_str()} object_store_memory"
         )

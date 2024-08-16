@@ -3,8 +3,8 @@ import gymnasium as gym
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
 from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
+from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray import tune
 
 
@@ -26,15 +26,10 @@ def _env_creator(cfg):
     )
 
 
+parser = add_rllib_example_script_args()
+args = parser.parse_args()
+
 tune.register_env("env", _env_creator)
-
-num_gpus = 8
-
-stop = {
-    "sampler_results/episode_reward_mean": 100.0,
-    "timesteps_total": 10000000,
-    "time_total_s": 3600,
-}
 
 config = (
     PPOConfig()
@@ -49,17 +44,7 @@ config = (
         },
         clip_rewards=True,
     )
-    .rollouts(
-        env_to_module_connector=_make_env_to_module_connector,
-        num_rollout_workers=95,
-        env_runner_cls=SingleAgentEnvRunner,
-    )
-    .resources(
-        num_gpus=0,
-        num_learner_workers=num_gpus,
-        num_gpus_per_learner_worker=1,
-        num_cpus_for_local_worker=1,
-    )
+    .rollouts(env_to_module_connector=_make_env_to_module_connector)
     .training(
         learner_connector=_make_learner_connector,
         lambda_=0.95,
@@ -68,7 +53,7 @@ config = (
         vf_clip_param=10.0,
         entropy_coeff=0.01,
         num_sgd_iter=10,
-        lr=0.0001 * num_gpus,
+        lr=0.0001 * args.num_gpus,
         grad_clip=100.0,
         grad_clip_by="global_norm",
         model={
@@ -80,3 +65,15 @@ config = (
         },
     )
 )
+
+stop = {
+    "env_runner_results/episode_return_mean": 100.0,
+    "num_env_steps_sampled_lifetime": 10000000,
+    "time_total_s": 3600,
+}
+
+
+if __name__ == "__main__":
+    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
+
+    run_rllib_example_script_experiment(config, args=args, stop=stop)

@@ -39,9 +39,8 @@ def generate_aggregate_fn(
         blocks = []
         metadata = []
         for ref_bundle in refs:
-            for block, block_metadata in ref_bundle.blocks:
-                blocks.append(block)
-                metadata.append(block_metadata)
+            blocks.extend(ref_bundle.block_refs)
+            metadata.extend(ref_bundle.metadata)
         if len(blocks) == 0:
             return (blocks, {})
         unified_schema = unify_block_metadata_schema(metadata)
@@ -56,11 +55,12 @@ def generate_aggregate_fn(
         else:
             # Use same number of output partitions.
             num_outputs = num_mappers
+            sample_bar = ctx.sub_progress_bar_dict[
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME
+            ]
             # Sample boundaries for aggregate key.
             boundaries = SortTaskSpec.sample_boundaries(
-                blocks,
-                SortKey(key),
-                num_outputs,
+                blocks, SortKey(key), num_outputs, sample_bar
             )
 
         agg_spec = SortAggregateTaskSpec(

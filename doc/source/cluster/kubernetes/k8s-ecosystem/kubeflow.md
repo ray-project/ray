@@ -23,7 +23,7 @@ The [Kubeflow](https://www.kubeflow.org/) project is dedicated to making deploym
 ## Step 1: Create a Kubernetes cluster with Kind.
 ```sh
 # Kubeflow is sensitive to Kubernetes version and Kustomize version.
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 kustomize version --short
 # 3.2.0
 ```

@@ -110,7 +110,6 @@ class TestRayActorOptionsSchema:
             "num_cpus": 0.2,
             "num_gpus": 50,
             "memory": 3,
-            "object_store_memory": 64,
             "resources": {"custom_asic": 12},
             "accelerator_type": NVIDIA_TESLA_V100,
         }
@@ -125,7 +124,7 @@ class TestRayActorOptionsSchema:
         # Ensure ValidationError is raised when any fields that must be greater
         # than zero is set to zero.
 
-        ge_zero_fields = ["num_cpus", "num_gpus", "memory", "object_store_memory"]
+        ge_zero_fields = ["num_cpus", "num_gpus", "memory"]
         for field in ge_zero_fields:
             with pytest.raises(ValidationError):
                 RayActorOptionsSchema.parse_obj({field: -1})
@@ -163,7 +162,6 @@ class TestRayActorOptionsSchema:
             "num_cpus": None,
             "num_gpus": None,
             "memory": None,
-            "object_store_memory": None,
             "resources": {},
             "accelerator_type": None,
         }
@@ -191,11 +189,7 @@ class TestDeploymentSchema:
 
         return {"name": "deep"}
 
-    @pytest.mark.parametrize("use_max_concurrent_queries", [True, False])
-    @pytest.mark.parametrize("use_max_ongoing_requests", [True, False])
-    def test_valid_deployment_schema(
-        self, use_max_concurrent_queries, use_max_ongoing_requests
-    ):
+    def test_valid_deployment_schema(self):
         # Ensure a valid DeploymentSchema can be generated
 
         deployment_schema = {
@@ -209,6 +203,7 @@ class TestDeploymentSchema:
             "graceful_shutdown_timeout_s": 49,
             "health_check_period_s": 11,
             "health_check_timeout_s": 11,
+            "max_ongoing_requests": 32,
             "ray_actor_options": {
                 "runtime_env": {
                     "working_dir": TEST_MODULE_PINNED_URI,
@@ -217,16 +212,10 @@ class TestDeploymentSchema:
                 "num_cpus": 3,
                 "num_gpus": 4.2,
                 "memory": 5,
-                "object_store_memory": 3,
                 "resources": {"custom_asic": 8},
                 "accelerator_type": NVIDIA_TESLA_P4,
             },
         }
-
-        if use_max_concurrent_queries:
-            deployment_schema["max_concurrent_queries"] = 32
-        if use_max_ongoing_requests:
-            deployment_schema["max_ongoing_requests"] = 32
 
         DeploymentSchema.parse_obj(deployment_schema)
 
@@ -238,7 +227,6 @@ class TestDeploymentSchema:
 
         gt_zero_fields = [
             "num_replicas",
-            "max_concurrent_queries",
             "max_ongoing_requests",
             "health_check_period_s",
             "health_check_timeout_s",
@@ -418,27 +406,16 @@ class TestDeploymentSchema:
         deployment_options = {"name": "test", "route_prefix": None}
         DeploymentSchema.parse_obj(deployment_options)
 
-    @pytest.mark.parametrize(
-        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
-        [(True, True), (True, False), (False, True)],
-    )
-    def test_num_replicas_nullable(
-        self, use_target_ongoing_requests, use_target_num_ongoing_requests_per_replica
-    ):
+    def test_num_replicas_nullable(self):
         deployment_options = {
             "name": "test",
             "num_replicas": None,
             "autoscaling_config": {
                 "min_replicas": 1,
                 "max_replicas": 5,
+                "target_ongoing_requests": 5,
             },
         }
-        if use_target_ongoing_requests:
-            deployment_options["autoscaling_config"]["target_ongoing_requests"] = 5
-        if use_target_num_ongoing_requests_per_replica:
-            deployment_options["autoscaling_config"][
-                "target_num_ongoing_requests_per_replica"
-            ] = 5
         DeploymentSchema.parse_obj(deployment_options)
 
 
@@ -467,7 +444,6 @@ class TestServeApplicationSchema:
                         "num_cpus": 3,
                         "num_gpus": 4.2,
                         "memory": 5,
-                        "object_store_memory": 3,
                         "resources": {"custom_asic": 8},
                         "accelerator_type": NVIDIA_TESLA_P4,
                     },

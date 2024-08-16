@@ -3,7 +3,7 @@ from typing import Any, Dict, List, Optional
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
-from ray._private.utils import pasre_pg_formatted_resources_to_original
+from ray._private.utils import parse_pg_formatted_resources_to_original
 from ray._raylet import TaskID
 from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import Deprecated, PublicAPI
@@ -251,7 +251,7 @@ class RuntimeContext(object):
         """
         # only worker mode has actor_id
         if self.worker.mode != ray._private.worker.WORKER_MODE:
-            logger.warning(
+            logger.debug(
                 "This method is only available when the process is a "
                 f"worker. Current mode: {self.worker.mode}"
             )
@@ -277,6 +277,7 @@ class RuntimeContext(object):
                 "This method is only available when the process is a "
                 f"worker. Current mode: {self.worker.mode}"
             )
+            return None
         actor_id = self.worker.actor_id
         return self.worker.actor_name if not actor_id.is_nil() else None
 
@@ -355,7 +356,7 @@ class RuntimeContext(object):
             res: sum(amt for _, amt in mapping)
             for res, mapping in resource_id_map.items()
         }
-        result = pasre_pg_formatted_resources_to_original(resource_map)
+        result = parse_pg_formatted_resources_to_original(resource_map)
         return result
 
     def get_runtime_env_string(self):

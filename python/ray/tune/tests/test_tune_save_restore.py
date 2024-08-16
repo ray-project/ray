@@ -5,8 +5,6 @@ import shutil
 import tempfile
 import unittest
 
-import pytest
-
 import ray
 from ray import tune
 from ray.train import CheckpointConfig
@@ -37,10 +35,6 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
             with open(checkpoint_path, "rb") as f:
                 extra_data = pickle.load(f)
             self.state.update(extra_data)
-
-    @pytest.fixture(autouse=True)
-    def setLocalDir(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
 
     def setUp(self):
         self.absolute_local_dir = None
@@ -145,7 +139,8 @@ class SerialTuneRelativeLocalDirTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

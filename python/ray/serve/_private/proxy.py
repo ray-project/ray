@@ -6,6 +6,7 @@ import pickle
 import socket
 import time
 from abc import ABC, abstractmethod
+from functools import partial
 from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
 
 import grpc
@@ -26,6 +27,7 @@ from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
     NodeId,
+    RequestMetadata,
     RequestProtocol,
 )
 from ray.serve._private.constants import (
@@ -160,7 +162,7 @@ class GenericProxy(ABC):
         self.route_info: Dict[str, DeploymentID] = dict()
 
         self.proxy_router = proxy_router_class(
-            serve.get_deployment_handle, self.protocol
+            partial(serve.get_deployment_handle, _record_telemetry=False), self.protocol
         )
         self.request_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_requests",
@@ -395,15 +397,18 @@ class GenericProxy(ABC):
                 if version.parse(starlette.__version__) < version.parse("0.33.0"):
                     proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
+            internal_request_id = generate_request_id()
             handle, request_id = self.setup_request_context_and_handle(
                 app_name=handle.deployment_id.app_name,
                 handle=handle,
                 route_path=route_path,
                 proxy_request=proxy_request,
+                internal_request_id=internal_request_id,
             )
 
             response_generator = self.send_request_to_replica(
                 request_id=request_id,
+                internal_request_id=internal_request_id,
                 handle=handle,
                 proxy_request=proxy_request,
                 app_is_cross_language=app_is_cross_language,
@@ -506,6 +511,7 @@ class GenericProxy(ABC):
         handle: DeploymentHandle,
         route_path: str,
         proxy_request: ProxyRequest,
+        internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
         """Setup the request context and handle for the request.
 
@@ -518,6 +524,7 @@ class GenericProxy(ABC):
     async def send_request_to_replica(
         self,
         request_id: str,
+        internal_request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
@@ -660,6 +667,7 @@ class gRPCProxy(GenericProxy):
         handle: DeploymentHandle,
         route_path: str,
         proxy_request: ProxyRequest,
+        internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
         """Setup request context and handle for the request.
 
@@ -681,6 +689,7 @@ class gRPCProxy(GenericProxy):
         request_context_info = {
             "route": route_path,
             "request_id": request_id,
+            "_internal_request_id": internal_request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
             "grpc_context": proxy_request.ray_serve_grpc_context,
@@ -694,6 +703,7 @@ class gRPCProxy(GenericProxy):
     async def send_request_to_replica(
         self,
         request_id: str,
+        internal_request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
@@ -709,11 +719,11 @@ class gRPCProxy(GenericProxy):
                 context._set_on_grpc_context(proxy_request.context)
                 yield result
 
-            yield ResponseStatus(code=grpc.StatusCode.OK)
+            status = ResponseStatus(code=grpc.StatusCode.OK)
         except TimeoutError:
             message = f"Request timed out after {self.request_timeout_s}s."
             logger.warning(message)
-            yield ResponseStatus(
+            status = ResponseStatus(
                 code=grpc.StatusCode.DEADLINE_EXCEEDED,
                 is_error=True,
                 message=message,
@@ -721,13 +731,13 @@ class gRPCProxy(GenericProxy):
         except asyncio.CancelledError:
             message = f"Client for request {request_id} disconnected."
             logger.info(message)
-            yield ResponseStatus(
+            status = ResponseStatus(
                 code=grpc.StatusCode.CANCELLED,
                 is_error=True,
                 message=message,
             )
         except BackPressureError as e:
-            yield ResponseStatus(
+            status = ResponseStatus(
                 code=grpc.StatusCode.UNAVAILABLE,
                 is_error=True,
                 message=e.message,
@@ -737,11 +747,15 @@ class gRPCProxy(GenericProxy):
                 logger.warning(f"Request failed: {e}", extra={"log_to_stderr": False})
             else:
                 logger.exception("Request failed due to unexpected error.")
-            yield ResponseStatus(
+            status = ResponseStatus(
                 code=grpc.StatusCode.INTERNAL,
                 is_error=True,
                 message=str(e),
             )
+
+        # The status code should always be set.
+        assert status is not None
+        yield status
 
 
 class HTTPProxy(GenericProxy):
@@ -825,10 +839,12 @@ class HTTPProxy(GenericProxy):
             message=message,
         )
 
-    async def receive_asgi_messages(self, request_id: str) -> ResponseGenerator:
-        queue = self.asgi_receive_queues.get(request_id, None)
+    async def receive_asgi_messages(
+        self, request_metadata: RequestMetadata
+    ) -> ResponseGenerator:
+        queue = self.asgi_receive_queues.get(request_metadata.internal_request_id, None)
         if queue is None:
-            raise KeyError(f"Request ID {request_id} not found.")
+            raise KeyError(f"Request ID {request_metadata.request_id} not found.")
 
         await queue.wait_for_message()
         return queue.get_messages_nowait()
@@ -877,6 +893,7 @@ class HTTPProxy(GenericProxy):
         handle: DeploymentHandle,
         route_path: str,
         proxy_request: ProxyRequest,
+        internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
         """Setup request context and handle for the request.
 
@@ -886,6 +903,7 @@ class HTTPProxy(GenericProxy):
         request_context_info = {
             "route": route_path,
             "app_name": app_name,
+            "_internal_request_id": internal_request_id,
         }
         for key, value in proxy_request.headers:
             if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
@@ -918,6 +936,7 @@ class HTTPProxy(GenericProxy):
     async def send_request_to_replica(
         self,
         request_id: str,
+        internal_request_id: str,
         handle: DeploymentHandle,
         proxy_request: ProxyRequest,
         app_is_cross_language: bool = False,
@@ -943,7 +962,7 @@ class HTTPProxy(GenericProxy):
         # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
         receive_queue = MessageQueue()
-        self.asgi_receive_queues[request_id] = receive_queue
+        self.asgi_receive_queues[internal_request_id] = receive_queue
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
         )
@@ -1075,7 +1094,7 @@ class HTTPProxy(GenericProxy):
                         is_error=True,
                     )
 
-            del self.asgi_receive_queues[request_id]
+            del self.asgi_receive_queues[internal_request_id]
 
         # The status code should always be set.
         assert status is not None
@@ -1429,16 +1448,18 @@ class ProxyActor:
         """
         logger.debug("Received health check.", extra={"log_to_stderr": False})
 
-    async def receive_asgi_messages(self, request_id: str) -> bytes:
-        """Get ASGI messages for the provided `request_id`.
+    async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
+        """Get ASGI messages for the provided `request_metadata`.
 
-        After the proxy has stopped receiving messages for this `request_id`,
+        After the proxy has stopped receiving messages for this `request_metadata`,
         this will always return immediately.
 
         Raises `KeyError` if this request ID is not found. This will happen when the
         request is no longer being handled (e.g., the user disconnects).
         """
-        return pickle.dumps(await self.http_proxy.receive_asgi_messages(request_id))
+        return pickle.dumps(
+            await self.http_proxy.receive_asgi_messages(request_metadata)
+        )
 
     def _save_cpu_profile_data(self) -> str:
         """Saves CPU profiling data, if CPU profiling is enabled.

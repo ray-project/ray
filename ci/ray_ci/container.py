@@ -5,6 +5,21 @@ import sys
 
 from typing import List, Tuple, Optional
 
+_CUDA_COPYRIGHT = """
+==========
+== CUDA ==
+==========
+
+CUDA Version 12.1.1
+
+Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+
+This container image and its contents are governed by the NVIDIA Deep Learning Container License.
+By pulling and using the container, you accept the terms and conditions of this license:
+https://developer.nvidia.com/ngc/nvidia-deep-learning-container-license
+
+A copy of this license is made available in this container at /NGC-DL-CONTAINER-LICENSE for your convenience.
+"""  # noqa: E501
 _DOCKER_ECR_REPO = os.environ.get(
     "RAYCI_WORK_REPO",
     "029272617770.dkr.ecr.us-west-2.amazonaws.com/rayproject/citemp",
@@ -22,6 +37,7 @@ _DOCKER_ENV = [
     "BUILDKITE_LABEL",
     "BUILDKITE_BAZEL_CACHE_URL",
     "BUILDKITE_PIPELINE_ID",
+    "BUILDKITE_PULL_REQUEST",
 ]
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
 
@@ -42,11 +58,16 @@ class Container(abc.ABC):
         self.envs = envs or []
         self.envs += _DOCKER_ENV
 
-    def run_script_with_output(self, script: List[str]) -> bytes:
+    def run_script_with_output(self, script: List[str]) -> str:
         """
         Run a script in container and returns output
         """
-        return subprocess.check_output(self.get_run_command(script))
+        # CUDA image comes with a license header that we need to remove
+        return (
+            subprocess.check_output(self.get_run_command(script))
+            .decode("utf-8")
+            .replace(_CUDA_COPYRIGHT, "")
+        )
 
     def run_script(self, script: List[str]) -> None:
         """

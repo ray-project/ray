@@ -42,7 +42,7 @@ class EnvContext(dict):
                 0 if only a local worker exists.
             recreated_worker: Whether the worker that holds this env is a recreated one.
                 This means that it replaced a previous (failed) worker when
-                `recreate_failed_workers=True` in the Algorithm's config.
+                `recreate_failed_env_runners=True` in the Algorithm's config.
         """
         # Store the env_config in the (super) dict.
         dict.__init__(self, env_config)
@@ -78,8 +78,8 @@ class EnvContext(dict):
                 the one from the source (self).
             recreated_worker: Optional flag, indicating, whether the worker that holds
                 the env is a recreated one. This means that it replaced a previous
-                (failed) worker when `recreate_failed_workers=True` in the Algorithm's
-                config.
+                (failed) worker when `recreate_failed_env_runners=True` in the
+                Algorithm's config.
 
         Returns:
             A new EnvContext object as a copy of self plus the provided

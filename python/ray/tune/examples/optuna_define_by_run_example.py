@@ -7,13 +7,14 @@ Requires the Optuna library to be installed (`pip install optuna`).
 For an example of using a Tune search space, see
 :doc:`/tune/examples/optuna_example`.
 """
+
 import time
-from typing import Dict, Optional, Any
+from typing import Any, Dict, Optional
 
 import ray
 from ray import train, tune
-from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.optuna import OptunaSearch
 
 

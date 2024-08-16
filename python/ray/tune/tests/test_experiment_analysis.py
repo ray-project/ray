@@ -1,25 +1,23 @@
-from contextlib import contextmanager
-import tempfile
 import os
-from pathlib import Path
 import pickle
-import pandas as pd
-import numpy as np
+import tempfile
+from contextlib import contextmanager
+from pathlib import Path
 from typing import List
 
+import numpy as np
+import pandas as pd
 import pytest
 
 from ray import train, tune
 from ray.air._internal.uri_utils import URI
 from ray.air.constants import EXPR_PROGRESS_FILE, EXPR_RESULT_FILE
 from ray.train._internal.storage import _delete_fs_path
+from ray.train.tests.test_new_persistence import mock_s3_bucket_uri
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune.analysis.experiment_analysis import ExperimentAnalysis
 from ray.tune.experiment import Trial
 from ray.tune.utils import flatten_dict
-
-from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-from ray.train.tests.test_new_persistence import mock_s3_bucket_uri
-
 
 NUM_TRIALS = 3
 NON_NAN_VALUE = 42
@@ -292,7 +290,8 @@ def test_pickle(experiment_analysis, tmp_path):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

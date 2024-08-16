@@ -349,7 +349,7 @@ class SSHCommandRunner(CommandRunnerInterface):
                         cf.bold(local),
                         cf.bold(remote),
                     )  # todo: msg
-                    ssh += ["-L", "{}:localhost:{}".format(remote, local)]
+                    ssh += ["-L", "{}:localhost:{}".format(local, remote)]
 
         final_cmd = (
             ssh

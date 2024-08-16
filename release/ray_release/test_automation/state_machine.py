@@ -1,5 +1,6 @@
 import abc
 from typing import List
+from datetime import datetime, timedelta
 
 import github
 from github import Github
@@ -10,8 +11,11 @@ from ray_release.test import (
     TestState,
 )
 from ray_release.aws import get_secret_token
+from ray_release.logger import logger
 
 RAY_REPO = "ray-project/ray"
+BUILDKITE_ORGANIZATION = "ray-project"
+BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
 AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
 WEEKLY_RELEASE_BLOCKER_TAG = "weekly-release-blocker"
@@ -25,6 +29,7 @@ TEAM = [
     "serve",
     "serverless",
 ]
+MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests
 
 
 class TestStateMachine(abc.ABC):
@@ -249,3 +254,83 @@ class TestStateMachine(abc.ABC):
             "Re-opening issue as test is still failing. "
             f"Latest run: {self.test_results[0].url}"
         )
+
+    def comment_blamed_commit_on_github_issue(self) -> bool:
+        """
+        Comment the blamed commit on the github issue.
+
+        Returns: True if the comment is made, False otherwise
+        """
+        blamed_commit = self.test.get(Test.KEY_BISECT_BLAMED_COMMIT)
+        issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        bisect_build_number = self.test.get(Test.KEY_BISECT_BUILD_NUMBER)
+        if not issue_number or not bisect_build_number or not blamed_commit:
+            logger.info(
+                "Skip commenting blamed commit on github issue "
+                f"for {self.test.get_name()}. The following fields should be set: "
+                f" blamed_commit={blamed_commit}, issue_number={issue_number}, "
+                f" bisect_build_number={bisect_build_number}"
+            )
+            return False
+        issue = self.ray_repo.get_issue(issue_number)
+        issue.create_comment(
+            f"Blamed commit: {blamed_commit} "
+            f"found by bisect job https://buildkite.com/{BUILDKITE_ORGANIZATION}/"
+            f"{BUILDKITE_BISECT_PIPELINE}/builds/{bisect_build_number}"
+        )
+        return True
+
+    def _trigger_bisect(self) -> None:
+        if self._bisect_rate_limit_exceeded():
+            logger.info(f"Skip bisect {self.test.get_name()} due to rate limit")
+            return
+        test_type = self.test.get_test_type().value
+        build = self.ray_buildkite.builds().create_build(
+            BUILDKITE_ORGANIZATION,
+            BUILDKITE_BISECT_PIPELINE,
+            "HEAD",
+            "master",
+            message=f"[ray-test-bot] {self.test.get_name()} failing",
+            env={
+                "UPDATE_TEST_STATE_MACHINE": "1",
+                "RAYCI_TEST_TYPE": test_type,
+            },
+        )
+        failing_commit = self.test_results[0].commit
+        passing_commits = [r.commit for r in self.test_results if r.is_passing()]
+        if not passing_commits:
+            logger.info(f"Skip bisect {self.test.get_name()} due to no passing commit")
+            return
+        passing_commit = passing_commits[0]
+        self.ray_buildkite.jobs().unblock_job(
+            BUILDKITE_ORGANIZATION,
+            BUILDKITE_BISECT_PIPELINE,
+            build["number"],
+            build["jobs"][0]["id"],  # first job is the blocked job
+            fields={
+                "test-name": self.test.get_name(),
+                "passing-commit": passing_commit,
+                "failing-commit": failing_commit,
+                "concurrency": "3",
+                "run-per-commit": "1",
+                "test-type": test_type,
+            },
+        )
+        self.test[Test.KEY_BISECT_BUILD_NUMBER] = build["number"]
+
+    def _bisect_rate_limit_exceeded(self) -> bool:
+        """
+        Check if we have exceeded the rate limit of bisects per day.
+        """
+        builds = self.ray_buildkite.builds().list_all_for_pipeline(
+            BUILDKITE_ORGANIZATION,
+            BUILDKITE_BISECT_PIPELINE,
+            created_from=datetime.now() - timedelta(days=1),
+            branch="master",
+        )
+        builds = [
+            build
+            for build in builds
+            if build["env"].get("RAYCI_TEST_TYPE") == self.test.get_test_type().value
+        ]
+        return len(builds) >= self.test.get_bisect_daily_rate_limit()

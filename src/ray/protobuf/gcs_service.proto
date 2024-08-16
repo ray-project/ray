@@ -193,6 +193,16 @@ message RegisterNodeReply {
   GcsStatus status = 1;
 }
 
+message UnregisterNodeRequest {
+  // The node id of the node to be unregistered.
+  bytes node_id = 1;
+  NodeDeathInfo node_death_info = 2;
+}
+
+message UnregisterNodeReply {
+  GcsStatus status = 1;
+}
+
 message GetAllNodeInfoRequest {}
 
 message GetAllNodeInfoReply {
@@ -226,6 +236,13 @@ message GetAllAvailableResourcesRequest {}
 message GetAllAvailableResourcesReply {
   GcsStatus status = 1;
   repeated AvailableResources resources_list = 2;
+}
+
+message GetAllTotalResourcesRequest {}
+
+message GetAllTotalResourcesReply {
+  GcsStatus status = 1;
+  repeated TotalResources resources_list = 2;
 }
 
 message ReportWorkerFailureRequest {
@@ -436,7 +453,7 @@ message DrainNodeRequest {
 }
 
 message DrainNodeStatus {
-  // The node id that is successfully drained from GCS.
+  // The node id that is acknowledged for draining by GCS.
   bytes node_id = 1;
 }
 
@@ -590,6 +607,12 @@ message GcsSubscriberCommandBatchReply {
   GcsStatus status = 100;
 }
 
+message GcsUnregisterSubscriberRequest {
+  bytes subscriber_id = 1;
+}
+
+message GcsUnregisterSubscriberReply {}
+
 /// This supports subscribing updates from GCS with long poll, and registering /
 /// de-registering subscribers.
 service InternalPubSubGcsService {
@@ -603,6 +626,10 @@ service InternalPubSubGcsService {
   /// A batch of subscribe / unsubscribe requests sent by the subscriber.
   rpc GcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest)
       returns (GcsSubscriberCommandBatchReply);
+  /// Unregister a subscriber from GCS, removing all subscriptions as well as the
+  /// subscriber itself.
+  rpc GcsUnregisterSubscriber(GcsUnregisterSubscriberRequest)
+      returns (GcsUnregisterSubscriberReply);
 }
 
 message GetAllResourceUsageRequest {}
@@ -634,6 +661,9 @@ service NodeResourceInfoGcsService {
   // Get available resources of all nodes.
   rpc GetAllAvailableResources(GetAllAvailableResourcesRequest)
       returns (GetAllAvailableResourcesReply);
+  // Get total resources of all nodes.
+  rpc GetAllTotalResources(GetAllTotalResourcesRequest)
+      returns (GetAllTotalResourcesReply);
   // Get resource usage of all nodes from GCS Service.
   rpc GetAllResourceUsage(GetAllResourceUsageRequest) returns (GetAllResourceUsageReply);
   // Get ids of draining nodes.
@@ -651,6 +681,8 @@ service NodeInfoGcsService {
   rpc GetClusterId(GetClusterIdRequest) returns (GetClusterIdReply);
   // Register a node to GCS Service.
   rpc RegisterNode(RegisterNodeRequest) returns (RegisterNodeReply);
+  // Unregister a node to GCS Service.
+  rpc UnregisterNode(UnregisterNodeRequest) returns (UnregisterNodeReply);
   // Drain a node from GCS Service.
   // When the RPC is replied,
   // - It is guaranteed that the requested nodes are going to be drained eventually.
@@ -687,6 +719,8 @@ message GetTaskEventsRequest {
     optional string name = 4;
     // True if task events from driver (only profiling events) should be excluded.
     optional bool exclude_driver = 5;
+    // Latest state of the task.
+    optional string state = 6;
   }
 
   // Maximum number of TaskEvents to return.

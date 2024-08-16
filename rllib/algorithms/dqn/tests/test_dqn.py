@@ -27,7 +27,7 @@ class TestDQN(unittest.TestCase):
         config = (
             dqn.dqn.DQNConfig()
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=2)
+            .env_runners(num_env_runners=2)
             .training(num_steps_sampled_before_learning_starts=0)
         )
 
@@ -66,7 +66,7 @@ class TestDQN(unittest.TestCase):
         config = (
             dqn.dqn.DQNConfig()
             .environment("Taxi-v3")
-            .rollouts(num_rollout_workers=2)
+            .env_runners(num_env_runners=2)
             .training(num_steps_sampled_before_learning_starts=0)
         )
 
@@ -102,7 +102,7 @@ class TestDQN(unittest.TestCase):
         config = (
             dqn.dqn.DQNConfig()
             .environment("FrozenLake-v1")
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .environment(env_config={"is_slippery": False, "map_name": "4x4"})
         ).training(num_steps_sampled_before_learning_starts=0)
 
@@ -126,7 +126,7 @@ class TestDQN(unittest.TestCase):
 
             # Low softmax temperature. Behaves like argmax
             # (but no epsilon exploration).
-            config.exploration(
+            config.env_runners(
                 exploration_config={"type": "SoftQ", "temperature": 0.000001}
             )
             algo = config.build()
@@ -157,7 +157,7 @@ class TestDQN(unittest.TestCase):
             algo.stop()
 
             # With Random exploration.
-            config.exploration(exploration_config={"type": "Random"}, explore=True)
+            config.env_runners(exploration_config={"type": "Random"}, explore=True)
             algo = config.build()
             actions = []
             for _ in range(300):

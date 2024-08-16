@@ -15,9 +15,9 @@ class TestFeatureImportance(unittest.TestCase):
 
     def test_feat_importance_cartpole(self):
         config = MARWILConfig().environment("CartPole-v1").framework("torch")
-        runner = config.build()
-        policy = runner.workers.local_worker().get_policy()
-        sample_batch = synchronous_parallel_sample(worker_set=runner.workers)
+        algo = config.build()
+        policy = algo.env_runner.get_policy()
+        sample_batch = synchronous_parallel_sample(worker_set=algo.env_runner_group)
 
         for repeat in [1, 10]:
             evaluator = FeatureImportance(policy=policy, repeat=repeat)

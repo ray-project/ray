@@ -15,6 +15,7 @@
 #include "ray/common/task/task_spec.h"
 
 #include "gtest/gtest.h"
+#include "ray/common/task/task_util.h"
 
 namespace ray {
 TEST(TaskSpecTest, TestSchedulingClassDescriptor) {
@@ -144,6 +145,77 @@ TEST(TaskSpecTest, TestTaskSpecification) {
   ASSERT_TRUE(task_spec.GetSchedulingStrategy() == scheduling_strategy);
   ASSERT_TRUE(task_spec.GetNodeAffinitySchedulingStrategySoft());
   ASSERT_TRUE(task_spec.GetNodeAffinitySchedulingStrategyNodeId() == node_id);
+}
+
+TEST(TaskSpecTest, TestRootDetachedActorId) {
+  ActorID actor_id =
+      ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
+  TaskSpecification task_spec;
+  ASSERT_TRUE(task_spec.RootDetachedActorId().IsNil());
+  task_spec.GetMutableMessage().set_root_detached_actor_id(actor_id.Binary());
+  ASSERT_EQ(task_spec.RootDetachedActorId(), actor_id);
+}
+
+TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
+  TaskSpecBuilder task_spec_builder;
+  task_spec_builder.SetNormalTaskSpec(
+      0, false, "", rpc::SchedulingStrategy(), ActorID::Nil());
+  ASSERT_TRUE(task_spec_builder.Build().RootDetachedActorId().IsNil());
+  ActorID actor_id =
+      ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
+  task_spec_builder.SetNormalTaskSpec(0, false, "", rpc::SchedulingStrategy(), actor_id);
+  ASSERT_EQ(task_spec_builder.Build().RootDetachedActorId(), actor_id);
+
+  TaskSpecBuilder actor_spec_builder;
+  actor_spec_builder.SetActorCreationTaskSpec(actor_id,
+                                              /*serialized_actor_handle=*/"",
+                                              rpc::SchedulingStrategy(),
+                                              /*max_restarts=*/0,
+                                              /*max_task_retries=*/0,
+                                              /*dynamic_worker_options=*/{},
+                                              /*max_concurrency=*/1,
+                                              /*is_detached=*/false,
+                                              /*name=*/"",
+                                              /*ray_namespace=*/"",
+                                              /*is_asyncio=*/false,
+                                              /*concurrency_groups=*/{},
+                                              /*extension_data=*/"",
+                                              /*execute_out_of_order=*/false,
+                                              /*root_detached_actor_id=*/ActorID::Nil());
+  ASSERT_TRUE(actor_spec_builder.Build().RootDetachedActorId().IsNil());
+  actor_spec_builder.SetActorCreationTaskSpec(actor_id,
+                                              /*serialized_actor_handle=*/"",
+                                              rpc::SchedulingStrategy(),
+                                              /*max_restarts=*/0,
+                                              /*max_task_retries=*/0,
+                                              /*dynamic_worker_options=*/{},
+                                              /*max_concurrency=*/1,
+                                              /*is_detached=*/true,
+                                              /*name=*/"",
+                                              /*ray_namespace=*/"",
+                                              /*is_asyncio=*/false,
+                                              /*concurrency_groups=*/{},
+                                              /*extension_data=*/"",
+                                              /*execute_out_of_order=*/false,
+                                              /*root_detached_actor_id=*/actor_id);
+  ASSERT_EQ(actor_spec_builder.Build().RootDetachedActorId(), actor_id);
+}
+
+TEST(TaskSpecTest, TestWorkerCacheKey) {
+  // Test TaskSpec calculates the correct WorkerCacheKey hash.
+  std::string serialized_runtime_env_A = "mock_env_A";
+  rpc::RuntimeEnvInfo runtime_env_info_A;
+  runtime_env_info_A.set_serialized_runtime_env(serialized_runtime_env_A);
+  TaskSpecification task_spec;
+  task_spec.GetMutableMessage().mutable_runtime_env_info()->CopyFrom(runtime_env_info_A);
+  const WorkerCacheKey key_A = {serialized_runtime_env_A, {}, false, false, false};
+  ASSERT_EQ(task_spec.GetRuntimeEnvHash(), key_A.IntHash());
+  ActorID actor_id =
+      ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
+  task_spec.GetMutableMessage().set_root_detached_actor_id(actor_id.Binary());
+  ASSERT_NE(task_spec.GetRuntimeEnvHash(), key_A.IntHash());
+  const WorkerCacheKey key_B = {serialized_runtime_env_A, {}, false, false, true};
+  ASSERT_EQ(task_spec.GetRuntimeEnvHash(), key_B.IntHash());
 }
 
 TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {

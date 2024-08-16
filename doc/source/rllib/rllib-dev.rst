@@ -10,7 +10,7 @@ Development Install
 
 You can develop RLlib locally without needing to compile Ray by using the `setup-dev.py <https://github.com/ray-project/ray/blob/master/python/ray/setup-dev.py>`__ script.
 This sets up symlinks between the ``ray/rllib`` dir in your local git clone and the respective directory bundled with the pip-installed ``ray`` package. This way, every change you make in the source files in your local git clone will immediately be reflected in your installed ``ray`` as well.
-However if you have installed ray from source using `these instructions <https://docs.ray.io/en/master/ray-overview/installation.html>`__ then do not use this, as these steps should have already created this symlink.
+However if you have installed ray from source using `these instructions <https://docs.ray.io/en/master/ray-overview/installation.html>`__ then don't use this, as these steps should have already created this symlink.
 When using this script, make sure that your git branch is in sync with the installed Ray binaries (i.e., you are up-to-date on `master <https://github.com/ray-project/ray>`__ and have the latest `wheel <https://docs.ray.io/en/master/installation.html>`__ installed.)
 
 .. code-block:: bash

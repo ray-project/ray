@@ -5,23 +5,17 @@ import io
 import zlib
 from typing import Any, Dict, Optional, Sequence, Type, Union
 
+import gymnasium as gym
 import numpy as np
 
 import ray
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.gym import try_import_gymnasium_and_gym
 from ray.rllib.utils.error import NotSerializable
 from ray.rllib.utils.spaces.flexdict import FlexDict
 from ray.rllib.utils.spaces.repeated import Repeated
 from ray.rllib.utils.spaces.simplex import Simplex
 
 NOT_SERIALIZABLE = "__not_serializable__"
-
-gym, old_gym = try_import_gymnasium_and_gym()
-
-old_gym_text_class = None
-if old_gym:
-    old_gym_text_class = getattr(old_gym.spaces, "Text", None)
 
 
 @DeveloperAPI
@@ -197,19 +191,6 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
         return _repeated(space)
     elif isinstance(space, FlexDict):
         return _flex_dict(space)
-    # Old gym Spaces.
-    elif old_gym and isinstance(space, old_gym.spaces.Box):
-        return _box(space)
-    elif old_gym and isinstance(space, old_gym.spaces.Discrete):
-        return _discrete(space)
-    elif old_gym and isinstance(space, old_gym.spaces.MultiDiscrete):
-        return _multi_discrete(space)
-    elif old_gym and isinstance(space, old_gym.spaces.Tuple):
-        return _tuple(space)
-    elif old_gym and isinstance(space, old_gym.spaces.Dict):
-        return _dict(space)
-    elif old_gym and old_gym_text_class and isinstance(space, old_gym_text_class):
-        return _text(space)
     else:
         raise ValueError("Unknown space type for serialization, ", type(space))
 

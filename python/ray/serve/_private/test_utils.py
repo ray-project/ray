@@ -1,4 +1,6 @@
 import asyncio
+import datetime
+import os
 import threading
 import time
 from copy import copy, deepcopy
@@ -13,12 +15,14 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray.actor import ActorHandle
+from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
+from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
@@ -194,6 +198,15 @@ class MockPlacementGroup:
         self._soft_target_node_id = _soft_target_node_id
 
 
+@serve.deployment
+class GetPID:
+    def __call__(self):
+        return os.getpid()
+
+
+get_pid_entrypoint = GetPID.bind()
+
+
 def check_ray_stopped():
     try:
         requests.get("http://localhost:52365/api/ray/version")
@@ -204,22 +217,6 @@ def check_ray_stopped():
 
 def check_ray_started():
     return requests.get("http://localhost:52365/api/ray/version").status_code == 200
-
-
-def check_telemetry_recorded(storage_handle, key, expected_value):
-    report = ray.get(storage_handle.get_report.remote())
-    assert report["extra_usage_tags"][key] == expected_value
-    return True
-
-
-def check_telemetry_not_recorded(storage_handle, key):
-    report = ray.get(storage_handle.get_report.remote())
-    assert (
-        ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.get_value_from_report(
-            report
-        )
-        is None
-    )
 
 
 def check_deployment_status(
@@ -372,6 +369,16 @@ def start_telemetry_app():
     storage = TelemetryStorage.remote()
     serve.run(receiver_app, name="telemetry", route_prefix=TELEMETRY_ROUTE_PREFIX)
     return storage
+
+
+def check_telemetry(
+    tag: ServeUsageTag, expected: Any, storage_actor_name: str = STORAGE_ACTOR_NAME
+):
+    storage_handle = ray.get_actor(storage_actor_name, namespace=SERVE_NAMESPACE)
+    report = ray.get(storage_handle.get_report.remote())
+    print(report["extra_usage_tags"])
+    assert tag.get_value_from_report(report) == expected
+    return True
 
 
 def ping_grpc_list_applications(channel, app_names, test_draining=False):
@@ -605,3 +612,36 @@ def check_num_alive_nodes(target: int):
     alive_nodes = [node for node in ray.nodes() if node["Alive"]]
     assert len(alive_nodes) == target
     return True
+
+
+def get_deployment_details(
+    deployment_name: str,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    _client: ServeControllerClient = None,
+):
+    client = _client or _get_global_client()
+    details = client.get_serve_details()
+    return details["applications"][app_name]["deployments"][deployment_name]
+
+
+@ray.remote
+class Counter:
+    def __init__(self, target: int):
+        self.count = 0
+        self.target = target
+        self.ready_event = asyncio.Event()
+
+    def inc(self):
+        self.count += 1
+        if self.count == self.target:
+            self.ready_event.set()
+
+    async def wait(self):
+        await self.ready_event.wait()
+
+
+def tlog(s: str, level: str = "INFO"):
+    """Convenient logging method for testing."""
+
+    now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{level}] {now} {s}")

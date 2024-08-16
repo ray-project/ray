@@ -112,6 +112,8 @@ class WorkerInterface {
 
   virtual void SetJobId(const JobID &job_id) = 0;
 
+  virtual const ActorID &GetRootDetachedActorId() const = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -120,6 +122,7 @@ class WorkerInterface {
   FRIEND_TEST(WorkerPoolDriverRegisteredTest,
               TestWorkerCappingLaterNWorkersNotOwningObjects);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker);
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest,
               WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay);
@@ -205,6 +208,8 @@ class Worker : public WorkerInterface {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
+  const ActorID &GetRootDetachedActorId() const { return root_detached_actor_id_; }
+
   std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
     return lifetime_allocated_instances_;
   };
@@ -216,6 +221,7 @@ class Worker : public WorkerInterface {
   void SetAssignedTask(const RayTask &assigned_task) {
     assigned_task_ = assigned_task;
     task_assign_time_ = absl::Now();
+    root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
   }
 
   absl::Time GetAssignedTaskTime() const { return task_assign_time_; };
@@ -271,6 +277,8 @@ class Worker : public WorkerInterface {
   const int runtime_env_hash_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
+  /// Root detached actor ID for the worker's last assigned task.
+  ActorID root_detached_actor_id_;
   /// The worker's placement group bundle. It is used to detect if the worker is
   /// associated with a placement group bundle.
   BundleID bundle_id_;

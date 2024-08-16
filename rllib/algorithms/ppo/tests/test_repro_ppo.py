@@ -28,7 +28,7 @@ class TestReproPPO(unittest.TestCase):
         configs = (
             ppo.PPOConfig()
             .environment(env="DeterministicCartPole-v1", env_config={"seed": 42})
-            .rollouts(rollout_fragment_length=8)
+            .env_runners(rollout_fragment_length=8)
             .training(train_batch_size=64, sgd_minibatch_size=32, num_sgd_iter=2)
         )
         check_reproducibilty(
@@ -46,7 +46,7 @@ class TestReproPPO(unittest.TestCase):
         configs = (
             ppo.PPOConfig()
             .environment(env="DeterministicPendulum-v1", env_config={"seed": 42})
-            .rollouts(rollout_fragment_length=8)
+            .env_runners(rollout_fragment_length=8)
             .training(train_batch_size=64, sgd_minibatch_size=32, num_sgd_iter=2)
         )
         check_reproducibilty(

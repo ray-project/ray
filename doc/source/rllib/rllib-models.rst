@@ -115,7 +115,7 @@ Available settings are `listed above <#default-model-config-settings>`__ and als
 Note that for the vision network case, you'll probably have to configure ``conv_filters``, if your environment observations
 have custom sizes. For example, ``"model": {"dim": 42, "conv_filters": [[16, [4, 4], 2], [32, [4, 4], 2], [512, [11, 11], 1]]}`` for 42x42 observations.
 Thereby, always make sure that the last Conv2D output has an output shape of ``[B, 1, 1, X]`` (``[B, X, 1, 1]`` for PyTorch), where B=batch and
-X=last Conv2D layer's number of filters, so that RLlib can flatten it. An informative error will be thrown if this is not the case.
+X=last Conv2D layer's number of filters, so that RLlib can flatten it. An informative error will be thrown if this isn't the case.
 
 
 .. _auto_lstm_and_attention:
@@ -140,7 +140,7 @@ For fully customized RNN/LSTM/Attention-Net setups see the `Recurrent Models <#r
 `Attention Networks/Transformers <#attention>`_ sections below.
 
 .. note::
-    It is not possible to use both auto-wrappers (lstm and attention) at the same time. Doing so will create an error.
+    It isn't possible to use both auto-wrappers (lstm and attention) at the same time. Doing so will create an error.
 
 
 Customizing Preprocessors and Models
@@ -200,7 +200,7 @@ Custom TensorFlow Models
 
 Custom TensorFlow models should subclass `TFModelV2 <https://github.com/ray-project/ray/blob/master/rllib/models/tf/tf_modelv2.py>`__ and implement the ``__init__()`` and ``forward()`` methods.
 ``forward()`` takes a dict of tensor inputs (mapping str to Tensor types), whose keys and values depend on
-the `view requirements <rllib-sample-collection.html>`__ of the model.
+the view requirements of the model.
 Normally, this input dict contains only the current observation ``obs`` and an ``is_training`` boolean flag, as well as an optional list of RNN states.
 ``forward()`` should return the model output (of size ``self.num_outputs``) and - if applicable - a new list of internal
 states (in case of RNNs or attention nets). You can also override extra methods of the model such as ``value_function`` to implement
@@ -251,7 +251,7 @@ Custom PyTorch Models
 Similarly, you can create and register custom PyTorch models by subclassing
 `TorchModelV2 <https://github.com/ray-project/ray/blob/master/rllib/models/torch/torch_modelv2.py>`__ and implement the ``__init__()`` and ``forward()`` methods.
 ``forward()`` takes a dict of tensor inputs (mapping str to PyTorch tensor types), whose keys and values depend on
-the `view requirements <rllib-sample-collection.html>`__ of the model.
+the view requirements of the model.
 Usually, the dict contains only the current observation ``obs`` and an ``is_training`` boolean flag, as well as an optional list of RNN states.
 ``forward()`` should return the model output (of size ``self.num_outputs``) and - if applicable - a new list of internal
 states (in case of RNNs or attention nets). You can also override extra methods of the model such as ``value_function`` to implement
@@ -332,7 +332,7 @@ Implementing custom Attention Networks
 Similar to the RNN case described above, you could also implement your own attention-based networks, instead of using the
 ``use_attention: True`` flag in your model config.
 
-Check out RLlib's `GTrXL (Attention Net) <https://arxiv.org/abs/1910.06764>`__ implementations
+See RLlib's `GTrXL (Attention Net) <https://arxiv.org/abs/1910.06764>`__ implementations
 (for `TF <https://github.com/ray-project/ray/blob/master/rllib/models/tf/attention_net.py>`__ and `PyTorch <https://github.com/ray-project/ray/blob/master/rllib/models/torch/attention_net.py>`__)
 to get a better idea on how to write your own models of this type. These are the models we use
 as wrappers when ``use_attention=True``.
@@ -452,8 +452,7 @@ All this may even be useful when not working with partially observable environme
 and/or RNN/Attention models, as for example in classic Atari runs, where we usually use framestacking of
 the last four observed images.
 
-The `trajectory view API <rllib-sample-collection.html#trajectory-view-api>`__ allows your models
-to specify these more complex "view requirements".
+The trajectory view API allows your models to specify these more complex "view requirements".
 
 Here is a simple (non-RNN/Attention) example of a Model that takes as input
 the last 3 observations (very similar to the recommended "framestacking" for

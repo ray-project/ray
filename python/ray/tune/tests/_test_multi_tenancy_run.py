@@ -1,10 +1,9 @@
-from pathlib import Path
 import os
 import time
+from pathlib import Path
 
 from ray import train, tune
 from ray.train.data_parallel_trainer import DataParallelTrainer
-
 from ray.tune.search import BasicVariantGenerator
 
 # Hang full script until this marker is deleted

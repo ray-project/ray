@@ -16,11 +16,7 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import (
-    DEFAULT_MAX_ONGOING_REQUESTS,
-    SERVE_DEFAULT_APP_NAME,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
@@ -256,7 +252,6 @@ def deployment(
     placement_group_strategy: Default[str] = DEFAULT.VALUE,
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
-    max_concurrent_queries: Default[int] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
@@ -291,8 +286,7 @@ def deployment(
             through `serve.run()` or the config file.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
-            `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
-            and `runtime_env`.
+            `num_cpus`, `num_gpus`, `resources`, and `runtime_env`.
         placement_group_bundles: Defines a set of placement group bundles to be
             scheduled *for each replica* of this deployment. The replica actor will
             be scheduled in the first bundle provided, so the resources specified in
@@ -306,10 +300,8 @@ def deployment(
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.
-        max_concurrent_queries: [DEPRECATED] Maximum number of queries that are sent to
-            a replica of this deployment without receiving a response. Defaults to 100.
         max_ongoing_requests: Maximum number of requests that are sent to a
-            replica of this deployment without receiving a response. Defaults to 100.
+            replica of this deployment without receiving a response. Defaults to 5.
         max_queued_requests: [EXPERIMENTAL] Maximum number of requests to this
             deployment that will be queued at each *caller* (proxy or DeploymentHandle).
             Once this limit is reached, subsequent requests will raise a
@@ -334,35 +326,16 @@ def deployment(
         `Deployment`
     """
 
-    if autoscaling_config not in [DEFAULT.VALUE, None]:
-        if (
-            isinstance(autoscaling_config, dict)
-            and "target_num_ongoing_requests_per_replica" in autoscaling_config
-        ) or (
-            isinstance(autoscaling_config, AutoscalingConfig)
-            and "target_num_ongoing_requests_per_replica"
-            in autoscaling_config.dict(exclude_unset=True)
-        ):
-            logger.warning(
-                "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
-                "`autoscaling_config` has been deprecated and replaced by "
-                "`target_ongoing_requests`. "
-                "`target_num_ongoing_requests_per_replica` will be removed in a future "
-                "version."
-            )
-
     if max_ongoing_requests is None:
         raise ValueError("`max_ongoing_requests` must be non-null, got None.")
-    elif max_ongoing_requests is DEFAULT.VALUE:
-        if max_concurrent_queries is None:
-            max_ongoing_requests = DEFAULT_MAX_ONGOING_REQUESTS
-        else:
-            max_ongoing_requests = max_concurrent_queries
+
     if num_replicas == "auto":
         num_replicas = None
         max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
             max_ongoing_requests, autoscaling_config
         )
+
+        ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
     # NOTE: The user_configured_option_names should be the first thing that's
     # defined in this function. It depends on the locals() dictionary storing
@@ -399,12 +372,6 @@ def deployment(
             "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
             "deprecated. To specify a route prefix for an application, pass it into "
             "`serve.run` instead."
-        )
-
-    if max_concurrent_queries is not DEFAULT.VALUE:
-        logger.warning(
-            "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` has "
-            "been deprecated and replaced by `max_ongoing_requests`."
         )
 
     if isinstance(logging_config, LoggingConfig):
@@ -535,7 +502,7 @@ def _run(
         # deploy_application returns; the application state manager will
         # need another reconcile iteration to create it.
         client._wait_for_deployment_created(ingress.name, name)
-        handle = client.get_handle(ingress.name, name, missing_ok=True)
+        handle = client.get_handle(ingress.name, name, check_exists=False)
         return handle
 
 
@@ -544,7 +511,7 @@ def run(
     target: Application,
     blocking: bool = False,
     name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = DEFAULT.VALUE,
+    route_prefix: Optional[str] = DEFAULT.VALUE,
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
@@ -563,9 +530,10 @@ def run(
             will loop and log status until Ctrl-C'd.
         name: Application name. If not provided, this will be the only
             application running on the cluster (it will delete all others).
-        route_prefix: Route prefix for HTTP requests. If not provided, it will use
-            route_prefix of the ingress deployment. If specified neither as an argument
-            nor in the ingress deployment, the route prefix will default to '/'.
+        route_prefix: Route prefix for HTTP requests. Defaults to '/'.
+            If `None` is passed, the application will not be exposed over HTTP
+            (this may be useful if you only want the application to be exposed via
+            gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
 
@@ -587,6 +555,9 @@ def run(
                 time.sleep(10)
         except KeyboardInterrupt:
             logger.warning("Got KeyboardInterrupt, exiting...")
+            # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
+            # from the main script.
+            raise
     return handle
 
 
@@ -829,13 +800,17 @@ def get_app_handle(name: str) -> DeploymentHandle:
         raise RayServeException(f"Application '{name}' does not exist.")
 
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
-    return client.get_handle(ingress, name)
+    # There is no need to check if the deployment exists since the
+    # deployment name was just fetched from the controller
+    return client.get_handle(ingress, name, check_exists=False)
 
 
 @DeveloperAPI
 def get_deployment_handle(
     deployment_name: str,
     app_name: Optional[str] = None,
+    _check_exists: bool = True,
+    _record_telemetry: bool = True,
 ) -> DeploymentHandle:
     """Get a handle to a deployment by name.
 
@@ -922,5 +897,7 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
-    ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
-    return client.get_handle(deployment_name, app_name)
+    if _record_telemetry:
+        ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
+
+    return client.get_handle(deployment_name, app_name, check_exists=_check_exists)

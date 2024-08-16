@@ -1,3 +1,4 @@
+# @OldAPIStack
 memory-leak-test-dqn:
     env:
         ray.rllib.examples.envs.classes.random_env.RandomLargeObsSpaceEnv

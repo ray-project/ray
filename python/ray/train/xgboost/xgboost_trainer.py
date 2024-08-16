@@ -23,8 +23,6 @@ def _xgboost_train_fn_per_worker(
     dataset_keys: set,
     xgboost_train_kwargs: dict,
 ):
-    from xgboost.collective import CommunicatorContext
-
     checkpoint = ray.train.get_checkpoint()
     starting_model = None
     remaining_iters = num_boost_round
@@ -60,17 +58,16 @@ def _xgboost_train_fn_per_worker(
         eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
         evals.append((xgboost.DMatrix(eval_X, label=eval_y), eval_name))
 
-    with CommunicatorContext():
-        evals_result = {}
-        xgboost.train(
-            config,
-            dtrain=dtrain,
-            evals=evals,
-            evals_result=evals_result,
-            num_boost_round=remaining_iters,
-            xgb_model=starting_model,
-            **xgboost_train_kwargs,
-        )
+    evals_result = {}
+    xgboost.train(
+        config,
+        dtrain=dtrain,
+        evals=evals,
+        evals_result=evals_result,
+        num_boost_round=remaining_iters,
+        xgb_model=starting_model,
+        **xgboost_train_kwargs,
+    )
 
 
 @PublicAPI(stability="beta")

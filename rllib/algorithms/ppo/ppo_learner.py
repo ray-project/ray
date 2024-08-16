@@ -1,3 +1,4 @@
+import abc
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.rllib.algorithms.ppo.ppo import (
@@ -7,9 +8,16 @@ from ray.rllib.algorithms.ppo.ppo import (
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
+from ray.rllib.utils.metrics import (
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_MODULE_STEPS_TRAINED,
+)
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.episodes import (
@@ -42,9 +50,8 @@ class PPOLearner(Learner):
 
         # Set up KL coefficient variables (per module).
         # Note that the KL coeff is not controlled by a Scheduler, but seeks
-        # to stay close to a given kl_target value in our implementation of
-        # `self.additional_update_for_module()`.
-        self.curr_kl_coeffs_per_module: Dict[ModuleID, Scheduler] = LambdaDefaultDict(
+        # to stay close to a given kl_target value.
+        self.curr_kl_coeffs_per_module: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
                 self.config.get_config_for_module(module_id).kl_coeff
             )
@@ -60,8 +67,9 @@ class PPOLearner(Learner):
     ):
         # First perform GAE computation on the entirety of the given train data (all
         # episodes).
-        if self.config.uses_new_env_runners:
+        if self.config.enable_env_runner_and_connector_v2:
             batch, episodes = self._compute_gae_from_episodes(episodes=episodes)
+
         # Now that GAE (advantages and value targets) have been added to the train
         # batch, we can proceed normally (calling super method) with the update step.
         return super()._update_from_batch_or_episodes(
@@ -74,7 +82,7 @@ class PPOLearner(Learner):
         self,
         *,
         episodes: Optional[List[EpisodeType]] = None,
-    ) -> Tuple[Optional[MultiAgentBatch], Optional[List[EpisodeType]]]:
+    ) -> Tuple[Optional[Dict[str, Any]], Optional[List[EpisodeType]]]:
         """Computes GAE advantages (and value targets) given a list of episodes.
 
         Note that the episodes may be SingleAgent- or MultiAgentEpisodes and may be
@@ -117,11 +125,6 @@ class PPOLearner(Learner):
             episodes=episodes,
             shared_data={},
         )
-        # TODO (sven): Try to not require MultiAgentBatch anymore.
-        batch_for_vf = MultiAgentBatch(
-            {mid: SampleBatch(v) for mid, v in batch_for_vf.items()},
-            env_steps=sum(len(e) for e in episodes),
-        )
         # Perform the value model's forward pass.
         vf_preds = convert_to_numpy(self._compute_values(batch_for_vf))
 
@@ -142,14 +145,16 @@ class PPOLearner(Learner):
             module_value_targets = compute_value_targets(
                 values=module_vf_preds,
                 rewards=unpad_data_if_necessary(
-                    episode_lens_plus_1, batch_for_vf[module_id][Columns.REWARDS]
+                    episode_lens_plus_1,
+                    convert_to_numpy(batch_for_vf[module_id][Columns.REWARDS]),
                 ),
                 terminateds=unpad_data_if_necessary(
                     episode_lens_plus_1,
-                    batch_for_vf[module_id][Columns.TERMINATEDS],
+                    convert_to_numpy(batch_for_vf[module_id][Columns.TERMINATEDS]),
                 ),
                 truncateds=unpad_data_if_necessary(
-                    episode_lens_plus_1, batch_for_vf[module_id][Columns.TRUNCATEDS]
+                    episode_lens_plus_1,
+                    convert_to_numpy(batch_for_vf[module_id][Columns.TRUNCATEDS]),
                 ),
                 gamma=self.config.gamma,
                 lambda_=self.config.lambda_,
@@ -204,34 +209,41 @@ class PPOLearner(Learner):
         return batch, episodes
 
     @override(Learner)
-    def remove_module(self, module_id: str):
-        super().remove_module(module_id)
+    def remove_module(self, module_id: ModuleID, **kwargs):
+        marl_spec = super().remove_module(module_id, **kwargs)
+
         self.entropy_coeff_schedulers_per_module.pop(module_id, None)
         self.curr_kl_coeffs_per_module.pop(module_id, None)
 
+        return marl_spec
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Learner)
-    def additional_update_for_module(
+    def after_gradient_based_update(
         self,
         *,
-        module_id: ModuleID,
-        config: "PPOConfig",
-        timestep: int,
-        sampled_kl_values: dict,
-    ) -> Dict[str, Any]:
-        results = super().additional_update_for_module(
-            module_id=module_id,
-            config=config,
-            timestep=timestep,
-            sampled_kl_values=sampled_kl_values,
-        )
+        timesteps: Dict[str, Any],
+    ) -> None:
+        super().after_gradient_based_update(timesteps=timesteps)
 
-        # Update entropy coefficient via our Scheduler.
-        new_entropy_coeff = self.entropy_coeff_schedulers_per_module[module_id].update(
-            timestep=timestep
-        )
-        results.update({LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY: new_entropy_coeff})
+        for module_id, module in self.module._rl_modules.items():
+            config = self.config.get_config_for_module(module_id)
 
-        return results
+            # Update entropy coefficient via our Scheduler.
+            new_entropy_coeff = self.entropy_coeff_schedulers_per_module[
+                module_id
+            ].update(timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0))
+            self.metrics.log_value(
+                (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
+                new_entropy_coeff,
+                window=1,
+            )
+            if (
+                config.use_kl_loss
+                and self.metrics.peek((module_id, NUM_MODULE_STEPS_TRAINED), default=0)
+                > 0
+            ):
+                self._update_module_kl_coeff(module_id=module_id, config=config)
 
     @OverrideToImplementCustomLogic
     def _compute_values(
@@ -253,9 +265,25 @@ class PPOLearner(Learner):
             tensors.
         """
         return {
-            module_id: self.module[module_id]._compute_values(
-                module_batch, self._device
-            )
-            for module_id, module_batch in batch_for_vf.policy_batches.items()
+            module_id: self.module[module_id].unwrapped().compute_values(module_batch)
+            for module_id, module_batch in batch_for_vf.items()
             if self.should_module_be_updated(module_id, batch_for_vf)
         }
+
+    @abc.abstractmethod
+    def _update_module_kl_coeff(
+        self,
+        *,
+        module_id: ModuleID,
+        config: PPOConfig,
+    ) -> None:
+        """Dynamically update the KL loss coefficients of each module with.
+
+        The update is completed using the mean KL divergence between the action
+        distributions current policy and old policy of each module. That action
+        distribution is computed during the most recent update/call to `compute_loss`.
+
+        Args:
+            module_id: The module whose KL loss coefficient to update.
+            config: The AlgorithmConfig specific to the given `module_id`.
+        """

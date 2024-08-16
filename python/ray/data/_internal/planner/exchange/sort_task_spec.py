@@ -75,8 +75,9 @@ class SortKey:
             return
 
         if self._columns and len(schema.names) > 0:
+            schema_names_set = set(schema.names)
             for column in self._columns:
-                if column not in schema.names:
+                if column not in schema_names_set:
                     raise ValueError(
                         "The column '{}' does not exist in the "
                         "schema '{}'.".format(column, schema)
@@ -131,9 +132,7 @@ class SortTaskSpec(ExchangeTaskSpec):
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
         out = BlockAccessor.for_block(block).sort_and_partition(boundaries, sort_key)
-        meta = BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        )
+        meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
         return out + [meta]
 
     @staticmethod
@@ -148,7 +147,10 @@ class SortTaskSpec(ExchangeTaskSpec):
 
     @staticmethod
     def sample_boundaries(
-        blocks: List[ObjectRef[Block]], sort_key: SortKey, num_reducers: int
+        blocks: List[ObjectRef[Block]],
+        sort_key: SortKey,
+        num_reducers: int,
+        sample_bar: Optional[ProgressBar] = None,
     ) -> List[T]:
         """
         Return (num_reducers - 1) items in ascending order from the blocks that
@@ -163,11 +165,14 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_results = [
             sample_block.remote(block, n_samples, sort_key) for block in blocks
         ]
-        sample_bar = ProgressBar(
-            SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME, len(sample_results)
-        )
+        if sample_bar is None:
+            sample_bar = ProgressBar(
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
+                len(blocks) * n_samples,
+                unit="rows",
+            )
+        # TODO(zhilong): Update sort sample bar before finished.
         samples = sample_bar.fetch_until_complete(sample_results)
-        sample_bar.close()
         del sample_results
         samples = [s for s in samples if len(s) > 0]
         # The dataset is empty

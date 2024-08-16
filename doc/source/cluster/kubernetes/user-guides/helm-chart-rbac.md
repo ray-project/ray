@@ -49,7 +49,7 @@ The operator has cluster-scoped access to create and manage resources, using Clu
 
 ```shell
 # Create a Kubernetes cluster using Kind.
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 
 # Create namespaces.
 kubectl create ns n1
@@ -96,7 +96,7 @@ The operator has Role and RoleBinding in the same namespace.
 
 ```shell
 # Create a Kubernetes cluster using Kind.
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 
 # Create namespaces.
 kubectl create ns n1
@@ -151,7 +151,7 @@ Case 3 creates Role and RoleBinding for multiple namespaces, allowing a single K
 
 ```shell
 # Create a Kubernetes cluster using Kind.
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 
 # Create namespaces.
 kubectl create ns n1

@@ -25,7 +25,7 @@ async def main():
 
     result_json = await benchmark_main()
     logger.info(result_json)
-    save_test_results(result_json, default_output_file="/tmp/micro_benchmark.json")
+    save_test_results(result_json)
 
 
 if __name__ == "__main__":

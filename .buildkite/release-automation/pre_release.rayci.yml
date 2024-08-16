@@ -2,22 +2,31 @@ group: Pre-release checks
 depends_on:
   - forge
 steps:
+  - block: "Run pre-release checks"
+    if: build.env("RAY_VERSION") != null
+    key: block-pre-release-checks
+    depends_on: []
+
   - label: "Check release blockers"
     key: check-release-blockers
-    job_env: forge
     instance_type: small_branch
     commands:
       - bazel run //ci/ray_ci/automation:weekly_green_metric -- --check
 
   - label: "Check commit hash"
     key: check-commit-hash
-    job_env: forge
-    depends_on: check-release-blockers
-    allow_dependency_failure: true
     commands:
       - bash .buildkite/release-automation/check-commit-hash.sh
+  
+  - label: "Build update version binary"
+    key: build-update-version-zip
+    instance_type: default
+    commands:
+      - bazel build --build_python_zip --incompatible_use_python_toolchains=false --python_path=python //ci/ray_ci/automation:update_version
+      - cp bazel-bin/ci/ray_ci/automation/update_version /artifact-mount/
 
   - label: "Trigger Postmerge test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") != "1"
     trigger: "postmerge"
     key: trigger-postmerge
     depends_on: check-commit-hash
@@ -26,17 +35,32 @@ steps:
       branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
       env:
-        RAYCI_CONTINUOUS_BUILD: 1
-        RAYCI_WEEKLY_RELEASE: 1
+        RAYCI_RELEASE: 1
+        RAYCI_FULL_PLATFORM_RELEASE: "${RAYCI_FULL_PLATFORM_RELEASE}"
+  
+  - label: "Trigger Postmerge nightly build & test"
+    if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
+    trigger: "postmerge"
+    key: trigger-postmerge-nightly
+    depends_on: check-commit-hash
+    build:
+      commit: "${BUILDKITE_COMMIT}"
+      branch: "${BUILDKITE_BRANCH}"
+      message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        RAYCI_RELEASE: 1
         RAYCI_SCHEDULE: "nightly"
 
   - label: "Trigger Postmerge MacOS test"
+    key: trigger-postmerge-macos
     trigger: "postmerge-macos"
     depends_on: check-commit-hash
     build:
       commit: "${BUILDKITE_COMMIT}"
       branch: "${BUILDKITE_BRANCH}"
       message: "Triggered by release-automation build #${BUILDKITE_BUILD_NUMBER}"
+      env:
+        RAYCI_RELEASE: 1
 
   - block: "Trigger Release nightly test"
     if: build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") != "1"
@@ -78,6 +102,7 @@ steps:
     depends_on: check-commit-hash
 
   - label: "Trigger Release weekly test"
+    key: trigger-release-weekly
     trigger: "release"
     depends_on: block-release-weekly-test
     build:
@@ -89,9 +114,10 @@ steps:
         RELEASE_FREQUENCY: "weekly"
 
   - label: "Check Ray commit in {{matrix}} nightly images"
-    depends_on: trigger-postmerge
+    key: check-ray-commit
+    if: build.branch !~ /^releases\// && build.env("RAYCI_WEEKLY_RELEASE_NIGHTLY") == "1"
+    depends_on: trigger-postmerge-nightly
     allow_dependency_failure: true
-    job_env: forge
     commands:
       - bazel run //ci/ray_ci/automation:check_nightly_ray_commit -- --ray_type={{matrix}} --expected_commit="${BUILDKITE_COMMIT}"
     matrix:

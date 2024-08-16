@@ -6,7 +6,9 @@ import time
 import pytest
 
 from ray.tune.search.variant_generator import format_vars
-from ray.tune.utils.util import retry_fn, Tee, logger as util_logger
+from ray.tune.utils.util import Tee
+from ray.tune.utils.util import logger as util_logger
+from ray.tune.utils.util import retry_fn
 
 
 def test_format_vars():

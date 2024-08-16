@@ -2,6 +2,8 @@ import os
 import signal
 import sys
 import time
+import logging
+import threading
 
 import numpy as np
 import pytest
@@ -105,7 +107,7 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
     def expect_exception(objects, exception):
         with pytest.raises(ray.exceptions.RayError) as err:
             ray.get(objects)
-        assert err.type is exception
+        assert issubclass(err.type, exception)
 
     signal1 = SignalActor.remote()
     actor = Actor.options(max_concurrency=2).remote()
@@ -125,7 +127,6 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
 
 
 def test_failed_actor_init(ray_start_regular, error_pubsub):
-    p = error_pubsub
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
 
@@ -139,38 +140,10 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
 
     a = FailedActor.remote()
 
-    # Make sure that we get errors from a failed constructor.
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0]["type"] == ray_constants.TASK_PUSH_ERROR
-    assert error_message1 in errors[0]["error_message"]
-
     # Incoming methods will get the exception in creation task
     with pytest.raises(ray.exceptions.RayActorError) as e:
         ray.get(a.fail_method.remote())
     assert error_message1 in str(e.value)
-
-
-def test_failed_actor_method(ray_start_regular, error_pubsub):
-    p = error_pubsub
-    error_message2 = "actor method failed"
-
-    @ray.remote
-    class FailedActor:
-        def __init__(self):
-            pass
-
-        def fail_method(self):
-            raise Exception(error_message2)
-
-    a = FailedActor.remote()
-
-    # Make sure that we get errors from a failed method.
-    a.fail_method.remote()
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0]["type"] == ray_constants.TASK_PUSH_ERROR
-    assert error_message2 in errors[0]["error_message"]
 
 
 def test_incorrect_method_calls(ray_start_regular):
@@ -626,6 +599,58 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
     # We should be able to get the return value of task 2 without any issue
     ray.get(obj2)
+
+
+# Previously when threading.Lock is in the exception, it causes
+# the serialization to fail. This test case is to cover that scenario.
+def test_unserializable_exception(ray_start_regular, propagate_logs):
+    class UnserializableException(Exception):
+        def __init__(self):
+            self.lock = threading.Lock()
+
+    @ray.remote
+    def func():
+        raise UnserializableException
+
+    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+        ray.get(func.remote())
+
+    assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
+    assert isinstance(exc_info.value.cause, ray.exceptions.RayError)
+    assert "isn't serializable" in str(exc_info.value.cause)
+
+
+def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
+    class MyFinalException(Exception):
+        def __init_subclass__(cls, /, *args, **kwargs):
+            raise TypeError("Can't subclass special typing classes")
+
+    # This should error.
+    with pytest.raises(MyFinalException):
+        raise MyFinalException("MyFinalException from driver")
+
+    @ray.remote
+    def func():
+        # This should also error. Problem is, the user exception is final so we can't
+        # subclass it (raises exception if so). This means Ray cannot raise an exception
+        # that can be caught as both `RayTaskError` and the user exception. So we
+        # issue a warning and just raise it as `RayTaskError`. User needs to use
+        # `e.cause` to get the user exception.
+        raise MyFinalException("MyFinalException from task")
+
+    with caplog.at_level(logging.WARNING, logger="ray.exceptions"):
+        with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+            ray.get(func.remote())
+
+    assert (
+        "This exception is raised as RayTaskError only. You can use "
+        "`ray_task_error.cause` to access the user exception."
+    ) in caplog.text
+    assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
+    assert isinstance(exc_info.value.cause, MyFinalException)
+    assert str(exc_info.value.cause) == "MyFinalException from task"
+
+    caplog.clear()
 
 
 if __name__ == "__main__":

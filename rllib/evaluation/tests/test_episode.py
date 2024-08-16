@@ -94,7 +94,6 @@ class EchoPolicy(Policy):
 class EpisodeEnv(MultiAgentEnv):
     def __init__(self, episode_length, num):
         super().__init__()
-        self._skip_env_checking = True
         self.agents = [MockEnv3(episode_length) for _ in range(num)]
         self.terminateds = set()
         self.truncateds = set()
@@ -143,8 +142,8 @@ class TestEpisodeLastValues(unittest.TestCase):
             default_policy_class=EchoPolicy,
             # Episode only works with env runner v1.
             config=AlgorithmConfig()
-            .rollouts(enable_connectors=False)
-            .rollouts(num_rollout_workers=0)
+            .env_runners(enable_connectors=False)
+            .env_runners(num_env_runners=0)
             .callbacks(LastInfoCallback),
         )
         ev.sample()
@@ -155,8 +154,8 @@ class TestEpisodeLastValues(unittest.TestCase):
             default_policy_class=EchoPolicy,
             # Episode only works with env runner v1.
             config=AlgorithmConfig()
-            .rollouts(enable_connectors=False)
-            .rollouts(num_rollout_workers=0)
+            .env_runners(enable_connectors=False)
+            .env_runners(num_env_runners=0)
             .callbacks(LastInfoCallback)
             .multi_agent(
                 policies={str(agent_id) for agent_id in range(NUM_AGENTS)},

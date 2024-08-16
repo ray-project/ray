@@ -37,7 +37,7 @@ from ray._private.test_utils import (
     find_available_port,
     wait_for_condition,
     find_free_port,
-    NodeKillerActor,
+    RayletKiller,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -344,12 +344,13 @@ def shutdown_only(maybe_external_redis):
 @pytest.fixture
 def propagate_logs():
     # Ensure that logs are propagated to ancestor handles. This is required if using the
-    # caplog fixture with Ray's logging.
+    # caplog or capsys fixtures with Ray's logging.
     # NOTE: This only enables log propagation in the driver process, not the workers!
-    logger = logging.getLogger("ray")
-    logger.propagate = True
+    logging.getLogger("ray").propagate = True
+    logging.getLogger("ray.data").propagate = True
     yield
-    logger.propagate = False
+    logging.getLogger("ray").propagate = False
+    logging.getLogger("ray.data").propagate = False
 
 
 # Provide a shared Ray instance for a test class
@@ -920,7 +921,7 @@ def _ray_start_chaos_cluster(request):
     assert len(nodes) == 1
 
     if kill_interval is not None:
-        node_killer = get_and_run_resource_killer(NodeKillerActor, kill_interval)
+        node_killer = get_and_run_resource_killer(RayletKiller, kill_interval)
 
     yield cluster
 

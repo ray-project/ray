@@ -1,5 +1,6 @@
+# -*- coding: utf-8 -*-
+
 import os
-import sys
 import subprocess
 import urllib
 from pathlib import Path
@@ -65,22 +66,74 @@ def test_get_filesystem_s3(shutdown_only):
         assert isinstance(fs, pyarrow.fs.S3FileSystem), fs
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="The issue is not fixed for windows yet"
-)
 def test_escape_storage_uri_with_runtime_env(shutdown_only):
     # https://github.com/ray-project/ray/issues/41568
     # Test to make sure we can successfully start worker process
-    # when storage uri contains ? and we use runtime env.
+    # when storage uri contains ?,& and we use runtime env and that the
+    # moto mocking actually works with the escaped uri
     with simulate_storage("s3") as s3_uri:
         assert "?" in s3_uri
+        assert "&" in s3_uri
         ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
 
         @ray.remote
         def f():
-            return 1
+            client = storage.get_client("foo")
+            return client.get("bar")
 
-        assert ray.get(f.remote()) == 1
+        assert ray.get(f.remote()) == b"baz"
+
+
+def test_storage_uri_semicolon(shutdown_only):
+    with simulate_storage("s3") as s3_uri:
+        # test that ';' can be used instead of '&'
+        s3_uri.replace("&", ";")
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar")
+
+        assert ray.get(f.remote()) == b"baz"
+
+
+def test_storage_uri_special(shutdown_only):
+    # Test various non-ascii characters that can appear in a URI
+    # test that '$', '+', ' ' are passed through
+    with simulate_storage("s3", region="$value+value value") as s3_uri:
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+        client = storage.get_client("foo")
+        # url parsing: '+' becomes ' '
+        assert client.fs.region == "$value value value"
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar").decode() + ";" + client.fs.region
+
+        assert ray.get(f.remote()) == "baz;$value value value"
+
+
+def test_storage_uri_unicode(shutdown_only):
+    # test unicode characters in URI
+    with simulate_storage("s3", region="üs-öst-2") as s3_uri:
+        ray.init(storage=s3_uri, runtime_env={"env_vars": {"TEST_ENV": "1"}})
+        client = storage.get_client("foo")
+        client.put("bar", b"baz")
+
+        @ray.remote
+        def f():
+            client = storage.get_client("foo")
+            return client.get("bar")
+
+        assert ray.get(f.remote()) == b"baz"
 
 
 def test_get_filesystem_invalid(shutdown_only, tmp_path):
@@ -168,7 +221,9 @@ def test_list_basic(shutdown_only, storage_type):
         assert sorted([f.base_name for f in d2]) == ["bar1", "bar2"], d2
         with pytest.raises(FileNotFoundError):
             client.list("invalid")
-        with pytest.raises(NotADirectoryError):
+        with pytest.raises(
+            FileNotFoundError if storage_type == "s3" else NotADirectoryError
+        ):
             client.list("foo/bar1")
 
 

@@ -26,6 +26,11 @@ from ray.rllib.policy.sample_batch import (
     convert_ma_batch_to_sample_batch,
 )
 from ray.rllib.tests.test_nested_observation_spaces import NestedMultiAgentEnv
+from ray.rllib.utils.metrics import (
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.numpy import one_hot
 from ray.rllib.utils.test_utils import check
 
@@ -496,7 +501,7 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: BasicMultiAgent(5),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(rollout_fragment_length=50, num_rollout_workers=0)
+            .env_runners(rollout_fragment_length=50, num_env_runners=0)
             .multi_agent(
                 policies={"p0", "p1"},
                 policy_mapping_fn=policy_mapping_fn,
@@ -516,10 +521,10 @@ class TestMultiAgentEnv(unittest.TestCase):
             # to the new signature we are using (agent_id, episode, **kwargs),
             # but should not break this test.
             config=AlgorithmConfig()
-            .rollouts(
+            .env_runners(
                 rollout_fragment_length=50,
-                num_rollout_workers=0,
-                num_envs_per_worker=4,
+                num_env_runners=0,
+                num_envs_per_env_runner=4,
                 remote_worker_envs=True,
                 remote_env_batch_wait_ms=99999999,
             )
@@ -538,10 +543,10 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: BasicMultiAgent(5),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(
+            .env_runners(
                 rollout_fragment_length=50,
-                num_rollout_workers=0,
-                num_envs_per_worker=4,
+                num_env_runners=0,
+                num_envs_per_env_runner=4,
                 remote_worker_envs=True,
             )
             .multi_agent(
@@ -559,9 +564,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: EarlyDoneMultiAgent(),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(
+            .env_runners(
                 rollout_fragment_length=1,
-                num_rollout_workers=0,
+                num_env_runners=0,
                 batch_mode="complete_episodes",
             )
             .multi_agent(
@@ -591,7 +596,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("flex_agents_multi_agent")
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .framework("tf")
             .training(train_batch_size=50, sgd_minibatch_size=50, num_sgd_iter=1)
         )
@@ -600,7 +605,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"], result["timesteps_total"]
+                    i,
+                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
+                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 )
             )
         algo.stop()
@@ -612,7 +619,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("sometimes_zero_agents")
-            .rollouts(num_rollout_workers=0, enable_connectors=True)
+            .env_runners(num_env_runners=0, enable_connectors=True)
             .framework("tf")
         )
         algo = config.build()
@@ -620,7 +627,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"], result["timesteps_total"]
+                    i,
+                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
+                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 )
             )
         algo.stop()
@@ -630,9 +639,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: RoundRobinMultiAgent(5, increment_obs=True),
             default_policy_class=MockPolicy,
             config=AlgorithmConfig()
-            .rollouts(
+            .env_runners(
                 rollout_fragment_length=50,
-                num_rollout_workers=0,
+                num_env_runners=0,
             )
             .multi_agent(
                 policies={"p0"},
@@ -682,7 +691,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 episodes=None,
                 explore=True,
                 timestep=None,
-                **kwargs
+                **kwargs,
             ):
                 obs_shape = (len(obs_batch),)
                 actions = np.zeros(obs_shape, dtype=np.int32)
@@ -703,9 +712,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             env_creator=lambda _: gym.make("CartPole-v1"),
             default_policy_class=StatefulPolicy,
             config=(
-                AlgorithmConfig().rollouts(
+                AlgorithmConfig().env_runners(
                     rollout_fragment_length=5,
-                    num_rollout_workers=0,
+                    num_env_runners=0,
                 )
                 # Force `state_in_0` to be repeated every ts in the collected batch
                 # (even though we don't even have a model that would care about this).
@@ -781,9 +790,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             default_policy_class=ModelBasedPolicy,
             config=DQNConfig()
             .framework("tf")
-            .rollouts(
+            .env_runners(
                 rollout_fragment_length=5,
-                num_rollout_workers=0,
+                num_env_runners=0,
                 enable_connectors=False,  # only works with old episode API
             )
             .multi_agent(
@@ -808,7 +817,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("multi_agent_cartpole")
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .framework("tf")
         )
 
@@ -817,10 +826,12 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"], result["timesteps_total"]
+                    i,
+                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
+                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 )
             )
-            if result["episode_reward_mean"] >= 50 * n:
+            if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= 50 * n:
                 algo.stop()
                 return
         raise Exception("failed to improve reward")
@@ -841,7 +852,7 @@ class TestMultiAgentEnv(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("multi_agent_cartpole")
-            .rollouts(num_rollout_workers=0)
+            .env_runners(num_env_runners=0)
             .multi_agent(
                 policies={
                     "policy_1": gen_policy(),
@@ -861,7 +872,9 @@ class TestMultiAgentEnv(unittest.TestCase):
             result = algo.train()
             print(
                 "Iteration {}, reward {}, timesteps {}".format(
-                    i, result["episode_reward_mean"], result["timesteps_total"]
+                    i,
+                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
+                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 )
             )
         self.assertTrue(

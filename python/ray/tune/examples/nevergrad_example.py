@@ -4,11 +4,12 @@ It also checks that it is usable with a separate scheduler.
 
 Requires the Nevergrad library to be installed (`pip install nevergrad`).
 """
+
 import time
 
 from ray import train, tune
-from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.nevergrad import NevergradSearch
 
 
@@ -30,6 +31,7 @@ def easy_objective(config):
 
 if __name__ == "__main__":
     import argparse
+
     import nevergrad as ng
 
     parser = argparse.ArgumentParser()

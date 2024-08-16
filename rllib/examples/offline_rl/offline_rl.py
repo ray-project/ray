@@ -1,6 +1,6 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
-"""Example on how to use CQL to learn from an offline json file.
+"""Example on how to use CQL to learn from an offline JSON file.
 
 Important node: Make sure that your offline data file contains only
 a single timestep per line to mimic the way SAC pulls samples from
@@ -24,9 +24,14 @@ import numpy as np
 
 from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.algorithms import cql as cql
-from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
+)
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
 )
 
 torch, _ = try_import_torch()
@@ -53,7 +58,7 @@ if __name__ == "__main__":
     config = (
         cql.CQLConfig()
         .framework(framework="torch")
-        .rollouts(num_rollout_workers=0)
+        .env_runners(num_env_runners=0)
         .training(
             n_step=3,
             bc_iters=0,
@@ -87,7 +92,7 @@ if __name__ == "__main__":
             }
         )
         .evaluation(
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             evaluation_interval=1,
             evaluation_duration=10,
             evaluation_parallel_to_training=False,
@@ -107,11 +112,13 @@ if __name__ == "__main__":
     learnt = False
     for i in range(num_iterations):
         print(f"Iter {i}")
-        eval_results = cql_algorithm.train().get("evaluation")
+        eval_results = cql_algorithm.train().get(EVALUATION_RESULTS)
         if eval_results:
-            print("... R={}".format(eval_results["episode_reward_mean"]))
+            print(
+                "... R={}".format(eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN])
+            )
             # Learn until some reward is reached on an actual live env.
-            if eval_results["episode_reward_mean"] >= min_reward:
+            if eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= min_reward:
                 # Test passed gracefully.
                 if args.as_test:
                     print("Test passed after {} iterations.".format(i))
@@ -138,7 +145,7 @@ if __name__ == "__main__":
     # using the data from our buffer.
     # Get a sample (MultiAgentBatch).
 
-    batch = synchronous_parallel_sample(worker_set=cql_algorithm.workers)
+    batch = synchronous_parallel_sample(worker_set=cql_algorithm.env_runner_group)
     batch = convert_ma_batch_to_sample_batch(batch)
     obs = torch.from_numpy(batch["obs"])
     # Pass the observations through our model to get the

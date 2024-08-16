@@ -33,8 +33,16 @@ class Model:
 
     async def __call__(self, request: starlette.requests.Request) -> str:
         uri = (await request.json())["uri"]
+
         try:
             image_bytes = requests.get(uri).content
+        except (
+            requests.exceptions.ConnectionError,
+            requests.exceptions.ChunkedEncodingError,
+        ):
+            return
+
+        try:
             image = Image.open(BytesIO(image_bytes)).convert("RGB")
         except PIL.UnidentifiedImageError:
             return

@@ -15,6 +15,7 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray._private.pydantic_compat import IS_PYDANTIC_2
+from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import serve_encoders
 from ray.serve.exceptions import RayServeException
@@ -217,13 +218,33 @@ class ASGIReceiveProxy:
 
     def __init__(
         self,
-        request_id: str,
-        receive_asgi_messages: Callable[[str], Awaitable[bytes]],
+        scope: Scope,
+        request_metadata: RequestMetadata,
+        receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]],
     ):
+        self._type = scope["type"]  # Either 'http' or 'websocket'.
         self._queue = asyncio.Queue()
-        self._request_id = request_id
+        self._request_metadata = request_metadata
         self._receive_asgi_messages = receive_asgi_messages
         self._disconnect_message = None
+
+    def _get_default_disconnect_message(self) -> Message:
+        """Return the appropriate disconnect message based on the connection type.
+
+        HTTP ASGI spec:
+            https://asgi.readthedocs.io/en/latest/specs/www.html#disconnect-receive-event
+
+        WS ASGI spec:
+            https://asgi.readthedocs.io/en/latest/specs/www.html#disconnect-receive-event-ws
+        """
+        if self._type == "websocket":
+            return {
+                "type": "websocket.disconnect",
+                # 1005 is the default disconnect code according to the ASGI spec.
+                "code": 1005,
+            }
+        else:
+            return {"type": "http.disconnect"}
 
     async def fetch_until_disconnect(self):
         """Fetch messages repeatedly until a disconnect message is received.
@@ -235,7 +256,9 @@ class ASGIReceiveProxy:
         """
         while True:
             try:
-                pickled_messages = await self._receive_asgi_messages(self._request_id)
+                pickled_messages = await self._receive_asgi_messages(
+                    self._request_metadata
+                )
                 for message in pickle.loads(pickled_messages):
                     self._queue.put_nowait(message)
 
@@ -244,8 +267,11 @@ class ASGIReceiveProxy:
                         return
             except KeyError:
                 # KeyError can be raised if the request is no longer active in the proxy
-                # (e.g., the user disconnects). This is expected behavior and we should
+                # (i.e., the user disconnects). This is expected behavior and we should
                 # not log an error: https://github.com/ray-project/ray/issues/43290.
+                message = self._get_default_disconnect_message()
+                self._queue.put_nowait(message)
+                self._disconnect_message = message
                 return
             except Exception as e:
                 # Raise unexpected exceptions in the next `__call__`.

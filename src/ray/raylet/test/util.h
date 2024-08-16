@@ -40,6 +40,7 @@ class MockWorker : public WorkerInterface {
   void SetAssignedTask(const RayTask &assigned_task) override {
     task_ = assigned_task;
     task_assign_time_ = absl::Now();
+    root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
   };
 
   absl::Time GetAssignedTaskTime() const override { return task_assign_time_; };
@@ -155,6 +156,10 @@ class MockWorker : public WorkerInterface {
 
   void SetJobId(const JobID &job_id) override { job_id_ = job_id; }
 
+  const ActorID &GetRootDetachedActorId() const override {
+    return root_detached_actor_id_;
+  }
+
  protected:
   void SetStartupToken(StartupToken startup_token) override {
     RAY_CHECK(false) << "Method unused";
@@ -175,6 +180,7 @@ class MockWorker : public WorkerInterface {
   int runtime_env_hash_;
   TaskID task_id_;
   JobID job_id_;
+  ActorID root_detached_actor_id_;
 };
 
 }  // namespace raylet

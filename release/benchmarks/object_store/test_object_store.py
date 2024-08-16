@@ -58,19 +58,20 @@ duration = test_object_broadcast()
 print(f"Broadcast time: {duration} ({OBJECT_SIZE} B x {NUM_NODES} nodes)")
 
 if "TEST_OUTPUT_JSON" in os.environ:
-    out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {
-        "broadcast_time": duration,
-        "object_size": OBJECT_SIZE,
-        "num_nodes": NUM_NODES,
-        "success": "1",
-    }
-    perf_metric_name = f"time_to_broadcast_{OBJECT_SIZE}_bytes_to_{NUM_NODES}_nodes"
-    results["perf_metrics"] = [
-        {
-            "perf_metric_name": perf_metric_name,
-            "perf_metric_value": duration,
-            "perf_metric_type": "LATENCY",
+    with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
+        results = {
+            "broadcast_time": duration,
+            "object_size": OBJECT_SIZE,
+            "num_nodes": NUM_NODES,
+            "success": "1",
         }
-    ]
-    json.dump(results, out_file)
+        perf_metric_name = f"time_to_broadcast_{OBJECT_SIZE}_bytes_to_{NUM_NODES}_nodes"
+        results["perf_metrics"] = [
+            {
+                "perf_metric_name": perf_metric_name,
+                "perf_metric_value": duration,
+                "perf_metric_type": "LATENCY",
+            }
+        ]
+        print(f"jjyao {results} {out_file}")
+        json.dump(results, out_file)

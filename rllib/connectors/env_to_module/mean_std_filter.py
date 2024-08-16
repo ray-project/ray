@@ -1,18 +1,17 @@
-from typing import Any, Dict, List, Optional
-from gymnasium.spaces import Discrete, MultiDiscrete
+from typing import Any, Collection, Dict, List, Optional, Union
 
 import gymnasium as gym
+from gymnasium.spaces import Discrete, MultiDiscrete
 import numpy as np
 import tree
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.filter import MeanStdFilter as _MeanStdFilter
+from ray.rllib.utils.filter import MeanStdFilter as _MeanStdFilter, RunningStat
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.typing import AgentID, EpisodeType
+from ray.rllib.utils.typing import AgentID, EpisodeType, StateDict
 from ray.util.annotations import PublicAPI
-from ray.rllib.utils.filter import RunningStat
 
 
 @PublicAPI(stability="alpha")
@@ -80,10 +79,9 @@ class MeanStdFilter(ConnectorV2):
             clip_by_value: If not None, clip the incoming data within the interval:
                 [-clip_by_value, +clip_by_value].
             update_stats: Whether to update the internal mean and std stats with each
-                incoming sample (with each `__call__()`) or not. For example, you should
-                set this to False if you would like to perform inference in a
-                production environment, without continuing to "learn" stats from new
-                data.
+                incoming sample (with each `__call__()`) or not. You should set this to
+                False if you would like to perform inference in a production
+                environment, without continuing to "learn" stats from new data.
         """
         super().__init__(**kwargs)
 
@@ -122,24 +120,32 @@ class MeanStdFilter(ConnectorV2):
                 sa_obs, update=self._update_stats
             )
             sa_episode.set_observations(at_indices=-1, new_data=normalized_sa_obs)
-
-            if len(sa_episode) == 0:
-                # TODO (sven): This is kind of a hack.
-                #  We set the Episode's observation space to ours so that we can safely
-                #  set the last obs to the new value (without causing a space mismatch
-                #  error).
-                sa_episode.observation_space = self.observation_space
+            #  We set the Episode's observation space to ours so that we can safely
+            #  set the last obs to the new value (without causing a space mismatch
+            #  error).
+            sa_episode.observation_space = self.observation_space
 
         # Leave `data` as is. RLlib's default connector will automatically
         # populate the OBS column therein from the episodes' now transformed
         # observations.
         return data
 
-    def get_state(self) -> Any:
+    @override(ConnectorV2)
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
+        if self._filters is None:
+            self._init_new_filters()
         return self._get_state_from_filters(self._filters)
 
     @override(ConnectorV2)
-    def set_state(self, state: Dict[AgentID, Dict[str, Any]]) -> None:
+    def set_state(self, state: StateDict) -> None:
+        if self._filters is None:
+            self._init_new_filters()
         for agent_id, agent_state in state.items():
             filter = self._filters[agent_id]
             filter.shape = agent_state["shape"]

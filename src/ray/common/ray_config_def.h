@@ -52,13 +52,6 @@ RAY_CONFIG(int64_t, handler_warning_timeout_ms, 1000)
 /// The duration between loads pulled by GCS
 RAY_CONFIG(uint64_t, gcs_pull_resource_loads_period_milliseconds, 1000)
 
-/// If GCS restarts, before the first heatbeat is sent,
-/// gcs_failover_worker_reconnect_timeout is used for the threshold
-/// of the raylet. This is very useful given that raylet might need
-/// a while to reconnect to the GCS, for example, when GCS is available
-/// but not reachable to raylet.
-RAY_CONFIG(int64_t, gcs_failover_worker_reconnect_timeout, 120)
-
 /// The duration between reporting resources sent by the raylets.
 RAY_CONFIG(uint64_t, raylet_report_resources_period_milliseconds, 100)
 
@@ -690,8 +683,14 @@ RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)
 /// The maximum number of objects to publish for each publish calls.
 RAY_CONFIG(int, publish_batch_size, 5000)
 
-/// Maximum size in bytes of buffered messages per entity, in Ray publisher.
-RAY_CONFIG(int, publisher_entity_buffer_max_bytes, 10 << 20)
+/// Maximum size in bytes of buffered messages per pubsub channel.  Large
+/// applications (1k+ nodes, 100k+ tasks or actors) may see memory pressure in
+/// the GCS due to high system-level pubsub traffic. Reducing this config value
+/// can help reduce memory pressure, at the cost of dropping some published
+/// messages (e.g., worker logs printed to driver stdout). See
+/// src/ray/pubsub/publisher.cc for the current pubsub channels that are
+/// subject to this cap.
+RAY_CONFIG(int, publisher_entity_buffer_max_bytes, 1 << 30)
 
 /// The maximum command batch size.
 RAY_CONFIG(int64_t, max_command_batch_size, 2000)
@@ -721,7 +720,7 @@ RAY_CONFIG(uint32_t,
            std::getenv("RAY_preallocate_plasma_memory") != nullptr &&
                    std::getenv("RAY_preallocate_plasma_memory") == std::string("1")
                ? 120
-               : 10)
+               : 30)
 
 /// The scheduler will treat these predefined resource types as unit_instance.
 /// Default predefined_unit_instance_resources is "GPU".
@@ -791,13 +790,6 @@ RAY_CONFIG(bool, event_log_reporter_enabled, true)
 /// This has no effect if `event_log_reporter_enabled` is false.
 RAY_CONFIG(bool, emit_event_to_log_file, false)
 
-/// Whether to enable register actor async.
-/// If it is false, the actor registration to GCS becomes synchronous, i.e.,
-/// core worker is blocked until GCS registers the actor and replies to it.
-/// If it is true, the actor registration is async, but actor handles cannot
-/// be passed to other worker until it is registered to GCS.
-RAY_CONFIG(bool, actor_register_async, true)
-
 /// Event severity threshold value
 RAY_CONFIG(std::string, event_level, "warning")
 
@@ -856,9 +848,6 @@ RAY_CONFIG(int64_t,
 RAY_CONFIG(bool, worker_core_dump_exclude_plasma_store, true)
 RAY_CONFIG(bool, raylet_core_dump_exclude_plasma_store, true)
 
-/// Whether to kill idle workers of a terminated job.
-RAY_CONFIG(bool, kill_idle_workers_of_terminated_job, true)
-
 // Instruct the Python default worker to preload the specified imports.
 // This is specified as a comma-separated list.
 // If left empty, no such attempt will be made.
@@ -907,3 +896,6 @@ RAY_CONFIG(int, object_manager_client_connection_num, 4)
 //     std::min(std::max(2, num_cpus / 4), 8)
 // Update this to overwrite it.
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
+
+// Write export API events to file if enabled
+RAY_CONFIG(bool, enable_export_api_write, false)

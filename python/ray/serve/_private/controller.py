@@ -12,6 +12,7 @@ from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -22,7 +23,7 @@ from ray.serve._private.common import (
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
-    CONTROL_LOOP_PERIOD_S,
+    CONTROL_LOOP_INTERVAL_S,
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_TASK_EVENTS,
@@ -172,17 +173,22 @@ class ServeController:
             if actor["namespace"] == SERVE_NAMESPACE
         ]
 
+        self.autoscaling_state_manager = AutoscalingStateManager()
         self.deployment_state_manager = DeploymentStateManager(
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
             get_all_live_placement_group_names(),
             self.cluster_node_info_cache,
+            self.autoscaling_state_manager,
         )
 
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
-            self.deployment_state_manager, self.endpoint_state, self.kv_store
+            self.deployment_state_manager,
+            self.endpoint_state,
+            self.kv_store,
+            self.global_logging_config,
         )
 
         # Controller actor details
@@ -248,12 +254,12 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics(
-        self, replica_id: str, window_avg: float, send_timestamp: float
+        self, replica_id: str, window_avg: Optional[float], send_timestamp: float
     ):
         logger.debug(
             f"Received metrics from replica {replica_id}: {window_avg} running requests"
         )
-        self.deployment_state_manager.record_autoscaling_metrics(
+        self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_id, window_avg, send_timestamp
         )
 
@@ -271,7 +277,7 @@ class ServeController:
             f"Received metrics from handle {handle_id} for deployment {deployment_id}: "
             f"{queued_requests} queued requests and {running_requests} running requests"
         )
-        self.deployment_state_manager.record_handle_metrics(
+        self.autoscaling_state_manager.record_request_metrics_for_handle(
             deployment_id=deployment_id,
             handle_id=handle_id,
             actor_id=actor_id,
@@ -282,14 +288,14 @@ class ServeController:
         )
 
     def _dump_autoscaling_metrics_for_testing(self):
-        return self.deployment_state_manager.get_autoscaling_metrics()
+        return self.autoscaling_state_manager.get_metrics()
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._deployment_states[deployment_id]._replicas
 
-    def _stop_one_running_replica_for_testing(self, deployment_name):
+    def _stop_one_running_replica_for_testing(self, deployment_id):
         self.deployment_state_manager._deployment_states[
-            deployment_name
+            deployment_id
         ]._stop_one_running_replica_for_testing()
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
@@ -443,8 +449,9 @@ class ServeController:
             # When the controller is done recovering, drop invalid handle metrics
             # that may be stale for autoscaling
             if not any_recovering:
-                self.deployment_state_manager.drop_stale_handle_metrics(
-                    self.proxy_state_manager.get_alive_proxy_actor_ids()
+                self.autoscaling_state_manager.drop_stale_handle_metrics(
+                    self.deployment_state_manager.get_alive_replica_actor_ids()
+                    | self.proxy_state_manager.get_alive_proxy_actor_ids()
                 )
 
             loop_duration = time.time() - loop_start_time
@@ -462,7 +469,7 @@ class ServeController:
             self.num_control_loops_gauge.set(num_loops)
 
             sleep_start_time = time.time()
-            await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+            await asyncio.sleep(CONTROL_LOOP_INTERVAL_S)
             self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
 
     def _create_control_loop_metrics(self):
@@ -873,10 +880,18 @@ class ServeController:
         grpc_config = self.get_grpc_config()
         applications = {}
 
+        app_statuses = self.application_state_manager.list_app_statuses()
+
+        # If there are no app statuses, there's no point getting the app configs.
+        # Moreover, there might be no app statuses because the GCS is down,
+        # in which case getting the app configs would fail anyway,
+        # since they're stored in the checkpoint in the GCS.
+        app_configs = self.get_app_configs() if app_statuses else {}
+
         for (
             app_name,
             app_status_info,
-        ) in self.application_state_manager.list_app_statuses().items():
+        ) in app_statuses.items():
             applications[app_name] = ApplicationDetails(
                 name=app_name,
                 route_prefix=self.application_state_manager.get_route_prefix(app_name),
@@ -885,8 +900,9 @@ class ServeController:
                 message=app_status_info.message,
                 last_deployed_time_s=app_status_info.deployment_timestamp,
                 # This can be none if the app was deployed through
-                # serve.run, or if the app is in deleting state
-                deployed_app_config=self.get_app_config(app_name),
+                # serve.run, the app is in deleting state,
+                # or a checkpoint hasn't been set yet
+                deployed_app_config=app_configs.get(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
@@ -941,13 +957,16 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
+    def get_app_configs(self) -> Dict[str, ServeApplicationSchema]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if checkpoint is not None:
-            _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
-            if name in config_checkpoints_dict:
-                config = config_checkpoints_dict[name]
-                return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
+        if checkpoint is None:
+            return {}
+
+        _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+        return {
+            app: ServeApplicationSchema.parse_obj(config)
+            for app, config in config_checkpoints_dict.items()
+        }
 
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""

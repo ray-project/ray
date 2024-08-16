@@ -116,7 +116,7 @@ bool SubscriberChannel::CheckNoLeaks() const {
 }
 
 void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_address,
-                                               const rpc::PubMessage &pub_message) const {
+                                               rpc::PubMessage &&pub_message) const {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   auto subscription_it = subscription_map_.find(publisher_id);
   // If there's no more subscription, do nothing.
@@ -142,7 +142,8 @@ void SubscriberChannel::HandlePublishedMessage(const rpc::Address &publisher_add
       rpc::ChannelType_descriptor()->FindValueByNumber(channel_type_)->name();
   callback_service_->post(
       [subscription_callback = std::move(maybe_subscription_callback.value()),
-       msg = std::move(pub_message)]() { subscription_callback(msg); },
+       msg = std::move(pub_message)]() mutable  // allow data to be moved
+      { subscription_callback(std::move(msg)); },
       "Subscriber.HandlePublishedMessage_" + channel_name);
 }
 
@@ -228,6 +229,7 @@ std::string SubscriberChannel::DebugString() const {
 
 Subscriber::~Subscriber() {
   // TODO(mwtian): flush Subscriber and ensure there is no leak during destruction.
+  // TODO(ryw): Remove this subscriber from the service by GcsUnregisterSubscriber.
 }
 
 bool Subscriber::Subscribe(std::unique_ptr<rpc::SubMessage> sub_message,
@@ -357,15 +359,15 @@ void Subscriber::MakeLongPollingPubsubConnection(const rpc::Address &publisher_a
   long_polling_request.set_max_processed_sequence_id(processed_state.second);
   subscriber_client->PubsubLongPolling(
       long_polling_request,
-      [this, publisher_address](Status status, const rpc::PubsubLongPollingReply &reply) {
+      [this, publisher_address](Status status, rpc::PubsubLongPollingReply &&reply) {
         absl::MutexLock lock(&mutex_);
-        HandleLongPollingResponse(publisher_address, status, reply);
+        HandleLongPollingResponse(publisher_address, status, std::move(reply));
       });
 }
 
 void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address,
                                            const Status &status,
-                                           const rpc::PubsubLongPollingReply &reply) {
+                                           rpc::PubsubLongPollingReply &&reply) {
   const auto publisher_id = PublisherID::FromBinary(publisher_address.worker_id());
   RAY_LOG(DEBUG) << "Long polling request has been replied from " << publisher_id;
   RAY_CHECK(publishers_connected_.count(publisher_id));
@@ -424,8 +426,10 @@ void Subscriber::HandleLongPollingResponse(const rpc::Address &publisher_address
         continue;
       }
 
-      // Otherwise, invoke the subscription callback.
-      Channel(channel_type)->HandlePublishedMessage(publisher_address, msg);
+      // Otherwise, invoke the subscription callback, consuming the pub message.
+      Channel(channel_type)
+          ->HandlePublishedMessage(publisher_address,
+                                   std::move(*reply.mutable_pub_messages(i)));
     }
   }
 

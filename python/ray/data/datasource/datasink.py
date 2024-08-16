@@ -35,7 +35,7 @@ class Datasink:
 
         Returns:
             A user-defined output. Can be anything, and the returned value is passed to
-            :meth:`~Datasink.on_write_complete`.
+            :meth:`~ray.data.Datasink.on_write_complete`.
         """
         raise NotImplementedError
 
@@ -47,7 +47,8 @@ class Datasink:
         method fails, then ``on_write_failed()`` is called.
 
         Args:
-            write_results: The objects returned by every :meth:`~Datasink.write` task.
+            write_results: The objects returned by every
+                :meth:`~ray.data.Datasink.write` task.
         """
         pass
 
@@ -81,7 +82,7 @@ class Datasink:
 
     @property
     def num_rows_per_write(self) -> Optional[int]:
-        """The target number of rows to pass to each :meth:`~Datasink.write` call.
+        """The target number of rows to pass to each :meth:`~ray.data.Datasink.write` call.
 
         If ``None``, Ray Data passes a system-chosen number of rows.
         """

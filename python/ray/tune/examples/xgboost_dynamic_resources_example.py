@@ -1,15 +1,16 @@
-from typing import Dict, Any, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
 import sklearn.datasets
 import sklearn.metrics
-from sklearn.model_selection import train_test_split
 import xgboost as xgb
+from sklearn.model_selection import train_test_split
 
 import ray
 from ray import train, tune
-from ray.tune.schedulers import ResourceChangingScheduler, ASHAScheduler
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Trial
 from ray.tune.integration.xgboost import TuneReportCheckpointCallback
+from ray.tune.schedulers import ASHAScheduler, ResourceChangingScheduler
 
 if TYPE_CHECKING:
     from ray.tune.execution.tune_controller import TuneController
@@ -151,7 +152,7 @@ def tune_xgboost():
 
     scheduler = ResourceChangingScheduler(
         base_scheduler=base_scheduler,
-        resources_allocation_function=example_resources_allocation_function
+        resources_allocation_function=example_resources_allocation_function,
         # resources_allocation_function=DistributeResources()  # default
     )
 

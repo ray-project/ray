@@ -3,7 +3,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.algorithms.impala import ImpalaConfig
+from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.examples.envs.classes.multi_agent import (
@@ -60,14 +60,14 @@ class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_multiagent(self):
-        check_support_multiagent("IMPALA", ImpalaConfig().resources(num_gpus=0))
+        check_support_multiagent("IMPALA", IMPALAConfig().resources(num_gpus=0))
 
     def test_ppo_multiagent(self):
         check_support_multiagent(
             "PPO",
             (
                 PPOConfig()
-                .rollouts(num_rollout_workers=1, rollout_fragment_length=10)
+                .env_runners(num_env_runners=1, rollout_fragment_length=10)
                 .training(num_sgd_iter=1, train_batch_size=10, sgd_minibatch_size=1)
             ),
         )
@@ -98,7 +98,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             (
                 SACConfig()
                 .environment(normalize_actions=False)
-                .rollouts(num_rollout_workers=0)
+                .env_runners(num_env_runners=0)
                 .training(replay_buffer_config={"capacity": 1000})
             ),
         )
@@ -114,7 +114,7 @@ class TestSupportedMultiAgentMultiGPU(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_multiagent_multi_gpu(self):
-        check_support_multiagent("IMPALA", ImpalaConfig().resources(num_gpus=2))
+        check_support_multiagent("IMPALA", IMPALAConfig().resources(num_gpus=2))
 
 
 if __name__ == "__main__":

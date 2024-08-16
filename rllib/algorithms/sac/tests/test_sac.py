@@ -33,7 +33,6 @@ torch, _ = try_import_torch()
 
 class SimpleEnv(gym.Env):
     def __init__(self, config):
-        self._skip_env_checking = True
         if config.get("simplex_actions", False):
             self.action_space = Simplex((2,))
         else:
@@ -83,7 +82,7 @@ class TestSAC(unittest.TestCase):
                 store_buffer_in_checkpoints=True,
                 train_batch_size=10,
             )
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
+            .env_runners(num_env_runners=0, rollout_fragment_length=10)
         )
         num_iterations = 1
 
@@ -203,8 +202,8 @@ class TestSAC(unittest.TestCase):
                 num_steps_sampled_before_learning_starts=0,
                 train_batch_size=5,
             )
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 rollout_fragment_length=5,
             )
             .experimental(_disable_preprocessor_api=True)

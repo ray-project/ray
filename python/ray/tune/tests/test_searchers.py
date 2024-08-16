@@ -1,14 +1,16 @@
 import contextlib
-from copy import deepcopy
-import numpy as np
 import os
-from packaging.version import Version
-import pandas
-import pytest
 import shutil
+import sys
 import tempfile
 import unittest
+from copy import deepcopy
 from unittest.mock import patch
+
+import numpy as np
+import pandas
+import pytest
+from packaging.version import Version
 
 import ray
 from ray import train, tune
@@ -82,8 +84,9 @@ class InvalidValuesTest(unittest.TestCase):
         ), "Searcher checkpointing failed (unable to serialize)."
 
     def testAxManualSetup(self):
-        from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
+
+        from ray.tune.search.ax import AxSearch
 
         config = self.config.copy()
         config["mixed_list"] = [1, tune.uniform(2, 3), 4]
@@ -145,6 +148,10 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="BOHB not yet supported for python 3.12+",
+    )
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -160,6 +167,9 @@ class InvalidValuesTest(unittest.TestCase):
             )
         self.assertCorrectExperimentOutput(out)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testHEBO(self):
         if Version(pandas.__version__) >= Version("2.0.0"):
             pytest.skip("HEBO does not support pandas>=2.0.0")
@@ -196,8 +206,9 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertCorrectExperimentOutput(out)
 
     def testNevergrad(self):
-        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.search.nevergrad import NevergradSearch
 
         np.random.seed(2020)  # At least one nan, inf, -inf and float
 
@@ -213,14 +224,16 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertCorrectExperimentOutput(out)
 
     def testNevergradWithRequiredOptimizerKwargs(self):
-        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.search.nevergrad import NevergradSearch
 
         NevergradSearch(optimizer=ng.optimizers.CM, optimizer_kwargs=dict(budget=16))
 
     def testOptuna(self):
-        from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
+
+        from ray.tune.search.optuna import OptunaSearch
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
 
@@ -237,8 +250,9 @@ class InvalidValuesTest(unittest.TestCase):
         self.assertCorrectExperimentOutput(out)
 
     def testOptunaReportTooOften(self):
-        from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
+
+        from ray.tune.search.optuna import OptunaSearch
 
         searcher = OptunaSearch(
             sampler=RandomSampler(seed=1234),
@@ -344,8 +358,9 @@ class AddEvaluatedPointTest(unittest.TestCase):
         searcher_copy.suggest("1")
 
     def testOptuna(self):
-        from ray.tune.search.optuna import OptunaSearch
         from optuna.trial import TrialState
+
+        from ray.tune.search.optuna import OptunaSearch
 
         searcher = OptunaSearch(
             space=self.space,
@@ -408,6 +423,9 @@ class AddEvaluatedPointTest(unittest.TestCase):
         with self.assertRaises(TypeError):
             dbr_searcher.add_evaluated_point(point, 1.0)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testHEBO(self):
         if Version(pandas.__version__) >= Version("2.0.0"):
             pytest.skip("HEBO does not support pandas>=2.0.0")
@@ -491,8 +509,9 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
             assert "not_completed" in searcher._live_trial_mapping
 
     def testAx(self):
-        from ray.tune.search.ax import AxSearch
         from ax.service.ax_client import AxClient
+
+        from ray.tune.search.ax import AxSearch
 
         converted_config = AxSearch.convert_search_space(self.config)
         client = AxClient()
@@ -521,6 +540,10 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         searcher = BayesOptSearch()
         self._restore(searcher)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12),
+        reason="BOHB not yet supported for python 3.12+",
+    )
     def testBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -533,6 +556,9 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
 
         assert "not_completed" in searcher.trial_to_params
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="HEBO doesn't support py312"
+    )
     def testHEBO(self):
         if Version(pandas.__version__) >= Version("2.0.0"):
             pytest.skip("HEBO does not support pandas>=2.0.0")
@@ -565,8 +591,9 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testNevergrad(self):
-        from ray.tune.search.nevergrad import NevergradSearch
         import nevergrad as ng
+
+        from ray.tune.search.nevergrad import NevergradSearch
 
         searcher = NevergradSearch(
             space=self.config,
@@ -634,8 +661,9 @@ class MultiObjectiveTest(unittest.TestCase):
         ray.shutdown()
 
     def testOptuna(self):
-        from ray.tune.search.optuna import OptunaSearch
         from optuna.samplers import RandomSampler
+
+        from ray.tune.search.optuna import OptunaSearch
 
         np.random.seed(1000)
 

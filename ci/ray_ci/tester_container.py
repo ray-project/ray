@@ -13,7 +13,10 @@ from ci.ray_ci.utils import logger
 from ci.ray_ci.container import Container
 from ray_release.test import TestResult, Test
 from ray_release.test_automation.ci_state_machine import CITestStateMachine
-from ray_release.configs.global_config import BRANCH_PIPELINES, PR_PIPELINES
+from ray_release.configs.global_config import get_global_config
+
+
+RUN_PER_FLAKY_TEST = 2
 
 
 class TesterContainer(Container):
@@ -72,6 +75,8 @@ class TesterContainer(Container):
         team: str,
         test_targets: List[str],
         test_arg: Optional[str] = None,
+        is_bisect_run: bool = False,
+        run_flaky_tests: bool = False,
     ) -> bool:
         """
         Run tests parallelly in docker.  Return whether all tests pass.
@@ -95,26 +100,40 @@ class TesterContainer(Container):
         bazel_log_dir_host, bazel_log_dir_container = self._create_bazel_log_mount()
         runs = [
             self._run_tests_in_docker(
-                chunks[i], gpu_ids[i], bazel_log_dir_host, self.test_envs, test_arg
+                chunks[i],
+                gpu_ids[i],
+                bazel_log_dir_host,
+                self.test_envs,
+                test_arg,
+                run_flaky_tests,
             )
             for i in range(len(chunks))
         ]
         exits = [run.wait() for run in runs]
-        self._persist_test_results(team, bazel_log_dir_container)
+        self._persist_test_results(team, bazel_log_dir_container, is_bisect_run)
         self._cleanup_bazel_log_mount(bazel_log_dir_container)
 
         return all(exit == 0 for exit in exits)
 
-    def _persist_test_results(self, team: str, bazel_log_dir: str) -> None:
+    def _persist_test_results(
+        self, team: str, bazel_log_dir: str, is_bisect_run: bool = False
+    ) -> None:
         pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
         branch = os.environ.get("BUILDKITE_BRANCH")
-        if pipeline_id not in BRANCH_PIPELINES + PR_PIPELINES:
+        branch_pipelines = get_global_config()["ci_pipeline_postmerge"]
+        pr_pipelines = get_global_config()["ci_pipeline_premerge"]
+        if is_bisect_run:
+            logger.info(
+                "Skip upload test results. We do not upload results on bisect runs."
+            )
+            return
+        if pipeline_id not in branch_pipelines + pr_pipelines:
             logger.info(
                 "Skip upload test results. "
                 "We only upload results on branch and PR pipelines",
             )
             return
-        if pipeline_id in BRANCH_PIPELINES and branch != "master":
+        if pipeline_id in branch_pipelines and branch != "master":
             logger.info(
                 "Skip upload test results. "
                 "We only upload the master branch results on a branch pipeline",
@@ -144,9 +163,15 @@ class TesterContainer(Container):
 
     @classmethod
     def move_test_state(cls, team: str, bazel_log_dir: str) -> None:
+        if get_global_config()["state_machine_disabled"]:
+            return
+
         pipeline_id = os.environ.get("BUILDKITE_PIPELINE_ID")
         branch = os.environ.get("BUILDKITE_BRANCH")
-        if pipeline_id not in BRANCH_PIPELINES or branch != "master":
+        if (
+            pipeline_id not in get_global_config()["ci_pipeline_postmerge"]
+            or branch != "master"
+        ):
             logger.info("Skip updating test state. We only update on master branch.")
             return
         for test, _ in cls.get_test_and_results(team, bazel_log_dir):
@@ -176,11 +201,12 @@ class TesterContainer(Container):
                     event = json.loads(line.decode("utf-8"))
                     if "testResult" not in event:
                         continue
+                    run_id = event["id"]["testResult"]["run"]
                     test = Test.from_bazel_event(event, team)
                     test_result = TestResult.from_bazel_event(event)
-                    # Obtain only the final test result for a given test in case
-                    # the test is retried.
-                    tests[test.get_name()] = (test, test_result)
+                    # Obtain only the final test result for a given test and run
+                    # in case the test is retried.
+                    tests[f"{run_id}-{test.get_name()}"] = (test, test_result)
 
         return list(tests.values())
 
@@ -194,6 +220,7 @@ class TesterContainer(Container):
         bazel_log_dir_host: str,
         test_envs: List[str],
         test_arg: Optional[str] = None,
+        run_flaky_tests: bool = False,
     ) -> subprocess.Popen:
         logger.info("Running tests: %s", test_targets)
         commands = [
@@ -228,6 +255,8 @@ class TesterContainer(Container):
             test_cmd += f"--test_env {env} "
         if test_arg:
             test_cmd += f"--test_arg {test_arg} "
+        if run_flaky_tests:
+            test_cmd += f"--runs_per_test {RUN_PER_FLAKY_TEST} "
         test_cmd += f"{' '.join(test_targets)}"
         commands.append(test_cmd)
         return subprocess.Popen(

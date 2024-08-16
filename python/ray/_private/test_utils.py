@@ -75,8 +75,11 @@ class RayTestTimeoutException(Exception):
 
 
 def make_global_state_accessor(ray_context):
-    gcs_options = GcsClientOptions.from_gcs_address(
-        ray_context.address_info["gcs_address"]
+    gcs_options = GcsClientOptions.create(
+        ray_context.address_info["gcs_address"],
+        None,
+        allow_cluster_id_nil=True,
+        fetch_cluster_id_if_nil=False,
     )
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
@@ -416,6 +419,7 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
         output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
             print(ray._private.utils.decode(output, encode_type=encode))
+            logger.error(proc.stderr)
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
@@ -1493,8 +1497,7 @@ class ResourceKillerActor:
         return self.killed
 
 
-@ray.remote(num_cpus=0)
-class NodeKillerActor(ResourceKillerActor):
+class NodeKillerBase(ResourceKillerActor):
     async def _find_resource_to_kill(self):
         node_to_kill_ip = None
         node_to_kill_port = None
@@ -1521,6 +1524,16 @@ class NodeKillerActor(ResourceKillerActor):
 
         return node_id, node_to_kill_ip, node_to_kill_port
 
+    def _get_alive_nodes(self, nodes):
+        alive_nodes = 0
+        for node in nodes:
+            if node["Alive"]:
+                alive_nodes += 1
+        return alive_nodes
+
+
+@ray.remote(num_cpus=0)
+class RayletKiller(NodeKillerBase):
     def _kill_resource(self, node_id, node_to_kill_ip, node_to_kill_port):
         if node_to_kill_port is not None:
             try:
@@ -1548,12 +1561,36 @@ class NodeKillerActor(ResourceKillerActor):
         except _InactiveRpcError:
             assert not graceful
 
-    def _get_alive_nodes(self, nodes):
-        alive_nodes = 0
-        for node in nodes:
-            if node["Alive"]:
-                alive_nodes += 1
-        return alive_nodes
+
+@ray.remote(num_cpus=0)
+class EC2InstanceTerminator(NodeKillerBase):
+    def _kill_resource(self, node_id, node_to_kill_ip, _):
+        if node_to_kill_ip is not None:
+            try:
+                self._terminate_ec2_instance(node_to_kill_ip)
+            except Exception:
+                pass
+            logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
+            self.killed.add(node_id)
+
+    def _terminate_ec2_instance(self, ip):
+        # This command uses IMDSv2 to get the host instance id and region.
+        # After that it terminates itself using aws cli.
+        multi_line_command = (
+            'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+            'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
+            'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
+            "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
+        )
+        # This is a feature on Anyscale platform that enables
+        # easy ssh access to worker nodes.
+        ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
+
+        result = subprocess.run(
+            ssh_command, shell=True, capture_output=True, text=True, check=True
+        )
+        print(f"STDOUT:\n{result.stdout}\n")
+        print(f"STDERR:\n{result.stderr}\n")
 
 
 @ray.remote(num_cpus=0)
@@ -1648,7 +1685,6 @@ def get_and_run_resource_killer(
     kill_filter_fn=None,
 ):
     assert ray.is_initialized(), "The API is only available when Ray is initialized."
-    name = resource_killer_cls.__ray_actor_class__.__name__
 
     head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
@@ -1657,7 +1693,7 @@ def get_and_run_resource_killer(
             node_id=head_node_id, soft=False
         ),
         namespace=namespace,
-        name=name,
+        name="ResourceKiller",
         lifetime=lifetime,
     ).remote(
         head_node_id,
@@ -1665,13 +1701,21 @@ def get_and_run_resource_killer(
         max_to_kill=max_to_kill,
         kill_filter_fn=kill_filter_fn,
     )
-    print(f"Waiting for {name} to be ready...")
+    print("Waiting for ResourceKiller to be ready...")
     ray.get(resource_killer.ready.remote())
-    print(f"{name} is ready now.")
+    print("ResourceKiller is ready now.")
     if not no_start:
         time.sleep(kill_delay_s)
         resource_killer.run.remote()
     return resource_killer
+
+
+def get_actor_node_id(actor_handle: "ray.actor.ActorHandle") -> str:
+    return ray.get(
+        actor_handle.__ray_call__.remote(
+            lambda self: ray.get_runtime_context().get_node_id()
+        )
+    )
 
 
 @contextmanager
@@ -2152,9 +2196,27 @@ def skip_flaky_core_test_premerge(reason: str):
     return wrapper
 
 
-def get_ray_default_worker_file_path():
-    py_version = f"{sys.version_info[0]}.{sys.version_info[1]}"
-    return (
-        f"/home/ray/anaconda3/lib/python{py_version}/"
-        "site-packages/ray/_private/workers/default_worker.py"
-    )
+def close_common_connections(pid):
+    """
+    Closes ipv4 connections between the current process and another process specified by
+    its PID.
+    """
+    current_process = psutil.Process()
+    current_connections = current_process.connections(kind="inet")
+    try:
+        other_process = psutil.Process(pid)
+        other_connections = other_process.connections(kind="inet")
+    except psutil.NoSuchProcess:
+        print(f"No process with PID {pid} found.")
+        return
+    # Finding common connections based on matching addresses and ports.
+    common_connections = []
+    for conn1 in current_connections:
+        for conn2 in other_connections:
+            if conn1.laddr == conn2.raddr and conn1.raddr == conn2.laddr:
+                common_connections.append((conn1.fd, conn1.laddr, conn1.raddr))
+    # Closing the FDs.
+    for fd, laddr, raddr in common_connections:
+        if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
+            os.close(fd)
+            print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")

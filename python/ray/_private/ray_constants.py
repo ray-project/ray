@@ -23,6 +23,21 @@ def env_integer(key, default):
     return default
 
 
+def env_float(key, default):
+    if key in os.environ:
+        value = os.environ[key]
+        try:
+            return float(value)
+        except ValueError:
+            logger.debug(
+                f"Found {key} in environment, but value must "
+                f"be a float. Got: {value}. Returning "
+                f"provided default {default}."
+            )
+            return default
+    return default
+
+
 def env_bool(key, default):
     if key in os.environ:
         return (
@@ -167,28 +182,20 @@ RAY_OVERRIDE_DASHBOARD_URL = "RAY_OVERRIDE_DASHBOARD_URL"
 # Different types of Ray errors that can be pushed to the driver.
 # TODO(rkn): These should be defined in flatbuffers and must be synced with
 # the existing C++ definitions.
-WAIT_FOR_CLASS_PUSH_ERROR = "wait_for_class"
 PICKLING_LARGE_OBJECT_PUSH_ERROR = "pickling_large_object"
 WAIT_FOR_FUNCTION_PUSH_ERROR = "wait_for_function"
-TASK_PUSH_ERROR = "task"
-REGISTER_REMOTE_FUNCTION_PUSH_ERROR = "register_remote_function"
-FUNCTION_TO_RUN_PUSH_ERROR = "function_to_run"
 VERSION_MISMATCH_PUSH_ERROR = "version_mismatch"
-CHECKPOINT_PUSH_ERROR = "checkpoint"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
 WORKER_POOL_LARGE_ERROR = "worker_pool_large"
 PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
-INFEASIBLE_TASK_ERROR = "infeasible_task"
 RESOURCE_DEADLOCK_ERROR = "resource_deadlock"
 REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"
 LOG_MONITOR_DIED_ERROR = "log_monitor_died"
-REPORTER_DIED_ERROR = "reporter_died"
 DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_DIED_ERROR = "raylet_died"
-RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
 EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 
@@ -199,9 +206,6 @@ RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 # from cluster.yaml.
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 LABELS_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_LABELS"
-
-# The reporter will report its statistics this often (milliseconds).
-REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 
 # Temporary flag to disable log processing in the dashboard.  This is useful
 # if the dashboard is overloaded by logs and failing to process other
@@ -449,7 +453,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 9), (3, 10), (3, 11), (3, 12)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
@@ -494,3 +498,5 @@ RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONN
 RAY_NODE_IP_FILENAME = "node_ip_address.json"
 
 PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
+
+RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")

@@ -23,7 +23,6 @@ from ray.rllib.utils.numpy import (
     MIN_LOG_NN_OUTPUT,
     MAX_LOG_NN_OUTPUT,
 )
-from ray.rllib.utils.pre_checks.env import check_env
 from ray.rllib.utils.schedules import (
     LinearSchedule,
     PiecewiseSchedule,
@@ -109,7 +108,6 @@ force_tuple = partial(force_list, to_tuple=True)
 __all__ = [
     "add_mixins",
     "check",
-    "check_env",
     "check_compute_single_action",
     "check_train_results",
     "deep_update",

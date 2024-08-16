@@ -367,6 +367,11 @@ Deployment log file:
 (ServeReplica:default_Model pid=84006) INFO 2023-07-20 13:47:54,218 default_Model default_Model#yptKoo 123-234 / default replica.py:691 - __CALL__ OK 0.2ms
 ```
 
+:::{note}
+The request ID is used to associate logs across the system. Avoid sending
+duplicate request IDs, which may lead to confusion when debugging.
+:::
+
 (serve-logging-loki)=
 ### Filtering logs with Loki
 

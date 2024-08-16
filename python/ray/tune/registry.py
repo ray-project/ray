@@ -7,10 +7,10 @@ from typing import Callable, Optional, Type, Union
 import ray
 import ray.cloudpickle as pickle
 from ray.experimental.internal_kv import (
+    _internal_kv_del,
     _internal_kv_get,
     _internal_kv_initialized,
     _internal_kv_put,
-    _internal_kv_del,
 )
 from ray.tune.error import TuneError
 from ray.util.annotations import DeveloperAPI
@@ -48,14 +48,20 @@ def get_trainable_cls(trainable_name):
 
 
 @DeveloperAPI
-def validate_trainable(trainable_name):
-    if not _has_trainable(trainable_name):
+def validate_trainable(trainable_name: str):
+    if not _has_trainable(trainable_name) and not _has_rllib_trainable(trainable_name):
+        raise TuneError(f"Unknown trainable: {trainable_name}")
+
+
+def _has_rllib_trainable(trainable_name: str) -> bool:
+    try:
         # Make sure everything rllib-related is registered.
         from ray.rllib import _register_all
+    except (ImportError, ModuleNotFoundError):
+        return False
 
-        _register_all()
-        if not _has_trainable(trainable_name):
-            raise TuneError("Unknown trainable: " + trainable_name)
+    _register_all()
+    return _has_trainable(trainable_name)
 
 
 @DeveloperAPI
@@ -95,8 +101,7 @@ def register_trainable(name: str, trainable: Union[Callable, Type], warn: bool =
             automatically converted into a class during registration.
     """
 
-    from ray.tune.trainable import wrap_function
-    from ray.tune.trainable import Trainable
+    from ray.tune.trainable import Trainable, wrap_function
 
     if isinstance(trainable, type):
         logger.debug("Detected class for trainable.")

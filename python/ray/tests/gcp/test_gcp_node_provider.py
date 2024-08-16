@@ -233,6 +233,10 @@ def test_tpu_resource_returns_tpu_command_runner(test_case):
         ({"acceleratorType": "v3-8"}, "TPU-v3-8-head"),
         ({"acceleratorConfig": {"type": "V4", "topology": "2x2x2"}}, "TPU-v4-16-head"),
         ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, "TPU-v4-128-head"),
+        (
+            {"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}},
+            "TPU-v5litepod-8-head",
+        ),
     ],
 )
 def test_tpu_node_fillout(test_case):
@@ -248,6 +252,7 @@ def test_tpu_node_fillout(test_case):
             },
         },
     }
+
     cluster_config["available_node_types"]["ray_tpu"]["node_config"].update(
         accelerator_config
     )
@@ -310,6 +315,7 @@ def test_invalid_accelerator_configs(node_config):
         ({"acceleratorType": "v4-4096"}, 2048, False),
         ({"acceleratorConfig": {"type": "V4", "topology": "2x2x8"}}, 32, False),
         ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, 64, False),
+        ({"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}}, 8, True),
     ],
 )
 def test_tpu_chip_calculation_single_host_logic(test_case):
@@ -356,6 +362,11 @@ def test_tpu_chip_calculation_single_host_logic(test_case):
             GCPNodeType.TPU,
             True,
         ),
+        (
+            {"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}},
+            GCPNodeType.TPU,
+            True,
+        ),
     ],
 )
 def test_get_node_type_and_has_tpu(test_case):
@@ -398,16 +409,17 @@ def test_tpu_pod_emits_warning(propagate_logs, caplog, accelerator_pod_tuple):
 @pytest.mark.parametrize(
     "test_case",
     [
-        ("v4-8", "2x2x1"),
-        ("v4-16", "2x2x2"),
-        ("v4-128", "4x4x4"),
-        ("v4-256", "4x4x8"),
+        ("v4-8", "V4", "2x2x1"),
+        ("v4-16", "V4", "2x2x2"),
+        ("v4-128", "V4", "4x4x4"),
+        ("v4-256", "V4", "4x4x8"),
+        ("v5litepod-8", "V5LITE_POD", "2x4"),
     ],
 )
 def test_tpu_accelerator_config_to_type(test_case):
-    expected, topology = test_case
+    expected, accel_type, topology = test_case
     accelerator_config = {
-        "type": "V4",
+        "type": accel_type,
         "topology": topology,
     }
     accelerator_type = tpu_accelerator_config_to_type(

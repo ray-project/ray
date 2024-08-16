@@ -59,6 +59,9 @@ enum PopWorkerStatus {
   // Any fails of runtime env creation.
   // A nullptr worker will be returned with callback.
   RuntimeEnvCreationFailed = 4,
+  // The task's job has finished.
+  // A nullptr worker will be returned with callback.
+  JobFinished = 5,
 };
 
 /// \param[in] worker The started worker instance. Nullptr if worker is not started.
@@ -228,6 +231,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// \brief Get the job config by job id.
   ///
+  /// We don't return std::optional because it does not support references.
+  ///
   /// \param job_id ID of the job.
   /// \return Job config if given job is running, else nullptr.
   boost::optional<const rpc::JobConfig &> GetJobConfig(const JobID &job_id) const;
@@ -392,6 +397,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// reasonable size.
   void TryKillingIdleWorkers();
 
+  /// Get the NodeID of this worker pool.
+  const NodeID &GetNodeID() const;
+
  protected:
   void update_worker_startup_token_counter();
 
@@ -439,7 +447,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   virtual void WarnAboutSize();
 
   /// Make this synchronized function for unit test.
-  void PopWorkerCallbackInternal(const PopWorkerCallback &callback,
+  void PopWorkerCallbackInternal(const TaskSpecification &task_spec,
+                                 const PopWorkerCallback &callback,
                                  std::shared_ptr<WorkerInterface> worker,
                                  PopWorkerStatus status);
 
@@ -483,8 +492,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   };
 
   struct TaskWaitingForWorkerInfo {
-    /// The id of task.
-    TaskID task_id;
+    /// The spec of task.
+    TaskSpecification task_spec;
     /// The callback function which should be called when worker registered.
     PopWorkerCallback callback;
   };
@@ -605,7 +614,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in
   /// different stack.
-  virtual void PopWorkerCallbackAsync(const PopWorkerCallback &callback,
+  virtual void PopWorkerCallbackAsync(const TaskSpecification &task_spec,
+                                      const PopWorkerCallback &callback,
                                       std::shared_ptr<WorkerInterface> worker,
                                       PopWorkerStatus status = PopWorkerStatus::OK);
 
@@ -620,15 +630,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param found  Whether the related task found or not.
   /// \param worker_used Whether the worker is used by the task, only valid when found is
   /// true.
-  /// \param task_id  The related task id.
   void InvokePopWorkerCallbackForProcess(
       absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> &workers_to_tasks,
       StartupToken startup_token,
       const std::shared_ptr<WorkerInterface> &worker,
       const PopWorkerStatus &status,
       bool *found /* output */,
-      bool *worker_used /* output */,
-      TaskID *task_id /* output */);
+      bool *worker_used /* output */);
 
   /// We manage all runtime env resources locally by the two methods:
   /// `GetOrCreateRuntimeEnv` and `DeleteRuntimeEnvIfPossible`.

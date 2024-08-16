@@ -1,7 +1,7 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 # ***********************************************************************************
-# IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
+# IMPORTANT NOTE: This script uses the old API stack and will soon be replaced by
 # `ray.rllib.examples.multi_agent.pettingzoo_shared_value_function.py`!
 # ***********************************************************************************
 
@@ -27,6 +27,7 @@ import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.ppo_tf_policy import (
     PPOTF1Policy,
@@ -43,6 +44,11 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
@@ -268,7 +274,7 @@ if __name__ == "__main__":
         PPOConfig()
         .environment(TwoStepGame)
         .framework(args.framework)
-        .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
+        .env_runners(batch_mode="complete_episodes", num_env_runners=0)
         .training(model={"custom_model": "cc_model"})
         .multi_agent(
             policies={
@@ -296,9 +302,9 @@ if __name__ == "__main__":
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     tuner = tune.Tuner(

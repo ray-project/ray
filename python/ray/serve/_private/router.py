@@ -10,6 +10,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 import ray
 from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -23,6 +24,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
     RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
@@ -39,6 +41,9 @@ from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+QUEUED_REQUESTS_KEY = "queued"
 
 
 class RouterMetricsManager:
@@ -111,6 +116,8 @@ class RouterMetricsManager:
         self.metrics_pusher = MetricsPusher()
         self.metrics_store = InMemoryMetricsStore()
         self.deployment_config: Optional[DeploymentConfig] = None
+        # Track whether the metrics manager has been shutdown
+        self._shutdown: bool = False
 
     @contextmanager
     def wrap_request_assignment(self, request_meta: RequestMetadata):
@@ -161,7 +168,7 @@ class RouterMetricsManager:
             )
 
     @property
-    def curr_autoscaling_config(self) -> Optional[AutoscalingConfig]:
+    def autoscaling_config(self) -> Optional[AutoscalingConfig]:
         if self.deployment_config is None:
             return None
 
@@ -172,10 +179,13 @@ class RouterMetricsManager:
     ):
         """Update the config for the deployment this router sends requests to."""
 
+        if self._shutdown:
+            return
+
         self.deployment_config = deployment_config
 
         # Start the metrics pusher if autoscaling is enabled.
-        autoscaling_config = self.curr_autoscaling_config
+        autoscaling_config = self.autoscaling_config
         if autoscaling_config:
             self.metrics_pusher.start()
             # Optimization for autoscaling cold start time. If there are
@@ -191,7 +201,10 @@ class RouterMetricsManager:
                 self.metrics_pusher.register_or_update_task(
                     self.RECORD_METRICS_TASK_NAME,
                     self._add_autoscaling_metrics_point,
-                    min(0.5, autoscaling_config.metrics_interval_s),
+                    min(
+                        RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+                        autoscaling_config.metrics_interval_s,
+                    ),
                 )
                 # Push metrics to the controller periodically.
                 self.metrics_pusher.register_or_update_task(
@@ -228,7 +241,7 @@ class RouterMetricsManager:
                 sum(self.num_requests_sent_to_replicas.values())
             )
 
-    def process_finished_request(self, replica_id: ReplicaID, *args):
+    def dec_num_running_requests_for_replica(self, replica_id: ReplicaID, *args):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] -= 1
             self.num_running_requests_gauge.set(
@@ -237,7 +250,7 @@ class RouterMetricsManager:
 
     def should_send_scaled_to_zero_optimized_push(self, curr_num_replicas: int) -> bool:
         return (
-            self.curr_autoscaling_config is not None
+            self.autoscaling_config is not None
             and curr_num_replicas == 0
             and self.num_queued_requests > 0
         )
@@ -258,20 +271,28 @@ class RouterMetricsManager:
         )
 
     def _add_autoscaling_metrics_point(self):
+        """Adds metrics point for queued and running requests at replicas.
+
+        Also prunes keys in the in memory metrics store with outdated datapoints.
+        """
+
         timestamp = time.time()
         self.metrics_store.add_metrics_point(
-            {"queued": self.num_queued_requests}, timestamp
+            {QUEUED_REQUESTS_KEY: self.num_queued_requests}, timestamp
         )
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
             self.metrics_store.add_metrics_point(
                 self.num_requests_sent_to_replicas, timestamp
             )
 
+        # Prevent in memory metrics store memory from growing
+        start_timestamp = time.time() - self.autoscaling_config.look_back_period_s
+        self.metrics_store.prune_keys_and_compact_data(start_timestamp)
+
     def _get_aggregated_requests(self):
         running_requests = dict()
-        autoscaling_config = self.curr_autoscaling_config
-        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and autoscaling_config:
-            look_back_period = autoscaling_config.look_back_period_s
+        if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE and self.autoscaling_config:
+            look_back_period = self.autoscaling_config.look_back_period_s
             running_requests = {
                 replica_id: self.metrics_store.window_average(
                     replica_id, time.time() - look_back_period
@@ -292,6 +313,8 @@ class RouterMetricsManager:
 
         if self.metrics_pusher:
             await self.metrics_pusher.graceful_shutdown()
+
+        self._shutdown = True
 
 
 class Router:
@@ -335,10 +358,14 @@ class Router:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 self._event_loop,
                 deployment_id,
+                handle_source,
                 _prefer_local_node_routing,
                 RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_node_id,
                 self_actor_id,
+                ray.get_runtime_context().current_actor
+                if ray.get_runtime_context().get_actor_id()
+                else None,
                 self_availability_zone,
                 use_replica_queue_len_cache=enable_queue_len_cache,
             )
@@ -349,21 +376,10 @@ class Router:
         # by the controller. That means it is not available until we get the first
         # update. This includes an optional autoscaling config.
         self.deployment_config: Optional[DeploymentConfig] = None
-        self.long_poll_client = LongPollClient(
-            controller_handle,
-            {
-                (
-                    LongPollNamespace.RUNNING_REPLICAS,
-                    deployment_id,
-                ): self.update_running_replicas,
-                (
-                    LongPollNamespace.DEPLOYMENT_CONFIG,
-                    deployment_id,
-                ): self.update_deployment_config,
-            },
-            call_in_event_loop=self._event_loop,
-        )
 
+        # Initializing `self._metrics_manager` before `self.long_poll_client` is
+        # necessary to avoid race condition where `self.update_deployment_config()`
+        # might be called before `self._metrics_manager` instance is created.
         self._metrics_manager = RouterMetricsManager(
             deployment_id,
             handle_id,
@@ -391,6 +407,21 @@ class Router:
                 ),
                 tag_keys=("deployment", "application", "handle", "actor_id"),
             ),
+        )
+
+        self.long_poll_client = LongPollClient(
+            controller_handle,
+            {
+                (
+                    LongPollNamespace.RUNNING_REPLICAS,
+                    deployment_id,
+                ): self.update_running_replicas,
+                (
+                    LongPollNamespace.DEPLOYMENT_CONFIG,
+                    deployment_id,
+                ): self.update_deployment_config,
+            },
+            call_in_event_loop=self._event_loop,
         )
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
@@ -434,6 +465,13 @@ class Router:
                     )
                 elif isinstance(obj, DeploymentResponse):
                     responses.append(obj)
+                    if obj not in request_args and obj not in request_kwargs.values():
+                        logger.warning(
+                            "Passing `DeploymentResponse` objects in nested objects to "
+                            "downstream handle calls is deprecated and will not be "
+                            "supported in the future. Pass them as top-level "
+                            "args or kwargs instead."
+                        )
 
                 # This is no-op replacing the object with itself. The purpose is to make
                 # sure both object refs and object ref generator are not getting pinned
@@ -491,6 +529,22 @@ class Router:
                     ray.cancel(obj_ref_gen)
 
                 raise
+            except ActorDiedError:
+                # Replica has died but controller hasn't notified the router yet.
+                # Don't consider this replica for requests in the future.
+                self._replica_scheduler.on_replica_actor_died(replica.replica_id)
+                logger.warning(
+                    f"{replica.replica_id} will not be considered for future "
+                    "requests because it has died."
+                )
+                raise
+            except ActorUnavailableError:
+                # There are network issues, or replica has died but GCS is down so
+                # ActorUnavailableError will be raised until GCS recovers. For the
+                # time being, invalidate the cache entry so that we don't try to
+                # send requests to this replica without actively probing.
+                self._replica_scheduler.on_replica_actor_unavailable(replica.replica_id)
+                raise
 
             # If the replica rejects the request, retry the scheduling process. The
             # request will be placed on the front of the queue to avoid tail latencies.
@@ -535,7 +589,8 @@ class Router:
                         replica_id
                     )
                     callback = partial(
-                        self._metrics_manager.process_finished_request, replica_id
+                        self._metrics_manager.dec_num_running_requests_for_replica,
+                        replica_id,
                     )
                     if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
                         ref._on_completed(callback)

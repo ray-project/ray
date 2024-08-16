@@ -70,8 +70,14 @@ bool ObjectRecoveryManager::RecoverObject(const ObjectID &object_id) {
   } else if (requires_recovery) {
     RAY_LOG(DEBUG) << "Recovery already started for object " << object_id;
   } else {
-    RAY_LOG(DEBUG) << "Object " << object_id
-                   << " has a pinned or spilled location, skipping recovery";
+    RAY_LOG(INFO) << "Object " << object_id
+                  << " has a pinned or spilled location, skipping recovery " << pinned_at;
+    // If the object doesn't exist in the memory store
+    // (core_worker.cc removes the object from memory store before calling this method),
+    // we need to add it back to indicate that it's available.
+    // If the object is already in the memory store then the put is a no-op.
+    RAY_CHECK(
+        in_memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
   }
   return true;
 }
@@ -165,6 +171,7 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   auto resubmitted = task_resubmitter_->ResubmitTask(task_id, &task_deps);
 
   if (resubmitted) {
+    reference_counter_->UpdateObjectPendingCreation(object_id, true);
     // Try to recover the task's dependencies.
     for (const auto &dep : task_deps) {
       auto recovered = RecoverObject(dep);

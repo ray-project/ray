@@ -155,6 +155,9 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
 #     the route is empty.
 # request_id: the request id is generated from http proxy, the value
 #     shouldn't be changed when the variable is set.
+#     This can be from the client and is used for logging.
+# _internal_request_id: the request id is generated from the proxy. Used to track the
+#     request objects in the system.
 # note:
 #   The request context is readonly to avoid potential
 #       async task conflicts when using it concurrently.
@@ -164,6 +167,7 @@ def _connect(raise_if_no_controller_running: bool = True) -> ServeControllerClie
 class _RequestContext:
     route: str = ""
     request_id: str = ""
+    _internal_request_id: str = ""
     app_name: str = ""
     multiplexed_model_id: str = ""
     grpc_context: Optional[RayServegRPCContext] = None
@@ -177,6 +181,7 @@ _serve_request_context = contextvars.ContextVar(
 def _set_request_context(
     route: str = "",
     request_id: str = "",
+    _internal_request_id: str = "",
     app_name: str = "",
     multiplexed_model_id: str = "",
 ):
@@ -188,6 +193,8 @@ def _set_request_context(
         _RequestContext(
             route=route or current_request_context.route,
             request_id=request_id or current_request_context.request_id,
+            _internal_request_id=_internal_request_id
+            or current_request_context._internal_request_id,
             app_name=app_name or current_request_context.app_name,
             multiplexed_model_id=multiplexed_model_id
             or current_request_context.multiplexed_model_id,
