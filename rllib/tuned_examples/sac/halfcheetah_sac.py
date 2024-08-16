@@ -31,8 +31,8 @@ config = (
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
             "capacity": 100000,
-            "alpha": 1.0,
-            "beta": 0.0,
+            "alpha": 0.6,
+            "beta": 0.4,
         },
         num_steps_sampled_before_learning_starts=10000,
     )
