@@ -25,6 +25,7 @@ class TestBC(unittest.TestCase):
         base_path = Path(__file__).parents[3]
         print(f"base_path={base_path}")
         data_path = "local://" / base_path / data_path
+
         print(f"data_path={data_path}")
 
         # Define the BC config.

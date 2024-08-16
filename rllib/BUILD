@@ -877,8 +877,8 @@ py_test(
     name = "test_bc",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    # Include the json data file.
-    data = ["tests/data/cartpole/large.json"],
+    # Include the parquet data files.
+    data = ["tests/data/cartpole/cartpole-v1_large"],
     srcs = ["algorithms/bc/tests/test_bc.py"]
 )
 

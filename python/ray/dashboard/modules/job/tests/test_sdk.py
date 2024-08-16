@@ -183,6 +183,7 @@ def get_register_agents_number(webui_url):
                 RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR: "1",
                 "RAY_health_check_initial_delay_ms": "0",
                 "RAY_health_check_period_ms": "1000",
+                "RAY_JOB_AGENT_USE_HEAD_NODE_ONLY": "0",
             },
         }
     ],
@@ -256,22 +257,22 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
     submit_job_and_wait_finish()
     submit_job_and_wait_finish()
 
-    def get_all_new_supervisor_actor_info(old_supervisor_actor):
+    def get_all_new_supervisor_actor_info(old_supervisor_actor_ids):
         all_actors = ray.state.state.actor_table(None)
         res = dict()
         for actor_id, actor_info in all_actors.items():
-            if actor_id in old_supervisor_actor:
+            if actor_id in old_supervisor_actor_ids:
                 continue
             if not actor_info["Name"].startswith("_ray_internal_job_actor"):
                 continue
             res[actor_id] = actor_info
         return res
 
-    old_supervisor_actor = set()
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor)
+    old_supervisor_actor_ids = set()
+    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor_ids)
     new_owner_port = set()
     for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor.add(actor_id)
+        old_supervisor_actor_ids.add(actor_id)
         new_owner_port.add(actor_info["OwnerAddress"]["Port"])
 
     assert len(new_owner_port) == 2
@@ -287,10 +288,10 @@ def test_job_head_choose_job_agent_E2E(ray_start_cluster_head_with_env_vars):
         lambda: make_sure_worker_node_run_job(worker_2_http_port), timeout=60
     )
 
-    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor)
+    new_supervisor_actor = get_all_new_supervisor_actor_info(old_supervisor_actor_ids)
     new_owner_port = set()
     for actor_id, actor_info in new_supervisor_actor.items():
-        old_supervisor_actor.add(actor_id)
+        old_supervisor_actor_ids.add(actor_id)
         new_owner_port.add(actor_info["OwnerAddress"]["Port"])
     assert len(new_owner_port) == 2
     assert len(old_owner_port - new_owner_port) == 1
