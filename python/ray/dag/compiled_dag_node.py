@@ -219,7 +219,12 @@ class CompiledTask:
         self.dag_node = dag_node
 
         self.downstream_node_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
-        self.output_channel: Optional[ChannelInterface] = None
+        # `output_idxs` represents the tuple index of the output value
+        # for multiple returns in a tuple. Each output value is written
+        # to separate `output_channels`. If an output index is None, it
+        # means the return value is directly written to the output channel.
+        # Otherwise, the return value is a tuple and the index is used
+        # to extract the value to be written to the output channel.
         self.output_channels: List[ChannelInterface] = []
         self.output_idxs: List[Optional[int]] = []
         self.arg_type_hints: List["ChannelOutputType"] = []
@@ -240,19 +245,8 @@ class CompiledTask:
         return f"""
 Node: {self.dag_node}
 Arguments: {self.args}
-Output: {self.output_channel} [INC]
 Outputs: {self.output_channels}
 """
-
-
-@DeveloperAPI
-class InputArg:
-    input_channel: ChannelInterface
-    input_idx: Optional[int]
-
-    def __init__(self, input_channel: ChannelInterface, input_idx: Optional[int]):
-        self.input_channel = input_channel
-        self.input_idx = input_idx
 
 
 @DeveloperAPI
@@ -365,7 +359,6 @@ class ExecutableTask:
         """
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
-        self.output_channel = task.output_channel
         self.output_channels = task.output_channels
         self.output_idxs = task.output_idxs
         self.input_type_hints: List["ChannelOutputType"] = task.arg_type_hints
@@ -382,9 +375,6 @@ class ExecutableTask:
 
         for arg in resolved_args:
             input_idx = None
-            if isinstance(arg, InputArg):
-                input_idx = arg.input_idx
-                arg = arg.input_channel
             if isinstance(arg, ChannelInterface) or isinstance(arg, DAGInputAdapter):
                 if isinstance(arg, ChannelInterface):
                     channel = arg
@@ -542,9 +532,9 @@ class CompiledDAG:
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
         # Set of actors present in the DAG.
         self.actor_refs = set()
-        self.actor_to_tasks: Dict["ray.actor.ActorHandle", List["CompiledTask"]] = (
-            defaultdict(list)
-        )
+        self.actor_to_tasks: Dict[
+            "ray.actor.ActorHandle", List["CompiledTask"]
+        ] = defaultdict(list)
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
@@ -631,7 +621,6 @@ class CompiledDAG:
         from ray.dag import (
             DAGNode,
             ClassMethodNode,
-            TaskReturnNode,
             ClassMethodOutputNode,
             FunctionNode,
             InputAttributeNode,
@@ -673,7 +662,6 @@ class CompiledDAG:
                 or isinstance(dag_node, InputAttributeNode)
                 or isinstance(dag_node, MultiOutputNode)
                 or isinstance(dag_node, ClassMethodNode)
-                or isinstance(dag_node, TaskReturnNode)
                 or isinstance(dag_node, ClassMethodOutputNode)
             ):
                 if isinstance(dag_node, FunctionNode):
@@ -859,7 +847,6 @@ class CompiledDAG:
             InputAttributeNode,
             MultiOutputNode,
             ClassMethodNode,
-            TaskReturnNode,
             ClassMethodOutputNode,
         )
 
@@ -881,14 +868,13 @@ class CompiledDAG:
             visited.add(cur_idx)
 
             task = self.idx_to_task[cur_idx]
-            # Create an output buffer for the actor method.
-            assert task.output_channel is None
-
             type_hint = task.dag_node.type_hint
             if type_hint.requires_nccl():
                 type_hint.set_nccl_group_id(self._nccl_group_id)
 
             if isinstance(task.dag_node, ClassMethodNode):
+                # Create output buffers for the actor method.
+                assert len(task.output_channels) == 0
                 # `readers` is the nodes that are ordered after the current one (`task`)
                 # in the DAG.
                 output_to_readers: Dict[CompiledTask, List[CompiledTask]] = {}
@@ -953,9 +939,9 @@ class CompiledDAG:
                                     self._get_node_id(self._dag_creator_actor),
                                 )
                             )
-                        output_task_to_reader_and_node_list[output_task] = (
-                            reader_and_node_list
-                        )
+                        output_task_to_reader_and_node_list[
+                            output_task
+                        ] = reader_and_node_list
                 else:
                     for output_task, readers in output_to_readers.items():
                         reader_and_node_list: List[
@@ -966,9 +952,9 @@ class CompiledDAG:
                             reader_and_node_list.append(
                                 (reader_handle, self._get_node_id(reader_handle))
                             )
-                        output_task_to_reader_and_node_list[output_task] = (
-                            reader_and_node_list
-                        )
+                        output_task_to_reader_and_node_list[
+                            output_task
+                        ] = reader_and_node_list
 
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 for (
@@ -1014,11 +1000,13 @@ class CompiledDAG:
                             (reader_handle, self._get_node_id(reader_handle))
                         )
                     reader_handles_set.add(reader_handle)
-                task.output_channel = do_allocate_channel(
-                    self,
-                    reader_and_node_list,
-                    typ=type_hint,
-                )
+                task.output_channels = [
+                    do_allocate_channel(
+                        self,
+                        reader_and_node_list,
+                        typ=type_hint,
+                    )
+                ]
             else:
                 assert (
                     isinstance(task.dag_node, InputAttributeNode)
@@ -1062,7 +1050,8 @@ class CompiledDAG:
         input_task = self.idx_to_task[self.input_task_idx]
         # Register custom serializers for inputs provided to dag.execute().
         input_task.dag_node.type_hint.register_custom_serializer()
-        self.dag_input_channel = input_task.output_channel
+        assert len(input_task.output_channels) == 1
+        self.dag_input_channel = input_task.output_channels[0]
         assert self.dag_input_channel is not None
 
         # Create executable tasks for each actor
@@ -1087,9 +1076,7 @@ class CompiledDAG:
                         assert len(output_task.output_channels) == 1
                         arg_channel = output_task.output_channels[0]
                         assert arg_channel is not None
-                        resolved_args.append(
-                            InputArg(input_channel=arg_channel, input_idx=None)
-                        )
+                        resolved_args.append(arg_channel)
                         has_at_least_one_channel_input = True
                     else:
                         resolved_args.append(arg)
@@ -1486,9 +1473,9 @@ class CompiledDAG:
                 )
             self._max_execution_index += 1
             start_time = time.monotonic()
-            self._result_buffer[self._max_execution_index] = (
-                self._dag_output_fetcher.read(timeout)
-            )
+            self._result_buffer[
+                self._max_execution_index
+            ] = self._dag_output_fetcher.read(timeout)
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)

@@ -235,19 +235,13 @@ class ActorMethod:
         num_returns=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
-    ) -> Union[
-        "ray.dag.ClassMethodNode",
-        "ray.dag.TaskReturnNode",
-        Tuple["ray.dag.TaskReturnNode", ...],
-        Tuple["ray.dag.ClassMethodOutputNode", ...],
-    ]:
+    ) -> Union["ray.dag.ClassMethodNode", Tuple["ray.dag.ClassMethodOutputNode", ...],]:
         from ray.dag.class_node import (
             BIND_INDEX_KEY,
             PARENT_CLASS_NODE_KEY,
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
             ClassMethodOutputNode,
-            TaskReturnNode,
         )
 
         # TODO(sang): unify option passing
@@ -280,19 +274,6 @@ class ActorMethod:
         )
 
         if node.num_returns > 1:
-            """
-            task_nodes: List[TaskReturnNode] = []
-            for i in range(node.num_returns):
-                task_node = TaskReturnNode(
-                    f"return_idx_{i}",
-                    (node, i),
-                    dict(),
-                    dict(),
-                    dict(),
-                )
-                task_nodes.append(task_node)
-            return tuple(task_nodes)
-            """
             output_nodes: List[ClassMethodOutputNode] = []
             for i in range(node.num_returns):
                 output_node = ClassMethodOutputNode(
@@ -487,9 +468,9 @@ class _ActorClassMethodMetadata(object):
                 self.decorators[method_name] = method.__ray_invocation_decorator__
 
             if hasattr(method, "__ray_concurrency_group__"):
-                self.concurrency_group_for_methods[method_name] = (
-                    method.__ray_concurrency_group__
-                )
+                self.concurrency_group_for_methods[
+                    method_name
+                ] = method.__ray_concurrency_group__
 
             if hasattr(method, "__ray_enable_task_events__"):
                 self.enable_task_events[method_name] = method.__ray_enable_task_events__
@@ -500,9 +481,9 @@ class _ActorClassMethodMetadata(object):
             self.method_is_generator[method_name] = is_generator
 
             if hasattr(method, "__ray_generator_backpressure_num_objects__"):
-                self.generator_backpressure_num_objects[method_name] = (
-                    method.__ray_generator_backpressure_num_objects__
-                )
+                self.generator_backpressure_num_objects[
+                    method_name
+                ] = method.__ray_generator_backpressure_num_objects__
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
