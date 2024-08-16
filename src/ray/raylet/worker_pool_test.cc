@@ -60,7 +60,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     const auto &callback = callbacks_.front();
     rpc::ExitReply exit_reply;
     exit_reply.set_success(true);
-    callback(Status::OK(), exit_reply);
+    callback(Status::OK(), std::move(exit_reply));
     callbacks_.pop_front();
     return true;
   }
@@ -72,7 +72,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     const auto &callback = callbacks_.front();
     rpc::ExitReply exit_reply;
     exit_reply.set_success(false);
-    callback(Status::OK(), exit_reply);
+    callback(Status::OK(), std::move(exit_reply));
     callbacks_.pop_front();
     return true;
   }

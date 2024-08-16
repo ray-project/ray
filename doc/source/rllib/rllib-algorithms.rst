@@ -338,7 +338,7 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 .. figure:: images/algos/marwil-architecture.svg
     :width: 750
 
-    **MAREIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
+    **MARWIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
     batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to plain
     imitation learning (see `BC`_). MARWIL uses Ray Data to tap into its parallel data
     processing capabilities. In one training iteration, episodes are parallelly read in from

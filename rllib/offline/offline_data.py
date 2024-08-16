@@ -77,6 +77,7 @@ class OfflineData:
                 fn_constructor_kwargs={
                     "config": self.config,
                     "learner": self.learner_handles[0],
+                    "spaces": self.spaces["__env__"],
                 },
                 batch_size=num_samples,
                 **self.map_batches_kwargs,
@@ -106,6 +107,7 @@ class OfflineData:
                     fn_constructor_kwargs={
                         "config": self.config,
                         "learner": self.learner_handles,
+                        "spaces": self.spaces["__env__"],
                         "locality_hints": self.locality_hints,
                         "module_spec": self.module_spec,
                         "module_state": module_state,

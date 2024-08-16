@@ -793,11 +793,11 @@ class EnvRunnerGroup:
 
     @DeveloperAPI
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
-        """Hard overrides the remote workers in this set with the given one.
+        """Hard overrides the remote EnvRunners in this set with the provided ones.
 
         Args:
-            new_remote_workers: A list of new EnvRunners
-                (as `ActorHandles`) to use as remote workers.
+            new_remote_workers: A list of new EnvRunners (as `ActorHandles`) to use as
+                new remote workers.
         """
         self._worker_manager.clear()
         self._worker_manager.add_actors(new_remote_workers)

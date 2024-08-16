@@ -8,11 +8,10 @@ import tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.filter import MeanStdFilter as _MeanStdFilter
+from ray.rllib.utils.filter import MeanStdFilter as _MeanStdFilter, RunningStat
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import AgentID, EpisodeType, StateDict
 from ray.util.annotations import PublicAPI
-from ray.rllib.utils.filter import RunningStat
 
 
 @PublicAPI(stability="alpha")

@@ -126,7 +126,7 @@ class GetAllNodeInfoFromGrpc:
             raise Exception(f"Failed to GetAllNodeInfo: {reply.status.message}")
         nodes = {}
         for message in reply.node_info_list:
-            nodes[NodeID.FromBinary(message.nodeId)] = message
+            nodes[NodeID(message.node_id)] = message
         return nodes
 
 
@@ -215,7 +215,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         # TODO(architkulkarni): Remove once State API exposes which
                         # node is the head node.
                         await self._gcs_aio_client.internal_kv_put(
-                            "head_node_id".encode(),
+                            ray_constants.KV_HEAD_NODE_ID_KEY,
                             node_id.encode(),
                             overwrite=True,
                             namespace=ray_constants.KV_NAMESPACE_JOB,

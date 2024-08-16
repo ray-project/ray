@@ -59,7 +59,6 @@ class ActorTaskSubmitterInterface {
                                int64_t num_restarts,
                                bool dead,
                                const rpc::ActorDeathCause &death_cause) = 0;
-  virtual void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart) = 0;
 
   virtual void CheckTimeoutTasks() = 0;
 
@@ -80,6 +79,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
                      instrumented_io_context &io_service)
       : core_worker_client_pool_(core_worker_client_pool),
+        actor_creator_(actor_creator),
         resolver_(store, task_finisher, actor_creator),
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing),
@@ -117,14 +117,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \return Status::Invalid if the task is not yet supported.
   Status SubmitTask(TaskSpecification task_spec);
 
-  /// Tell this actor to exit immediately.
-  ///
-  /// \param[in] actor_id The actor_id of the actor to kill.
-  /// \param[in] force_kill Whether to force kill the actor, or let the actor
-  /// try a clean exit.
-  /// \param[in] no_restart If set to true, the killed actor will not be
-  /// restarted anymore.
-  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
+  /// Submit an actor creation task to an actor via GCS.
+  Status SubmitActorCreationTask(TaskSpecification task_spec);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -317,10 +311,6 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
     /// case we hard code an error info.
     std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
 
-    /// A force-kill request that should be sent to the actor once an RPC
-    /// client to the actor is available.
-    absl::optional<rpc::KillActorRequest> pending_force_kill;
-
     /// Stores all callbacks of inflight tasks. Note that this doesn't include tasks
     /// without replies.
     absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
@@ -397,6 +387,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;
+
+  ActorCreatorInterface &actor_creator_;
 
   /// Mutex to protect the various maps below.
   mutable absl::Mutex mu_;

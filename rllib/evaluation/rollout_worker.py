@@ -732,7 +732,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             lambda env: (env.observation_space, env.action_space)
         )
         if env_spaces:
-            spaces["__env__"] = env_spaces[0]
+            from ray.rllib.env import INPUT_ENV_SPACES
+
+            spaces[INPUT_ENV_SPACES] = env_spaces[0]
         return spaces
 
     @ray.method(num_returns=2)

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <google/protobuf/util/json_util.h>
 #include <gtest/gtest_prod.h>
 
 #include <boost/asio.hpp>
@@ -33,6 +34,7 @@
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
+#include "src/ray/protobuf/export_api/export_event.pb.h"
 
 using json = nlohmann::json;
 
@@ -85,14 +87,18 @@ class BaseEventReporter {
 
   virtual void Report(const rpc::Event &event, const json &custom_fields) = 0;
 
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) = 0;
+
   virtual void Close() = 0;
 
   virtual std::string GetReporterKey() = 0;
 };
 // responsible for writing event to specific file
+using SourceTypeVariant =
+    std::variant<rpc::Event_SourceType, rpc::ExportEvent_SourceType>;
 class LogEventReporter : public BaseEventReporter {
  public:
-  LogEventReporter(rpc::Event_SourceType source_type,
+  LogEventReporter(SourceTypeVariant source_type,
                    const std::string &log_dir,
                    bool force_flush = true,
                    int rotate_max_file_size = 100,
@@ -105,9 +111,13 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual std::string EventToString(const rpc::Event &event, const json &custom_fields);
 
+  virtual std::string ExportEventToString(const rpc::ExportEvent &export_event);
+
   virtual void Init() override {}
 
   virtual void Report(const rpc::Event &event, const json &custom_fields) override;
+
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
 
   virtual void Close() override {}
 
@@ -138,6 +148,8 @@ class EventManager final {
   // TODO(SongGuyang): Remove the protobuf `rpc::Event` and use an internal struct
   // instead.
   void Publish(const rpc::Event &event, const json &custom_fields);
+
+  void PublishExportEvent(const rpc::ExportEvent &export_event);
 
   // NOTE(ruoqiu) AddReporters, ClearPeporters (along with the Pushlish function) would
   // not be thread-safe. But we assume default initialization and shutdown are placed in
@@ -303,6 +315,25 @@ class RayEvent {
   int line_number_;
   json custom_fields_;
   std::ostringstream osstream_;
+};
+
+using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData>,
+                                        std::shared_ptr<rpc::ExportNodeData>>;
+class RayExportEvent {
+ public:
+  RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}
+
+  ~RayExportEvent();
+
+  void SendEvent();
+
+ private:
+  RayExportEvent(const RayExportEvent &event) = delete;
+
+  const RayExportEvent &operator=(const RayExportEvent &event) = delete;
+
+ private:
+  ExportEventDataPtr event_data_ptr_;
 };
 
 /// Ray Event initialization.

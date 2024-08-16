@@ -69,7 +69,7 @@ class MockSubscriber : public pubsub::SubscriberInterface {
     msg.set_channel_type(channel_type_);
     auto *object_eviction_msg = msg.mutable_worker_object_eviction_message();
     object_eviction_msg->set_object_id(object_id.Binary());
-    callback(msg);
+    callback(std::move(msg));
     cbs->second.pop_front();
     if (cbs->second.empty()) {
       callbacks.erase(cbs);
@@ -126,7 +126,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     }
     auto callback = update_object_location_batch_callbacks.front();
     auto reply = rpc::UpdateObjectLocationBatchReply();
-    callback(status, reply);
+    callback(status, std::move(reply));
     update_object_location_batch_callbacks.pop_front();
     return true;
   }
@@ -155,7 +155,7 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
         reply.add_spilled_objects_url(url);
       }
     }
-    callback(status, reply);
+    callback(status, std::move(reply));
     callbacks.pop_front();
     return true;
   }
@@ -173,7 +173,7 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
       return false;
     };
     auto callback = restore_callbacks.front();
-    callback(status, reply);
+    callback(status, std::move(reply));
     restore_callbacks.pop_front();
     return true;
   }
@@ -194,7 +194,7 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
 
     auto callback = delete_callbacks.front();
     auto reply = rpc::DeleteSpilledObjectsReply();
-    callback(status, reply);
+    callback(status, std::move(reply));
 
     auto &request = delete_requests.front();
     int deleted_urls_size = request.spilled_objects_url_size();
@@ -211,7 +211,7 @@ class MockIOWorkerClient : public rpc::CoreWorkerClientInterface {
 
     auto callback = delete_callbacks.front();
     auto reply = rpc::DeleteSpilledObjectsReply();
-    callback(status, reply);
+    callback(status, std::move(reply));
 
     auto &request = delete_requests.front();
     int deleted_urls_size = request.spilled_objects_url_size();

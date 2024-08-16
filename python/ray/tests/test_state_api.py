@@ -8,6 +8,7 @@ from typing import List, Tuple
 from unittest.mock import MagicMock, AsyncMock
 
 import pytest
+import pytest_asyncio
 from ray._private.state_api_test_utils import get_state_api_manager
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
@@ -149,8 +150,8 @@ def state_source_client(gcs_address):
     return client
 
 
-@pytest.fixture
-def state_api_manager_e2e(ray_start_with_dashboard):
+@pytest_asyncio.fixture
+async def state_api_manager_e2e(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
     gcs_address = address_info["gcs_address"]
     manager = get_state_api_manager(gcs_address)

@@ -138,7 +138,7 @@ class MockCoreWorkerClientConfigurableRunningTasks
                        int64_t timeout_ms = -1) override {
     NumPendingTasksReply reply;
     reply.set_num_pending_tasks(num_running_tasks_);
-    callback(Status::OK(), reply);
+    callback(Status::OK(), std::move(reply));
   }
 
  private:
