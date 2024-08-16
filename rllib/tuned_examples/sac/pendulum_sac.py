@@ -19,9 +19,9 @@ config = (
     .environment(env="Pendulum-v1")
     .training(
         initial_alpha=1.001,
-        lr=0.0008 * (args.num_gpus or 1) ** 0.5,
+        lr=0.001 * (args.num_gpus or 1) ** 0.5,
         target_entropy="auto",
-        n_step=1,
+        n_step=(2, 5),
         tau=0.005,
         train_batch_size_per_learner=256,
         target_network_update_freq=1,
