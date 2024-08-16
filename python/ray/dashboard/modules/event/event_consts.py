@@ -1,4 +1,4 @@
-from ray._private.ray_constants import env_integer
+from ray._private.ray_constants import env_float, env_integer
 from ray.core.generated import event_pb2
 
 LOG_ERROR_EVENT_STRING_LENGTH_LIMIT = 1000
@@ -12,7 +12,9 @@ EVENT_READ_LINE_LENGTH_LIMIT = env_integer(
     "EVENT_READ_LINE_LENGTH_LIMIT", 2 * 1024 * 1024
 )  # 2MB
 # Report events
-EVENT_AGENT_REPORT_INTERVAL_SECONDS = 0.1
+EVENT_AGENT_REPORT_INTERVAL_SECONDS = env_float(
+    "EVENT_AGENT_REPORT_INTERVAL_SECONDS", 0.1
+)
 EVENT_AGENT_RETRY_TIMES = 10
 EVENT_AGENT_CACHE_SIZE = 10240
 # Event sources
