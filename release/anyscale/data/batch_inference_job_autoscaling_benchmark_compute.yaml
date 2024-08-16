@@ -10,10 +10,8 @@ worker_node_types:
       instance_type: g5.4xlarge
       max_workers: 32
       min_workers: 0
-      use_spot: true
 
     - name: worker_node_m
       instance_type: m5.8xlarge
       max_workers: 32
       min_workers: 0
-      use_spot: true
