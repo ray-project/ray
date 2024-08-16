@@ -9,12 +9,11 @@ from uuid import uuid4
 
 import pytest
 
-from python.ray._private import ray_constants
-
 import ray
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_constants import (
     DEFAULT_DASHBOARD_AGENT_LISTEN_PORT,
+    KV_HEAD_NODE_ID_KEY,
     KV_NAMESPACE_JOB,
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
 )
@@ -67,7 +66,7 @@ async def test_get_scheduling_strategy(
 
     # If no head node id is found, we should use "DEFAULT".
     await gcs_aio_client.internal_kv_del(
-        ray_constants.KV_HEAD_NODE_ID_KEY,
+        KV_HEAD_NODE_ID_KEY,
         del_by_prefix=False,
         namespace=KV_NAMESPACE_JOB,
     )
@@ -76,7 +75,7 @@ async def test_get_scheduling_strategy(
 
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
     await gcs_aio_client.internal_kv_put(
-        ray_constants.KV_HEAD_NODE_ID_KEY,
+        KV_HEAD_NODE_ID_KEY,
         "123456".encode(),
         True,
         namespace=KV_NAMESPACE_JOB,
