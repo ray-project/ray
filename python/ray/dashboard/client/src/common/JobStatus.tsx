@@ -8,6 +8,7 @@ import {
 } from "react-icons/ri";
 import { StatusChip } from "../components/StatusChip";
 import { JobStatus, UnifiedJob } from "../type/job";
+import { SubmitInfo, SubmitStatus } from "../type/submit";
 import { ClassNameProps } from "./props";
 
 const spinner = keyframes`
@@ -123,6 +124,22 @@ export const JobStatusWithIcon = ({ job }: JobStatusWithIconProps) => {
         type="job"
         status={job.status}
         icon={job.status === JobStatus.RUNNING && <JobRunningIcon />}
+      />
+    </Box>
+  );
+};
+
+type SubmitStatusWithIconProps = {
+  submit: SubmitInfo;
+};
+
+export const SubmitStatusWithIcon = ({ submit }: SubmitStatusWithIconProps) => {
+  return (
+    <Box display="inline-flex" alignItems="center">
+      <StatusChip
+        type="submit"
+        status={submit.status}
+        icon={submit.status === SubmitStatus.RUNNING && <JobRunningIcon />}
       />
     </Box>
   );
