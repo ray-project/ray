@@ -19,11 +19,11 @@ config = (
     .environment(env="Pendulum-v1")
     .training(
         initial_alpha=1.001,
-        lr=3e-4,
+        lr=0.001 * (args.num_gpus or 1) ** 0.5,
         target_entropy="auto",
         n_step=1,
         tau=0.005,
-        train_batch_size_per_learner=256,
+        train_batch_size_per_learner=128,
         target_network_update_freq=1,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
@@ -31,13 +31,13 @@ config = (
             "alpha": 1.0,
             "beta": 0.0,
         },
-        num_steps_sampled_before_learning_starts=256,
+        num_steps_sampled_before_learning_starts=256 * (args.num_gpus or 1),
     )
     .rl_module(
         model_config_dict={
             "fcnet_hiddens": [256, 256],
             "fcnet_activation": "relu",
-            "post_fcnet_hiddens": [],
+            "post_fcnet_hiddens": [256],
             "post_fcnet_activation": None,
             "post_fcnet_weights_initializer": "orthogonal_",
             "post_fcnet_weights_initializer_config": {"gain": 0.01},
