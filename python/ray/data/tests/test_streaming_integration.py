@@ -342,6 +342,48 @@ def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
     assert len(ready) == 2
 
 
+def test_streaming_split_error_propagation(
+    ray_start_10_cpus_shared, restore_data_context
+):
+    # Test propagating errors from Dataset execution start-up
+    # (e.g. actor pool start-up timeout) to streaming_split iterators.
+    ctx = DataContext.get_current()
+    ctx.wait_for_min_actors_s = 3
+
+    num_splits = 5
+    ds = ray.data.range(100)
+
+    class SlowUDF:
+        def __init__(self):
+            # This UDF slows down actor creation, and thus
+            # will trigger the actor pool start-up timeout error.
+            time.sleep(10)
+
+        def __call__(self, batch):
+            return batch
+
+    ds = ds.map_batches(
+        SlowUDF,
+        concurrency=2,
+    )
+    splits = ds.streaming_split(num_splits, equal=True)
+
+    @ray.remote
+    class Consumer:
+        def consume(self, split):
+            with pytest.raises(
+                ray.exceptions.GetTimeoutError,
+                match="Timed out while starting actors.",
+            ):
+                for _ in split.iter_batches():
+                    pass
+            return "ok"
+
+    consumers = [Consumer.remote() for _ in range(num_splits)]
+    res = ray.get([c.consume.remote(split) for c, split in zip(consumers, splits)])
+    assert res == ["ok"] * num_splits
+
+
 @pytest.mark.skip(
     reason="Incomplete implementation of _validate_dag causes other errors, so we "
     "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"

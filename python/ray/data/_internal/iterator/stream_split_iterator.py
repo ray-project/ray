@@ -177,6 +177,8 @@ class SplitCoordinator:
 
         self._next_epoch = gen_epochs()
         self._output_iterator = None
+        # Store the error raised from the `gen_epoch` call.
+        self._gen_epoch_error: Optional[Exception] = None
 
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
@@ -269,7 +271,15 @@ class SplitCoordinator:
             if self._cur_epoch == starting_epoch:
                 self._cur_epoch += 1
                 self._unfinished_clients_in_epoch = self._n
-                self._output_iterator = next(self._next_epoch)
+                try:
+                    self._output_iterator = next(self._next_epoch)
+                except Exception as e:
+                    self._gen_epoch_error = e
+
+        if self._gen_epoch_error is not None:
+            # If there was an error when advancing to the next epoch,
+            # re-raise it for all threads.
+            raise self._gen_epoch_error
 
         assert self._output_iterator is not None
         return starting_epoch + 1
