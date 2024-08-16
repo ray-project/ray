@@ -10,7 +10,6 @@ from ray.rllib.utils.metrics import (
 parser = add_rllib_example_script_args(
     default_reward=500.0,
     default_timesteps=100000,
-
 )
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
