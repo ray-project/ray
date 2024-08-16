@@ -3,7 +3,7 @@ from sphinx.project import Project
 import os
 import time
 from typing import List
-from datetime import datetime, timezone
+from datetime import datetime
 import click
 
 PENDING_FILES_PATH = "pending_files.txt"
@@ -17,6 +17,9 @@ def list_pending_files(ray_dir: str) -> List[str]:
         pending_files = f.readlines()
         pending_files = [file.strip() for file in pending_files]
     os.remove(f"{ray_dir}/{PENDING_FILES_PATH}")
+    for i in range(len(pending_files)):
+        if pending_files[i].split(".")[-1] != "py":
+            pending_files[i] = pending_files[i].split(".")[0]
     return pending_files
 
 
@@ -54,16 +57,16 @@ def update_environment_pickle(ray_dir: str, pending_files: List[str]) -> None:
 
 
 # TODO(@khluu): Check if this is necessary. Only update changed template files.
-def update_file_timestamp(ray_dir: str) -> None:
+def update_file_timestamp(ray_dir: str, pending_files: List[str]) -> None:
     """
     Update files other than source files to
     an old timestamp to avoid rebuilding them.
     """
     ray_doc_dir = os.path.join(ray_dir, "doc")
-    new_timestamp = datetime(2000, 7, 22, 0, 0, tzinfo=timezone.utc).timestamp()
 
-    # Update all template files timestamp
-    directory = f"{ray_doc_dir}/source/_templates"
+    # Update all target html files timestamp to the current time
+    new_timestamp = datetime.now().timestamp()
+    directory = f"{ray_doc_dir}/_build/html/"
 
     for root, dirs, files in os.walk(directory):
         for file in files:
@@ -71,12 +74,23 @@ def update_file_timestamp(ray_dir: str) -> None:
             try:
                 # Change the access and modification times
                 os.utime(file_path, (new_timestamp, new_timestamp))
-                print(f"Changed timestamp for: {file_path}")
             except Exception as e:
                 print(f"Failed to change timestamp for {file_path}: {str(e)}")
 
     # Update Makefile timestamp
     os.utime(f"{ray_doc_dir}/Makefile", (new_timestamp, new_timestamp))
+
+    new_timestamp = datetime.now().timestamp()
+    for file in pending_files:
+        if file.split(".")[-1] != "py":
+            continue
+        file_path = os.path.join(ray_dir, file)
+        try:
+            # Change the access and modification times
+            os.utime(file_path, (new_timestamp, new_timestamp))
+        except Exception as e:
+            print(f"Failed to change timestamp for {file_path}: {str(e)}")
+
     print("Timestamp change operation completed.")
 
 
@@ -89,7 +103,7 @@ def main(ray_dir: str) -> None:
     print("Updating cache environment ...")
     pending_files = list_pending_files(ray_dir)
     update_environment_pickle(ray_dir, pending_files)
-    update_file_timestamp(ray_dir)
+    update_file_timestamp(ray_dir, pending_files)
 
 
 if __name__ == "__main__":

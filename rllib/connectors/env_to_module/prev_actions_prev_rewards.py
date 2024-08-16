@@ -9,8 +9,10 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import batch, flatten_to_single_ndarray
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class PrevActionsPrevRewards(ConnectorV2):
     """A connector piece that adds previous rewards and actions to the input obs.
 

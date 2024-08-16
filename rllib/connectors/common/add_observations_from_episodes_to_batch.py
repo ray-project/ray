@@ -7,11 +7,40 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class AddObservationsFromEpisodesToBatch(ConnectorV2):
     """Gets the last observation from a running episode and adds it to the batch.
 
+    Note: This is one of the default env-to-module or Learner ConnectorV2 pieces that
+    are added automatically by RLlib into every env-to-module/Learner connector
+    pipeline, unless `config.add_default_connectors_to_env_to_module_pipeline` or
+    `config.add_default_connectors_to_learner_pipeline ` are set to
+    False.
+
+    The default env-to-module connector pipeline is:
+    [
+        [0 or more user defined ConnectorV2 pieces],
+        AddObservationsFromEpisodesToBatch,
+        AddStatesFromEpisodesToBatch,
+        AgentToModuleMapping,  # only in multi-agent setups!
+        BatchIndividualItems,
+        NumpyToTensor,
+    ]
+    The default Learner connector pipeline is:
+    [
+        [0 or more user defined ConnectorV2 pieces],
+        AddObservationsFromEpisodesToBatch,
+        AddColumnsFromEpisodesToTrainBatch,
+        AddStatesFromEpisodesToBatch,
+        AgentToModuleMapping,  # only in multi-agent setups!
+        BatchIndividualItems,
+        NumpyToTensor,
+    ]
+
+    This ConnectorV2:
     - Operates on a list of Episode objects.
     - Gets the most recent observation(s) from all the given episodes and adds them
     to the batch under construction (as a list of individual observations).

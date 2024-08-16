@@ -24,6 +24,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/util/event_label.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -33,6 +34,7 @@ class TestEventReporter : public BaseEventReporter {
   virtual void Report(const rpc::Event &event, const json &custom_fields) override {
     event_list.push_back(event);
   }
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override {}
   virtual void Close() override {}
   virtual ~TestEventReporter() {}
   virtual std::string GetReporterKey() override { return "test.event.reporter"; }
@@ -466,6 +468,43 @@ TEST_F(EventTest, TestWithField) {
   EXPECT_EQ(double_value, 0.123);
   auto bool_value = custom_fields["bool"].get<bool>();
   EXPECT_EQ(bool_value, true);
+}
+
+TEST_F(EventTest, TestExportEvent) {
+  EventManager::Instance().AddReporter(std::make_shared<LogEventReporter>(
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK, log_dir));
+
+  std::shared_ptr<rpc::ExportTaskEventData> task_event_ptr = std::make_shared<rpc::ExportTaskEventData>();
+  task_event_ptr->set_task_id("task_id0");
+  task_event_ptr->set_attempt_number(1);
+  task_event_ptr->set_job_id("job_id0");
+
+  std::string export_event_data_str;
+  google::protobuf::util::JsonPrintOptions options;
+  options.preserve_proto_field_names = true;
+  RAY_CHECK(google::protobuf::util::MessageToJsonString(*task_event_ptr, &export_event_data_str, options).ok());
+  json event_data_as_json = json::parse(export_event_data_str);
+
+  RayExportEvent(task_event_ptr).SendEvent();
+
+  std::vector<std::string> vc;
+  ReadContentFromFile(vc, log_dir + "/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
+
+  EXPECT_EQ((int)vc.size(), 1);
+
+  std::cout << vc[0];
+  json export_event_as_json = json::parse(vc[0]);
+  EXPECT_EQ(export_event_as_json["source_type"].get<std::string>(), "EXPORT_TASK");
+  EXPECT_EQ(export_event_as_json.contains("event_id"), true);
+  EXPECT_EQ(export_event_as_json.contains("timestamp"), true);
+  EXPECT_EQ(export_event_as_json.contains("event_data"), true);
+  // Fields that shouldn't exist for export events but do exist for standard events
+  EXPECT_EQ(export_event_as_json.contains("severity"), false);
+  EXPECT_EQ(export_event_as_json.contains("label"), false);
+  EXPECT_EQ(export_event_as_json.contains("message"), false);
+
+  json event_data = export_event_as_json["event_data"].get<json>();
+  EXPECT_EQ(event_data, event_data_as_json);
 }
 
 TEST_F(EventTest, TestRayCheckAbort) {

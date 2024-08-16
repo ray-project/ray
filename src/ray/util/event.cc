@@ -14,6 +14,9 @@
 
 #include "ray/util/event.h"
 
+#include <google/protobuf/struct.pb.h>
+#include <google/protobuf/util/json_util.h>
+
 #include <filesystem>
 
 #include "absl/base/call_once.h"
@@ -23,7 +26,7 @@ namespace ray {
 ///
 /// LogEventReporter
 ///
-LogEventReporter::LogEventReporter(rpc::Event_SourceType source_type,
+LogEventReporter::LogEventReporter(SourceTypeVariant source_type,
                                    const std::string &log_dir,
                                    bool force_flush,
                                    int rotate_max_file_size,
@@ -40,12 +43,27 @@ LogEventReporter::LogEventReporter(rpc::Event_SourceType source_type,
   // generate file name, if the soucrce type is RAYLET or GCS, the file name would like
   // event_GCS.log, event_RAYLET.log other condition would like
   // event_CORE_WOREKER_{pid}.log
-  file_name_ = "event_" + Event_SourceType_Name(source_type);
-  if (source_type == rpc::Event_SourceType::Event_SourceType_CORE_WORKER ||
-      source_type == rpc::Event_SourceType::Event_SourceType_COMMON) {
-    file_name_ += "_" + std::to_string(getpid());
+  std::string source_type_name = "";
+  bool add_pid_to_file = false;
+  if (auto event_source_type_ptr = std::get_if<rpc::Event_SourceType>(&source_type)) {
+    rpc::Event_SourceType event_source_type = *event_source_type_ptr;
+    source_type_name = Event_SourceType_Name(event_source_type);
+    add_pid_to_file =
+        (event_source_type == rpc::Event_SourceType::Event_SourceType_CORE_WORKER ||
+         event_source_type == rpc::Event_SourceType::Event_SourceType_COMMON);
+  } else if (auto export_event_source_type_ptr =
+                 std::get_if<rpc::ExportEvent_SourceType>(&source_type)) {
+    rpc::ExportEvent_SourceType export_event_source_type = *export_event_source_type_ptr;
+    source_type_name = ExportEvent_SourceType_Name(export_event_source_type);
+    add_pid_to_file = (export_event_source_type ==
+                       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK);
+  } else {
+    // This shouldn't be possible because source_type is typed as SourceTypeVariant
+    RAY_LOG(FATAL) << "source_type argument of LogEventReporter is not of type"
+                   << "rpc::Event_SourceType or rpc::ExportEvent_SourceType.";
   }
-  file_name_ += ".log";
+  file_name_ = "event_" + source_type_name +
+               (add_pid_to_file ? "_" + std::to_string(getpid()) : "") + ".log";
 
   std::string log_sink_key = GetReporterKey() + log_dir_ + file_name_;
   log_sink_ = spdlog::get(log_sink_key);
@@ -103,10 +121,44 @@ std::string LogEventReporter::EventToString(const rpc::Event &event,
   return j.dump();
 }
 
+std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export_event) {
+  json j;
+
+  j["timestamp"] = export_event.timestamp();
+  j["event_id"] = export_event.event_id();
+  j["source_type"] = ExportEvent_SourceType_Name(export_event.source_type());
+  std::string event_data_as_string;
+  google::protobuf::util::JsonPrintOptions options;
+  options.preserve_proto_field_names = true;
+  if (export_event.has_task_event_data()) {
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  export_event.task_event_data(), &event_data_as_string, options)
+                  .ok());
+  } else {
+    RAY_LOG(FATAL)
+        << "event_data missing from export event with id " << export_event.event_id()
+        << "and type " << ExportEvent_SourceType_Name(export_event.source_type())
+        << ". An empty event will be written, and this indicates a bug in the code.";
+    event_data_as_string = "{}";
+  }
+  j["event_data"] = json::parse(event_data_as_string);
+  return j.dump();
+}
+
 void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields) {
   RAY_CHECK(Event_SourceType_IsValid(event.source_type()));
   RAY_CHECK(Event_Severity_IsValid(event.severity()));
   std::string result = EventToString(event, custom_fields);
+
+  log_sink_->info(result);
+  if (force_flush_) {
+    Flush();
+  }
+}
+
+void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
+  RAY_CHECK(ExportEvent_SourceType_IsValid(export_event.source_type()));
+  std::string result = ExportEventToString(export_event);
 
   log_sink_->info(result);
   if (force_flush_) {
@@ -133,6 +185,12 @@ bool EventManager::IsEmpty() { return reporter_map_.empty(); }
 void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
   for (const auto &element : reporter_map_) {
     (element.second)->Report(event, custom_fields);
+  }
+}
+
+void EventManager::PublishExportEvent(const rpc::ExportEvent &export_event) {
+  for (const auto &element : reporter_map_) {
+    (element.second)->ReportExportEvent(export_event);
   }
 }
 
@@ -321,6 +379,45 @@ void RayEvent::SendMessage(const std::string &message) {
           << "[ Event " << event_id << " " << custom_fields_.dump() << " ] " << message;
     }
   }
+}
+
+///
+/// RayExportEvent
+///
+RayExportEvent::~RayExportEvent() {}
+
+void RayExportEvent::SendEvent() {
+  if (EventManager::Instance().IsEmpty()) {
+    return;
+  }
+
+  static const int kEventIDSize = 18;
+  std::string event_id;
+  std::string event_id_buffer = std::string(kEventIDSize, ' ');
+  FillRandom(&event_id_buffer);
+  event_id = StringToHex(event_id_buffer);
+
+  rpc::ExportEvent export_event;
+  export_event.set_event_id(event_id);
+  export_event.set_timestamp(current_sys_time_s());
+
+  if (auto ptr_to_task_event_data_ptr =
+          std::get_if<std::shared_ptr<rpc::ExportTaskEventData>>(&event_data_ptr_)) {
+    export_event.mutable_task_event_data()->CopyFrom(*(*ptr_to_task_event_data_ptr));
+    export_event.set_source_type(
+        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK);
+  } else if (auto ptr_to_node_event_data_ptr =
+                 std::get_if<std::shared_ptr<rpc::ExportNodeData>>(&event_data_ptr_)) {
+    export_event.mutable_node_event_data()->CopyFrom(*(*ptr_to_node_event_data_ptr));
+    export_event.set_source_type(
+        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE);
+  } else {
+    // This shouldn't be possible because event_data_ptr_ is typed as ExportEventDataPtr
+    RAY_LOG(FATAL) << "Invalid event_data type.";
+    return;
+  }
+
+  EventManager::Instance().PublishExportEvent(export_event);
 }
 
 static absl::once_flag init_once_;

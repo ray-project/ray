@@ -1,8 +1,9 @@
+import gymnasium as gym
 import numpy as np
 import random
 import ray
 from ray.actor import ActorHandle
-from typing import Any, Dict, List, Optional, Union, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
@@ -15,6 +16,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.compression import unpack_if_needed
+from ray.rllib.utils.spaces.space_utils import from_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
 
 if TYPE_CHECKING:
@@ -80,6 +82,7 @@ class OfflinePreLearner:
         self,
         config: "AlgorithmConfig",
         learner: Union[Learner, list[ActorHandle]],
+        spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         locality_hints: Optional[list] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
@@ -117,10 +120,16 @@ class OfflinePreLearner:
             # Build the module from spec. Note, this will be a MultiRLModule.
             self._module = module_spec.build()
             self._module.set_state(module_state)
+
+        # Store the observation and action space if defined, otherwise we
+        # set them to `None`. Note, if `None` the `convert_from_jsonable`
+        # will not convert the input space samples.
+        self.observation_space, self.action_space = spaces or (None, None)
+
         # Build the learner connector pipeline.
         self._learner_connector = self.config.build_learner_connector(
-            input_observation_space=None,
-            input_action_space=None,
+            input_observation_space=self.observation_space,
+            input_action_space=self.action_space,
         )
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
@@ -141,7 +150,12 @@ class OfflinePreLearner:
                 self._is_multi_agent,
                 batch,
                 schema=SCHEMA | self.config.input_read_schema,
+                finalize=False,
+                input_compress_columns=self.config.input_compress_columns,
+                observation_space=self.observation_space,
+                action_space=self.action_space,
             )["episodes"]
+
         # TODO (simon): Make synching work. Right now this becomes blocking or never
         # receives weights. Learners appear to be non accessable via other actors.
         # Increase the counter for updating the module.
@@ -216,11 +230,26 @@ class OfflinePreLearner:
         batch: Dict[str, np.ndarray],
         schema: Dict[str, str] = SCHEMA,
         finalize: bool = False,
+        input_compress_columns: Optional[List[str]] = None,
+        observation_space: gym.Space = None,
+        action_space: gym.Space = None,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 
+        # Set to empty list, if `None`.
+        input_compress_columns = input_compress_columns or []
+
+        # If spaces are given, we can use the space-specific
+        # conversion method to convert space samples.
+        if observation_space and action_space:
+            convert = from_jsonable_if_needed
+        # Otherwise we use an identity function.
+        else:
+
+            def convert(sample, space):
+                return sample
+
         episodes = []
-        # TODO (simon): Give users possibility to provide a custom schema.
         for i, obs in enumerate(batch[schema[Columns.OBS]]):
 
             # If multi-agent we need to extract the agent ID.
@@ -248,9 +277,21 @@ class OfflinePreLearner:
                 episode = SingleAgentEpisode(
                     id_=batch[schema[Columns.EPS_ID]][i],
                     agent_id=agent_id,
+                    # Observations might be (a) serialized and/or (b) converted
+                    # to a JSONable (when a composite space was used). We unserialize
+                    # and then reconvert from JSONable to space sample.
                     observations=[
-                        unpack_if_needed(obs),
-                        unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
+                        convert(unpack_if_needed(obs), observation_space)
+                        if Columns.OBS in input_compress_columns
+                        else convert(obs, observation_space),
+                        convert(
+                            unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
+                            observation_space,
+                        )
+                        if Columns.NEXT_OBS in input_compress_columns
+                        else convert(
+                            batch[schema[Columns.NEXT_OBS]][i], observation_space
+                        ),
                     ],
                     infos=[
                         {},
@@ -258,7 +299,17 @@ class OfflinePreLearner:
                         if schema[Columns.INFOS] in batch
                         else {},
                     ],
-                    actions=[batch[schema[Columns.ACTIONS]][i]],
+                    # Actions might be (a) serialized and/or (b) converted to a JSONable
+                    # (when a composite space was used). We unserializer and then
+                    # reconvert from JSONable to space sample.
+                    actions=[
+                        convert(
+                            unpack_if_needed(batch[schema[Columns.ACTIONS]][i]),
+                            action_space,
+                        )
+                        if Columns.ACTIONS in input_compress_columns
+                        else convert(batch[schema[Columns.ACTIONS]][i], action_space)
+                    ],
                     rewards=[batch[schema[Columns.REWARDS]][i]],
                     terminated=batch[
                         schema[Columns.TERMINATEDS]
@@ -272,8 +323,16 @@ class OfflinePreLearner:
                     # t_started=batch[Columns.T if Columns.T in batch else
                     # "unroll_id"][i][0],
                     # TODO (simon): Single-dimensional columns are not supported.
+                    # Extra model outputs might be serialized. We unserialize them here
+                    # if needed.
+                    # TODO (simon): Check, if we need here also reconversion from
+                    # JSONable in case of composite spaces.
                     extra_model_outputs={
-                        k: [v[i]]
+                        k: [
+                            unpack_if_needed(v[i])
+                            if k in input_compress_columns
+                            else v[i]
+                        ]
                         for k, v in batch.items()
                         if (k not in schema and k not in schema.values())
                     },
