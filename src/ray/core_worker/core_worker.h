@@ -841,6 +841,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status GetLocalObjectLocations(const std::vector<ObjectID> &object_ids,
                                  std::vector<std::optional<ObjectLocation>> *results);
 
+  std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
+  GetLocalLineageReconstructionTasks() const;
+
   /// Get the locations of a list objects. Locations that failed to be retrieved
   /// will be returned as nullptrs.
   ///
