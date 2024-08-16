@@ -406,6 +406,11 @@ void RayExportEvent::SendEvent() {
     export_event.mutable_task_event_data()->CopyFrom(*(*ptr_to_task_event_data_ptr));
     export_event.set_source_type(
         rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK);
+  } else if (auto ptr_to_node_event_data_ptr =
+                 std::get_if<std::shared_ptr<rpc::ExportNodeData>>(&event_data_ptr_)) {
+    export_event.mutable_node_event_data()->CopyFrom(*(*ptr_to_node_event_data_ptr));
+    export_event.set_source_type(
+        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE);
   } else {
     // This shouldn't be possible because event_data_ptr_ is typed as ExportEventDataPtr
     RAY_LOG(FATAL) << "Invalid event_data type.";

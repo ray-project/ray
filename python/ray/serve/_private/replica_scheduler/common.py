@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray import ObjectRef, ObjectRefGenerator
+from ray.actor import ActorHandle
 from ray.serve._private.common import (
     ReplicaID,
     ReplicaQueueLengthInfo,
@@ -56,6 +57,10 @@ class ReplicaWrapper(ABC):
     @property
     def max_ongoing_requests(self) -> int:
         """Max concurrent requests that can be sent to this replica."""
+        pass
+
+    def push_proxy_handle(self, handle: ActorHandle):
+        """When on proxy, push proxy's self handle to replica"""
         pass
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
@@ -119,6 +124,9 @@ class ActorReplicaWrapper:
     @property
     def is_cross_language(self) -> bool:
         return self._replica_info.is_cross_language
+
+    def push_proxy_handle(self, handle: ActorHandle):
+        self._actor_handle.push_proxy_handle.remote(handle)
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by

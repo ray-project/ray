@@ -363,10 +363,14 @@ class Router:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 self._event_loop,
                 deployment_id,
+                handle_source,
                 _prefer_local_node_routing,
                 RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_node_id,
                 self_actor_id,
+                ray.get_runtime_context().current_actor
+                if ray.get_runtime_context().get_actor_id()
+                else None,
                 self_availability_zone,
                 use_replica_queue_len_cache=enable_queue_len_cache,
             )

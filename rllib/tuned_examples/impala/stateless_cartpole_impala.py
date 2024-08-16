@@ -1,4 +1,4 @@
-from ray.rllib.algorithms.appo import APPOConfig
+from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.metrics import (
@@ -19,7 +19,7 @@ args = parser.parse_args()
 
 
 config = (
-    APPOConfig()
+    IMPALAConfig()
     # Enable new API stack and use EnvRunner.
     .api_stack(
         enable_rl_module_and_learner=True,
@@ -30,17 +30,17 @@ config = (
         env_to_module_connector=lambda env: MeanStdFilter(),
     )
     .training(
-        lr=0.0005,
-        num_sgd_iter=6,
+        lr=0.0005 * ((args.num_gpus or 1) ** 0.5),
         vf_loss_coeff=0.05,
         grad_clip=20.0,
+        entropy_coeff=0.0,
     )
     .rl_module(
         model_config_dict={
             "vf_share_layers": True,
             "use_lstm": True,
             "uses_new_env_runners": True,
-            "max_seq_len": 50,
+            "max_seq_len": 20,
         },
     )
 )

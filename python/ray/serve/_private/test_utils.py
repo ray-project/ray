@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import os
 import threading
 import time
 from copy import copy, deepcopy
@@ -195,6 +196,15 @@ class MockPlacementGroup:
         self._name = name
         self._lifetime = lifetime
         self._soft_target_node_id = _soft_target_node_id
+
+
+@serve.deployment
+class GetPID:
+    def __call__(self):
+        return os.getpid()
+
+
+get_pid_entrypoint = GetPID.bind()
 
 
 def check_ray_stopped():
