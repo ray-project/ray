@@ -402,13 +402,13 @@ class SynchronousWriter(WriterInterface):
             channel.ensure_registered_as_writer()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
-        for i, c in enumerate(self._output_channels):
+        for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
             if idx is not None:
                 val_i = val[idx]
             else:
                 val_i = val
-            c.write(val_i, timeout)
+            channel.write(val_i, timeout)
         self._num_writes += 1
 
 
@@ -438,13 +438,13 @@ class AwaitableBackgroundWriter(WriterInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self, res):
-        for i, c in enumerate(self._output_channels):
+        for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
             if idx is not None:
                 res_i = res[idx]
             else:
                 res_i = res
-            c.write(res_i)
+            channel.write(res_i)
 
     async def run(self):
         loop = asyncio.get_event_loop()

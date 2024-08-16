@@ -677,12 +677,6 @@ class CompiledDAG:
                         "that is already created with Actor.remote()"
                     )
 
-                # if dag_node.num_returns != 1:
-                #     raise ValueError(
-                #         "Compiled DAGs only supports actor methods with "
-                #         "num_returns=1"
-                #     )
-
                 self.actor_task_count[actor_handle._actor_id] += 1
 
                 if dag_node.type_hint.requires_nccl():
