@@ -108,7 +108,7 @@ Debugging RLlib
 ===============
 
 Finding Memory Leaks In Workers
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------------
 
 Keeping the memory usage of long running workers stable can be challenging. The ``MemoryTrackingCallbacks`` class can be used to track memory usage of workers.
 
