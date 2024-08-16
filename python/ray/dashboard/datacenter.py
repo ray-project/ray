@@ -44,7 +44,7 @@ class DataOrganizer:
     head_node_ip = None
 
     @staticmethod
-    @async_loop_forever(dashboard_consts.PURGE_DATA_INTERVAL_SECONDS)
+    @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_PURGING_INTERVAL)
     async def purge():
         # Purge data that is out of date.
         # These data sources are maintained by DashboardHead,
@@ -65,7 +65,7 @@ class DataOrganizer:
             DataSource.node_physical_stats.pop(key)
 
     @classmethod
-    @async_loop_forever(dashboard_consts.ORGANIZE_DATA_INTERVAL_SECONDS)
+    @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_UPDATING_INTERVAL)
     async def organize(cls):
         node_workers = {}
         core_worker_stats = {}
