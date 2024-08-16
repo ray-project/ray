@@ -11,8 +11,13 @@ from ray.tune.registry import register_env
 
 torch, nn = try_import_torch()
 
-parser = add_rllib_example_script_args()
-parser.set_defaults(num_agents=2)
+parser = add_rllib_example_script_args(
+    default_timesteps=500000,
+)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    num_agents=2,
+)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
@@ -27,9 +32,9 @@ config = (
     .environment(env="multi_agent_pendulum")
     .training(
         initial_alpha=1.001,
-        lr=8e-4,
+        lr=0.001 * ((args.num_gpus or 1) ** 0.5),
         target_entropy="auto",
-        n_step=1,
+        n_step=(2, 5),
         tau=0.005,
         train_batch_size_per_learner=256,
         target_network_update_freq=1,
@@ -44,17 +49,16 @@ config = (
     .rl_module(
         model_config_dict={
             "fcnet_hiddens": [256, 256],
-            "fcnet_activation": "tanh",
+            "fcnet_activation": "relu",
             "fcnet_weights_initializer": nn.init.xavier_uniform_,
-            # "post_fcnet_hiddens": [],
-            # "post_fcnet_activation": None,
-            # "post_fcnet_weights_initializer": nn.init.orthogonal_,
-            # "post_fcnet_weights_initializer_config": {"gain": 0.01},
+            "post_fcnet_hiddens": [],
+            "post_fcnet_activation": None,
+            "post_fcnet_weights_initializer": nn.init.orthogonal_,
+            "post_fcnet_weights_initializer_config": {"gain": 0.01},
         }
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
-        min_sample_timesteps_per_iteration=1000,
     )
 )
 
@@ -65,7 +69,7 @@ if args.num_agents > 0:
     )
 
 stop = {
-    NUM_ENV_STEPS_SAMPLED_LIFETIME: 500000,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     # `episode_return_mean` is the sum of all agents/policies' returns.
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -400.0 * args.num_agents,
 }

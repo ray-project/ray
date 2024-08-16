@@ -1,3 +1,5 @@
+from torch import nn
+
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
@@ -37,6 +39,7 @@ config = (
         model_config_dict={
             "fcnet_hiddens": [256, 256],
             "fcnet_activation": "relu",
+            "fcnet_weights_initializer": nn.init.xavier_uniform_,
             "post_fcnet_hiddens": [],
             "post_fcnet_activation": None,
             "post_fcnet_weights_initializer": "orthogonal_",
