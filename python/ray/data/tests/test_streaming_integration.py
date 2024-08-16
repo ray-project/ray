@@ -348,7 +348,7 @@ def test_streaming_split_error_propagation(
     # Test propagating errors from Dataset execution start-up
     # (e.g. actor pool start-up timeout) to streaming_split iterators.
     ctx = DataContext.get_current()
-    ctx.wait_for_min_actors_s = 3
+    ctx.wait_for_min_actors_s = 1
 
     num_splits = 5
     ds = ray.data.range(100)
