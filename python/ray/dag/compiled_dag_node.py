@@ -217,10 +217,10 @@ class CompiledTask:
         self.dag_node = dag_node
 
         self.downstream_node_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
-        # `output_idxs` represents the tuple index of the output value
-        # for multiple returns in a tuple. Each output value is written
-        # to separate `output_channels`. If an output index is None, it
-        # means the return value is directly written to the output channel.
+        # Multiple return values are written to separate `output_channels`.
+        # `output_idxs` represents the tuple index of the output value for
+        # multiple returns in a tuple. If an output index is None, it means
+        # the complete return value is written to the output channel.
         # Otherwise, the return value is a tuple and the index is used
         # to extract the value to be written to the output channel.
         self.output_channels: List[ChannelInterface] = []
