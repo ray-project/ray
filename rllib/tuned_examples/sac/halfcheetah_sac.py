@@ -3,10 +3,10 @@ from torch import nn
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
-# Our implementation of SAC can reach 9k reward in 400k timesteps
 parser = add_rllib_example_script_args(
-    default_timesteps=4000000,
-    default_reward=10000.0,
+    default_timesteps=400000,
+    default_reward=9000.0,
+    default_iters=20000,
 )
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
@@ -19,7 +19,7 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment("HalfCheetah-v3")
+    .environment("HalfCheetah-v4")
     .training(
         initial_alpha=1.001,
         lr=0.0003 * (args.num_gpus or 1) ** 0.5,
@@ -34,7 +34,7 @@ config = (
             "alpha": 1.0,
             "beta": 0.0,
         },
-        num_steps_sampled_before_learning_starts=1000 * (args.num_gpus or 1),
+        num_steps_sampled_before_learning_starts=10000,
     )
     .rl_module(
         model_config_dict={
@@ -49,6 +49,7 @@ config = (
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
+        min_sample_timesteps_per_iteration=1000,
     )
 )
 
