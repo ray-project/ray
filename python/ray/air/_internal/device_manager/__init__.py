@@ -83,7 +83,7 @@ def get_torch_device_manager(device_type: Optional[str] = None) -> TorchDeviceMa
 
     with _torch_device_manager_lock:
         if not _torch_device_manager:
-            init_torch_device_manager(device_type=device_type)
+            init_torch_device_manager()
 
     return _torch_device_manager
 
