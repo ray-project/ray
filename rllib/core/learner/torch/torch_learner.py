@@ -403,7 +403,8 @@ class TorchLearner(Learner):
         # TODO (Kourosh): This can result in missing modules if the user does not
         #  register them in the MultiRLModule. We should find a better way to
         #  handle this.
-        if False:#self._distributed:
+        if self._distributed:
+            raise Exception()
             # Single agent module: Convert to `TorchDDPRLModule`.
             if isinstance(self._module, TorchRLModule):
                 self._module = TorchDDPRLModule(self._module)
