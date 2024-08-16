@@ -143,6 +143,8 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
 
   status_events_.set_capacity(
       RayConfig::instance().task_events_max_num_status_events_buffer_on_worker());
+  dropped_status_events_for_export_.set_capacity(
+      RayConfig::instance().task_events_max_num_status_events_buffer_on_worker() + 10000);
 
   io_thread_ = std::thread([this]() {
 #ifndef _WIN32
@@ -211,6 +213,7 @@ bool TaskEventBufferImpl::Enabled() const { return enabled_; }
 
 void TaskEventBufferImpl::GetTaskStatusEventsToSend(
     std::vector<std::unique_ptr<TaskEvent>> *status_events_to_send,
+    std::vector<std::unique_ptr<TaskEvent>> *dropped_status_events_to_write,
     absl::flat_hash_set<TaskAttempt> *dropped_task_attempts_to_send) {
   absl::MutexLock lock(&mutex_);
 
@@ -244,6 +247,16 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
       std::make_move_iterator(status_events_.begin()),
       std::make_move_iterator(status_events_.begin() + num_to_send));
   status_events_.erase(status_events_.begin(), status_events_.begin() + num_to_send);
+
+  // Get the dropped events data to write.
+  size_t num_to_write =
+      std::min(static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()),
+               static_cast<size_t>(dropped_status_events_for_export_.size()));
+  dropped_status_events_to_write->insert(
+      dropped_status_events_to_write->end(),
+      std::make_move_iterator(dropped_status_events_for_export_.begin()),
+      std::make_move_iterator(dropped_status_events_for_export_.begin() + num_to_write));
+  dropped_status_events_for_export_.erase(dropped_status_events_for_export_.begin(), dropped_status_events_for_export_.begin() + num_to_write);
 
   stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskStatusEventsStored,
                            status_events_to_send->size());
@@ -351,9 +364,10 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
 
   // Take out status events from the buffer.
   std::vector<std::unique_ptr<TaskEvent>> status_events_to_send;
+  std::vector<std::unique_ptr<TaskEvent>> dropped_status_events_to_write;
   absl::flat_hash_set<TaskAttempt> dropped_task_attempts_to_send;
   status_events_to_send.reserve(RayConfig::instance().task_events_send_batch_size());
-  GetTaskStatusEventsToSend(&status_events_to_send, &dropped_task_attempts_to_send);
+  GetTaskStatusEventsToSend(&status_events_to_send, &dropped_status_events_to_write, &dropped_task_attempts_to_send);
 
   // Take profile events from the status events.
   std::vector<std::unique_ptr<TaskEvent>> profile_events_to_send;
@@ -443,11 +457,12 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     // This task attempt has been dropped before, so we drop this event.
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
+    dropped_status_events_for_export_.push_back(std::move(status_event));
     return;
   }
 
   if (status_events_.full()) {
-    const auto &to_evict = status_events_.front();
+    auto &to_evict = status_events_.front();
     auto inserted = dropped_task_attempts_unreported_.insert(to_evict->GetTaskAttempt());
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
@@ -463,6 +478,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     if (inserted.second) {
       stats_counter_.Increment(TaskEventBufferCounter::kNumDroppedTaskAttemptsStored);
     }
+    dropped_status_events_for_export_.push_back(std::move(to_evict));
   } else {
     stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventsStored);
   }

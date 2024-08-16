@@ -12,6 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <filesystem>
+#include <fstream>
+
 #include "ray/core_worker/task_event_buffer.h"
 
 #include <google/protobuf/util/message_differencer.h>
@@ -24,6 +27,7 @@
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
+#include "ray/util/event.h"
 
 using ::testing::_;
 using ::testing::Return;
@@ -50,10 +54,11 @@ class TaskEventBufferTest : public ::testing::Test {
         std::make_unique<ray::gcs::MockGcsClient>());
   }
 
-  virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
+  virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false));}
 
   virtual void TearDown() {
     if (task_event_buffer_) task_event_buffer_->Stop();
+    std::filesystem::remove_all(log_dir_.c_str());
   };
 
   std::vector<TaskID> GenTaskIDs(size_t num_tasks) {
@@ -124,6 +129,7 @@ class TaskEventBufferTest : public ::testing::Test {
   }
 
   std::unique_ptr<TaskEventBufferImpl> task_event_buffer_ = nullptr;
+  std::string log_dir_ = "event_123";
 };
 
 class TaskEventBufferTestManualStart : public TaskEventBufferTest {
@@ -173,6 +179,35 @@ class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
   )");
   }
 };
+
+class TaskEventTestWriteExport : public TaskEventBufferTest {
+ public:
+  TaskEventTestWriteExport() : TaskEventBufferTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_report_interval_ms": 1000,
+  "task_events_max_num_status_events_buffer_on_worker": 10,
+  "task_events_max_num_profile_events_buffer_on_worker": 5,
+  "task_events_send_batch_size": 100
+}
+  )");
+  }
+};
+
+void ReadContentFromFile(std::vector<std::string> &vc,
+                         std::string log_file,
+                         std::string filter = "") {
+  std::string line;
+  std::ifstream read_file;
+  read_file.open(log_file, std::ios::binary);
+  while (std::getline(read_file, line)) {
+    if (filter.empty() || line.find(filter) != std::string::npos) {
+      vc.push_back(line);
+    }
+  }
+  read_file.close();
+}
 
 TEST_F(TaskEventBufferTestManualStart, TestGcsClientFail) {
   ASSERT_NE(task_event_buffer_, nullptr);
@@ -248,6 +283,73 @@ TEST_F(TaskEventBufferTest, TestFlushEvents) {
   // Expect no more events.
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
 }
+
+// TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
+//   // Test writing task events event_EXPORT_TASK_123.log as part of the export API.
+//   // {"task_events_max_num_status_events_buffer_on_worker": 10} in TaskEventBufferTest
+//   // so set greater num_events to verify dropped events are also sent.
+//   size_t num_events = 20;
+//   auto task_ids = GenTaskIDs(num_events);
+//   google::protobuf::util::JsonPrintOptions options;
+//   options.preserve_proto_field_names = true;
+
+//   std::vector<SourceTypeVariant> source_types = {rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
+//   RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
+
+//   std::vector<std::unique_ptr<TaskEvent>> task_events;
+//   for (const auto &task_id : task_ids) {
+//     task_events.push_back(GenStatusTaskEvent(task_id, 0));
+//   }
+
+//   // Expect data flushed match
+//   std::vector<std::shared_ptr<rpc::ExportTaskEventData>> expected_data;
+//   for (const auto &task_event : task_events) {
+//     std::shared_ptr<rpc::ExportTaskEventData> event = std::make_shared<rpc::ExportTaskEventData>();
+//     task_event->ToRpcTaskExportEvents(event);
+//     expected_data.push_back(event);
+//   }
+
+//   for (auto &task_event : task_events) {
+//     task_event_buffer_->AddTaskEvent(std::move(task_event));
+//   }
+
+//   task_event_buffer_->FlushEvents(false);
+
+//   std::vector<std::string> vc;
+//   ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
+//   EXPECT_EQ((int)vc.size(), num_events);
+//   json event_data_arr_json = {};
+//   json expected_event_data_arr_json = {};
+//   for (int i = 0; i < num_events; i++){
+//     json export_event_as_json = json::parse(vc[i]);
+//     EXPECT_EQ(export_event_as_json["source_type"].get<std::string>(), "EXPORT_TASK");
+//     EXPECT_EQ(export_event_as_json.contains("event_id"), true);
+//     EXPECT_EQ(export_event_as_json.contains("timestamp"), true);
+//     EXPECT_EQ(export_event_as_json.contains("event_data"), true);
+
+//     json event_data = export_event_as_json["event_data"].get<json>();
+//     event_data_arr_json.push_back(event_data);
+
+//     std::string expected_event_data_str;
+//     RAY_CHECK(google::protobuf::util::MessageToJsonString(*expected_data[i], &expected_event_data_str, options).ok());
+//     json expected_event_data = json::parse(expected_event_data_str);
+//     expected_event_data_arr_json.push_back(expected_event_data);
+//   }
+  
+//   // Sort observed and expected event data json (array of events) for comparison.
+//   // All events in a single flush get the same timestamp (because it is not part of event_data)
+//   // and the order of events written may be different than received if events
+//   // are dropped.
+//   std::vector<json> event_data_arr_vec = event_data_arr_json.get<std::vector<json>>();
+//   std::vector<json> expected_event_data_arr_vec = expected_event_data_arr_json.get<std::vector<nlohmann::json>>();
+//   std::sort(event_data_arr_vec.begin(), event_data_arr_vec.end());
+//   std::sort(expected_event_data_arr_vec.begin(), expected_event_data_arr_vec.end());
+
+//   EXPECT_EQ(event_data_arr_vec, expected_event_data_arr_vec);
+
+//   // Expect no more events.
+//   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);
+// }
 
 TEST_F(TaskEventBufferTest, TestFailedFlush) {
   size_t num_status_events = 20;
