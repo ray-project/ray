@@ -66,9 +66,9 @@ class CUDATorchDeviceManager(TorchDeviceManager):
         """Validate if the device type support create a stream"""
         return True
 
-    def create_stream(self, deivce: torch.device) -> torch.cuda.Stream:
+    def create_stream(self, device: torch.device) -> torch.cuda.Stream:
         """Create a stream on cuda device"""
-        return torch.cuda.Stream(deivce)
+        return torch.cuda.Stream(device)
 
     def get_stream_context(self, stream):
         """Get a stream context for cuda device"""

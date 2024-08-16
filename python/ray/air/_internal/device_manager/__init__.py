@@ -61,7 +61,7 @@ def get_torch_device_manager_cls_by_resources(
 def get_torch_device_manager_cls_by_device_type(device_type: str):
     if device_type.lower() == ray_constants.GPU.lower() or device_type == "cuda":
         return CUDATorchDeviceManager
-    elif device_type.lower == ray_constants.NPU.lower():
+    elif device_type.lower() == ray_constants.NPU.lower():
         return NPUTorchDeviceManager
     elif device_type.lower() == ray_constants.HPU.lower():
         return HPUTorchDeviceManager
