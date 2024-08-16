@@ -635,7 +635,7 @@ class _WrappedDataLoader(DataLoader):
         self.dataloader_iter = None
         self.device = device
 
-        self.device_manager = get_torch_device_manager()
+        self.device_manager = get_torch_device_manager(device.type)
         # reset device is needed for npu in a new thread so far.
         if device.type == "npu":
             self.device_manager.set_device(device)
@@ -652,6 +652,11 @@ class _WrappedDataLoader(DataLoader):
             else None
         )
         self.next_batch = None
+
+        logger.info(
+            f"self.device: {self.device} \n"
+            f"self.device_manager: {self.device_manager} \n"
+        )
 
     def _move_to_device(self, item):
         if item is None:

@@ -1,4 +1,5 @@
 import logging
+import threading
 from typing import Optional, Type
 
 import ray
@@ -57,12 +58,32 @@ def get_torch_device_manager_cls_by_resources(
     return existing_device_manager or DEFAULT_TORCH_DEVICE_MANAGER_CLS
 
 
+def get_torch_device_manager_cls_by_device_type(device_type: str):
+    if device_type.lower() == ray_constants.GPU.lower() or device_type == "cuda":
+        return CUDATorchDeviceManager
+    elif device_type.lower == ray_constants.NPU.lower():
+        return NPUTorchDeviceManager
+    elif device_type.lower() == ray_constants.HPU.lower():
+        return HPUTorchDeviceManager
+    elif device_type.lower() == "cpu":
+        return CPUTorchDeviceManager
+
+    raise RuntimeError(f"Device type {device_type} cannot be recognized.")
+
+
 _torch_device_manager = None
+_torch_device_manager_lock = threading.Lock()
 
 
-def get_torch_device_manager() -> TorchDeviceManager:
-    if not _torch_device_manager:
-        init_torch_device_manager()
+def get_torch_device_manager(device_type: Optional[str] = None) -> TorchDeviceManager:
+    if device_type:
+        # Specify the device type to retrieve the device manager directly,
+        # rather than relying on the remote environment to determine it.
+        return get_torch_device_manager_cls_by_device_type(device_type)()
+
+    with _torch_device_manager_lock:
+        if not _torch_device_manager:
+            init_torch_device_manager(device_type=device_type)
 
     return _torch_device_manager
 
