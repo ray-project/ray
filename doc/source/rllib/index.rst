@@ -134,12 +134,12 @@ click on the dropdowns below:
     *  `RLlib Environments Overview <rllib-env.html>`__
     *  `Farama-Foundation gymnasium <rllib-env.html#gymnasium>`__
     *  `Vectorized <rllib-env.html#vectorized>`__
-    *  `Multi-Agent and Hierarchical <rllib-env.html#multi-agent-and-hierarchical>`__
-    *  `External Agents and Applications <rllib-env.html#external-agents-and-applications>`__
+    *  `Multi-Agent and Hierarchical <env-multi-agent.html>`__
+    *  `External Agents and Applications <env-advanced-setups.html>`__
 
-       -  `External Application Clients <rllib-env.html#external-application-clients>`__
+       -  `External Application Clients <env-advanced-setups.html#external-application-clients>`__
 
-    *  `Advanced Integrations <rllib-env.html#advanced-integrations>`__
+    *  `Advanced Integrations <env-advanced-setups.html>`__
 
 Feature Overview
 ----------------
