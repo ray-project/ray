@@ -136,20 +136,6 @@ def test_basic(ray_start_regular):
     compiled_dag.teardown()
 
 
-# def test_multiple_returns_not_supported(ray_start_regular):
-#     a = Actor.remote(0)
-#     b = Actor.remote(0)
-#     with InputNode() as i:
-#         dag = a.return_two.bind(i)
-#         dag = b.echo.bind(dag)
-
-#     with pytest.raises(
-#         ValueError,
-#         match="Compiled DAGs only supports actor methods with " "num_returns=1",
-#     ):
-#         dag.experimental_compile()
-
-
 def test_two_returns_first(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
@@ -182,7 +168,6 @@ def test_two_returns_three_actors(ray_start_regular):
     c = Actor.remote(0)
     with InputNode() as i:
         o1, o2 = a.return_two.bind(i)
-        dag = MultiOutputNode([o2])
         o3 = b.echo.bind(o1)
         o4 = c.echo.bind(o2)
         dag = MultiOutputNode([o3, o4])

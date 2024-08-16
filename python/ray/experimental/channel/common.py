@@ -307,7 +307,6 @@ class SynchronousReader(ReaderInterface):
         results = []
         for i, c in enumerate(self._input_channels):
             start_time = time.monotonic()
-            # results.append(c.read(timeout))
             result = c.read(timeout)
             idx = self._input_idxs[i]
             if idx is not None:
@@ -377,8 +376,11 @@ class AwaitableBackgroundReader(ReaderInterface):
 
 @DeveloperAPI
 class WriterInterface:
-    def __init__(self, output_channel: ChannelInterface):
-        self._output_channel = output_channel
+    def __init__(
+        self, output_channels: List[ChannelInterface], output_idxs: List[Optional[int]]
+    ):
+        self._output_channels = output_channels
+        self._output_idxs = output_idxs
         self._closed = False
         self._num_writes = 0
 
@@ -402,26 +404,36 @@ class WriterInterface:
 
     def close(self) -> None:
         self._closed = True
-        self._output_channel.close()
+        for channel in self._output_channels:
+            channel.close()
 
 
 @DeveloperAPI
 class SynchronousWriter(WriterInterface):
     def start(self):
-        self._output_channel.ensure_registered_as_writer()
-        pass
+        for channel in self._output_channels:
+            channel.ensure_registered_as_writer()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
-        self._output_channel.write(val, timeout)
+        for i in range(len(self._output_channels)):
+            idx = self._output_idxs[i]
+            if idx is not None:
+                val_i = val[idx]
+            else:
+                val_i = val
+            self._output_channels[i].write(val_i, timeout)
         self._num_writes += 1
 
 
 @DeveloperAPI
 class AwaitableBackgroundWriter(WriterInterface):
     def __init__(
-        self, output_channel: ChannelInterface, max_queue_size: Optional[int] = None
+        self,
+        output_channels: List[ChannelInterface],
+        output_idxs: List[Optional[int]],
+        max_queue_size: Optional[int] = None,
     ):
-        super().__init__(output_channel)
+        super().__init__(output_channels, output_idxs)
         if max_queue_size is None:
             from ray.dag import DAGContext
 
@@ -434,11 +446,12 @@ class AwaitableBackgroundWriter(WriterInterface):
         )
 
     def start(self):
-        self._output_channel.ensure_registered_as_writer()
+        for channel in self._output_channels:
+            channel.ensure_registered_as_writer()
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self, res):
-        self._output_channel.write(res)
+        self._output_channels[0].write(res)
 
     async def run(self):
         loop = asyncio.get_event_loop()
