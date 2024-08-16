@@ -192,6 +192,11 @@ void EventManager::PublishExportEvent(const rpc::ExportEvent &export_event) {
   auto element = export_log_reporter_map_.find(export_event.source_type());
   if (element != export_log_reporter_map_.end()) {
     (element->second)->ReportExportEvent(export_event);
+  } else {
+    RAY_LOG(FATAL)
+        << "RayEventInit wasn't called with the necessary source type "
+        << ExportEvent_SourceType_Name(export_event.source_type())
+        << ". This indicates a bug in the code, and the event will be dropped.";
   }
 }
 
