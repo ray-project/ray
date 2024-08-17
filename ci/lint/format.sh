@@ -204,7 +204,7 @@ format_frontend() {
   (
     echo "$(date)" "format frontend...."
     local folder
-    folder="$(pwd)/dashboard/client"
+    folder="$(pwd)/python/ray/dashboard/client"
     local filenames
     # shellcheck disable=SC2207
     filenames=($(find "${folder}"/src -name "*.ts" -or -name "*.tsx"))

@@ -1,6 +1,6 @@
 import os
 import re
-from typing import List
+from typing import List, Set
 
 from ci.ray_ci.doc.api import (
     API,
@@ -11,6 +11,7 @@ from ci.ray_ci.doc.api import (
 
 _SPHINX_CURRENTMODULE_HEADER = ".. currentmodule::"
 _SPHINX_TOCTREE_HEADER = ".. toctree::"
+_SPHINX_INCLUDE_HEADER = ".. include::"
 
 
 class Autodoc:
@@ -42,9 +43,31 @@ class Autodoc:
         for rst in rsts:
             self._apis.extend(self._parse_autodoc_rst(rst))
 
-    def _get_autodoc_rsts(self) -> List[str]:
+    def _get_autodoc_rsts(self) -> Set[str]:
+        """
+        Recursively parse the head_rst_file to find all the autodoc rsts
+        """
+        if self._autodoc_rsts is not None:
+            return self._autodoc_rsts
+
+        self._autodoc_rsts = {self._head_rst_file}
+        visit_current = {self._head_rst_file}
+        while visit_current:
+            visit_next = set()
+            for rst in visit_current:
+                for child_rst in self._get_autodoc_rsts_in_file(rst):
+                    if child_rst not in self._autodoc_rsts:
+                        self._autodoc_rsts.add(child_rst)
+                        visit_next.add(child_rst)
+            visit_current = visit_next
+
+        return self._autodoc_rsts
+
+    def _get_autodoc_rsts_in_file(self, rst_file: str) -> Set[str]:
         """
         Parse the list of rst declared in the head_rst_file, for example:
+
+        .. include:: area_00.rst
 
         .. toctree::
             :option
@@ -52,16 +75,28 @@ class Autodoc:
             area_01.rst
             area_02.rst
         """
-        if self._autodoc_rsts is not None:
-            return self._autodoc_rsts
+        if not os.path.exists(rst_file):
+            return set()
 
-        dir = os.path.dirname(self._head_rst_file)
-        self._autodoc_rsts = [self._head_rst_file]
-        with open(self._head_rst_file, "r") as f:
+        rsts = set()
+        dir = os.path.dirname(rst_file)
+        with open(rst_file, "r") as f:
             line = f.readline()
             while line:
+                line = line.strip()
+
+                # look for the include block
+                if line.startswith(_SPHINX_INCLUDE_HEADER):
+                    rsts.add(
+                        os.path.join(
+                            dir, line.removeprefix(_SPHINX_INCLUDE_HEADER).strip()
+                        )
+                    )
+                    line = f.readline()
+                    continue
+
                 # look for the toctree block
-                if not line.strip() == _SPHINX_TOCTREE_HEADER:
+                if not line == _SPHINX_TOCTREE_HEADER:
                     line = f.readline()
                     continue
 
@@ -73,10 +108,10 @@ class Autodoc:
                         # the line is not empty and not starting with empty space
                         break
                     if line.strip().endswith(".rst"):
-                        self._autodoc_rsts.append(os.path.join(dir, line.strip()))
+                        rsts.add(os.path.join(dir, line.strip()))
                     line = f.readline()
 
-        return self._autodoc_rsts
+        return rsts
 
     def _parse_autodoc_rst(self, rst_file: str) -> List[API]:
         """
@@ -92,6 +127,9 @@ class Autodoc:
             myclass.myfunc_01
             myclass.myfunc_02
         """
+        if not os.path.exists(rst_file):
+            return []
+
         apis = []
         module = None
         with open(rst_file, "r") as f:

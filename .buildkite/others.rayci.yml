@@ -1,7 +1,7 @@
 group: others
 depends_on:
-  - oss-ci-base_build
   - forge
+  - oss-ci-base_build
 steps:
   #build
   - name: doctestbuild

@@ -13,7 +13,7 @@ import torch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.benchmarks.torch_compile.utils import get_ppo_batch_for_env, timed
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind
 from ray.rllib.models.catalog import MODEL_DEFAULTS
@@ -96,7 +96,7 @@ def main(pargs):
 
     # setup RLModule
     model_cfg = MODEL_DEFAULTS.copy()
-    spec = SingleAgentRLModuleSpec(
+    spec = RLModuleSpec(
         module_class=PPOTorchRLModule,
         observation_space=env.observation_space,
         action_space=env.action_space,

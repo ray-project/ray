@@ -30,7 +30,7 @@ class CRRModel(TorchModelV2, nn.Module):
 
         # TODO: I don't know why this is true yet? (in = num_outputs)
         self.obs_ins = num_outputs
-        self.action_dim = np.product(self.action_space.shape)
+        self.action_dim = np.prod(self.action_space.shape)
         self.actor_model = self._build_actor_net("actor")
         twin_q = self.model_config["twin_q"]
         self.q_model = self._build_q_net("q")

@@ -166,7 +166,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool PinExistingReturnObject(
             const CObjectID& return_id,
             shared_ptr[CRayObject] *return_object,
-            const CObjectID& generator_id)
+            const CObjectID& generator_id,
+            const CAddress &caller_address)
         void AsyncDelObjectRefStream(const CObjectID &generator_id)
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
@@ -255,6 +256,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const shared_ptr[CBuffer] &metadata,
                                   uint64_t data_size,
                                   int64_t num_readers,
+                                  int64_t timeout_ms,
                                   shared_ptr[CBuffer] *data)
         CRayStatus ExperimentalChannelWriteRelease(
                                   const CObjectID &object_id)

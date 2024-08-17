@@ -842,17 +842,12 @@
 - name: air_example_gptj_deepspeed_fine_tuning
   group: AIR examples
   working_dir: air_examples/gptj_deepspeed_finetuning
-
-
   frequency: weekly
   team: ml
   cluster:
     byod:
       type: gpu
-      pip:
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
-        - jupytext==1.13.6
+      post_build_script: byod_gptj_test.sh
     cluster_compute: gptj_deepspeed_compute_aws.yaml
 
   run:
@@ -862,20 +857,11 @@
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
   group: AIR examples
   working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
-
   frequency: weekly
   team: ml
   cluster:
     byod:
       type: gpu
-      pip:
-        - "datasets"
-        - "evaluate"
-        - "scikit-learn"
-        - "boto3"
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
-        - jupytext==1.13.6
       post_build_script: byod_dolly_test.sh
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
@@ -888,16 +874,11 @@
 - name: air_example_vicuna_13b_lightning_deepspeed_finetuning
   group: AIR examples
   working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
-
-
   frequency: weekly
   team: ml
   cluster:
     byod:
       type: gpu
-      pip:
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
       post_build_script: byod_vicuna_test.sh
     cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
 
@@ -1099,7 +1080,7 @@
     byod:
       runtime_env:
         - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
-      type: gpu
+      type: cu123
     cluster_compute: train/compute_tpl_aws.yaml
 
   run:
@@ -2288,7 +2269,7 @@
   cluster:
     byod: {}
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98 
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
 
   run:
     timeout: 7200
@@ -2321,8 +2302,8 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py311
-      python: "3.11"
+    - __suffix__: aws.py312
+      python: "3.12"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -2389,12 +2370,12 @@
   cluster:
     byod: {}
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98 
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
 
   run:
     timeout: 7200
     long_running: false
-    script: python workloads/microbenchmarks.py
+    script: python workloads/microbenchmarks.py --run-all
 
   alert: default
 
@@ -2417,7 +2398,7 @@
     byod:
       type: gpu
     cluster_compute: compute_tpl_gpu_node.yaml
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98 
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
 
   run:
     timeout: 7200
@@ -2844,6 +2825,7 @@
 - name: stress_test_placement_group
   group: core-multi-test
   working_dir: nightly_tests
+  env: aws_perf
 
   frequency: nightly
 
@@ -2917,6 +2899,7 @@
   group: core-daily-test
   team: core
   frequency: nightly
+  env: aws_perf
   working_dir: microbenchmark
 
   cluster:
@@ -2935,9 +2918,9 @@
       frequency: manual
       cluster:
         cluster_compute: tpl_64_gce.yaml
-    - __suffix__: aws.py311
+    - __suffix__: aws.py312
       frequency: weekly
-      python: "3.11"
+      python: "3.12"
 
 - name: microbenchmark_unstable
   group: core-daily-test
@@ -2971,6 +2954,23 @@
   run:
     timeout: 1800
     script: python experimental/accelerated_dag_gpu_microbenchmark.py
+
+- name: microbenchmark_gpu_multinode_unstable
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  stable: false
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: experimental/compute_gpu_2x1_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/accelerated_dag_gpu_microbenchmark.py --distributed
 
 - name: benchmark_worker_startup
   group: core-daily-test
@@ -3023,9 +3023,6 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py311
-      frequency: weekly
-      python: "3.11"
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -3103,9 +3100,9 @@
 
   variations:
     - __suffix__: aws
-    - __suffix__: aws.py311
+    - __suffix__: aws.py312
       frequency: manual
-      python: "3.11"
+      python: "3.12"
       smoke_test:
         frequency: nightly-3x
     - __suffix__: gce
@@ -3146,6 +3143,7 @@
 - name: stress_test_many_tasks
   group: core-daily-test
   working_dir: nightly_tests
+  env: aws_perf
 
   frequency: nightly
   team: core
@@ -3185,6 +3183,7 @@
 - name: stress_test_dead_actors
   group: core-daily-test
   working_dir: nightly_tests
+  env: aws_perf
 
   frequency: nightly
   team: core
@@ -3316,6 +3315,7 @@
 
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod: {}
     cluster_compute: stress_tests/stress_tests_single_node_oom_compute.yaml
@@ -3475,6 +3475,7 @@
 
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
@@ -3501,6 +3502,7 @@
 
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
@@ -3528,6 +3530,7 @@
 
   frequency: nightly-3x
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
@@ -3575,6 +3578,7 @@
 
   frequency: nightly
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
@@ -3602,6 +3606,7 @@
 
   frequency: nightly-3x
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu
@@ -3650,6 +3655,7 @@
 
   frequency: nightly-3x
   team: core
+  env: aws_perf
   cluster:
     byod:
       type: gpu

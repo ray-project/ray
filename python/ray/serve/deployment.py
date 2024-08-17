@@ -11,7 +11,7 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import DEFAULT_MAX_ONGOING_REQUESTS, SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
@@ -182,16 +182,6 @@ class Deployment:
         return self._deployment_config.user_config
 
     @property
-    def max_concurrent_queries(self) -> int:
-        """[DEPRECATED] Max number of requests a replica can handle at once."""
-
-        logger.warning(
-            "DeprecationWarning: `max_concurrent_queries` is deprecated, please use "
-            "`max_ongoing_requests` instead."
-        )
-        return self._deployment_config.max_ongoing_requests
-
-    @property
     def max_ongoing_requests(self) -> int:
         """Max number of requests a replica can handle at once."""
         return self._deployment_config.max_ongoing_requests
@@ -326,7 +316,6 @@ class Deployment:
         placement_group_strategy: Default[str] = DEFAULT.VALUE,
         max_replicas_per_node: Default[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
-        max_concurrent_queries: Default[int] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
         max_queued_requests: Default[int] = DEFAULT.VALUE,
         autoscaling_config: Default[
@@ -353,11 +342,6 @@ class Deployment:
         # `num_replicas="auto"`
         if max_ongoing_requests is None:
             raise ValueError("`max_ongoing_requests` must be non-null, got None.")
-        elif max_ongoing_requests is DEFAULT.VALUE:
-            if max_concurrent_queries is None:
-                max_ongoing_requests = DEFAULT_MAX_ONGOING_REQUESTS
-            else:
-                max_ongoing_requests = max_concurrent_queries
         if num_replicas == "auto":
             num_replicas = None
             max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
@@ -413,12 +397,6 @@ class Deployment:
                 "into `serve.run` instead."
             )
 
-        if not _internal and max_concurrent_queries is not DEFAULT.VALUE:
-            logger.warning(
-                "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` "
-                "has been deprecated and replaced by `max_ongoing_requests`."
-            )
-
         elif num_replicas not in [DEFAULT.VALUE, None]:
             new_deployment_config.num_replicas = num_replicas
 
@@ -464,18 +442,6 @@ class Deployment:
 
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
-            if (
-                new_deployment_config.autoscaling_config
-                and "target_num_ongoing_requests_per_replica"
-                in new_deployment_config.autoscaling_config.dict(exclude_unset=True)
-            ):
-                logger.warning(
-                    "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
-                    "`autoscaling_config` has been deprecated and replaced by "
-                    "`target_ongoing_requests`. Note that "
-                    "`target_num_ongoing_requests_per_replica` will be removed in a "
-                    "future version."
-                )
 
         if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
             new_deployment_config.graceful_shutdown_wait_loop_s = (
@@ -566,7 +532,6 @@ def deployment_to_schema(
         "num_replicas": None
         if d._deployment_config.autoscaling_config
         else d.num_replicas,
-        "max_concurrent_queries": d.max_ongoing_requests,
         "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
         "user_config": d.user_config,
@@ -635,7 +600,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     deployment_config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
-        max_ongoing_requests=s.max_ongoing_requests or s.max_concurrent_queries,
+        max_ongoing_requests=s.max_ongoing_requests,
         max_queued_requests=s.max_queued_requests,
         autoscaling_config=s.autoscaling_config,
         graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,

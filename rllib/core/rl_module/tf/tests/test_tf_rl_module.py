@@ -1,6 +1,5 @@
 import tempfile
 import unittest
-from typing import Mapping
 
 import gymnasium as gym
 import tensorflow as tf
@@ -53,7 +52,7 @@ class TestRLModule(unittest.TestCase):
             )
             loss = -tf.math.reduce_mean(action_dist.logp(actions))
 
-        self.assertIsInstance(output, Mapping)
+        self.assertIsInstance(output, dict)
 
         grads = tape.gradient(loss, module.trainable_variables)
 
@@ -118,7 +117,7 @@ class TestRLModule(unittest.TestCase):
             )
         )
         with tempfile.TemporaryDirectory() as tmpdir:
-            module.save_to_checkpoint(tmpdir)
+            module.save_to_path(tmpdir)
             new_module = DiscreteBCTFModule.from_checkpoint(tmpdir)
 
         check(module.get_state(), new_module.get_state())

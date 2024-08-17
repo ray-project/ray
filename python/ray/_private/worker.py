@@ -992,6 +992,8 @@ class Worker:
 def get_gpu_ids() -> Union[List[int], List[str]]:
     """Get the IDs of the GPUs that are available to the worker.
 
+    This method should only be called inside of a task or actor, and not a driver.
+
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
     started up, then the IDs returned by this method will be a subset of the
     IDs in CUDA_VISIBLE_DEVICES. If not, the IDs will fall in the range
@@ -1406,9 +1408,11 @@ def init(
         logging.getLogger("ray").handlers.clear()
 
     # Configure the logging settings for the driver process.
-    if logging_config:
-        dict_config = logging_config._get_dict_config()
-        logging.config.dictConfig(dict_config)
+    if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
+        logging_config = logging_config or LoggingConfig(
+            encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING
+        )
+        logging_config._apply()
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1584,7 +1588,7 @@ def init(
 
     # Pass the logging_config to job_config to configure loggers of all worker
     # processes belonging to the job.
-    if logging_config:
+    if logging_config is not None:
         job_config.set_py_logging_config(logging_config)
 
     redis_address, gcs_address = None, None
@@ -2240,7 +2244,12 @@ def connect(
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
     ray._private.state.state._initialize_global_state(
-        ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+        ray._raylet.GcsClientOptions.create(
+            node.gcs_address,
+            node.cluster_id.hex(),
+            allow_cluster_id_nil=False,
+            fetch_cluster_id_if_nil=False,
+        )
     )
     worker.gcs_publisher = ray._raylet.GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
@@ -2300,7 +2309,12 @@ def connect(
     elif not LOCAL_MODE:
         raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+    gcs_options = ray._raylet.GcsClientOptions.create(
+        node.gcs_address,
+        node.cluster_id.hex(),
+        allow_cluster_id_nil=False,
+        fetch_cluster_id_if_nil=False,
+    )
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
@@ -2631,7 +2645,7 @@ def get(
             return object_refs
 
         if isinstance(object_refs, CompiledDAGRef):
-            return object_refs.get()
+            return object_refs.get(timeout=timeout)
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:

@@ -2,22 +2,28 @@ import time
 from collections import defaultdict
 from functools import partial
 import logging
-from typing import Any, Container, DefaultDict, Dict, List, Optional
+from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
+from ray.rllib.core import (
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+    COMPONENT_RL_MODULE,
+    DEFAULT_AGENT_ID,
+    DEFAULT_MODULE_ID,
+)
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module import INFERENCE_ONLY
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
-from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
@@ -41,7 +47,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.spaces.space_utils import unbatch
-from ray.rllib.utils.typing import EpisodeID, ModelWeights, ModuleID, ResultDict
+from ray.rllib.utils.typing import EpisodeID, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
@@ -49,8 +55,10 @@ _, tf, _ = try_import_tf()
 logger = logging.getLogger("ray.rllib")
 
 
+# TODO (sven): As soon as RolloutWorker is no longer supported, make `EnvRunner` itself
+#  a Checkpointable. Currently, only some of its subclasses are Checkpointables.
 @PublicAPI(stability="alpha")
-class SingleAgentEnvRunner(EnvRunner):
+class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     """The generic environment runner for the single agent case."""
 
     @override(EnvRunner)
@@ -89,21 +97,15 @@ class SingleAgentEnvRunner(EnvRunner):
         # required in the learning step.
         self._cached_to_module = None
 
-        # Create our own instance of the (single-agent) `RLModule` (which
-        # the needs to be weight-synched) each iteration.
+        # Create the RLModule.
         try:
-            module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
-            module_spec.observation_space = self._env_to_module.observation_space
-            module_spec.action_space = self.env.single_action_space
-            if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = self.config.model_config
-            # Only load a light version of the module, if available. This is useful
-            # if the the module has target or critic networks not needed in sampling
-            # or inference.
-            # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
-            # this line here as the function takes care of this flag.
-            module_spec.model_config_dict[INFERENCE_ONLY] = True
-            self.module: RLModule = module_spec.build()
+            module_spec: RLModuleSpec = self.config.get_rl_module_spec(
+                env=self.env, spaces=self.get_spaces(), inference_only=True
+            )
+            # Build the module from its spec.
+            self.module = module_spec.build()
+        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
+        # will not have an RLModule, but might still be usable with random actions.
         except NotImplementedError:
             self.module = None
 
@@ -197,19 +199,17 @@ class SingleAgentEnvRunner(EnvRunner):
                     explore=explore,
                     random_actions=random_actions,
                 )
-            # For complete episodes mode, sample as long as the number of timesteps
-            # done is smaller than the `train_batch_size`.
+            # For complete episodes mode, sample a single episode and
+            # leave coordination of sampling to `synchronous_parallel_sample`.
+            # TODO (simon, sven): The coordination will eventually move
+            #  to `EnvRunnerGroup` in the future. So from the algorithm one
+            #  would do `EnvRunnerGroup.sample()`.
             else:
-                total = 0
-                samples = []
-                while total < self.config.train_batch_size:
-                    episodes = self._sample_episodes(
-                        num_episodes=self.num_envs,
-                        explore=explore,
-                        random_actions=random_actions,
-                    )
-                    total += sum(len(e) for e in episodes)
-                    samples.extend(episodes)
+                samples = self._sample_episodes(
+                    num_episodes=1,
+                    explore=explore,
+                    random_actions=random_actions,
+                )
 
             # Make the `on_sample_end` callback.
             self._callbacks.on_sample_end(
@@ -605,6 +605,16 @@ class SingleAgentEnvRunner(EnvRunner):
 
         return samples
 
+    @override(EnvRunner)
+    def get_spaces(self):
+        return {
+            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
+            DEFAULT_MODULE_ID: (
+                self._env_to_module.observation_space,
+                self.env.single_action_space,
+            ),
+        }
+
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
         for eps in self._done_episodes_for_metrics:
@@ -639,43 +649,49 @@ class SingleAgentEnvRunner(EnvRunner):
         # Return reduced metrics.
         return self.metrics.reduce()
 
-    @override(EnvRunner)
+    @override(Checkpointable)
     def get_state(
         self,
-        components: Optional[Container[str]] = None,
+        components: Optional[Union[str, Collection[str]]] = None,
         *,
-        module_ids: Optional[Container[ModuleID]] = None,
-        inference_only: bool = True,
-    ) -> Dict[str, Any]:
-        components = force_list(
-            components
-            if components is not None
-            else ["rl_module", "env_to_module_connector", "module_to_env_connector"]
-        )
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
         }
-        if "rl_module" in components:
-            state["rl_module"] = self.module.get_state(inference_only=inference_only)
-        if "env_to_module_connector" in components:
-            state["env_to_module_connector"] = self._env_to_module.get_state()
-        if "module_to_env_connector" in components:
-            state["module_to_env_connector"] = self._module_to_env.get_state()
+
+        if self._check_component(COMPONENT_RL_MODULE, components, not_components):
+            state[COMPONENT_RL_MODULE] = self.module.get_state(
+                components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
+                not_components=self._get_subcomponents(
+                    COMPONENT_RL_MODULE, not_components
+                ),
+                **kwargs,
+            )
+        if self._check_component(
+            COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
+        ):
+            state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = self._env_to_module.get_state()
+        if self._check_component(
+            COMPONENT_MODULE_TO_ENV_CONNECTOR, components, not_components
+        ):
+            state[COMPONENT_MODULE_TO_ENV_CONNECTOR] = self._module_to_env.get_state()
 
         return state
 
-    @override(EnvRunner)
-    def set_state(self, state: Dict[str, Any]) -> None:
-        if "env_to_module_connector" in state:
-            self._env_to_module.set_state(state["env_to_module_connector"])
-        if "module_to_env_connector" in state:
-            self._module_to_env.set_state(state["module_to_env_connector"])
+    @override(Checkpointable)
+    def set_state(self, state: StateDict) -> None:
+        if COMPONENT_ENV_TO_MODULE_CONNECTOR in state:
+            self._env_to_module.set_state(state[COMPONENT_ENV_TO_MODULE_CONNECTOR])
+        if COMPONENT_MODULE_TO_ENV_CONNECTOR in state:
+            self._module_to_env.set_state(state[COMPONENT_MODULE_TO_ENV_CONNECTOR])
 
         # Update the RLModule state.
-        if "rl_module" in state:
+        if COMPONENT_RL_MODULE in state:
             # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
             # update.
             weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
@@ -683,11 +699,13 @@ class SingleAgentEnvRunner(EnvRunner):
             # Only update the weigths, if this is the first synchronization or
             # if the weights of this `EnvRunner` lacks behind the actual ones.
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
-                weights = state["rl_module"]
-                if isinstance(weights, dict) and DEFAULT_MODULE_ID in weights:
-                    weights = weights[DEFAULT_MODULE_ID]
-                weights = self._convert_to_tensor(weights)
-                self.module.set_state(weights)
+                rl_module_state = state[COMPONENT_RL_MODULE]
+                if (
+                    isinstance(rl_module_state, dict)
+                    and DEFAULT_MODULE_ID in rl_module_state
+                ):
+                    rl_module_state = rl_module_state[DEFAULT_MODULE_ID]
+                self.module.set_state(rl_module_state)
             # Update our weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
@@ -700,11 +718,36 @@ class SingleAgentEnvRunner(EnvRunner):
                 reduce="sum",
             )
 
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self):
+        return (
+            (),  # *args
+            {"config": self.config},  # **kwargs
+        )
+
+    @override(Checkpointable)
+    def get_metadata(self):
+        metadata = Checkpointable.get_metadata(self)
+        metadata.update(
+            {
+                # TODO (sven): Maybe add serialized (JSON-writable) config here?
+            }
+        )
+        return metadata
+
+    @override(Checkpointable)
+    def get_checkpointable_components(self):
+        return [
+            (COMPONENT_RL_MODULE, self.module),
+            (COMPONENT_ENV_TO_MODULE_CONNECTOR, self._env_to_module),
+            (COMPONENT_MODULE_TO_ENV_CONNECTOR, self._module_to_env),
+        ]
+
     @override(EnvRunner)
     def assert_healthy(self):
         """Checks that self.__init__() has been completed properly.
 
-        Ensures that the instances has a `MultiAgentRLModule` and an
+        Ensures that the instances has a `MultiRLModule` and an
         environment defined.
 
         Raises:
@@ -859,22 +902,11 @@ class SingleAgentEnvRunner(EnvRunner):
 
     @Deprecated(
         new="SingleAgentEnvRunner.get_state(components='rl_module')",
-        error=False,
+        error=True,
     )
-    def get_weights(self, modules=None):
-        return self.get_state(components="rl_module")["rl_module"]
+    def get_weights(self, *args, **kwargs):
+        pass
 
-    @Deprecated(new="SingleAgentEnvRunner.set_state()", error=False)
-    def set_weights(
-        self,
-        weights: ModelWeights,
-        global_vars: Optional[Dict] = None,
-        weights_seq_no: int = 0,
-    ) -> None:
-        assert global_vars is None
-        return self.set_state(
-            {
-                "rl_module": weights,
-                WEIGHTS_SEQ_NO: weights_seq_no,
-            }
-        )
+    @Deprecated(new="SingleAgentEnvRunner.set_state()", error=True)
+    def set_weights(self, *args, **kwargs):
+        pass

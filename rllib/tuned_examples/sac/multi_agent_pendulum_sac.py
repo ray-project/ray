@@ -27,7 +27,7 @@ config = (
     .environment(env="multi_agent_pendulum")
     .training(
         initial_alpha=1.001,
-        lr=3e-4,
+        lr=8e-4,
         target_entropy="auto",
         n_step=1,
         tau=0.005,

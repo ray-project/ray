@@ -4,6 +4,9 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
@@ -194,11 +197,13 @@ def test_read_text_remote_args(ray_start_cluster, tmp_path):
         path, override_num_blocks=2, ray_remote_args={"resources": {"bar": 1}}
     )
 
-    blocks = ds.get_internal_block_refs()
-    ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
-    location_data = ray.experimental.get_object_locations(blocks)
+    block_refs = _ref_bundles_iterator_to_block_refs_list(
+        ds.iter_internal_ref_bundles()
+    )
+    ray.wait(block_refs, num_returns=len(block_refs), fetch_local=False)
+    location_data = ray.experimental.get_object_locations(block_refs)
     locations = []
-    for block in blocks:
+    for block in block_refs:
         locations.extend(location_data[block]["node_ids"])
     assert set(locations) == {bar_node_id}, locations
     assert sorted(_to_lines(ds.take())) == ["goodbye", "hello", "world"]

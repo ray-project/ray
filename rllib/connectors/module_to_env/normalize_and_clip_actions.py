@@ -13,9 +13,50 @@ from ray.rllib.utils.spaces.space_utils import (
     unsquash_action,
 )
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class NormalizeAndClipActions(ConnectorV2):
+    """Normalizes or clips actions in the input data (coming from the RLModule).
+
+    Note: This is one of the default module-to-env ConnectorV2 pieces that
+    are added automatically by RLlib into every module-to-env connector pipeline,
+    unless `config.add_default_connectors_to_module_to_env_pipeline` is set to
+    False.
+
+    The default module-to-env connector pipeline is:
+    [
+        GetActions,
+        TensorToNumpy,
+        UnBatchToIndividualItems,
+        ModuleToAgentUnmapping,  # only in multi-agent setups!
+        RemoveSingleTsTimeRankFromBatch,
+
+        [0 or more user defined ConnectorV2 pieces],
+
+        NormalizeAndClipActions,
+        ListifyDataForVectorEnv,
+    ]
+
+    This ConnectorV2:
+    - Deep copies the Columns.ACTIONS in the incoming `data` into a new column:
+    Columns.ACTIONS_FOR_ENV.
+    - Loops through the Columns.ACTIONS in the incoming `data` and normalizes or clips
+    these depending on the c'tor settings in `config.normalize_actions` and
+    `config.clip_actions`.
+    - Only applies to envs with Box action spaces.
+
+    Normalizing is the process of mapping NN-outputs (which are usually small
+    numbers, e.g. between -1.0 and 1.0) to the bounds defined by the action-space.
+    Normalizing helps the NN to learn faster in environments with large ranges between
+    `low` and `high` bounds or skewed action bounds (e.g. Box(-3000.0, 1.0, ...)).
+
+    Clipping clips the actions computed by the NN (and sampled from a distribution)
+    between the bounds defined by the action-space. Note that clipping is only performed
+    if `normalize_actions` is False.
+    """
+
     @override(ConnectorV2)
     def recompute_action_space_from_input_spaces(self) -> gym.Space:
         self._action_space_struct = get_base_struct_from_space(self.input_action_space)
@@ -52,9 +93,10 @@ class NormalizeAndClipActions(ConnectorV2):
                 from the resulting distribution, then this 0.9 will be clipped to 0.5
                 to fit into the [-0.5 0.5] interval.
         """
+        self._action_space_struct = None
+
         super().__init__(input_observation_space, input_action_space, **kwargs)
 
-        self._action_space_struct = None
         self.normalize_actions = normalize_actions
         self.clip_actions = clip_actions
 

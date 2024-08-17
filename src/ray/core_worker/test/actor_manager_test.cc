@@ -19,7 +19,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 
@@ -50,7 +50,8 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
     auto it = callback_map_.find(actor_id);
     if (it == callback_map_.end()) return false;
     auto actor_state_notification_callback = it->second;
-    actor_state_notification_callback(actor_id, actor_data);
+    auto copied = actor_data;
+    actor_state_notification_callback(actor_id, std::move(copied));
     return true;
   }
 
@@ -66,7 +67,8 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
       return false;
     }
 
-    if (!ActorStateNotificationPublished(actor_id, actor_data)) {
+    auto copied = actor_data;
+    if (!ActorStateNotificationPublished(actor_id, std::move(copied))) {
       return false;
     }
 
@@ -92,9 +94,9 @@ class MockGcsClient : public gcs::GcsClient {
   }
 };
 
-class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterface {
+class MockActorTaskSubmitter : public ActorTaskSubmitterInterface {
  public:
-  MockDirectActorSubmitter() : CoreWorkerDirectActorTaskSubmitterInterface() {}
+  MockActorTaskSubmitter() : ActorTaskSubmitterInterface() {}
   void AddActorQueueIfNotExists(const ActorID &actor_id,
                                 int32_t max_pending_calls,
                                 bool execute_out_of_order = false,
@@ -116,14 +118,12 @@ class MockDirectActorSubmitter : public CoreWorkerDirectActorTaskSubmitterInterf
                     int64_t num_restarts,
                     bool dead,
                     const rpc::ActorDeathCause &death_cause));
-  MOCK_METHOD3(KillActor,
-               void(const ActorID &actor_id, bool force_kill, bool no_restart));
 
   MOCK_METHOD0(CheckTimeoutTasks, void());
 
   MOCK_METHOD(void, SetPreempted, (const ActorID &actor_id), (override));
 
-  virtual ~MockDirectActorSubmitter() {}
+  virtual ~MockActorTaskSubmitter() {}
 };
 
 class MockReferenceCounter : public ReferenceCounterInterface {
@@ -149,7 +149,7 @@ class MockReferenceCounter : public ReferenceCounterInterface {
                     bool add_local_ref,
                     const absl::optional<NodeID> &pinned_at_raylet_id));
 
-  MOCK_METHOD2(SetDeleteCallback,
+  MOCK_METHOD2(SetObjectPrimaryCopyDeleteCallback,
                bool(const ObjectID &object_id,
                     const std::function<void(const ObjectID &)> callback));
 
@@ -159,10 +159,14 @@ class MockReferenceCounter : public ReferenceCounterInterface {
 class ActorManagerTest : public ::testing::Test {
  public:
   ActorManagerTest()
-      : options_("localhost:6793"),
+      : options_("localhost",
+                 6793,
+                 ClusterID::Nil(),
+                 /*allow_cluster_id_nil=*/true,
+                 /*fetch_cluster_id_if_nil=*/false),
         gcs_client_mock_(new MockGcsClient(options_)),
         actor_info_accessor_(new MockActorInfoAccessor(gcs_client_mock_.get())),
-        direct_actor_submitter_(new MockDirectActorSubmitter()),
+        actor_task_submitter_(new MockActorTaskSubmitter()),
         reference_counter_(new MockReferenceCounter()) {
     gcs_client_mock_->Init(actor_info_accessor_);
   }
@@ -171,7 +175,7 @@ class ActorManagerTest : public ::testing::Test {
 
   void SetUp() {
     actor_manager_ = std::make_shared<ActorManager>(
-        gcs_client_mock_, direct_actor_submitter_, reference_counter_);
+        gcs_client_mock_, actor_task_submitter_, reference_counter_);
   }
 
   void TearDown() { actor_manager_.reset(); }
@@ -199,7 +203,7 @@ class ActorManagerTest : public ::testing::Test {
                                                        ray_namespace,
                                                        -1,
                                                        false);
-    EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
+    EXPECT_CALL(*reference_counter_, SetObjectPrimaryCopyDeleteCallback(_, _))
         .WillRepeatedly(testing::Return(true));
     actor_manager_->AddNewActorHandle(std::move(actor_handle),
                                       call_site,
@@ -212,7 +216,7 @@ class ActorManagerTest : public ::testing::Test {
   gcs::GcsClientOptions options_;
   std::shared_ptr<MockGcsClient> gcs_client_mock_;
   MockActorInfoAccessor *actor_info_accessor_;
-  std::shared_ptr<MockDirectActorSubmitter> direct_actor_submitter_;
+  std::shared_ptr<MockActorTaskSubmitter> actor_task_submitter_;
   std::shared_ptr<MockReferenceCounter> reference_counter_;
   std::shared_ptr<ActorManager> actor_manager_;
 };
@@ -238,7 +242,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                                                      "",
                                                      -1,
                                                      false);
-  EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
+  EXPECT_CALL(*reference_counter_, SetObjectPrimaryCopyDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
 
   // Add an actor handle.
@@ -274,14 +278,14 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
   ASSERT_TRUE(actor_handle_to_get->GetActorID() == actor_id);
 
   // Check after the actor is created, if it is connected to an actor.
-  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(1);
+  EXPECT_CALL(*actor_task_submitter_, ConnectActor(_, _, _)).Times(1);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::ALIVE);
   actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
 
   // Now actor state is updated to DEAD. Make sure it is disconnected.
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(1);
+  EXPECT_CALL(*actor_task_submitter_, DisconnectActor(_, _, _, _)).Times(1);
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::DEAD);
   actor_info_accessor_->ActorStateNotificationPublished(actor_id, actor_table_data);
@@ -315,7 +319,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
                                                      "",
                                                      -1,
                                                      false);
-  EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
+  EXPECT_CALL(*reference_counter_, SetObjectPrimaryCopyDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
   ObjectID outer_object_id = ObjectID::Nil();
 
@@ -339,8 +343,8 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
 TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
   ActorID actor_id = AddActorHandle();
   // Nothing happens if state is pending.
-  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(0);
+  EXPECT_CALL(*actor_task_submitter_, ConnectActor(_, _, _)).Times(0);
+  EXPECT_CALL(*actor_task_submitter_, DisconnectActor(_, _, _, _)).Times(0);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::PENDING_CREATION);
@@ -351,8 +355,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationPending) {
 TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
   ActorID actor_id = AddActorHandle();
   // Should disconnect to an actor when actor is restarting.
-  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(1);
+  EXPECT_CALL(*actor_task_submitter_, ConnectActor(_, _, _)).Times(0);
+  EXPECT_CALL(*actor_task_submitter_, DisconnectActor(_, _, _, _)).Times(1);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::RESTARTING);
@@ -363,8 +367,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationRestarting) {
 TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
   ActorID actor_id = AddActorHandle();
   // Should disconnect to an actor when actor is dead.
-  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(0);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(1);
+  EXPECT_CALL(*actor_task_submitter_, ConnectActor(_, _, _)).Times(0);
+  EXPECT_CALL(*actor_task_submitter_, DisconnectActor(_, _, _, _)).Times(1);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::DEAD);
@@ -375,8 +379,8 @@ TEST_F(ActorManagerTest, TestActorStateNotificationDead) {
 TEST_F(ActorManagerTest, TestActorStateNotificationAlive) {
   ActorID actor_id = AddActorHandle();
   // Should connect to an actor when actor is alive.
-  EXPECT_CALL(*direct_actor_submitter_, ConnectActor(_, _, _)).Times(1);
-  EXPECT_CALL(*direct_actor_submitter_, DisconnectActor(_, _, _, _)).Times(0);
+  EXPECT_CALL(*actor_task_submitter_, ConnectActor(_, _, _)).Times(1);
+  EXPECT_CALL(*actor_task_submitter_, DisconnectActor(_, _, _, _)).Times(0);
   rpc::ActorTableData actor_table_data;
   actor_table_data.set_actor_id(actor_id.Binary());
   actor_table_data.set_state(rpc::ActorTableData::ALIVE);

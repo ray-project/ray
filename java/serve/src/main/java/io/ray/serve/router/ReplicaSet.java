@@ -102,7 +102,7 @@ public class ReplicaSet { // TODO ReplicaScheduler
     }
     int randomIndex = RandomUtils.nextInt(0, handles.size());
     BaseActorHandle replica =
-        handles.get(randomIndex); // TODO controll concurrency using maxConcurrentQueries
+        handles.get(randomIndex); // TODO controll concurrency using maxOngoingRequests
     LOGGER.debug("Assigned query {} to replica {}.", query.getMetadata().getRequestId(), replica);
     if (replica instanceof PyActorHandle) {
       Object[] args =

@@ -32,6 +32,7 @@ FAKE_BATCH = {
     Columns.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
+    Columns.LOSS_MASK: np.ones(shape=(frag_length,)),
 }
 
 
@@ -81,9 +82,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         algo_config.learners(num_learners=0)
         algo_config.validate()
 
-        learner_group = algo_config.build_learner_group(
-            env=algo.workers.local_worker().env
-        )
+        learner_group = algo_config.build_learner_group(env=algo.env_runner.env)
         learner_group.update_from_batch(batch=train_batch.as_multi_agent())
 
         algo.stop()

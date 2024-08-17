@@ -240,7 +240,7 @@ class TestLearner(unittest.TestCase):
 
             check(params, expected)
 
-    def test_save_load_state(self):
+    def test_save_to_path_and_restore_from_path(self):
         """Tests, whether a Learner's state is properly saved and restored."""
         config = BaseTestingAlgorithmConfig()
 
@@ -248,10 +248,10 @@ class TestLearner(unittest.TestCase):
             # Get a Learner instance for the framework and env.
             learner1 = config.build_learner(env=self.ENV)
             with tempfile.TemporaryDirectory() as tmpdir:
-                learner1.save_state(tmpdir)
+                learner1.save_to_path(tmpdir)
 
                 learner2 = config.build_learner(env=self.ENV)
-                learner2.load_state(tmpdir)
+                learner2.restore_from_path(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
             # Add a module then save/load and check states.
@@ -263,43 +263,20 @@ class TestLearner(unittest.TestCase):
                     module_id="test",
                     module_spec=rl_module_spec,
                 )
-                learner1.save_state(tmpdir)
-                learner2.load_state(tmpdir)
+                learner1.save_to_path(tmpdir)
+                learner2 = Learner.from_checkpoint(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
             # Remove a module then save/load and check states.
             with tempfile.TemporaryDirectory() as tmpdir:
                 learner1.remove_module(module_id=DEFAULT_MODULE_ID)
-                learner1.save_state(tmpdir)
-                learner2.load_state(tmpdir)
+                learner1.save_to_path(tmpdir)
+                learner2 = Learner.from_checkpoint(tmpdir)
                 self._check_learner_states(fw, learner1, learner2)
 
     def _check_learner_states(self, framework, learner1, learner2):
-        check(learner1.get_module_state(), learner2.get_module_state())
-
-        # Method to call on the local optimizer object to get the optimizer's
-        # state.
-        method = "get_config" if framework == "tf2" else "state_dict"
-
-        # check all internal optimizer state dictionaries have been updated
-        learner_1_optims_serialized = {
-            name: getattr(optim, method)()
-            for name, optim in learner1._named_optimizers.items()
-        }
-        learner_2_optims_serialized = {
-            name: getattr(optim, method)()
-            for name, optim in learner2._named_optimizers.items()
-        }
-        check(learner_1_optims_serialized, learner_2_optims_serialized)
-
-        learner_1_optims_serialized = [
-            getattr(optim, method)() for optim in learner1._optimizer_parameters.keys()
-        ]
-        learner_2_optims_serialized = [
-            getattr(optim, method)() for optim in learner2._optimizer_parameters.keys()
-        ]
-        check(learner_1_optims_serialized, learner_2_optims_serialized)
-
+        check(learner1.module.get_state(), learner2.module.get_state())
+        check(learner1._get_optimizer_state(), learner2._get_optimizer_state())
         check(learner1._module_optimizers, learner2._module_optimizers)
 
 

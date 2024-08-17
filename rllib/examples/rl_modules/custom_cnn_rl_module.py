@@ -54,7 +54,7 @@ Number of trials: 1/1 (1 RUNNING)
 """
 import gymnasium as gym
 
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm import TinyAtariCNN
 from ray.rllib.utils.test_utils import (
@@ -96,7 +96,7 @@ if __name__ == "__main__":
         )
         .rl_module(
             # Plug-in our custom RLModule class.
-            rl_module_spec=SingleAgentRLModuleSpec(
+            rl_module_spec=RLModuleSpec(
                 module_class=TinyAtariCNN,
                 # Feel free to specify your own `model_config_dict` settings below.
                 # The `model_config_dict` defined here will be available inside your
