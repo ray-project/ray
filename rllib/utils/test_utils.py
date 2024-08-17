@@ -1487,6 +1487,7 @@ def run_rllib_example_script_experiment(
         # New stack.
         if config.enable_rl_module_and_learner:
             # Define compute resources used.
+            config.resources(num_gpus=0)
             config.learners(
                 num_learners=args.num_gpus,
                 num_gpus_per_learner=(
