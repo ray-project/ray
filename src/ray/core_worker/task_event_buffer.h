@@ -63,7 +63,7 @@ class TaskEvent {
   /// NOTE: this method will modify internal states by moving fields to the
   /// rpc::ExportTaskEventData.
   /// \param[out] rpc_task_export_event_data The rpc export task event data to be filled.
-  // virtual void ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) = 0;
+  virtual void ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) = 0;
 
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
@@ -140,7 +140,7 @@ class TaskStatusEvent : public TaskEvent {
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
-  // void ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
+  void ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
   bool IsProfileEvent() const override { return false; }
 
@@ -173,7 +173,7 @@ class TaskProfileEvent : public TaskEvent {
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
-  // void ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
+  void ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
   bool IsProfileEvent() const override { return true; }
 
