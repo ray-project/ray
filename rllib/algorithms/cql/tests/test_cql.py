@@ -64,7 +64,6 @@ class TestCQL(unittest.TestCase):
                 bc_iters=2,
             )
             .evaluation(
-                always_attach_evaluation_results=True,
                 evaluation_interval=2,
                 evaluation_duration=10,
                 evaluation_config=cql.CQLConfig.overrides(input_="sampler"),
@@ -83,11 +82,12 @@ class TestCQL(unittest.TestCase):
                 results = algo.train()
                 check_train_results(results)
                 print(results)
-                eval_results = results[EVALUATION_RESULTS]
-                print(
-                    f"iter={algo.iteration} "
-                    f"R={eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}"
-                )
+                eval_results = results.get(EVALUATION_RESULTS)
+                if eval_results:
+                    print(
+                        f"iter={algo.iteration} "
+                        f"R={eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}"
+                    )
             check_compute_single_action(algo)
 
             # Get policy and model.
@@ -100,7 +100,7 @@ class TestCQL(unittest.TestCase):
             # using the data from CQL's global replay buffer.
             # Get a sample (MultiAgentBatch).
 
-            batch = algo.workers.local_worker().input_reader.next()
+            batch = algo.env_runner.input_reader.next()
             multi_agent_batch = batch.as_multi_agent()
             # All experiences have been buffered for `default_policy`
             batch = multi_agent_batch.policy_batches["default_policy"]

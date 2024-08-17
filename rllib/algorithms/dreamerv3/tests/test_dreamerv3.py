@@ -84,9 +84,9 @@ class TestDreamerV3(unittest.TestCase):
 
             config.environment(env)
             algo = config.build()
-            obs_space = algo.workers.local_worker().env.single_observation_space
-            act_space = algo.workers.local_worker().env.single_action_space
-            rl_module = algo.workers.local_worker().module
+            obs_space = algo.env_runner.env.single_observation_space
+            act_space = algo.env_runner.env.single_action_space
+            rl_module = algo.env_runner.module
 
             for i in range(num_iterations):
                 results = algo.train()
@@ -205,7 +205,9 @@ class TestDreamerV3(unittest.TestCase):
 
                     # Create our RLModule to compute actions with.
                     policy_dict, _ = config.get_multi_agent_setup()
-                    module_spec = config.get_marl_module_spec(policy_dict=policy_dict)
+                    module_spec = config.get_multi_rl_module_spec(
+                        policy_dict=policy_dict
+                    )
                     rl_module = module_spec.build()[DEFAULT_MODULE_ID]
 
                     # Count the generated RLModule's parameters and compare to the

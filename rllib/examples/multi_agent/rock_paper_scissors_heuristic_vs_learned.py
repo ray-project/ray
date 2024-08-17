@@ -34,8 +34,8 @@ from pettingzoo.classic import rps_v2
 
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.connectors.env_to_module import FlattenObservations
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -56,6 +56,11 @@ parser = add_rllib_example_script_args(
     default_iters=50,
     default_timesteps=200000,
     default_reward=6.0,
+)
+parser.set_defaults(
+    num_agents=2,
+    # Script only runs on new API stack.
+    enable_new_api_stack=True,
 )
 parser.add_argument(
     "--use-lstm",
@@ -114,19 +119,19 @@ if __name__ == "__main__":
                 "max_seq_len": 15,
                 "vf_share_layers": True,
             },
-            rl_module_spec=MultiAgentRLModuleSpec(
+            rl_module_spec=MultiRLModuleSpec(
                 module_specs={
-                    "always_same": SingleAgentRLModuleSpec(
+                    "always_same": RLModuleSpec(
                         module_class=AlwaysSameHeuristicRLM,
                         observation_space=gym.spaces.Discrete(4),
                         action_space=gym.spaces.Discrete(3),
                     ),
-                    "beat_last": SingleAgentRLModuleSpec(
+                    "beat_last": RLModuleSpec(
                         module_class=BeatLastHeuristicRLM,
                         observation_space=gym.spaces.Discrete(4),
                         action_space=gym.spaces.Discrete(3),
                     ),
-                    "learned": SingleAgentRLModuleSpec(),
+                    "learned": RLModuleSpec(),
                 }
             ),
         )

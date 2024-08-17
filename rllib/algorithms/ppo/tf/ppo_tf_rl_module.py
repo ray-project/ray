@@ -6,11 +6,12 @@ from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ACTOR, CRITIC
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.typing import TensorType
 
 tf1, tf, _ = try_import_tf()
 
@@ -19,7 +20,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
     framework: str = "tf2"
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict) -> Dict[str, Any]:
         output = {}
 
         # Encoder forward pass.
@@ -33,7 +34,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict, **kwargs) -> Dict[str, Any]:
         """PPO forward pass during exploration.
 
         Besides the action distribution, this method also returns the parameters of
@@ -53,7 +54,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
             output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Value head
-        if not self.inference_only:
+        if not self.config.inference_only:
             # Only, if this is a learner module we have a value function head.
             vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
             output[Columns.VF_PREDS] = tf.squeeze(vf_out, axis=-1)
@@ -65,7 +66,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         return output
 
     @override(TfRLModule)
-    def _forward_train(self, batch: NestedDict):
+    def _forward_train(self, batch: Dict):
         output = {}
 
         # Shared encoder.
@@ -84,8 +85,8 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
 
         return output
 
-    @override(PPORLModule)
-    def _compute_values(self, batch, device=None):
+    @override(ValueFunctionAPI)
+    def compute_values(self, batch: Dict[str, Any]) -> TensorType:
         infos = batch.pop(Columns.INFOS, None)
         batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
         if infos is not None:

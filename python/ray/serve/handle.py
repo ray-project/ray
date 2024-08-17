@@ -145,7 +145,7 @@ class _DeploymentHandleBase:
             _request_protocol=request_protocol
         )
 
-    def _get_or_create_router(self) -> Union[Router, asyncio.AbstractEventLoop]:
+    def _get_or_create_router(self) -> Tuple[Router, asyncio.AbstractEventLoop]:
 
         if self._router is None:
             node_id = ray.get_runtime_context().get_node_id()

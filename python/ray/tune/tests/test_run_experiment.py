@@ -3,7 +3,6 @@ import unittest
 
 import ray
 import ray.train
-from ray.rllib import _register_all
 from ray.train import CheckpointConfig
 from ray.tune import Trainable, TuneError, register_trainable, run_experiments
 from ray.tune.experiment import Experiment
@@ -20,13 +19,12 @@ def train_fn(config):
 class RunExperimentTest(unittest.TestCase):
     def setUp(self):
         os.environ["TUNE_STATE_REFRESH_PERIOD"] = "0.1"
+        register_trainable("f1", train_fn)
 
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
 
     def testDict(self):
-        register_trainable("f1", train_fn)
         trials = run_experiments(
             {
                 "foo": {
@@ -42,7 +40,6 @@ class RunExperimentTest(unittest.TestCase):
             self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testExperiment(self):
-        register_trainable("f1", train_fn)
         exp1 = Experiment(
             **{
                 "name": "foo",
@@ -54,7 +51,6 @@ class RunExperimentTest(unittest.TestCase):
         self.assertEqual(trial.last_result[TIMESTEPS_TOTAL], 99)
 
     def testExperimentList(self):
-        register_trainable("f1", train_fn)
         exp1 = Experiment(
             **{
                 "name": "foo",
@@ -77,7 +73,6 @@ class RunExperimentTest(unittest.TestCase):
             def step(self):
                 return {"timesteps_this_iter": 1, "done": True}
 
-        register_trainable("f1", train_fn)
         trials = run_experiments(
             {
                 "foo": {
@@ -176,19 +171,19 @@ class RunExperimentTest(unittest.TestCase):
                     f.write("hi")
 
         [trial] = run_experiments(
-            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
+            {"foo": {"run": "f1", "stop": {"training_iteration": 1}}},
             callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])],
         )
         self.assertTrue(os.path.exists(os.path.join(trial.local_path, "test.log")))
         self.assertFalse(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
         [trial] = run_experiments(
-            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}}
+            {"foo": {"run": "f1", "stop": {"training_iteration": 1}}}
         )
         self.assertFalse(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
         [trial] = run_experiments(
-            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
+            {"foo": {"run": "f1", "stop": {"training_iteration": 1}}},
             callbacks=[LegacyLoggerCallback(logger_classes=[])],
         )
         self.assertFalse(os.path.exists(os.path.join(trial.local_path, "params.json")))
@@ -204,19 +199,19 @@ class RunExperimentTest(unittest.TestCase):
                     f.write("hi")
 
         [trial] = run_experiments(
-            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
+            {"foo": {"run": "f1", "stop": {"training_iteration": 1}}},
             callbacks=[LegacyLoggerCallback(logger_classes=[CustomLogger])],
         )
         self.assertTrue(os.path.exists(os.path.join(trial.local_path, "test.log")))
         self.assertTrue(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
         [trial] = run_experiments(
-            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}}
+            {"foo": {"run": "f1", "stop": {"training_iteration": 1}}}
         )
         self.assertTrue(os.path.exists(os.path.join(trial.local_path, "params.json")))
 
         [trial] = run_experiments(
-            {"foo": {"run": "__fake", "stop": {"training_iteration": 1}}},
+            {"foo": {"run": "f1", "stop": {"training_iteration": 1}}},
             callbacks=[LegacyLoggerCallback(logger_classes=[])],
         )
         self.assertTrue(os.path.exists(os.path.join(trial.local_path, "params.json")))
@@ -225,7 +220,7 @@ class RunExperimentTest(unittest.TestCase):
         [trial] = run_experiments(
             {
                 "foo": {
-                    "run": "__fake",
+                    "run": "f1",
                     "stop": {"training_iteration": 1},
                     "trial_name_creator": lambda t: "{}_{}_321".format(
                         t.trainable_name, t.trial_id

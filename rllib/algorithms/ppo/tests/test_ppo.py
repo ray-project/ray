@@ -106,7 +106,7 @@ class MyCallbacks(DefaultCallbacks):
         # Entropy coeff goes to 0.05, then 0.0 (per iter).
         check(stats["entropy_coeff"], 0.1 if algorithm.iteration == 1 else 0.05)
 
-        algorithm.workers.foreach_policy(
+        algorithm.env_runner_group.foreach_policy(
             self._check_lr_torch
             if algorithm.config["framework"] == "torch"
             else self._check_lr_tf

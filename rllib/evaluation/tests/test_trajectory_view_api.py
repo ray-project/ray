@@ -90,7 +90,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                 else:
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
-            rollout_worker = algo.workers.local_worker()
+            rollout_worker = algo.env_runner
             sample_batch = rollout_worker.sample()
             sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
             expected_count = (
@@ -162,7 +162,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     assert view_req_policy[key].data_col == SampleBatch.OBS
                     assert view_req_policy[key].shift == 1
 
-            rollout_worker = algo.workers.local_worker()
+            rollout_worker = algo.env_runner
             sample_batch = rollout_worker.sample()
             sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
 
@@ -219,7 +219,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
 
         for _ in framework_iterator(config, frameworks="tf2"):
             algo = config.build()
-            rw = algo.workers.local_worker()
+            rw = algo.env_runner
             sample = rw.sample()
             assert sample.count == algo.config.get_rollout_fragment_length()
             results = algo.train()

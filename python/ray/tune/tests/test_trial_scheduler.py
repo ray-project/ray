@@ -15,7 +15,6 @@ import pytest
 import ray
 from ray import train, tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib import _register_all
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.checkpoint_manager import _CheckpointManager
 from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
@@ -36,8 +35,7 @@ from ray.tune.schedulers.pbt import PopulationBasedTrainingReplay, _explore
 from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search._mock import _MockSearcher
 from ray.tune.trainable.metadata import _TrainingRunMetadata
-
-_register_all()
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 
 def result(t, rew):
@@ -54,13 +52,14 @@ class EarlyStoppingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
+        register_mock_trainable()
+
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
 
     def basicSetup(self, rule):
-        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
-        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        t1 = Trial(MOCK_TRAINABLE_NAME)  # mean is 450, max 900, t_max=10
+        t2 = Trial(MOCK_TRAINABLE_NAME)  # mean is 450, max 450, t_max=5
         runner = mock_tune_controller()
         for i in range(10):
             r1 = result(i, i * 100)
@@ -123,7 +122,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
-        t3 = Trial("PPO")
+        t3 = Trial(MOCK_TRAINABLE_NAME)
         self.assertEqual(
             rule.on_trial_result(runner, t3, result(1, 10)), TrialScheduler.CONTINUE
         )
@@ -144,7 +143,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         t1, t2 = self.basicSetup(rule)
         runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
-        t3 = Trial("PPO")
+        t3 = Trial(MOCK_TRAINABLE_NAME)
         # Insufficient samples to evaluate t3
         self.assertEqual(
             rule.on_trial_result(runner, t3, result(5, 10)), TrialScheduler.CONTINUE
@@ -166,7 +165,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
-        t3 = Trial("PPO")
+        t3 = Trial(MOCK_TRAINABLE_NAME)
         self.assertEqual(
             rule.on_trial_result(runner, t3, result(1, 260)), TrialScheduler.CONTINUE
         )
@@ -186,7 +185,7 @@ class EarlyStoppingSuite(unittest.TestCase):
         runner = mock_tune_controller()
         rule.on_trial_complete(runner, t1, result(10, 1000))
         rule.on_trial_complete(runner, t2, result(10, 1000))
-        t3 = Trial("PPO")
+        t3 = Trial(MOCK_TRAINABLE_NAME)
         self.assertEqual(
             rule.on_trial_result(runner, t3, result(1, 260)), TrialScheduler.CONTINUE
         )
@@ -202,8 +201,8 @@ class EarlyStoppingSuite(unittest.TestCase):
             metric=metric,
             mode=mode,
         )
-        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
-        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        t1 = Trial(MOCK_TRAINABLE_NAME)  # mean is 450, max 900, t_max=10
+        t2 = Trial(MOCK_TRAINABLE_NAME)  # mean is 450, max 450, t_max=5
         runner = mock_tune_controller()
         for i in range(10):
             self.assertEqual(
@@ -313,9 +312,10 @@ class HyperbandSuite(unittest.TestCase):
     def setUp(self):
         ray.init(object_store_memory=int(1e8))
 
+        register_mock_trainable()
+
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
 
     def schedulerSetup(self, num_trials, max_t=81, **kwargs):
         """Setup a scheduler and Runner with max Iter = 9.
@@ -331,7 +331,7 @@ class HyperbandSuite(unittest.TestCase):
         )
         runner = _MockTrialRunner(sched)
         for i in range(num_trials):
-            t = Trial("__fake", trial_id=f"ft_{i:04d}", stub=True)
+            t = Trial(MOCK_TRAINABLE_NAME, trial_id=f"ft_{i:04d}", stub=True)
             runner.add_trial(t)
         return sched, runner
 
@@ -367,7 +367,7 @@ class HyperbandSuite(unittest.TestCase):
     def advancedSetup(self):
         sched = self.basicSetup()
         for i in range(4):
-            t = Trial("__fake")
+            t = Trial(MOCK_TRAINABLE_NAME)
             sched.on_trial_add(None, t)
 
         self.assertEqual(sched._cur_band_filled(), False)
@@ -384,7 +384,7 @@ class HyperbandSuite(unittest.TestCase):
         sched = HyperBandScheduler(metric="episode_reward_mean", mode="max")
         i = 0
         while not sched._cur_band_filled():
-            t = Trial("__fake")
+            t = Trial(MOCK_TRAINABLE_NAME)
             sched.on_trial_add(None, t)
             i += 1
         self.assertEqual(len(sched._hyperbands[0]), 5)
@@ -402,7 +402,7 @@ class HyperbandSuite(unittest.TestCase):
         )
         i = 0
         while not sched._cur_band_filled():
-            t = Trial("__fake")
+            t = Trial(MOCK_TRAINABLE_NAME)
             sched.on_trial_add(None, t)
             i += 1
         self.assertEqual(len(sched._hyperbands[0]), 4)
@@ -415,7 +415,7 @@ class HyperbandSuite(unittest.TestCase):
         sched = HyperBandScheduler(metric="episode_reward_mean", mode="max", max_t=1)
         i = 0
         while len(sched._hyperbands) < 2:
-            t = Trial("__fake")
+            t = Trial(MOCK_TRAINABLE_NAME)
             sched.on_trial_add(None, t)
             i += 1
         self.assertEqual(len(sched._hyperbands[0]), 1)
@@ -567,7 +567,7 @@ class HyperbandSuite(unittest.TestCase):
         for i, t in enumerate(bracket_trials):
             action = sched.on_trial_result(mock_runner, t, result(init_units, i))
         self.assertEqual(action, TrialScheduler.CONTINUE)
-        t = Trial("__fake")
+        t = Trial(MOCK_TRAINABLE_NAME)
         sched.on_trial_add(None, t)
         mock_runner._launch_trial(t)
         self.assertEqual(len(sched._state["bracket"].current_trials()), 2)
@@ -588,7 +588,7 @@ class HyperbandSuite(unittest.TestCase):
         stats = self.default_statistics()
 
         for i in range(stats["max_trials"]):
-            t = Trial("__fake")
+            t = Trial(MOCK_TRAINABLE_NAME)
             sched.on_trial_add(None, t)
         runner = _MockTrialRunner(sched)
 
@@ -658,7 +658,7 @@ class HyperbandSuite(unittest.TestCase):
         self.assertFalse(trials[1] in bracket._live_trials)
 
         for i in range(2):
-            trial = Trial("__fake")
+            trial = Trial(MOCK_TRAINABLE_NAME)
             sched.on_trial_add(None, trial)
 
         bracket, _ = sched._trial_info[trial]
@@ -832,9 +832,10 @@ class BOHBSuite(unittest.TestCase):
     def setUp(self):
         ray.init(object_store_memory=int(1e8))
 
+        register_mock_trainable()
+
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
 
     def testLargestBracketFirst(self):
         sched = HyperBandForBOHB(
@@ -842,12 +843,12 @@ class BOHBSuite(unittest.TestCase):
         )
         runner = _MockTrialRunner(sched)
         for i in range(3):
-            t = Trial("__fake")
+            t = Trial(MOCK_TRAINABLE_NAME)
             sched.on_trial_add(runner, t)
             runner._launch_trial(t)
 
         self.assertEqual(sched.state()["num_brackets"], 1)
-        sched.on_trial_add(runner, Trial("__fake"))
+        sched.on_trial_add(runner, Trial(MOCK_TRAINABLE_NAME))
         self.assertEqual(sched.state()["num_brackets"], 2)
 
     def testCheckTrialInfoUpdate(self):
@@ -860,7 +861,7 @@ class BOHBSuite(unittest.TestCase):
         runner = _MockTrialRunner(sched)
         runner.search_alg = MagicMock()
         runner.search_alg.searcher = MagicMock()
-        trials = [Trial("__fake") for i in range(3)]
+        trials = [Trial(MOCK_TRAINABLE_NAME) for i in range(3)]
         for t in trials:
             runner.add_trial(t)
             runner._launch_trial(t)
@@ -888,7 +889,7 @@ class BOHBSuite(unittest.TestCase):
         runner = _MockTrialRunner(sched)
         runner.search_alg = MagicMock()
         runner.search_alg.searcher = MagicMock()
-        trials = [Trial("__fake") for i in range(3)]
+        trials = [Trial(MOCK_TRAINABLE_NAME) for i in range(3)]
         for t in trials:
             runner.add_trial(t)
             runner._launch_trial(t)
@@ -915,7 +916,7 @@ class BOHBSuite(unittest.TestCase):
         runner = _MockTrialRunner(sched)
         runner.search_alg = MagicMock()
         runner.search_alg.searcher = MagicMock()
-        trials = [Trial("__fake") for i in range(3)]
+        trials = [Trial(MOCK_TRAINABLE_NAME) for i in range(3)]
         for t in trials:
             runner.add_trial(t)
             runner._launch_trial(t)
@@ -932,6 +933,9 @@ class BOHBSuite(unittest.TestCase):
             [t.status for t in trials], [Trial.PAUSED, Trial.PAUSED, Trial.PAUSED]
         )
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB doesn't support py312"
+    )
     def testNonstopBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 
@@ -1054,9 +1058,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
+        register_mock_trainable()
+
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
 
     # Helper function to call pbt.on_trial_result and assert decision,
     # or trial status upon existing.
@@ -1372,9 +1377,10 @@ class PopulationBasedTestingSuite(unittest.TestCase):
                 seen.add(fn()["v"])
             self.assertEqual(seen, values)
 
-        def explore_fn(
-            config, mutations, resample_probability, custom_explore_fn=lambda x: x
-        ):
+        def explore_fn(config, mutations, resample_probability, custom_explore_fn=None):
+            if custom_explore_fn is None:
+                custom_explore_fn = lambda x: x  # noqa: E731
+
             new_config, _ = _explore(
                 config,
                 mutations,
@@ -2092,9 +2098,10 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=4)
 
+        register_mock_trainable()
+
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
 
     def basicSetup(
         self,
@@ -2206,13 +2213,14 @@ class AsyncHyperBandSuite(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
+        register_mock_trainable()
+
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
 
     def basicSetup(self, scheduler):
-        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
-        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        t1 = Trial(MOCK_TRAINABLE_NAME)  # mean is 450, max 900, t_max=10
+        t2 = Trial(MOCK_TRAINABLE_NAME)  # mean is 450, max 450, t_max=5
         scheduler.on_trial_add(None, t1)
         scheduler.on_trial_add(None, t2)
         for i in range(10):
@@ -2228,8 +2236,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
         return t1, t2
 
     def nanSetup(self, scheduler):
-        t1 = Trial("PPO")  # mean is 450, max 450, t_max=10
-        t2 = Trial("PPO")  # mean is nan, max nan, t_max=10
+        t1 = Trial(MOCK_TRAINABLE_NAME)  # mean is 450, max 450, t_max=10
+        t2 = Trial(MOCK_TRAINABLE_NAME)  # mean is nan, max nan, t_max=10
         scheduler.on_trial_add(None, t1)
         scheduler.on_trial_add(None, t2)
         for i in range(10):
@@ -2245,9 +2253,9 @@ class AsyncHyperBandSuite(unittest.TestCase):
         return t1, t2
 
     def nanInfSetup(self, scheduler, runner=None):
-        t1 = Trial("PPO")
-        t2 = Trial("PPO")
-        t3 = Trial("PPO")
+        t1 = Trial(MOCK_TRAINABLE_NAME)
+        t2 = Trial(MOCK_TRAINABLE_NAME)
+        t3 = Trial(MOCK_TRAINABLE_NAME)
         scheduler.on_trial_add(runner, t1)
         scheduler.on_trial_add(runner, t2)
         scheduler.on_trial_add(runner, t3)
@@ -2264,7 +2272,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
             metric="episode_reward_mean", mode="max", max_t=10, brackets=1
         )
         t1, t2 = self.basicSetup(scheduler)
-        t3 = Trial("PPO")
+        t3 = Trial(MOCK_TRAINABLE_NAME)
         scheduler.on_trial_add(None, t3)
         scheduler.on_trial_complete(None, t3, result(10, 1000))
         self.assertEqual(
@@ -2282,7 +2290,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         scheduler.on_trial_complete(None, t2, result(10, 1000))
-        t3 = Trial("PPO")
+        t3 = Trial(MOCK_TRAINABLE_NAME)
         scheduler.on_trial_add(None, t3)
         self.assertEqual(
             scheduler.on_trial_result(None, t3, result(1, 10)), TrialScheduler.CONTINUE
@@ -2298,7 +2306,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         scheduler = AsyncHyperBandScheduler(
             metric="episode_reward_mean", mode="max", max_t=10, brackets=10
         )
-        trials = [Trial("PPO") for i in range(10)]
+        trials = [Trial(MOCK_TRAINABLE_NAME) for i in range(10)]
         for t in trials:
             scheduler.on_trial_add(None, t)
 
@@ -2319,7 +2327,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         t1, t2 = self.basicSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 1000))
         scheduler.on_trial_complete(None, t2, result(10, 1000))
-        t3 = Trial("PPO")
+        t3 = Trial(MOCK_TRAINABLE_NAME)
         scheduler.on_trial_add(None, t3)
         self.assertEqual(
             scheduler.on_trial_result(None, t3, result(1, 260)), TrialScheduler.STOP
@@ -2340,7 +2348,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         t1, t2 = self.nanSetup(scheduler)
         scheduler.on_trial_complete(None, t1, result(10, 450))
         scheduler.on_trial_complete(None, t2, result(10, np.nan))
-        t3 = Trial("PPO")
+        t3 = Trial(MOCK_TRAINABLE_NAME)
         scheduler.on_trial_add(None, t3)
         self.assertEqual(
             scheduler.on_trial_result(None, t3, result(1, 260)), TrialScheduler.STOP
@@ -2362,7 +2370,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         )
 
         # Add some trials
-        trials = [Trial("PPO") for i in range(10)]
+        trials = [Trial(MOCK_TRAINABLE_NAME) for i in range(10)]
         for t in trials:
             scheduler.on_trial_add(None, t)
 
@@ -2391,7 +2399,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
 
         # Create a new trial and report bad result: Trial should stop
         # Report a new bad result: Trial should stop
-        new_trial = Trial("PPO")
+        new_trial = Trial(MOCK_TRAINABLE_NAME)
         scheduler2.on_trial_add(None, new_trial)
         self.assertEqual(
             scheduler2.on_trial_result(None, new_trial, result(1, 2)),
@@ -2399,7 +2407,7 @@ class AsyncHyperBandSuite(unittest.TestCase):
         )
 
     def testAsyncHBNonStopTrials(self):
-        trials = [Trial("PPO") for i in range(4)]
+        trials = [Trial(MOCK_TRAINABLE_NAME) for i in range(4)]
         scheduler = AsyncHyperBandScheduler(
             metric="metric",
             mode="max",
@@ -2493,8 +2501,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
             mode=mode,
             brackets=1,
         )
-        t1 = Trial("PPO")  # mean is 450, max 900, t_max=10
-        t2 = Trial("PPO")  # mean is 450, max 450, t_max=5
+        t1 = Trial(MOCK_TRAINABLE_NAME)  # mean is 450, max 900, t_max=10
+        t2 = Trial(MOCK_TRAINABLE_NAME)  # mean is 450, max 450, t_max=5
         scheduler.on_trial_add(None, t1)
         scheduler.on_trial_add(None, t2)
         for i in range(10):
@@ -2550,6 +2558,9 @@ class AsyncHyperBandSuite(unittest.TestCase):
     def testAnonymousMetricEndToEndASHA(self):
         self._testAnonymousMetricEndToEnd(AsyncHyperBandScheduler)
 
+    @pytest.mark.skipif(
+        sys.version_info >= (3, 12), reason="BOHB doesn't support py312"
+    )
     def testAnonymousMetricEndToEndBOHB(self):
         from ray.tune.search.bohb import TuneBOHB
 

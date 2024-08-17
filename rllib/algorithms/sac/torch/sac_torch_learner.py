@@ -1,4 +1,4 @@
-from typing import Dict, Mapping
+from typing import Any, Dict
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
@@ -24,7 +24,6 @@ from ray.rllib.core.learner.learner import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import ALL_MODULES, TD_ERROR_KEY
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, ParamDict, TensorType
 
 
@@ -42,7 +41,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
     # TODO (simon): Set different learning rates for optimizers.
     @override(DQNRainbowTorchLearner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: AlgorithmConfig = None, hps=None
+        self, module_id: ModuleID, config: AlgorithmConfig = None
     ) -> None:
         # Receive the module.
         module = self._module[module_id]
@@ -107,8 +106,8 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         *,
         module_id: ModuleID,
         config: SACConfig,
-        batch: NestedDict,
-        fwd_out: Mapping[str, TensorType]
+        batch: Dict[str, Any],
+        fwd_out: Dict[str, TensorType]
     ) -> TensorType:
         # Only for debugging.
         deterministic = config._deterministic_loss
@@ -116,9 +115,11 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # Receive the current alpha hyperparameter.
         alpha = torch.exp(self.curr_log_alpha[module_id])
 
+        module = self.module[module_id].unwrapped()
+
         # Get the train action distribution for the current policy and current state.
         # This is needed for the policy (actor) loss in SAC.
-        action_dist_class = self.module[module_id].get_train_action_dist_cls()
+        action_dist_class = module.get_train_action_dist_cls()
         action_dist_curr = action_dist_class.from_logits(
             fwd_out[Columns.ACTION_DIST_INPUTS]
         )
@@ -158,39 +159,19 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
 
         # Compute Q-values for the current policy in the current state with
         # the sampled actions.
-        q_batch_curr = NestedDict(
-            {
-                Columns.OBS: batch[Columns.OBS],
-                Columns.ACTIONS: actions_curr,
-            }
-        )
-        q_curr = self.module[module_id]._qf_forward_train(q_batch_curr)[QF_PREDS]
-        # If a twin Q network should be used, calculate twin Q-values and use the
-        # minimum.
-        if config.twin_q:
-            q_twin_curr = self.module[module_id]._qf_twin_forward_train(q_batch_curr)[
-                QF_PREDS
-            ]
-            q_curr = torch.min(q_curr, q_twin_curr)
+        q_batch_curr = {
+            Columns.OBS: batch[Columns.OBS],
+            Columns.ACTIONS: actions_curr,
+        }
+        q_curr = module.compute_q_values(q_batch_curr)
 
         # Compute Q-values from the target Q network for the next state with the
         # sampled actions for the next state.
-        q_batch_next = NestedDict(
-            {
-                Columns.OBS: batch[Columns.NEXT_OBS],
-                Columns.ACTIONS: actions_next,
-            }
-        )
-        q_target_next = self.module[module_id]._qf_target_forward_train(q_batch_next)[
-            QF_PREDS
-        ]
-        # If a twin Q network should be used, calculate twin Q-values and use the
-        # minimum.
-        if config.twin_q:
-            q_target_twin_next = self.module[module_id]._qf_target_twin_forward_train(
-                q_batch_next
-            )[QF_PREDS]
-            q_target_next = torch.min(q_target_next, q_target_twin_next)
+        q_batch_next = {
+            Columns.OBS: batch[Columns.NEXT_OBS],
+            Columns.ACTIONS: actions_next,
+        }
+        q_target_next = module.forward_target(q_batch_next)
 
         # Compute value function for next state (see eq. (3) in Haarnoja et al. (2018)).
         # Note, we use here the sampled actions in the log probabilities.
@@ -251,6 +232,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         total_loss = actor_loss + critic_loss + alpha_loss
         # If twin Q networks should be used, add the critic loss of the twin Q network.
         if config.twin_q:
+            # TODO (simon): Check, if we need to multiply the critic_loss then with 0.5.
             total_loss += critic_twin_loss
 
         # Log the TD-error with reduce=None, such that - in case we have n parallel
@@ -300,23 +282,15 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         self, loss_per_module: Dict[str, TensorType], **kwargs
     ) -> ParamDict:
         grads = {}
-
         for module_id in set(loss_per_module.keys()) - {ALL_MODULES}:
-            config = self.config.get_config_for_module(module_id)
-
-            # Calculate gradients for each loss by its optimizer.
-            # TODO (sven): Maybe we rename to `actor`, `critic`. We then also
-            #  need to either add to or change in the `Learner` constants.
-            for component in (
-                ["qf", "policy", "alpha"] + ["qf_twin"] if config.twin_q else []
-            ):
-                # Get the optimizer for the current component and module.
-                optim = self.get_optimizer(module_id, component)
+            # Loop through optimizers registered for this module.
+            for optim_name, optim in self.get_optimizers_for_module(module_id):
                 # Zero the gradients. Note, we need to reset the gradients b/c
                 # each component for a module operates on the same graph.
                 optim.zero_grad(set_to_none=True)
+
                 # Compute the gradients for the component and module.
-                self.metrics.peek((module_id, component + "_loss")).backward(
+                self.metrics.peek((module_id, optim_name + "_loss")).backward(
                     retain_graph=True
                 )
                 # Store the gradients for the component and module.

@@ -39,7 +39,7 @@ def test_progress_bar(enable_tqdm_ray):
         bar.close = wrapped_close
 
     # Test basic usage
-    pb = ProgressBar("", total, enabled=True)
+    pb = ProgressBar("", total, "", enabled=True)
     assert pb._bar is not None
     patch_close(pb._bar)
     for _ in range(total):
@@ -50,7 +50,7 @@ def test_progress_bar(enable_tqdm_ray):
     assert total_at_close == total
 
     # Test if update() exceeds the original total, the total will be updated.
-    pb = ProgressBar("", total, enabled=True)
+    pb = ProgressBar("", total, "", enabled=True)
     assert pb._bar is not None
     patch_close(pb._bar)
     new_total = total * 2
@@ -62,7 +62,7 @@ def test_progress_bar(enable_tqdm_ray):
     assert total_at_close == new_total
 
     # Test that if the bar is not complete at close(), the total will be updated.
-    pb = ProgressBar("", total)
+    pb = ProgressBar("", total, "")
     assert pb._bar is not None
     patch_close(pb._bar)
     new_total = total // 2
@@ -74,7 +74,7 @@ def test_progress_bar(enable_tqdm_ray):
     assert total_at_close == new_total
 
     # Test updating the total
-    pb = ProgressBar("", total, enabled=True)
+    pb = ProgressBar("", total, "", enabled=True)
     assert pb._bar is not None
     patch_close(pb._bar)
     new_total = total * 2

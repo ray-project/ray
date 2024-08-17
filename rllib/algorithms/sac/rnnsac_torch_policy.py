@@ -43,7 +43,7 @@ def build_rnnsac_model(
             `policy.target_model`.
     """
     # With separate state-preprocessor (before obs+action concat).
-    num_outputs = int(np.product(obs_space.shape))
+    num_outputs = int(np.prod(obs_space.shape))
 
     # Force-ignore any additionally provided hidden layer sizes.
     # Everything should be configured using SAC's `q_model_config` and

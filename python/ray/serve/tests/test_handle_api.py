@@ -305,8 +305,8 @@ def test_handle_eager_execution(serve_instance):
     reason="Strict enforcement must be enabled.",
 )
 @pytest.mark.asyncio
-async def test_max_concurrent_queries_enforced(serve_instance):
-    """Handles should respect max_concurrent_queries enforcement."""
+async def test_max_ongoing_requests_enforced(serve_instance):
+    """Handles should respect max_ongoing_requests enforcement."""
 
     loop = get_or_create_event_loop()
 
@@ -328,7 +328,7 @@ async def test_max_concurrent_queries_enforced(serve_instance):
 
     waiter = Waiter.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class Deployment:
         async def __call__(self):
             await waiter.wait.remote()
@@ -343,7 +343,7 @@ async def test_max_concurrent_queries_enforced(serve_instance):
         return True
 
     # Send a batch of requests. Only one should be able to execute at a time
-    # due to `max_concurrent_queries=1`.
+    # due to `max_ongoing_requests=1`.
     tasks = [loop.create_task(_do_request()) for _ in range(10)]
     for i in range(len(tasks)):
         # Check that only one starts executing.

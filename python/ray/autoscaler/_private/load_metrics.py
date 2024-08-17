@@ -32,9 +32,7 @@ def add_resources(dict1: Dict[str, float], dict2: Dict[str, float]) -> Dict[str,
     return new_dict
 
 
-def freq_of_dicts(
-    dicts: List[Dict], serializer=lambda d: frozenset(d.items()), deserializer=dict
-) -> DictCount:
+def freq_of_dicts(dicts: List[Dict], serializer=None, deserializer=dict) -> DictCount:
     """Count a list of dictionaries (or unhashable types).
 
     This is somewhat annoying because mutable data structures aren't hashable,
@@ -53,6 +51,9 @@ def freq_of_dicts(
             is a tuple containing a unique entry from `dicts` and its
             corresponding frequency count.
     """
+    if serializer is None:
+        serializer = lambda d: frozenset(d.items())  # noqa: E731
+
     freqs = Counter(serializer(d) for d in dicts)
     as_list = []
     for as_set, count in freqs.items():

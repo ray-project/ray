@@ -47,7 +47,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
     }
     auto callback = command_batch_callbacks.front();
     auto reply = rpc::PubsubCommandBatchReply();
-    callback(status, reply);
+    callback(status, std::move(reply));
     command_batch_callbacks.pop_front();
     auto r = std::make_shared<rpc::PubsubCommandBatchRequest>(requests_.front());
     requests_.pop();
@@ -82,7 +82,8 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
       new_pub_message->set_sequence_id(sequence_id);
     }
     reply.set_publisher_id(publisher_id.empty() ? publisher_id_ : publisher_id);
-    callback(status, reply);
+    auto copied = reply;
+    callback(status, std::move(copied));
     long_polling_callbacks.pop_front();
     return true;
   }
@@ -104,7 +105,7 @@ class MockWorkerClient : public pubsub::SubscriberClientInterface {
       new_pub_message->mutable_failure_message();
       new_pub_message->set_sequence_id(GetNextSequenceId());
     }
-    callback(Status::OK(), reply);
+    callback(Status::OK(), std::move(reply));
     long_polling_callbacks.pop_front();
     return true;
   }

@@ -20,7 +20,7 @@
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/reference_count.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
+#include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 namespace ray {
 namespace core {
@@ -31,12 +31,11 @@ namespace core {
 /// by raylet.
 class ActorManager {
  public:
-  explicit ActorManager(
-      std::shared_ptr<gcs::GcsClient> gcs_client,
-      std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface> direct_actor_submitter,
-      std::shared_ptr<ReferenceCounterInterface> reference_counter)
+  explicit ActorManager(std::shared_ptr<gcs::GcsClient> gcs_client,
+                        std::shared_ptr<ActorTaskSubmitterInterface> actor_task_submitter,
+                        std::shared_ptr<ReferenceCounterInterface> reference_counter)
       : gcs_client_(gcs_client),
-        direct_actor_submitter_(direct_actor_submitter),
+        actor_task_submitter_(actor_task_submitter),
         reference_counter_(reference_counter) {}
 
   ~ActorManager() = default;
@@ -190,7 +189,7 @@ class ActorManager {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   /// Interface to submit tasks directly to other actors.
-  std::shared_ptr<CoreWorkerDirectActorTaskSubmitterInterface> direct_actor_submitter_;
+  std::shared_ptr<ActorTaskSubmitterInterface> actor_task_submitter_;
 
   /// Used to keep track of actor handle reference counts.
   /// All actor handle related ref counting logic should be included here.
