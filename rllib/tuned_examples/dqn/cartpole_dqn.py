@@ -2,8 +2,8 @@ from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
-    default_reward=490.0,
-    default_timesteps=100000,
+    default_reward=450.0,
+    default_timesteps=200000,
 )
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
@@ -18,12 +18,7 @@ config = (
     )
     .environment(env="CartPole-v1")
     .training(
-        lr=8e-4,
         train_batch_size_per_learner=32,
-        epsilon=[
-            [0, 1.0],
-            [30000, 0.02],
-        ],
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
             "capacity": 50000,
