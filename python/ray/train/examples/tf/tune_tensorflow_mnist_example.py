@@ -1,12 +1,18 @@
 import argparse
+import sys
 
 import ray
 from ray import tune
 from ray.train import ScalingConfig
-from ray.train.examples.tf.tensorflow_mnist_example import train_func
-from ray.train.tensorflow import TensorflowTrainer
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
+
+if sys.version_info >= (3, 12):
+    # Skip this test in Python 3.12+ because TensorFlow is not supported.
+    exit(0)
+else:
+    from ray.train.examples.tf.tensorflow_mnist_example import train_func
+    from ray.train.tensorflow import TensorflowTrainer
 
 
 def tune_tensorflow_mnist(

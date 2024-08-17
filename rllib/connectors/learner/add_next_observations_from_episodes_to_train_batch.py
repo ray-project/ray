@@ -7,8 +7,10 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
     """Adds the NEXT_OBS column with the correct episode observations to train batch.
 

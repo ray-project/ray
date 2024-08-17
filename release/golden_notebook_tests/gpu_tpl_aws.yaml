@@ -13,3 +13,6 @@ worker_node_types:
       min_workers: 2
       max_workers: 2
       use_spot: true
+      resources:
+        custom_resources:
+          worker: 1

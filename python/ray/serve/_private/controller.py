@@ -185,7 +185,10 @@ class ServeController:
 
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
-            self.deployment_state_manager, self.endpoint_state, self.kv_store
+            self.deployment_state_manager,
+            self.endpoint_state,
+            self.kv_store,
+            self.global_logging_config,
         )
 
         # Controller actor details
@@ -290,9 +293,9 @@ class ServeController:
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._deployment_states[deployment_id]._replicas
 
-    def _stop_one_running_replica_for_testing(self, deployment_name):
+    def _stop_one_running_replica_for_testing(self, deployment_id):
         self.deployment_state_manager._deployment_states[
-            deployment_name
+            deployment_id
         ]._stop_one_running_replica_for_testing()
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
@@ -877,10 +880,18 @@ class ServeController:
         grpc_config = self.get_grpc_config()
         applications = {}
 
+        app_statuses = self.application_state_manager.list_app_statuses()
+
+        # If there are no app statuses, there's no point getting the app configs.
+        # Moreover, there might be no app statuses because the GCS is down,
+        # in which case getting the app configs would fail anyway,
+        # since they're stored in the checkpoint in the GCS.
+        app_configs = self.get_app_configs() if app_statuses else {}
+
         for (
             app_name,
             app_status_info,
-        ) in self.application_state_manager.list_app_statuses().items():
+        ) in app_statuses.items():
             applications[app_name] = ApplicationDetails(
                 name=app_name,
                 route_prefix=self.application_state_manager.get_route_prefix(app_name),
@@ -889,8 +900,9 @@ class ServeController:
                 message=app_status_info.message,
                 last_deployed_time_s=app_status_info.deployment_timestamp,
                 # This can be none if the app was deployed through
-                # serve.run, or if the app is in deleting state
-                deployed_app_config=self.get_app_config(app_name),
+                # serve.run, the app is in deleting state,
+                # or a checkpoint hasn't been set yet
+                deployed_app_config=app_configs.get(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
@@ -945,13 +957,16 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
+    def get_app_configs(self) -> Dict[str, ServeApplicationSchema]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if checkpoint is not None:
-            _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
-            if name in config_checkpoints_dict:
-                config = config_checkpoints_dict[name]
-                return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
+        if checkpoint is None:
+            return {}
+
+        _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+        return {
+            app: ServeApplicationSchema.parse_obj(config)
+            for app, config in config_checkpoints_dict.items()
+        }
 
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""

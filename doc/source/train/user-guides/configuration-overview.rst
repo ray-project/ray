@@ -30,4 +30,3 @@ The properties of the run configuration are :ref:`not tunable <tune-search-space
     See the :class:`~ray.train.RunConfig` API reference.
 
     See :ref:`persistent-storage-guide` for storage configuration examples (related to ``storage_path``).
-

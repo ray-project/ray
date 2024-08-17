@@ -556,7 +556,7 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
 
   auto on_done = [placement_group_id, reply, send_reply_callback](
                      const Status &status,
-                     const boost::optional<PlacementGroupTableData> &result) {
+                     const std::optional<PlacementGroupTableData> &result) {
     if (result) {
       reply->mutable_placement_group_table_data()->CopyFrom(*result);
     }
@@ -572,7 +572,7 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
     Status status =
         gcs_table_storage_->PlacementGroupTable().Get(placement_group_id, on_done);
     if (!status.ok()) {
-      on_done(status, boost::none);
+      on_done(status, std::nullopt);
     }
   }
   ++counts_[CountType::GET_PLACEMENT_GROUP_REQUEST];
@@ -683,7 +683,7 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
     // Check whether the placement group does not exist or is removed.
     auto on_done = [this, placement_group_id, callback](
                        const Status &status,
-                       const boost::optional<PlacementGroupTableData> &result) {
+                       const std::optional<PlacementGroupTableData> &result) {
       if (result) {
         RAY_LOG(DEBUG) << "Placement group is removed, placement group id = "
                        << placement_group_id;
@@ -703,7 +703,7 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
     Status status =
         gcs_table_storage_->PlacementGroupTable().Get(placement_group_id, on_done);
     if (!status.ok()) {
-      on_done(status, boost::none);
+      on_done(status, std::nullopt);
     }
   } else if (iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
     RAY_LOG(DEBUG) << "Placement group is created, placement group id = "

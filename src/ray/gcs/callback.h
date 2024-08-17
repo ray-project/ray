@@ -14,7 +14,7 @@
 
 #pragma once
 
-#include <boost/optional/optional.hpp>
+#include <optional>
 #include <vector>
 
 #include "ray/common/status.h"
@@ -34,9 +34,10 @@ using StatusCallback = std::function<void(Status status)>;
 /// \param status Status indicates whether the read was successful.
 /// \param result The item returned by GCS. If the item to read doesn't exist,
 /// this optional object is empty.
+/// TODO(ryw): make an Either union type to avoid the optional.
 template <typename Data>
 using OptionalItemCallback =
-    std::function<void(Status status, const boost::optional<Data> &result)>;
+    std::function<void(Status status, std::optional<Data> &&result)>;
 
 /// This callback is used to receive multiple items from GCS when a read completes.
 /// \param status Status indicates whether the read was successful.
@@ -48,12 +49,12 @@ using MultiItemCallback = std::function<void(Status status, std::vector<Data> &&
 /// \param id The id of the item.
 /// \param result The notification message.
 template <typename ID, typename Data>
-using SubscribeCallback = std::function<void(const ID &id, const Data &result)>;
+using SubscribeCallback = std::function<void(const ID &id, Data &&result)>;
 
 /// This callback is used to receive a single item from GCS.
 /// \param result The item returned by GCS.
 template <typename Data>
-using ItemCallback = std::function<void(const Data &result)>;
+using ItemCallback = std::function<void(Data &&result)>;
 
 /// This callback is used to receive multiple key-value items from GCS.
 /// \param result The key-value items returned by GCS.

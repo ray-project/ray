@@ -102,7 +102,7 @@ env.step(actions[0])
 # __sphinx_doc_algo_configs_begin__
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
 
 class MyPPOCatalog(PPOCatalog):
@@ -119,9 +119,7 @@ config = (
 )
 
 # Specify the catalog to use for the PPORLModule.
-config = config.rl_module(
-    rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyPPOCatalog)
-)
+config = config.rl_module(rl_module_spec=RLModuleSpec(catalog_class=MyPPOCatalog))
 # This is how RLlib constructs a PPORLModule
 # It will say "Hi from within PPORLModule!".
 ppo = config.build()

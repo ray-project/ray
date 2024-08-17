@@ -33,7 +33,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
        worker_id = std::move(worker_id),
        request = std::move(request),
        worker_address =
-           std::move(worker_address)](const boost::optional<WorkerTableData> &result) {
+           std::move(worker_address)](const std::optional<WorkerTableData> &result) {
         const auto node_id = NodeID::FromBinary(worker_address.raylet_id());
         std::string message =
             absl::StrCat("Reporting worker exit, worker id = ",
@@ -136,7 +136,7 @@ void GcsWorkerManager::HandleGetWorkerInfo(rpc::GetWorkerInfoRequest request,
 
   GetWorkerInfo(worker_id,
                 [reply, send_reply_callback, worker_id = std::move(worker_id)](
-                    const boost::optional<WorkerTableData> &result) {
+                    const std::optional<WorkerTableData> &result) {
                   if (result) {
                     reply->mutable_worker_table_data()->CopyFrom(*result);
                   }
@@ -221,7 +221,7 @@ void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
 
   auto on_worker_get_done =
       [&, worker_id, reply, debugger_port, on_worker_update_done, send_reply_callback](
-          const Status &status, const boost::optional<WorkerTableData> &result) {
+          const Status &status, const std::optional<WorkerTableData> &result) {
         if (!status.ok()) {
           RAY_LOG(WARNING) << "Failed to get worker info, worker id = " << worker_id
                            << ", status = " << status;
@@ -274,7 +274,7 @@ void GcsWorkerManager::HandleUpdateWorkerNumPausedThreads(
                              on_worker_update_done,
                              send_reply_callback](
                                 const Status &status,
-                                const boost::optional<WorkerTableData> &result) {
+                                const std::optional<WorkerTableData> &result) {
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Failed to get worker info, worker id = " << worker_id
                        << ", status = " << status;
@@ -309,14 +309,13 @@ void GcsWorkerManager::AddWorkerDeadListener(
 
 void GcsWorkerManager::GetWorkerInfo(
     const WorkerID &worker_id,
-    std::function<void(const boost::optional<WorkerTableData> &)> callback) const {
+    std::function<void(const std::optional<WorkerTableData> &)> callback) const {
   auto on_done = [worker_id, callback = std::move(callback)](
-                     const Status &status,
-                     const boost::optional<WorkerTableData> &result) {
+                     const Status &status, const std::optional<WorkerTableData> &result) {
     if (!status.ok()) {
       RAY_LOG(WARNING) << "Failed to get worker info, worker id = " << worker_id
                        << ", status = " << status;
-      callback(boost::none);
+      callback(std::nullopt);
     } else {
       callback(result);
     }
@@ -324,7 +323,7 @@ void GcsWorkerManager::GetWorkerInfo(
 
   Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_done);
   if (!status.ok()) {
-    on_done(status, boost::none);
+    on_done(status, std::nullopt);
   }
 }
 

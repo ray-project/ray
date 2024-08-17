@@ -86,7 +86,7 @@ class StoreClientTestBase : public ::testing::Test {
 
   void Get() {
     auto get_callback = [this](const Status &status,
-                               const boost::optional<std::string> &result) {
+                               const std::optional<std::string> &result) {
       RAY_CHECK_OK(status);
       RAY_CHECK(result);
       rpc::ActorTableData data;
@@ -107,7 +107,7 @@ class StoreClientTestBase : public ::testing::Test {
     for (const auto &[k, _] : key_to_value_) {
       auto key = k.Hex();
       auto get_callback = [this, key](const Status &status,
-                                      const boost::optional<std::string> &result) {
+                                      const std::optional<std::string> &result) {
         RAY_CHECK_OK(status);
         RAY_CHECK(!result);
         --pending_count_;

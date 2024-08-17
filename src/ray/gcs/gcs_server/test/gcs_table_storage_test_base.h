@@ -109,7 +109,7 @@ class GcsTableStorageTestBase : public ::testing::Test {
   template <typename TABLE, typename KEY, typename VALUE>
   int Get(TABLE &table, const KEY &key, std::vector<VALUE> &values) {
     auto on_done = [this, &values](const Status &status,
-                                   const boost::optional<VALUE> &result) {
+                                   const std::optional<VALUE> &result) {
       RAY_CHECK_OK(status);
       values.clear();
       if (result) {

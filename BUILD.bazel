@@ -856,21 +856,9 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "direct_task_transport_test",
+    name = "normal_task_submitter_test",
     size = "small",
-    srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":core_worker_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "direct_task_transport_mock_test",
-    size = "small",
-    srcs = ["src/ray/core_worker/test/direct_task_transport_mock_test.cc"],
+    srcs = ["src/ray/core_worker/test/normal_task_submitter_test.cc"],
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
@@ -1888,17 +1876,33 @@ ray_cc_test(
     ],
 )
 
+
+ray_cc_test(
+    name = "usage_stats_client_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/usage_stats_client_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+
 ray_cc_library(
     name = "gcs_client_lib",
     srcs = [
         "src/ray/gcs/gcs_client/accessor.cc",
         "src/ray/gcs/gcs_client/gcs_client.cc",
-        "src/ray/gcs/gcs_client/usage_stats_client.cc",
     ],
     hdrs = [
         "src/ray/gcs/gcs_client/accessor.h",
         "src/ray/gcs/gcs_client/gcs_client.h",
-        "src/ray/gcs/gcs_client/usage_stats_client.h",
     ],
     deps = [
         ":gcs",
@@ -2009,20 +2013,6 @@ ray_cc_test(
         "no_windows",
         "team:core",
     ],
-    deps = [
-        ":gcs_client_lib",
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "usage_stats_client_test",
-    srcs = [
-        "src/ray/gcs/gcs_client/test/usage_stats_client_test.cc",
-    ],
-    tags = ["team:core"],
     deps = [
         ":gcs_client_lib",
         ":gcs_server_lib",
@@ -2361,6 +2351,13 @@ flatbuffer_cc_library(
     out_prefix = "ray/raylet/format/",
 )
 
+ray_cc_library(
+    name = "python_callbacks",
+    hdrs = [
+        "src/ray/gcs/gcs_client/python_callbacks.h",
+    ],
+)
+
 pyx_library(
     name = "_raylet",
     srcs = glob([
@@ -2389,6 +2386,7 @@ pyx_library(
         linkstatic = 1,
     ),
     deps = [
+        ":python_callbacks",
         "//:core_worker_lib",
         "//:exported_internal",
         "//:gcs_server_lib",

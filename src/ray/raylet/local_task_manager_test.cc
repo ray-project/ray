@@ -37,9 +37,7 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec,
-                 const PopWorkerCallback &callback,
-                 const std::string &allocated_instances_serialized_json) {
+  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);

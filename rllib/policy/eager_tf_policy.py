@@ -1059,18 +1059,14 @@ def _build_eager_tf_policy(
         def _stats(self, outputs, samples, grads):
             fetches = {}
             if stats_fn:
-                fetches[LEARNER_STATS_KEY] = {
-                    k: v for k, v in stats_fn(outputs, samples).items()
-                }
+                fetches[LEARNER_STATS_KEY] = dict(stats_fn(outputs, samples))
             else:
                 fetches[LEARNER_STATS_KEY] = {}
 
             if extra_learn_fetches_fn:
-                fetches.update({k: v for k, v in extra_learn_fetches_fn(self).items()})
+                fetches.update(dict(extra_learn_fetches_fn(self)))
             if grad_stats_fn:
-                fetches.update(
-                    {k: v for k, v in grad_stats_fn(self, samples, grads).items()}
-                )
+                fetches.update(dict(grad_stats_fn(self, samples, grads)))
             return fetches
 
         def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):

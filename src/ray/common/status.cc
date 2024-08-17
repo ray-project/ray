@@ -58,8 +58,6 @@ namespace ray {
 #define STATUS_CODE_OBJECT_ALREADY_SEALED "ObjectAlreadySealed"
 #define STATUS_CODE_OBJECT_STORE_FULL "ObjectStoreFull"
 #define STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL "TransientObjectStoreFull"
-#define STATUS_CODE_GRPC_UNAVAILABLE "GrpcUnavailable"
-#define STATUS_CODE_GRPC_UNKNOWN "GrpcUnknown"
 #define STATUS_CODE_OUT_OF_DISK "OutOfDisk"
 #define STATUS_CODE_OBJECT_UNKNOWN_OWNER "ObjectUnknownOwner"
 #define STATUS_CODE_RPC_ERROR "RpcError"
@@ -67,6 +65,8 @@ namespace ray {
 #define STATUS_CODE_OBJECT_REF_END_OF_STREAM "ObjectRefEndOfStream"
 #define STATUS_CODE_AUTH_ERROR "AuthError"
 #define STATUS_CODE_INVALID_ARGUMENT "InvalidArgument"
+#define STATUS_CODE_CHANNEL_ERROR "ChannelError"
+#define STATUS_CODE_CHANNEL_TIMEOUT_ERROR "ChannelTimeoutError"
 
 // not a real status (catch all for codes not known)
 #define STATUS_CODE_UNKNOWN "Unknown"
@@ -98,8 +98,6 @@ const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
     {StatusCode::ObjectAlreadySealed, STATUS_CODE_OBJECT_ALREADY_SEALED},
     {StatusCode::ObjectStoreFull, STATUS_CODE_OBJECT_STORE_FULL},
     {StatusCode::TransientObjectStoreFull, STATUS_CODE_TRANSIENT_OBJECT_STORE_FULL},
-    {StatusCode::GrpcUnavailable, STATUS_CODE_GRPC_UNAVAILABLE},
-    {StatusCode::GrpcUnknown, STATUS_CODE_GRPC_UNKNOWN},
     {StatusCode::OutOfDisk, STATUS_CODE_OUT_OF_DISK},
     {StatusCode::ObjectUnknownOwner, STATUS_CODE_OBJECT_UNKNOWN_OWNER},
     {StatusCode::RpcError, STATUS_CODE_RPC_ERROR},
@@ -107,6 +105,8 @@ const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
     {StatusCode::ObjectRefEndOfStream, STATUS_CODE_OBJECT_REF_END_OF_STREAM},
     {StatusCode::AuthError, STATUS_CODE_AUTH_ERROR},
     {StatusCode::InvalidArgument, STATUS_CODE_INVALID_ARGUMENT},
+    {StatusCode::ChannelError, STATUS_CODE_CHANNEL_ERROR},
+    {StatusCode::ChannelTimeoutError, STATUS_CODE_CHANNEL_TIMEOUT_ERROR},
 };
 
 const absl::flat_hash_map<std::string, StatusCode> kStrToCode = []() {
@@ -150,7 +150,7 @@ std::string Status::CodeAsString() const {
 
 StatusCode Status::StringToCode(const std::string &str) {
   // Note: unknown string is mapped to IOError, while unknown code is mapped to "Unknown"
-  // which is not an error. This means for code -> string -> code is not identity.
+  // which is not an error. This means code -> string -> code is not identity.
   auto it = kStrToCode.find(str);
   if (it == kStrToCode.end()) {
     return StatusCode::IOError;

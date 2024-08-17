@@ -149,6 +149,14 @@ py_test(
 )
 
 py_test(
+    name = "test_object_extension",
+    size = "small",
+    srcs = ["tests/test_object_extension.py"],
+    tags = ["team:ml", "team:data", "exclusive", "ray_data"],
+    deps = [":ml_lib"]
+)
+
+py_test(
     name = "test_tracebacks",
     size = "small",
     srcs = ["tests/test_tracebacks.py"],

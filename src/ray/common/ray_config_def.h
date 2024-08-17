@@ -720,7 +720,7 @@ RAY_CONFIG(uint32_t,
            std::getenv("RAY_preallocate_plasma_memory") != nullptr &&
                    std::getenv("RAY_preallocate_plasma_memory") == std::string("1")
                ? 120
-               : 10)
+               : 30)
 
 /// The scheduler will treat these predefined resource types as unit_instance.
 /// Default predefined_unit_instance_resources is "GPU".
@@ -744,10 +744,6 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
 
 // Maximum ray sync message batch size in bytes (1MB by default) between nodes.
 RAY_CONFIG(uint64_t, max_sync_message_batch_bytes, 1 * 1024 * 1024)
-
-// If enabled and worker stated in container, the container will add
-// resource limit.
-RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
 // When enabled, workers will not be re-used across tasks requesting different
 // resources (e.g., CPU vs GPU).
@@ -789,13 +785,6 @@ RAY_CONFIG(bool, event_log_reporter_enabled, true)
 /// Whether or not we should also write an event log to a log file.
 /// This has no effect if `event_log_reporter_enabled` is false.
 RAY_CONFIG(bool, emit_event_to_log_file, false)
-
-/// Whether to enable register actor async.
-/// If it is false, the actor registration to GCS becomes synchronous, i.e.,
-/// core worker is blocked until GCS registers the actor and replies to it.
-/// If it is true, the actor registration is async, but actor handles cannot
-/// be passed to other worker until it is registered to GCS.
-RAY_CONFIG(bool, actor_register_async, true)
 
 /// Event severity threshold value
 RAY_CONFIG(std::string, event_level, "warning")
@@ -903,3 +892,6 @@ RAY_CONFIG(int, object_manager_client_connection_num, 4)
 //     std::min(std::max(2, num_cpus / 4), 8)
 // Update this to overwrite it.
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
+
+// Write export API events to file if enabled
+RAY_CONFIG(bool, enable_export_api_write, false)

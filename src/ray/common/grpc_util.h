@@ -108,14 +108,18 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
     // See RayStatusToGrpcStatus for details.
     return Status(Status::StringToCode(grpc_status.error_message()),
                   grpc_status.error_details());
-  } else if (grpc_status.error_code() == grpc::StatusCode::UNAVAILABLE) {
-    return Status::GrpcUnavailable(GrpcStatusToRayStatusMessage(grpc_status));
   } else {
-    // TODO(jjyao) Use GrpcUnknown as the catch-all status for all
-    // the unhandled grpc status.
-    // If needed, we can define a ray status for each grpc status in the future.
-    return Status::GrpcUnknown(GrpcStatusToRayStatusMessage(grpc_status));
+    return Status::RpcError(GrpcStatusToRayStatusMessage(grpc_status),
+                            grpc_status.error_code());
   }
+}
+
+/// Statuses that are retried infinitely by the GcsClient.
+/// Now we only retry UNAVAILABLE and UNKNOWN statuses because that indicates the server
+/// may be down.
+inline bool IsGrpcRetryableStatus(Status status) {
+  return status.IsRpcError() && (status.rpc_code() == grpc::StatusCode::UNAVAILABLE ||
+                                 status.rpc_code() == grpc::StatusCode::UNKNOWN);
 }
 
 /// Converts a Protobuf `RepeatedPtrField` to a vector.

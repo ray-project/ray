@@ -10,9 +10,9 @@ class CoreContextFilter(logging.Filter):
             return True
 
         runtime_context = ray.get_runtime_context()
-        setattr(record, LogKey.JOB_ID, runtime_context.get_job_id())
-        setattr(record, LogKey.WORKER_ID, runtime_context.get_worker_id())
-        setattr(record, LogKey.NODE_ID, runtime_context.get_node_id())
+        setattr(record, LogKey.JOB_ID.value, runtime_context.get_job_id())
+        setattr(record, LogKey.WORKER_ID.value, runtime_context.get_worker_id())
+        setattr(record, LogKey.NODE_ID.value, runtime_context.get_node_id())
         if runtime_context.worker.mode == ray.WORKER_MODE:
             actor_id = runtime_context.get_actor_id()
             if actor_id is not None:

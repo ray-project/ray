@@ -5,7 +5,7 @@ import re
 import numpy as np
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
@@ -34,7 +34,7 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
         self._matching_stats = defaultdict(int)
 
     def on_train_result(self, *, algorithm, metrics_logger=None, result, **kwargs):
-        local_worker = algorithm.workers.local_worker()
+        local_worker = algorithm.env_runner
 
         # Avoid `self` being pickled into the remote function below.
         _trainable_policies = self.trainable_policies
@@ -162,29 +162,29 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                         else:
                             return main
 
-                marl_module = local_worker.module
-                main_module = marl_module["main"]
+                multi_rl_module = local_worker.module
+                main_module = multi_rl_module["main"]
 
                 # Set the weights of the new polic(y/ies).
                 if initializing_exploiters:
                     main_state = main_module.get_state()
-                    marl_module["main_0"].set_state(main_state)
-                    marl_module["league_exploiter_1"].set_state(main_state)
-                    marl_module["main_exploiter_1"].set_state(main_state)
+                    multi_rl_module["main_0"].set_state(main_state)
+                    multi_rl_module["league_exploiter_1"].set_state(main_state)
+                    multi_rl_module["main_exploiter_1"].set_state(main_state)
                     # We need to sync the just copied local weights to all the
                     # remote workers and remote Learner workers as well.
-                    algorithm.workers.sync_weights(
+                    algorithm.env_runner_group.sync_weights(
                         policies=["main_0", "league_exploiter_1", "main_exploiter_1"]
                     )
-                    algorithm.learner_group.set_weights(marl_module.get_state())
+                    algorithm.learner_group.set_weights(multi_rl_module.get_state())
                 else:
                     algorithm.add_module(
                         module_id=new_mod_id,
-                        module_spec=SingleAgentRLModuleSpec.from_module(main_module),
-                        module_state=marl_module[module_id].get_state(),
+                        module_spec=RLModuleSpec.from_module(main_module),
+                        module_state=multi_rl_module[module_id].get_state(),
                     )
 
-                algorithm.workers.foreach_worker(
+                algorithm.env_runner_group.foreach_worker(
                     lambda env_runner: env_runner.config.multi_agent(
                         policy_mapping_fn=agent_to_module_mapping_fn,
                         # This setting doesn't really matter for EnvRunners (no
@@ -192,14 +192,15 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                         # here for good measure).
                         policies_to_train=_trainable_policies,
                     ),
-                    local_worker=True,
+                    local_env_runner=True,
                 )
                 # Set all Learner workers' should_module_be_updated to the new
                 # value.
                 algorithm.learner_group.foreach_learner(
-                    lambda learner: learner.config.multi_agent(
+                    func=lambda learner: learner.config.multi_agent(
                         policies_to_train=_trainable_policies,
-                    )
+                    ),
+                    timeout_seconds=0.0,  # fire-and-forget
                 )
                 league_changed = True
             else:

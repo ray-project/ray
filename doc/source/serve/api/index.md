@@ -6,7 +6,7 @@
 (core-apis)=
 
 ```{eval-rst}
-.. module:: ray
+.. currentmodule:: ray
 ```
 
 ### Writing Applications
@@ -83,6 +83,22 @@ See the [model composition guide](serve-model-composition) for how to update cod
    serve.config.gRPCOptions
    serve.config.HTTPOptions
    serve.config.AutoscalingConfig
+```
+
+### Schemas
+
+```{eval-rst}
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+   :template: autosummary/class_without_init_args.rst
+
+   serve.schema.ServeActorDetails
+   serve.schema.ProxyDetails
+   serve.schema.ApplicationStatusOverview
+   serve.schema.ServeStatus
+   serve.schema.DeploymentStatusOverview
+   serve.schema.EncodingType
 ```
 
 #### Advanced APIs

@@ -87,10 +87,10 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  boost::optional<rpc::ActorTableData> GetActorInfo(const std::string &actor_id) {
+  std::optional<rpc::ActorTableData> GetActorInfo(const std::string &actor_id) {
     rpc::GetActorInfoRequest request;
     request.set_actor_id(actor_id);
-    boost::optional<rpc::ActorTableData> actor_table_data_opt;
+    std::optional<rpc::ActorTableData> actor_table_data_opt;
     std::promise<bool> promise;
     client_->GetActorInfo(request,
                           [&actor_table_data_opt, &promise](
@@ -99,7 +99,7 @@ class GcsServerTest : public ::testing::Test {
                             if (reply.has_actor_table_data()) {
                               actor_table_data_opt = reply.actor_table_data();
                             } else {
-                              actor_table_data_opt = boost::none;
+                              actor_table_data_opt = std::nullopt;
                             }
                             promise.set_value(true);
                           });
@@ -158,10 +158,10 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  boost::optional<rpc::WorkerTableData> GetWorkerInfo(const std::string &worker_id) {
+  std::optional<rpc::WorkerTableData> GetWorkerInfo(const std::string &worker_id) {
     rpc::GetWorkerInfoRequest request;
     request.set_worker_id(worker_id);
-    boost::optional<rpc::WorkerTableData> worker_table_data_opt;
+    std::optional<rpc::WorkerTableData> worker_table_data_opt;
     std::promise<bool> promise;
     client_->GetWorkerInfo(
         request,
@@ -171,7 +171,7 @@ class GcsServerTest : public ::testing::Test {
           if (reply.has_worker_table_data()) {
             worker_table_data_opt = reply.worker_table_data();
           } else {
-            worker_table_data_opt = boost::none;
+            worker_table_data_opt = std::nullopt;
           }
           promise.set_value(true);
         });
@@ -320,7 +320,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   ASSERT_TRUE(GetAllWorkerInfo().size() == 2);
 
   // Get worker info
-  boost::optional<rpc::WorkerTableData> result =
+  std::optional<rpc::WorkerTableData> result =
       GetWorkerInfo(worker_data->worker_address().worker_id());
   ASSERT_TRUE(result->worker_address().worker_id() ==
               worker_data->worker_address().worker_id());

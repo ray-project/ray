@@ -262,7 +262,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Constructor
   ///
   /// \param gcs_client GCS client
-  TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
+  TaskEventBufferImpl(std::shared_ptr<gcs::GcsClient> gcs_client);
 
   ~TaskEventBufferImpl() override;
 
@@ -381,7 +381,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   PeriodicalRunner periodical_runner_;
 
   /// Client to the GCS used to push profile events to it.
-  std::unique_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
+  std::shared_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;

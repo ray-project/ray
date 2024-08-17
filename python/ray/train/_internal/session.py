@@ -60,6 +60,7 @@ class TrialInfo:
     resources: Dict[str, float]
     logdir: str
     driver_ip: str
+    driver_node_id: str
     experiment_name: Optional[str] = None
     run_id: Optional[str] = None
 

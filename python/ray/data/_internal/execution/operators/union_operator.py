@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
@@ -46,11 +46,23 @@ class UnionOperator(NAryOperator):
         self._preserve_order = options.preserve_order
         super().start(options)
 
-    def num_outputs_total(self) -> int:
+    def num_outputs_total(self) -> Optional[int]:
         num_outputs = 0
         for input_op in self.input_dependencies:
-            num_outputs += input_op.num_outputs_total()
+            input_num_outputs = input_op.num_outputs_total()
+            if input_num_outputs is None:
+                return None
+            num_outputs += input_num_outputs
         return num_outputs
+
+    def num_output_rows_total(self) -> Optional[int]:
+        total_rows = 0
+        for input_op in self.input_dependencies:
+            input_num_rows = input_op.num_output_rows_total()
+            if input_num_rows is None:
+                return None
+            total_rows += input_num_rows
+        return total_rows
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()

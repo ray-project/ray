@@ -127,7 +127,7 @@ void TaskProfileEvent::ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) {
   event_entry->set_extra_data(std::move(extra_data_));
 }
 
-TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client)
+TaskEventBufferImpl::TaskEventBufferImpl(std::shared_ptr<gcs::GcsClient> gcs_client)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
       periodical_runner_(io_service_),
       gcs_client_(std::move(gcs_client)),
@@ -144,18 +144,6 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   status_events_.set_capacity(
       RayConfig::instance().task_events_max_num_status_events_buffer_on_worker());
 
-  // Reporting to GCS, set up gcs client and and events flushing.
-  auto status = gcs_client_->Connect(io_service_);
-  if (!status.ok()) {
-    RAY_LOG(ERROR) << "Failed to connect to GCS, TaskEventBuffer will stop now. [status="
-                   << status.ToString() << "].";
-
-    enabled_ = false;
-    return status;
-  }
-
-  enabled_ = true;
-
   io_thread_ = std::thread([this]() {
 #ifndef _WIN32
     // Block SIGINT and SIGTERM so they will be handled by the main thread.
@@ -169,6 +157,20 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
     io_service_.run();
     RAY_LOG(INFO) << "Task event buffer io service stopped.";
   });
+
+  // Reporting to GCS, set up gcs client and and events flushing.
+  auto status = gcs_client_->Connect(io_service_);
+  if (!status.ok()) {
+    RAY_LOG(ERROR) << "Failed to connect to GCS, TaskEventBuffer will stop now. [status="
+                   << status.ToString() << "].";
+
+    enabled_ = false;
+    io_service_.stop();
+    io_thread_.join();
+    return status;
+  }
+
+  enabled_ = true;
 
   if (!auto_flush) {
     return Status::OK();

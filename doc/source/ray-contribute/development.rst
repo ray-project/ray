@@ -181,7 +181,7 @@ Now you can build the dashboard. From inside of your local Ray project directory
 
 .. code-block:: bash
 
-  cd dashboard/client
+  cd python/ray/dashboard/client
 
 Then you can install the dependencies and build the dashboard:
 

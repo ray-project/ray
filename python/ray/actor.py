@@ -9,7 +9,7 @@ import ray._private.worker
 import ray._raylet
 from ray import ActorClassID, Language, cross_language
 from ray._private import ray_option_utils
-from ray._private.async_compat import is_async_func
+from ray._private.async_compat import has_async_methods
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
     client_mode_convert_actor,
@@ -947,10 +947,7 @@ class ActorClass:
         if kwargs is None:
             kwargs = {}
         meta = self.__ray_metadata__
-        actor_has_async_methods = (
-            len(inspect.getmembers(meta.modified_class, predicate=is_async_func)) > 0
-        )
-        is_asyncio = actor_has_async_methods
+        is_asyncio = has_async_methods(meta.modified_class)
 
         if actor_options.get("max_concurrency") is None:
             actor_options["max_concurrency"] = 1000 if is_asyncio else 1

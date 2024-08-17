@@ -239,7 +239,12 @@ class Cluster:
                 )
                 self.webui_url = self.head_node.webui_url
                 # Init global state accessor when creating head node.
-                gcs_options = GcsClientOptions.from_gcs_address(node.gcs_address)
+                gcs_options = GcsClientOptions.create(
+                    node.gcs_address,
+                    None,
+                    allow_cluster_id_nil=True,
+                    fetch_cluster_id_if_nil=False,
+                )
                 self.global_state._initialize_global_state(gcs_options)
                 # Write the Ray cluster address for convenience in unit
                 # testing. ray.init() and ray.init(address="auto") will connect

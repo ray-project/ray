@@ -19,7 +19,6 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.numpy import one_hot
 
 
@@ -119,7 +118,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         self.critic.init_ema()
 
     @override(RLModule)
-    def get_initial_state(self) -> NestedDict:
+    def get_initial_state(self) -> Dict:
         # Use `DreamerModel`'s `get_initial_state` method.
         return self.dreamer_model.get_initial_state()
 
@@ -161,7 +160,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         ]
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # Call the Dreamer-Model's forward_inference method and return a dict.
         actions, next_state = self.dreamer_model.forward_inference(
             observations=batch[Columns.OBS],
@@ -171,7 +170,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         return {Columns.ACTIONS: actions, Columns.STATE_OUT: next_state}
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Dict[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # Call the Dreamer-Model's forward_exploration method and return a dict.
         actions, next_state = self.dreamer_model.forward_exploration(
             observations=batch[Columns.OBS],
@@ -181,7 +180,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         return {Columns.ACTIONS: actions, Columns.STATE_OUT: next_state}
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict):
+    def _forward_train(self, batch: Dict[str, Any]):
         # Call the Dreamer-Model's forward_train method and return its outputs as-is.
         return self.dreamer_model.forward_train(
             observations=batch[Columns.OBS],

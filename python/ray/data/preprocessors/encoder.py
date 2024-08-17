@@ -522,7 +522,7 @@ class Categorizer(Preprocessor):
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         columns_to_get = [
-            column for column in self.columns if column not in self.dtypes
+            column for column in self.columns if column not in set(self.dtypes)
         ]
         if columns_to_get:
             unique_indices = _get_unique_value_indices(
@@ -561,8 +561,9 @@ def _get_unique_value_indices(
 
     if max_categories is None:
         max_categories = {}
+    columns_set = set(columns)
     for column in max_categories:
-        if column not in columns:
+        if column not in columns_set:
             raise ValueError(
                 f"You set `max_categories` for {column}, which is not present in "
                 f"{columns}."

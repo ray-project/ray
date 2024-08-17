@@ -45,7 +45,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     )
     class TransientConstructorFailureDeployment:
         def __init__(self):
-            return True
+            pass
 
         def __call__(self, *args):
             return "hii"

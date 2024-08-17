@@ -1,3 +1,4 @@
+import asyncio
 import itertools
 import math
 import os
@@ -12,6 +13,9 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
@@ -943,7 +947,9 @@ def test_map_batches_preserves_empty_block_format(ray_start_regular_shared):
         .map_batches(lambda x: x, batch_size=None)
     )
 
-    block_refs = ds.get_internal_block_refs()
+    bundles = ds.iter_internal_ref_bundles()
+    block_refs = _ref_bundles_iterator_to_block_refs_list(bundles)
+
     assert len(block_refs) == 1
     assert type(ray.get(block_refs[0])) == pd.DataFrame
 
@@ -1055,6 +1061,62 @@ def test_nonserializable_map_batches(shutdown_only):
     # Check that the `inspect_serializability` trace was printed
     with pytest.raises(TypeError, match=r".*was found to be non-serializable.*"):
         x.map_batches(lambda _: lock).take(1)
+
+
+def test_map_batches_async_generator(shutdown_only):
+    ray.shutdown()
+    ray.init(num_cpus=10)
+
+    async def sleep_and_yield(i):
+        print("sleep", i)
+        await asyncio.sleep(i % 5)
+        print("yield", i)
+        return {"input": [i], "output": [2**i]}
+
+    class AsyncActor:
+        def __init__(self):
+            pass
+
+        async def __call__(self, batch):
+            tasks = [asyncio.create_task(sleep_and_yield(i)) for i in batch["id"]]
+            for task in tasks:
+                yield await task
+
+    n = 10
+    ds = ray.data.range(n, override_num_blocks=2)
+    ds = ds.map(lambda x: x)
+    ds = ds.map_batches(AsyncActor, batch_size=1, concurrency=1, max_concurrency=2)
+
+    start_t = time.time()
+    output = ds.take_all()
+    runtime = time.time() - start_t
+    assert runtime < sum(range(n)), runtime
+
+    expected_output = [{"input": i, "output": 2**i} for i in range(n)]
+    assert output == expected_output, (output, expected_output)
+
+
+def test_map_batches_async_exception_propagation(shutdown_only):
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    class MyUDF:
+        def __init__(self):
+            pass
+
+        async def __call__(self, batch):
+            # This will trigger an assertion error.
+            assert False
+            yield batch
+
+    ds = ray.data.range(20)
+    ds = ds.map_batches(MyUDF, concurrency=2)
+
+    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+        ds.materialize()
+
+    assert "AssertionError" in str(exc_info.value)
+    assert "assert False" in str(exc_info.value)
 
 
 if __name__ == "__main__":

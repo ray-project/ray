@@ -470,6 +470,14 @@ py_test(
 )
 
 py_test(
+    name = "test_controller_resume_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_resume_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
     name = "test_controller_search_alg_integration",
     size = "large",
     srcs = ["tests/execution/test_controller_search_alg_integration.py"],

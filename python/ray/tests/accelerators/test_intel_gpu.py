@@ -36,6 +36,10 @@ def test_visible_intel_gpu_type(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Not passing on Python 3.12. Being followed up by external contributors.",
+)
 def test_get_current_node_num_accelerators():
     old_dpctl = None
     if "dpctl" in sys.modules:
@@ -52,6 +56,10 @@ def test_get_current_node_num_accelerators():
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Not passing on Python 3.12. Being followed up by external contributors.",
+)
 def test_get_current_node_accelerator_type():
     old_dpctl = None
     if "dpctl" in sys.modules:

@@ -8,6 +8,7 @@ from ray.data._internal.planner.exchange.repartition_task_spec import (
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.aggregate import AggregateFn
+from ray.data.block import BlockMetadata
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -53,13 +54,9 @@ class RandomizeBlocks(AbstractAllToAll):
         )
         self._seed = seed
 
-    def schema(self):
+    def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].schema()
-
-    def num_rows(self):
-        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
-        return self._input_dependencies[0].num_rows()
+        return self._input_dependencies[0].aggregate_output_metadata()
 
 
 class RandomShuffle(AbstractAllToAll):
@@ -82,6 +79,10 @@ class RandomShuffle(AbstractAllToAll):
             ray_remote_args=ray_remote_args,
         )
         self._seed = seed
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
 
 
 class Repartition(AbstractAllToAll):
@@ -109,6 +110,10 @@ class Repartition(AbstractAllToAll):
             sub_progress_bar_names=sub_progress_bar_names,
         )
         self._shuffle = shuffle
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
 
 
 class RepartitionByColumn(AbstractAllToAll):
@@ -154,6 +159,10 @@ class Sort(AbstractAllToAll):
         )
         self._sort_key = sort_key
 
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
+
 
 class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
@@ -168,6 +177,7 @@ class Aggregate(AbstractAllToAll):
             "Aggregate",
             input_op,
             sub_progress_bar_names=[
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],

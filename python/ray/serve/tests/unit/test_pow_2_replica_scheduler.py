@@ -12,8 +12,14 @@ import pytest
 import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
+from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError
-from ray.serve._private.common import DeploymentID, ReplicaID, RequestMetadata
+from ray.serve._private.common import (
+    DeploymentHandleSource,
+    DeploymentID,
+    ReplicaID,
+    RequestMetadata,
+)
 from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
@@ -88,6 +94,9 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self._exception = exception
         self._has_queue_len_response.set()
 
+    def push_proxy_handle(self, handle: ActorHandle):
+        pass
+
     async def get_queue_len(self, *, deadline_s: float) -> int:
         self.num_get_queue_len_calls += 1
         self.queue_len_deadline_history.append(deadline_s)
@@ -126,10 +135,14 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
         return PowerOfTwoChoicesReplicaScheduler(
             loop,
             DeploymentID(name="TEST_DEPLOYMENT"),
+            handle_source=request.param.get(
+                "handle_source", DeploymentHandleSource.REPLICA
+            ),
             prefer_local_node_routing=request.param.get("prefer_local_node", False),
             prefer_local_az_routing=request.param.get("prefer_local_az", False),
             self_node_id=SCHEDULER_NODE_ID,
             self_actor_id="fake-actor-id",
+            self_actor_handle=None,
             self_availability_zone=request.param.get("az", None),
             use_replica_queue_len_cache=request.param.get(
                 "use_replica_queue_len_cache", False
@@ -481,11 +494,17 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler):
     # Only a single request will be accepted at a time due to
     # `reset_after_response=True`.
     r1 = FakeReplicaWrapper("r1", reset_after_response=True)
+    r1.set_queue_len_response(0)
     s.update_replicas([r1])
 
-    for i in range(len(tasks)):
+    # We need to wait until the initial ping from scheduler to replica
+    # finishes, which then resets the events in the testing structure
+    # so that the test can proceed.
+    await async_wait_for_condition(lambda: not r1._has_queue_len_response.is_set())
+
+    for _ in range(len(tasks)):
         r1.set_queue_len_response(0)
-        done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+        done, _ = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
         # If the order was not FIFO, the fulfilled assignment may not be the front of
         # the list.
@@ -524,7 +543,13 @@ async def test_retried_tasks_scheduled_fifo(pow_2_scheduler):
     # Only a single request will be accepted at a time due to
     # `reset_after_response=True`.
     r1 = FakeReplicaWrapper("r1", reset_after_response=True)
+    r1.set_queue_len_response(0)
     s.update_replicas([r1])
+
+    # We need to wait until the initial ping from scheduler to replica
+    # finishes, which then resets the events in the testing structure
+    # so that the test can proceed.
+    await async_wait_for_condition(lambda: not r1._has_queue_len_response.is_set())
 
     # Check that the tasks are scheduled in the order they were created (not the.
     # order they were retried).
@@ -1261,9 +1286,19 @@ class TestModelMultiplexing:
         r2.set_queue_len_response(0)
         s.update_replicas([r1, r2])
 
+        # We need to wait until the initial ping from scheduler to replica
+        # finishes, which then resets the events in the testing structure
+        # so that the test can proceed.
+        await async_wait_for_condition(
+            lambda: not r1._has_queue_len_response.is_set(), retry_interval_ms=10
+        )
+        await async_wait_for_condition(
+            lambda: not r2._has_queue_len_response.is_set(), retry_interval_ms=10
+        )
+
         # In each iteration, allow one replica of w/ each model ID to be scheduled.
         # The tasks for each model ID should be scheduled in FIFO order.
-        for i in range(10):
+        for _ in range(10):
             r1.set_queue_len_response(0)
             r2.set_queue_len_response(0)
 
@@ -1325,11 +1360,14 @@ async def test_queue_len_response_deadline_backoff(pow_2_scheduler):
     done, _ = await asyncio.wait([task], timeout=0.2)
     assert len(done) == 0
 
+    # Verify first ping
+    assert r1.queue_len_deadline_history[0] == 0.001
+
     # Verify that the deadline never exceeds the max and deadline_n+1 is equal to
     # the max or 2*deadline_n.
     for i, j in zip(
-        range(0, len(r1.queue_len_deadline_history) - 1),
-        range(1, len(r1.queue_len_deadline_history)),
+        range(1, len(r1.queue_len_deadline_history) - 1),
+        range(2, len(r1.queue_len_deadline_history)),
     ):
         deadline_i = r1.queue_len_deadline_history[i]
         deadline_j = r1.queue_len_deadline_history[j]
@@ -1476,7 +1514,9 @@ async def test_queue_len_cache_active_probing(pow_2_scheduler):
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
-    assert len(r1.queue_len_deadline_history) == 0
+    # 0 probes from scheduling requests
+    # + 1 probe from when the replica set was updated with replica r1
+    assert len(r1.queue_len_deadline_history) - 1 == 0
 
     # Now time out the entry in the cache -- replica should be probed.
     TIMER.advance(staleness_timeout_s + 1)
@@ -1486,7 +1526,9 @@ async def test_queue_len_cache_active_probing(pow_2_scheduler):
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
-    assert len(r1.queue_len_deadline_history) == 1
+    # 1 probe from scheduling requests
+    # + 1 probe from when the replica set was updated with replica r1
+    assert len(r1.queue_len_deadline_history) - 1 == 1
 
 
 @pytest.mark.asyncio
@@ -1513,7 +1555,9 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
-    assert len(r1.queue_len_deadline_history) == 1
+    # 1 probe from scheduling requests
+    # + 1 probe from when the replica set was updated with replica r1
+    assert len(r1.queue_len_deadline_history) - 1 == 1
 
     # Now let the replica respond and accept the request, it should be scheduled.
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
@@ -1548,14 +1592,18 @@ async def test_queue_len_cache_background_probing(pow_2_scheduler):
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
-    assert len(r1.queue_len_deadline_history) == 0
+    # 0 probes from scheduling requests
+    # + 1 probe from when the replica set was updated with replica r1
+    assert len(r1.queue_len_deadline_history) - 1 == 0
 
     r2.set_queue_len_response(3)
 
     def r2_was_probed():
         # Check that r2 was probed and the response was added to the cache.
+        # 1 probe from scheduling requests
+        # + 1 probe from when the replica set was updated with replica r1
         assert (
-            len(r2.queue_len_deadline_history) == 1
+            len(r2.queue_len_deadline_history) - 1 == 1
             and s._replica_queue_len_cache.get(r2.replica_id) == 3
         )
         return True
@@ -1596,8 +1644,10 @@ async def test_queue_len_cache_entries_added_correctly(pow_2_scheduler):
         else:
             assert replica in {r1, r2}
 
-        assert len(r1.queue_len_deadline_history) == i + 1
-        assert len(r2.queue_len_deadline_history) == i + 1
+        # i+1 probes from scheduling requests
+        # + 1 probe from when the replica set was updated with replica r1
+        assert len(r1.queue_len_deadline_history) - 1 == i + 1
+        assert len(r2.queue_len_deadline_history) - 1 == i + 1
         assert s._replica_queue_len_cache.get(r1.replica_id) == r1_queue_len
         assert s._replica_queue_len_cache.get(r2.replica_id) == r2_queue_len
         TIMER.advance(staleness_timeout_s + 1)

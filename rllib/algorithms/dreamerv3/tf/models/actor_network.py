@@ -41,7 +41,7 @@ class ActorNetwork(tf.keras.Model):
         Args:
              model_size: The "Model Size" used according to [1] Appendix B.
                 Use None for manually setting the different network sizes.
-            action_space: The action space the our environment used.
+            action_space: The action space of the environment used.
         """
         super().__init__(name="actor")
 

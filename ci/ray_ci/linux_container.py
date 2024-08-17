@@ -63,8 +63,6 @@ class LinuxContainer(Container):
         gpu_ids: Optional[List[int]] = None,
     ) -> List[str]:
         extra_args = [
-            "--env",
-            "NVIDIA_DISABLE_REQUIRE=1",
             "--add-host",
             "rayci.localhost:host-gateway",
         ]

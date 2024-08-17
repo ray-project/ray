@@ -160,7 +160,7 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
   RAY_CHECK(callback != nullptr);
 
   auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
-    boost::optional<std::string> result;
+    std::optional<std::string> result;
     if (!reply->IsNil()) {
       result = reply->ReadAsString();
     }

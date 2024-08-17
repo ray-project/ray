@@ -48,14 +48,14 @@ in combination with the following scripts and command lines in order to run RLli
 
 ### [Atari100k](../../tuned_examples/dreamerv3/atari_100k.py)
 ```shell
-$ cd ray/rllib
-$ rllib train file tuned_examples/dreamerv3/atari_100k.py --env ALE/Pong-v5 
+$ cd ray/rllib/tuned_examples/dreamerv3/
+$ python atari_100k.py --env ALE/Pong-v5 
 ```
 
 ### [DeepMind Control Suite (vision)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py)
 ```shell
-$ cd ray/rllib
-$ rllib train file tuned_examples/dreamerv3/dm_control_suite_vision.py --env DMC/cartpole/swingup 
+$ cd ray/rllib/tuned_examples/dreamerv3/
+$ python dm_control_suite_vision.py --env DMC/cartpole/swingup 
 ```
 Other `--env` options for the DM Control Suite would be `--env DMC/hopper/hop`, `--env DMC/walker/walk`, etc..
 Note that you can also switch on WandB logging with the above script via the options
@@ -136,10 +136,10 @@ new catalog via your ``DreamerV3Config`` object as follows:
 
 ```python
 from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import DreamerV3TfRLModule
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec 
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec 
 
 config.rl_module(
-    rl_module_spec=SingleAgentRLModuleSpec(
+    rl_module_spec=RLModuleSpec(
         module_class=DreamerV3TfRLModule,
         catalog_class=[your DreamerV3Catalog subclass],
     )

@@ -19,7 +19,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "mock/ray/core_worker/actor_creator.h"
@@ -102,9 +102,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   int64_t acked_seqno = 0;
 };
 
-class DirectActorSubmitterTest : public ::testing::TestWithParam<bool> {
+class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
  public:
-  DirectActorSubmitterTest()
+  ActorTaskSubmitterTest()
       : client_pool_(
             std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
               num_clients_connected_++;
@@ -135,7 +135,7 @@ class DirectActorSubmitterTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<MockTaskFinisherInterface> task_finisher_;
   instrumented_io_context io_context;
   boost::asio::io_service::work io_work;
-  CoreWorkerDirectActorTaskSubmitter submitter_;
+  ActorTaskSubmitter submitter_;
 
  protected:
   bool CheckSubmitTask(TaskSpecification task) {
@@ -144,7 +144,7 @@ class DirectActorSubmitterTest : public ::testing::TestWithParam<bool> {
   }
 };
 
-TEST_P(DirectActorSubmitterTest, TestSubmitTask) {
+TEST_P(ActorTaskSubmitterTest, TestSubmitTask) {
   auto execute_out_of_order = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -178,7 +178,7 @@ TEST_P(DirectActorSubmitterTest, TestSubmitTask) {
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
 }
 
-TEST_P(DirectActorSubmitterTest, TestQueueingWarning) {
+TEST_P(ActorTaskSubmitterTest, TestQueueingWarning) {
   auto execute_out_of_order = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -209,7 +209,7 @@ TEST_P(DirectActorSubmitterTest, TestQueueingWarning) {
   ASSERT_EQ(last_queue_warning_, 20000);
 }
 
-TEST_P(DirectActorSubmitterTest, TestDependencies) {
+TEST_P(ActorTaskSubmitterTest, TestDependencies) {
   auto execute_out_of_order = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -244,7 +244,7 @@ TEST_P(DirectActorSubmitterTest, TestDependencies) {
   ASSERT_THAT(worker_client_->received_seq_nos, ElementsAre(0, 1));
 }
 
-TEST_P(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
+TEST_P(ActorTaskSubmitterTest, TestOutOfOrderDependencies) {
   auto execute_out_of_order = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -294,7 +294,7 @@ TEST_P(DirectActorSubmitterTest, TestOutOfOrderDependencies) {
   }
 }
 
-TEST_P(DirectActorSubmitterTest, TestActorDead) {
+TEST_P(ActorTaskSubmitterTest, TestActorDead) {
   auto execute_out_of_order = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -330,7 +330,7 @@ TEST_P(DirectActorSubmitterTest, TestActorDead) {
   submitter_.DisconnectActor(actor_id, 2, /*dead=*/true, death_cause);
 }
 
-TEST_P(DirectActorSubmitterTest, TestActorRestartNoRetry) {
+TEST_P(ActorTaskSubmitterTest, TestActorRestartNoRetry) {
   auto execute_out_of_order = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -383,7 +383,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartNoRetry) {
   }
 }
 
-TEST_P(DirectActorSubmitterTest, TestActorRestartRetry) {
+TEST_P(ActorTaskSubmitterTest, TestActorRestartRetry) {
   auto execute_out_of_order = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -444,7 +444,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartRetry) {
   }
 }
 
-TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
+TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderRetry) {
   auto execute_out_of_order = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -505,7 +505,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderRetry) {
   }
 }
 
-TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
+TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   auto execute_out_of_order = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -579,7 +579,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartOutOfOrderGcs) {
   ASSERT_FALSE(CheckSubmitTask(task));
 }
 
-TEST_P(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
+TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {
   auto execute_out_of_order = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -626,7 +626,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFailInflightTasks) {
   ASSERT_TRUE(worker_client_->ReplyPushTask(Status::IOError("")));
 }
 
-TEST_P(DirectActorSubmitterTest, TestActorRestartFastFail) {
+TEST_P(ActorTaskSubmitterTest, TestActorRestartFastFail) {
   auto execute_out_of_order = GetParam();
   rpc::Address addr;
   auto worker_id = WorkerID::FromRandom();
@@ -657,7 +657,7 @@ TEST_P(DirectActorSubmitterTest, TestActorRestartFastFail) {
   ASSERT_EQ(io_context.poll_one(), 1);
 }
 
-TEST_P(DirectActorSubmitterTest, TestPendingTasks) {
+TEST_P(ActorTaskSubmitterTest, TestPendingTasks) {
   auto execute_out_of_order = GetParam();
   int32_t max_pending_calls = 10;
   rpc::Address addr;
@@ -698,7 +698,7 @@ TEST_P(DirectActorSubmitterTest, TestPendingTasks) {
 }
 
 INSTANTIATE_TEST_SUITE_P(ExecuteOutOfOrder,
-                         DirectActorSubmitterTest,
+                         ActorTaskSubmitterTest,
                          ::testing::Values(true, false));
 
 class MockDependencyWaiter : public DependencyWaiter {
@@ -718,14 +718,13 @@ class MockWorkerContext : public WorkerContext {
   }
 };
 
-class MockCoreWorkerDirectTaskReceiver : public CoreWorkerDirectTaskReceiver {
+class MockTaskReceiver : public TaskReceiver {
  public:
-  MockCoreWorkerDirectTaskReceiver(
-      WorkerContext &worker_context,
-      instrumented_io_context &main_io_service,
-      const TaskHandler &task_handler,
-      const OnActorCreationTaskDone &actor_creation_task_done_)
-      : CoreWorkerDirectTaskReceiver(
+  MockTaskReceiver(WorkerContext &worker_context,
+                   instrumented_io_context &main_io_service,
+                   const TaskHandler &task_handler,
+                   const OnActorCreationTaskDone &actor_creation_task_done_)
+      : TaskReceiver(
             worker_context, main_io_service, task_handler, actor_creation_task_done_) {}
 
   void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
@@ -734,13 +733,13 @@ class MockCoreWorkerDirectTaskReceiver : public CoreWorkerDirectTaskReceiver {
   }
 };
 
-class DirectActorReceiverTest : public ::testing::Test {
+class TaskReceiverTest : public ::testing::Test {
  public:
-  DirectActorReceiverTest()
+  TaskReceiverTest()
       : worker_context_(WorkerType::WORKER, JobID::FromInt(0)),
         worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
         dependency_waiter_(std::make_shared<MockDependencyWaiter>()) {
-    auto execute_task = std::bind(&DirectActorReceiverTest::MockExecuteTask,
+    auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
                                   std::placeholders::_1,
                                   std::placeholders::_2,
@@ -748,7 +747,7 @@ class DirectActorReceiverTest : public ::testing::Test {
                                   std::placeholders::_4,
                                   std::placeholders::_5,
                                   std::placeholders::_6);
-    receiver_ = std::make_unique<MockCoreWorkerDirectTaskReceiver>(
+    receiver_ = std::make_unique<MockTaskReceiver>(
         worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
@@ -776,7 +775,7 @@ class DirectActorReceiverTest : public ::testing::Test {
     main_io_service_.stop();
   }
 
-  std::unique_ptr<MockCoreWorkerDirectTaskReceiver> receiver_;
+  std::unique_ptr<MockTaskReceiver> receiver_;
 
  private:
   rpc::Address rpc_address_;
@@ -786,7 +785,7 @@ class DirectActorReceiverTest : public ::testing::Test {
   std::shared_ptr<DependencyWaiter> dependency_waiter_;
 };
 
-TEST_F(DirectActorReceiverTest, TestNewTaskFromDifferentWorker) {
+TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
   TaskID current_task_id = TaskID::Nil();
   ActorID actor_id = ActorID::Of(JobID::FromInt(0), TaskID::Nil(), 0);
   WorkerID worker_id = WorkerID::FromRandom();

@@ -18,7 +18,7 @@ def test_handle_backpressure(serve_instance):
 
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1, max_queued_requests=1)
+    @serve.deployment(max_ongoing_requests=1, max_queued_requests=1)
     class Deployment:
         async def __call__(self, msg: str) -> str:
             await signal_actor.wait.remote()
@@ -49,7 +49,7 @@ def test_http_backpressure(serve_instance):
 
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1, max_queued_requests=1)
+    @serve.deployment(max_ongoing_requests=1, max_queued_requests=1)
     class Deployment:
         async def __call__(self, request: Request) -> str:
             msg = (await request.json())["msg"]
@@ -90,7 +90,7 @@ def test_grpc_backpressure(serve_instance):
 
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1, max_queued_requests=1)
+    @serve.deployment(max_ongoing_requests=1, max_queued_requests=1)
     class Deployment:
         async def __call__(self, request: serve_pb2.UserDefinedMessage):
             await signal_actor.wait.remote()

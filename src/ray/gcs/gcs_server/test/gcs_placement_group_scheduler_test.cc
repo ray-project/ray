@@ -994,7 +994,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeErrorDuringCommittingResources) {
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   // node1 is experiencing transient connection failure.
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources(
-      ray::Status::GrpcUnavailable("unavailable")));
+      ray::Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 

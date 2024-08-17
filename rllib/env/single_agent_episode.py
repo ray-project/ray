@@ -49,6 +49,7 @@ class SingleAgentEpisode:
     .. testcode::
 
         import gymnasium as gym
+        import numpy as np
 
         from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
@@ -90,10 +91,10 @@ class SingleAgentEpisode:
         # in case we go over the beginning (ts=0). So we would expect
         # [0.0, 0.0, 0.0, r0] to be returned here, where r0 is the very first received
         # reward in the episode:
-        episode.get_rewards(slice(-4, 0), neg_indices_left_of_zero=True, fill=0.0)
+        episode.get_rewards(slice(-4, 0), neg_index_as_lookback=True, fill=0.0)
 
         # Note the use of fill=0.0 here (fill everything that's out of range with this
-        # value) AND the argument `neg_indices_left_of_zero=True`, which interprets
+        # value) AND the argument `neg_index_as_lookback=True`, which interprets
         # negative indices as being left of ts=0 (e.g. -1 being the timestep before
         # ts=0).
 
@@ -131,7 +132,7 @@ class SingleAgentEpisode:
                     indices=slice(ts - 4, ts),
                     # Make sure negative indices are interpreted as
                     # "into lookback buffer"
-                    neg_indices_left_of_zero=True,
+                    neg_index_as_lookback=True,
                     # Zero-out everything even further before the lookback buffer.
                     fill=0.0,
                     # Take care of discrete components (get ready as NN input).
@@ -708,7 +709,7 @@ class SingleAgentEpisode:
         self,
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
     ) -> Any:
@@ -721,17 +722,17 @@ class SingleAgentEpisode:
                 individual observations in a batch of size len(indices).
                 A slice object is interpreted as a range of observations to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all observations (from ts=0 to the end).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with observations [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
-                respond to `get_observations(-1, neg_indices_left_of_zero=True)`
+                respond to `get_observations(-1, neg_index_as_lookback=True)`
                 with `6` and to
-                `get_observations(slice(-2, 1), neg_indices_left_of_zero=True)` with
+                `get_observations(slice(-2, 1), neg_index_as_lookback=True)` with
                 `[5, 6,  7]`.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
@@ -785,7 +786,7 @@ class SingleAgentEpisode:
             # Special case: Using `fill=0.0` AND `one_hot_discrete=True`.
             check(episode.get_observations(
                 -1,
-                neg_indices_left_of_zero=True,  # -1 means one left of ts=0
+                neg_index_as_lookback=True,  # -1 means one left of ts=0
                 fill=0.0,
                 one_hot_discrete=True,
             ), [0, 0, 0, 0])  # <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
@@ -798,7 +799,7 @@ class SingleAgentEpisode:
         """
         return self.observations.get(
             indices=indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             one_hot_discrete=one_hot_discrete,
         )
@@ -807,7 +808,7 @@ class SingleAgentEpisode:
         self,
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
     ) -> Any:
         """Returns individual info dicts or list (ranges) thereof from this episode.
@@ -819,18 +820,18 @@ class SingleAgentEpisode:
                 individual info dicts in a list of size len(indices).
                 A slice object is interpreted as a range of info dicts to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all infos (from ts=0 to the end).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with infos
                 [{"l":4}, {"l":5}, {"l":6},  {"a":7}, {"b":8}, {"c":9}], where the
                 first 3 items are the lookback buffer (ts=0 item is {"a": 7}), will
-                respond to `get_infos(-1, neg_indices_left_of_zero=True)` with
+                respond to `get_infos(-1, neg_index_as_lookback=True)` with
                 `{"l":6}` and to
-                `get_infos(slice(-2, 1), neg_indices_left_of_zero=True)` with
+                `get_infos(slice(-2, 1), neg_index_as_lookback=True)` with
                 `[{"l":5}, {"l":6},  {"a":7}]`.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
@@ -876,7 +877,7 @@ class SingleAgentEpisode:
         """
         return self.infos.get(
             indices=indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
         )
 
@@ -884,7 +885,7 @@ class SingleAgentEpisode:
         self,
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
     ) -> Any:
@@ -897,16 +898,16 @@ class SingleAgentEpisode:
                 individual actions in a batch of size len(indices).
                 A slice object is interpreted as a range of actions to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all actions (from ts=0 to the end).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with actions [4, 5, 6,  7, 8, 9], where
                 [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will respond
-                to `get_actions(-1, neg_indices_left_of_zero=True)` with `6` and
-                to `get_actions(slice(-2, 1), neg_indices_left_of_zero=True)` with
+                to `get_actions(-1, neg_index_as_lookback=True)` with `6` and
+                to `get_actions(slice(-2, 1), neg_index_as_lookback=True)` with
                 `[5, 6,  7]`.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
@@ -957,7 +958,7 @@ class SingleAgentEpisode:
             # Special case: Using `fill=0.0` AND `one_hot_discrete=True`.
             episode.get_actions(
                 -1,
-                neg_indices_left_of_zero=True,  # -1 means one left of ts=0
+                neg_index_as_lookback=True,  # -1 means one left of ts=0
                 fill=0.0,
                 one_hot_discrete=True,
             )  # [0 0 0 0]  <- all 0s one-hot tensor (note difference to [1 0 0 0]!)
@@ -970,7 +971,7 @@ class SingleAgentEpisode:
         """
         return self.actions.get(
             indices=indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             one_hot_discrete=one_hot_discrete,
         )
@@ -979,7 +980,7 @@ class SingleAgentEpisode:
         self,
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[float] = None,
     ) -> Any:
         """Returns individual rewards or batched ranges thereof from this episode.
@@ -991,16 +992,16 @@ class SingleAgentEpisode:
                 individual rewards in a batch of size len(indices).
                 A slice object is interpreted as a range of rewards to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all rewards (from ts=0 to the end).
-            neg_indices_left_of_zero: Negative values in `indices` are interpreted as
+            neg_index_as_lookback: Negative values in `indices` are interpreted as
                  as "before ts=0", meaning going back into the lookback buffer.
                  For example, an episode with rewards [4, 5, 6,  7, 8, 9], where
                  [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will respond
-                 to `get_rewards(-1, neg_indices_left_of_zero=True)` with `6` and
-                 to `get_rewards(slice(-2, 1), neg_indices_left_of_zero=True)` with
+                 to `get_rewards(-1, neg_index_as_lookback=True)` with `6` and
+                 to `get_rewards(slice(-2, 1), neg_index_as_lookback=True)` with
                  `[5, 6,  7]`.
             fill: An optional float value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
@@ -1042,7 +1043,7 @@ class SingleAgentEpisode:
         """
         return self.rewards.get(
             indices=indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
         )
 
@@ -1051,7 +1052,7 @@ class SingleAgentEpisode:
         key: str,
         indices: Optional[Union[int, List[int], slice]] = None,
         *,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
     ) -> Any:
         """Returns extra model outputs (under given key) from this episode.
@@ -1064,18 +1065,18 @@ class SingleAgentEpisode:
                 individual actions in a batch of size len(indices).
                 A slice object is interpreted as a range of extra model outputs to be
                 returned. Thereby, negative indices by default are interpreted as
-                "before the end" unless the `neg_indices_left_of_zero=True` option is
+                "before the end" unless the `neg_index_as_lookback=True` option is
                 used, in which case negative indices are interpreted as "before ts=0",
                 meaning going back into the lookback buffer.
                 If None, will return all extra model outputs (from ts=0 to the end).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
                 extra_model_outputs['a'] = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will respond to
-                `get_extra_model_outputs("a", -1, neg_indices_left_of_zero=True)` with
+                `get_extra_model_outputs("a", -1, neg_index_as_lookback=True)` with
                 `6` and to `get_extra_model_outputs("a", slice(-2, 1),
-                neg_indices_left_of_zero=True)` with `[5, 6,  7]`.
+                neg_index_as_lookback=True)` with `[5, 6,  7]`.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
@@ -1088,7 +1089,7 @@ class SingleAgentEpisode:
                 `get_extra_model_outputs("b", slice(-7, -2), fill=0.0)` with
                 `[0.0, 0.0, 10, 11, 12]`.
                 TODO (sven): This would require a space being provided. Maybe we can
-                 automatically infer the space from existing data?
+                automatically infer the space from existing data?
 
         Examples:
 
@@ -1127,7 +1128,7 @@ class SingleAgentEpisode:
         if isinstance(value, InfiniteLookbackBuffer):
             return value.get(
                 indices=indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
                 fill=fill,
             )
         # TODO (sven): This does not seem to be solid yet. Users should NOT be able
@@ -1140,7 +1141,7 @@ class SingleAgentEpisode:
         # arrays. We convert them automatically to buffers and get the requested
         # indices (with the given options) from there.
         return InfiniteLookbackBuffer(value).get(
-            indices, fill=fill, neg_indices_left_of_zero=neg_indices_left_of_zero
+            indices, fill=fill, neg_index_as_lookback=neg_index_as_lookback
         )
 
     def set_observations(
@@ -1148,7 +1149,7 @@ class SingleAgentEpisode:
         *,
         new_data,
         at_indices: Optional[Union[int, List[int], slice]] = None,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
     ) -> None:
         """Overwrites all or some of this Episode's observations with the provided data.
 
@@ -1176,16 +1177,16 @@ class SingleAgentEpisode:
                 with `new_data` (which is expected to be of the same size as the
                 provided slice).
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
-            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+            neg_index_as_lookback: If True, negative values in `at_indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
                 observations = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will handle a call to
                 `set_observations(individual_observation, -1,
-                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
                 observations buffer with the provided "individual_observation".
 
         Raises:
@@ -1195,7 +1196,7 @@ class SingleAgentEpisode:
         self.observations.set(
             new_data=new_data,
             at_indices=at_indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
         )
 
     def set_actions(
@@ -1203,7 +1204,7 @@ class SingleAgentEpisode:
         *,
         new_data,
         at_indices: Optional[Union[int, List[int], slice]] = None,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
     ) -> None:
         """Overwrites all or some of this Episode's actions with the provided data.
 
@@ -1231,16 +1232,16 @@ class SingleAgentEpisode:
                 with `new_data` (which is expected to be of the same size as the
                 provided slice).
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
-            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+            neg_index_as_lookback: If True, negative values in `at_indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
                 actions = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will handle a call to
                 `set_actions(individual_action, -1,
-                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
                 actions buffer with the provided "individual_action".
 
         Raises:
@@ -1250,7 +1251,7 @@ class SingleAgentEpisode:
         self.actions.set(
             new_data=new_data,
             at_indices=at_indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
         )
 
     def set_rewards(
@@ -1258,7 +1259,7 @@ class SingleAgentEpisode:
         *,
         new_data,
         at_indices: Optional[Union[int, List[int], slice]] = None,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
     ) -> None:
         """Overwrites all or some of this Episode's rewards with the provided data.
 
@@ -1286,16 +1287,16 @@ class SingleAgentEpisode:
                 with `new_data` (which is expected to be of the same size as the
                 provided slice).
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
-            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+            neg_index_as_lookback: If True, negative values in `at_indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
                 rewards = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will handle a call to
                 `set_rewards(individual_reward, -1,
-                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
                 rewards buffer with the provided "individual_reward".
 
         Raises:
@@ -1305,7 +1306,7 @@ class SingleAgentEpisode:
         self.rewards.set(
             new_data=new_data,
             at_indices=at_indices,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
         )
 
     def set_extra_model_outputs(
@@ -1314,7 +1315,7 @@ class SingleAgentEpisode:
         key,
         new_data,
         at_indices: Optional[Union[int, List[int], slice]] = None,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
     ) -> None:
         """Overwrites all or some of this Episode's extra model outputs with `new_data`.
 
@@ -1331,7 +1332,7 @@ class SingleAgentEpisode:
         Args:
             key: The `key` within `self.extra_model_outputs` to override data on or
                 to insert as a new key into `self.extra_model_outputs`.
-            new_data: The new reward data to overwrite existing data with.
+            new_data: The new data to overwrite existing data with.
                 This may be a list of individual reward(s) in case this episode
                 is still not finalized yet. In case this episode has already been
                 finalized, this should be a np.ndarray with a length exactly
@@ -1346,16 +1347,16 @@ class SingleAgentEpisode:
                 with `new_data` (which is expected to be of the same size as the
                 provided slice).
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
-            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+            neg_index_as_lookback: If True, negative values in `at_indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with
                 rewards = [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the
                 lookback buffer range (ts=0 item is 7), will handle a call to
                 `set_rewards(individual_reward, -1,
-                neg_indices_left_of_zero=True)` by overwriting the value of 6 in our
+                neg_index_as_lookback=True)` by overwriting the value of 6 in our
                 rewards buffer with the provided "individual_reward".
 
         Raises:
@@ -1367,7 +1368,7 @@ class SingleAgentEpisode:
             self.extra_model_outputs[key].set(
                 new_data=new_data,
                 at_indices=at_indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
             )
         # Users wants to add a new record -> Create new buffer.
         else:
@@ -1503,7 +1504,7 @@ class SingleAgentEpisode:
             observations=InfiniteLookbackBuffer(
                 data=self.get_observations(
                     slice(start - self.observations.lookback, stop + 1, step),
-                    neg_indices_left_of_zero=True,
+                    neg_index_as_lookback=True,
                 ),
                 lookback=self.observations.lookback,
                 space=self.observation_space,
@@ -1512,14 +1513,14 @@ class SingleAgentEpisode:
             infos=InfiniteLookbackBuffer(
                 data=self.get_infos(
                     slice(start - self.infos.lookback, stop + 1, step),
-                    neg_indices_left_of_zero=True,
+                    neg_index_as_lookback=True,
                 ),
                 lookback=self.infos.lookback,
             ),
             actions=InfiniteLookbackBuffer(
                 data=self.get_actions(
                     slice(start - self.actions.lookback, stop, step),
-                    neg_indices_left_of_zero=True,
+                    neg_index_as_lookback=True,
                 ),
                 lookback=self.actions.lookback,
                 space=self.action_space,
@@ -1528,7 +1529,7 @@ class SingleAgentEpisode:
             rewards=InfiniteLookbackBuffer(
                 data=self.get_rewards(
                     slice(start - self.rewards.lookback, stop, step),
-                    neg_indices_left_of_zero=True,
+                    neg_index_as_lookback=True,
                 ),
                 lookback=self.rewards.lookback,
             ),
@@ -1539,7 +1540,7 @@ class SingleAgentEpisode:
                         indices=slice(
                             start - self.extra_model_outputs[k].lookback, stop, step
                         ),
-                        neg_indices_left_of_zero=True,
+                        neg_index_as_lookback=True,
                     ),
                     lookback=v.lookback,
                 )

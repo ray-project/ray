@@ -87,9 +87,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         You can access (and change) the worker(s) in question via the following code
         snippet inside your custom override of this method:
 
-        Note that any "worker" inside the algorithm's `self.worker` and
-        `self.evaluation_workers` EnvRunnerGroups are instances of a subclass of
-        EnvRunner.
+        Note that any "worker" inside the algorithm's `self.env_runner_group` and
+        `self.eval_env_runner_group` are instances of a subclass of EnvRunner.
 
         .. testcode::
             from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -133,7 +132,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 never recreated as a failure of this would also crash the Algorithm.
             worker_ids: The list of (remote) worker IDs that have been recreated.
             is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup
-                (located in `Algorithm.evaluation_workers`) or not.
+                (located in `Algorithm.eval_env_runner_group`) or not.
         """
         pass
 
@@ -318,7 +317,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 (within the vector of sub-environments of the BaseEnv).
             rl_module: The RLModule used to compute actions for stepping the env.
                 In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiAgentRLModule.
+                agent setup, this will be a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -361,7 +360,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             env_index: The index of the sub-environment that has just been stepped.
             rl_module: The RLModule used to compute actions for stepping the env.
                 In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiAgentRLModule.
+                agent setup, this will be a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -421,7 +420,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 or truncated.
             rl_module: The RLModule used to compute actions for stepping the env.
                 In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiAgentRLModule.
+                agent setup, this will be a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass

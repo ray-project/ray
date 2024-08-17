@@ -47,6 +47,7 @@ document.body.appendChild(blurDiv);
 
 // blur background when chat popup is open
 document.getElementById('openChatBtn').addEventListener('click', function () {
+  document.querySelector('.search-button__wrapper').classList.remove('show');
   document.getElementById('chatPopup').style.display = 'block';
   blurDiv.classList.remove('blurDiv-hidden');
 });
@@ -90,7 +91,7 @@ function renderCopyButtons(resultDiv) {
     copyButton.style.opacity = 'inherit';
 
     let imgElement = document.createElement('img');
-    imgElement.src = './_static/copy-button.svg';
+    imgElement.src = window.data.copyIconSrc;
     imgElement.alt = 'Copy to clipboard';
 
     copyButton.appendChild(imgElement);

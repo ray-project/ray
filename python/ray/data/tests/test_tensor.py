@@ -564,7 +564,7 @@ def test_tensors_in_tables_pandas_roundtrip(
     ds_df = ds.to_pandas()
     expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
-        expected_df.loc[:, "two"] = list(expected_df["two"].to_numpy())
+        expected_df["two"] = list(expected_df["two"].to_numpy())
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
@@ -585,7 +585,7 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     ds_df = ds.to_pandas()
     expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
-        expected_df.loc[:, "two"] = _create_possibly_ragged_ndarray(
+        expected_df["two"] = _create_possibly_ragged_ndarray(
             expected_df["two"].to_numpy()
         )
     pd.testing.assert_frame_equal(ds_df, expected_df)
@@ -873,8 +873,8 @@ def test_tensors_in_tables_iter_batches(
     )
     df = pd.concat([df1, df2], ignore_index=True)
     if enable_automatic_tensor_extension_cast:
-        df.loc[:, "one"] = list(df["one"].to_numpy())
-        df.loc[:, "two"] = list(df["two"].to_numpy())
+        df["one"] = list(df["one"].to_numpy())
+        df["two"] = list(df["two"].to_numpy())
     ds = ray.data.from_pandas([df1, df2])
     batches = list(ds.iter_batches(batch_size=2, batch_format="pandas"))
     assert len(batches) == 3

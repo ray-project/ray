@@ -82,33 +82,6 @@ inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
   return error_info_ptr;
 }
 
-/// Helper function to produce actor table data.
-inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
-    const TaskSpecification &task_spec,
-    const ray::rpc::Address &address,
-    ray::rpc::ActorTableData::ActorState state,
-    uint64_t num_restarts) {
-  RAY_CHECK(task_spec.IsActorCreationTask());
-  auto actor_id = task_spec.ActorCreationId();
-  auto actor_info_ptr = std::make_shared<ray::rpc::ActorTableData>();
-  // Set all of the static fields for the actor. These fields will not change
-  // even if the actor fails or is reconstructed.
-  actor_info_ptr->set_actor_id(actor_id.Binary());
-  actor_info_ptr->set_parent_id(task_spec.CallerId().Binary());
-  actor_info_ptr->set_actor_creation_dummy_object_id(
-      task_spec.ActorDummyObject().Binary());
-  actor_info_ptr->set_job_id(task_spec.JobId().Binary());
-  actor_info_ptr->set_max_restarts(task_spec.MaxActorRestarts());
-  actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
-  // Set the fields that change when the actor is restarted.
-  actor_info_ptr->set_num_restarts(num_restarts);
-  actor_info_ptr->mutable_address()->CopyFrom(address);
-  actor_info_ptr->mutable_owner_address()->CopyFrom(
-      task_spec.GetMessage().caller_address());
-  actor_info_ptr->set_state(state);
-  return actor_info_ptr;
-}
-
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const WorkerID &worker_id,
@@ -304,7 +277,8 @@ inline bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
   }
 
   const auto &state_updates = task_event.state_updates();
-  return state_updates.has_finished_ts() || state_updates.has_failed_ts();
+  return state_updates.state_ts_ns().contains(rpc::TaskStatus::FINISHED) ||
+         state_updates.state_ts_ns().contains(rpc::TaskStatus::FAILED);
 }
 
 inline size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
@@ -335,7 +309,7 @@ inline bool IsTaskFinished(const rpc::TaskEvents &task_event) {
   }
 
   const auto &state_updates = task_event.state_updates();
-  return state_updates.has_finished_ts();
+  return state_updates.state_ts_ns().contains(rpc::TaskStatus::FINISHED);
 }
 
 /// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
@@ -346,39 +320,11 @@ inline bool IsTaskFinished(const rpc::TaskEvents &task_event) {
 inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
                                      int64_t timestamp,
                                      ray::rpc::TaskStateUpdate *state_updates) {
-  switch (task_status) {
-  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
-    state_updates->set_pending_args_avail_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
-    state_updates->set_submitted_to_worker_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
-    state_updates->set_pending_node_assignment_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::FINISHED: {
-    state_updates->set_finished_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::FAILED: {
-    state_updates->set_failed_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::RUNNING: {
-    state_updates->set_running_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::NIL: {
+  if (task_status == rpc::TaskStatus::NIL) {
     // Not status change.
-    break;
+    return;
   }
-  default: {
-    UNREACHABLE;
-  }
-  }
+  (*state_updates->mutable_state_ts_ns())[task_status] = timestamp;
 }
 
 inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {

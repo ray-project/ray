@@ -101,6 +101,7 @@ html[data-theme='light'] {
   display: flex;
   flex-direction: column;
   gap: 0.5em;
+  flex: 1;
 }
 
 .link-card-icon-label {

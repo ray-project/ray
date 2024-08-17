@@ -335,9 +335,9 @@ void GcsResourceManager::UpdatePlacementGroupLoad(
 std::string GcsResourceManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsResourceManager: "
-         << "\n- GetAllAvailableResources request count"
+         << "\n- GetAllAvailableResources request count: "
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
-         << "\n- GetAllTotalResources request count"
+         << "\n- GetAllTotalResources request count: "
          << counts_[CountType::GET_All_TOTAL_RESOURCES_REQUEST]
          << "\n- GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];

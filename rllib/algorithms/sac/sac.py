@@ -5,7 +5,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
 from ray.rllib.core.learner import Learner
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
@@ -14,7 +14,7 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.typing import RLModuleSpec, ResultDict
+from ray.rllib.utils.typing import RLModuleSpecType, ResultDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -374,7 +374,7 @@ class SACConfig(AlgorithmConfig):
             return self.rollout_fragment_length
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> RLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
         from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 
         if self.framework_str == "torch":
@@ -382,9 +382,7 @@ class SACConfig(AlgorithmConfig):
                 SACTorchRLModule,
             )
 
-            return SingleAgentRLModuleSpec(
-                module_class=SACTorchRLModule, catalog_class=SACCatalog
-            )
+            return RLModuleSpec(module_class=SACTorchRLModule, catalog_class=SACCatalog)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."

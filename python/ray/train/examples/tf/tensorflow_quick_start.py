@@ -3,8 +3,14 @@
 # isort: skip_file
 
 # __tf_setup_begin__
+import sys
 import numpy as np
-import tensorflow as tf
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    import tensorflow as tf
 
 def mnist_dataset(batch_size):
     (x_train, y_train), _ = tf.keras.datasets.mnist.load_data()

@@ -109,9 +109,8 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/security-requirements.txt"
 
-  # Remove some pins from upstream dependencies:
-  # ray, xgboost-ray, lightgbm-ray, tune-sklearn
-  sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/$TARGET"
+  # Remove some pins from upstream dependencies: ray
+  sed -i "/^ray==/d" "${WORKSPACE_DIR}/python/$TARGET"
 
   # Delete local installation
   sed -i "/@ file/d" "${WORKSPACE_DIR}/python/$TARGET"

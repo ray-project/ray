@@ -49,11 +49,13 @@ TEST_F(StatusTest, GrpcStatusToRayStatus) {
 
   grpc_status = grpc::Status(grpc::StatusCode::UNAVAILABLE, "foo", "bar");
   ray_status = GrpcStatusToRayStatus(grpc_status);
-  ASSERT_TRUE(ray_status.IsGrpcUnavailable());
+  ASSERT_TRUE(ray_status.IsRpcError());
+  ASSERT_EQ(ray_status.rpc_code(), grpc::StatusCode::UNAVAILABLE);
 
   grpc_status = grpc::Status(grpc::StatusCode::UNKNOWN, "foo", "bar");
   ray_status = GrpcStatusToRayStatus(grpc_status);
-  ASSERT_TRUE(ray_status.IsGrpcUnknown());
+  ASSERT_TRUE(ray_status.IsRpcError());
+  ASSERT_EQ(ray_status.rpc_code(), grpc::StatusCode::UNKNOWN);
 
   grpc_status = grpc::Status(grpc::StatusCode::ABORTED, "foo", "bar");
   ray_status = GrpcStatusToRayStatus(grpc_status);

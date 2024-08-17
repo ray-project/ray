@@ -1,5 +1,6 @@
 import math
 import os
+import sys
 import tempfile
 import time
 from unittest.mock import patch
@@ -28,7 +29,6 @@ from ray.train.constants import (
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
-from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
 from ray.util.placement_group import get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -96,8 +96,21 @@ def mock_add_workers(self, num_workers):
     original_add_workers(self, num_workers)
     for i, worker in enumerate(self.workers):
         metadata = WorkerMetadata(
-            node_id=0,
+            node_id=str(i % 2),
             node_ip=str(i % 2),
+            hostname=0,
+            resource_ids={"GPU": ["0"]},
+            pid=0,
+        )
+        worker.metadata = metadata
+
+
+def mock_add_workers_to_nodes_with_same_ip(self, num_workers):
+    original_add_workers(self, num_workers)
+    for i, worker in enumerate(self.workers):
+        metadata = WorkerMetadata(
+            node_id=str(i % 2),
+            node_ip=0,
             hostname=0,
             resource_ids={"GPU": ["0"]},
             pid=0,
@@ -165,6 +178,18 @@ def test_local_ranks(ray_start_2_cpus):
     assert set(e.finish_training()) == {0, 1}
 
 
+def test_local_ranks_with_same_ip_nodes(ray_2_node_2_cpu):
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=4)
+    e.start()
+
+    def train_func():
+        return train.get_context().get_local_rank()
+
+    _start_training(e, train_func)
+    assert list(e.finish_training()) == [0, 1, 0, 1]
+
+
 def test_local_world_size(ray_2_node_2_cpu):
     config = TestConfig()
     with patch.object(WorkerGroup, "add_workers", mock_add_workers):
@@ -178,9 +203,39 @@ def test_local_world_size(ray_2_node_2_cpu):
         assert list(e.finish_training()) == [2, 2, 1]
 
 
+def test_local_world_size_with_same_ip_nodes(ray_2_node_2_cpu):
+    config = TestConfig()
+    with patch.object(
+        WorkerGroup, "add_workers", mock_add_workers_to_nodes_with_same_ip
+    ):
+        e = BackendExecutor(config, num_workers=3)
+        e.start()
+
+        def train_func():
+            return train.get_context().get_local_world_size()
+
+        _start_training(e, train_func)
+        assert list(e.finish_training()) == [2, 2, 1]
+
+
 def test_node_ranks(ray_2_node_2_cpu):
     config = TestConfig()
     with patch.object(WorkerGroup, "add_workers", mock_add_workers):
+        e = BackendExecutor(config, num_workers=3)
+        e.start()
+
+        def train_func():
+            return train.get_context().get_node_rank()
+
+        _start_training(e, train_func)
+        assert list(e.finish_training()) == [0, 0, 1]
+
+
+def test_node_ranks_with_same_ip_nodes(ray_2_node_2_cpu):
+    config = TestConfig()
+    with patch.object(
+        WorkerGroup, "add_workers", mock_add_workers_to_nodes_with_same_ip
+    ):
         e = BackendExecutor(config, num_workers=3)
         e.start()
 
@@ -256,7 +311,12 @@ def test_single_worker_actor_failure(ray_start_2_cpus):
         e.get_next_results()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="tensorflow is not supported in python 3.12+"
+)
 def test_tensorflow_start(ray_start_2_cpus):
+    from ray.train.tensorflow import TensorflowConfig
+
     num_workers = 2
     tensorflow_config = TensorflowConfig()
     e = BackendExecutor(tensorflow_config, num_workers=num_workers)

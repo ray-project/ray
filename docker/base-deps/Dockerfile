@@ -1,7 +1,7 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
 # The GPU options are NVIDIA CUDA developer images.
-ARG BASE_IMAGE="ubuntu:focal"
+ARG BASE_IMAGE="ubuntu:22.04"
 FROM ${BASE_IMAGE}
 # FROM directive resets ARG
 ARG BASE_IMAGE
@@ -62,13 +62,15 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         # Necessary for Dataset to work properly.
         numpy\>=1.20 \
         psutil \
+        # Required a recent version of setuptools to be compatible with python 3.12+.
+        setuptools==71.1.0 \
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask \ 
     # We install cmake temporarily to get psutil
     && sudo apt-get autoremove -y cmake zlib1g-dev \
         # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-        $(if [[ "$BASE_IMAGE" == "ubuntu:focal" && "$HOSTTYPE" == "x86_64" ]]; then echo \
+        $(if [[ "$BASE_IMAGE" == "ubuntu:22.04" && "$HOSTTYPE" == "x86_64" ]]; then echo \
         g++; fi) \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean \

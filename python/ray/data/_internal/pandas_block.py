@@ -251,8 +251,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             columns = [columns]
             should_be_single_ndarray = True
 
+        column_names_set = set(self._table.columns)
         for column in columns:
-            if column not in self._table.columns:
+            if column not in column_names_set:
                 raise ValueError(
                     f"Cannot find column {column}, available columns: "
                     f"{self._table.columns.tolist()}"
@@ -630,33 +631,3 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def block_type(self) -> BlockType:
         return BlockType.PANDAS
-
-
-def _estimate_dataframe_size(df: "pandas.DataFrame") -> int:
-    """Estimate the size of a pandas DataFrame.
-
-    This function is necessary because `DataFrame.memory_usage` doesn't count values in
-    columns with `dtype=object`.
-
-    The runtime complexity is linear in the number of values, so don't use this in
-    performance-critical code.
-
-    Args:
-        df: The DataFrame to estimate the size of.
-
-    Returns:
-        The estimated size of the DataFrame in bytes.
-    """
-    size = 0
-    for column in df.columns:
-        if df[column].dtype == object:
-            for item in df[column]:
-                if isinstance(item, str):
-                    size += len(item)
-                elif isinstance(item, np.ndarray):
-                    size += item.nbytes
-                else:
-                    size += 8  # pandas assumes object values are 8 bytes.
-        else:
-            size += df[column].nbytes
-    return size

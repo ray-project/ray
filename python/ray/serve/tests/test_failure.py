@@ -1,4 +1,5 @@
 import os
+import random
 import sys
 import time
 
@@ -8,8 +9,10 @@ import requests
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.exceptions import ActorDiedError
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.test_utils import Counter, get_deployment_details, tlog
 
 
 def request_with_retries(endpoint, timeout=30):
@@ -252,6 +255,66 @@ def test_no_available_replicas_does_not_block_proxy(serve_instance):
         # Signal the replica to finish starting; request should complete.
         ray.get(finish_starting_actor.send.remote())
         assert ray.get(blocked_ref) == "hi"
+
+
+def test_replica_actor_died(serve_instance):
+    """Test replica death paired with delayed handle notification.
+
+    If a replica died, but controller hasn't health-checked it and
+    broadcasted it to handle routers yet, the router should be able
+    to remove it from its replica set.
+    """
+
+    counter = Counter.remote(2)
+
+    @serve.deployment
+    class Dummy:
+        def __call__(self):
+            return os.getpid()
+
+        def check_health(self):
+            ray.get(counter.inc.remote())
+
+    h = serve.run(Dummy.options(num_replicas=2, health_check_period_s=1000).bind())
+
+    deployment_details = get_deployment_details("Dummy", _client=serve_instance)
+    replicas = [r["actor_name"] for r in deployment_details["replicas"]]
+
+    # Wait for controller to health check both replicas
+    ray.get(counter.wait.remote(), timeout=1)
+    tlog("Controller has health checked both replicas")
+
+    # Send some requests, both replicas should be up and running
+    assert len({h.remote().result() for _ in range(10)}) == 2
+    tlog("Sent 10 warmup requests.")
+
+    # Kill one replica.
+    replica_to_kill = random.choice(replicas)
+    tlog(f"Killing replica {replica_to_kill}")
+    ray.kill(ray.get_actor(replica_to_kill, namespace="serve"))
+
+    # The controller just health checked both of them, so it should not
+    # be able to health check and notify the handle router in time
+    actor_died_error_encountered = False
+    pids_returned = set()
+    for _ in range(10):
+        try:
+            pids_returned.add(h.remote().result())
+        except ActorDiedError:
+            if not actor_died_error_encountered:
+                tlog(
+                    "Received ActorDiedError for one request. This is expected, "
+                    "but should not happen again."
+                )
+                actor_died_error_encountered = True
+
+            else:
+                raise
+
+    assert len(pids_returned) == 1
+    # We also sent some warmup requests beforehand which should have
+    # populated the queue len cache
+    assert actor_died_error_encountered
 
 
 if __name__ == "__main__":

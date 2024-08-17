@@ -910,13 +910,11 @@ def test_dataset_stats_from_items(ray_start_regular_shared):
     assert "FromItems" in stats, stats
 
 
-def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
-    ds = ray.data.range(1000, override_num_blocks=10)
-    ds.write_parquet(str(tmp_path))
-    ds = ray.data.read_parquet(str(tmp_path)).map(lambda x: x)
+def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(1000, override_num_blocks=10).map(lambda x: x)
     stats = canonicalize(ds.materialize().stats())
     assert stats == (
-        f"Operator N ReadParquet->Map(<lambda>): {EXECUTION_STRING}\n"
+        f"Operator N ReadRange->Map(<lambda>): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"

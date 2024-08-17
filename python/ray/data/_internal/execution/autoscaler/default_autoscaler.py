@@ -2,6 +2,7 @@ import math
 import time
 from typing import TYPE_CHECKING, Dict
 
+import ray
 from .autoscaler import Autoscaler
 from .autoscaling_actor_pool import AutoscalingActorPool
 from ray.data._internal.execution.autoscaling_requester import (
@@ -182,3 +183,6 @@ class DefaultAutoscaler(Autoscaler):
         # Make request for zero resources to autoscaler for this execution.
         actor = get_or_create_autoscaling_requester_actor()
         actor.request_resources.remote({}, self._execution_id)
+
+    def get_total_resources(self) -> ExecutionResources:
+        return ExecutionResources.from_resource_dict(ray.cluster_resources())

@@ -105,7 +105,7 @@ class TaskSettingCallback(DefaultCallbacks):
 
         # Sub-envs are now ray.actor.ActorHandles, so we have to add
         # `remote()` here.
-        algorithm.workers.foreach_env(lambda env: env.set_task.remote(phase))
+        algorithm.env_runner_group.foreach_env(lambda env: env.set_task.remote(phase))
 
 
 if __name__ == "__main__":

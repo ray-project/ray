@@ -719,6 +719,8 @@ message GetTaskEventsRequest {
     optional string name = 4;
     // True if task events from driver (only profiling events) should be excluded.
     optional bool exclude_driver = 5;
+    // Latest state of the task.
+    optional string state = 6;
   }
 
   // Maximum number of TaskEvents to return.

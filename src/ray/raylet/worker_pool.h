@@ -99,15 +99,9 @@ class WorkerPoolInterface {
   /// Case 1: An suitable worker was found in idle worker pool.
   /// Case 2: An suitable worker registered to raylet.
   /// The corresponding PopWorkerStatus will be passed to the callback.
-  /// \param allocated_instances_serialized_json The allocated resource instances
-  /// json string, it contains resource ID which assigned to this worker.
-  /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
-  /// resource value will be {"CPU":20000}.
   /// \return Void.
-  virtual void PopWorker(
-      const TaskSpecification &task_spec,
-      const PopWorkerCallback &callback,
-      const std::string &allocated_instances_serialized_json = "{}") = 0;
+  virtual void PopWorker(const TaskSpecification &task_spec,
+                         const PopWorkerCallback &callback) = 0;
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
@@ -231,6 +225,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// \brief Get the job config by job id.
   ///
+  /// We don't return std::optional because it does not support references.
+  ///
   /// \param job_id ID of the job.
   /// \return Job config if given job is running, else nullptr.
   boost::optional<const rpc::JobConfig &> GetJobConfig(const JobID &job_id) const;
@@ -343,9 +339,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
   /// See interface.
-  void PopWorker(const TaskSpecification &task_spec,
-                 const PopWorkerCallback &callback,
-                 const std::string &allocated_instances_serialized_json = "{}");
+  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback);
 
   /// Try to prestart a number of workers suitable the given task spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
@@ -500,7 +494,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   struct PopWorkerRequest {
     TaskSpecification task_spec;
     PopWorkerCallback callback;
-    std::string allocated_instances_serialized_json;
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -668,12 +661,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// assume that the worker process has tree worker instances totally.
 
   /// Create runtime env asynchronously by runtime env agent.
-  void GetOrCreateRuntimeEnv(
-      const std::string &serialized_runtime_env,
-      const rpc::RuntimeEnvConfig &runtime_env_config,
-      const JobID &job_id,
-      const GetOrCreateRuntimeEnvCallback &callback,
-      const std::string &serialized_allocated_resource_instances = "{}");
+  void GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
+                             const rpc::RuntimeEnvConfig &runtime_env_config,
+                             const JobID &job_id,
+                             const GetOrCreateRuntimeEnvCallback &callback);
 
   /// Delete runtime env asynchronously by runtime env agent.
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);

@@ -66,7 +66,7 @@ public class DeploymentCreator {
    * The maximum number of queries that will be sent to a replica of this deployment without
    * receiving a response. Defaults to 100.
    */
-  private Integer maxConcurrentQueries;
+  private Integer maxOngoingRequests;
 
   private AutoscalingConfig autoscalingConfig;
 
@@ -105,7 +105,7 @@ public class DeploymentCreator {
     DeploymentConfig deploymentConfig =
         new DeploymentConfig()
             .setNumReplicas(numReplicas != null ? numReplicas : 1)
-            .setMaxConcurrentQueries(maxConcurrentQueries)
+            .setMaxOngoingRequests(maxOngoingRequests)
             .setUserConfig(userConfig)
             .setAutoscalingConfig(autoscalingConfig)
             .setGracefulShutdownWaitLoopS(gracefulShutdownWaitLoopS)
@@ -204,12 +204,12 @@ public class DeploymentCreator {
     return this;
   }
 
-  public Integer getMaxConcurrentQueries() {
-    return maxConcurrentQueries;
+  public Integer getMaxOngoingRequests() {
+    return maxOngoingRequests;
   }
 
-  public DeploymentCreator setMaxConcurrentQueries(Integer maxConcurrentQueries) {
-    this.maxConcurrentQueries = maxConcurrentQueries;
+  public DeploymentCreator setMaxOngoingRequests(Integer maxOngoingRequests) {
+    this.maxOngoingRequests = maxOngoingRequests;
     return this;
   }
 
