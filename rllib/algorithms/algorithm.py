@@ -109,9 +109,7 @@ from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
     EPISODE_LEN_MEAN,
-    EPISODE_RETURN_MAX,
     EPISODE_RETURN_MEAN,
-    EPISODE_RETURN_MIN,
     EVALUATION_ITERATION_TIMER,
     EVALUATION_RESULTS,
     FAULT_TOLERANCE_STATS,
@@ -3846,21 +3844,23 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Return dict (shallow copy of `train_results`).
         results: ResultDict = train_results.copy()
 
-        # TODO (sven): Fix Tune, instead, to be tolerant against possibly missing result
-        #  keys. Otherwise, we'll have to guess here, what "popular" keys users use in
-        #  order to protect them from running into Tune KeyErrors.
-        if ENV_RUNNER_RESULTS not in results:
-            results[ENV_RUNNER_RESULTS] = {}
-        for must_have in [
-            EPISODE_RETURN_MEAN,
-            EPISODE_RETURN_MIN,
-            EPISODE_RETURN_MAX,
-        ]:
-            if must_have not in results[ENV_RUNNER_RESULTS]:
-                results[ENV_RUNNER_RESULTS][must_have] = np.nan
+        # Collect old-API-stack-style `self._timers` results.
+        for k, timer in self._timers.items():
+            if TIMERS not in results:
+                results[TIMERS] = {}
+            results[TIMERS]["{}_time_sec".format(k)] = timer.mean
+            if timer.has_units_processed():
+                results[TIMERS]["{}_throughput".format(k)] = round(
+                    timer.mean_throughput, 3
+                )
 
         # Evaluation results.
         if eval_results:
+            assert (
+                isinstance(eval_results, dict)
+                and len(eval_results) == 1
+                and EVALUATION_RESULTS in eval_results
+            )
             results.update(eval_results)
         # Fault tolerance stats.
         results[FAULT_TOLERANCE_STATS] = {
