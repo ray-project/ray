@@ -138,9 +138,6 @@ class ResourceManager:
             op_running_usage.object_store_memory = self._estimate_object_store_memory(
                 op, state
             )
-            op_pending_usage.object_store_memory = self._estimate_object_store_memory(
-                op, state
-            )
             self._op_usages[op] = op_usage
             self._op_running_usages[op] = op_running_usage
             self._op_pending_usages[op] = op_pending_usage
