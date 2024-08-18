@@ -370,7 +370,7 @@ class DashboardHead:
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
-        DataSource.register_worker_update_callbacks(
+        DataSource._register_worker_update_callbacks(
             get_or_create_event_loop(), self._thread_pool_executor
         )
 

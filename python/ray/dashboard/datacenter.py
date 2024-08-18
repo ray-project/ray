@@ -42,7 +42,7 @@ class DataSource:
     events = Dict()
 
     @staticmethod
-    def register_worker_update_callbacks(event_loop, thread_pool_executor):
+    def _register_worker_update_callbacks(event_loop, thread_pool_executor):
         DataSource.node_physical_stats.signal.append(
             make_async(event_loop, thread_pool_executor, on_node_physical_stats_change)
         )
@@ -64,7 +64,7 @@ def merge_worker_infos(
     pid_to_workers = {
         worker["pid"]: {
             **worker,
-            "coreWorkerStats": {},
+            "coreWorkerStats": [],
             "language": dashboard_consts.DEFAULT_LANGUAGE,
             "jobId": dashboard_consts.DEFAULT_JOB_ID,
         }
@@ -74,15 +74,16 @@ def merge_worker_infos(
         pid = core_worker_stats["pid"]
         if pid in pid_to_workers:
             worker_dict = pid_to_workers[pid]
-            worker_dict["coreWorkerStats"] = core_worker_stats
+            worker_dict["coreWorkerStats"].append(core_worker_stats)
             worker_dict["language"] = core_worker_stats["language"]
             worker_dict["jobId"] = core_worker_stats["jobId"]
     worker_id_to_workers = {}
     all_workers = list(pid_to_workers.values())
     for worker in all_workers:
-        worker_id = worker["coreWorkerStats"].get("workerId", None)
-        if worker_id is not None:
-            worker_id_to_workers[worker_id] = worker
+        if worker["coreWorkerStats"]:
+            worker_id = worker["coreWorkerStats"][0].get("workerId", None)
+            if worker_id is not None:
+                worker_id_to_workers[worker_id] = worker
     return worker_id_to_workers, all_workers
 
 
