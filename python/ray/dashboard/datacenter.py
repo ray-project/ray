@@ -108,7 +108,7 @@ def update_node_workers_core_worker_stats(node_id, node_stats, node_physical_sta
         node_stats, node_physical_stats
     )
 
-    for worker_id, worker_dict in worker_id_to_workers:
+    for worker_id, worker_dict in worker_id_to_workers.items():
         DataSource.core_worker_stats[worker_id] = worker_dict
 
     old_workers = DataSource.node_workers.get(node_id, [])
