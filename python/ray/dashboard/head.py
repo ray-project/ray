@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import threading
-from concurrent.futures import Future
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from queue import Queue
 from typing import Optional, Set
@@ -12,10 +12,11 @@ import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
 from ray._private import ray_constants
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._private.utils import get_or_create_event_loop
 from ray._raylet import GcsClient, check_health
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
-from ray.dashboard.datacenter import DataOrganizer
+from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.utils import DashboardHeadModule, async_loop_forever
 
 try:
@@ -124,6 +125,9 @@ class DashboardHead:
         self.http_port_retries = http_port_retries
         self._modules_to_load = modules_to_load
         self._modules_loaded = False
+        self._thread_pool_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="dashboard.update_worker_stats"
+        )
 
         self.gcs_address = None
         assert gcs_address is not None
@@ -366,13 +370,16 @@ class DashboardHead:
             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
         )
 
+        DataSource.register_worker_update_callbacks(
+            get_or_create_event_loop(), self._thread_pool_executor
+        )
+
         # Freeze signal after all modules loaded.
         dashboard_utils.SignalManager.freeze()
         concurrent_tasks = [
             self._gcs_check_alive(),
             _async_notify(),
             DataOrganizer.purge(),
-            DataOrganizer.organize(),
         ]
         for m in modules:
             concurrent_tasks.append(m.run(self.server))
