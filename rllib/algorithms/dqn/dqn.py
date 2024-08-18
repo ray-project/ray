@@ -687,7 +687,7 @@ class DQN(Algorithm):
                 # Sample a list of episodes used for learning from the replay buffer.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_SAMPLE_TIMER)):
                     episodes = self.local_replay_buffer.sample(
-                        num_items=self.config.train_batch_size,
+                        num_items=self.config.total_train_batch_size,
                         n_step=self.config.n_step,
                         gamma=self.config.gamma,
                         beta=self.config.replay_buffer_config.get("beta"),
