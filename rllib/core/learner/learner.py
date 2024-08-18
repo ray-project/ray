@@ -1253,7 +1253,7 @@ class Learner(Checkpointable):
         # Call the learner connector.
         if self._learner_connector is not None and episodes is not None:
             # Call the learner connector pipeline.
-            with self.metrics.log_time(LEARNER_CONNECTOR_TIMER):
+            with self.metrics.log_time((ALL_MODULES, LEARNER_CONNECTOR_TIMER)):
                 shared_data = {}
                 batch = self._learner_connector(
                     rl_module=self.module,
