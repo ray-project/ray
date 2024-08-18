@@ -436,7 +436,6 @@ void TaskEventBufferImpl::WriteExportData(
           agg_task_events.insert({event->GetTaskAttempt(), std::make_shared<rpc::ExportTaskEventData>()});
       RAY_CHECK(inserted.second);
     }
-    // std::cout << "To RPC: " << event->GetTaskAttempt().first << "\n";
     auto itr = agg_task_events.find(event->GetTaskAttempt());
 
 
@@ -452,23 +451,12 @@ void TaskEventBufferImpl::WriteExportData(
                   std::make_move_iterator(dropped_status_events_to_write.begin()), 
                   std::make_move_iterator(dropped_status_events_to_write.end()));
 
-  std::cout << "DEBUG 1 \n";
   std::for_each(
       all_status_events_to_send.begin(), all_status_events_to_send.end(), to_rpc_event_fn);
-  std::cout << "DEBUG 2 \n";
   std::for_each(
       profile_events_to_send.begin(), profile_events_to_send.end(), to_rpc_event_fn);
 
-  std::cout << "DEBUG 3 \n";
   for (auto &[_task_attempt, task_event_ptr] : agg_task_events) {
-    std::cout << "Task attempt: " << _task_attempt.first << "\n";
-    std::cout << "Size: " << status_events_to_send.size() << ", " << dropped_status_events_to_write.size() << "\n";
-    // if (status_events_to_send.size() > 0){
-    //   std::cout << "status_events_to_send task id: " << status_events_to_send[0]->GetTaskAttempt().first << "\n";
-    // }
-    // if (dropped_status_events_to_write.size() > 0){
-    //   std::cout << "dropped_status_events_to_write task id: " << dropped_status_events_to_write[0]->GetTaskAttempt().first << "\n";
-    // }
     RayExportEvent(task_event_ptr).SendEvent();
   };
 }

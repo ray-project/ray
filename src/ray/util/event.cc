@@ -192,7 +192,6 @@ void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
 void EventManager::PublishExportEvent(const rpc::ExportEvent &export_event) {
   auto element = export_log_reporter_map_.find(export_event.source_type());
   if (element != export_log_reporter_map_.end()) {
-    std::cout << "Got reporter\n";
     (element->second)->ReportExportEvent(export_event);
   } else {
     RAY_LOG(FATAL)
@@ -403,9 +402,7 @@ void RayEvent::SendMessage(const std::string &message) {
 RayExportEvent::~RayExportEvent() {}
 
 void RayExportEvent::SendEvent() {
-  std::cout << "In SendEvent fn \n";
   if (EventManager::Instance().IsEmpty()) {
-    std::cout << "Early return \n";
     return;
   }
 
@@ -418,7 +415,6 @@ void RayExportEvent::SendEvent() {
   rpc::ExportEvent export_event;
   export_event.set_event_id(event_id);
   export_event.set_timestamp(current_sys_time_s());
-  std::cout << "Starting ptr check \n";
   if (auto ptr_to_task_event_data_ptr =
           std::get_if<std::shared_ptr<rpc::ExportTaskEventData>>(&event_data_ptr_)) {
     export_event.mutable_task_event_data()->CopyFrom(*(*ptr_to_task_event_data_ptr));
@@ -434,7 +430,6 @@ void RayExportEvent::SendEvent() {
     RAY_LOG(FATAL) << "Invalid event_data type.";
     return;
   }
-  std::cout << "GOT event \n";
   EventManager::Instance().PublishExportEvent(export_event);
 }
 
@@ -453,7 +448,6 @@ void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
       RayEventContext::Instance().SetEventContext(
           std::get<rpc::Event_SourceType>(source_type), custom_fields);
       source_type_name = Event_SourceType_Name(*event_source_type_ptr);
-      std::cout << "Added normal reporter " << source_type_name << "\n";
       ray::EventManager::Instance().AddReporter(
           std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
     } else if (auto export_event_source_type_ptr =
@@ -463,7 +457,6 @@ void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
       ray::EventManager::Instance().AddExportReporter(
           *export_event_source_type_ptr,
           std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
-      std::cout << "Added export reporter " << source_type_name << "\n";
     }
     RAY_LOG(INFO) << "Ray Event initialized for " << source_type_name;
   }
