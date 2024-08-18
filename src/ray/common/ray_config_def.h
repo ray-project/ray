@@ -502,6 +502,11 @@ RAY_CONFIG(int64_t, task_events_dropped_task_attempts_gc_threshold_s, 15 * 60)
 /// workers. Events will be evicted based on a FIFO order.
 RAY_CONFIG(uint64_t, task_events_max_num_status_events_buffer_on_worker, 100 * 1000)
 
+/// Max number of full task status events that were dropped from being sent
+/// to GCS that are stored on workers. These events will be written to file
+/// as part of the export API. Events will be evicted based on a FIFO order.
+RAY_CONFIG(uint64_t, task_events_max_num_dropped_status_events_buffer_on_worker, 1000 * 1000)
+
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
 RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)

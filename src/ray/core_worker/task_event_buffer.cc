@@ -219,7 +219,7 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   status_events_.set_capacity(
       RayConfig::instance().task_events_max_num_status_events_buffer_on_worker());
   dropped_status_events_for_export_.set_capacity(
-      RayConfig::instance().task_events_max_num_status_events_buffer_on_worker() + 10000);
+      RayConfig::instance().task_events_max_num_dropped_status_events_buffer_on_worker());
 
   io_thread_ = std::thread([this]() {
 #ifndef _WIN32
@@ -333,6 +333,8 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
         std::make_move_iterator(dropped_status_events_for_export_.begin()),
         std::make_move_iterator(dropped_status_events_for_export_.begin() + num_to_write));
     dropped_status_events_for_export_.erase(dropped_status_events_for_export_.begin(), dropped_status_events_for_export_.begin() + num_to_write);
+    stats_counter_.Decrement(TaskEventBufferCounter::kNumDroppedTaskStatusEventsForExportAPIStored,
+                           dropped_status_events_to_write->size());
   }
 
   stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskStatusEventsStored,
@@ -589,6 +591,12 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
     if (export_event_write_enabled_){
+      // If dropped_status_events_for_export_ is full, the oldest event will be
+      // dropped in the circular buffer and replaced with the current event.
+      if (!dropped_status_events_for_export_.full()){
+        stats_counter_.Increment(
+          TaskEventBufferCounter::kNumDroppedTaskStatusEventsForExportAPIStored);
+      }
       dropped_status_events_for_export_.push_back(std::move(status_event));
     }
     return;
@@ -612,6 +620,12 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
       stats_counter_.Increment(TaskEventBufferCounter::kNumDroppedTaskAttemptsStored);
     }
     if (export_event_write_enabled_){
+      // If dropped_status_events_for_export_ is full, the oldest event will be
+      // dropped in the circular buffer and replaced with the current event.
+      if (!dropped_status_events_for_export_.full()){
+        stats_counter_.Increment(
+          TaskEventBufferCounter::kNumDroppedTaskStatusEventsForExportAPIStored);
+      }
       dropped_status_events_for_export_.push_back(std::move(to_evict));
     }
   } else {

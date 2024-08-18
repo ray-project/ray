@@ -199,6 +199,7 @@ enum TaskEventBufferCounter {
   kNumTaskProfileEventsStored,
   kNumTaskStatusEventsStored,
   kNumDroppedTaskAttemptsStored,
+  kNumDroppedTaskStatusEventsForExportAPIStored,
   kTotalNumTaskProfileEventDropped,
   kTotalNumTaskStatusEventDropped,
   kTotalNumTaskAttemptsReported,
