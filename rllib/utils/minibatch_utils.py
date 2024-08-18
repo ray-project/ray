@@ -122,7 +122,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                         )
 
                 else:
-                    # n_steps = self._minibatch_size
 
                     def get_len(b):
                         return len(b)

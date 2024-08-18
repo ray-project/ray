@@ -1699,7 +1699,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             if self.config.count_steps_by == "agent_steps":
                 train_batch, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.env_runner_group,
-                    max_agent_steps=self.config.train_batch_size,
+                    max_agent_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=(
                         self.config.enable_env_runner_and_connector_v2
@@ -1709,7 +1709,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             else:
                 train_batch, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.env_runner_group,
-                    max_env_steps=self.config.train_batch_size,
+                    max_env_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
                     _uses_new_env_runners=(
                         self.config.enable_env_runner_and_connector_v2

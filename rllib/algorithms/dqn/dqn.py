@@ -557,7 +557,7 @@ def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
     # This is to set freshly rollout-collected data in relation to
     # the data we pull from the replay buffer (which also contains old
     # samples).
-    native_ratio = config.train_batch_size / (
+    native_ratio = config.total_train_batch_size / (
         config.get_rollout_fragment_length()
         * config.num_envs_per_env_runner
         # Add one to workers because the local
@@ -817,7 +817,7 @@ class DQN(Algorithm):
                 # Sample training batch (MultiAgentBatch) from replay buffer.
                 train_batch = sample_min_n_steps_from_buffer(
                     self.local_replay_buffer,
-                    self.config.train_batch_size,
+                    self.config.total_train_batch_size,
                     count_by_agent_steps=self.config.count_steps_by == "agent_steps",
                 )
 
