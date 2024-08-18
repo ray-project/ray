@@ -379,7 +379,6 @@ class DashboardHead:
         concurrent_tasks = [
             self._gcs_check_alive(),
             _async_notify(),
-            DataOrganizer.purge(),
         ]
         for m in modules:
             concurrent_tasks.append(m.run(self.server))

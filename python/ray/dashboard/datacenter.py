@@ -7,7 +7,6 @@ from ray.dashboard.utils import (
     Change,
     Dict,
     MutableNotificationDict,
-    async_loop_forever,
     compose_state_message,
 )
 
@@ -48,6 +47,9 @@ class DataSource:
         )
         DataSource.node_stats.signal.append(
             make_async(event_loop, thread_pool_executor, on_node_stats_change)
+        )
+        DataSource.nodes.signal.append(
+            make_async(event_loop, thread_pool_executor, on_nodes_change)
         )
 
 
@@ -153,6 +155,20 @@ def on_node_stats_change(change: Change):
     update_node_workers_core_worker_stats(node_id, new_node_stats, node_physical_stats)
 
 
+def on_nodes_change(change: Change):
+    # On a node transitioned *from* ALIVE node,
+    # purge node_stats which triggers purge of node_workers, core_worker_stats.
+    if not change.old:
+        return
+    if change.old.value["state"] != "ALIVE":
+        return
+    if change.new and change.new.value["state"] == "ALIVE":
+        return
+    # was alive, now it's no more (removed or changed to DEAD).
+    node_id = change.old.key
+    DataSource.node_stats.pop(node_id)
+
+
 # Wrap the sync func into a ThreadPoolExecutor.
 def make_async(event_loop, thread_pool_executor, f):
     async def async_f(change):
@@ -163,72 +179,6 @@ def make_async(event_loop, thread_pool_executor, f):
 
 class DataOrganizer:
     head_node_ip = None
-
-    @staticmethod
-    @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_PURGING_INTERVAL)
-    async def purge():
-        # Purge data that is out of date.
-        # These data sources are maintained by DashboardHead,
-        # we do not needs to purge them:
-        #   * agents
-        #   * nodes
-        #   * node_id_to_ip
-        #   * node_id_to_hostname
-        alive_nodes = {
-            node_id
-            for node_id, node_info in DataSource.nodes.items()
-            if node_info["state"] == "ALIVE"
-        }
-        for key in DataSource.node_stats.keys() - alive_nodes:
-            DataSource.node_stats.pop(key)
-
-        for key in DataSource.node_physical_stats.keys() - alive_nodes:
-            DataSource.node_physical_stats.pop(key)
-
-    @classmethod
-    @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_UPDATING_INTERVAL)
-    async def organize(cls):
-        node_workers = {}
-        core_worker_stats = {}
-        # await inside for loop, so we create a copy of keys().
-        for node_id in list(DataSource.nodes.keys()):
-            workers = await cls.get_node_workers(node_id)
-            for worker in workers:
-                for stats in worker.get("coreWorkerStats", []):
-                    worker_id = stats["workerId"]
-                    core_worker_stats[worker_id] = stats
-            node_workers[node_id] = workers
-        DataSource.node_workers.reset(node_workers)
-        DataSource.core_worker_stats.reset(core_worker_stats)
-
-    @classmethod
-    async def get_node_workers(cls, node_id):
-        workers = []
-        node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
-        node_stats = DataSource.node_stats.get(node_id, {})
-        # Merge coreWorkerStats (node stats) to workers (node physical stats)
-        pid_to_worker_stats = {}
-        pid_to_language = {}
-        pid_to_job_id = {}
-        pids_on_node = set()
-        for core_worker_stats in node_stats.get("coreWorkersStats", []):
-            pid = core_worker_stats["pid"]
-            pids_on_node.add(pid)
-            pid_to_worker_stats.setdefault(pid, []).append(core_worker_stats)
-            pid_to_language[pid] = core_worker_stats["language"]
-            pid_to_job_id[pid] = core_worker_stats["jobId"]
-
-        for worker in node_physical_stats.get("workers", []):
-            worker = dict(worker)
-            pid = worker["pid"]
-            worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, [])
-            worker["language"] = pid_to_language.get(
-                pid, dashboard_consts.DEFAULT_LANGUAGE
-            )
-            worker["jobId"] = pid_to_job_id.get(pid, dashboard_consts.DEFAULT_JOB_ID)
-
-            workers.append(worker)
-        return workers
 
     @classmethod
     async def get_node_info(cls, node_id, get_summary=False):
