@@ -30,13 +30,13 @@ adagio==0.2.4
     #   qpd
 adal==1.2.7
     # via msrestazure
-aim==3.17.5 ; python_version < "3.12"
+aim==3.23.0 ; python_version < "3.12"
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
-aim-ui==3.17.5
+aim-ui==3.23.0
     # via aim
 aimrecords==0.0.7
     # via aim
-aimrocks==0.4.0
+aimrocks==0.5.2
     # via aim
 aioboto3==11.2.0
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
@@ -224,6 +224,7 @@ boto==2.49.0
 boto3==1.26.76
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   aim
     #   aiobotocore
     #   aws-sam-translator
     #   moto
@@ -290,6 +291,7 @@ click==8.1.7
     #   flask
     #   jupyter-cache
     #   mlflow
+    #   pyiceberg
     #   ray
     #   semgrep
     #   tensorflow-datasets
@@ -570,6 +572,7 @@ fsspec==2023.5.0
     #   gradio-client
     #   huggingface-hub
     #   modin
+    #   pyiceberg
     #   pytorch-lightning
     #   s3fs
     #   torch
@@ -680,7 +683,6 @@ grpcio==1.60.0 ; sys_platform != "darwin"
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
-    #   aim
     #   google-api-core
     #   google-cloud-bigquery
     #   grpcio-status
@@ -1070,6 +1072,8 @@ mlagents-envs==0.28.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 mlflow==2.9.2
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
+mmh3==4.1.0
+    # via pyiceberg
 mock==5.1.0
     # via pytest-shutil
 modin==0.22.2 ; python_version < "3.12"
@@ -1536,7 +1540,6 @@ proto-plus==1.22.3
 protobuf==3.20.3
     # via
     #   -r /ray/ci/../python/requirements.txt
-    #   aim
     #   dm-control
     #   google-api-core
     #   google-cloud-bigquery
@@ -1590,8 +1593,6 @@ py-partiql-parser==0.5.0
     # via moto
 py-spy==0.3.14
     # via -r /ray/ci/../python/requirements.txt
-py3nvml==0.2.7
-    # via aim
 py4j==0.10.9.7
     # via pyspark
 pyarrow==14.0.2
@@ -1626,6 +1627,7 @@ pydantic==2.5.0
     #   deepspeed
     #   fastapi
     #   gradio
+    #   pyiceberg
 pydantic-core==2.14.1
     # via pydantic
 pydot==1.4.2
@@ -1649,6 +1651,8 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
+pyiceberg==0.7.0
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
     #   adal
@@ -1689,6 +1693,7 @@ pyparsing==3.1.1
     #   matplotlib
     #   moto
     #   pydot
+    #   pyiceberg
     #   torch-geometric
 pyro-api==0.1.2
     # via pyro-ppl
@@ -1768,6 +1773,7 @@ python-dateutil==2.8.2
     #   moto
     #   pandas
     #   segment-analytics-python
+    #   strictyaml
 python-jose==3.3.0
     # via moto
 python-json-logger==2.0.7
@@ -1884,6 +1890,7 @@ requests==2.31.0
     #   moto
     #   msal
     #   msrest
+    #   pyiceberg
     #   ray
     #   requests-oauthlib
     #   requests-toolbelt
@@ -1934,6 +1941,7 @@ rich==13.3.2
     #   comet-ml
     #   flax
     #   memray
+    #   pyiceberg
     #   semgrep
     #   typer
 rsa==4.7.2
@@ -2002,9 +2010,7 @@ scipy==1.11.4
     #   torch-sparse
     #   xgboost
 segment-analytics-python==2.2.0
-    # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   aim
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 semantic-version==2.10.0
     # via
     #   comet-ml
@@ -2098,6 +2104,7 @@ snowflake-connector-python==3.11.0
 sortedcontainers==2.4.0
     # via
     #   distributed
+    #   pyiceberg
     #   snowflake-connector-python
 soundfile==0.12.1
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
@@ -2120,13 +2127,14 @@ sphinxcontrib-qthelp==1.0.8
     # via sphinx
 sphinxcontrib-serializinghtml==1.1.10
     # via sphinx
-sqlalchemy==1.4.53
+sqlalchemy==2.0.32
     # via
     #   aim
     #   alembic
     #   jupyter-cache
     #   mlflow
     #   optuna
+    #   pyiceberg
     #   pymars
 sqlglot==25.6.1
     # via fugue
@@ -2148,6 +2156,8 @@ statsmodels==0.14.0
     # via
     #   hpbandster
     #   statsforecast
+strictyaml==1.7.3
+    # via pyiceberg
 supersuit==3.8.0 ; python_version < "3.12"
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 sympy==1.13.1
@@ -2165,7 +2175,9 @@ tblib==3.0.0
     #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
     #   distributed
 tenacity==8.5.0
-    # via plotly
+    # via
+    #   plotly
+    #   pyiceberg
 tensorboard==2.15.2
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -2395,6 +2407,7 @@ typing-extensions==4.8.0
     #   pytorch-lightning
     #   semgrep
     #   snowflake-connector-python
+    #   sqlalchemy
     #   tensorflow
     #   torch
     #   typer
@@ -2481,6 +2494,7 @@ websocket-client==1.8.0
 websockets==11.0.3
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   aim
     #   gradio
     #   gradio-client
 werkzeug==2.3.8
@@ -2512,7 +2526,6 @@ xlrd==2.0.1
 xmltodict==0.13.0
     # via
     #   moto
-    #   py3nvml
     #   yq
 xxhash==3.4.1
     # via

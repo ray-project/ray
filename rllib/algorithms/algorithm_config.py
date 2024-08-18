@@ -2456,7 +2456,9 @@ class AlgorithmConfig(_Config):
                 to define the output data format when recording.
             input_compress_columns: What input columns are compressed with LZ4 in the
                 input data. If data is stored in `RLlib`'s `SingleAgentEpisode` (
-                `MultiAgentEpisode` not supported, yet).
+                `MultiAgentEpisode` not supported, yet). Note,
+                `rllib.core.columns.Columns.OBS` will also try to decompress
+                `rllib.core.columns.Columns.NEXT_OBS`.
             map_batches_kwargs: `kwargs` for the `map_batches` method. These will be
                 passed into the `ray.data.Dataset.map_batches` method when sampling
                 without checking. If no arguments passed in the default arguments `{
@@ -2513,7 +2515,8 @@ class AlgorithmConfig(_Config):
             output_config: Arguments accessible from the IOContext for configuring
                 custom output.
             output_compress_columns: What sample batch columns to LZ4 compress in the
-                output data.
+                output data. Note, `rllib.core.columns.Columns.OBS` will also compress
+                `rllib.core.columns.Columns.NEXT_OBS`.
             output_max_file_size: Max output file size (in bytes) before rolling over
                 to a new file.
             output_max_rows_per_file: Max output row numbers before rolling over to a

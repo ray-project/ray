@@ -136,7 +136,9 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
-    RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+    const std::vector<SourceTypeVariant> source_types = {
+        ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER};
+    RayEventInit(source_types,
                  absl::flat_hash_map<std::string, std::string>(),
                  options_.log_dir,
                  RayConfig::instance().event_level(),
