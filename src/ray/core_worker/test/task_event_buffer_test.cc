@@ -189,7 +189,8 @@ class TaskEventTestWriteExport : public TaskEventBufferTest {
   "task_events_report_interval_ms": 1000,
   "task_events_max_num_status_events_buffer_on_worker": 10,
   "task_events_max_num_profile_events_buffer_on_worker": 5,
-  "task_events_send_batch_size": 100
+  "task_events_send_batch_size": 100,
+  "enable_export_api_write": true
 }
   )");
   }

@@ -211,6 +211,7 @@ TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
+  export_event_write_enabled_ = RayConfig::instance().enable_export_api_write();
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
@@ -323,14 +324,16 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
   status_events_.erase(status_events_.begin(), status_events_.begin() + num_to_send);
 
   // Get the dropped events data to write.
-  size_t num_to_write =
-      std::min(static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()),
-               static_cast<size_t>(dropped_status_events_for_export_.size()));
-  dropped_status_events_to_write->insert(
-      dropped_status_events_to_write->end(),
-      std::make_move_iterator(dropped_status_events_for_export_.begin()),
-      std::make_move_iterator(dropped_status_events_for_export_.begin() + num_to_write));
-  dropped_status_events_for_export_.erase(dropped_status_events_for_export_.begin(), dropped_status_events_for_export_.begin() + num_to_write);
+  if (export_event_write_enabled_) {
+    size_t num_to_write =
+        std::min(static_cast<size_t>(RayConfig::instance().task_events_send_batch_size()),
+                static_cast<size_t>(dropped_status_events_for_export_.size()));
+    dropped_status_events_to_write->insert(
+        dropped_status_events_to_write->end(),
+        std::make_move_iterator(dropped_status_events_for_export_.begin()),
+        std::make_move_iterator(dropped_status_events_for_export_.begin() + num_to_write));
+    dropped_status_events_for_export_.erase(dropped_status_events_for_export_.begin(), dropped_status_events_for_export_.begin() + num_to_write);
+  }
 
   stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskStatusEventsStored,
                            status_events_to_send->size());
@@ -503,8 +506,10 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
       CreateDataToSend(std::move(status_events_to_send),
                        std::move(profile_events_to_send),
                        std::move(dropped_task_attempts_to_send));
-  WriteExportData(std::move(status_events_to_send), std::move(dropped_status_events_to_write),
+  if (export_event_write_enabled_) {
+    WriteExportData(std::move(status_events_to_send), std::move(dropped_status_events_to_write),
                        std::move(profile_events_to_send));
+  }
 
   gcs::TaskInfoAccessor *task_accessor;
   {
@@ -583,7 +588,9 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     // This task attempt has been dropped before, so we drop this event.
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
-    dropped_status_events_for_export_.push_back(std::move(status_event));
+    if (export_event_write_enabled_){
+      dropped_status_events_for_export_.push_back(std::move(status_event));
+    }
     return;
   }
 
@@ -604,7 +611,9 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     if (inserted.second) {
       stats_counter_.Increment(TaskEventBufferCounter::kNumDroppedTaskAttemptsStored);
     }
-    dropped_status_events_for_export_.push_back(std::move(to_evict));
+    if (export_event_write_enabled_){
+      dropped_status_events_for_export_.push_back(std::move(to_evict));
+    }
   } else {
     stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventsStored);
   }

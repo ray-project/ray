@@ -448,6 +448,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// process them quick enough.
   std::atomic<bool> grpc_in_progress_ = false;
 
+  /// Contains value of RayConfig::instance().enable_export_api_write()
+  bool export_event_write_enabled_ = false;
+
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSend, TestBatchedSend);
   FRIEND_TEST(TaskEventBufferTest, TestAddEvent);
