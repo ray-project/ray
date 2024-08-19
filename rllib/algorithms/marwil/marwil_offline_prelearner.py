@@ -18,7 +18,7 @@ from ray.rllib.utils.typing import EpisodeType, TensorType
 
 
 class MARWILOfflinePreLearner(OfflinePreLearner):
-    """`OfflinePreLearner` class for MARWIL
+    """`OfflinePreLearner` class for MARWIL.
 
     Monotonic Advantage Re-Weighted Imitation Learning (MARWIL relies on
     Generalized Advantage Estimation (GAE) for loss computation. This
