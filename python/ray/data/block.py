@@ -135,6 +135,7 @@ class BlockExecStats:
         self.wall_time_s: Optional[float] = None
         self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
+        self.backpressure_time: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
         # Max memory usage. May be an overestimate since we do not
         # differentiate from previous tasks on the same worker.
@@ -166,6 +167,7 @@ class _BlockExecStatsBuilder:
     def __init__(self):
         self.start_time = time.perf_counter()
         self.start_cpu = time.process_time()
+        self.prev_map_task_finish_time = None
 
     def build(self) -> "BlockExecStats":
         self.end_time = time.perf_counter()
@@ -176,6 +178,8 @@ class _BlockExecStatsBuilder:
         stats.end_time_s = self.end_time
         stats.wall_time_s = self.end_time - self.start_time
         stats.cpu_time_s = self.end_cpu - self.start_cpu
+        if self.prev_map_task_finish_time:
+            stats.backpressure_time = self.start_time - self.prev_map_task_finish_time
         if resource is None:
             # NOTE(swang): resource package is not supported on Windows. This
             # is only the memory usage at the end of the task, not the peak
