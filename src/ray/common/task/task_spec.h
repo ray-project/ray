@@ -523,19 +523,8 @@ class WorkerCacheKey {
   /// Create a cache key with the given environment variable overrides and serialized
   /// runtime_env.
   ///
-  /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
-  /// worker. \param is_actor Whether the worker will be an actor. This is set when
-  ///         task type isolation between workers is enabled.
-  /// worker. \param is_gpu Whether the worker will be using GPUs. This is set when
-  ///         resource type isolation between workers is enabled.
-  /// worker. \param is_root_detached_actor Whether the worker will be running
-  ///         tasks or actors whose root ancestor is a detached actor. This is set
-  ///         to prevent worker reuse between tasks whose root is the driver process
-  ///         and tasks whose root is a detached actor.
-  WorkerCacheKey(std::string serialized_runtime_env,
-                 bool is_actor,
-                 bool is_gpu,
-                 bool is_root_detached_actor);
+  /// \param serialized_runtime_env The JSON-serialized runtime env for this worker.
+  explicit WorkerCacheKey(std::string serialized_runtime_env);
 
   bool operator==(const WorkerCacheKey &k) const;
 
@@ -561,13 +550,6 @@ class WorkerCacheKey {
 
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
-  /// Whether the worker is for an actor.
-  const bool is_actor;
-  /// Whether the worker is to use a GPU.
-  const bool is_gpu;
-  /// Whether the worker is to run tasks or actors
-  /// whose root is a detached actor.
-  const bool is_root_detached_actor;
   /// The hash of the worker's environment.  This is set to 0
   /// for unspecified or empty environments.
   const std::size_t hash_ = 0;

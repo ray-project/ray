@@ -192,6 +192,58 @@ void Worker::SetJobId(const JobID &job_id) {
       << ", actual: " << job_id.Hex();
 }
 
+void Worker::SetIsGpu(bool is_gpu) {
+  if (!is_gpu_.has_value()) {
+    is_gpu_ = is_gpu;
+  }
+  RAY_CHECK(is_gpu_.value() == is_gpu)
+      << "is_gpu mismatch, assigned: " << is_gpu_.value() << ", actual: " << is_gpu;
+}
+
+void Worker::SetIsActorWorker(bool is_actor_worker) {
+  if (!is_actor_worker_.has_value()) {
+    is_actor_worker_ = is_actor_worker;
+  }
+  RAY_CHECK(is_actor_worker_.value() == is_actor_worker)
+      << "is_actor_worker mismatch, assigned: " << is_actor_worker_.value()
+      << ", actual: " << is_actor_worker;
+}
+
+Worker::TaskUnfitReason Worker::FitsForTask(const TaskSpecification &task_spec) const {
+  if (IsDead()) {
+    return TaskUnfitReason::OTHERS;
+  }
+  if (GetLanguage() != task_spec.GetLanguage()) {
+    return TaskUnfitReason::OTHERS;
+  }
+  // Don't allow worker reuse across jobs or root detached actors. Reuse worker with
+  // unassigned job_id and root detached actor id is OK.
+  if (!GetAssignedJobId().IsNil() && GetAssignedJobId() != task_spec.JobId()) {
+    return TaskUnfitReason::ROOT_MISMATCH;
+  }
+  if (!GetRootDetachedActorId().IsNil() &&
+      GetRootDetachedActorId() != task_spec.RootDetachedActorId()) {
+    return TaskUnfitReason::ROOT_MISMATCH;
+  }
+  if (is_gpu_.has_value()) {
+    bool task_is_gpu =
+        task_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0;
+    if (is_gpu_.value() != task_is_gpu) {
+      return TaskUnfitReason::RUNTIME_ENV_MISMATCH;
+    }
+  }
+  if (is_actor_worker_.has_value() &&
+      is_actor_worker_.value() != task_spec.IsActorCreationTask()) {
+    return TaskUnfitReason::RUNTIME_ENV_MISMATCH;
+  }
+  // TODO(clarng): consider re-using worker that has runtime envionrment
+  // if the task doesn't require one.
+  if (GetRuntimeEnvHash() != task_spec.GetRuntimeEnvHash()) {
+    return TaskUnfitReason::RUNTIME_ENV_MISMATCH;
+  }
+  return TaskUnfitReason::NONE;
+}
+
 }  // namespace raylet
 
 }  // end namespace ray

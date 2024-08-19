@@ -1214,49 +1214,49 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   int64_t skip_cached_worker_dynamic_options_mismatch = 0;
   int64_t skip_cached_worker_runtime_env_mismatch = 0;
 
-  const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
-  for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
-       it++) {
-    if (task_spec.GetLanguage() != it->first->GetLanguage() || it->first->IsDead()) {
-      continue;
+  auto worker_fits_for_task_fn =
+      [&](const std::pair<std::shared_ptr<WorkerInterface>, int64_t> &pair) -> bool {
+    const auto &worker = pair.first;
+    Worker::TaskUnfitReason reason = worker->FitsForTask(task_spec);
+    switch (reason) {
+    case Worker::TaskUnfitReason::NONE: {
+      // Worker itself is OK; check other conditions.
+      // Skip if the dynamic_options doesn't match.
+      if (LookupWorkerDynamicOptions(worker->GetStartupToken()) != dynamic_options) {
+        skip_cached_worker_dynamic_options_mismatch++;
+        stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(1);
+        return false;
+      }
+      // These workers are exiting. So skip them.
+      if (pending_exit_idle_workers_.contains(worker->WorkerId())) {
+        return false;
+      }
+      // OK, we can use this worker.
+      return true;
     }
-
-    // Don't allow worker reuse across jobs. Reuse worker with unassigned job_id is OK.
-    if (!it->first->GetAssignedJobId().IsNil() &&
-        it->first->GetAssignedJobId() != task_spec.JobId()) {
+    case Worker::TaskUnfitReason::ROOT_MISMATCH:
       skip_cached_worker_job_mismatch++;
       stats::NumCachedWorkersSkippedJobMismatch.Record(1);
-      continue;
-    }
-
-    // Skip if the dynamic_options doesn't match.
-    if (LookupWorkerDynamicOptions(it->first->GetStartupToken()) != dynamic_options) {
-      skip_cached_worker_dynamic_options_mismatch++;
-      stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(1);
-      continue;
-    }
-
-    // These workers are exiting. So skip them.
-    if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
-      continue;
-    }
-
-    // Skip if the runtime env doesn't match.
-    // TODO(clarng): consider re-using worker that has runtime envionrment
-    // if the task doesn't require one.
-    if (runtime_env_hash != it->first->GetRuntimeEnvHash()) {
+      return false;
+    case Worker::TaskUnfitReason::RUNTIME_ENV_MISMATCH:
       skip_cached_worker_runtime_env_mismatch++;
       stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(1);
-      continue;
+      return false;
+    case Worker::TaskUnfitReason::OTHERS:
+      return false;
     }
+  };
 
-    state.idle.erase(it->first);
+  auto good_worker_it = std::find_if(idle_of_all_languages_.rbegin(),
+                                     idle_of_all_languages_.rend(),
+                                     worker_fits_for_task_fn);
+  if (good_worker_it != idle_of_all_languages_.rend()) {
+    state.idle.erase(good_worker_it->first);
     // We can't erase a reverse_iterator.
-    auto lit = it.base();
+    auto lit = good_worker_it.base();
     lit--;
     worker = std::move(lit->first);
     idle_of_all_languages_.erase(lit);
-    break;
   }
 
   if (worker == nullptr) {
@@ -1354,10 +1354,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
 
 void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
   // default workers uses 1 cpu and doesn't support actor.
-  static const WorkerCacheKey kDefaultCpuWorkerCacheKey{/*serialized_runtime_env*/ "",
-                                                        /*is_actor*/ false,
-                                                        /*is_gpu*/ false,
-                                                        /*is_root_detached_actor*/ false};
+  static const WorkerCacheKey kDefaultCpuWorkerCacheKey{/*serialized_runtime_env=*/""};
   RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_needed;
   for (int i = 0; i < num_needed; i++) {
     PopWorkerStatus status;

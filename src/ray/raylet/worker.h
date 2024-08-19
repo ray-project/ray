@@ -114,6 +114,15 @@ class WorkerInterface {
 
   virtual const ActorID &GetRootDetachedActorId() const = 0;
 
+  enum class TaskUnfitReason {
+    NONE = 0,                  // OK
+    ROOT_MISMATCH = 1,         // job ID or root detached actor ID mismatch
+    RUNTIME_ENV_MISMATCH = 2,  // runtime env hash mismatch, is_gpu or is_actor mismatch.
+    OTHERS = 3,                // reasons we don't do stats for (e.g. language)
+  };
+  // If this worker can serve the task.
+  virtual TaskUnfitReason FitsForTask(const TaskSpecification &task_spec) const = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -219,6 +228,13 @@ class Worker : public WorkerInterface {
   RayTask &GetAssignedTask() { return assigned_task_; };
 
   void SetAssignedTask(const RayTask &assigned_task) {
+    const auto &task_spec = assigned_task.GetTaskSpecification();
+    SetJobId(task_spec.JobId());
+    SetBundleId(task_spec.PlacementGroupBundleId());
+    SetOwnerAddress(task_spec.CallerAddress());
+    AssignTaskId(task_spec.TaskId());
+    SetIsGpu(task_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0);
+    SetIsActorWorker(task_spec.IsActorCreationTask() || task_spec.IsActorTask());
     assigned_task_ = assigned_task;
     task_assign_time_ = absl::Now();
     root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
@@ -240,7 +256,12 @@ class Worker : public WorkerInterface {
     return rpc_client_.get();
   }
 
+  // If this worker can serve the task.
+  TaskUnfitReason FitsForTask(const TaskSpecification &task_spec) const override;
+
   void SetJobId(const JobID &job_id);
+  void SetIsGpu(bool is_gpu);
+  void SetIsActorWorker(bool is_actor_worker);
 
  protected:
   void SetStartupToken(StartupToken startup_token);
@@ -308,6 +329,12 @@ class Worker : public WorkerInterface {
   RayTask assigned_task_;
   /// Time when the last task was assigned to this worker.
   absl::Time task_assign_time_;
+  /// If this worker ever holded a GPU resource. Once it holds a GPU or non-GPU task
+  /// it can't switch to the other type.
+  std::optional<bool> is_gpu_ = std::nullopt;
+  /// If this worker can hold an actor. Once it holds an actor or a normal task, it
+  /// can't switch to the other type.
+  std::optional<bool> is_actor_worker_ = std::nullopt;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
 };
