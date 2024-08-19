@@ -24,6 +24,21 @@ NO_REPLICAS_MESSAGE = "No replicas are available yet."
 class ProxyRouter(ABC):
     """Router interface for the proxy to use."""
 
+    def __init__(
+        self,
+        get_handle: Callable[[str, str], DeploymentHandle],
+        protocol: RequestProtocol,
+    ):
+        # Function to get a handle given a name. Used to mock for testing.
+        self._get_handle = get_handle
+        # Protocol to config handle
+        self._protocol = protocol
+        # Contains a ServeHandle for each endpoint.
+        self.handles: Dict[DeploymentID, DeploymentHandle] = dict()
+        # Flipped to `True` once the route table has been updated at least once.
+        # The proxy router is not ready for traffic until the route table is populated
+        self._route_table_populated = False
+
     @abstractmethod
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         raise NotImplementedError
@@ -38,6 +53,29 @@ class ProxyRouter(ABC):
         """
         raise NotImplementedError
 
+    def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
+        """Whether the proxy router is ready to serve traffic.
+
+        The first return value will be false if any of the following hold:
+        - The route table has not been populated yet with a non-empty set of routes
+        - The route table has been populated, but none of the handles
+          have received running replicas yet AND it lives on a worker node.
+
+        Otherwise, the first return value will be true.
+        """
+
+        if not self._route_table_populated:
+            return False, NO_ROUTES_MESSAGE
+
+        if is_head:
+            return True, ""
+
+        for handle in self.handles.values():
+            if handle.running_replicas_populated():
+                return True, ""
+
+        return False, NO_REPLICAS_MESSAGE
+
 
 class LongestPrefixRouter(ProxyRouter):
     """Router that performs longest prefix matches on incoming routes."""
@@ -47,27 +85,21 @@ class LongestPrefixRouter(ProxyRouter):
         get_handle: Callable[[str, str], DeploymentHandle],
         protocol: RequestProtocol,
     ):
-        # Function to get a handle given a name. Used to mock for testing.
-        self._get_handle = get_handle
-        # Protocol to config handle
-        self._protocol = protocol
+        super().__init__(get_handle, protocol)
+
         # Routes sorted in order of decreasing length.
         self.sorted_routes: List[str] = list()
         # Endpoints associated with the routes.
         self.route_info: Dict[str, DeploymentID] = dict()
-        # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[DeploymentID, DeploymentHandle] = dict()
         # Map of application name to is_cross_language.
         self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
-        # Flipped to `True` once the route table has been updated at least once.
-        # The proxy router is not ready for traffic until the route table is populated
-        self._route_table_populated = False
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]) -> None:
         logger.info(
             f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
         )
-        self._route_table_populated = True
+        if endpoints:
+            self._route_table_populated = True
 
         existing_handles = set(self.handles.keys())
         routes = []
@@ -143,51 +175,23 @@ class LongestPrefixRouter(ProxyRouter):
 
         return None
 
-    def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
-        """Whether the proxy router is ready to serve traffic.
-
-        The first return value will be false if any of the following hold:
-        - The route table has not been populated yet
-        - The route table has been populated, but none of the handles
-          have received running replicas yet AND it lives on a worker node.
-
-        Otherwise, the first return value will be true.
-        """
-
-        if not self._route_table_populated:
-            return False, NO_ROUTES_MESSAGE
-
-        if is_head:
-            return True, ""
-
-        for handle in self.handles.values():
-            if handle.running_replicas_populated():
-                return True, ""
-
-        return False, NO_REPLICAS_MESSAGE
-
 
 class EndpointRouter(ProxyRouter):
     """Router that matches endpoint to return the handle."""
 
     def __init__(self, get_handle: Callable, protocol: RequestProtocol):
-        # Function to get a handle given a name. Used to mock for testing.
-        self._get_handle = get_handle
-        # Protocol to config handle
-        self._protocol = protocol
-        # Contains a ServeHandle for each endpoint.
-        self.handles: Dict[DeploymentID, DeploymentHandle] = dict()
+        super().__init__(get_handle, protocol)
+
         # Endpoints info associated with endpoints.
         self.endpoints: Dict[DeploymentID, EndpointInfo] = dict()
-        # Flipped to `True` once the route table has been updated at least once.
-        # The proxy router is not ready for traffic until the route table is populated
-        self._route_table_populated = False
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         logger.info(
             f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
         )
-        self._route_table_populated = True
+        if endpoints:
+            self._route_table_populated = True
+
         self.endpoints = endpoints
 
         existing_handles = set(self.handles.keys())
@@ -215,29 +219,6 @@ class EndpointRouter(ProxyRouter):
             )
         for endpoint in existing_handles:
             del self.handles[endpoint]
-
-    def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
-        """Whether the proxy router is ready to serve traffic.
-
-        The first return value will be false if any of the following hold:
-        - The route table has not been populated yet
-        - The route table has been populated, but none of the handles
-          have received running replicas yet AND it lives on a worker node.
-
-        Otherwise, the first return value will be true.
-        """
-
-        if not self._route_table_populated:
-            return False, NO_ROUTES_MESSAGE
-
-        if is_head:
-            return True, ""
-
-        for handle in self.handles.values():
-            if handle.running_replicas_populated():
-                return True, ""
-
-        return False, NO_REPLICAS_MESSAGE
 
     def get_handle_for_endpoint(
         self, target_app_name: str

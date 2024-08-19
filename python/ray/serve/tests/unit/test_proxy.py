@@ -730,8 +730,8 @@ async def test_head_http_unhealthy_until_route_table_updated():
     assert messages[0]["status"] == 503
     assert messages[1]["body"].decode("utf-8") == NO_ROUTES_MESSAGE
 
-    # Update route table, response should no longer error (even if empty).
-    http_proxy.update_routes({})
+    # Update route table, response should no longer error
+    http_proxy.update_routes({DeploymentID("a", "b"): EndpointInfo("/route")})
 
     status, messages = await _consume_proxy_generator(
         http_proxy.proxy_request(proxy_request)
