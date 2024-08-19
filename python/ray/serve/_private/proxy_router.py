@@ -67,6 +67,12 @@ class ProxyRouter(ABC):
         if not self._route_table_populated:
             return False, NO_ROUTES_MESSAGE
 
+        # NOTE(zcin): For the proxy on the head node, even if none of its handles have
+        # been populated with running replicas yet, we MUST mark the proxy as ready for
+        # traffic. This is to handle the case when all deployments have scaled to zero.
+        # If the deployments (more precisely, ingress deployments) have all scaled down
+        # to zero, at least one proxy needs to be able to receive incoming requests to
+        # trigger upscale.
         if is_head:
             return True, ""
 
