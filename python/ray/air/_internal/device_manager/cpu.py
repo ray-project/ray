@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from typing import List
 
 import torch
@@ -18,3 +19,12 @@ class CPUTorchDeviceManager(TorchDeviceManager):
     def supports_stream(self) -> bool:
         """Validate if the device type support create a stream"""
         return False
+
+    def get_stream_context(self, stream):
+        """Return empty context mananger for CPU."""
+
+        @contextmanager
+        def default_context_manager():
+            yield
+
+        return default_context_manager()

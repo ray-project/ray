@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from typing import List, Union
 
 import torch
@@ -38,3 +39,12 @@ class HPUTorchDeviceManager(TorchDeviceManager):
     def supports_stream(self) -> bool:
         """Validate if the device type support create a stream"""
         return False
+
+    def get_stream_context(self, stream):
+        """Get HPU stream context manager, empty so far."""
+
+        @contextmanager
+        def default_context_manager():
+            yield
+
+        return default_context_manager()
