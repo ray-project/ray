@@ -40,10 +40,7 @@ message ExportEvent {
   // event_data follows the schema associated with the source_type
   oneof event_data {
     ExportTaskEventData task_event_data = 4;
-<<<<<<< HEAD
-    ExportActorData actor_event_data = 5;
-=======
     ExportNodeData node_event_data = 5;
->>>>>>> 2a7efc0fd105048ada9e2a1e48e9c391e906cf48
+    ExportActorData actor_event_data = 6;
   }
 }
