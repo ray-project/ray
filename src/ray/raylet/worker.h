@@ -257,7 +257,7 @@ class Worker : public WorkerInterface {
   }
 
   // If this worker can serve the task.
-  TaskUnfitReason FitsForTask(const TaskSpecification &task_spec) const override;
+  TaskUnfitReason FitsForTask(const TaskSpecification &task_spec) const;
 
   void SetJobId(const JobID &job_id);
   void SetIsGpu(bool is_gpu);

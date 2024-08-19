@@ -594,6 +594,10 @@ WorkerCacheKey::WorkerCacheKey(std::string serialized_runtime_env)
 
 std::size_t WorkerCacheKey::CalculateHash() const {
   size_t hash = 0;
+  // Canonical hash for both "" and "{}".
+  if (EnvIsEmpty()) {
+    return 0;
+  }
   boost::hash_combine(hash, serialized_runtime_env);
   return hash;
 }
