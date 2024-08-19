@@ -2,14 +2,20 @@ import logging
 import logging.config
 import os
 from typing import Optional
-
 import yaml
 
 import ray
 
-DEFAULT_CONFIG_PATH = os.path.abspath(
+DEFAULT_TEXT_CONFIG_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "logging.yaml")
 )
+
+DEFAULT_JSON_CONFIG_PATH = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "logging_json.yaml")
+)
+
+# Environment variable name for to specify the encoding of the log messages
+RAY_DATA_LOG_ENCODING = os.environ.get("RAY_DATA_LOG_ENCODING", "TEXT")
 
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
@@ -93,7 +99,12 @@ def configure_logging() -> None:
     environment variable. If the variable isn't set, this function loads the
     "logging.yaml" file that is adjacent to this module.
     """
-    config_path = os.environ.get("RAY_DATA_LOGGING_CONFIG", DEFAULT_CONFIG_PATH)
+    if "RAY_DATA_LOGGING_CONFIG" in os.environ:
+        config_path = os.environ.get("RAY_DATA_LOGGING_CONFIG")
+    elif RAY_DATA_LOG_ENCODING == "JSON":
+        config_path = DEFAULT_JSON_CONFIG_PATH
+    else:
+        config_path = DEFAULT_TEXT_CONFIG_PATH
     with open(config_path) as file:
         config = yaml.safe_load(file)
     logging.config.dictConfig(config)
