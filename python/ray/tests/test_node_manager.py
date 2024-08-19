@@ -368,7 +368,9 @@ def idle_worker_pids():
 
 
 @pytest.mark.parametrize("use_gpu", [False, True])
-def test_actors_can_use_prestart_idle_workers(ray_start_cluster, use_gpu):
+@pytest.mark.parametrize("workload", ["task", "actor"])
+def test_can_use_prestart_idle_workers(ray_start_cluster, use_gpu, workload):
+    """Test that actors and GPU tasks can use prestarted workers."""
     cluster = ray_start_cluster
     NUM_CPUS = 4
     NUM_GPUS = 4
@@ -385,11 +387,22 @@ def test_actors_can_use_prestart_idle_workers(ray_start_cluster, use_gpu):
         def getpid(self):
             return os.getpid()
 
+    @ray.remote
+    def f():
+        return os.getpid()
+
     if use_gpu:
-        a = A.options(num_gpus=1).remote()
+        options = {"num_gpus": 1}
     else:
-        a = A.remote()
-    pid = ray.get(a.getpid.remote())
+        options = {}
+
+    if workload == "actor":
+        actor = A.options(**options).remote()
+        handle = actor.getpid
+    else:
+        handle = f.options(**options)
+
+    pid = ray.get(handle.remote())
     assert pid in idle_pids
 
 
