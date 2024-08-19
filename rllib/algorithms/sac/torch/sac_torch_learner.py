@@ -279,7 +279,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
 
     @override(DQNRainbowTorchLearner)
     def compute_gradients(
-        self, loss_per_module: Dict[str, TensorType], **kwargs
+        self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
         grads = {}
         for module_id in set(loss_per_module.keys()) - {ALL_MODULES}:

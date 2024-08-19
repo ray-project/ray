@@ -25,7 +25,7 @@ assert (
 data_path = "tests/data/cartpole/cartpole-v1_large"
 base_path = Path(__file__).parents[2]
 print(f"base_path={base_path}")
-data_path = "local://" + base_path.joinpath(data_path).as_posix()
+data_path = "local://" / base_path / data_path
 print(f"data_path={data_path}")
 
 # Define the MARWIL config.
@@ -47,7 +47,7 @@ config = (
     # configured. The read method needs at least as many blocks
     # as remote learners.
     .offline_data(
-        input_=[data_path],
+        input_=[data_path.as_posix()],
         input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1)},
         prelearner_module_synch_period=20,
     )
