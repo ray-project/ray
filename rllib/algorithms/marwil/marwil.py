@@ -316,9 +316,9 @@ class MARWILConfig(AlgorithmConfig):
             and self.enable_rl_module_and_learner
         ):
             raise ValueError(
-                "When using a local Learner (`config.num_learners=0`), the number of 
+                "When using a local Learner (`config.num_learners=0`), the number of "
                 "iterations per learner (`dataset_num_iters_per_learner`) has to be 1! "
-                "Set this hyperparameter through `config.offline_data(
+                "Set this hyperparameter through `config.offline_data("
                 "dataset_num_iters_per_learner=...)`."
             )
 
