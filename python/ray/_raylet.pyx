@@ -2691,7 +2691,8 @@ cdef class GcsClient:
             self.inner = OldGcsClient(address, nums_reconnect_retry, cluster_id)
         else:
             # GcsRpcClient implicitly retries on GetClusterId in Connection. We set
-            # the total timeout to be (once_timeout_ms + 1s) * (nums_reconnect_retry + 1)
+            # the total timeout to be
+            #     (py_gcs_connect_timeout_s + 1s) * (nums_reconnect_retry + 1)
             # to match the old behavior. The 1s is hard coded in PythonGcsClient retry
             # code:
             # https://github.com/ray-project/ray/blob/8999fd5194c0f21f845d7bd059e39b6b7d680051/src/ray/gcs/gcs_client/gcs_client.cc#L252 # noqa
