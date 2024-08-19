@@ -177,13 +177,13 @@ steps:
     tags: 
       - rllib_gpu
       - gpu
-    parallelism: 3
+    parallelism: 4
     instance_type: gpu-large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --parallelism-per-worker 2
-        --gpus 4
+        --gpus 8
         --build-name rllibgpubuild
         --only-tags multi_gpu
     depends_on: rllibgpubuild
