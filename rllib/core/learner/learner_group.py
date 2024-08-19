@@ -496,7 +496,11 @@ class LearnerGroup(Checkpointable):
                     ]
                 else:
                     eps_shards = list(
-                        ShardEpisodesIterator(episodes, len(self._workers))
+                        ShardEpisodesIterator(
+                            episodes,
+                            len(self._workers),
+                            len_lookback_buffer=self.config.episode_lookback_horizon,
+                        )
                     )
                     # In the multi-agent case AND `minibatch_size` AND num_workers
                     # > 1, we compute a max iteration counter such that the different
@@ -504,7 +508,10 @@ class LearnerGroup(Checkpointable):
                     num_total_mini_batches = 0
                     if minibatch_size and len(self._workers) > 1:
                         num_total_mini_batches = self._compute_num_total_mini_batches(
-                            episodes, len(self._workers), minibatch_size, num_iters,
+                            episodes,
+                            len(self._workers),
+                            minibatch_size,
+                            num_iters,
                         )
                     partials = [
                         partial(
@@ -925,51 +932,23 @@ class LearnerGroup(Checkpointable):
             self.shutdown()
 
     @staticmethod
-    def _compute_num_total_mini_batches(episodes, num_shards, mini_batch_size, num_iters):
+    def _compute_num_total_mini_batches(
+        episodes,
+        num_shards,
+        mini_batch_size,
+        num_iters,
+    ):
         # Count total number of timesteps per module ID.
         if isinstance(episodes[0], MultiAgentEpisode):
             per_mod_ts = defaultdict(int)
             for ma_episode in episodes:
                 for sa_episode in ma_episode.agent_episodes.values():
-                    #key = (i, sa_episode.module_id)
                     per_mod_ts[sa_episode.module_id] += len(sa_episode)
-                    #if per_mod_ts[sa_episode.module_id] > longest_ts:
-                    #    longest_ts = per_mod_ts[key]
             max_ts = max(per_mod_ts.values())
         else:
             max_ts = sum(map(len, episodes))
 
         return int((num_iters * max_ts) / (num_shards * mini_batch_size))
-
-        #longest_ts = 0
-        #per_mod_ts = defaultdict(int)
-        #for i, shard in enumerate(eps_shards):
-        #    for ma_episode in shard:
-        #        for sa_episode in ma_episode.agent_episodes.values():
-        #            key = (i, sa_episode.module_id)
-        #            per_mod_ts[key] += len(sa_episode)
-        #            if per_mod_ts[key] > longest_ts:
-        #                longest_ts = per_mod_ts[key]
-        #num_total_mini_batches = self._compute_num_total_mini_batches(
-        #    batch_size=longest_ts,
-        #    mini_batch_size=minibatch_size,
-        #    num_iters=num_iters,
-        #)
-
-        #num_total_mini_batches = 0
-        #rest_size = 0
-        #for i in range(num_iters):
-        #    eaten_batch = -rest_size
-        #    while eaten_batch < batch_size:
-        #        eaten_batch += mini_batch_size
-        #        num_total_mini_batches += 1
-        #    rest_size = mini_batch_size - (eaten_batch - batch_size)
-        #    if rest_size:
-        #        num_total_mini_batches -= 1
-        #if rest_size:
-        #    num_total_mini_batches += 1
-
-        #return num_total_mini_batches
 
     @Deprecated(new="LearnerGroup.update_from_batch(async=False)", error=False)
     def update(self, *args, **kwargs):
