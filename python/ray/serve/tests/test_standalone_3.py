@@ -16,7 +16,7 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.common import ProxyStatus
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
@@ -596,8 +596,8 @@ def test_client_shutdown_gracefully_when_timeout(
     log timeout message and exit the process. The controller will continue to shutdown
     everything gracefully.
     """
-    logger = logging.getLogger("ray.serve")
-    caplog.set_level(logging.WARNING, logger="ray.serve")
+    logger = logging.getLogger(SERVE_LOGGER_NAME)
+    caplog.set_level(logging.WARNING, logger=SERVE_LOGGER_NAME)
 
     warning_msg = []
 
