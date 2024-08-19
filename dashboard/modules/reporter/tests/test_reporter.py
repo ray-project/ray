@@ -170,7 +170,7 @@ def test_fix_grpc_metrics():
         '"Version" } label_keys { key: "NodeAddress" } label_keys { key: "SessionName" '
         "} } timeseries { start_timestamp { seconds: 1693693592 } label_values { value:"
         ' "ray.rpc.NodeInfoGcsService/RegisterNode" } label_values { value: '
-        '"gcs_server" } label_values { } label_values { value: "3.0.0.dev0" } '
+        '"gcs_server" } label_values { } label_values { value: "2.10.0+pinterest2" } '
         'label_values { value: "127.0.0.1" } label_values { value: '
         '"session_2023-09-02_15-26-32_589652_23265" } points { timestamp { seconds: '
         "1693693602 } distribution_value { count: 1 sum: 0.266 bucket_options { "
