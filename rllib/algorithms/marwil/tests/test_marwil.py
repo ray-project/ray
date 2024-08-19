@@ -129,6 +129,7 @@ class TestMARWIL(unittest.TestCase):
             .offline_data(
                 # Learn from offline data.
                 input_=[data_path],
+                dataset_num_iters_per_learner=1,
             )
         )
 
@@ -155,7 +156,10 @@ class TestMARWIL(unittest.TestCase):
                 enable_env_runner_and_connector_v2=True,
             )
             .env_runners(num_env_runners=0)
-            .offline_data(input_=[data_path])
+            .offline_data(
+                input_=[data_path],
+                dataset_num_iters_per_learner=1,
+            )
             .training(
                 train_batch_size_per_learner=2000,
             )
