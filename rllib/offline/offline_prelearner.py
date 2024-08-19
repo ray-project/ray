@@ -250,7 +250,6 @@ class OfflinePreLearner:
                 return sample
 
         episodes = []
-        # TODO (simon): Give users possibility to provide a custom schema.
         for i, obs in enumerate(batch[schema[Columns.OBS]]):
 
             # If multi-agent we need to extract the agent ID.
