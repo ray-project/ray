@@ -12,12 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <filesystem>
-#include <fstream>
-
 #include "ray/core_worker/task_event_buffer.h"
 
 #include <google/protobuf/util/message_differencer.h>
+
+#include <filesystem>
+#include <fstream>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -54,7 +54,7 @@ class TaskEventBufferTest : public ::testing::Test {
         std::make_unique<ray::gcs::MockGcsClient>());
   }
 
-  virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false));}
+  virtual void SetUp() { RAY_CHECK_OK(task_event_buffer_->Start(/*auto_flush*/ false)); }
 
   virtual void TearDown() {
     if (task_event_buffer_) task_event_buffer_->Stop();
@@ -294,8 +294,13 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
 
-  std::vector<SourceTypeVariant> source_types = {rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
-  RayEventInit_(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_, "warning", false);
+  std::vector<SourceTypeVariant> source_types = {
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
+  RayEventInit_(source_types,
+                absl::flat_hash_map<std::string, std::string>(),
+                log_dir_,
+                "warning",
+                false);
 
   std::vector<std::unique_ptr<TaskEvent>> task_events;
   for (const auto &task_id : task_ids) {
@@ -305,7 +310,8 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
   // Expect data flushed match
   std::vector<std::shared_ptr<rpc::ExportTaskEventData>> expected_data;
   for (const auto &task_event : task_events) {
-    std::shared_ptr<rpc::ExportTaskEventData> event = std::make_shared<rpc::ExportTaskEventData>();
+    std::shared_ptr<rpc::ExportTaskEventData> event =
+        std::make_shared<rpc::ExportTaskEventData>();
     task_event->ToRpcTaskExportEvents(event);
     expected_data.push_back(event);
   }
@@ -317,11 +323,12 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
   task_event_buffer_->FlushEvents(false);
 
   std::vector<std::string> vc;
-  ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
+  ReadContentFromFile(
+      vc, log_dir_ + "/events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
   EXPECT_EQ((int)vc.size(), num_events);
   json event_data_arr_json = {};
   json expected_event_data_arr_json = {};
-  for (int i = 0; i < num_events; i++){
+  for (int i = 0; i < num_events; i++) {
     json export_event_as_json = json::parse(vc[i]);
     EXPECT_EQ(export_event_as_json["source_type"].get<std::string>(), "EXPORT_TASK");
     EXPECT_EQ(export_event_as_json.contains("event_id"), true);
@@ -332,17 +339,20 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
     event_data_arr_json.push_back(event_data);
 
     std::string expected_event_data_str;
-    RAY_CHECK(google::protobuf::util::MessageToJsonString(*expected_data[i], &expected_event_data_str, options).ok());
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  *expected_data[i], &expected_event_data_str, options)
+                  .ok());
     json expected_event_data = json::parse(expected_event_data_str);
     expected_event_data_arr_json.push_back(expected_event_data);
   }
-  
+
   // Sort observed and expected event data json (array of events) for comparison.
-  // All events in a single flush get the same timestamp (because it is not part of event_data)
-  // and the order of events written may be different than received if events
+  // All events in a single flush get the same timestamp (because it is not part of
+  // event_data) and the order of events written may be different than received if events
   // are dropped.
   std::vector<json> event_data_arr_vec = event_data_arr_json.get<std::vector<json>>();
-  std::vector<json> expected_event_data_arr_vec = expected_event_data_arr_json.get<std::vector<nlohmann::json>>();
+  std::vector<json> expected_event_data_arr_vec =
+      expected_event_data_arr_json.get<std::vector<nlohmann::json>>();
   std::sort(event_data_arr_vec.begin(), event_data_arr_vec.end());
   std::sort(expected_event_data_arr_vec.begin(), expected_event_data_arr_vec.end());
 

@@ -21,8 +21,8 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
-#include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/export_api/export_task_event.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 
@@ -250,7 +250,7 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
 
 // Fill task_info for the export API with task specification from task_spec
 inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_info,
-                         const TaskSpecification &task_spec) {
+                               const TaskSpecification &task_spec) {
   rpc::TaskType type;
   if (task_spec.IsNormalTask()) {
     type = rpc::TaskType::NORMAL_TASK;
@@ -280,16 +280,20 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
                                                   resources_map.end());
 
   auto export_runtime_env_info = task_info->mutable_runtime_env_info();
-  export_runtime_env_info->set_serialized_runtime_env(task_spec.RuntimeEnvInfo().serialized_runtime_env());
+  export_runtime_env_info->set_serialized_runtime_env(
+      task_spec.RuntimeEnvInfo().serialized_runtime_env());
   auto export_runtime_env_uris = export_runtime_env_info->mutable_uris();
-  export_runtime_env_uris->set_working_dir_uri(task_spec.RuntimeEnvInfo().uris().working_dir_uri());
+  export_runtime_env_uris->set_working_dir_uri(
+      task_spec.RuntimeEnvInfo().uris().working_dir_uri());
   export_runtime_env_uris->mutable_py_modules_uris()->CopyFrom(
-    task_spec.RuntimeEnvInfo().uris().py_modules_uris()
-  );
+      task_spec.RuntimeEnvInfo().uris().py_modules_uris());
   auto export_runtime_env_config = export_runtime_env_info->mutable_runtime_env_config();
-  export_runtime_env_config->set_setup_timeout_seconds(task_spec.RuntimeEnvInfo().runtime_env_config().setup_timeout_seconds());
-  export_runtime_env_config->set_eager_install(task_spec.RuntimeEnvInfo().runtime_env_config().eager_install());
-  export_runtime_env_config->mutable_log_files()->CopyFrom(task_spec.RuntimeEnvInfo().runtime_env_config().log_files());
+  export_runtime_env_config->set_setup_timeout_seconds(
+      task_spec.RuntimeEnvInfo().runtime_env_config().setup_timeout_seconds());
+  export_runtime_env_config->set_eager_install(
+      task_spec.RuntimeEnvInfo().runtime_env_config().eager_install());
+  export_runtime_env_config->mutable_log_files()->CopyFrom(
+      task_spec.RuntimeEnvInfo().runtime_env_config().log_files());
 
   const auto &pg_id = task_spec.PlacementGroupBundleId().first;
   if (!pg_id.IsNil()) {
@@ -383,9 +387,10 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
 /// \param task_status The task status.
 /// \param timestamp The timestamp.
 /// \param[out] state_updates The state updates with timestamp to be updated.
-inline void FillExportTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
-                                     int64_t timestamp,
-                                     rpc::ExportTaskEventData::TaskStateUpdate *state_updates) {
+inline void FillExportTaskStatusUpdateTime(
+    const ray::rpc::TaskStatus &task_status,
+    int64_t timestamp,
+    rpc::ExportTaskEventData::TaskStateUpdate *state_updates) {
   if (task_status == rpc::TaskStatus::NIL) {
     // Not status change.
     return;
@@ -394,14 +399,15 @@ inline void FillExportTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_stat
 }
 
 /// Convert rpc::TaskLogInfo to rpc::ExportTaskEventData::TaskLogInfo
-inline void TaskLogInfoToExport(const rpc::TaskLogInfo& src, rpc::ExportTaskEventData::TaskLogInfo* dest) {
-      dest->set_stdout_file(src.stdout_file());
-      dest->set_stderr_file(src.stderr_file());
-      dest->set_stdout_start(src.stdout_start());
-      dest->set_stdout_end(src.stdout_end());
-      dest->set_stderr_start(src.stderr_start());
-      dest->set_stderr_end(src.stderr_end());
-  }
+inline void TaskLogInfoToExport(const rpc::TaskLogInfo &src,
+                                rpc::ExportTaskEventData::TaskLogInfo *dest) {
+  dest->set_stdout_file(src.stdout_file());
+  dest->set_stderr_file(src.stderr_file());
+  dest->set_stdout_start(src.stdout_start());
+  dest->set_stdout_end(src.stdout_end());
+  dest->set_stderr_start(src.stderr_start());
+  dest->set_stderr_end(src.stderr_end());
+}
 
 inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {
   return kPlacementGroupConstraintKeyPrefix + pg_id;

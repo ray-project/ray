@@ -159,7 +159,6 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
 void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
   RAY_CHECK(ExportEvent_SourceType_IsValid(export_event.source_type()));
   std::string result = ExportEventToString(export_event);
-  std::cout << "GOT result json as str " << result << "\n";
 
   log_sink_->info(result);
   if (force_flush_) {
@@ -181,7 +180,9 @@ EventManager &EventManager::Instance() {
   return instance_;
 }
 
-bool EventManager::IsEmpty() { return reporter_map_.empty() && export_log_reporter_map_.empty(); }
+bool EventManager::IsEmpty() {
+  return reporter_map_.empty() && export_log_reporter_map_.empty();
+}
 
 void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
   for (const auto &element : reporter_map_) {

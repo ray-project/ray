@@ -27,8 +27,8 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/util/counter_map.h"
-#include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/export_api/export_task_event.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace core {
@@ -63,7 +63,8 @@ class TaskEvent {
   /// NOTE: this method will modify internal states by moving fields to the
   /// rpc::ExportTaskEventData.
   /// \param[out] rpc_task_export_event_data The rpc export task event data to be filled.
-  virtual void ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) = 0;
+  virtual void ToRpcTaskExportEvents(
+      std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) = 0;
 
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
@@ -140,7 +141,8 @@ class TaskStatusEvent : public TaskEvent {
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
-  void ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
+  void ToRpcTaskExportEvents(
+      std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
   bool IsProfileEvent() const override { return false; }
 
@@ -173,7 +175,8 @@ class TaskProfileEvent : public TaskEvent {
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
-  void ToRpcTaskExportEvents(std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
+  void ToRpcTaskExportEvents(
+      std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
   bool IsProfileEvent() const override { return true; }
 
@@ -319,7 +322,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///
   /// \param[out] status_events_to_send Task status events to be sent.
   /// \param[out] dropped_status_events_to_write Full task status events that were dropped
-  ///              and will not be send to GCS. These will only be written to the Export API.
+  ///              and will not be send to GCS. These will only be written to the Export
+  ///              API.
   /// \param[out] dropped_task_attempts_to_send Task attempts that were dropped due to
   ///             status events being dropped.
   void GetTaskStatusEventsToSend(
@@ -346,7 +350,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
       std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
       std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send,
       absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send);
-  
+
   /// Write task events for the Export API.
   ///
   /// \param status_events_to_send Task status events to be written.
@@ -426,8 +430,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Circular buffered task status events.
   boost::circular_buffer<std::unique_ptr<TaskEvent>> status_events_
       ABSL_GUARDED_BY(mutex_);
-  
-  /// Status events that were dropped but will still be written in 
+
+  /// Status events that were dropped but will still be written in
   /// the export API. Circular buffer to limit memory for these dropped events.
   boost::circular_buffer<std::unique_ptr<TaskEvent>> dropped_status_events_for_export_
       ABSL_GUARDED_BY(mutex_);
