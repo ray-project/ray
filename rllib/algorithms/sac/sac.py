@@ -4,6 +4,12 @@ from typing import Any, Dict, Optional, Tuple, Type, Union
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
+from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
+    AddObservationsFromEpisodesToBatch,
+)
+from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
+    AddNextObservationsFromEpisodesToTrainBatch,
+)
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
@@ -100,7 +106,8 @@ class SACConfig(AlgorithmConfig):
         }
 
         # .training()
-        self.train_batch_size = 256
+        self.train_batch_size_per_learner = 256
+        self.train_batch_size = 256  # @OldAPIstack
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
         # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
@@ -349,14 +356,30 @@ class SACConfig(AlgorithmConfig):
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
         # TODO (sven, simon): Implement the multi-agent case for replay buffers.
-        if self.enable_env_runner_and_connector_v2 and self.replay_buffer_config[
-            "type"
-        ] not in [
-            "EpisodeReplayBuffer",
-            "PrioritizedEpisodeReplayBuffer",
-            "MultiAgentEpisodeReplayBuffer",
-            "MultiAgentPrioritizedEpisodeReplayBuffer",
-        ]:
+        if (
+            self.enable_env_runner_and_connector_v2
+            and self.replay_buffer_config["type"]
+            not in [
+                "EpisodeReplayBuffer",
+                "PrioritizedEpisodeReplayBuffer",
+                "MultiAgentEpisodeReplayBuffer",
+                "MultiAgentPrioritizedEpisodeReplayBuffer",
+            ]
+            and not (
+                # TODO (simon): Set up an indicator `is_offline_new_stack` that
+                # includes all these variable checks.
+                self.input_
+                and (
+                    isinstance(self.input_, str)
+                    or (
+                        isinstance(self.input_, list)
+                        and isinstance(self.input_[0], str)
+                    )
+                )
+                and self.input_ != "sampler"
+                and self.enable_rl_module_and_learner
+            )
+        ):
             raise ValueError(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
@@ -398,6 +421,28 @@ class SACConfig(AlgorithmConfig):
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
             )
+
+    @override(AlgorithmConfig)
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
+        pipeline = super().build_learner_connector(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            device=device,
+        )
+
+        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # after the corresponding "add-OBS-..." default piece).
+        pipeline.insert_after(
+            AddObservationsFromEpisodesToBatch,
+            AddNextObservationsFromEpisodesToTrainBatch(),
+        )
+
+        return pipeline
 
     @property
     def _model_config_auto_includes(self):
