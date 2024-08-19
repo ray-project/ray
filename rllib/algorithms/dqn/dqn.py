@@ -64,6 +64,7 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED_LIFETIME,
     NUM_TARGET_UPDATES,
+    REPLAY_BUFFER_ADD_DATA_TIMER,
     REPLAY_BUFFER_SAMPLE_TIMER,
     REPLAY_BUFFER_UPDATE_PRIOS_TIMER,
     SAMPLE_TIMER,
@@ -584,7 +585,7 @@ def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
     # This is to set freshly rollout-collected data in relation to
     # the data we pull from the replay buffer (which also contains old
     # samples).
-    native_ratio = config.train_batch_size / (
+    native_ratio = config.total_train_batch_size / (
         config.get_rollout_fragment_length()
         * config.num_envs_per_env_runner
         # Add one to workers because the local
@@ -656,12 +657,14 @@ class DQN(Algorithm):
                     _uses_new_env_runners=True,
                     _return_metrics=True,
                 )
-            # Add the sampled experiences to the replay buffer.
-            self.local_replay_buffer.add(episodes)
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.merge_and_log_n_dicts(
                 env_runner_results, key=ENV_RUNNER_RESULTS
             )
+
+            # Add the sampled experiences to the replay buffer.
+            with self.metrics.log_time((TIMERS, REPLAY_BUFFER_ADD_DATA_TIMER)):
+                self.local_replay_buffer.add(episodes)
 
         self.metrics.log_dict(
             self.metrics.peek(
@@ -712,7 +715,7 @@ class DQN(Algorithm):
                 # Sample a list of episodes used for learning from the replay buffer.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_SAMPLE_TIMER)):
                     episodes = self.local_replay_buffer.sample(
-                        num_items=self.config.train_batch_size,
+                        num_items=self.config.total_train_batch_size,
                         n_step=self.config.n_step,
                         gamma=self.config.gamma,
                         beta=self.config.replay_buffer_config.get("beta"),
@@ -735,14 +738,16 @@ class DQN(Algorithm):
                     # disk or WandB, they might be very large).
                     td_errors = defaultdict(list)
                     for res in learner_results:
-                        for mid, m_res in res.items():
-                            if TD_ERROR_KEY in m_res:
-                                td_errors[mid].extend(
-                                    convert_to_numpy(m_res.pop(TD_ERROR_KEY).peek())
+                        for module_id, module_results in res.items():
+                            if TD_ERROR_KEY in module_results:
+                                td_errors[module_id].extend(
+                                    convert_to_numpy(
+                                        module_results.pop(TD_ERROR_KEY).peek()
+                                    )
                                 )
                     td_errors = {
-                        mid: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
-                        for mid, s in td_errors.items()
+                        module_id: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
+                        for module_id, s in td_errors.items()
                     }
                     self.metrics.merge_and_log_n_dicts(
                         learner_results, key=LEARNER_RESULTS
@@ -840,7 +845,7 @@ class DQN(Algorithm):
                 # Sample training batch (MultiAgentBatch) from replay buffer.
                 train_batch = sample_min_n_steps_from_buffer(
                     self.local_replay_buffer,
-                    self.config.train_batch_size,
+                    self.config.total_train_batch_size,
                     count_by_agent_steps=self.config.count_steps_by == "agent_steps",
                 )
 

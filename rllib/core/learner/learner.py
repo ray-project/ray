@@ -52,6 +52,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED,
+    LEARNER_CONNECTOR_TIMER,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
@@ -1252,22 +1253,23 @@ class Learner(Checkpointable):
         # Call the learner connector.
         if self._learner_connector is not None and episodes is not None:
             # Call the learner connector pipeline.
-            shared_data = {}
-            batch = self._learner_connector(
-                rl_module=self.module,
-                data=batch if batch is not None else {},
-                episodes=episodes,
-                shared_data=shared_data,
-            )
-            # Convert to a batch.
-            # TODO (sven): Try to not require MultiAgentBatch anymore.
-            batch = MultiAgentBatch(
-                {
-                    module_id: SampleBatch(module_data)
-                    for module_id, module_data in batch.items()
-                },
-                env_steps=sum(len(e) for e in episodes),
-            )
+            with self.metrics.log_time((ALL_MODULES, LEARNER_CONNECTOR_TIMER)):
+                shared_data = {}
+                batch = self._learner_connector(
+                    rl_module=self.module,
+                    data=batch if batch is not None else {},
+                    episodes=episodes,
+                    shared_data=shared_data,
+                )
+                # Convert to a batch.
+                # TODO (sven): Try to not require MultiAgentBatch anymore.
+                batch = MultiAgentBatch(
+                    {
+                        module_id: SampleBatch(module_data)
+                        for module_id, module_data in batch.items()
+                    },
+                    env_steps=sum(len(e) for e in episodes),
+                )
         # Have to convert to MultiAgentBatch.
         elif isinstance(batch, SampleBatch):
             assert len(self.module) == 1

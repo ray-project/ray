@@ -490,6 +490,7 @@ class LearnerGroup(Checkpointable):
                         partial(
                             _learner_update,
                             _episodes_shard=episodes_shard,
+                            _timesteps=timesteps,
                             _min_total_mini_batches=min_total_mini_batches,
                         )
                         for episodes_shard in episodes
@@ -529,6 +530,7 @@ class LearnerGroup(Checkpointable):
                         partial(
                             _learner_update,
                             _episodes_shard=eps_shard,
+                            _timesteps=timesteps,
                             _min_total_mini_batches=min_total_mini_batches,
                         )
                         for eps_shard in eps_shards
