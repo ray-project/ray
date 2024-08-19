@@ -1,3 +1,4 @@
+import logging
 import os
 import subprocess
 import sys
@@ -595,6 +596,17 @@ def test_client_shutdown_gracefully_when_timeout(
     log timeout message and exit the process. The controller will continue to shutdown
     everything gracefully.
     """
+    logger = logging.getLogger("ray.serve")
+    caplog.set_level(logging.WARNING, logger="ray.serve")
+
+    warning_msg = []
+
+    class WarningHandler(logging.Handler):
+        def emit(self, record):
+            warning_msg.append(self.format(record))
+
+    logger.addHandler(WarningHandler())
+
     # Setup a cluster with 2 nodes
     cluster = Cluster()
     cluster.add_node()
@@ -621,7 +633,7 @@ def test_client_shutdown_gracefully_when_timeout(
     client.shutdown(timeout_s=timeout_s)
     assert (
         f"Controller failed to shut down within {timeout_s}s. "
-        f"Check controller logs for more details." in caplog.text
+        f"Check controller logs for more details." in warning_msg
     )
 
     # Ensure the all resources are shutdown gracefully.
