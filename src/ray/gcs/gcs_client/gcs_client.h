@@ -123,7 +123,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   ///
   /// \param instrumented_io_context IO execution service.
   /// \param timeout_ms Timeout in milliseconds, default to
-  /// gcs_rpc_server_connect_timeout_s (5s).
+  ///   gcs_rpc_server_connect_timeout_s (5s).
+  ///   If timeout_ms < 0, it will use the default value.
   ///
   /// \return Status
   virtual Status Connect(instrumented_io_context &io_service, int64_t timeout_ms = -1);
