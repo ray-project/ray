@@ -86,7 +86,7 @@ class SACConfig(AlgorithmConfig):
         self.critic_lr = 3e-4
         self.alpha_lr = 3e-4
         # Set `lr` parameter to `None` and ensure it is not used.
-        self.lr = None
+        self.lr = 3e-4
         self.grad_clip = None
         self.target_network_update_freq = 0
 
