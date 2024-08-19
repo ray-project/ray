@@ -1424,6 +1424,7 @@ class SingleAgentEpisode:
     def slice(
         self,
         slice_: slice,
+        *,
         len_lookback_buffer: Optional[int] = None,
     ) -> "SingleAgentEpisode":
         """Returns a slice of this episode with the given slice object.
