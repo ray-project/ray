@@ -1505,7 +1505,11 @@ class SingleAgentEpisode:
             if len_lookback_buffer is not None
             else self.observations.lookback
         )
-        if start - _lb < 0 and self.observations.lookback < (_lb - start):
+        if (
+            start >= 0
+            and start - _lb < 0
+            and self.observations.lookback < (_lb - start)
+        ):
             _lb = self.observations.lookback + start
         observations = InfiniteLookbackBuffer(
             data=self.get_observations(
@@ -1521,7 +1525,7 @@ class SingleAgentEpisode:
             if len_lookback_buffer is not None
             else self.infos.lookback
         )
-        if start - _lb < 0 and self.infos.lookback < (_lb - start):
+        if start >= 0 and start - _lb < 0 and self.infos.lookback < (_lb - start):
             _lb = self.infos.lookback + start
         infos = InfiniteLookbackBuffer(
             data=self.get_infos(
@@ -1536,7 +1540,7 @@ class SingleAgentEpisode:
             if len_lookback_buffer is not None
             else self.actions.lookback
         )
-        if start - _lb < 0 and self.actions.lookback < (_lb - start):
+        if start >= 0 and start - _lb < 0 and self.actions.lookback < (_lb - start):
             _lb = self.actions.lookback + start
         actions = InfiniteLookbackBuffer(
             data=self.get_actions(
@@ -1552,7 +1556,7 @@ class SingleAgentEpisode:
             if len_lookback_buffer is not None
             else self.rewards.lookback
         )
-        if start - _lb < 0 and self.rewards.lookback < (_lb - start):
+        if start >= 0 and start - _lb < 0 and self.rewards.lookback < (_lb - start):
             _lb = self.rewards.lookback + start
         rewards = InfiniteLookbackBuffer(
             data=self.get_rewards(
@@ -1565,7 +1569,7 @@ class SingleAgentEpisode:
         extra_model_outputs = {}
         for k, v in self.extra_model_outputs.items():
             _lb = len_lookback_buffer if len_lookback_buffer is not None else v.lookback
-            if start - _lb < 0 and v.lookback < (_lb - start):
+            if start >= 0 and start - _lb < 0 and v.lookback < (_lb - start):
                 _lb = v.lookback + start
             extra_model_outputs[k] = InfiniteLookbackBuffer(
                 data=self.get_extra_model_outputs(
