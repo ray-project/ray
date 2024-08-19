@@ -73,12 +73,6 @@ class TaskEvent {
     return std::make_pair(task_id_, attempt_number_);
   }
 
-  // This method should be overriden with the correct status
-  // for TaskStatusEvent
-  // virtual rpc::TaskStatus GetTaskStatus() const {
-  //   return rpc::TaskStatus::NIL;
-  // }
-
  protected:
   /// Task Id.
   const TaskID task_id_ = TaskID::Nil();
@@ -145,10 +139,6 @@ class TaskStatusEvent : public TaskEvent {
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
   bool IsProfileEvent() const override { return false; }
-
-  // virtual rpc::TaskStatus GetTaskStatus() const override {
-  //   return task_status_;
-  // }
 
  private:
   /// The task status change if it's a status change event.

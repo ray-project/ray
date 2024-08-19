@@ -432,10 +432,10 @@ void TaskEventBufferImpl::WriteExportData(
     std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
     std::vector<std::unique_ptr<TaskEvent>> &&dropped_status_events_to_write,
     std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send) {
-  // Aggregate the task events by TaskAttempt.
   absl::flat_hash_map<TaskAttempt, std::shared_ptr<rpc::ExportTaskEventData>>
       agg_task_events;
   auto to_rpc_event_fn = [&agg_task_events](std::unique_ptr<TaskEvent> &event) {
+    // Aggregate events by task attempt before converting to proto
     if (!agg_task_events.count(event->GetTaskAttempt())) {
       auto inserted = agg_task_events.insert(
           {event->GetTaskAttempt(), std::make_shared<rpc::ExportTaskEventData>()});
@@ -446,6 +446,8 @@ void TaskEventBufferImpl::WriteExportData(
     event->ToRpcTaskExportEvents(itr->second);
   };
 
+  // Combine status_events_to_send and dropped_status_events_to_write so
+  // the aggregation logic in to_rpc_event_fn is combined across both.
   std::vector<std::unique_ptr<TaskEvent>> all_status_events_to_send;
   all_status_events_to_send.reserve(status_events_to_send.size() +
                                     dropped_status_events_to_write.size());
