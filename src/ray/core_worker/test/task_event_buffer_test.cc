@@ -328,7 +328,7 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
   EXPECT_EQ((int)vc.size(), num_events);
   json event_data_arr_json = {};
   json expected_event_data_arr_json = {};
-  for (int i = 0; i < num_events; i++) {
+  for (size_t i = 0; i < num_events; i++) {
     json export_event_as_json = json::parse(vc[i]);
     EXPECT_EQ(export_event_as_json["source_type"].get<std::string>(), "EXPORT_TASK");
     EXPECT_EQ(export_event_as_json.contains("event_id"), true);
