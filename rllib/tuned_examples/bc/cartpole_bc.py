@@ -63,6 +63,7 @@ config = (
             "local_shuffle_buffer_size": None,
         },
         prelearner_module_synch_period=20,
+        dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
     )
     .training(
         # To increase learning speed with multiple learners,

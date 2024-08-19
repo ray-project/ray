@@ -57,7 +57,10 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
             )
-            .offline_data(input_=[data_path.as_posix()])
+            .offline_data(
+                input_=[data_path.as_posix()],
+                dataset_num_iters_per_learner=1,
+            )
             .training(
                 lr=0.0008,
                 train_batch_size_per_learner=2000,
