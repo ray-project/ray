@@ -4777,7 +4777,7 @@ class Dataset:
         futures, to bytes that can be stored and later deserialized, possibly on a
         different cluster.
 
-        Note that this use pickle and will drop all computed data, and that everything
+        Note that this uses pickle and will drop all computed data, and that everything
         is recomputed from scratch after deserialization.
 
         Use :py:meth:`Dataset.deserialize_lineage` to deserialize the serialized
