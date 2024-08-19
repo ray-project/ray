@@ -524,7 +524,6 @@ class WorkerCacheKey {
   /// runtime_env.
   ///
   /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
-  /// worker. \param required_resources The required resouce.
   /// worker. \param is_actor Whether the worker will be an actor. This is set when
   ///         task type isolation between workers is enabled.
   /// worker. \param is_gpu Whether the worker will be using GPUs. This is set when
@@ -533,8 +532,7 @@ class WorkerCacheKey {
   ///         tasks or actors whose root ancestor is a detached actor. This is set
   ///         to prevent worker reuse between tasks whose root is the driver process
   ///         and tasks whose root is a detached actor.
-  WorkerCacheKey(const std::string serialized_runtime_env,
-                 const absl::flat_hash_map<std::string, double> &required_resources,
+  WorkerCacheKey(std::string serialized_runtime_env,
                  bool is_actor,
                  bool is_gpu,
                  bool is_root_detached_actor);
@@ -563,8 +561,6 @@ class WorkerCacheKey {
 
   /// The JSON-serialized runtime env for this worker.
   const std::string serialized_runtime_env;
-  /// The required resources for this worker.
-  const absl::flat_hash_map<std::string, double> required_resources;
   /// Whether the worker is for an actor.
   const bool is_actor;
   /// Whether the worker is to use a GPU.
