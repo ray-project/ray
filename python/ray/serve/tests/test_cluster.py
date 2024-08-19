@@ -402,7 +402,7 @@ class TestHealthzAndRoutes:
         ray.init(address=cluster.address)
         serve.start(http_options={"location": "EveryNode"})
 
-        @serve.deployment(ray_actor_options={"num_cpus":0})
+        @serve.deployment(ray_actor_options={"num_cpus": 0})
         class Dummy:
             pass
 
