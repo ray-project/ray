@@ -45,6 +45,7 @@ class CompiledDAGRef:
     def __init__(
         self,
         dag: "ray.experimental.CompiledDAG",
+        channel,
         execution_index: int,
     ):
         """
@@ -55,6 +56,7 @@ class CompiledDAGRef:
                 indicates which execution this CompiledDAGRef corresponds to.
         """
         self._dag = dag
+        self.channel = channel
         self._execution_index = execution_index
         # Whether ray.get() was called on this CompiledDAGRef.
         self._ray_get_called = False
@@ -87,11 +89,10 @@ class CompiledDAGRef:
                 "on a CompiledDAGRef, and it was already called."
             )
         self._ray_get_called = True
-        return_vals = self._dag._execute_until(self._execution_index, timeout)
-        return _process_return_vals(
-            return_vals,
-            self._dag.has_single_output,
+        return_vals = self._dag._execute_until(
+            self._execution_index, self.channel, timeout
         )
+        return _process_return_vals(return_vals, True)
 
 
 @PublicAPI(stability="alpha")

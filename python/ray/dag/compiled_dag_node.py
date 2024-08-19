@@ -597,7 +597,12 @@ class CompiledDAG:
         self.dag_input_channel: Optional[ChannelInterface] = None
         self.dag_output_channels: Optional[List[ChannelInterface]] = None
         self._dag_submitter: Optional[WriterInterface] = None
-        self._dag_output_fetcher: Optional[ReaderInterface] = None
+        self._dag_output_fetcher: Optional[
+            ReaderInterface
+        ] = None  # Keep it temporarily for async cases
+        self._dag_output_fetchers: Optional[
+            Dict[ChannelInterface, ReaderInterface]
+        ] = {}
 
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
@@ -630,7 +635,7 @@ class CompiledDAG:
         # The maximum index of finished executions.
         # All results with higher indexes have not been generated yet.
         self._max_execution_index: int = -1
-        self._result_buffer: Dict[int, Any] = {}
+        self._result_buffer: Dict[int, Dict[ChannelInterface, Any]] = {}
 
         def _get_or_create_local_actor_handle():
             """
@@ -913,7 +918,7 @@ class CompiledDAG:
 
         This function is idempotent and will cache the previously allocated
         channels. After calling this function, _dag_submitter and
-        _dag_output_fetcher will be set and can be used to invoke and fetch
+        _dag_output_fetchers will be set and can be used to invoke and fetch
         outputs for the DAG.
         """
         from ray.dag import (
@@ -928,7 +933,11 @@ class CompiledDAG:
             self._preprocess()
 
         if self._dag_submitter is not None:
-            assert self._dag_output_fetcher is not None
+            if self._enable_asyncio:
+                assert self._dag_output_fetcher is not None
+            else:
+                for fetcher in self._dag_output_fetchers.values():
+                    assert fetcher is not None
             return
 
         frontier = [self.input_task_idx]
@@ -1163,10 +1172,15 @@ class CompiledDAG:
             )
         else:
             self._dag_submitter = SynchronousWriter(self.dag_input_channel)
-            self._dag_output_fetcher = SynchronousReader(self.dag_output_channels)
+            for chan in self.dag_output_channels:
+                self._dag_output_fetchers[chan] = SynchronousReader([chan])
 
         self._dag_submitter.start()
-        self._dag_output_fetcher.start()
+        if self._enable_asyncio:
+            self._dag_output_fetcher.start()
+        else:
+            for chan in self.dag_output_channels:
+                self._dag_output_fetchers[chan].start()
 
     def _generate_dag_operation_graph_node(
         self,
@@ -1505,7 +1519,11 @@ class CompiledDAG:
                 logger.info("Tearing down compiled DAG")
 
                 outer._dag_submitter.close()
-                outer._dag_output_fetcher.close()
+                if outer._enable_asyncio:
+                    outer._dag_output_fetcher.close()
+                else:
+                    for chan in outer._dag_output_fetchers:
+                        outer._dag_output_fetchers[chan].close()
 
                 for actor in outer.actor_refs:
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
@@ -1545,6 +1563,7 @@ class CompiledDAG:
     def _execute_until(
         self,
         execution_index: int,
+        channel: ChannelInterface,
         timeout: Optional[float] = None,
     ) -> Any:
         """Repeatedly execute this DAG until the given execution index,
@@ -1564,42 +1583,47 @@ class CompiledDAG:
 
         TODO(rui): catch the case that user holds onto the CompiledDAGRefs
         """
-        from ray.dag import DAGContext
+        if self._max_execution_index < execution_index:
+            from ray.dag import DAGContext
 
-        ctx = DAGContext.get_current()
-        if timeout is None:
-            timeout = ctx.retrieval_timeout
+            ctx = DAGContext.get_current()
+            if timeout is None:
+                timeout = ctx.retrieval_timeout
 
-        while self._max_execution_index < execution_index:
-            if self._max_execution_index + 1 == execution_index:
-                # Directly fetch and return without buffering
+            while self._max_execution_index < execution_index:
+                if len(self._result_buffer) >= self._max_buffered_results:
+                    raise ValueError(
+                        "Too many buffered results: the allowed max count for "
+                        f"buffered results is {self._max_buffered_results}; call "
+                        "ray.get() on previous CompiledDAGRefs to free them up "
+                        "from buffer."
+                    )
                 self._max_execution_index += 1
-                return self._dag_output_fetcher.read(timeout)
-            # Otherwise, buffer the result
-            if len(self._result_buffer) >= self._max_buffered_results:
-                raise ValueError(
-                    "Too many buffered results: the allowed max count for "
-                    f"buffered results is {self._max_buffered_results}; call ray.get() "
-                    "on previous CompiledDAGRefs to free them up from buffer."
-                )
-            self._max_execution_index += 1
-            start_time = time.monotonic()
-            self._result_buffer[
-                self._max_execution_index
-            ] = self._dag_output_fetcher.read(timeout)
-            if timeout != -1:
-                timeout -= time.monotonic() - start_time
-                timeout = max(timeout, 0)
+                start_time = time.monotonic()
+
+                for chan, fetcher in self._dag_output_fetchers.items():
+                    if self._max_execution_index not in self._result_buffer:
+                        self._result_buffer[self._max_execution_index] = {}
+                    self._result_buffer[self._max_execution_index][chan] = fetcher.read(
+                        timeout
+                    )
+
+                if timeout != -1:
+                    timeout -= time.monotonic() - start_time
+                    timeout = max(timeout, 0)
 
         # CompiledDAGRef guarantees that the same execution index will not
         # be requested multiple times
-        return self._result_buffer.pop(execution_index)
+        result = self._result_buffer[execution_index].pop(channel)
+        if len(self._result_buffer[execution_index]) == 0:
+            self._result_buffer.pop(execution_index)
+        return result
 
     def execute(
         self,
         *args,
         **kwargs,
-    ) -> CompiledDAGRef:
+    ) -> List[CompiledDAGRef]:
         """Execute this DAG using the compiled execution path.
 
         Args:
@@ -1633,9 +1657,12 @@ class CompiledDAG:
 
         self._dag_submitter.write(inp, self._execution_timeout)
 
-        ref = CompiledDAGRef(self, self._execution_index)
+        refs = []
+        for chan in self.dag_output_channels:
+            refs.append(CompiledDAGRef(self, chan, self._execution_index))
+
         self._execution_index += 1
-        return ref
+        return refs
 
     def _check_inputs(self, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> None:
         """
