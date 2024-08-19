@@ -32,6 +32,48 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
     should be periodically snyched with the current weights of the
     `Learner``s module, otherwise GAE calculation will accumulate bias
     over time.
+
+    .. testcode::
+
+        from pathlib import Path
+
+        from ray.rllib.algorithms.marwil import MARWILConfig
+        from ray.rllib.algorithms.marwil.marwil_offline_prelearner import (
+            MARWILOfflinePreLearner
+        )
+
+        data_path = "tests/data/cartpole/cartpole-v1_large"
+        base_path = Path(__file__).parents[2]
+        data_path = "local://" + base_path.joinpath(data_path).as_posix()
+
+        config = (
+            MARWILConfig()
+            .environment(env="CartPole-v1")
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            # Note, the `input_` argument is the major argument for the
+            # new offline API. Via the `input_read_method_kwargs` the
+            # arguments for the `ray.data.Dataset` read method can be
+            # configured. The read method needs at least as many blocks
+            # as remote learners.
+            .offline_data(
+                input_=[data_path],
+            )
+        )
+
+        algo = config.build()
+
+        marwil_prelearner = MARWILOfflinePreLearner(
+            config=config,
+            learner=algo.offline_data.learner_handles[0],
+        )
+        batch = algo.offline_data.data.take_batch(10)
+        preprocessed_batch = marwil_prelearner(
+            batch=batch,
+        )
+        print(preprocessed_batch)
     """
 
     @OverrideToImplementCustomLogic
