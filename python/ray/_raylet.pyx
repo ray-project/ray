@@ -2697,7 +2697,7 @@ cdef class GcsClient:
             # Config py_gcs_connect_timeout_s is applied to PythonGcsClient but it's
             # not effective for gRPC connection failure. We use it as a max timeout.
             max_timeout_ms = RayConfig.instance().py_gcs_connect_timeout_s() * 1000
-            if nums_reconnect_retry > 0:            
+            if nums_reconnect_retry > 0:
                 timeout_ms = min(1000 * (nums_reconnect_retry + 1), max_timeout_ms)
             else:
                 timeout_ms = -1
