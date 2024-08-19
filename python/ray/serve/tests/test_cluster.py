@@ -402,6 +402,12 @@ class TestHealthzAndRoutes:
         ray.init(address=cluster.address)
         serve.start(http_options={"location": "EveryNode"})
 
+        @serve.deployment(ray_actor_options={"num_cpus":0})
+        class Dummy:
+            pass
+
+        serve.run(Dummy.bind())
+
         # Head node proxy /-/healthz and /-/routes should return 200
         r = requests.post("http://localhost:8000/-/healthz")
         assert r.status_code == 200

@@ -43,16 +43,6 @@ class ProxyRouter(ABC):
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         raise NotImplementedError
 
-    @abstractmethod
-    def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
-        """Whether the proxy router is ready to serve traffic or not.
-
-        If the proxy router is not ready to serve traffic, the second
-        return value will be a non-empty string detailing the reason.
-        Otherwise, the second return value will be an empty string.
-        """
-        raise NotImplementedError
-
     def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
         """Whether the proxy router is ready to serve traffic.
 
