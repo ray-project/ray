@@ -29,7 +29,7 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
         # Otherwise we ap the batch to episodes.
         else:
             # Map the batch to episodes.
-            episodes = episodes = self._map_to_episodes(
+            episodes = self._map_to_episodes(
                 self._is_multi_agent,
                 batch,
                 schema=SCHEMA | self.config.input_read_schema,
