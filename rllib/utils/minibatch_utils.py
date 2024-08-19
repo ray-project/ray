@@ -49,7 +49,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         minibatch_size: int,
         num_iters: int = 1,
         uses_new_env_runners: bool = False,
-        min_total_mini_batches: int = 0,
+        num_total_mini_batches: int = 0,
     ) -> None:
         super().__init__(batch, minibatch_size, num_iters)
         self._batch = batch
@@ -64,7 +64,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         self._uses_new_env_runners = uses_new_env_runners
 
         self._mini_batch_count = 0
-        self._min_total_mini_batches = min_total_mini_batches
+        self._num_total_mini_batches = num_total_mini_batches
 
     def __iter__(self):
         while (
@@ -72,8 +72,13 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             # `self._num_iters` times.
             min(self._num_covered_epochs.values()) < self._num_iters
             # Make sure we reach at least the given minimum number of mini-batches.
-            or self._mini_batch_count < self._min_total_mini_batches
+            and (
+                self._num_total_mini_batches == 0
+                or self._mini_batch_count < self._num_total_mini_batches
+            )
         ):
+
+            #print(f"minibatch_count={self._mini_batch_count} num_total_mini_batches={self._num_total_mini_batches}")
 
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():

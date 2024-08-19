@@ -458,41 +458,46 @@ class InfiniteLookbackBuffer:
         _ignore_last_ts=False,
         _add_last_ts_value=None,
     ):
-        data_to_use = self.data
-        if _ignore_last_ts:
-            data_to_use = self.data[:-1]
-        if _add_last_ts_value is not None:
-            data_to_use = np.append(data_to_use.copy(), _add_last_ts_value)
-
-        # If index >= 0 -> Ignore lookback buffer.
-        # Otherwise, include lookback buffer.
-        if idx >= 0 or neg_index_as_lookback:
-            idx = self.lookback + idx
-        # Negative indices mean: Go to left into lookback buffer starting from idx=0.
-        # But if we pass the lookback buffer, the index should be invalid and we will
-        # have to fill, if required. Invalidate the index by setting it to one larger
-        # than max.
-        if neg_index_as_lookback and idx < 0:
-            idx = len(self) + self.lookback - (_ignore_last_ts is True)
-
         try:
-            if self.finalized:
-                data = tree.map_structure(lambda s: s[idx], data_to_use)
-            else:
-                data = data_to_use[idx]
-        # Out of range index -> If `fill`, use a fill dummy (B=0), if not, error out.
+            data_to_use = self.data
+            if _ignore_last_ts:
+                data_to_use = self.data[:-1]
+            if _add_last_ts_value is not None:
+                data_to_use = np.append(data_to_use.copy(), _add_last_ts_value)
+
+            # If index >= 0 -> Ignore lookback buffer.
+            # Otherwise, include lookback buffer.
+            if idx >= 0 or neg_index_as_lookback:
+                idx = self.lookback + idx
+            # Negative indices mean: Go to left into lookback buffer starting from idx=0.
+            # But if we pass the lookback buffer, the index should be invalid and we will
+            # have to fill, if required. Invalidate the index by setting it to one larger
+            # than max.
+            if neg_index_as_lookback and idx < 0:
+                idx = len(self) + self.lookback - (_ignore_last_ts is True)
+
+            try:
+                if self.finalized:
+                    data = tree.map_structure(lambda s: s[idx], data_to_use)
+                else:
+                    data = data_to_use[idx]
+            # Out of range index -> If `fill`, use a fill dummy (B=0), if not, error out.
+            except IndexError as e:
+                if fill is not None:
+                    if self.space is None:
+                        return fill
+                    return get_dummy_batch_for_space(
+                        self.space,
+                        fill_value=fill,
+                        batch_size=0,
+                        one_hot_discrete=one_hot_discrete,
+                    )
+                else:
+                    raise e
+
         except IndexError as e:
-            if fill is not None:
-                if self.space is None:
-                    return fill
-                return get_dummy_batch_for_space(
-                    self.space,
-                    fill_value=fill,
-                    batch_size=0,
-                    one_hot_discrete=one_hot_discrete,
-                )
-            else:
-                raise e
+            print(f"idx={idx} neg_index_as_lookback={neg_index_as_lookback} self.lookback={self.lookback} _ignore_last_ts={_ignore_last_ts} _add_last_ts_value={_add_last_ts_value} data_to_use={data_to_use}")
+            raise e
 
         # Convert discrete/multi-discrete components to one-hot vectors, if required.
         if one_hot_discrete:
