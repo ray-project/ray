@@ -450,6 +450,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
             }
             RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
           } else {
+            RAY_CHECK(spec.IsNormalTask());
             RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
           }
         }
@@ -1075,6 +1076,8 @@ void CoreWorker::InternalHeartbeat() {
         actor_handle->SetResubmittedActorTaskSpec(spec);
       }
       RAY_CHECK_OK(actor_task_submitter_->SubmitTask(spec));
+    } else if (spec.IsActorCreationTask()) {
+      RAY_CHECK_OK(actor_task_submitter_->SubmitActorCreationTask(spec));
     } else {
       RAY_CHECK_OK(normal_task_submitter_->SubmitTask(spec));
     }
@@ -2385,7 +2388,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                         << "Failed to register actor. Error message: "
                         << status.ToString();
                   } else {
-                    RAY_UNUSED(normal_task_submitter_->SubmitTask(task_spec));
+                    RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
                   }
                 }));
           },
@@ -2400,7 +2403,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       }
       io_service_.post(
           [this, task_spec = std::move(task_spec)]() {
-            RAY_UNUSED(normal_task_submitter_->SubmitTask(task_spec));
+            RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
           },
           "CoreWorker.SubmitTask");
     }

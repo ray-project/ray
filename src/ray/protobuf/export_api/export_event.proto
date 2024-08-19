@@ -18,6 +18,7 @@ option cc_enable_arenas = true;
 package ray.rpc;
 
 import "src/ray/protobuf/export_api/export_task_event.proto";
+import "src/ray/protobuf/export_api/export_node_data.proto";
 import "src/ray/protobuf/export_api/export_actor_data.proto";
 
 // ExportEvent defines events stored by the export API. This
@@ -25,7 +26,8 @@ import "src/ray/protobuf/export_api/export_actor_data.proto";
 message ExportEvent {
   enum SourceType {
     EXPORT_TASK = 0;
-    EXPORT_ACTOR = 1;
+    EXPORT_NODE = 1;
+    EXPORT_ACTOR = 2;
   }
 
   // event_id is the unique ID of this event
@@ -38,6 +40,10 @@ message ExportEvent {
   // event_data follows the schema associated with the source_type
   oneof event_data {
     ExportTaskEventData task_event_data = 4;
+<<<<<<< HEAD
     ExportActorData actor_event_data = 5;
+=======
+    ExportNodeData node_event_data = 5;
+>>>>>>> 2a7efc0fd105048ada9e2a1e48e9c391e906cf48
   }
 }

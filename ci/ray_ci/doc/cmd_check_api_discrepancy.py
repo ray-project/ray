@@ -42,6 +42,11 @@ TEAM_API_CONFIGS = {
             "ray.remote_function.RemoteFunction",
         },
     },
+    "rllib": {
+        "head_modules": {"ray.rllib"},
+        "head_doc_file": "doc/source/rllib/package_ref/index.rst",
+        "white_list_apis": {},
+    },
 }
 
 

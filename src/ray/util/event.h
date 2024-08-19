@@ -106,6 +106,10 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual ~LogEventReporter();
 
+  virtual void Report(const rpc::Event &event, const json &custom_fields) override;
+
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
+
  private:
   virtual std::string replaceLineFeed(std::string message);
 
@@ -114,10 +118,6 @@ class LogEventReporter : public BaseEventReporter {
   virtual std::string ExportEventToString(const rpc::ExportEvent &export_event);
 
   virtual void Init() override {}
-
-  virtual void Report(const rpc::Event &event, const json &custom_fields) override;
-
-  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
 
   virtual void Close() override {}
 
@@ -157,6 +157,9 @@ class EventManager final {
   // a process.
   void AddReporter(std::shared_ptr<BaseEventReporter> reporter);
 
+  void AddExportReporter(rpc::ExportEvent_SourceType source_type,
+                         std::shared_ptr<LogEventReporter> reporter);
+
   void ClearReporters();
 
  private:
@@ -168,6 +171,8 @@ class EventManager final {
 
  private:
   absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
+  absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+      export_log_reporter_map_;
 };
 
 // store the event context. Different workers of a process in core_worker have different
@@ -318,6 +323,7 @@ class RayEvent {
 };
 
 using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData>,
+                                        std::shared_ptr<rpc::ExportNodeData>,
                                         std::shared_ptr<rpc::ExportActorData>>;
 class RayExportEvent {
  public:
@@ -340,18 +346,31 @@ class RayExportEvent {
 ///
 /// This function should be called when the main thread starts.
 /// Redundant calls in other thread don't take effect.
-/// \param source_type The type of current process.
-/// \param custom_fields The global custom fields.
+/// \param source_types List of source types the current process can create events for. If
+/// there are multiple rpc::Event_SourceType source_types, the last one will be used as
+/// the source type for the RAY_EVENT macro.
+/// \param custom_fields The global custom fields. These are only set for
+/// rpc::Event_SourceType events.
 /// \param log_dir The log directory to generate event subdirectory.
 /// \param event_level The input event level. It should be one of "info","warning",
 /// "error" and "fatal". You can also use capital letters for the options above.
 /// \param emit_event_to_log_file if True, it will emit the event to the process log file
 /// (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log file.
 /// \return void.
-void RayEventInit(rpc::Event_SourceType source_type,
+void RayEventInit(const std::vector<SourceTypeVariant> source_types,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,
                   const std::string &event_level = "warning",
                   bool emit_event_to_log_file = false);
+
+/// Logic called by RayEventInit. This function can be called multiple times,
+/// and has been separated out so RayEventInit can be called multiple times in
+/// tests.
+/// **Note**: This should only be called from tests.
+void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
+                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
+                   const std::string &log_dir,
+                   const std::string &event_level,
+                   bool emit_event_to_log_file);
 
 }  // namespace ray

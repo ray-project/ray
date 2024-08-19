@@ -264,7 +264,11 @@ python_grpc_compile(
 proto_library(
     name = "export_task_event_proto",
     srcs = ["export_api/export_task_event.proto"],
+<<<<<<< HEAD
     deps = [":common_proto", ":export_runtime_env_proto", ":export_actor_event_proto"],
+=======
+    deps = [":common_proto", ":export_runtime_env_proto", ":export_node_event_proto"],
+>>>>>>> 2a7efc0fd105048ada9e2a1e48e9c391e906cf48
 )
 
 cc_proto_library(
@@ -290,6 +294,21 @@ cc_proto_library(
 python_grpc_compile(
     name = "export_runtime_env_py_proto",
     deps = [":export_runtime_env_proto"],
+)
+
+proto_library(
+    name = "export_node_event_proto",
+    srcs = ["export_api/export_node_data.proto"],
+)
+
+cc_proto_library(
+    name = "export_node_event_cc_proto",
+    deps = [":export_node_event_proto"],
+)
+
+python_grpc_compile(
+    name = "export_node_event_py_proto",
+    deps = [":export_node_event_proto"],
 )
 
 proto_library(

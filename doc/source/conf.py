@@ -568,6 +568,7 @@ autodoc_mock_imports = [
     "aiohttp",
     "aiosignal",
     "composer",
+    "cupy",
     "dask",
     "datasets",
     "fastapi",
