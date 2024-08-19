@@ -105,17 +105,11 @@ class ControllerInitializationError(RayTrainError):
             in the experiment storage directory.
     """
 
-    def __init__(self, message: str = ""):
-        super().__init__(message)
-
 
 class CollectiveTimeoutError(RayTrainError):
     """Exception raised when an internal Ray Train collective operation of
     the worker group times out.
     """
-
-    def __init__(self, message: str = ""):
-        super().__init__(message)
 
 
 class BroadcastCollectiveTimeoutError(CollectiveTimeoutError):
