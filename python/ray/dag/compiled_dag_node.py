@@ -1610,7 +1610,7 @@ class CompiledDAG:
         self,
         *args,
         **kwargs,
-    ) -> List[CompiledDAGRef]:
+    ) -> Union[CompiledDAGRef, List[CompiledDAGRef]]:
         """Execute this DAG using the compiled execution path.
 
         Args:
@@ -1649,7 +1649,8 @@ class CompiledDAG:
             refs.append(CompiledDAGRef(self, chan, self._execution_index))
 
         self._execution_index += 1
-        return refs
+
+        return refs[0] if len(refs) == 1 else refs
 
     def _check_inputs(self, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> None:
         """
