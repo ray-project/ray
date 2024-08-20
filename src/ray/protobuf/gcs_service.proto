@@ -135,7 +135,7 @@ message GetAllActorInfoRequest {
 
 message GetAllActorInfoReply {
   GcsStatus status = 1;
-  // Data of actor.2
+  // Data of actor.
   repeated ActorTableData actor_table_data = 2;
   // Length of the corresponding resource without truncation.
   int64 total = 3;
@@ -203,11 +203,30 @@ message UnregisterNodeReply {
   GcsStatus status = 1;
 }
 
-message GetAllNodeInfoRequest {}
+message GetAllNodeInfoRequest {
+  // Filter object where predicates are AND together.
+  message Filters {
+    optional bytes node_id = 1;
+    optional GcsNodeInfo.GcsNodeState state = 2;
+    optional string node_name = 3;
+  }
+
+  // Maximum number to return.
+  // If set, the exact `limit` returned do not have any ordering or selection
+  // guarantee.
+  optional int64 limit = 3;
+
+  // Filters to apply to the get query.
+  optional Filters filters = 4;
+}
 
 message GetAllNodeInfoReply {
   GcsStatus status = 1;
   repeated GcsNodeInfo node_info_list = 2;
+  // Length of the corresponding resource without truncation.
+  int64 total = 3;
+  // Number of results filtered out from the source.
+  int64 num_filtered = 4;
 }
 
 message CheckAliveRequest {

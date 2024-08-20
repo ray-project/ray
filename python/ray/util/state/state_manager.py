@@ -14,9 +14,9 @@ import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import hex_to_binary
-from ray._raylet import ActorID, JobID, TaskID
+from ray._raylet import ActorID, JobID, TaskID, NodeID
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated.gcs_pb2 import ActorTableData
+from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
     GetAllActorInfoRequest,
@@ -335,9 +335,38 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_node_info(
-        self, timeout: int = None
+        self,
+        timeout: int = None,
+        limit: int = None,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllNodeInfoReply]:
-        request = GetAllNodeInfoRequest()
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+
+        if filters is None:
+            filters = []
+
+        req_filters = GetAllNodeInfoRequest.Filters()
+        for filter in filters:
+            logger.error(f"Filter: {filter}")
+            key, predicate, value = filter
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+
+            if key == "node_id":
+                req_filters.node_id = NodeID(hex_to_binary(value)).binary()
+            elif key == "state":
+                value = value.upper()
+                if value not in GcsNodeInfo.GcsNodeState.keys():
+                    raise ValueError(f"Invalid node state for filtering: {value}")
+                req_filters.state = GcsNodeInfo.GcsNodeState.Value(value)
+            elif key == "node_name":
+                req_filters.node_name = value
+            else:
+                continue
+
+        request = GetAllNodeInfoRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
 
