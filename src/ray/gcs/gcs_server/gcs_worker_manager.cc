@@ -170,11 +170,11 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
   };
   auto on_done = [reply, send_reply_callback, limit, filter_fn](
                      absl::flat_hash_map<WorkerID, WorkerTableData> &&result) {
-    size_t total_workers = result.size();
+    int64_t total_workers = result.size();
     reply->set_total(total_workers);
 
-    size_t num_added = 0;
-    size_t num_filtered = 0;
+    int64_t num_added = 0;
+    int64_t num_filtered = 0;
 
     for (auto &pair : result) {
       if (num_added >= limit) {
