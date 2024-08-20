@@ -18,6 +18,11 @@ torch, nn = try_import_torch()
 
 
 class MARWILTorchLearner(MARWILLearner, TorchLearner):
+    """Implements torch-specific MARWIL loss on top of MARWILLearner.
+
+    This class implements the MARWIL loss under `self.compute_loss_for_module()`.
+    """
+
     def compute_loss_for_module(
         self,
         *,
