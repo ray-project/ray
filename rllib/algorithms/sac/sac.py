@@ -71,18 +71,13 @@ class SACConfig(AlgorithmConfig):
         self.target_entropy = "auto"
         self.n_step = 1
         self.replay_buffer_config = {
-            #"_enable_replay_buffer_api": True,
             "type": "PrioritizedEpisodeReplayBuffer",
+            # Size of the replay buffer. Note that if async_updates is set,
+            # then each worker will have a replay buffer of this size.
             "capacity": int(1e6),
-            # If True prioritized replay buffer will be used.
-            #"prioritized_replay": False,
-            #"prioritized_replay_alpha": 0.6,
             "alpha": 0.6,
-            #"prioritized_replay_beta": 0.4,
+            # Beta parameter for sampling from prioritized replay buffer.
             "beta": 0.4,
-            #"prioritized_replay_eps": 1e-6,
-            # Whether to compute priorities already on the remote worker side.
-            #"worker_side_prioritization": False,
         }
         self.store_buffer_in_checkpoints = False
         self.training_intensity = None
@@ -318,18 +313,6 @@ class SACConfig(AlgorithmConfig):
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
-
-        # Disallow hybrid API stack for SAC.
-        if (
-            self.enable_rl_module_and_learner
-            and not self.enable_env_runner_and_connector_v2
-        ):
-            raise ValueError(
-                "Hybrid API stack (`enable_rl_module_and_learner=True` and "
-                "`enable_env_runner_and_connector_v2=False`) no longer supported for "
-                "SAC! Set both to True (recommended new API stack) or both to False "
-                "(old API stack)."
-            )
 
         # Check rollout_fragment_length to be compatible with n_step.
         if isinstance(self.n_step, tuple):

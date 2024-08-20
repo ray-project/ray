@@ -59,7 +59,7 @@ class TestSAC(unittest.TestCase):
         ray.shutdown()
 
     def test_sac_compilation(self):
-        """Tests whether SAC can be built with all frameworks."""
+        """Test whether SAC can be built and trained."""
         config = (
             sac.SACConfig()
             .training(

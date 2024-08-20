@@ -193,24 +193,19 @@ class DQNConfig(AlgorithmConfig):
 
         # Replay buffer configuration.
         self.replay_buffer_config = {
-            "type": "MultiAgentPrioritizedReplayBuffer",
-            # Specify prioritized replay by supplying a buffer type that supports
-            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
-            "prioritized_replay": DEPRECATED_VALUE,
+            "type": "PrioritizedEpisodeReplayBuffer",
             # Size of the replay buffer. Note that if async_updates is set,
             # then each worker will have a replay buffer of this size.
             "capacity": 50000,
-            "prioritized_replay_alpha": 0.6,
+            "alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
-            "prioritized_replay_beta": 0.4,
-            # Epsilon to add to the TD errors when updating priorities.
-            "prioritized_replay_eps": 1e-6,
-            # The number of continuous environment steps to replay at once. This may
-            # be set to greater than 1 to support recurrent models.
-            "replay_sequence_length": 1,
-            # Whether to compute priorities on workers.
-            "worker_side_prioritization": False,
+            "beta": 0.4,
         }
+        # `.api_stack()`
+        self.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         # fmt: on
         # __sphinx_doc_end__
 
@@ -427,6 +422,18 @@ class DQNConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
+        # Disallow hybrid API stack for DQN/SAC.
+        if (
+            self.enable_rl_module_and_learner
+            and not self.enable_env_runner_and_connector_v2
+        ):
+            raise ValueError(
+                "Hybrid API stack (`enable_rl_module_and_learner=True` and "
+                "`enable_env_runner_and_connector_v2=False`) no longer supported for "
+                "SAC! Set both to True (recommended new API stack) or both to False "
+                "(old API stack)."
+            )
+
         if (
             not self.enable_rl_module_and_learner
             and self.exploration_config["type"] == "ParameterNoise"
@@ -637,10 +644,9 @@ class DQN(Algorithm):
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
         if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack(with_noise_reset=True)
-        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
-        # maybe Learner).
+        # Old API stack (Policy, RolloutWorker).
         else:
-            return self._training_step_old_and_hybrid_api_stack()
+            return self._training_step_old_api_stack()
 
     def _training_step_new_api_stack(self, *, with_noise_reset) -> ResultDict:
         # Alternate between storing and sampling and training.
@@ -797,8 +803,8 @@ class DQN(Algorithm):
 
         return self.metrics.reduce()
 
-    def _training_step_old_and_hybrid_api_stack(self) -> ResultDict:
-        """Training step for the old and hybrid training stacks.
+    def _training_step_old_api_stack(self) -> ResultDict:
+        """Training step for the old API stack.
 
         More specifically this training step relies on `RolloutWorker`.
         """
