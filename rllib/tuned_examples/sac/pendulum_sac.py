@@ -22,9 +22,9 @@ config = (
     .training(
         initial_alpha=1.001,
         # Use a smaller learning rate for the policy.
-        actor_lr=3e-5,
-        critic_lr=3e-4,
-        alpha_lr=1e-4,
+        actor_lr=3e-5 * (args.num_gpus or 1) ** 0.5,
+        critic_lr=3e-4 * (args.num_gpus or 1) ** 0.5,
+        alpha_lr=3e-4 * (args.num_gpus or 1) ** 0.5,
         lr=None,
         target_entropy="auto",
         n_step=(2, 5),
