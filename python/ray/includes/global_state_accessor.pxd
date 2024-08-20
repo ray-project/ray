@@ -129,7 +129,7 @@ cdef extern from * namespace "ray::gcs" nogil:
 
 cdef extern from * namespace "ray::gcs" nogil:
     c_bool RedisDelKeyPrefixSync(const c_string& host,
-                           c_int32_t port,
-                           const c_string& password,
-                           c_bool use_ssl,
-                           const c_string& key)
+                                 c_int32_t port,
+                                 const c_string& password,
+                                 c_bool use_ssl,
+                                 const c_string& key)
