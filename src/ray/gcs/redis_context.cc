@@ -436,7 +436,7 @@ void ValidateAndConnectRedisSentinel(RedisContext &context,
                           bool enable_ssl) {
   auto reply = context.RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
   if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
-    RAY_LOG(INFO) << "Failed to get Redis sentinel info, continue as a regular Redis.";
+    RAY_LOG(INFO) << "failed to get redis sentinel info, continue as a regular redis.";
     return;
   }
   std::vector<const char *> argv;
@@ -450,8 +450,8 @@ void ValidateAndConnectRedisSentinel(RedisContext &context,
   auto redis_reply = reinterpret_cast<redisReply *>(
       ::redisCommandArgv(context.sync_context(), cmds.size(), argv.data(), argc.data()));
 
-  RAY_CHECK(redis_reply && redis_reply->type == REDIS_REPLY_ARRAY) << "Failed to get Redis sentinel masters info";
-  RAY_CHECK(redis_reply->elements == 1) << "Expecting only one primary behind the Redis sentinel";
+  RAY_CHECK(redis_reply && redis_reply->type == REDIS_REPLY_ARRAY) << "failed to get redis sentinel masters info";
+  RAY_CHECK(redis_reply->elements == 1) << "expecting only one primary behind the redis sentinel";
   auto primary = redis_reply->element[0];
   std::string actual_ip, actual_port;
   for (size_t i = 0; i < primary->elements; i += 2) {
@@ -465,9 +465,9 @@ void ValidateAndConnectRedisSentinel(RedisContext &context,
   }
   freeReplyObject(redis_reply);
   if (actual_ip.empty() || actual_port.empty()) {
-    RAY_LOG(FATAL) << "Failed to get the ip and port of the master from Redis sentinel";
+    RAY_LOG(FATAL) << "failed to get the ip and port of the master from redis sentinel";
   } else {
-    RAY_LOG(INFO) << "Connecting to the Redis primary node behind sentinel: " << actual_ip << ":" << actual_port;
+    RAY_LOG(INFO) << "fonnecting to the redis primary node behind sentinel: " << actual_ip << ":" << actual_port;
     context.Disconnect();
     Status status = context.Connect(actual_ip, std::stoi(actual_port), password, enable_ssl);
     RAY_CHECK_OK(status);
