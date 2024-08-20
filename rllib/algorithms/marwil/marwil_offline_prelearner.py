@@ -3,7 +3,8 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.evaluation.postprocessing import Postprocessing
-from ray.rllib.offline.offline_data import OfflinePreLearner
+from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
+
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -80,11 +81,24 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
     @override(OfflinePreLearner)
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, MultiAgentBatch]:
 
-        # Map the batch to episodes.
-        episodes = self._map_to_episodes(self._is_multi_agent, batch, finalize=True)
+        # If we directly read in episodes we just convert to list.
+        if self.input_read_episodes:
+            episodes = batch["item"].tolist()
+        # Otherwise we ap the batch to episodes.
+        else:
+            # Map the batch to episodes.
+            episodes = self._map_to_episodes(
+                self._is_multi_agent,
+                batch,
+                schema=SCHEMA | self.config.input_read_schema,
+                finalize=True,
+                input_compress_columns=self.config.input_compress_columns,
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )["episodes"]
 
         # Compute the GAE via the Learner's method.
-        batch, episodes = self._compute_gae_from_episodes(episodes=episodes["episodes"])
+        batch, episodes = self._compute_gae_from_episodes(episodes=episodes)
 
         # Run the `Learner`'s connector pipeline.
         batch = self._learner_connector(

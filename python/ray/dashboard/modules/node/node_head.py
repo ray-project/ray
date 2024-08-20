@@ -180,7 +180,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             A dict of information about the nodes in the cluster.
         """
         try:
-            nodes = await self.get_all_node_info(timeout=5)
+            nodes = await self.get_all_node_info(timeout=GCS_RPC_TIMEOUT_SECONDS)
             return {
                 node_id.hex(): gcs_node_info_to_dict(node_info)
                 for node_id, node_info in nodes.items()

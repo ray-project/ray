@@ -1,3 +1,5 @@
+from torch import nn
+
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
@@ -5,6 +7,7 @@ parser = add_rllib_example_script_args(
     default_timesteps=20000,
     default_reward=-250.0,
 )
+parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
@@ -15,12 +18,12 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment(env="Pendulum-v1")
+    .environment("Pendulum-v1")
     .training(
         initial_alpha=1.001,
-        lr=3e-4,
+        lr=0.001 * (args.num_gpus or 1) ** 0.5,
         target_entropy="auto",
-        n_step=1,
+        n_step=(2, 5),
         tau=0.005,
         train_batch_size_per_learner=256,
         target_network_update_freq=1,
@@ -30,12 +33,13 @@ config = (
             "alpha": 1.0,
             "beta": 0.0,
         },
-        num_steps_sampled_before_learning_starts=256,
+        num_steps_sampled_before_learning_starts=256 * (args.num_gpus or 1),
     )
     .rl_module(
         model_config_dict={
             "fcnet_hiddens": [256, 256],
             "fcnet_activation": "relu",
+            "fcnet_weights_initializer": nn.init.xavier_uniform_,
             "post_fcnet_hiddens": [],
             "post_fcnet_activation": None,
             "post_fcnet_weights_initializer": "orthogonal_",
