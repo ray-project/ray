@@ -225,8 +225,12 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     add_to_response(dead_nodes_);
   } else if (filter_state == rpc::GcsNodeInfo::ALIVE) {
     add_to_response(alive_nodes_);
-  } else {
+  } else if (filter_state == rpc::GcsNodeInfo::DEAD) {
     add_to_response(dead_nodes_);
+  } else {
+    Status s = Status::InvalidArgument(
+        absl::StrCat("Unexpected filter: state = ", *filter_state));
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, s);
   }
   size_t total = alive_nodes_.size() + dead_nodes_.size();
   reply->set_total(total);

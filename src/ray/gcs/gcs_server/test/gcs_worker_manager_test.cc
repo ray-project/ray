@@ -130,24 +130,15 @@ TEST_F(GcsWorkerManagerTest, TestGetAllWorkersFilters) {
   auto worker_manager = GetWorkerManager();
   std::vector<rpc::WorkerTableData> workers;
 
-  auto worker_paused_threads = GenWorkerTableData(0);
+  auto worker_paused_threads = GenWorkerTableData(1);
   worker_paused_threads.set_num_paused_threads(1);
 
-  auto worker_non_driver = GenWorkerTableData(1);
-  worker_non_driver.set_worker_type(rpc::WorkerType::WORKER);
+  auto worker_normal = GenWorkerTableData(2);
 
-  auto worker_non_alive = GenWorkerTableData(2);
+  auto worker_non_alive = GenWorkerTableData(3);
   worker_non_alive.set_is_alive(false);
 
-  auto worker_non_driver_paused_threads = GenWorkerTableData(3);
-  worker_non_driver_paused_threads.set_worker_type(rpc::WorkerType::WORKER);
-  worker_non_driver_paused_threads.set_num_paused_threads(1);
-
-  for (const auto &worker : {worker_paused_threads,
-                             worker_paused_threads,
-                             worker_non_driver,
-                             worker_non_alive,
-                             worker_non_driver_paused_threads}) {
+  for (const auto &worker : {worker_paused_threads, worker_normal, worker_non_alive}) {
     rpc::AddWorkerInfoRequest request;
     request.mutable_worker_data()->CopyFrom(worker);
     rpc::AddWorkerInfoReply reply;
@@ -171,8 +162,8 @@ TEST_F(GcsWorkerManagerTest, TestGetAllWorkersFilters) {
     worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
     promise.get_future().get();
 
-    ASSERT_EQ(reply.worker_table_data().size(), 2);
-    ASSERT_EQ(reply.total(), 4);
+    ASSERT_EQ(reply.worker_table_data().size(), 1);
+    ASSERT_EQ(reply.total(), 3);
     ASSERT_EQ(reply.num_filtered(), 2);
   }
 
@@ -188,33 +179,15 @@ TEST_F(GcsWorkerManagerTest, TestGetAllWorkersFilters) {
     worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
     promise.get_future().get();
 
-    ASSERT_EQ(reply.worker_table_data().size(), 3);
-    ASSERT_EQ(reply.total(), 4);
+    ASSERT_EQ(reply.worker_table_data().size(), 2);
+    ASSERT_EQ(reply.total(), 3);
     ASSERT_EQ(reply.num_filtered(), 1);
   }
-
-  {
-    /// Filter: exclude_driver
-    rpc::GetAllWorkerInfoRequest request;
-    request.mutable_filters()->set_exclude_driver(true);
-    rpc::GetAllWorkerInfoReply reply;
-    std::promise<void> promise;
-    auto callback = [&promise](Status status,
-                               std::function<void()> success,
-                               std::function<void()> failure) { promise.set_value(); };
-    worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
-    promise.get_future().get();
-
-    ASSERT_EQ(reply.worker_table_data().size(), 2);
-    ASSERT_EQ(reply.total(), 4);
-    ASSERT_EQ(reply.num_filtered(), 2);
-  }
-
   {
     /// Filter: is_alive + limits
     rpc::GetAllWorkerInfoRequest request;
     request.mutable_filters()->set_is_alive(true);
-    request.set_limit(2);
+    request.set_limit(1);
     rpc::GetAllWorkerInfoReply reply;
     std::promise<void> promise;
     auto callback = [&promise](Status status,
@@ -223,9 +196,9 @@ TEST_F(GcsWorkerManagerTest, TestGetAllWorkersFilters) {
     worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
     promise.get_future().get();
 
-    ASSERT_EQ(reply.worker_table_data().size(), 2);
-    ASSERT_EQ(reply.total(), 4);
-    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.worker_table_data().size(), 1);
+    ASSERT_EQ(reply.total(), 3);
+    ASSERT_LE(reply.num_filtered(), 1);
   }
 }
 

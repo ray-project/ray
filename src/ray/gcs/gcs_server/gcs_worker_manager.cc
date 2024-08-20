@@ -157,17 +157,13 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
 
   bool filter_exist_paused_threads = request.filters().exist_paused_threads();
   bool filter_is_alive = request.filters().is_alive();
-  bool filter_exclude_driver = request.filters().exclude_driver();
 
-  auto filter_fn = [filter_exist_paused_threads, filter_is_alive, filter_exclude_driver](
-                       const WorkerTableData &worker_data) {
+  auto filter_fn = [filter_exist_paused_threads,
+                    filter_is_alive](const WorkerTableData &worker_data) {
     if (filter_exist_paused_threads && worker_data.num_paused_threads() == 0) {
       return false;
     }
     if (filter_is_alive && !worker_data.is_alive()) {
-      return false;
-    }
-    if (filter_exclude_driver && worker_data.worker_type() == rpc::WorkerType::DRIVER) {
       return false;
     }
     return true;

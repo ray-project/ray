@@ -375,7 +375,6 @@ class StateDataSourceClient:
         timeout: int = None,
         limit: int = None,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
-        exclude_driver: bool = False,
     ) -> Optional[GetAllWorkerInfoReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
@@ -399,7 +398,6 @@ class StateDataSourceClient:
                 continue
             else:
                 continue
-        req_filters.exclude_driver = True
 
         request = GetAllWorkerInfoRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
