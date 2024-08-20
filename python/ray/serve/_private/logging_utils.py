@@ -466,7 +466,15 @@ def configure_component_cpu_profiler(
 
 
 def get_serve_logs_dir() -> str:
-    """Get the directory that stores Serve log files."""
+    """Get the directory that stores Serve log files.
+
+    If `ray._private.worker._global_node` is None (running outside the context of Ray),
+    then the current working directory with subdirectory of serve is used as the logs
+    directory. Otherwise, the logs directory is determined by the global node's logs
+    directory path.
+    """
+    if ray._private.worker._global_node is None:
+        return os.path.join(os.getcwd(), "serve")
 
     return os.path.join(ray._private.worker._global_node.get_logs_dir_path(), "serve")
 
