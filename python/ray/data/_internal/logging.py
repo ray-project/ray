@@ -16,7 +16,7 @@ DEFAULT_JSON_CONFIG_PATH = os.path.abspath(
 )
 
 # Environment variable to specify the encoding of the log messages
-RAY_DATA_LOG_ENCODING = os.environ.get("RAY_DATA_LOG_ENCODING", "TEXT")
+RAY_DATA_LOG_ENCODING = os.environ.get("RAY_DATA_LOG_ENCODING")
 
 # Environment variable to specify the logging config path use defaults if not set
 RAY_DATA_LOGGING_CONFIG_PATH = os.environ.get("RAY_DATA_LOGGING_CONFIG_PATH")
