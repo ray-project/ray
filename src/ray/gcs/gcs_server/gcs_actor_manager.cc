@@ -472,10 +472,10 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
         RAY_CHECK(arena != nullptr);
         auto ptr = google::protobuf::Arena::Create<
             absl::flat_hash_map<ActorID, rpc::ActorTableData>>(arena, std::move(result));
-        auto count = 0;
-        auto num_filtered = 0;
+        size_t count = 0;
+        size_t num_filtered = 0;
         for (const auto &pair : *ptr) {
-          if (limit != -1 && count >= limit) {
+          if (count >= limit) {
             break;
           }
           // With filters, skip the actor if it doesn't match the filter.

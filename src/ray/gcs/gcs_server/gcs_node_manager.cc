@@ -209,7 +209,8 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
       -> size_t {
     size_t added = 0;
     for (const auto &entry : nodes) {
-      if (reply->node_info_list_size() >= limit) {
+      // It's a shame protobuf sizes are int, not size_t.
+      if (static_cast<size_t>(reply->node_info_list_size()) >= limit) {
         break;
       }
       if (filter_fn(*entry.second)) {
