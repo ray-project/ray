@@ -17,6 +17,7 @@
 #include <functional>
 #include <regex>
 #include <thread>
+#include <utility>
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
@@ -34,7 +35,7 @@ const std::string_view kClusterSeparator = "@";
 // escape them with / according to the doc:
 // https://redis.io/commands/keys/
 std::string EscapeMatchPattern(const std::string &s) {
-  static std::regex kSpecialChars("\\[|\\]|-|\\?|\\*|\\^|\\\\");
+  static std::regex kSpecialChars(R"(\[|\]|-|\?|\*|\^|\\)");
   return std::regex_replace(s, kSpecialChars, "\\$&");
 }
 
@@ -77,24 +78,28 @@ void RedisStoreClient::MGetValues(const std::string &table_name,
   auto key_value_map = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
 
   for (auto &command : batched_commands) {
+    // Each command is "HMGET <hash_field> <key1> <key2> ...".
+    // Get the keys from the command by skipping the first two elements (HMGET and hash)
     std::vector<std::string> partition_keys(command.begin() + 2, command.end());
-    auto mget_callback =
-        [finished_count, total_count, partition_keys, callback, key_value_map](
-            const std::shared_ptr<CallbackReply> &reply) {
-          if (!reply->IsNil()) {
-            auto value = reply->ReadAsStringArray();
-            for (size_t index = 0; index < value.size(); ++index) {
-              if (value[index].has_value()) {
-                (*key_value_map)[partition_keys[index]] = *(value[index]);
-              }
-            }
+    auto mget_callback = [finished_count,
+                          total_count,
+                          partition_keys,
+                          callback = std::move(callback),
+                          key_value_map](const std::shared_ptr<CallbackReply> &reply) {
+      if (!reply->IsNil()) {
+        auto value = reply->ReadAsStringArray();
+        for (size_t index = 0; index < value.size(); ++index) {
+          if (value[index].has_value()) {
+            (*key_value_map)[partition_keys[index]] = *(value[index]);
           }
+        }
+      }
 
-          ++(*finished_count);
-          if (*finished_count == total_count) {
-            callback(std::move(*key_value_map));
-          }
-        };
+      ++(*finished_count);
+      if (*finished_count == total_count) {
+        callback(std::move(*key_value_map));
+      }
+    };
     SendRedisCmd(std::move(partition_keys), std::move(command), std::move(mget_callback));
   }
 }
@@ -331,7 +336,8 @@ RedisStoreClient::RedisScanner::RedisScanner(std::shared_ptr<RedisClient> redis_
     : table_name_(table_name),
       match_pattern_(match_pattern),
       redis_client_(std::move(redis_client)) {
-  RAY_CHECK(!match_pattern.empty());
+  RAY_CHECK(!match_pattern.empty()) << "Match pattern should not be empty. Are you "
+                                       "calling AsyncGetKeys with an empty prefix?";
   cursor_ = 0;
   pending_request_count_ = 0;
 }
@@ -358,7 +364,8 @@ void RedisStoreClient::RedisScanner::Scan(const StatusCallback &callback) {
   size_t batch_count = RayConfig::instance().maximum_gcs_storage_operation_batch_size();
   ++pending_request_count_;
 
-  auto scan_callback = [this, callback](const std::shared_ptr<CallbackReply> &reply) {
+  auto scan_callback = [this, callback = std::move(callback)](
+                           const std::shared_ptr<CallbackReply> &reply) {
     OnScanCallback(reply, callback);
   };
   // Scan by prefix from Redis.
@@ -451,13 +458,14 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
 
 class Cleanup {
  public:
-  Cleanup(std::function<void()> f) : f_(f) {}
+  explicit Cleanup(std::function<void()> f) : f_(std::move(f)) {}
   ~Cleanup() { f_(); }
 
  private:
   std::function<void()> f_;
 };
 
+// Returns True if at least 1 key is deleted, False otherwise.
 bool RedisDelKeyPrefixSync(const std::string &host,
                            int32_t port,
                            const std::string &password,
@@ -484,7 +492,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   auto context = cli->GetPrimaryContext();
   auto cmd = std::vector<std::string>{"KEYS", GenRedisKeyPrefixMatchPattern(key_prefix)};
   auto reply = context->RunArgvSync(cmd);
-  const auto keys = reply->ReadAsStringArray();
+  const auto &keys = reply->ReadAsStringArray();
   if (keys.empty()) {
     RAY_LOG(INFO) << "No keys found for prefix " << key_prefix;
     return true;
