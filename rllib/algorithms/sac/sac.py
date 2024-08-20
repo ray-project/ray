@@ -47,6 +47,7 @@ class SACConfig(AlgorithmConfig):
         # fmt: off
         # __sphinx_doc_begin__
         # SAC-specific config settings.
+        # `.training()`
         self.twin_q = True
         self.q_model_config = {
             "fcnet_hiddens": [256, 256],
@@ -70,16 +71,18 @@ class SACConfig(AlgorithmConfig):
         self.target_entropy = "auto"
         self.n_step = 1
         self.replay_buffer_config = {
-            "_enable_replay_buffer_api": True,
-            "type": "MultiAgentPrioritizedReplayBuffer",
+            #"_enable_replay_buffer_api": True,
+            "type": "PrioritizedEpisodeReplayBuffer",
             "capacity": int(1e6),
             # If True prioritized replay buffer will be used.
-            "prioritized_replay": False,
-            "prioritized_replay_alpha": 0.6,
-            "prioritized_replay_beta": 0.4,
-            "prioritized_replay_eps": 1e-6,
+            #"prioritized_replay": False,
+            #"prioritized_replay_alpha": 0.6,
+            "alpha": 0.6,
+            #"prioritized_replay_beta": 0.4,
+            "beta": 0.4,
+            #"prioritized_replay_eps": 1e-6,
             # Whether to compute priorities already on the remote worker side.
-            "worker_side_prioritization": False,
+            #"worker_side_prioritization": False,
         }
         self.store_buffer_in_checkpoints = False
         self.training_intensity = None
@@ -88,13 +91,11 @@ class SACConfig(AlgorithmConfig):
             "critic_learning_rate": 3e-4,
             "entropy_learning_rate": 3e-4,
         }
-        self.grad_clip = None
         self.target_network_update_freq = 0
 
         # .env_runners()
         # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
-        self.compress_observations = False
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -104,8 +105,6 @@ class SACConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
-
-        # .training()
         self.train_batch_size_per_learner = 256
         self.train_batch_size = 256  # @OldAPIstack
         # Number of timesteps to collect from rollout workers before we start
@@ -116,6 +115,12 @@ class SACConfig(AlgorithmConfig):
         # .reporting()
         self.min_time_s_per_iteration = 1
         self.min_sample_timesteps_per_iteration = 100
+
+        # `.api_stack()`
+        self.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         # __sphinx_doc_end__
         # fmt: on
 
@@ -313,6 +318,18 @@ class SACConfig(AlgorithmConfig):
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
+
+        # Disallow hybrid API stack for SAC.
+        if (
+            self.enable_rl_module_and_learner
+            and not self.enable_env_runner_and_connector_v2
+        ):
+            raise ValueError(
+                "Hybrid API stack (`enable_rl_module_and_learner=True` and "
+                "`enable_env_runner_and_connector_v2=False`) no longer supported for "
+                "SAC! Set both to True (recommended new API stack) or both to False "
+                "(old API stack)."
+            )
 
         # Check rollout_fragment_length to be compatible with n_step.
         if isinstance(self.n_step, tuple):

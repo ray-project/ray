@@ -793,17 +793,6 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
 )
 
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_sac_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/cartpole-sac.yaml"],
-    args = ["--dir=tuned_examples/sac"]
-)
-
 # --------------------------------------------------------------------
 # Algorithms (Compilation, Losses, simple functionality tests)
 # rllib/algorithms/
@@ -1099,14 +1088,6 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["algorithms/sac/tests/test_sac.py"]
-)
-
-# RNNSAC
-py_test(
-    name = "test_rnnsac",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "small",
-    srcs = ["algorithms/sac/tests/test_rnnsac.py"]
 )
 
 # --------------------------------------------------------------------
