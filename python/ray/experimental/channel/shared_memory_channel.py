@@ -474,10 +474,16 @@ class Channel(ChannelInterface):
         Close this channel by setting the error bit on both the writer_ref and the
         reader_ref.
         """
-        self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
-        if self.is_local_node(self._reader_node_id):
-            self.ensure_registered_as_reader()
-        self._worker.core_worker.experimental_channel_set_error(self._reader_ref)
+        try:
+            if hasattr(self._worker, 'core_worker'):
+                self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
+                if self.is_local_node(self._reader_node_id):
+                    self.ensure_registered_as_reader()
+                self._worker.core_worker.experimental_channel_set_error(self._reader_ref)
+            else:
+                logger.warning("Worker's core_worker is not available during channel close.")
+        except AttributeError:
+            logger.warning("AttributeError occurred while closing channel. Worker may be shutting down.")
 
 
 @PublicAPI(stability="alpha")
