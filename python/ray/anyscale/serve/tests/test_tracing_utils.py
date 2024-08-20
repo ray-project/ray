@@ -34,6 +34,9 @@ from ray.tests.conftest import *  # noqa
 try:
     from opentelemetry import trace
     from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
+    from opentelemetry.trace.propagation.tracecontext import (
+        TraceContextTextMapPropagator,
+    )
 except ImportError:
     raise ModuleNotFoundError(
         "`opentelemetry` or `opentelemetry.sdk.trace.export` not found"
@@ -293,19 +296,31 @@ def test_extract_value_from_method_args():
 
 
 @pytest.mark.parametrize(
-    ("serve_application", "expected_proxy_spans_path", "expected_replica_spans_path"),
+    (
+        "serve_application",
+        "expected_proxy_spans_path",
+        "expected_replica_spans_path",
+        "expected_upstream_spans_path",
+    ),
     [
         (
             "basic",
             "fixtures/basic_proxy_spans.json",
             "fixtures/basic_replica_spans.json",
+            "fixtures/basic_upstream_spans.json",
         ),
         (
             "streaming",
             "fixtures/streaming_proxy_spans.json",
             "fixtures/streaming_replica_spans.json",
+            "fixtures/streaming_upstream_spans.json",
         ),
-        ("grpc", "fixtures/grpc_proxy_spans.json", "fixtures/grpc_replica_spans.json"),
+        (
+            "grpc",
+            "fixtures/grpc_proxy_spans.json",
+            "fixtures/grpc_replica_spans.json",
+            "fixtures/grpc_upstream_spans.json",
+        ),
     ],
 )
 def test_tracing_e2e(
@@ -313,6 +328,7 @@ def test_tracing_e2e(
     serve_application,
     expected_proxy_spans_path,
     expected_replica_spans_path,
+    expected_upstream_spans_path,
 ):
     """Test tracing e2e."""
 
@@ -366,18 +382,38 @@ def test_tracing_e2e(
 
     if serve_application == "basic":
         serve.run(BasicModel.bind())
-        r = requests.post("http://127.0.0.1:8000/")
-        assert r.text == "hello"
+
+        setup_tracing(
+            component_name="upstream_app",
+            component_id="345",
+        )
+        tracer = trace.get_tracer("test_tracing")
+        with tracer.start_as_current_span("upstream_app"):
+            ctx = get_trace_context()
+            headers = {}
+            TraceContextTextMapPropagator().inject(headers, ctx)
+            r = requests.post("http://127.0.0.1:8000/", headers=headers)
+            assert r.text == "hello"
 
     elif serve_application == "streaming":
         serve.run(StreamingModel.bind())
-        r = requests.get("http://localhost:8000", stream=True)
-        r.raise_for_status()
-        for i, chunk in enumerate(r.iter_content(chunk_size=None, decode_unicode=True)):
-            assert chunk == f"hello_{i}"
+        setup_tracing(
+            component_name="upstream_app",
+            component_id="345",
+        )
+        tracer = trace.get_tracer("test_tracing")
+        with tracer.start_as_current_span("upstream_app"):
+            ctx = get_trace_context()
+            headers = {}
+            TraceContextTextMapPropagator().inject(headers, ctx)
+            r = requests.get("http://localhost:8000", stream=True, headers=headers)
+            r.raise_for_status()
+            for i, chunk in enumerate(
+                r.iter_content(chunk_size=None, decode_unicode=True)
+            ):
+                assert chunk == f"hello_{i}"
 
     elif serve_application == "grpc":
-
         grpc_port = 9000
         grpc_servicer_functions = [
             "ray.serve.generated.serve_pb2_grpc"
@@ -394,14 +430,25 @@ def test_tracing_e2e(
         g = GrpcDeployment.options(name="grpc-deployment").bind()
         serve.run(g)
 
-        channel = grpc.insecure_channel("localhost:9000")
+        setup_tracing(
+            component_name="upstream_app",
+            component_id="345",
+        )
+        tracer = trace.get_tracer("test_tracing")
+        with tracer.start_as_current_span("upstream_app"):
+            ctx = get_trace_context()
+            headers = {}
+            TraceContextTextMapPropagator().inject(headers, ctx)
+            metadata = tuple(headers.items())
 
-        stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
-        request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
-        response, call = stub.__call__.with_call(request=request)
+            channel = grpc.insecure_channel("localhost:9000")
 
-        assert call.code() == grpc.StatusCode.OK, call.code()
-        assert response.greeting == "Hello foo from bar", response.greeting
+            stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+            request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+            response, call = stub.__call__.with_call(request=request, metadata=metadata)
+
+            assert call.code() == grpc.StatusCode.OK, call.code()
+            assert response.greeting == "Hello foo from bar", response.greeting
 
     serve.shutdown()
 
@@ -410,32 +457,39 @@ def test_tracing_e2e(
 
     files = os.listdir(spans_dir)
 
-    assert len(files) == 2
+    assert len(files) == 3
 
     replica_filename = None
     proxy_filename = None
+    upstream_filename = None
     for file in files:
         if "replica" in file:
             replica_filename = file
         elif "proxy" in file:
             proxy_filename = file
+        elif "upstream" in file:
+            upstream_filename = file
         else:
             assert False, f"Did not expect tracing file with name {file}"
 
-    assert replica_filename and proxy_filename
+    assert replica_filename and proxy_filename and upstream_filename
 
+    upstream_spans = load_spans(os.path.join(spans_dir, upstream_filename))
     proxy_spans = load_spans(os.path.join(spans_dir, proxy_filename))
     replica_spans = load_spans(os.path.join(spans_dir, replica_filename))
 
-    entire_trace = replica_spans + proxy_spans
+    entire_trace = replica_spans + proxy_spans + upstream_spans
     validate_span_associations_in_trace(entire_trace)
 
+    expected_upstream_spans = load_json_fixture(expected_upstream_spans_path)
     expected_proxy_spans = load_json_fixture(expected_proxy_spans_path)
     expected_replica_spans = load_json_fixture(expected_replica_spans_path)
 
+    sanitize_spans(upstream_spans)
     sanitize_spans(proxy_spans)
     sanitize_spans(replica_spans)
 
+    assert upstream_spans == expected_upstream_spans
     assert proxy_spans == expected_proxy_spans
     assert replica_spans == expected_replica_spans
 
@@ -505,21 +559,33 @@ def validate_span_associations_in_trace(spans):
     """
     if len(spans) <= 1:
         return
-    parent_span_id = spans[0]["parent_id"]
 
-    for span in spans[1:]:
-        current_span_id = span["context"]["span_id"]
+    class Span:
+        def __init__(self, _span_id: str, _parent_id: str, _name: str):
+            self.span_id = _span_id
+            self.parent_id = _parent_id
+            self.name = _name
 
-        if parent_span_id[:2] == "0x":
-            parent_span_id = parent_span_id[2:]
+    span_nodes = {}
+    starting_span = None
+    for span in spans:
+        span_id = span["context"]["span_id"].lstrip("0x")
+        parent_id = span["parent_id"].lstrip("0x") if span["parent_id"] else None
+        name = span["name"]
+        new_span = Span(span_id, parent_id, name)
+        span_nodes[span_id] = new_span
+        # The starting span is always the application span.
+        if name == "application_span":
+            assert starting_span is None, "Multiple starting spans found in trace"
+            starting_span = new_span
 
-        if current_span_id[:2] == "0x":
-            current_span_id = current_span_id[2:]
+    current_span = starting_span
+    span_nodes.pop(current_span.span_id)
+    while current_span:
+        current_span = span_nodes.pop(current_span.parent_id, None)
 
-        assert current_span_id and parent_span_id
-        assert current_span_id == parent_span_id
-
-        parent_span_id = span["parent_id"]
+    # All spans should have been visited.
+    assert not span_nodes
 
 
 if __name__ == "__main__":

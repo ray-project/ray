@@ -11,12 +11,10 @@ from ray.anyscale.serve._private.constants import (
     ANYSCALE_TRACING_SAMPLING_RATIO,
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
 )
-from ray.serve._private.common import ServeComponentType
-from ray.serve._private.logging_utils import get_serve_logs_dir
-from ray.serve._private.utils import get_component_file_name
 
 try:
     from opentelemetry import trace
+    from opentelemetry.context import attach, get_current
     from opentelemetry.sdk.trace import SpanProcessor, TracerProvider
     from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
     from opentelemetry.sdk.trace.sampling import TraceIdRatioBased
@@ -39,16 +37,17 @@ except ImportError:
     StatusCode = None
     set_span_in_context = None
     TraceContextTextMapPropagator = None
+    get_current = None
+    attach = None
 
 TRACE_STACK: ContextVar[List[Any]] = ContextVar("trace_stack", default=[])
-CURRENT_TRACE_CONTEXT: ContextVar[Dict[str, Any]] = ContextVar(
-    "current_trace_context", default=None
-)
 
 
 # Default tracing exporter needs to map to DEFAULT_TRACING_EXPORTER_IMPORT_PATH
 # defined in "python/ray/anyscale/serve/_private/constants.py"
 def default_tracing_exporter(tracing_file_name):
+    from ray.serve._private.logging_utils import get_serve_logs_dir
+
     serve_logs_dir = get_serve_logs_dir()
     spans_dir = os.path.join(serve_logs_dir, "spans")
     os.makedirs(spans_dir, exist_ok=True)
@@ -66,9 +65,7 @@ class TraceContextManager:
         self.span_kind = span_kind
         self.trace_context = trace_context
 
-        self.is_tracing_enabled = bool(
-            trace and trace.get_tracer_provider() is not None
-        )
+        self.is_tracing_enabled = is_tracing_enabled()
 
     def __enter__(self):
         if self.is_tracing_enabled:
@@ -198,7 +195,7 @@ def tracing_decorator_factory(
 def setup_tracing(
     component_name: str,
     component_id: str,
-    component_type: Optional[ServeComponentType] = None,
+    component_type: Optional["ServeComponentType"] = None,  # noqa: F821
     tracing_exporter_import_path: Optional[str] = ANYSCALE_TRACING_EXPORTER_IMPORT_PATH,
     tracing_sampling_ratio: Optional[float] = ANYSCALE_TRACING_SAMPLING_RATIO,
 ) -> bool:
@@ -224,6 +221,8 @@ def setup_tracing(
             "`pip install opentelemetry-sdk` "
             "to enable tracing on Ray Serve."
         )
+
+    from ray.serve._private.utils import get_component_file_name
 
     tracing_file_name = get_component_file_name(
         component_name=component_name,
@@ -281,13 +280,19 @@ def extract_propagated_context(
 
 def set_trace_context(trace_context: Dict[str, str]):
     """Set the current trace context."""
-    CURRENT_TRACE_CONTEXT.set(trace_context)
+    if attach is None:
+        return
+
+    attach(trace_context)
 
 
 def get_trace_context() -> Optional[Dict[str, str]]:
     """Retrieve the current trace context."""
-    trace_context = CURRENT_TRACE_CONTEXT.get()
-    return trace_context if trace_context else None
+    if get_current is None:
+        return None
+
+    context = get_current()
+    return context if context else None
 
 
 def set_span_attributes(attributes):
@@ -308,6 +313,10 @@ def set_trace_status(is_ok: bool, status_message: str = ""):
             trace_stack[-1].set_status(
                 Status(status_code=status_code, description=status_message)
             )
+
+
+def is_tracing_enabled() -> bool:
+    return bool(trace and trace.get_tracer_provider() is not None)
 
 
 def _append_trace_stack(span):

@@ -376,6 +376,7 @@ class GenericProxy(ABC):
         if proxy_request.is_health_request or proxy_request.is_route_request:
             return self._get_health_or_routes_reponse(proxy_request)
 
+        proxy_request.populate_tracing_context()
         matched_route = None
         if self.protocol == RequestProtocol.HTTP:
             matched_route = self.proxy_router.match_route(proxy_request.route_path)
