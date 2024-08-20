@@ -431,7 +431,9 @@ class PhysicalOperator(Operator):
         executor to display the number of currently running CPUs and GPUs in the
         progress bar.
         """
-        return ExecutionResources(0, 0, 0)
+        usage = self.current_processor_usage()
+        usage = usage.subtract(self.pending_processor_usage())
+        return usage
 
     def pending_processor_usage(self) -> ExecutionResources:
         """Returns the estimated pending CPU and GPU usage of this operator, excluding

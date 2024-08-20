@@ -297,11 +297,6 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
         )
 
-    def running_processor_usage(self) -> ExecutionResources:
-        usage = self.current_processor_usage()
-        usage = usage.subtract(self.pending_processor_usage())
-        return usage
-
     def pending_processor_usage(self) -> ExecutionResources:
         num_pending_workers = self._actor_pool.num_pending_actors()
         return ExecutionResources(
