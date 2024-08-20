@@ -9,6 +9,7 @@ from ray import serve
 from ray._private.test_utils import SignalActor, async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.constants import RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
+from ray.serve.exceptions import RayServeException
 from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
@@ -203,6 +204,24 @@ def test_compose_args_and_kwargs(serve_instance):
         },
         "z": "z",
     }
+
+
+def test_nested_deployment_response_error(serve_instance):
+    """Test that passing a deployment response in a nested object to a downstream
+    handle call errors, and with an informative error message."""
+
+    @serve.deployment
+    class Deployment:
+        def __call__(self, inp: str):
+            return inp
+
+    handle1 = serve.run(Deployment.bind(), name="app1", route_prefix="/app1")
+    handle2 = serve.run(Deployment.bind(), name="app2", route_prefix="/app2")
+
+    with pytest.raises(
+        RayServeException, match="`DeploymentResponse` is not serializable"
+    ):
+        handle1.remote([handle2.remote("hi")]).result()
 
 
 def test_convert_to_object_ref(serve_instance):
