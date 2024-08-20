@@ -203,34 +203,34 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     return true;
   };
   size_t num_added = 0;
+  size_t num_filtered = 0;
   auto add_to_response =
-      [limit, reply, filter_fn](
-          const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes)
-      -> size_t {
-    size_t added = 0;
-    for (const auto &entry : nodes) {
-      // It's a shame protobuf sizes are int, not size_t.
-      if (static_cast<size_t>(reply->node_info_list_size()) >= limit) {
-        break;
-      }
-      if (filter_fn(*entry.second)) {
-        *reply->add_node_info_list() = *entry.second;
-        added += 1;
-      }
-    }
-    return added;
-  };
+      [limit, reply, filter_fn, &num_added, &num_filtered](
+          const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
+        for (const auto &entry : nodes) {
+          // It's a shame protobuf sizes are int, not size_t.
+          if (static_cast<size_t>(reply->node_info_list_size()) >= limit) {
+            break;
+          }
+          if (filter_fn(*entry.second)) {
+            *reply->add_node_info_list() = *entry.second;
+            num_added += 1;
+          } else {
+            num_filtered += 1;
+          }
+        }
+      };
   if (filter_state == std::nullopt) {
-    num_added += add_to_response(alive_nodes_);
-    num_added += add_to_response(dead_nodes_);
+    add_to_response(alive_nodes_);
+    add_to_response(dead_nodes_);
   } else if (filter_state == rpc::GcsNodeInfo::ALIVE) {
-    num_added += add_to_response(alive_nodes_);
+    add_to_response(alive_nodes_);
   } else {
-    num_added += add_to_response(dead_nodes_);
+    add_to_response(dead_nodes_);
   }
   size_t total = alive_nodes_.size() + dead_nodes_.size();
   reply->set_total(total);
-  reply->set_num_filtered(total - num_added);
+  reply->set_num_filtered(num_filtered);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }

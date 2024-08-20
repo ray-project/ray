@@ -353,7 +353,11 @@ class StateAPIManager:
             worker_data_in_dict's schema is in WorkerState
         """
         try:
-            reply = await self._client.get_all_worker_info(timeout=option.timeout)
+            reply = await self._client.get_all_worker_info(
+                timeout=option.timeout,
+                filters=option.filters,
+                exclude_driver=option.exclude_driver,
+            )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
@@ -371,7 +375,7 @@ class StateAPIManager:
             data["worker_launched_time_ms"] = int(data["worker_launched_time_ms"])
             result.append(data)
 
-        num_after_truncation = len(result)
+        num_after_truncation = len(result) + reply.num_filtered
         result = self._filter(result, option.filters, WorkerState, option.detail)
         num_filtered = len(result)
         # Sort to make the output deterministic.

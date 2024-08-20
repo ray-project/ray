@@ -348,7 +348,6 @@ class StateDataSourceClient:
 
         req_filters = GetAllNodeInfoRequest.Filters()
         for filter in filters:
-            logger.error(f"Filter: {filter}")
             key, predicate, value = filter
             if predicate != "=":
                 # We only support EQUAL predicate for source side filtering.
@@ -372,12 +371,37 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_worker_info(
-        self, timeout: int = None, limit: int = None
+        self,
+        timeout: int = None,
+        limit: int = None,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+        exclude_driver: bool = False,
     ) -> Optional[GetAllWorkerInfoReply]:
         if not limit:
             limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
-        request = GetAllWorkerInfoRequest(limit=limit)
+        if filters is None:
+            filters = []
+
+        req_filters = GetAllWorkerInfoRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            # Special treatments for the Ray Debugger.
+            if (
+                key == "num_paused_threads"
+                and predicate in ("!=", ">")
+                and value == "0"
+            ):
+                req_filters.exist_paused_threads = True
+                continue
+            if key == "is_alive" and predicate == "=" and value == "True":
+                req_filters.is_alive = True
+                continue
+            else:
+                continue
+        req_filters.exclude_driver = True
+
+        request = GetAllWorkerInfoRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
             request, timeout=timeout
         )
