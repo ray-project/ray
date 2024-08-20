@@ -57,6 +57,7 @@ from ray.util.state.common import (
     SupportedFilterType,
 )
 from ray.util.state.exception import DataSourceUnavailable
+from ray.util.state.util import convert_string_to_type
 
 logger = logging.getLogger(__name__)
 
@@ -393,7 +394,11 @@ class StateDataSourceClient:
             ):
                 req_filters.exist_paused_threads = True
                 continue
-            if key == "is_alive" and predicate == "=" and value == "True":
+            if (
+                key == "is_alive"
+                and predicate == "="
+                and convert_string_to_type(value, bool)
+            ):
                 req_filters.is_alive = True
                 continue
             else:
