@@ -442,6 +442,12 @@ class Router:
         """
         from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 
+        generator_not_supported_message = (
+            "Streaming deployment handle results cannot be passed to "
+            "downstream handle calls. If you have a use case requiring "
+            "this feature, please file a feature request on GitHub."
+        )
+
         new_args = [None for _ in range(len(request_args))]
         new_kwargs = {}
 
@@ -449,11 +455,7 @@ class Router:
         response_indices = []
         for i, obj in enumerate(request_args):
             if isinstance(obj, DeploymentResponseGenerator):
-                raise RuntimeError(
-                    "Streaming deployment handle results cannot be passed to "
-                    "downstream handle calls. If you have a use case requiring "
-                    "this feature, please file a feature request on GitHub."
-                )
+                raise RuntimeError(generator_not_supported_message)
             elif isinstance(obj, DeploymentResponse):
                 # Launch async task to convert DeploymentResponse to an object ref, and
                 # keep track of the argument index in the original `request_args`
@@ -466,11 +468,7 @@ class Router:
         response_keys = []
         for k, obj in request_kwargs.items():
             if isinstance(obj, DeploymentResponseGenerator):
-                raise RuntimeError(
-                    "Streaming deployment handle results cannot be passed to "
-                    "downstream handle calls. If you have a use case requiring "
-                    "this feature, please file a feature request on GitHub."
-                )
+                raise RuntimeError(generator_not_supported_message)
             elif isinstance(obj, DeploymentResponse):
                 # Launch async task to convert DeploymentResponse to an object ref, and
                 # keep track of the corresponding key in the original `request_kwargs`
