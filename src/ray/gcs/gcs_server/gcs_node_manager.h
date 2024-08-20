@@ -32,6 +32,7 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "ray/util/event.h"
 
 namespace ray {
 namespace gcs {
@@ -51,7 +52,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                           std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
                           const ClusterID &cluster_id);
-
+  
   /// Handle register rpc request come from raylet.
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
                           rpc::GetClusterIdReply *reply,
@@ -183,6 +184,40 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// from alive nodes yet.
   /// \return The inferred death info of the node.
   rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
+
+  void WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const;
+
+  rpc::ExportNodeData::GcsNodeState ConvertGCSNodeStateToExport(rpc::GcsNodeInfo::GcsNodeState node_state) const {
+    switch (node_state) {
+        case rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE:
+            return rpc::ExportNodeData_GcsNodeState::ExportNodeData_GcsNodeState_ALIVE;
+        case rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD:
+            return rpc::ExportNodeData_GcsNodeState::ExportNodeData_GcsNodeState_DEAD;
+        default:
+            // Unknown rpc::GcsNodeInfo::GcsNodeState value
+            RAY_LOG(FATAL) << "Invalid value for rpc::GcsNodeInfo::GcsNodeState " << rpc::GcsNodeInfo::GcsNodeState_Name(node_state);
+            return rpc::ExportNodeData_GcsNodeState::ExportNodeData_GcsNodeState_DEAD;
+    }
+  }
+
+  rpc::ExportNodeData::NodeDeathInfo::Reason ConvertNodeDeathReasonToExport(rpc::NodeDeathInfo::Reason reason) const {
+    switch (reason) {
+        case rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNSPECIFIED:
+            return rpc::ExportNodeData_NodeDeathInfo_Reason::ExportNodeData_NodeDeathInfo_Reason_UNSPECIFIED;
+        case rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_EXPECTED_TERMINATION:
+            return rpc::ExportNodeData_NodeDeathInfo_Reason::ExportNodeData_NodeDeathInfo_Reason_EXPECTED_TERMINATION;
+        case rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNEXPECTED_TERMINATION:
+            return rpc::ExportNodeData_NodeDeathInfo_Reason::ExportNodeData_NodeDeathInfo_Reason_UNEXPECTED_TERMINATION;
+        case rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_AUTOSCALER_DRAIN_PREEMPTED:
+            return rpc::ExportNodeData_NodeDeathInfo_Reason::ExportNodeData_NodeDeathInfo_Reason_AUTOSCALER_DRAIN_PREEMPTED;
+        case rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_AUTOSCALER_DRAIN_IDLE:
+            return rpc::ExportNodeData_NodeDeathInfo_Reason::ExportNodeData_NodeDeathInfo_Reason_AUTOSCALER_DRAIN_IDLE;
+        default:
+            // Unknown rpc::GcsNodeInfo::GcsNodeState value
+            RAY_LOG(FATAL) << "Invalid value for rpc::NodeDeathInfo::Reason " << rpc::NodeDeathInfo::Reason_Name(reason);
+            return rpc::ExportNodeData_NodeDeathInfo_Reason::ExportNodeData_NodeDeathInfo_Reason_UNSPECIFIED;
+    }
+  }
 
   /// Alive nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
