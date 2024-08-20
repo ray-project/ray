@@ -200,6 +200,12 @@ class _DeploymentHandleBase:
             }
         )
 
+    def running_replicas_populated(self) -> bool:
+        if self._router is None:
+            return False
+
+        return self._router.running_replicas_populated
+
     @property
     def deployment_name(self) -> str:
         return self.deployment_id.name
