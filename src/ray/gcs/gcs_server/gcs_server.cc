@@ -71,7 +71,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       is_stopped_(false) {
   // Init GCS table storage.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
-  RAY_LOG(INFO) << "testing my code: GcsServer()";
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
     gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
@@ -562,7 +561,6 @@ void GcsServer::InitUsageStatsClient() {
 void GcsServer::InitKVManager() {
   // TODO (yic): Use a factory with configs
   std::unique_ptr<InternalKVInterface> instance;
-  RAY_LOG(INFO) << "testing my code: InitKVManager";
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
     instance = std::make_unique<StoreClientInternalKV>(
