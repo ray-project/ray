@@ -97,7 +97,8 @@ def test_get_app_and_deployment_handle(serve_instance):
     assert handle.remote().result() == "hello"
 
 
-def test_compose_deployments_in_app(serve_instance):
+@pytest.mark.parametrize("arg_type", ["args", "kwargs"])
+def test_compose_deployments_in_app(serve_instance, arg_type: str):
     """Test composing deployment handle refs within a deployment."""
 
     @serve.deployment
@@ -115,7 +116,10 @@ def test_compose_deployments_in_app(serve_instance):
             self._handle2 = handle2
 
         async def __call__(self):
-            result = await self._handle1.remote(self._handle2.remote("hi"))
+            if arg_type == "args":
+                result = await self._handle1.remote(self._handle2.remote("hi"))
+            else:
+                result = await self._handle1.remote(inp=self._handle2.remote(inp="hi"))
             return f"driver|{result}"
 
     handle = serve.run(
@@ -127,7 +131,8 @@ def test_compose_deployments_in_app(serve_instance):
     assert handle.remote().result() == "driver|downstream1|downstream2|hi"
 
 
-def test_compose_apps(serve_instance):
+@pytest.mark.parametrize("arg_type", ["args", "kwargs"])
+def test_compose_apps(serve_instance, arg_type):
     """Test composing deployment handle refs outside of a deployment."""
 
     @serve.deployment
@@ -141,7 +146,63 @@ def test_compose_apps(serve_instance):
     handle1 = serve.run(Deployment.bind("app1"), name="app1", route_prefix="/app1")
     handle2 = serve.run(Deployment.bind("app2"), name="app2", route_prefix="/app2")
 
-    assert handle1.remote(handle2.remote("hi")).result() == "app1|app2|hi"
+    if arg_type == "args":
+        assert handle1.remote(handle2.remote("hi")).result() == "app1|app2|hi"
+    else:
+        assert handle1.remote(inp=handle2.remote(inp="hi")).result() == "app1|app2|hi"
+
+
+def test_compose_args_and_kwargs(serve_instance):
+    """Test composing deployment handle refs outside of a deployment."""
+
+    @serve.deployment
+    class Downstream:
+        def __init__(self, msg: str):
+            self._msg = msg
+
+        def __call__(self, *args, **kwargs):
+            return {"args": args, "kwargs": kwargs}
+
+    @serve.deployment
+    class Deployment:
+        def __init__(self, handle1: DeploymentHandle, handle2: DeploymentHandle):
+            self._handle1 = handle1
+            self._handle2 = handle2
+
+        async def __call__(self):
+            return await self._handle1.remote(
+                "0",
+                "100",
+                self._handle2.remote("1", "2", a="a", b="b"),
+                x="x",
+                y=self._handle2.remote("3", "4", c="c", d="d"),
+                z="z",
+            )
+
+    handle = serve.run(
+        Deployment.bind(
+            Downstream.bind("downstream1"),
+            Downstream.bind("downstream2"),
+        ),
+    )
+
+    result = handle.remote().result()
+    assert result["args"] == (
+        "0",
+        "100",
+        {
+            "args": ("1", "2"),
+            "kwargs": {"a": "a", "b": "b"},
+        },
+    )
+    assert result["kwargs"] == {
+        "x": "x",
+        "y": {
+            "args": ("3", "4"),
+            "kwargs": {"c": "c", "d": "d"},
+        },
+        "z": "z",
+    }
 
 
 def test_convert_to_object_ref(serve_instance):

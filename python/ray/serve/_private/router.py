@@ -444,7 +444,7 @@ class Router:
         """
         from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 
-        new_args = []
+        new_args = [None for _ in range(len(request_args))]
         new_kwargs = {}
 
         arg_tasks = []
@@ -457,6 +457,8 @@ class Router:
                     "this feature, please file a feature request on GitHub."
                 )
             elif isinstance(obj, DeploymentResponse):
+                # Launch async task to convert DeploymentResponse to an object ref, and
+                # keep track of the argument index in the original `request_args`
                 response_indices.append(i)
                 arg_tasks.append(asyncio.create_task(obj._to_object_ref()))
             else:
@@ -472,7 +474,8 @@ class Router:
                     "this feature, please file a feature request on GitHub."
                 )
             elif isinstance(obj, DeploymentResponse):
-                # responses[k] = obj
+                # Launch async task to convert DeploymentResponse to an object ref, and
+                # keep track of the corresponding key in the original `request_kwargs`
                 response_keys.append(k)
                 kwarg_tasks.append(asyncio.create_task(obj._to_object_ref()))
             else:
