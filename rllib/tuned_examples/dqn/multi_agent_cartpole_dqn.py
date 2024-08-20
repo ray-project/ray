@@ -42,7 +42,7 @@ config = (
         model_config_dict={
             "fcnet_hiddens": [256],
             "fcnet_activation": "tanh",
-            "epsilon": [(0, 1.0), (10000, 0.02)],
+            "epsilon": [(0, 1.0), (20000, 0.02)],
             "fcnet_bias_initializer": "zeros_",
             "post_fcnet_bias_initializer": "zeros_",
             "post_fcnet_hiddens": [256],
