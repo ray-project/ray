@@ -15,6 +15,8 @@
 #include <memory>
 #include <filesystem>
 #include <fstream>
+#include <chrono>
+#include <thread>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -324,10 +326,6 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       registered_actor->GetCreationTaskSpecification().GetMessage());
   RAY_CHECK_EQ(
       gcs_actor_manager_->CountFor(rpc::ActorTableData::DEPENDENCIES_UNREADY, ""), 1);
-  std::vector<std::string> vc;
-  // ReadContentFromFile(vc, log_dir_ + "/events/event_GCS.log");
-  // EXPECT_EQ((int)vc.size(), 1);
-  // std::cout << "DEGUG EXPORT ACTOR 0: " << vc[0] << "\n";
 
   std::vector<std::shared_ptr<gcs::GcsActor>> finished_actors;
   Status status = gcs_actor_manager_->CreateActor(
@@ -338,9 +336,6 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   RAY_CHECK_OK(status);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::PENDING_CREATION, ""),
                1);
-  // ReadContentFromFile(vc, log_dir_ + "/events/event_GCS.log");
-  // EXPECT_EQ((int)vc.size(), 2);
-  // std::cout << "DEGUG EXPORT ACTOR 1: " << vc[1] << "\n";
 
   ASSERT_EQ(finished_actors.size(), 0);
   ASSERT_EQ(mock_actor_scheduler_->actors.size(), 1);
@@ -353,20 +348,40 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   WaitActorCreated(actor->GetActorID());
   ASSERT_EQ(finished_actors.size(), 1);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 1);
-  // ReadContentFromFile(vc, log_dir_ + "/events/event_GCS.log");
-  // EXPECT_EQ((int)vc.size(), 3);
-  // std::cout << "DEGUG EXPORT ACTOR 2: " << vc[2] << "\n";
 
   ASSERT_TRUE(worker_client_->Reply());
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 0);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);
-  ReadContentFromFile(vc, log_dir_ + "/events/event_GCS.log");
-  // EXPECT_EQ((int)vc.size(), 4);
-  // std::cout << "DEGUG EXPORT ACTOR 3: " << vc[3] << "\n";
-  for (auto line: vc) {
-    std::cout << "DEGUG EXPORT ACTOR: " << line << "\n";
+
+  // Check correct export events are written for each of the 4 state transitions
+  int num_retry = 5;
+  int num_export_events = 4;
+  std::vector<std::string> expected_states = {"DEPENDENCIES_UNREADY", "PENDING_CREATION", "ALIVE", "DEAD"};
+  std::vector<std::string> vc;
+  json export_event_as_json;
+  json event_data;
+  for (int i = 0; i < num_retry; i++) {
+    ReadContentFromFile(vc, log_dir_ + "/events/event_GCS.log");
+    if ((int)vc.size() == num_export_events) {
+      for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
+        export_event_as_json = json::parse(vc[event_idx]);
+        event_data = export_event_as_json["event_data"].get<json>();
+        ASSERT_EQ(event_data["state"], expected_states[event_idx]);
+        if (event_idx == num_export_events - 1){
+          // Verify death cause for last actor DEAD event
+          ASSERT_EQ(event_data["death_cause"]["actor_died_error_context"]["error_message"], "The actor is dead because all references to the actor were removed.");
+        }
+      }
+      return;
+    } else {
+      // Sleep and retry
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      vc.clear();
+    }
   }
+  ReadContentFromFile(vc, log_dir_ + "/events/event_GCS.log");
+  ASSERT_TRUE(false) << "Export API only wrote " << (int)vc.size() << " lines, but expecting 4.\n";
 }
 
 TEST_F(GcsActorManagerTest, TestDeadCount) {
