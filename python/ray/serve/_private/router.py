@@ -437,10 +437,9 @@ class Router:
     async def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Replaces `DeploymentResponse` objects with their resolved object refs.
+        """Replaces top-level `DeploymentResponse` objects with resolved object refs.
 
         This enables composition without explicitly calling `_to_object_ref`.
-        This modifies the input `request_args` and `request_kwargs` in place.
         """
         from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 
