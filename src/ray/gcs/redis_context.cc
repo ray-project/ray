@@ -431,6 +431,49 @@ void ValidateRedisDB(RedisContext &context) {
   }
 }
 
+void ValidateAndConnectRedisSentinel(RedisContext &context, 
+                          const std::string &password,
+                          bool enable_ssl) {
+  auto reply = context.RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
+  if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
+    RAY_LOG(INFO) << "Failed to get Redis sentinel info, continue as a regular Redis.";
+    return;
+  }
+  std::vector<const char *> argv;
+  std::vector<size_t> argc;
+  std::vector<std::string> cmds = {"SENTINEL", "MASTERS"};
+  for (const auto &arg : cmds) {
+    argv.push_back(arg.data());
+    argc.push_back(arg.size());
+  }
+
+  auto redis_reply = reinterpret_cast<redisReply *>(
+      ::redisCommandArgv(context.sync_context(), cmds.size(), argv.data(), argc.data()));
+
+  RAY_CHECK(redis_reply && redis_reply->type == REDIS_REPLY_ARRAY) << "Failed to get Redis sentinel masters info";
+  RAY_CHECK(redis_reply->elements == 1) << "Expecting only one primary behind the Redis sentinel";
+  auto primary = redis_reply->element[0];
+  std::string actual_ip, actual_port;
+  for (size_t i = 0; i < primary->elements; i += 2) {
+    std::string key = primary->element[i]->str;        // Key (e.g., "name", "ip")
+    std::string value = primary->element[i + 1]->str;  // Value corresponding to the key
+    if ("ip" == key) {
+      actual_ip = value;
+    } else if ("port" == key) {
+      actual_port = value;
+    }
+  }
+  freeReplyObject(redis_reply);
+  if (actual_ip.empty() || actual_port.empty()) {
+    RAY_LOG(FATAL) << "Failed to get the ip and port of the master from Redis sentinel";
+  } else {
+    RAY_LOG(INFO) << "Connecting to the Redis primary node behind sentinel: " << actual_ip << ":" << actual_port;
+    context.Disconnect();
+    Status status = context.Connect(actual_ip, std::stoi(actual_port), password, enable_ssl);
+    RAY_CHECK_OK(status);
+  }
+}
+
 std::vector<std::string> ResolveDNS(const std::string &address, int port) {
   using namespace boost::asio;
   io_context ctx;
@@ -505,6 +548,9 @@ Status RedisContext::Connect(const std::string &address,
 
   // Ray has some restrictions for RedisDB. Validate it here.
   ValidateRedisDB(*this);
+
+  // try re-connect to redis master if current connection is sentinel
+  ValidateAndConnectRedisSentinel(*this, password, enable_ssl);
 
   // Find the true leader
   std::vector<const char *> argv;
