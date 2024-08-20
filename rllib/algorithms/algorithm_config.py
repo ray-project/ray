@@ -376,9 +376,9 @@ class AlgorithmConfig(_Config):
         self.lr = 0.001
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
-        self.train_batch_size = 32
         # Simple logic for now: If None, use `train_batch_size`.
         self.train_batch_size_per_learner = None
+        self.train_batch_size = 32  # @OldAPIStack
         # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
         #  the main AlgorithmConfig. We should not require the user to provide those
         #  settings in both, the AlgorithmConfig (as property) AND the model config

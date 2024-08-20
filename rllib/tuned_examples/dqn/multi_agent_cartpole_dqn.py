@@ -9,12 +9,17 @@ from ray.tune.registry import register_env
 
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
-parser = add_rllib_example_script_args()
-parser.set_defaults(num_agents=2)
+parser = add_rllib_example_script_args(
+    default_timesteps=500000,
+)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    num_agents=2,
+)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
-parser.set_defaults(num_agents=2)
+
 register_env(
     "multi_agent_cartpole",
     lambda _: MultiAgentCartPole({"num_agents": args.num_agents}),
@@ -22,9 +27,13 @@ register_env(
 
 config = (
     DQNConfig()
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .environment(env="multi_agent_cartpole")
     .training(
-        # Settings identical to old stack.
+        lr=0.0005 * (args.num_gpus or 1) ** 0.5,
         train_batch_size_per_learner=32,
         replay_buffer_config={
             "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
@@ -32,7 +41,7 @@ config = (
             "alpha": 0.6,
             "beta": 0.4,
         },
-        n_step=3,
+        n_step=(2, 5),
         double_q=True,
         num_atoms=1,
         noisy=False,
@@ -57,19 +66,17 @@ if args.num_agents:
     )
 
 stop = {
-    NUM_ENV_STEPS_SAMPLED_LIFETIME: 500000,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     # `episode_return_mean` is the sum of all agents/policies' returns.
     f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 250.0 * args.num_agents,
 }
 
 if __name__ == "__main__":
+
+    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
+
     assert (
         args.num_agents > 0
     ), "The `--num-agents` arg must be > 0 for this script to work."
-    assert (
-        args.enable_new_api_stack
-    ), "The `--enable-new-api-stack` arg must be activated for this script to work."
-
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 
     run_rllib_example_script_experiment(config, args, stop=stop)

@@ -70,11 +70,14 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         while (
             # Make sure each item in the total batch gets at least iterated over
             # `self._num_iters` times.
-            min(self._num_covered_epochs.values()) < self._num_iters
-            # Make sure we reach at least the given minimum number of mini-batches.
-            and (
+            (
                 self._num_total_mini_batches == 0
-                or self._mini_batch_count < self._num_total_mini_batches
+                and min(self._num_covered_epochs.values()) < self._num_iters
+            )
+            # Make sure we reach at least the given minimum number of mini-batches.
+            or (
+                self._num_total_mini_batches > 0
+                and self._mini_batch_count < self._num_total_mini_batches
             )
         ):
             minibatch = {}
@@ -124,7 +127,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                         )
 
                 else:
-                    # n_steps = self._minibatch_size
 
                     def get_len(b):
                         return len(b)

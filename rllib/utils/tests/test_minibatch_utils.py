@@ -131,8 +131,11 @@ class TestMinibatchUtils(unittest.TestCase):
 
             def __getitem__(self, key):
                 assert isinstance(key, slice)
+                return self.slice(key)
+
+            def slice(self, slice, len_lookback_buffer=None):
                 # Create a new Episode object with the sliced length
-                return DummyEpisode(len(self.data[key]))
+                return DummyEpisode(len(self.data[slice]))
 
             def __repr__(self):
                 return f"{(type(self).__name__)}({self.length})"
