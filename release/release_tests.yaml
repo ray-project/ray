@@ -106,8 +106,6 @@
     - __suffix__: eks
       env: eks
       frequency: manual
-      cluster:
-        cluster_compute: cpt_autoscaling_1-3_aws.yaml
 
   alert: default
 
@@ -141,6 +139,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gpu_1_cpu_16_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 # 10 GB image classification parquet with 1 GPU.
 # 1 g4dn.4xlarge
@@ -168,6 +169,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gpu_1_cpu_16_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 
 # 300 GB image classification raw images with 16 GPUs
@@ -199,7 +203,11 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gpu_4x4_gce.yaml
-
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_4x4_eks.yaml
 
 - name: chaos_torch_batch_inference_16_gpu_300gb_raw
   group: data-tests
@@ -230,6 +238,11 @@
       frequency: manual
       cluster:
         cluster_compute: dataset/compute_gpu_4x4_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_4x4_eks.yaml
 
 
 # 300 GB image classification parquet data with 16 GPUs
@@ -262,6 +275,11 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gpu_4x4_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_4x4_eks.yaml
 
 # 10 TB image classification parquet data with heterogenous cluster
 # 10 g4dn.12xlarge, 10 m5.16xlarge
@@ -316,6 +334,9 @@
       frequency: manual
       cluster:
         cluster_compute: frequent_pausing/compute_config_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
   alert: default
 
@@ -340,6 +361,11 @@
       frequency: manual
       cluster:
         cluster_compute: horovod/compute_tpl_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: horovod/compute_tpl_eks.yaml
 
   run:
     timeout: 36000
@@ -384,6 +410,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_cpu_4_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
   alert: default
 
@@ -428,6 +457,11 @@
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_4x4_eks.yaml
 
   alert: default
 
@@ -455,6 +489,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_cpu_1_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
   alert: default
 
@@ -485,6 +522,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_cpu_4_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
   alert: default
 
@@ -514,6 +554,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_cpu_8_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
   alert: default
 
@@ -543,6 +586,11 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gpu_4x4_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_4x4_eks.yaml
 
   alert: default
 
@@ -573,6 +621,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_cpu_4_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
   alert: default
 
@@ -600,6 +651,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_cpu_1_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
   alert: default
 
@@ -632,6 +686,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_cpu_4_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
   alert: default
 
@@ -678,6 +735,11 @@
         cluster_compute: compute_gpu_4x4_gce.yaml
       smoke_test:
         frequency: manual
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_4x4_eks.yaml
 
   alert: default
 
@@ -706,6 +768,11 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gpu_1_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_1_eks.yaml
 
 
 - name: air_benchmark_pytorch_training_e2e_gpu_4x4_100gb
@@ -738,6 +805,11 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gpu_4x4_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_4x4_eks.yaml
 
 # Test tiny, and medium input files to check that performance stays about
 # constant.
@@ -767,6 +839,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gce_cpu_16.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 # Test huge files to check that we do not OOM.
 - name: ray-data-resnet50-ingest-out-of-memory-benchmark
@@ -797,6 +872,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gce_cpu_16.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 #######################
 # AIR examples
@@ -1042,6 +1120,11 @@
       frequency: manual
       cluster:
         cluster_compute: horovod/compute_tpl_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: horovod/compute_tpl_eks.yaml
 
   alert: default
 
@@ -1071,6 +1154,11 @@
       frequency: manual
       cluster:
         cluster_compute: horovod/compute_tpl_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: horovod/compute_tpl_eks.yaml
 
   alert: default
 
@@ -3442,6 +3530,11 @@
       frequency: manual
       cluster:
         cluster_compute: distributed/many_nodes_tests/compute_config_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: distributed/many_nodes_tests/compute_config_eks.yaml
 
 #- name: many_nodes_multi_master_test
 #  group: core-daily-test
