@@ -83,6 +83,7 @@ class CQLConfig(SACConfig):
         self.lagrangian = False
         self.lagrangian_thresh = 5.0
         self.min_q_weight = 5.0
+        self.lr = 3e-4
 
         # Changes to Algorithm's/SACConfig's default:
 
@@ -134,6 +135,26 @@ class CQLConfig(SACConfig):
             self.lagrangian_thresh = lagrangian_thresh
         if min_q_weight is not NotProvided:
             self.min_q_weight = min_q_weight
+
+        return self
+
+    @override(AlgorithmConfig)
+    def offline_data(self, **kwargs) -> "CQLConfig":
+
+        super().offline_data(**kwargs)
+
+        # Check, if the passed in class incorporates the `OfflinePreLearner`
+        # interface.
+        if "prelearner_class" in kwargs:
+            from ray.rllib.offline.offline_data import OfflinePreLearner
+
+            if not issubclass(kwargs.get("prelearner_class"), OfflinePreLearner):
+                raise ValueError(
+                    f"`prelearner_class` {kwargs.get('prelearner_class')} is not a "
+                    "subclass of `OfflinePreLearner`. Any class passed to "
+                    "`prelearner_class` needs to implement the interface given by "
+                    "`OfflinePreLearner`."
+                )
 
         return self
 
@@ -209,7 +230,7 @@ class CQLConfig(SACConfig):
         ):
             raise ValueError(
                 "When using a single local learner the number of iterations "
-                "per learner, `dataset_num_iters_per_learner` has to be 1. "
+                "per learner, `dataset_num_iters_per_learner` has to be defined. "
                 "Set this hyperparameter in the `AlgorithmConfig.offline_data`."
             )
 

@@ -395,6 +395,12 @@ def test_middleware(ray_shutdown):
             ],
         )
     )
+
+    @serve.deployment
+    class Dummy:
+        pass
+
+    serve.run(Dummy.bind())
     ray.get(block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
 
     # Snatched several test cases from Starlette

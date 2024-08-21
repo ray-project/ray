@@ -1479,7 +1479,12 @@ class MultiAgentEpisode:
         except KeyError:
             raise KeyError(f"Key {key} not found in temporary timestep data!")
 
-    def slice(self, slice_: slice) -> "MultiAgentEpisode":
+    def slice(
+        self,
+        slice_: slice,
+        *,
+        len_lookback_buffer: Optional[int] = None,
+    ) -> "MultiAgentEpisode":
         """Returns a slice of this episode with the given slice object.
 
         Works analogous to
@@ -1544,6 +1549,10 @@ class MultiAgentEpisode:
             slice_: The slice object to use for slicing. This should exclude the
                 lookback buffer, which will be prepended automatically to the returned
                 slice.
+            len_lookback_buffer: If not None, forces the returned slice to try to have
+                this number of timesteps in its lookback buffer (if available). If None
+                (default), tries to make the returned slice's lookback as large as the
+                current lookback buffer of this episode (`self`).
 
         Returns:
             The new MultiAgentEpisode representing the requested slice.
@@ -1630,23 +1639,26 @@ class MultiAgentEpisode:
         truncateds["__all__"] = all(truncateds.get(aid) for aid in self.agent_episodes)
 
         # Determine all other slice contents.
+        _lb = len_lookback_buffer if len_lookback_buffer is not None else ref_lookback
+        if start - _lb < 0 and ref_lookback < (_lb - start):
+            _lb = ref_lookback + start
         observations = self.get_observations(
-            slice(start - ref_lookback, stop + 1),
+            slice(start - _lb, stop + 1),
             neg_index_as_lookback=True,
             return_list=True,
         )
         actions = self.get_actions(
-            slice(start - ref_lookback, stop),
+            slice(start - _lb, stop),
             neg_index_as_lookback=True,
             return_list=True,
         )
         rewards = self.get_rewards(
-            slice(start - ref_lookback, stop),
+            slice(start - _lb, stop),
             neg_index_as_lookback=True,
             return_list=True,
         )
         extra_model_outputs = self.get_extra_model_outputs(
-            indices=slice(start - ref_lookback, stop),
+            indices=slice(start - _lb, stop),
             neg_index_as_lookback=True,
             return_list=True,
         )
