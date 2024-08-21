@@ -9,7 +9,6 @@ from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -443,60 +442,58 @@ class Router:
     async def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Replaces `DeploymentResponse` objects with their resolved object refs.
+        """Replaces top-level `DeploymentResponse` objects with resolved object refs.
 
-        Uses the `_PyObjScanner` to find and replace the objects. This
-        enables composition without explicitly calling `_to_object_ref`.
+        This enables composition without explicitly calling `_to_object_ref`.
         """
-        from ray.serve.handle import (
-            DeploymentResponse,
-            DeploymentResponseGenerator,
-            _DeploymentResponseBase,
+        from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
+
+        generator_not_supported_message = (
+            "Streaming deployment handle results cannot be passed to "
+            "downstream handle calls. If you have a use case requiring "
+            "this feature, please file a feature request on GitHub."
         )
 
-        scanner = _PyObjScanner(
-            source_type=(_DeploymentResponseBase, ray.ObjectRef, ray.ObjectRefGenerator)
-        )
+        new_args = [None for _ in range(len(request_args))]
+        new_kwargs = {}
 
-        try:
-            responses = []
-            replacement_table = {}
-            objs = scanner.find_nodes((request_args, request_kwargs))
-            for obj in objs:
-                if isinstance(obj, DeploymentResponseGenerator):
-                    raise RuntimeError(
-                        "Streaming deployment handle results cannot be passed to "
-                        "downstream handle calls. If you have a use case requiring "
-                        "this feature, please file a feature request on GitHub."
-                    )
-                elif isinstance(obj, DeploymentResponse):
-                    responses.append(obj)
-                    if obj not in request_args and obj not in request_kwargs.values():
-                        logger.warning(
-                            "Passing `DeploymentResponse` objects in nested objects to "
-                            "downstream handle calls is deprecated and will not be "
-                            "supported in the future. Pass them as top-level "
-                            "args or kwargs instead."
-                        )
+        arg_tasks = []
+        response_indices = []
+        for i, obj in enumerate(request_args):
+            if isinstance(obj, DeploymentResponseGenerator):
+                raise RuntimeError(generator_not_supported_message)
+            elif isinstance(obj, DeploymentResponse):
+                # Launch async task to convert DeploymentResponse to an object ref, and
+                # keep track of the argument index in the original `request_args`
+                response_indices.append(i)
+                arg_tasks.append(asyncio.create_task(obj._to_object_ref()))
+            else:
+                new_args[i] = obj
 
-                # This is no-op replacing the object with itself. The purpose is to make
-                # sure both object refs and object ref generator are not getting pinned
-                # to memory by the scanner and cause memory leak.
-                # See: https://github.com/ray-project/ray/issues/43248
-                elif isinstance(obj, (ray.ObjectRef, ray.ObjectRefGenerator)):
-                    replacement_table[obj] = obj
+        kwarg_tasks = []
+        response_keys = []
+        for k, obj in request_kwargs.items():
+            if isinstance(obj, DeploymentResponseGenerator):
+                raise RuntimeError(generator_not_supported_message)
+            elif isinstance(obj, DeploymentResponse):
+                # Launch async task to convert DeploymentResponse to an object ref, and
+                # keep track of the corresponding key in the original `request_kwargs`
+                response_keys.append(k)
+                kwarg_tasks.append(asyncio.create_task(obj._to_object_ref()))
+            else:
+                new_kwargs[k] = obj
 
-            # Gather `DeploymentResponse` object refs concurrently.
-            if len(responses) > 0:
-                obj_refs = await asyncio.gather(
-                    *[r._to_object_ref() for r in responses]
-                )
-                replacement_table.update((zip(responses, obj_refs)))
+        # Gather `DeploymentResponse` object refs concurrently.
+        arg_obj_refs = await asyncio.gather(*arg_tasks)
+        kwarg_obj_refs = await asyncio.gather(*kwarg_tasks)
 
-            return scanner.replace_nodes(replacement_table)
-        finally:
-            # Make the scanner GC-able to avoid memory leaks.
-            scanner.clear()
+        # Update new args and new kwargs with resolved object refs
+        for index, obj_ref in zip(response_indices, arg_obj_refs):
+            new_args[index] = obj_ref
+        new_kwargs.update((zip(response_keys, kwarg_obj_refs)))
+
+        # Return new args and new kwargs
+        return new_args, new_kwargs
 
     async def schedule_and_send_request(
         self, pr: PendingRequest

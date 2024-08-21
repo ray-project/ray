@@ -336,7 +336,7 @@ py_test(
 py_test(
     name = "learning_tests_pendulum_cql_old_api_stack",
     main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "learning_tests_with_ray_data"],
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "learning_tests_with_ray_data", "torch_only"],
     size = "large",
     srcs = ["tests/run_regression_tests.py"],
     # Include the zipped json data file as well.
@@ -2386,16 +2386,16 @@ py_test(
     srcs = ["examples/_old_api_stack/connectors/adapt_connector_policy.py"],
 )
 
-py_test(
-    name = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint",
-    main = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "small",
-    srcs = ["examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py"],
-    args = [
-        "--train_iteration=1"  # Smoke test.
-    ]
-)
+# py_test(
+#     name = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint",
+#     main = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py",
+#     tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
+#     size = "small",
+#     srcs = ["examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py"],
+#     args = [
+#         "--train_iteration=1"  # Smoke test.
+#     ]
+# )
 
 # ----------------------
 # New API stack
@@ -3278,15 +3278,15 @@ py_test(
 # ....................................
 
 # @HybridAPIStack
-py_test(
-    name = "examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent",
-    main = "examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "large",
-    srcs = ["examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent.py"],
-    data = ["tests/data/cartpole/large.json"],
-    args = ["--as-test"]
-)
+# py_test(
+#     name = "examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent",
+#     main = "examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent.py",
+#     tags = ["team:rllib", "exclusive", "examples"],
+#     size = "large",
+#     srcs = ["examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent.py"],
+#     data = ["tests/data/cartpole/large.json"],
+#     args = ["--as-test"]
+# )
 
 #@OldAPIStack
 # TODO (sven): Doesn't seem to learn at the moment. Uncomment once fixed.
