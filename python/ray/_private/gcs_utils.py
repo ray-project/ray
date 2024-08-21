@@ -144,6 +144,6 @@ def cleanup_redis_storage(
     if not isinstance(storage_namespace, str):
         raise ValueError("storage namespace must be a string")
 
-    # Right now, GCS store all data into a hash keys prefixed by storage_namespace.
+    # Right now, GCS stores all data into multiple hashes with keys prefixed by storage_namespace.
     # So we only need to delete the specific key to cleanup the cluster.
     return del_key_prefix_from_storage(host, port, password, use_ssl, storage_namespace)
