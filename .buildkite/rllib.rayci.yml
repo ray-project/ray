@@ -44,7 +44,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --only-tags learning_tests_pytorch_use_all_core
-        --except-tags tf_only,tf2_only,multi_gpu
+        --except-tags tf_only,tf2_only,gpu,multi_gpu
         --test-arg --framework=torch
         --skip-ray-installation
     depends_on: rllibbuild
