@@ -830,8 +830,16 @@ class CompiledDAG:
                     direct_input = True
 
                 elif isinstance(upstream_node.dag_node, ClassMethodNode):
+                    from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
+
                     if (
-                        downstream_actor_handle is not None
+                        # Ray aDAG deadlock detection has the same check, but
+                        # it may be turned off because of false positives.
+                        # In that case, we need this check to be active.
+                        # TODO: When we clean up Ray aDAG deadlock detection
+                        # this check should be done at one place only.
+                        not RAY_ADAG_ENABLE_DETECT_DEADLOCK
+                        and downstream_actor_handle is not None
                         and downstream_actor_handle
                         == upstream_node.dag_node._get_actor_handle()
                         and upstream_node.dag_node.type_hint.requires_nccl()
