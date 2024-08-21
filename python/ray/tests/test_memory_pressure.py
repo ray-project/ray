@@ -5,9 +5,6 @@ import time
 import pytest
 
 import ray
-from ray._private import (
-    ray_constants,
-)
 import ray._private.gcs_utils as gcs_utils
 from ray._private.test_utils import wait_for_condition, raw_metrics
 
@@ -30,12 +27,8 @@ expected_worker_eviction_message = (
 def get_local_state_client():
     hostname = ray.worker._global_node.gcs_address
 
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        hostname, ray_constants.GLOBAL_GRPC_OPTIONS, asynchronous=True
-    )
-
     gcs_aio_client = gcs_utils.GcsAioClient(address=hostname, nums_reconnect_retry=0)
-    client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    client = StateDataSourceClient(gcs_aio_client)
     for node in ray.nodes():
         node_id = node["NodeID"]
         ip = node["NodeManagerAddress"]

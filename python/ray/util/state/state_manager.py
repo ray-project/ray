@@ -1,3 +1,4 @@
+import os
 import dataclasses
 import inspect
 import logging
@@ -12,7 +13,7 @@ from grpc.aio._call import UnaryStreamCall
 import ray
 import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 from ray._private.utils import hex_to_binary
 from ray._raylet import ActorID, JobID, TaskID
 from ray.core.generated import gcs_service_pb2_grpc
@@ -144,6 +145,17 @@ class StateDataSourceClient:
 
     Note that it doesn't directly query core workers. They are proxied through raylets.
 
+    Queries info from:
+    - GCS via gRPC methods.
+    - Raylets via gRPC NodeManagerServiceStub.
+    - Agents via gRPC LogServiceStub.
+    - `get_all_jobs` via JobInfoStorageClient via GcsAioClient from GCS.
+    - `get_all_cluster_events` via DataSource.
+    - Runtime Env Agents via HTTP.
+
+    For the GCS part excluding `get_all_jobs`, it defaults to use the GcsAioClient. If
+    the environment variable RAY_USE_OLD_GCS_CLIENT=1, it uses the direct gRPC stubs.
+
     The module is not in charge of service discovery. The caller is responsible for
     finding services and register stubs through `register*` APIs.
 
@@ -153,8 +165,7 @@ class StateDataSourceClient:
     - throw a ValueError if it cannot find the source.
     """
 
-    def __init__(self, gcs_channel: grpc.aio.Channel, gcs_aio_client: GcsAioClient):
-        self.register_gcs_client(gcs_channel)
+    def __init__(self, gcs_aio_client: GcsAioClient):
         self._raylet_stubs = {}
         self._runtime_env_agent_addresses = {}  # {node_id -> url}
         self._log_agent_stub = {}
@@ -162,23 +173,7 @@ class StateDataSourceClient:
         self._id_id_map = IdToIpMap()
         self._gcs_aio_client = gcs_aio_client
         self._client_session = aiohttp.ClientSession()
-
-    def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
-        self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
-            gcs_channel
-        )
-        self._gcs_pg_info_stub = gcs_service_pb2_grpc.PlacementGroupInfoGcsServiceStub(
-            gcs_channel
-        )
-        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
-            gcs_channel
-        )
-        self._gcs_worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
-            gcs_channel
-        )
-        self._gcs_task_info_stub = gcs_service_pb2_grpc.TaskInfoGcsServiceStub(
-            gcs_channel
-        )
+        self._gcs_state_data_source_client = GcsStateDataSourceClient(gcs_aio_client)
 
     def register_raylet_client(
         self, node_id: str, address: str, port: int, runtime_env_agent_port: int
@@ -245,42 +240,16 @@ class StateDataSourceClient:
             return None
         return self._id_id_map.get_node_id(ip)
 
-    @handle_grpc_network_errors
     async def get_all_actor_info(
         self,
         timeout: int = None,
         limit: int = None,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllActorInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-        if filters is None:
-            filters = []
-
-        req_filters = GetAllActorInfoRequest.Filters()
-        for filter in filters:
-            key, predicate, value = filter
-            if predicate != "=":
-                # We only support EQUAL predicate for source side filtering.
-                continue
-            if key == "actor_id":
-                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
-            elif key == "state":
-                # Convert to uppercase.
-                value = value.upper()
-                if value not in ActorTableData.ActorState.keys():
-                    raise ValueError(f"Invalid actor state for filtering: {value}")
-                req_filters.state = ActorTableData.ActorState.Value(value)
-            elif key == "job_id":
-                req_filters.job_id = JobID(hex_to_binary(value)).binary()
-
-        request = GetAllActorInfoRequest(limit=limit, filters=req_filters)
-        reply = await self._gcs_actor_info_stub.GetAllActorInfo(
-            request, timeout=timeout
+        return await self._gcs_state_data_source_client.get_all_actor_info(
+            timeout=timeout, limit=limit, filters=filters
         )
-        return reply
 
-    @handle_grpc_network_errors
     async def get_all_task_info(
         self,
         timeout: int = None,
@@ -288,71 +257,33 @@ class StateDataSourceClient:
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
         exclude_driver: bool = False,
     ) -> Optional[GetTaskEventsReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+        return await self._gcs_state_data_source_client.get_all_task_info(
+            timeout=timeout,
+            limit=limit,
+            filters=filters,
+            exclude_driver=exclude_driver,
+        )
 
-        if filters is None:
-            filters = []
-
-        req_filters = GetTaskEventsRequest.Filters()
-        for filter in filters:
-            key, predicate, value = filter
-            if predicate != "=":
-                # We only support EQUAL predicate for source side filtering.
-                continue
-
-            if key == "actor_id":
-                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
-            elif key == "job_id":
-                req_filters.job_id = JobID(hex_to_binary(value)).binary()
-            elif key == "task_id":
-                req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
-            elif key == "name":
-                req_filters.name = value
-            elif key == "state":
-                req_filters.state = value
-            else:
-                continue
-
-        req_filters.exclude_driver = exclude_driver
-
-        request = GetTaskEventsRequest(limit=limit, filters=req_filters)
-        reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
-        return reply
-
-    @handle_grpc_network_errors
     async def get_all_placement_group_info(
         self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllPlacementGroupReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-
-        request = GetAllPlacementGroupRequest(limit=limit)
-        reply = await self._gcs_pg_info_stub.GetAllPlacementGroup(
-            request, timeout=timeout
+        return await self._gcs_state_data_source_client.get_all_placement_group_info(
+            timeout=timeout, limit=limit
         )
-        return reply
 
-    @handle_grpc_network_errors
     async def get_all_node_info(
         self, timeout: int = None
     ) -> Optional[GetAllNodeInfoReply]:
-        request = GetAllNodeInfoRequest()
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
-        return reply
+        return await self._gcs_state_data_source_client.get_all_node_info(
+            timeout=timeout
+        )
 
-    @handle_grpc_network_errors
     async def get_all_worker_info(
         self, timeout: int = None, limit: int = None
     ) -> Optional[GetAllWorkerInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
-
-        request = GetAllWorkerInfoRequest(limit=limit)
-        reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
-            request, timeout=timeout
+        return await self._gcs_state_data_source_client.get_all_worker_info(
+            timeout=timeout, limit=limit
         )
-        return reply
 
     # TODO(rickyx):
     # This is currently mirroring dashboard/modules/job/job_head.py::list_jobs
@@ -484,3 +415,270 @@ class StateDataSourceClient:
         if metadata.get(log_consts.LOG_GRPC_ERROR) is not None:
             raise ValueError(metadata.get(log_consts.LOG_GRPC_ERROR))
         return stream
+
+
+class GcsStateDataSourceClient:
+    """
+    Sub-interface of StateDataSourceClient for querying states from GCS.
+    """
+
+    def __new__(self, gcs_aio_client: GcsAioClient):
+        use_old_client = os.environ.get("RAY_USE_OLD_GCS_CLIENT") == "1"
+        if use_old_client:
+            return GcsStateDataSourceClientFromGrpc(gcs_aio_client)
+        else:
+            return GcsStateDataSourceClientFromNewGcsClient(gcs_aio_client)
+
+
+class GcsStateDataSourceClientFromNewGcsClient:
+    def __init__(self, gcs_aio_client: GcsAioClient) -> None:
+        self.gcs_aio_client = gcs_aio_client
+
+    async def get_all_actor_info(
+        self,
+        timeout: int = None,
+        limit: int = None,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+    ) -> Optional[GetAllActorInfoReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+        if filters is None:
+            filters = []
+
+        filter_actor_id = None
+        filter_job_id = None
+        filter_actor_state_name = None
+        for key, predicate, value in filters:
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+            if key == "actor_id":
+                filter_actor_id = ActorID(hex_to_binary(value))
+            elif key == "job_id":
+                filter_job_id = JobID(hex_to_binary(value))
+            elif key == "state":
+                # Convert to uppercase.
+                value = value.upper()
+                if value not in ActorTableData.ActorState.keys():
+                    raise ValueError(f"Invalid actor state for filtering: {value}")
+                filter_actor_state_name = value
+        return await self.gcs_aio_client.raw_get_all_actor_info(
+            actor_id=filter_actor_id,
+            job_id=filter_job_id,
+            actor_state_name=filter_actor_state_name,
+            limit=limit,
+            timeout=timeout,
+        )
+
+    async def get_all_task_info(
+        self,
+        timeout: int = None,
+        limit: int = None,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+        exclude_driver: bool = False,
+    ) -> Optional[GetTaskEventsReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+        if filters is None:
+            filters = []
+
+        filter_actor_id = None
+        filter_job_id = None
+        filter_task_id = None
+        filter_name = None
+        filter_state = None
+        for key, predicate, value in filters:
+            if predicate != "=":
+                continue
+            if key == "actor_id":
+                filter_actor_id = ActorID(hex_to_binary(value))
+            elif key == "job_id":
+                filter_job_id = JobID(hex_to_binary(value))
+            elif key == "task_id":
+                filter_task_id = TaskID(hex_to_binary(value))
+            elif key == "name":
+                filter_name = value
+            elif key == "state":
+                filter_state = value
+
+        return await self.gcs_aio_client.raw_get_task_events(
+            actor_id=filter_actor_id,
+            job_id=filter_job_id,
+            task_id=filter_task_id,
+            name=filter_name,
+            state=filter_state,
+            exclude_driver=exclude_driver,
+            limit=limit,
+            timeout=timeout,
+        )
+
+    async def get_all_placement_group_info(
+        self,
+        timeout: int = None,
+        limit: int = None,
+    ) -> Optional[GetAllPlacementGroupReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+
+        return await self.gcs_aio_client.raw_get_all_placement_group(
+            limit=limit,
+            timeout=timeout,
+        )
+
+    async def get_all_node_info(
+        self,
+        timeout: int = None,
+    ) -> Optional[GetAllNodeInfoReply]:
+        return await self.gcs_aio_client.raw_get_all_node_info(
+            timeout=timeout,
+        )
+
+    async def get_all_worker_info(
+        self,
+        timeout: int = None,
+        limit: int = None,
+    ) -> Optional[GetAllWorkerInfoReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+
+        return await self.gcs_aio_client.raw_get_all_worker_info(
+            limit=limit,
+            timeout=timeout,
+        )
+
+
+class GcsStateDataSourceClientFromGrpc:
+    def __init__(self, gcs_aio_client: GcsAioClient) -> None:
+        """
+        Creates its own GcsChannel. Only reads the address from gcs_aio_client.
+        """
+        gcs_address = gcs_aio_client.address
+        self.gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
+        self.gcs_channel.connect()
+        self.register_gcs_client(self.gcs_channel.channel())
+
+    def register_gcs_client(self, gcs_channel: grpc.aio.Channel):
+        self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
+            gcs_channel
+        )
+        self._gcs_pg_info_stub = gcs_service_pb2_grpc.PlacementGroupInfoGcsServiceStub(
+            gcs_channel
+        )
+        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
+            gcs_channel
+        )
+        self._gcs_worker_info_stub = gcs_service_pb2_grpc.WorkerInfoGcsServiceStub(
+            gcs_channel
+        )
+        self._gcs_task_info_stub = gcs_service_pb2_grpc.TaskInfoGcsServiceStub(
+            gcs_channel
+        )
+
+    @handle_grpc_network_errors
+    async def get_all_actor_info(
+        self,
+        timeout: int = None,
+        limit: int = None,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+    ) -> Optional[GetAllActorInfoReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+        if filters is None:
+            filters = []
+
+        req_filters = GetAllActorInfoRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+            if key == "actor_id":
+                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
+            elif key == "state":
+                # Convert to uppercase.
+                value = value.upper()
+                if value not in ActorTableData.ActorState.keys():
+                    raise ValueError(f"Invalid actor state for filtering: {value}")
+                req_filters.state = ActorTableData.ActorState.Value(value)
+            elif key == "job_id":
+                req_filters.job_id = JobID(hex_to_binary(value)).binary()
+
+        request = GetAllActorInfoRequest(limit=limit, filters=req_filters)
+        reply = await self._gcs_actor_info_stub.GetAllActorInfo(
+            request, timeout=timeout
+        )
+        return reply
+
+    @handle_grpc_network_errors
+    async def get_all_task_info(
+        self,
+        timeout: int = None,
+        limit: int = None,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
+        exclude_driver: bool = False,
+    ) -> Optional[GetTaskEventsReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+
+        if filters is None:
+            filters = []
+
+        req_filters = GetTaskEventsRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+
+            if key == "actor_id":
+                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
+            elif key == "job_id":
+                req_filters.job_id = JobID(hex_to_binary(value)).binary()
+            elif key == "task_id":
+                req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
+            elif key == "name":
+                req_filters.name = value
+            elif key == "state":
+                req_filters.state = value
+            else:
+                continue
+
+        req_filters.exclude_driver = exclude_driver
+
+        request = GetTaskEventsRequest(limit=limit, filters=req_filters)
+        reply = await self._gcs_task_info_stub.GetTaskEvents(request, timeout=timeout)
+        return reply
+
+    @handle_grpc_network_errors
+    async def get_all_placement_group_info(
+        self, timeout: int = None, limit: int = None
+    ) -> Optional[GetAllPlacementGroupReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+
+        request = GetAllPlacementGroupRequest(limit=limit)
+        reply = await self._gcs_pg_info_stub.GetAllPlacementGroup(
+            request, timeout=timeout
+        )
+        return reply
+
+    @handle_grpc_network_errors
+    async def get_all_node_info(
+        self, timeout: int = None
+    ) -> Optional[GetAllNodeInfoReply]:
+        request = GetAllNodeInfoRequest()
+        reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
+        return reply
+
+    @handle_grpc_network_errors
+    async def get_all_worker_info(
+        self, timeout: int = None, limit: int = None
+    ) -> Optional[GetAllWorkerInfoReply]:
+        if not limit:
+            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
+
+        request = GetAllWorkerInfoRequest(limit=limit)
+        reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
+            request, timeout=timeout
+        )
+        return reply
