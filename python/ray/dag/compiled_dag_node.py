@@ -1675,7 +1675,7 @@ class CompiledDAG:
         self,
         *args,
         **kwargs,
-    ) -> List[CompiledDAGFuture]:
+    ) -> Union[CompiledDAGFuture, List[CompiledDAGFuture]]:
         """Execute this DAG using the compiled execution path.
 
         NOTE: Not threadsafe.
@@ -1718,7 +1718,7 @@ class CompiledDAG:
             for f in channel_futs.values()
         ]
         self._execution_index += 1
-        return futs
+        return futs[0] if len(futs) == 1 else futs
 
     def teardown(self):
         """Teardown and cancel all actor tasks for this DAG. After this
