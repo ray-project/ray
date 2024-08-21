@@ -575,7 +575,7 @@ def benchmark_code(
     # This release test runs into ACCESS_DENIED errors fairly often.
     # We add ACCESS_DENIED as a retryable exception type to avoid flakiness.
     # See for more details: https://github.com/ray-project/ray/issues/47230
-    ctx.retried_io_errors.append("AWS ACCESS_DENIED")
+    ctx.retried_io_errors.append("AWS Error ACCESS_DENIED")
 
     if args.target_max_block_size_mb is not None:
         ctx.target_max_block_size = args.target_max_block_size_mb * 1024 * 1024
