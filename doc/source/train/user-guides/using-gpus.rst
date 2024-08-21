@@ -1,6 +1,6 @@
 .. _train_scaling_config:
 
-Configuring Scale and GPUs
+Configuring Scale and Resources
 ==========================
 Increasing the scale of a Ray Train training run is simple and can be done in a few lines of code.
 The main interface for this is the :class:`~ray.train.ScalingConfig`,
@@ -24,7 +24,7 @@ the :class:`~ray.train.ScalingConfig`:
     )
 
 
-Using GPUs
+Using GPUs or HPUs
 ----------
 To use GPUs, pass ``use_gpu=True`` to the :class:`~ray.train.ScalingConfig`.
 This will request one GPU per training worker. In the example below, training will
@@ -37,6 +37,19 @@ run on 8 GPUs (8 workers, each using one GPU).
     scaling_config = ScalingConfig(
         num_workers=8,
         use_gpu=True
+    )
+
+
+To use HPUs, pass HPU resources in ``resources_per_worker`` parameter to the :class:`~ray.train.ScalingConfig`.
+In the example below, training will run on 8 HPUs (8 workers, each using one HPU).
+
+.. testcode::
+
+    from ray.train import ScalingConfig
+
+    scaling_config = ScalingConfig(
+        num_workers=8,
+        resources_per_worker={"HPU": 1}
     )
 
 
@@ -132,7 +145,7 @@ assign each worker a NVIDIA A100 GPU.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 PyTorch Distributed supports multiple `backends <https://pytorch.org/docs/stable/distributed.html#backends>`__
-for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and Gloo otherwise.
+for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and Gloo otherwise. For HPU resources, you need to set it to hccl as follows.
 
 If you explictly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig`
 and pass it into the :class:`~ray.train.torch.TorchTrainer`.

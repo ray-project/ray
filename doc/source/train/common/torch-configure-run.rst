@@ -1,4 +1,4 @@
-Configure scale and GPUs
+Configure scale and resources
 ------------------------
 
 Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
@@ -10,6 +10,12 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 
     from ray.train import ScalingConfig
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
+
+3. :class:`resources_per_worker <ray.train.ScalingConfig>` - You can also specify HPU resources by resources_per_worker parameter.
+.. testcode::
+
+    from ray.train import ScalingConfig
+    scaling_config = ScalingConfig(num_workers=2, resources_per_worker={"HPU": 1})
 
 
 For more details, see :ref:`train_scaling_config`.
