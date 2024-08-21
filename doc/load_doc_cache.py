@@ -37,7 +37,10 @@ def find_latest_master_commit():
         result = requests.head(f"{DOC_BUILD_S3_URL}/{commit}.tgz")
         if result.status_code == 200:
             return commit
-    raise Exception("No cache found for latest master commit. Please merge with upstream master or use 'make develop'.")
+    raise Exception(
+        "No cache found for latest master commit."
+        "Please merge with upstream master or use 'make develop'."
+    )
 
 
 def fetch_cache_from_s3(commit, target_file_path):

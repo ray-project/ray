@@ -82,8 +82,8 @@ develop: html
 RAY_DIR := $(shell pwd | rev | cut -d'/' -f2- | rev)
 
 local:
-	python cmd_load_doc_cache.py --ray-dir=$(RAY_DIR)
-	python cmd_update_cache_env.py --ray-dir=$(RAY_DIR)
+	python load_doc_cache.py --ray-dir=$(RAY_DIR)
+	python update_cache_env.py --ray-dir=$(RAY_DIR)
 	$(SPHINXBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
 
 dirhtml:

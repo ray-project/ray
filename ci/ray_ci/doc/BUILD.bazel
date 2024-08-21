@@ -93,19 +93,3 @@ py_test(
         ci_require("pytest"),
     ],
 )
-
-py_test(
-    name = "test_update_cache_env",
-    size = "small",
-    srcs = ["test_update_cache_env.py"],
-    exec_compatible_with = ["//:hermetic_python"],
-    tags = [
-        "ci_unit",
-        "team:ci",
-    ],
-    deps = [
-        ":doc",
-        ":cmd_update_cache_env",
-        ci_require("pytest"),
-    ],
-)
