@@ -978,8 +978,7 @@ def test_gcs_check_alive(
     gcs_server_proc.kill()
     gcs_server_proc.wait()
 
-    # The dashboard exits by os._exit(-1)
-    assert dashboard_proc.wait(10) == 255
+    assert dashboard_proc.wait(10) == 1
 
 
 @pytest.mark.skipif(
