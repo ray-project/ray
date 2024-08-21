@@ -202,8 +202,8 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     }
     return true;
   };
-  size_t num_added = 0;
-  size_t num_filtered = 0;
+  int64_t num_added = 0;
+  int64_t num_filtered = 0;
   auto add_to_response =
       [limit, reply, filter_fn, &num_added, &num_filtered](
           const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
