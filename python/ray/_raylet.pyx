@@ -5177,7 +5177,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         cpython.Py_DECREF(user_callback)
 
 
-def del_key_prefix_from_storage(host, port, password, use_ssl, key):
+def del_key_prefix_from_storage(host, port, password, use_ssl, key_prefix):
     return RedisDelKeyPrefixSync(host, port, password, use_ssl, key)
 
 
