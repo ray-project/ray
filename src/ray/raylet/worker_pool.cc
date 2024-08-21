@@ -1247,6 +1247,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     default:
       RAY_CHECK(false) << "Unexpected WorkerUnfitForTaskReason "
                        << static_cast<int>(reason);
+      // unreachable, but for dumb compilers.
+      return false;
     }
   };
 
