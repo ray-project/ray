@@ -506,7 +506,7 @@ class Router:
                 f"{replica_id} will not be considered for future "
                 "requests because it has died."
             )
-        if isinstance(result, ActorUnavailableError):
+        elif isinstance(result, ActorUnavailableError):
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
             # time being, invalidate the cache entry so that we don't try to
