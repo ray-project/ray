@@ -1289,7 +1289,7 @@ class CompiledDAG:
             on the same actor.
 
         Reason: Each actor executes tasks in the order that they are
-                bound in. Therefore task.{bind_index+1} happens before
+                bound in. Therefore task.{bind_index+1} happens after
                 task.{bind_index}.
 
         #2: Add an edge from the writer to the reader
