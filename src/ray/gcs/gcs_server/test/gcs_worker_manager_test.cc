@@ -126,6 +126,82 @@ TEST_F(GcsWorkerManagerTest, TestGetAllWorkersLimit) {
   }
 }
 
+TEST_F(GcsWorkerManagerTest, TestGetAllWorkersFilters) {
+  auto worker_manager = GetWorkerManager();
+  std::vector<rpc::WorkerTableData> workers;
+
+  auto worker_paused_threads = GenWorkerTableData(1);
+  worker_paused_threads.set_num_paused_threads(1);
+
+  auto worker_normal = GenWorkerTableData(2);
+
+  auto worker_non_alive = GenWorkerTableData(3);
+  worker_non_alive.set_is_alive(false);
+
+  for (const auto &worker : {worker_paused_threads, worker_normal, worker_non_alive}) {
+    rpc::AddWorkerInfoRequest request;
+    request.mutable_worker_data()->CopyFrom(worker);
+    rpc::AddWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleAddWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+  }
+
+  {
+    /// Filter: exist_paused_threads
+    rpc::GetAllWorkerInfoRequest request;
+    request.mutable_filters()->set_exist_paused_threads(true);
+    rpc::GetAllWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+
+    ASSERT_EQ(reply.worker_table_data().size(), 1);
+    ASSERT_EQ(reply.total(), 3);
+    ASSERT_EQ(reply.num_filtered(), 2);
+  }
+
+  {
+    /// Filter: is_alive
+    rpc::GetAllWorkerInfoRequest request;
+    request.mutable_filters()->set_is_alive(true);
+    rpc::GetAllWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+
+    ASSERT_EQ(reply.worker_table_data().size(), 2);
+    ASSERT_EQ(reply.total(), 3);
+    ASSERT_EQ(reply.num_filtered(), 1);
+  }
+  {
+    /// Filter: is_alive + limits
+    rpc::GetAllWorkerInfoRequest request;
+    request.mutable_filters()->set_is_alive(true);
+    request.set_limit(1);
+    rpc::GetAllWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+
+    ASSERT_EQ(reply.worker_table_data().size(), 1);
+    ASSERT_EQ(reply.total(), 3);
+    ASSERT_LE(reply.num_filtered(), 1);
+  }
+}
+
 TEST_F(GcsWorkerManagerTest, TestUpdateWorkerDebuggerPort) {
   auto worker_manager = GetWorkerManager();
   auto worker = GenWorkerTableData(0);
