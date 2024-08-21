@@ -30,8 +30,12 @@ assert policy_path.is_dir()
 
 print("done")
 
+
+# Move the old API stack (trained) ModelV2 into the new API stack's RLModule.
 import gymnasium as gym
 import numpy as np
+import torch
+
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.examples.rl_modules.classes.modelv2_by_policy_checkpoint_rlm import (
     ModelV2ByPolicyCheckpointRLModule
@@ -39,7 +43,7 @@ from ray.rllib.examples.rl_modules.classes.modelv2_by_policy_checkpoint_rlm impo
 from ray.rllib.utils.spaces.space_utils import batch
 
 # Run a simple CartPole inference experiment.
-env = gym.make("CartPole-v1")
+env = gym.make("CartPole-v1", render_mode="human")
 rl_module = ModelV2ByPolicyCheckpointRLModule(
     config=RLModuleConfig(
         observation_space=env.observation_space,
@@ -49,7 +53,20 @@ rl_module = ModelV2ByPolicyCheckpointRLModule(
 )
 
 obs, _ = env.reset()
+env.render()
 done = False
+episode_return = 0.0
 while not done:
-    action_logits = rl_module.forward_inference({"obs": batch([obs])})
-    action = np.argmax(action_logits[0])
+    output = rl_module.forward_inference({"obs": torch.from_numpy(batch([obs]))})
+    action_logits = output["action_dist_inputs"].detach().numpy()[0]
+    action = np.argmax(action_logits)
+    obs, reward, terminated, truncated, _ = env.step(action)
+    done = terminated or truncated
+    episode_return += reward
+    env.render()
+
+print(f"Played episode with trained ModelV2 at return={episode_return}")
+
+
+# Continue training with the (checkpointed) ModelV2.
+

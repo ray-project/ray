@@ -32,7 +32,9 @@ class ModelV2ByPolicyCheckpointRLModule(TorchRLModule):
         # TODO (sven) What about custom dist classes?
 
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        output, state_out = self._model_v2(batch)
+        nn_output, state_out = self._model_v2(batch)
+        # Interpret the NN output as action logits.
+        output = {Columns.ACTION_DIST_INPUTS: nn_output}
         # Add the `state_out` to the `output`, new API stack style.
         if state_out:
             output[Columns.STATE_OUT] = {}
