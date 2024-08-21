@@ -973,7 +973,7 @@ class Learner(Checkpointable):
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        min_total_mini_batches: int = 0,
+        num_total_mini_batches: int = 0,
         # Deprecated args.
         reduce_fn=DEPRECATED_VALUE,
     ) -> ResultDict:
@@ -991,13 +991,14 @@ class Learner(Checkpointable):
             minibatch_size: The size of the minibatch to use for each update.
             num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
-            min_total_mini_batches: The minimum number of mini-batches to loop through
+            num_total_mini_batches: The total number of mini-batches to loop through
                 (across all `num_sgd_iter` SGD iterations). It's required to set this
                 for multi-agent + multi-GPU situations in which the MultiAgentEpisodes
                 themselves are roughly sharded equally, however, they might contain
                 SingleAgentEpisodes with very lopsided length distributions. Thus,
-                without this limit it can happen that one Learner goes through a
-                different number of mini-batches than other Learners, causing deadlocks.
+                without this fixed, pre-computed value it can happen that one Learner
+                goes through a different number of mini-batches than other Learners,
+                causing a deadlock.
 
         Returns:
             A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
@@ -1021,7 +1022,7 @@ class Learner(Checkpointable):
             timesteps=timesteps,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
-            min_total_mini_batches=min_total_mini_batches,
+            num_total_mini_batches=num_total_mini_batches,
         )
 
     @OverrideToImplementCustomLogic
@@ -1231,7 +1232,7 @@ class Learner(Checkpointable):
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        min_total_mini_batches: int = 0,
+        num_total_mini_batches: int = 0,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
 
         self._check_is_built()
@@ -1317,7 +1318,7 @@ class Learner(Checkpointable):
                 batch_iter = partial(
                     MiniBatchCyclicIterator,
                     uses_new_env_runners=True,
-                    min_total_mini_batches=min_total_mini_batches,
+                    num_total_mini_batches=num_total_mini_batches,
                 )
             else:
                 batch_iter = MiniBatchCyclicIterator

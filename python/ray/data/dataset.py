@@ -4777,8 +4777,8 @@ class Dataset:
         futures, to bytes that can be stored and later deserialized, possibly on a
         different cluster.
 
-        Note that this will drop all computed data, and that everything is
-        recomputed from scratch after deserialization.
+        Note that this uses pickle and will drop all computed data, and that everything
+        is recomputed from scratch after deserialization.
 
         Use :py:meth:`Dataset.deserialize_lineage` to deserialize the serialized
         bytes returned from this method into a Dataset.
@@ -4866,8 +4866,8 @@ class Dataset:
         """
         Deserialize the provided lineage-serialized Dataset.
 
-        This assumes that the provided serialized bytes were serialized using
-        :py:meth:`Dataset.serialize_lineage`.
+        This uses pickle, and assumes that the provided serialized bytes were
+        serialized using :py:meth:`Dataset.serialize_lineage`.
 
         Examples:
 

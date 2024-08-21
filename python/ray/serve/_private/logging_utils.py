@@ -6,6 +6,7 @@ import traceback
 from typing import Any, Optional, Tuple
 
 import ray
+from ray._private.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter
 from ray.serve._private.common import ServeComponentType
@@ -350,6 +351,18 @@ def configure_component_logger(
         sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
 
     logger.addHandler(file_handler)
+
+
+def configure_default_serve_logger():
+    """Helper function to configure the default Serve logger that's used outside of
+    individual Serve components."""
+    configure_component_logger(
+        component_name="serve",
+        component_id=str(os.getpid()),
+        logging_config=LoggingConfig(),
+        max_bytes=LOGGING_ROTATE_BYTES,
+        backup_count=LOGGING_ROTATE_BACKUP_COUNT,
+    )
 
 
 def configure_component_memory_profiler(
