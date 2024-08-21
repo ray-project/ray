@@ -10,6 +10,17 @@ http_archive(
     ],
 )
 
+http_archive(
+    name = "rules_python",
+    sha256 = "c68bdc4fbec25de5b5493b8819cfc877c4ea299c0dcb15c244c5a00208cde311",
+    strip_prefix = "rules_python-0.31.0",
+    url = "https://github.com/bazelbuild/rules_python/releases/download/0.31.0/rules_python-0.31.0.tar.gz",
+)
+
+load("@rules_python//python:repositories.bzl", "py_repositories")
+
+py_repositories()
+
 load("//bazel:ray_deps_setup.bzl", "ray_deps_setup")
 
 ray_deps_setup()
@@ -38,13 +49,6 @@ versions.check(
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 
 hedron_compile_commands_setup()
-
-http_archive(
-    name = "rules_python",
-    sha256 = "c68bdc4fbec25de5b5493b8819cfc877c4ea299c0dcb15c244c5a00208cde311",
-    strip_prefix = "rules_python-0.31.0",
-    url = "https://github.com/bazelbuild/rules_python/releases/download/0.31.0/rules_python-0.31.0.tar.gz",
-)
 
 load("@rules_python//python:repositories.bzl", "python_register_toolchains")
 
