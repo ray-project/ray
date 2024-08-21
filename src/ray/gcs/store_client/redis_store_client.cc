@@ -403,6 +403,9 @@ void RedisStoreClient::RedisScanner::OnScanCallback(
       cursor_ = cursor;
     }
     // Result is an array of key-value pairs.
+    // scan_result[i] = key, scan_result[i+1] = value
+    // Example req: HSCAN hash_with_cluster_id_for_Jobs
+    // scan_result = job1 job1_value job2 job2_value
     RAY_CHECK(scan_result.size() % 2 == 0);
     for (size_t i = 0; i < scan_result.size(); i += 2) {
       results_.emplace(std::move(scan_result[i]), std::move(scan_result[i + 1]));
