@@ -31,18 +31,6 @@ steps:
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
     depends_on: rllibbuild
 
-  - label: ":brain: rllib: learning tests tf2-static-graph"
-    tags: rllib
-    parallelism: 3
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --only-tags fake_gpus,learning_tests_discrete,crashing_cartpole,stateless_cartpole,learning_tests_continuous
-        --except-tags torch_only,tf2_only,no_tf_static_graph,multi_gpu
-        --test-arg --framework=tf
-    depends_on: rllibbuild
-
   - label: ":brain: rllib: learning tests pytorch"
     tags: rllib
     parallelism: 5
@@ -51,12 +39,12 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --only-tags fake_gpus,learning_tests_discrete,crashing_cartpole,stateless_cartpole,learning_tests_continuous
-        --except-tags tf_only,tf2_only,multi_gpu,learning_tests_pytorch_use_all_core
+        --except-tags tf_only,tf2_only,gpu,multi_gpu,learning_tests_pytorch_use_all_core
         --test-arg --framework=torch
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --only-tags learning_tests_pytorch_use_all_core
-        --except-tags tf_only,tf2_only,multi_gpu
+        --except-tags tf_only,tf2_only,gpu,multi_gpu
         --test-arg --framework=torch
         --skip-ray-installation
     depends_on: rllibbuild
