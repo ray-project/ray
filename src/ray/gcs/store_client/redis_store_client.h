@@ -30,6 +30,42 @@ namespace ray {
 
 namespace gcs {
 
+// Typed key to avoid forgetting to prepend external_storage_namespace.
+struct RedisKey {
+  explicit RedisKey(absl::string_view external_storage_namespace,
+                    absl::string_view table_name);
+  const std::string redis_key;
+};
+
+struct RedisMatchPattern {
+  static RedisMatchPattern Prefix(const std::string &prefix);
+  static RedisMatchPattern Any() {
+    static const RedisMatchPattern kAny("*");
+    return kAny;
+  }
+  const std::string escaped;
+
+ private:
+  explicit RedisMatchPattern(std::string escaped) : escaped(std::move(escaped)) {}
+};
+
+struct RedisCommand {
+  std::string command;
+  // Redis "key" referring to a HASH.
+  RedisKey redis_key;
+  std::vector<std::string> args;
+
+  std::vector<std::string> ToRedisArgs() const {
+    std::vector<std::string> redis_args;
+    redis_args.push_back(command);
+    redis_args.push_back(redis_key.redis_key);
+    for (const auto &arg : args) {
+      redis_args.push_back(arg);
+    }
+    return redis_args;
+  }
+};
+
 // StoreClient using Redis as persistence backend.
 // Note in redis term a "key" points to a hash table and a "field" is a key, a "value"
 // is just a value. We double quote "key" and "field" to avoid confusion.
@@ -95,26 +131,36 @@ class RedisStoreClient : public StoreClient {
   /// The scan is not locked with other operations. It's not guaranteed to be consistent
   /// with other operations. It's batched by
   /// RAY_maximum_gcs_storage_operation_batch_size.
-  ///
-  /// Callers can only call ScanKeysAndValues or ScanKeys once.
-  class RedisScanner {
-   public:
-    explicit RedisScanner(std::shared_ptr<RedisClient> redis_client,
-                          const std::string &table_name,
-                          const std::string &match_pattern);
+  class RedisScanner : std::enable_shared_from_this<RedisScanner> {
+   private:
+    // We want a private ctor but can use make_shared.
+    // See https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
+    struct PrivateCtorTag {};
 
-    Status ScanKeysAndValues(const MapCallback<std::string, std::string> &callback);
+   public:
+    explicit RedisScanner(PrivateCtorTag tag,
+                          std::shared_ptr<RedisClient> redis_client,
+                          RedisKey redis_key,
+                          RedisMatchPattern match_pattern,
+                          MapCallback<std::string, std::string> callback);
+
+    static void ScanKeysAndValues(std::shared_ptr<RedisClient> redis_client,
+                                  RedisKey redis_key,
+                                  RedisMatchPattern match_pattern,
+                                  MapCallback<std::string, std::string> callback);
 
    private:
-    void Scan(const StatusCallback &callback);
+    // Scans the keys and values, one batch a time. Once all keys are scanned, the
+    // callback will be called. When the calls are in progress, the scanner temporarily
+    // holds its own reference so users don't need to keep it alive.
+    void Scan();
 
-    void OnScanCallback(const std::shared_ptr<CallbackReply> &reply,
-                        const StatusCallback &callback);
+    void OnScanCallback(const std::shared_ptr<CallbackReply> &reply);
     /// The table name that the scanner will scan.
-    std::string table_name_;
+    RedisKey redis_key_;
 
     /// The pattern to match the keys.
-    std::string match_pattern_;
+    RedisMatchPattern match_pattern_;
 
     /// Mutex to protect the cursor_ field and the keys_ field and the
     /// key_value_map_ field.
@@ -130,6 +176,8 @@ class RedisStoreClient : public StoreClient {
     std::atomic<size_t> pending_request_count_{0};
 
     std::shared_ptr<RedisClient> redis_client_;
+
+    MapCallback<std::string, std::string> callback_;
   };
 
   // Push a request to the sending queue.
@@ -164,7 +212,7 @@ class RedisStoreClient : public StoreClient {
   // \param args The redis commands
   // \param redis_callback The callback to call when the reply is received.
   void SendRedisCmd(std::vector<std::string> keys,
-                    std::vector<std::string> args,
+                    RedisCommand command,
                     RedisCallback redis_callback);
 
   // HMGET external_storage_namespace@table_name key1 key2 ...
