@@ -1,9 +1,9 @@
 group: windows tests
 sort_key: "~windows"
 steps:
-  # block on premerge, microcheck and partial ray release
+  # block on premerge and microcheck
   - block: "run windows tests"
-    if: build.env("BUILDKITE_PIPELINE_ID") == "0189942e-0876-4b8f-80a4-617f988ec59b" || build.env("BUILDKITE_PIPELINE_ID") == "018f4f1e-1b73-4906-9802-92422e3badaa" || (build.env("RAYCI_RELEASE") == "1" && build.env("RAYCI_FULL_PLATFORM_RELEASE") != "1")
+    if: build.env("BUILDKITE_PIPELINE_ID") == "0189942e-0876-4b8f-80a4-617f988ec59b" || build.env("BUILDKITE_PIPELINE_ID") == "018f4f1e-1b73-4906-9802-92422e3badaa"
 
   - name: windowsbuild
     wanda: ci/docker/windows.build.wanda.yaml
@@ -88,11 +88,27 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
         --build-name windowsbuild
         --operating-system windows
-        --except-tags no_windows
+        --except-tags no_windows,use_all_core_windows
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
+    depends_on: windowsbuild
+
+  - label: ":ray-serve: serve: :windows: enormous tests"
+    tags: serve
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
+        --build-name windowsbuild
+        --operating-system windows
+        --only-tags use_all_core_windows
+        --except-tags no_windows
+        --test-env=CI="1"
+        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
+        --test-env=USERPROFILE
     depends_on: windowsbuild
 
   - label: ":train: ml: :windows: tests"
@@ -110,8 +126,8 @@ steps:
         --test-env=USERPROFILE
     depends_on: windowsbuild
 
-  - label: "flaky :windows: tests"
-    key: windows_flaky_tests
+  - label: "flaky :windows: core tests"
+    key: windows_core_flaky_tests
     tags: skip-on-premerge
     job_env: WINDOWS
     instance_type: windows
@@ -125,8 +141,17 @@ steps:
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
+    depends_on: windowsbuild
+    soft_fail: true
+
+  - label: "flaky :windows: serverless tests"
+    key: windows_serverless_flaky_tests
+    tags: skip-on-premerge
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... serverless
-        --skip-ray-installation
         --except-tags no_windows
         --run-flaky-tests
         --build-name windowsbuild
@@ -134,8 +159,17 @@ steps:
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
+    depends_on: windowsbuild
+    soft_fail: true
+
+  - label: "flaky :windows: serve tests"
+    key: windows_serve_flaky_tests
+    tags: skip-on-premerge
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
-        --skip-ray-installation
         --except-tags no_windows
         --run-flaky-tests
         --build-name windowsbuild

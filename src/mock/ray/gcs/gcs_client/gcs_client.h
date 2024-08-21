@@ -33,7 +33,7 @@ class MockGcsClient : public GcsClient {
  public:
   MOCK_METHOD(Status,
               Connect,
-              (instrumented_io_context & io_service, const ClusterID &cluster_id),
+              (instrumented_io_context & io_service, int64_t timeout_ms),
               (override));
   MOCK_METHOD(void, Disconnect, (), (override));
   MOCK_METHOD((std::pair<std::string, int>), GetGcsServerAddress, (), (const, override));

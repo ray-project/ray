@@ -372,10 +372,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         sched_cls_info.running_tasks.insert(spec.TaskId());
         // The local node has the available resources to run the task, so we should run
         // it.
-        std::string allocated_instances_serialized_json = "{}";
-        if (RayConfig::instance().worker_resource_limits_enabled()) {
-          allocated_instances_serialized_json = allocated_instances->SerializeAsJson();
-        }
         work->allocated_instances = allocated_instances;
         work->SetStateWaitingForWorker();
         bool is_detached_actor = spec.IsDetachedActor();
@@ -396,8 +392,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
                                          is_detached_actor,
                                          owner_address,
                                          runtime_env_setup_error_message);
-            },
-            allocated_instances_serialized_json);
+            });
         work_it++;
       }
     }
@@ -535,7 +530,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
   const auto &callback = work->callback;
   bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
   const auto &task = work->task;
-  const auto &spec = task.GetTaskSpecification();
   bool dispatched = false;
 
   // Check whether owner worker or owner node dead.
@@ -558,6 +552,14 @@ bool LocalTaskManager::PoppedWorkerHandler(
     }
   }
 
+  // Erases the work from task_to_dispatch_ queue, also removes the task dependencies.
+  //
+  // IDEA(ryw): Make an RAII class to wrap the a shared_ptr<internal::Work> and
+  // requests task dependency upon ctor, and remove task dependency upon dtor.
+  // I tried this, it works, but we expose the map via GetTaskToDispatch() used in
+  // scheduler_resource_reporter.cc. Maybe we can use `boost::any_range` to only expose
+  // a view of the Work ptrs, but I got dependency issues
+  // (can't include boost/range/any_range.hpp).
   auto erase_from_dispatch_queue_fn = [this](const std::shared_ptr<internal::Work> &work,
                                              const SchedulingClass &scheduling_class) {
     auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
@@ -576,6 +578,12 @@ bool LocalTaskManager::PoppedWorkerHandler(
       tasks_to_dispatch_.erase(shapes_it);
     }
     RAY_CHECK(erased);
+
+    const auto &task = work->task;
+    if (!task.GetDependencies().empty()) {
+      task_dependency_manager_.RemoveTaskDependencies(
+          task.GetTaskSpecification().TaskId());
+    }
   };
 
   if (canceled) {
@@ -637,8 +645,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
                          << status;
         }
         work->SetStateWaiting(cause);
-        // Return here because we shouldn't remove task dependencies.
-        return dispatched;
       }
     } else if (not_detached_with_owner_failed) {
       // The task owner failed.
@@ -646,7 +652,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
       RAY_LOG(DEBUG) << "Call back to an owner failed task, task id = " << task_id;
       erase_from_dispatch_queue_fn(work, scheduling_class);
     }
-
   } else {
     // A worker has successfully popped for a valid task. Dispatch the task to
     // the worker.
@@ -656,11 +661,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
     Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
     erase_from_dispatch_queue_fn(work, scheduling_class);
     dispatched = true;
-  }
-
-  // Remove task dependencies.
-  if (!spec.GetDependencies().empty()) {
-    task_dependency_manager_.RemoveTaskDependencies(task.GetTaskSpecification().TaskId());
   }
 
   return dispatched;

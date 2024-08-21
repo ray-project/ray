@@ -29,6 +29,7 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     is_running_in_asyncio_loop,
 )
+from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -145,7 +146,7 @@ class _DeploymentHandleBase:
             _request_protocol=request_protocol
         )
 
-    def _get_or_create_router(self) -> Union[Router, asyncio.AbstractEventLoop]:
+    def _get_or_create_router(self) -> Tuple[Router, asyncio.AbstractEventLoop]:
 
         if self._router is None:
             node_id = ray.get_runtime_context().get_node_id()
@@ -199,6 +200,12 @@ class _DeploymentHandleBase:
                 "application": app_name,
             }
         )
+
+    def running_replicas_populated(self) -> bool:
+        if self._router is None:
+            return False
+
+        return self._router.running_replicas_populated
 
     @property
     def deployment_name(self) -> str:
@@ -529,6 +536,14 @@ class DeploymentResponse(_DeploymentResponseBase):
         ).__await__()
         result = yield from obj_ref.__await__()
         return result
+
+    def __reduce__(self):
+        raise RayServeException(
+            "`DeploymentResponse` is not serializable. If you are passing the "
+            "`DeploymentResponse` in a nested object (e.g. a list or dictionary) to a "
+            "downstream deployment handle call, that is no longer supported. Please "
+            "only pass `DeploymentResponse` objects as top level arguments."
+        )
 
     def result(self, *, timeout_s: Optional[float] = None) -> Any:
         """Fetch the result of the handle call synchronously.

@@ -307,6 +307,10 @@ class StateDataSourceClient:
                 req_filters.job_id = JobID(hex_to_binary(value)).binary()
             elif key == "task_id":
                 req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
+            elif key == "name":
+                req_filters.name = value
+            elif key == "state":
+                req_filters.state = value
             else:
                 continue
 

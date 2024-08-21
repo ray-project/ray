@@ -37,8 +37,8 @@
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/store_provider/plasma_store_provider.h"
 #include "ray/core_worker/task_event_buffer.h"
-#include "ray/core_worker/transport/direct_actor_transport.h"
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/transport/normal_task_submitter.h"
+#include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
@@ -140,15 +140,18 @@ class TaskCounter {
       float running = 0.0;
       float in_get = 0.0;
       float in_wait = 0.0;
+      float idle = 0.0;
       if (running_in_wait_counter_.Total() > 0) {
         in_wait = 1.0;
       } else if (running_in_get_counter_.Total() > 0) {
         in_get = 1.0;
       } else if (num_tasks_running_ > 0) {
         running = 1.0;
+      } else {
+        idle = 1.0;
       }
-      ray::stats::STATS_actors.Record(-(running + in_get + in_wait),
-                                      {{"State", "ALIVE"},
+      ray::stats::STATS_actors.Record(idle,
+                                      {{"State", "IDLE"},
                                        {"Name", actor_name_},
                                        {"Source", "executor"},
                                        {"JobId", job_id_}});
@@ -698,11 +701,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// current data size.
   /// \param[in] num_readers The number of readers that must read and release
   /// the object before the caller can write again.
+  /// \param[in] timeout_ms The timeout in milliseconds to acquire the write lock.
+  /// If this is 0, the method will try to acquire the write lock once immediately,
+  /// and return either OK or TimedOut without blocking. If this is -1, the method
+  /// will block indefinitely until the write lock is acquired.
   /// \param[out] data The mutable object buffer in plasma that can be written to.
   Status ExperimentalChannelWriteAcquire(const ObjectID &object_id,
                                          const std::shared_ptr<Buffer> &metadata,
                                          uint64_t data_size,
                                          int64_t num_readers,
+                                         int64_t timeout_ms,
                                          std::shared_ptr<Buffer> *data);
 
   /// Experimental method for mutable objects. Releases a write lock on the
@@ -1104,11 +1112,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &event_name);
 
   int64_t GetNumTasksSubmitted() const {
-    return direct_task_submitter_->GetNumTasksSubmitted();
+    return normal_task_submitter_->GetNumTasksSubmitted();
   }
 
   int64_t GetNumLeasesRequested() const {
-    return direct_task_submitter_->GetNumLeasesRequested();
+    return normal_task_submitter_->GetNumLeasesRequested();
   }
 
  public:
@@ -1159,9 +1167,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// of the object that wraps the dynamically created ObjectRefs in a
   /// generator. We use this to notify the owner of the dynamically created
   /// objects.
+  /// \param[in] caller_address The address of the caller who is also the owner
   bool PinExistingReturnObject(const ObjectID &return_id,
                                std::shared_ptr<RayObject> *return_object,
-                               const ObjectID &generator_id);
+                               const ObjectID &generator_id,
+                               const rpc::Address &caller_address);
 
   /// Dynamically allocate an object.
   ///
@@ -1717,7 +1727,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// See params in CancelTaskOnExecutor.
   /// For the actor task cancel protocol, see the docstring of
-  /// direct_actor_task_submitter.h::CancelTask.
+  /// actor_task_submitter.h::CancelTask.
   void CancelActorTaskOnExecutor(WorkerID caller_worker_id,
                                  TaskID intended_task_id,
                                  bool force_kill,
@@ -1737,9 +1747,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Helper for Get, used only to read experimental mutable objects.
   ///
   /// \param[in] ids IDs of the objects to get.
+  /// \param[in] timeout_ms Time out in milliseconds to get the objects.
   /// \param[out] results Result list of objects data.
   /// \return Status.
   Status GetExperimentalMutableObjects(const std::vector<ObjectID> &ids,
+                                       int64_t timeout_ms,
                                        std::vector<std::shared_ptr<RayObject>> &results);
 
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
@@ -1828,7 +1840,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Interface to submit tasks directly to other actors.
-  std::shared_ptr<CoreWorkerDirectActorTaskSubmitter> direct_actor_submitter_;
+  std::shared_ptr<ActorTaskSubmitter> actor_task_submitter_;
 
   // A class to publish object status from other raylets/workers.
   std::unique_ptr<pubsub::Publisher> object_info_publisher_;
@@ -1841,7 +1853,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 
   // Interface to submit non-actor tasks directly to leased workers.
-  std::unique_ptr<CoreWorkerDirectTaskSubmitter> direct_task_submitter_;
+  std::unique_ptr<NormalTaskSubmitter> normal_task_submitter_;
 
   /// Manages recovery of objects stored in remote plasma nodes.
   std::unique_ptr<ObjectRecoveryManager> object_recovery_manager_;
@@ -1896,7 +1908,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<DependencyWaiterImpl> task_argument_waiter_;
 
   // Interface that receives tasks from direct actor calls.
-  std::unique_ptr<CoreWorkerDirectTaskReceiver> direct_task_receiver_;
+  std::unique_ptr<TaskReceiver> task_receiver_;
 
   /// Event loop where tasks are processed.
   /// task_execution_service_ should be destructed first to avoid

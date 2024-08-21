@@ -18,7 +18,7 @@ from ray.air.constants import TRAINING_ITERATION
 from ray.tune.registry import register_env
 from ray.rllib.examples.envs.classes.repeat_after_me_env import RepeatAfterMeEnv
 from ray.rllib.examples.envs.classes.repeat_initial_obs_env import RepeatInitialObsEnv
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from dataclasses import dataclass
 from ray.rllib.core.models.specs.specs_dict import SpecDict
@@ -183,9 +183,7 @@ if __name__ == "__main__":
             entropy_coeff=0.001,
             vf_loss_coeff=1e-5,
         )
-        .rl_module(
-            rl_module_spec=SingleAgentRLModuleSpec(catalog_class=CustomPPOCatalog)
-        )
+        .rl_module(rl_module_spec=RLModuleSpec(catalog_class=CustomPPOCatalog))
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )

@@ -92,11 +92,21 @@ SERVE_ROOT_URL_ENV_KEY = "RAY_SERVE_ROOT_URL"
 
 #: Limit the number of cached handles because each handle has long poll
 #: overhead. See https://github.com/ray-project/ray/issues/18980
-MAX_CACHED_HANDLES = 100
+MAX_CACHED_HANDLES = int(os.getenv("MAX_CACHED_HANDLES", 100))
+assert MAX_CACHED_HANDLES > 0, (
+    f"Got unexpected value {MAX_CACHED_HANDLES} for "
+    "MAX_CACHED_HANDLES environment variable. "
+    "MAX_CACHED_HANDLES must be positive."
+)
 
 #: Because ServeController will accept one long poll request per handle, its
 #: concurrency needs to scale as O(num_handles)
-CONTROLLER_MAX_CONCURRENCY = 15000
+CONTROLLER_MAX_CONCURRENCY = int(os.getenv("CONTROLLER_MAX_CONCURRENCY", 15_000))
+assert CONTROLLER_MAX_CONCURRENCY > 0, (
+    f"Got unexpected value {CONTROLLER_MAX_CONCURRENCY} for "
+    "CONTROLLER_MAX_CONCURRENCY environment variable. "
+    "CONTROLLER_MAX_CONCURRENCY must be positive."
+)
 
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
@@ -202,6 +212,14 @@ SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_MESSAGE: "%(filename)s:%(lineno)d - %(message)s",
     SERVE_LOG_LEVEL_NAME: "%(levelname)s",
     SERVE_LOG_TIME: "%(asctime)s",
+}
+
+# There are some attributes that we only use internally or don't provide values to the
+# users. Adding to this set will remove them from structured logs.
+SERVE_LOG_UNWANTED_ATTRS = {
+    "serve_access_log",
+    "task_id",
+    "job_id",
 }
 
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"

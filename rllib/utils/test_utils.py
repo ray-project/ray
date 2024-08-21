@@ -49,7 +49,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES_LIFETIME,
 )
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
 
@@ -175,6 +174,22 @@ def add_rllib_example_script_args(
         "your overall iteration time. Be aware that when using this option, your "
         "reported evaluation results are referring to one iteration before the current "
         "one.",
+    )
+
+    # RLlib logging options.
+    parser.add_argument(
+        "--output",
+        type=str,
+        default=None,
+        help="The output directory to write trajectories to, which are collected by "
+        "the algo's EnvRunners.",
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default=None,  # None -> use default
+        choices=["INFO", "DEBUG", "WARN", "ERROR"],
+        help="The log-level to be used by the RLlib logger.",
     )
 
     # tune.Tuner options.
@@ -315,10 +330,8 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
         false: Whether to check that x and y are NOT the same.
     """
     # A dict type.
-    if isinstance(x, (dict, NestedDict)):
-        assert isinstance(
-            y, (dict, NestedDict)
-        ), "ERROR: If x is dict, y needs to be a dict as well!"
+    if isinstance(x, dict):
+        assert isinstance(y, dict), "ERROR: If x is dict, y needs to be a dict as well!"
         y_keys = set(x.keys())
         for key, value in x.items():
             assert key in y, f"ERROR: y does not have x's key='{key}'! y={y}"
@@ -448,7 +461,7 @@ def check_compute_single_action(
     try:
         # Multi-agent: Pick any learnable policy (or DEFAULT_POLICY if it's the only
         # one).
-        pid = next(iter(algorithm.workers.local_worker().get_policies_to_train()))
+        pid = next(iter(algorithm.env_runner.get_policies_to_train()))
         pol = algorithm.get_policy(pid)
     except AttributeError:
         pol = algorithm.policy
@@ -587,12 +600,12 @@ def check_compute_single_action(
         if what is algorithm:
             # Get the obs-space from Workers.env (not Policy) due to possible
             # pre-processor up front.
-            worker_set = getattr(algorithm, "workers", None)
+            worker_set = getattr(algorithm, "env_runner_group", None)
             assert worker_set
-            if not worker_set.local_worker():
+            if not worker_set.local_env_runner:
                 obs_space = algorithm.get_policy(pid).observation_space
             else:
-                obs_space = worker_set.local_worker().for_policy(
+                obs_space = worker_set.local_env_runner.for_policy(
                     lambda p: p.observation_space, policy_id=pid
                 )
             obs_space = getattr(obs_space, "original_space", obs_space)
@@ -1368,6 +1381,7 @@ def run_rllib_example_script_experiment(
     tune_callbacks: Optional[List] = None,
     keep_config: bool = False,
     scheduler=None,
+    progress_reporter=None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
     """Given an algorithm config and some command line args, runs an experiment.
 
@@ -1442,7 +1456,7 @@ def run_rllib_example_script_experiment(
     # Define one or more stopping criteria.
     if stop is None:
         stop = {
-            f"{ENV_RUNNER_RESULTS}/episode_return_mean": args.stop_reward,
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
             f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
             TRAINING_ITERATION: args.stop_iters,
         }
@@ -1497,6 +1511,14 @@ def run_rllib_example_script_experiment(
                 evaluation_parallel_to_training=args.evaluation_parallel_to_training,
             )
 
+        # Set the log-level (if applicable).
+        if args.log_level is not None:
+            config.debugging(log_level=args.log_level)
+
+        # Set the output dir (if applicable).
+        if args.output is not None:
+            config.offline_data(output=args.output)
+
     # Run the experiment w/o Tune (directly operate on the RLlib Algorithm object).
     if args.no_tune:
         assert not args.as_test and not args.as_release_test
@@ -1549,8 +1571,7 @@ def run_rllib_example_script_experiment(
 
     # Auto-configure a CLIReporter (to log the results to the console).
     # Use better ProgressReporter for multi-agent cases: List individual policy rewards.
-    progress_reporter = None
-    if args.num_agents > 0:
+    if progress_reporter is None and args.num_agents > 0:
         progress_reporter = CLIReporter(
             metric_columns={
                 **{
@@ -1897,18 +1918,26 @@ class ModelChecker:
         from ray.rllib.core.models.specs.specs_dict import SpecDict
 
         if isinstance(model.input_specs, SpecDict):
-            inputs = {}
-            for key, spec in model.input_specs.items():
-                dict_ = inputs
-                for i, sub_key in enumerate(key):
-                    if sub_key not in dict_:
-                        dict_[sub_key] = {}
-                    if i < len(key) - 1:
-                        dict_ = dict_[sub_key]
-                if spec is not None:
-                    dict_[sub_key] = spec.fill(self.random_fill_input_value)
+            # inputs = {}
+
+            def _fill(s):
+                if s is not None:
+                    return s.fill(self.random_fill_input_value)
                 else:
-                    dict_[sub_key] = None
+                    return None
+
+            inputs = tree.map_structure(_fill, dict(model.input_specs))
+            # for key, spec in model.input_specs.items():
+            #    dict_ = inputs
+            #    for i, sub_key in enumerate(key):
+            #        if sub_key not in dict_:
+            #            dict_[sub_key] = {}
+            #        if i < len(key) - 1:
+            #            dict_ = dict_[sub_key]
+            #    if spec is not None:
+            #        dict_[sub_key] = spec.fill(self.random_fill_input_value)
+            #    else:
+            #        dict_[sub_key] = None
         else:
             inputs = model.input_specs.fill(self.random_fill_input_value)
 
@@ -2052,18 +2081,14 @@ def test_ckpt_restore(
         # Check, whether the eval EnvRunnerGroup has the same policies and
         # `policy_mapping_fn`.
         if eval_env_runner_group:
-            eval_mapping_src = inspect.getsource(
-                alg1.evaluation_workers.local_worker().policy_mapping_fn
+            eval_mapping_src = inspect.getsource(alg1.eval_env_runner.policy_mapping_fn)
+            check(
+                eval_mapping_src,
+                inspect.getsource(alg2.eval_env_runner.policy_mapping_fn),
             )
             check(
                 eval_mapping_src,
-                inspect.getsource(
-                    alg2.evaluation_workers.local_worker().policy_mapping_fn
-                ),
-            )
-            check(
-                eval_mapping_src,
-                inspect.getsource(alg2.workers.local_worker().policy_mapping_fn),
+                inspect.getsource(alg2.env_runner.policy_mapping_fn),
                 false=True,
             )
 

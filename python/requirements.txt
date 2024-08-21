@@ -8,6 +8,7 @@
 
 ## setup.py install_requires
 click>=7.0
+cupy-cuda12x; sys_platform != 'darwin'
 filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0
@@ -44,11 +45,11 @@ opencensus
 aiohttp_cors
 dm_tree
 uvicorn
-scikit-image==0.21.0
+scikit-image>=0.21.0
 prometheus_client>=0.7.1
 pandas
 tensorboardX
-aiohttp>=3.7,<3.9
+aiohttp>=3.7
 starlette
 typer
 fsspec

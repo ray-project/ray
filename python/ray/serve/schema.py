@@ -286,14 +286,6 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
             "[DEPRECATED] Please use route_prefix under ServeApplicationSchema instead."
         ),
     )
-    max_concurrent_queries: int = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "[DEPRECATED] The max number of requests that will be executed at once in "
-            f"each replica. Defaults to {DEFAULT_MAX_ONGOING_REQUESTS}."
-        ),
-        gt=0,
-    )
     max_ongoing_requests: int = Field(
         default=DEFAULT.VALUE,
         description=(
@@ -478,7 +470,6 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
 
     schema = DeploymentSchema(
         name=name,
-        max_concurrent_queries=info.deployment_config.max_ongoing_requests,
         max_ongoing_requests=info.deployment_config.max_ongoing_requests,
         max_queued_requests=info.deployment_config.max_queued_requests,
         user_config=info.deployment_config.user_config,
@@ -873,6 +864,18 @@ class ServeStatus:
 
 @PublicAPI(stability="stable")
 class ServeActorDetails(BaseModel, frozen=True):
+    """Detailed info about a Ray Serve actor.
+
+    Attributes:
+        node_id: ID of the node that the actor is running on.
+        node_ip: IP address of the node that the actor is running on.
+        actor_id: Actor ID.
+        actor_name: Actor name.
+        worker_id: Worker ID.
+        log_file_path: The relative path to the Serve actor's log file from the ray logs
+            directory.
+    """
+
     node_id: Optional[str] = Field(
         description="ID of the node that the actor is running on."
     )
@@ -947,10 +950,12 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     def deployment_route_prefix_not_set(cls, v: DeploymentSchema):
         # Route prefix should not be set at the deployment level. Deployment-level route
         # prefix is outdated, there should be one route prefix per application
-        if "route_prefix" in v.dict(exclude_unset=True):
+        if (
+            "route_prefix" in v.__fields_set__
+        ):  # in Pydantic v2, this becomes `in v.model_fields_set`
             raise ValueError(
                 "Unexpectedly found a deployment-level route_prefix in the "
-                f'deployment_config for deployment "{cls.name}". The route_prefix in '
+                f'deployment_config for deployment "{v.name}". The route_prefix in '
                 "deployment_config within DeploymentDetails should not be set; please "
                 "set it at the application level."
             )
@@ -1032,6 +1037,12 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 @PublicAPI(stability="stable")
 class ProxyDetails(ServeActorDetails, frozen=True):
+    """Detailed info about a Ray Serve ProxyActor.
+
+    Attributes:
+        status: The current status of the proxy.
+    """
+
     status: ProxyStatus = Field(description="Current status of the proxy.")
 
 

@@ -1,13 +1,14 @@
 import abc
-from typing import Any, Container, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Tuple, TYPE_CHECKING
 
+import gymnasium as gym
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.actor_manager import FaultAwareApply
-from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -15,7 +16,9 @@ if TYPE_CHECKING:
 tf1, tf, _ = try_import_tf()
 
 
-@OldAPIStack
+# TODO (sven): As soon as RolloutWorker is no longer supported, make this base class
+#  a Checkpointable. Currently, only some of its subclasses are Checkpointables.
+@PublicAPI(stability="alpha")
 class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     """Base class for distributed RL-style data collection from an environment.
 
@@ -77,48 +80,13 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             The collected experience in any form.
         """
 
-    def get_state(
-        self,
-        components: Optional[Container[str]] = None,
-        inference_only: bool = False,
-    ) -> Dict[str, Any]:
-        """Returns this EnvRunner's (possibly serialized) current state as a dict.
+    @abc.abstractmethod
+    def get_spaces(self) -> Dict[str, Tuple[gym.Space, gym.Space]]:
+        """Returns a dict mapping ModuleIDs to 2-tuples of obs- and action space.
 
-        Args:
-            components: An optional list of string keys to be included in the
-                returned state. This might be useful, if getting certain components
-                of the state is expensive (e.g. reading/compiling the weights of a large
-                NN) and at the same time, these components are not required by the
-                caller.
-            inference_only: Whether to return the inference-only weight set of the
-                underlying RLModule. Note that this setting only has an effect if
-                components is None or the string "rl_module" is in components.
-
-        Returns:
-            The current state (or only the components specified) of this EnvRunner.
+        The returned dict might also contain an extra key `__env__`, which maps to
+        a 2-tuple of the bare Env's observation- and action spaces.
         """
-        # TODO (sven, simon): `Algorithm.save_checkpoint()` will store with
-        #  this an empty worker state and in `Algorithm.from_checkpoint()`
-        #  the empty state (not `None`) must be ensured separately. Shall we
-        #  return here as a default `None`?
-        return {}
-
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Restores this EnvRunner's state from the given state dict.
-
-        Args:
-            state: The state dict to restore the state from.
-
-        .. testcode::
-            :skipif: True
-
-            from ray.rllib.env.env_runner import EnvRunner
-            env_runner = ...
-            state = env_runner.get_state()
-            new_runner = EnvRunner(...)
-            new_runner.set_state(state)
-        """
-        pass
 
     def stop(self) -> None:
         """Releases all resources used by this EnvRunner.

@@ -29,7 +29,7 @@ if [[ "$BUILD_TYPE" == "skip" ]]; then
 fi
 
 (
-  cd dashboard/client
+  cd python/ray/dashboard/client
   npm ci
   npm run build
 )

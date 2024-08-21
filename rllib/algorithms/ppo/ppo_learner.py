@@ -209,10 +209,13 @@ class PPOLearner(Learner):
         return batch, episodes
 
     @override(Learner)
-    def remove_module(self, module_id: str):
-        super().remove_module(module_id)
+    def remove_module(self, module_id: ModuleID, **kwargs):
+        marl_spec = super().remove_module(module_id, **kwargs)
+
         self.entropy_coeff_schedulers_per_module.pop(module_id, None)
         self.curr_kl_coeffs_per_module.pop(module_id, None)
+
+        return marl_spec
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Learner)
@@ -262,7 +265,7 @@ class PPOLearner(Learner):
             tensors.
         """
         return {
-            module_id: self.module[module_id].unwrapped()._compute_values(module_batch)
+            module_id: self.module[module_id].unwrapped().compute_values(module_batch)
             for module_id, module_batch in batch_for_vf.items()
             if self.should_module_be_updated(module_id, batch_for_vf)
         }

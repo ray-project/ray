@@ -24,7 +24,7 @@ class TestErrors(unittest.TestCase):
         This test will only work ok on a CPU-only machine.
         """
 
-        config = impala.ImpalaConfig().environment("CartPole-v1")
+        config = impala.IMPALAConfig().environment("CartPole-v1")
 
         for _ in framework_iterator(config):
             self.assertRaisesRegex(

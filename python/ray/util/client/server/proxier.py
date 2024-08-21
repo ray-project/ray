@@ -625,7 +625,7 @@ class RequestIteratorProxy:
             # not its subsclasses. ex: grpc._Rendezvous
             # https://github.com/grpc/grpc/blob/v1.43.0/src/python/grpcio/grpc/_server.py#L353-L354
             # This fixes the https://github.com/ray-project/ray/issues/23865
-            if type(e) != grpc.RpcError:
+            if type(e) is not grpc.RpcError:
                 raise e  # re-raise other grpc exceptions
             logger.exception(
                 "Stop iterating cancelled request stream with the following exception:"

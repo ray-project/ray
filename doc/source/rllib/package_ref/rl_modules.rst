@@ -23,9 +23,9 @@ Single Agent
     :nosignatures:
     :toctree: doc/
 
-    SingleAgentRLModuleSpec
-    SingleAgentRLModuleSpec.build
-    SingleAgentRLModuleSpec.get_rl_module_config
+    RLModuleSpec
+    RLModuleSpec.build
+    RLModuleSpec.get_rl_module_config
 
 RLModule Configuration
 +++++++++++++++++++++++
@@ -39,18 +39,18 @@ RLModule Configuration
     RLModuleConfig.from_dict
     RLModuleConfig.get_catalog
 
-Multi Agent
-++++++++++++
+Multi RLModule (multi-agent)
+++++++++++++++++++++++++++++
 
-.. currentmodule:: ray.rllib.core.rl_module.marl_module
+.. currentmodule:: ray.rllib.core.rl_module.multi_rl_module
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-    MultiAgentRLModuleSpec
-    MultiAgentRLModuleSpec.build
-    MultiAgentRLModuleSpec.get_marl_config
+    MultiRLModuleSpec
+    MultiRLModuleSpec.build
+    MultiRLModuleSpec.get_multi_rl_module_config
 
 
 
@@ -68,7 +68,7 @@ Constructor
     :toctree: doc/
 
     RLModule
-    RLModule.as_multi_agent
+    RLModule.as_multi_rl_module
 
 
 Forward methods
@@ -111,16 +111,15 @@ Saving and Loading
 
     ~RLModule.get_state
     ~RLModule.set_state
-    ~RLModule.save_state
-    ~RLModule.load_state
-    ~RLModule.save_to_checkpoint
+    ~RLModule.save_to_path
+    ~RLModule.restore_from_path
     ~RLModule.from_checkpoint
 
 
 Multi Agent RL Module API
 -------------------------
 
-.. currentmodule:: ray.rllib.core.rl_module.marl_module
+.. currentmodule:: ray.rllib.core.rl_module.multi_rl_module
 
 Constructor
 +++++++++++
@@ -129,9 +128,9 @@ Constructor
     :nosignatures:
     :toctree: doc/
 
-    MultiAgentRLModule
-    MultiAgentRLModule.setup
-    MultiAgentRLModule.as_multi_agent
+    MultiRLModule
+    MultiRLModule.setup
+    MultiRLModule.as_multi_rl_module
 
 Modifying the underlying RL modules
 ++++++++++++++++++++++++++++++++++++
@@ -140,8 +139,8 @@ Modifying the underlying RL modules
     :nosignatures:
     :toctree: doc/
 
-    ~MultiAgentRLModule.add_module
-    ~MultiAgentRLModule.remove_module
+    ~MultiRLModule.add_module
+    ~MultiRLModule.remove_module
 
 Saving and Loading
 ++++++++++++++++++++++
@@ -150,5 +149,5 @@ Saving and Loading
     :nosignatures:
     :toctree: doc/
 
-    ~MultiAgentRLModule.save_state
-    ~MultiAgentRLModule.load_state
+    ~MultiRLModule.save_to_path
+    ~MultiRLModule.restore_from_path

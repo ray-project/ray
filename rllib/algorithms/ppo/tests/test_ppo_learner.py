@@ -98,7 +98,7 @@ class TestPPO(unittest.TestCase):
 
             algo.stop()
 
-    def test_save_load_state(self):
+    def test_save_to_path_and_restore_from_path(self):
         """Tests saving and loading the state of the PPO Learner Group."""
         config = (
             ppo.PPOConfig()
@@ -124,8 +124,8 @@ class TestPPO(unittest.TestCase):
             learner_group1 = algo_config.build_learner_group(env=self.ENV)
             learner_group2 = algo_config.build_learner_group(env=self.ENV)
             with tempfile.TemporaryDirectory() as tmpdir:
-                learner_group1.save_state(tmpdir)
-                learner_group2.load_state(tmpdir)
+                learner_group1.save_to_path(tmpdir)
+                learner_group2.restore_from_path(tmpdir)
                 # Remove functions from state b/c they are not comparable via `check`.
                 s1 = learner_group1.get_state()
                 s2 = learner_group2.get_state()

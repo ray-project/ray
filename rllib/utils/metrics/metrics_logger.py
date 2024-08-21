@@ -224,7 +224,7 @@ class MetricsLogger:
             )
             logger.log_dict({
                 "b": -0.2,
-            })  # don't have to repeat `window` if key already exists
+            })  # don't have to repeat `window` arg if key already exists
             logger.log_dict({
                 "a": 0.2,
                 "c": {"d": 5.0},  # can also introduce an entirely new (nested) key
@@ -909,9 +909,13 @@ class MetricsLogger:
         flat_key = force_tuple(tree.flatten(flat_key))
         _dict = self.stats
         for i, key in enumerate(flat_key):
+            # If we are at the end of the key sequence, set
+            # the key, no matter, whether it already exists or not.
             if i == len(flat_key) - 1:
                 _dict[key] = stats
                 return
+            # If an intermediary key in the sequence is missing,
+            # add a sub-dict under this key.
             if key not in _dict:
                 _dict[key] = {}
             _dict = _dict[key]

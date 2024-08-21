@@ -1,9 +1,9 @@
 import gymnasium as gym
 
-from ray.rllib.algorithms.impala import ImpalaConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.algorithms.impala import IMPALAConfig
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
-from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn import TinyAtariCNN
+from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm import TinyAtariCNN
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -13,7 +13,10 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(env="ALE/Pong-v5")
+parser.set_defaults(
+    enable_new_api_stack=True,
+    env="ALE/Pong-v5",
+)
 parser.add_argument(
     "--use-tiny-cnn",
     action="store_true",
@@ -21,7 +24,7 @@ parser.add_argument(
     "3 CNN layers ([32, 4, 2, same], [64, 4, 2, same], [256, 11, 1, valid]) for the "
     "base features and then a CNN pi-head with an output of [num-actions, 1, 1] and "
     "a Linear(1) layer for the values. The actual RLModule class used can be found "
-    "here: ray.rllib.examples.rl_modules.classes.tiny_atari_cnn",
+    "here: ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm",
 )
 args = parser.parse_args()
 
@@ -39,7 +42,7 @@ register_env("env", _env_creator)
 
 
 config = (
-    ImpalaConfig()
+    IMPALAConfig()
     # Enable new API stack and use EnvRunner.
     .api_stack(
         enable_rl_module_and_learner=True,
@@ -68,9 +71,7 @@ config = (
     )
     .rl_module(
         rl_module_spec=(
-            SingleAgentRLModuleSpec(module_class=TinyAtariCNN)
-            if args.use_tiny_cnn
-            else None
+            RLModuleSpec(module_class=TinyAtariCNN) if args.use_tiny_cnn else None
         ),
         model_config_dict=(
             {
