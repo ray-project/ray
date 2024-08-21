@@ -13,7 +13,10 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(env="ALE/Pong-v5")
+parser.set_defaults(
+    enable_new_api_stack=True,
+    env="ALE/Pong-v5",
+)
 parser.add_argument(
     "--use-tiny-cnn",
     action="store_true",

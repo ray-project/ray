@@ -1,5 +1,5 @@
 import math
-from typing import List
+from typing import List, Optional
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -49,7 +49,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         minibatch_size: int,
         num_iters: int = 1,
         uses_new_env_runners: bool = False,
-        min_total_mini_batches: int = 0,
+        num_total_mini_batches: int = 0,
     ) -> None:
         super().__init__(batch, minibatch_size, num_iters)
         self._batch = batch
@@ -64,17 +64,22 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         self._uses_new_env_runners = uses_new_env_runners
 
         self._mini_batch_count = 0
-        self._min_total_mini_batches = min_total_mini_batches
+        self._num_total_mini_batches = num_total_mini_batches
 
     def __iter__(self):
         while (
             # Make sure each item in the total batch gets at least iterated over
             # `self._num_iters` times.
-            min(self._num_covered_epochs.values()) < self._num_iters
+            (
+                self._num_total_mini_batches == 0
+                and min(self._num_covered_epochs.values()) < self._num_iters
+            )
             # Make sure we reach at least the given minimum number of mini-batches.
-            or self._mini_batch_count < self._min_total_mini_batches
+            or (
+                self._num_total_mini_batches > 0
+                and self._mini_batch_count < self._num_total_mini_batches
+            )
         ):
-
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
 
@@ -122,7 +127,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                         )
 
                 else:
-                    # n_steps = self._minibatch_size
 
                     def get_len(b):
                         return len(b)
@@ -200,21 +204,27 @@ class ShardBatchIterator:
 
 @DeveloperAPI
 class ShardEpisodesIterator:
-    """Iterator for sharding a list of Episodes into num_shards sub-lists of Episodes.
+    """Iterator for sharding a list of Episodes into `num_shards` lists of Episodes."""
 
-    Args:
-        episodes: The input list of Episodes.
-        num_shards: The number of shards to split the episodes into.
+    def __init__(
+        self,
+        episodes: List[EpisodeType],
+        num_shards: int,
+        len_lookback_buffer: Optional[int] = None,
+    ):
+        """Initializes a ShardEpisodesIterator instance.
 
-    Yields:
-        A sub-list of Episodes of size roughly `len(episodes) / num_shards`. The yielded
-        sublists might have slightly different total sums of episode lengths, in order
-        to not have to drop even a single timestep.
-    """
-
-    def __init__(self, episodes: List[EpisodeType], num_shards: int):
+        Args:
+            episodes: The input list of Episodes.
+            num_shards: The number of shards to split the episodes into.
+            len_lookback_buffer: An optional length of a lookback buffer to enforce
+                on the returned shards. When spitting an episode, the second piece
+                might need a lookback buffer (into the first piece) depending on the
+                user's settings.
+        """
         self._episodes = sorted(episodes, key=len, reverse=True)
         self._num_shards = num_shards
+        self._len_lookback_buffer = len_lookback_buffer
         self._total_length = sum(len(e) for e in episodes)
         self._target_lengths = [0 for _ in range(self._num_shards)]
         remaining_length = self._total_length
@@ -223,7 +233,14 @@ class ShardEpisodesIterator:
             self._target_lengths[s] = len_
             remaining_length -= len_
 
-    def __iter__(self):
+    def __iter__(self) -> List[EpisodeType]:
+        """Runs one iteration through this sharder.
+
+        Yields:
+            A sub-list of Episodes of size roughly `len(episodes) / num_shards`. The
+            yielded sublists might have slightly different total sums of episode
+            lengths, in order to not have to drop even a single timestep.
+        """
         sublists = [[] for _ in range(self._num_shards)]
         lengths = [0 for _ in range(self._num_shards)]
         episode_index = 0
@@ -242,8 +259,15 @@ class ShardEpisodesIterator:
                 remaining_length = self._target_lengths[min_index] - lengths[min_index]
                 if remaining_length > 0:
                     slice_part, remaining_part = (
+                        # Note that the first slice will automatically "inherit" the
+                        # lookback buffer size of the episode.
                         episode[:remaining_length],
-                        episode[remaining_length:],
+                        # However, the second slice might need a user defined lookback
+                        # buffer (into the first slice).
+                        episode.slice(
+                            slice(remaining_length, None),
+                            len_lookback_buffer=self._len_lookback_buffer,
+                        ),
                     )
                     sublists[min_index].append(slice_part)
                     lengths[min_index] += len(slice_part)
