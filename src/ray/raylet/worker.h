@@ -133,16 +133,6 @@ class WorkerInterface {
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration);
 };
 
-enum class WorkerUnfitForTaskReason {
-  NONE = 0,                  // OK
-  ROOT_MISMATCH = 1,         // job ID or root detached actor ID mismatch
-  RUNTIME_ENV_MISMATCH = 2,  // runtime env hash mismatch, is_gpu or is_actor mismatch.
-  OTHERS = 3,                // reasons we don't do stats for (e.g. language)
-};
-// If this worker can serve the task.
-WorkerUnfitForTaskReason WorkerFitsForTask(const WorkerInterface &worker,
-                                           const TaskSpecification &task_spec);
-
 /// Worker class encapsulates the implementation details of a worker. A worker
 /// is the execution container around a unit of Ray work, such as a task or an
 /// actor. Ray units of work execute in the context of a Worker.

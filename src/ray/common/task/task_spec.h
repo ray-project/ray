@@ -432,6 +432,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::vector<std::string> DynamicWorkerOptions() const;
 
+  std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;
+
   // Methods specific to actor tasks.
 
   ActorID ActorId() const;

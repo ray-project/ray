@@ -402,6 +402,14 @@ int64_t TaskSpecification::MaxActorRestarts() const {
   return message_->actor_creation_task_spec().max_actor_restarts();
 }
 
+std::vector<std::string> TaskSpecification::DynamicWorkerOptionsOrEmpty() const {
+  if (!IsActorCreationTask()) {
+    return {};
+  }
+  return VectorFromProtobuf(
+      message_->actor_creation_task_spec().dynamic_worker_options());
+}
+
 std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
   RAY_CHECK(IsActorCreationTask());
   return VectorFromProtobuf(
