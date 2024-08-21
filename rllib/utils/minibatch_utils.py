@@ -83,6 +83,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
 
+                print(f"In loop: self._mini_batch_count={self._mini_batch_count}")
+
                 if len(module_batch) == 0:
                     raise ValueError(
                         f"The batch for module_id {module_id} is empty! "
@@ -133,6 +135,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
 
                 # Cycle through the batch until we have enough samples.
                 while s + n_steps >= get_len(module_batch):
+                    print(f"\tIn sub-loop: get_len(module_batch)={get_len(module_batch)} s+nsteps={s + n_steps}")
                     sample = module_batch[s:]
                     samples_to_concat.append(sample)
                     len_sample = get_len(sample)

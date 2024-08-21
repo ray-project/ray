@@ -1007,6 +1007,7 @@ class Learner(Checkpointable):
             Learner) to further reduce these results (for example over n parallel
             Learners).
         """
+        print(f"Learner.update_from_episodes: num_total_mini_batches={num_total_mini_batches}")
         if reduce_fn != DEPRECATED_VALUE:
             deprecation_warning(
                 old="Learner.update_from_episodes(reduce_fn=..)",
