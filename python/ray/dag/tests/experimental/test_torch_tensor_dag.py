@@ -428,11 +428,8 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_within_same_actor(ray_start_regular):
-    saved_ray_adag_enable_detect_deadlock = os.environ.get(
-        "RAY_ADAG_ENABLE_DETECT_DEADLOCK"
-    )
-    os.environ["RAY_ADAG_ENABLE_DETECT_DEADLOCK"] = "0"
+def test_torch_tensor_nccl_within_same_actor(ray_start_regular, monkeypatch):
+    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
 
     workers = [TrainWorker.remote() for _ in range(2)]
     with InputNode() as inp:
@@ -454,10 +451,6 @@ def test_torch_tensor_nccl_within_same_actor(ray_start_regular):
         match=pattern,
     ):
         dag.experimental_compile()
-    if saved_ray_adag_enable_detect_deadlock is not None:
-        os.environ[
-            "RAY_ADAG_ENABLE_DETECT_DEADLOCK"
-        ] = saved_ray_adag_enable_detect_deadlock
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
