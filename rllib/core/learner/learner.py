@@ -1026,6 +1026,84 @@ class Learner(Checkpointable):
             num_total_mini_batches=num_total_mini_batches,
         )
 
+    def update_from_iterator(
+        self,
+        iterator,
+        *,
+        timesteps: Optional[Dict[str, Any]] = None,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = None,
+        **kwargs,
+    ):
+        self._check_is_built()
+        minibatch_size = minibatch_size or 32
+
+        # Call `before_gradient_based_update` to allow for non-gradient based
+        # preparations-, logging-, and update logic to happen.
+        self.before_gradient_based_update(timesteps=timesteps or {})
+
+        def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
+            # Note, the incoming batch is a dictionary with a numpy array
+            # holding the `MultiAgentBatch`.
+            batch = self._convert_batch_type(batch["batch"][0])
+            return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
+
+        i = 0
+        for batch in iterator.iter_batches(
+            batch_size=minibatch_size,
+            _finalize_fn=_finalize_fn,
+            **kwargs,
+        ):
+            # Update the iteration counter.
+            i += 1
+
+            # Note, `_finalize_fn`  must return a dictionary.
+            batch = batch["batch"]
+            # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
+            # found in this batch. If not, throw an error.
+            unknown_module_ids = set(batch.policy_batches.keys()) - set(
+                self.module.keys()
+            )
+            if len(unknown_module_ids) > 0:
+                raise ValueError(
+                    "Batch contains one or more ModuleIDs that are not in this "
+                    f"Learner! Found IDs: {unknown_module_ids}"
+                )
+
+            # Log metrics.
+            self._log_steps_trained_metrics(batch)
+
+            # Make the actual in-graph/traced `_update` call. This should return
+            # all tensor values (no numpy).
+            fwd_out, loss_per_module, tensor_metrics = self._update(
+                batch.policy_batches
+            )
+
+            self._set_slicing_by_batch_id(batch, value=False)
+            # If `num_iters` is reached break and return.
+            if num_iters and i == num_iters:
+                break
+
+        logger.info(f"[Learner] Iterations run in epoch: {i}")
+        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+        # to actual (numpy) values.
+        self.metrics.tensors_to_numpy(tensor_metrics)
+
+        # Log all individual RLModules' loss terms and its registered optimizers'
+        # current learning rates.
+        for mid, loss in convert_to_numpy(loss_per_module).items():
+            self.metrics.log_value(
+                key=(mid, self.TOTAL_LOSS_KEY),
+                value=loss,
+                window=1,
+            )
+        # Call `after_gradient_based_update` to allow for non-gradient based
+        # cleanups-, logging-, and update logic to happen.
+        self.after_gradient_based_update(timesteps=timesteps or {})
+
+        # Reduce results across all minibatch update steps.
+        return self.metrics.reduce()
+
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def _update(
@@ -1130,95 +1208,6 @@ class Learner(Checkpointable):
             state: The state of the optimizers.
         """
         raise NotImplementedError
-
-    def update_from_iterator(
-        self,
-        iterator,
-        *,
-        timesteps: Optional[Dict[str, Any]] = None,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = None,
-        **kwargs,
-    ):
-        self._check_is_built()
-        minibatch_size = minibatch_size or 32
-
-        # Call `before_gradient_based_update` to allow for non-gradient based
-        # preparations-, logging-, and update logic to happen.
-        self.before_gradient_based_update(timesteps=timesteps or {})
-
-        def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
-            # Note, the incoming batch is a dictionary with a numpy array
-            # holding the `MultiAgentBatch`.
-            batch = self._convert_batch_type(batch["batch"][0])
-            return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
-
-        i = 0
-        for batch in iterator.iter_batches(
-            batch_size=minibatch_size,
-            _finalize_fn=_finalize_fn,
-            **kwargs,
-        ):
-            # Update the iteration counter.
-            i += 1
-
-            # Note, `_finalize_fn`  must return a dictionary.
-            batch = batch["batch"]
-            # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
-            # found in this batch. If not, throw an error.
-            unknown_module_ids = set(batch.policy_batches.keys()) - set(
-                self.module.keys()
-            )
-            if len(unknown_module_ids) > 0:
-                raise ValueError(
-                    "Batch contains one or more ModuleIDs that are not in this "
-                    f"Learner! Found IDs: {unknown_module_ids}"
-                )
-
-            # Log metrics.
-            self.metrics.log_dict(
-                {
-                    (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
-                    (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
-                    **{
-                        (mid, NUM_MODULE_STEPS_TRAINED): len(b)
-                        for mid, b in batch.policy_batches.items()
-                    },
-                },
-                reduce="sum",
-                clear_on_reduce=True,
-            )
-
-            # Make the actual in-graph/traced `_update` call. This should return
-            # all tensor values (no numpy).
-            fwd_out, loss_per_module, tensor_metrics = self._update(
-                batch.policy_batches
-            )
-
-            self._set_slicing_by_batch_id(batch, value=False)
-            # If `num_iters` is reached break and return.
-            if num_iters and i == num_iters:
-                break
-
-        logger.info(f"[Learner] Iterations run in epoch: {i}")
-        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-        # to actual (numpy) values.
-        self.metrics.tensors_to_numpy(tensor_metrics)
-
-        # Log all individual RLModules' loss terms and its registered optimizers'
-        # current learning rates.
-        for mid, loss in convert_to_numpy(loss_per_module).items():
-            self.metrics.log_value(
-                key=(mid, self.TOTAL_LOSS_KEY),
-                value=loss,
-                window=1,
-            )
-        # Call `after_gradient_based_update` to allow for non-gradient based
-        # cleanups-, logging-, and update logic to happen.
-        self.after_gradient_based_update(timesteps=timesteps or {})
-
-        # Reduce results across all minibatch update steps.
-        return self.metrics.reduce()
 
     def _update_from_batch_or_episodes(
         self,
@@ -1567,21 +1556,23 @@ class Learner(Checkpointable):
         """Returns the gradient clipping function to use, given the framework."""
 
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
-        # Logs this iteration's steps trained, based on given `episodes`.
-        env_steps = batch.count
-        log_dict = defaultdict(dict)
+        """Logs this iteration's steps trained, based on given `batch`."""
 
+        log_dict = defaultdict(dict)
         for mid, module_batch in batch.policy_batches.items():
             module_batch_size = len(module_batch)
+            # Log average batch size (for each module).
             self.metrics.log_value(
                 key=(mid, MODULE_TRAIN_BATCH_SIZE_MEAN),
                 value=module_batch_size,
             )
+            # Log module steps (for each module).
             if NUM_MODULE_STEPS_TRAINED not in log_dict[mid]:
                 log_dict[mid][NUM_MODULE_STEPS_TRAINED] = module_batch_size
             else:
                 log_dict[mid][NUM_MODULE_STEPS_TRAINED] += module_batch_size
 
+            # Log module steps (sum of all modules).
             if NUM_MODULE_STEPS_TRAINED not in log_dict[ALL_MODULES]:
                 log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = module_batch_size
             else:
@@ -1590,7 +1581,7 @@ class Learner(Checkpointable):
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
-            env_steps,
+            batch.env_steps(),
             reduce="sum",
             clear_on_reduce=True,
         )
