@@ -53,6 +53,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED,
     LEARNER_CONNECTOR_TIMER,
+    MODULE_TRAIN_BATCH_SIZE_MEAN,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
@@ -1294,24 +1295,8 @@ class Learner(Checkpointable):
             if not self.should_module_be_updated(module_id, batch):
                 del batch.policy_batches[module_id]
 
-        # Log all timesteps (env, agent, modules) based on given episodes.
-        if self._learner_connector is not None and episodes is not None:
-            self._log_steps_trained_metrics(episodes, batch, shared_data)
-        # TODO (sven): Possibly remove this if-else block entirely. We might be in a
-        #  world soon where we always learn from episodes, never from an incoming batch.
-        else:
-            self.metrics.log_dict(
-                {
-                    (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
-                    (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
-                    **{
-                        (mid, NUM_MODULE_STEPS_TRAINED): len(b)
-                        for mid, b in batch.policy_batches.items()
-                    },
-                },
-                reduce="sum",
-                clear_on_reduce=True,
-            )
+        # Log all timesteps (env, agent, modules) based on given episodes/batch.
+        self._log_steps_trained_metrics(batch)
 
         if minibatch_size:
             if self._learner_connector is not None:
@@ -1581,49 +1566,26 @@ class Learner(Checkpointable):
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
 
-    def _log_steps_trained_metrics(self, episodes, batch, shared_data):
+    def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         # Logs this iteration's steps trained, based on given `episodes`.
-        env_steps = sum(len(e) for e in episodes)
+        env_steps = batch.count
         log_dict = defaultdict(dict)
-        orig_lengths = shared_data.get("_sa_episodes_lengths", {})
-        for sa_episode in self._learner_connector.single_agent_episode_iterator(
-            episodes, agents_that_stepped_only=False
-        ):
-            mid = (
-                sa_episode.module_id
-                if sa_episode.module_id is not None
-                else DEFAULT_MODULE_ID
-            )
-            # Do not log steps trained for those ModuleIDs that should not be updated.
-            if mid != ALL_MODULES and mid not in batch.policy_batches:
-                continue
 
-            _len = (
-                orig_lengths[sa_episode.id_]
-                if sa_episode.id_ in orig_lengths
-                else len(sa_episode)
+        for mid, module_batch in batch.policy_batches.items():
+            module_batch_size = len(module_batch)
+            self.metrics.log_value(
+                key=(mid, MODULE_TRAIN_BATCH_SIZE_MEAN),
+                value=module_batch_size,
             )
-            # TODO (sven): Decide, whether agent_ids should be part of LEARNER_RESULTS.
-            #  Currently and historically, only ModuleID keys and ALL_MODULES were used
-            #  and expected. Does it make sense to include e.g. agent steps trained?
-            #  I'm not sure atm.
-            # aid = (
-            #    sa_episode.agent_id if sa_episode.agent_id is not None
-            #    else DEFAULT_AGENT_ID
-            # )
             if NUM_MODULE_STEPS_TRAINED not in log_dict[mid]:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] = _len
+                log_dict[mid][NUM_MODULE_STEPS_TRAINED] = module_batch_size
             else:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] += _len
-            # TODO (sven): See above.
-            # if NUM_AGENT_STEPS_TRAINED not in log_dict[aid]:
-            #    log_dict[aid][NUM_AGENT_STEPS_TRAINED] = _len
-            # else:
-            #    log_dict[aid][NUM_AGENT_STEPS_TRAINED] += _len
+                log_dict[mid][NUM_MODULE_STEPS_TRAINED] += module_batch_size
+
             if NUM_MODULE_STEPS_TRAINED not in log_dict[ALL_MODULES]:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = _len
+                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = module_batch_size
             else:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += _len
+                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += module_batch_size
 
         # Log env steps (all modules).
         self.metrics.log_value(

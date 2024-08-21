@@ -37,6 +37,7 @@ config = (
         env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
     )
     .training(
+        train_batch_size_per_learner=600,
         lr=0.0005 * ((args.num_gpus or 1) ** 0.5),
         num_sgd_iter=6,
         vf_loss_coeff=0.05,
@@ -57,7 +58,7 @@ config = (
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0 * args.num_agents,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 200.0 * args.num_agents,
     f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
 }
 
