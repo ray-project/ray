@@ -6,6 +6,7 @@ import numpy as np
 import tree  # pip install dm_tree
 from gymnasium.spaces import Discrete, MultiDiscrete
 
+from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import SMALL_NUMBER
@@ -29,6 +30,56 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
+
+
+@PublicAPI
+def convert_to_tf_tensor(
+    x: TensorStructType,
+    device: Optional[str] = None,
+):
+    """Converts any struct to tf.Tensors.
+
+    Args:
+        x: Any (possibly nested) struct, the values in which will be
+            converted and returned as a new struct with all leaves converted
+            to tensorflow tensors.
+        device: The device to create the tensor on.
+
+    Returns:
+        Any: A new struct with the same structure as `x`, but with all
+        values converted to tensorflow Tensor types. This does not convert possibly
+        nested elements that are None because tf has no representation for that.
+    """
+
+    def mapping(item):
+        if item is None:
+            # Tensorflow has no representation for `None`, so we return None
+            return item
+
+        # Special handling of "Repeated" values.
+        if isinstance(item, RepeatedValues):
+            return RepeatedValues(
+                tree.map_structure(mapping, item.values), item.lengths, item.max_len
+            )
+
+        # Numpy arrays.
+        if isinstance(item, np.ndarray):
+            # Object type (e.g. info dicts in train batch): leave as-is.
+            # str type (e.g. agent_id in train batch): leave as-is.
+            if item.dtype == object or item.dtype.type is np.str_:
+                return item
+        
+        # Wrap as tensorflow tensor on requested device.
+        with tf.device(device):
+            tensor = tf.convert_to_tensor(item)
+
+        # Floatify all float64 tensors.
+        if tensor.dtype.is_floating and tensor.dtype != tf.float32:
+            tensor = tf.cast(tensor, dtype=tf.float32)
+
+        return tensor
+
+    return tree.map_structure(mapping, x)
 
 
 @PublicAPI
