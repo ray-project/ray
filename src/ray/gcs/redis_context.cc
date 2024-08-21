@@ -457,7 +457,7 @@ void ValidateAndConnectRedisSentinel(RedisContext &context,
   for (size_t i = 0; i < primary->elements; i += 2) {
     std::string key = primary->element[i]->str;        // Key (e.g., "name", "ip")
     std::string value = primary->element[i + 1]->str;  // Value corresponding to the key
-    if ("ip" == key) {
+    if (key == "ip") {
       actual_ip = value;
     } else if ("port" == key) {
       actual_port = value;
