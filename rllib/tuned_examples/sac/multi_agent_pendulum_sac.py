@@ -36,7 +36,11 @@ config = (
     .environment("multi_agent_pendulum")
     .training(
         initial_alpha=1.001,
-        lr=0.001 * ((args.num_gpus or 1) ** 0.5),
+        # Use a smaller learning rate for the policy.
+        actor_lr=2e-4 * (args.num_gpus or 1) ** 0.5,
+        critic_lr=8e-4 * (args.num_gpus or 1) ** 0.5,
+        alpha_lr=9e-4 * (args.num_gpus or 1) ** 0.5,
+        lr=None,
         target_entropy="auto",
         n_step=(2, 5),
         tau=0.005,

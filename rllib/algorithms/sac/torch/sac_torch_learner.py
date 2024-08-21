@@ -58,7 +58,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             optimizer_name="qf",
             optimizer=optim_critic,
             params=params_critic,
-            lr_or_lr_schedule=config.lr,
+            lr_or_lr_schedule=config.critic_lr,
         )
         # If necessary register also an optimizer for a twin Q network.
         if config.twin_q:
@@ -72,7 +72,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
                 optimizer_name="qf_twin",
                 optimizer=optim_twin_critic,
                 params=params_twin_critic,
-                lr_or_lr_schedule=config.lr,
+                lr_or_lr_schedule=config.critic_lr,
             )
 
         # Define the optimizer for the actor.
@@ -86,7 +86,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             optimizer_name="policy",
             optimizer=optim_actor,
             params=params_actor,
-            lr_or_lr_schedule=config.lr,
+            lr_or_lr_schedule=config.actor_lr,
         )
 
         # Define the optimizer for the temperature.
@@ -97,7 +97,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
             optimizer_name="alpha",
             optimizer=optim_temperature,
             params=[temperature],
-            lr_or_lr_schedule=config.lr,
+            lr_or_lr_schedule=config.alpha_lr,
         )
 
     @override(DQNRainbowTorchLearner)
