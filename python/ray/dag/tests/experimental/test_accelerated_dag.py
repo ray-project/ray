@@ -624,6 +624,7 @@ def test_dag_exception_chained(ray_start_regular, capsys):
 
     compiled_dag.teardown()
 
+
 # Pending
 def test_dag_exception_multi_output(ray_start_regular, capsys):
     # Test application throwing exceptions with a DAG with multiple outputs.
@@ -888,6 +889,7 @@ def test_dag_fault_tolerance(ray_start_regular):
             ray.get(refs[j])
 
     compiled_dag.teardown()
+
 
 # Pending
 def test_dag_fault_tolerance_sys_exit(ray_start_regular):
