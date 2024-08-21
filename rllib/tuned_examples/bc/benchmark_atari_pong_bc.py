@@ -185,8 +185,7 @@ config = (
         evaluation_parallel_to_training=True,
     )
     .learners(
-        num_learners=args.num_gpus if args.num_gpus > 1 else 0,
-        num_gpus_per_learner=1,
+        num_learners=0,
     )
     # Note, the `input_` argument is the major argument for the
     # new offline API. Via the `input_read_method_kwargs` the
@@ -201,7 +200,8 @@ config = (
             # compressed and Arrow needs to decompress them.
             "arrow_open_stream_args": {"compression": "gzip"},
             # Use enough reading blocks to scale well.
-            "override_num_blocks": 20,
+            "override_num_blocks": 10,
+            "concurrency": 10,
             # TFX improves performance extensively. `tfx-bsl` needs to be
             # installed for this.
             "tfx_read_options": TFXReadOptions(
@@ -219,20 +219,21 @@ config = (
             Columns.NEXT_OBS: "o_tp1",
             Columns.TERMINATEDS: "d_t",
         },
+        dataset_num_iters_per_learner=1,
         # Increase the parallelism in transforming batches, such that while
         # training, new batches are transformed while others are used in updating.
-        map_batches_kwargs={"concurrency": max(args.num_gpus * 20, 20)},
-        # When iterating over batches in the dataset, prefetch at least 20
-        # batches per learner. Increase this for scaling out more.
-        iter_batches_kwargs={
-            "prefetch_batches": max(args.num_gpus * 20, 20),
-            "local_shuffle_buffer_size": None,
-        },
+        map_batches_kwargs={"concurrency": 10, "num_cpus": 10}
+        # # When iterating over batches in the dataset, prefetch at least 20
+        # # batches per learner. Increase this for scaling out more.
+        # iter_batches_kwargs={
+        #     "prefetch_batches": max(args.num_gpus * 10, 10),
+        #     "local_shuffle_buffer_size": None,
+        # },
     )
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008 * max(1, args.num_gpus**0.5),
+        lr=0.0008,
         train_batch_size_per_learner=2000,
         # Use the defined learner connector above, to decode observations.
         learner_connector=_make_learner_connector,
