@@ -8,6 +8,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.tf_utils import convert_to_tf_tensor
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
@@ -108,9 +109,11 @@ class NumpyToTensor(ConnectorV2):
                 module_data = convert_to_torch_tensor(
                     module_data, pin_memory=self._pin_memory, device=self._device
                 )
+            elif rl_module.framework == "tensorflow":
+                module_data = convert_to_tf_tensor(module_data, device=self._device)
             else:
                 raise ValueError(
-                    "`NumpyToTensor`does NOT support frameworks other than torch!"
+                    "`NumpyToTensor`does NOT support frameworks other than torch and tensorflow!"
                 )
             if infos is not None:
                 module_data[Columns.INFOS] = infos
