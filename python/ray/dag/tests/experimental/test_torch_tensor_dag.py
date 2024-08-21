@@ -69,6 +69,25 @@ class TorchTensorWorker:
         return
 
 
+@ray.remote(num_gpus=1)
+class TrainWorker:
+    """
+    This class simulates a training worker.
+    """
+
+    def __init__(self):
+        pass
+
+    def entrypoint(self, inp):
+        pass
+
+    def aggregate(self, *args):
+        return args[0]
+
+    def forward(self, inp):
+        return torch.randn(10, 10).cuda()
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_p2p(ray_start_regular):
     if USE_GPU:
@@ -405,6 +424,30 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         assert result == expected_result
 
     compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_within_same_actor(ray_start_regular):
+    workers = [TrainWorker.remote() for _ in range(2)]
+
+    with InputNode() as inp:
+        entrypoint = workers[0].entrypoint.bind(inp)
+        activations = [worker.forward.bind(entrypoint) for worker in workers]
+
+        for activation in activations:
+            activation.with_type_hint(TorchTensorType(transport=TorchTensorType.NCCL))
+
+        dag = workers[0].aggregate.bind(*activations)
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Compiled DAG does not support NCCL communication between methods "
+            "on the same actor. Please remove the NCCL type hint between "
+            "these methods."
+        ),
+    ):
+        dag.experimental_compile()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)

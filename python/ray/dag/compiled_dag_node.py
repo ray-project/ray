@@ -745,9 +745,7 @@ class CompiledDAG:
                         "Compiled DAGs currently only support actor method nodes"
                     )
                 else:
-                    raise ValueError(
-                        f"Found unsupported node of type {type(task.dag_node)}"
-                    )
+                    raise ValueError(f"Found unsupported node of type {type(dag_node)}")
 
             if isinstance(dag_node, ClassMethodNode):
                 actor_handle = dag_node._get_actor_handle()
@@ -775,10 +773,10 @@ class CompiledDAG:
                         "the driver cannot participate in the NCCL group"
                     )
 
-            if type(task.dag_node.type_hint) == ChannelOutputType:
+            if type(dag_node.type_hint) == ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
-                task.dag_node.with_type_hint(self._default_type_hint)
+                dag_node.with_type_hint(self._default_type_hint)
 
             for _, val in task.kwargs.items():
                 if isinstance(val, DAGNode):
@@ -794,8 +792,8 @@ class CompiledDAG:
                 upstream_node_idx = self.dag_node_to_idx[arg]
                 upstream_node = self.idx_to_task[upstream_node_idx]
                 downstream_actor_handle = None
-                if isinstance(task.dag_node, ClassMethodNode):
-                    downstream_actor_handle = task.dag_node._get_actor_handle()
+                if isinstance(dag_node, ClassMethodNode):
+                    downstream_actor_handle = dag_node._get_actor_handle()
 
                 if isinstance(upstream_node.dag_node, InputAttributeNode):
                     # Record all of the keys used to index the InputNode.
@@ -830,6 +828,19 @@ class CompiledDAG:
                             "or they must index to specific args or kwargs."
                         )
                     direct_input = True
+
+                elif isinstance(upstream_node.dag_node, ClassMethodNode):
+                    if (
+                        downstream_actor_handle is not None
+                        and downstream_actor_handle
+                        == upstream_node.dag_node._get_actor_handle()
+                        and upstream_node.dag_node.type_hint.requires_nccl()
+                    ):
+                        raise ValueError(
+                            "Compiled DAG does not support NCCL communication between "
+                            "methods on the same actor. Please remove the NCCL type "
+                            "hint between these methods."
+                        )
 
                 upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
                 task.arg_type_hints.append(upstream_node.dag_node.type_hint)
