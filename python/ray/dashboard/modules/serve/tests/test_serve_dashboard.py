@@ -2,6 +2,7 @@ import copy
 import os
 import sys
 from collections.abc import Iterator
+from concurrent.futures import ProcessPoolExecutor
 from typing import Dict
 
 import pytest
@@ -469,6 +470,11 @@ def serve_start_and_shutdown(ray_start_stop: None) -> Iterator[None]:
     serve.shutdown()
 
 
+def submit_imperative_apps() -> None:
+    serve.run(world.DagNode, name="app1", route_prefix="/apple")
+    serve.run(world.DagNode, name="app2", route_prefix="/banana")
+
+
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
@@ -479,8 +485,11 @@ def test_get_serve_instance_details_for_imperative_apps(serve_start_and_shutdown
     This test mostly checks for the different behavior of
     imperatively-deployed apps, with some crossover.
     """
-    serve.run(world.DagNode, name="app1", route_prefix="/apple")
-    serve.run(world.DagNode, name="app2", route_prefix="/banana")
+    # Submit the apps in a subprocess, since doing it from the main process
+    # seems to make Serve stop unexpectedly
+    # https://github.com/ray-project/ray/pull/45522#discussion_r1720479757
+    with ProcessPoolExecutor() as pool:
+        pool.submit(submit_imperative_apps).result(timeout=60)
 
     def applications_running():
         response = requests.get(url, timeout=15)
