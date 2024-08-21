@@ -14,9 +14,9 @@ import ray.dashboard.modules.log.log_consts as log_consts
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import hex_to_binary
-from ray._raylet import ActorID, JobID, TaskID
+from ray._raylet import ActorID, JobID, TaskID, NodeID
 from ray.core.generated import gcs_service_pb2_grpc
-from ray.core.generated.gcs_pb2 import ActorTableData
+from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import (
     GetAllActorInfoReply,
     GetAllActorInfoRequest,
@@ -249,11 +249,9 @@ class StateDataSourceClient:
     async def get_all_actor_info(
         self,
         timeout: int = None,
-        limit: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllActorInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
         if filters is None:
             filters = []
 
@@ -284,12 +282,10 @@ class StateDataSourceClient:
     async def get_all_task_info(
         self,
         timeout: int = None,
-        limit: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
         filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
         exclude_driver: bool = False,
     ) -> Optional[GetTaskEventsReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         if filters is None:
             filters = []
@@ -322,10 +318,8 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_placement_group_info(
-        self, timeout: int = None, limit: int = None
+        self, timeout: int = None, limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE
     ) -> Optional[GetAllPlacementGroupReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         request = GetAllPlacementGroupRequest(limit=limit)
         reply = await self._gcs_pg_info_stub.GetAllPlacementGroup(
@@ -335,20 +329,67 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_all_node_info(
-        self, timeout: int = None
+        self,
+        timeout: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllNodeInfoReply]:
-        request = GetAllNodeInfoRequest()
+
+        if filters is None:
+            filters = []
+
+        req_filters = GetAllNodeInfoRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            if predicate != "=":
+                # We only support EQUAL predicate for source side filtering.
+                continue
+
+            if key == "node_id":
+                req_filters.node_id = NodeID(hex_to_binary(value)).binary()
+            elif key == "state":
+                value = value.upper()
+                if value not in GcsNodeInfo.GcsNodeState.keys():
+                    raise ValueError(f"Invalid node state for filtering: {value}")
+                req_filters.state = GcsNodeInfo.GcsNodeState.Value(value)
+            elif key == "node_name":
+                req_filters.node_name = value
+            else:
+                continue
+
+        request = GetAllNodeInfoRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         return reply
 
     @handle_grpc_network_errors
     async def get_all_worker_info(
-        self, timeout: int = None, limit: int = None
+        self,
+        timeout: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
+        filters: Optional[List[Tuple[str, PredicateType, SupportedFilterType]]] = None,
     ) -> Optional[GetAllWorkerInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
-        request = GetAllWorkerInfoRequest(limit=limit)
+        if filters is None:
+            filters = []
+
+        req_filters = GetAllWorkerInfoRequest.Filters()
+        for filter in filters:
+            key, predicate, value = filter
+            # Special treatments for the Ray Debugger.
+            if (
+                key == "num_paused_threads"
+                and predicate in ("!=", ">")
+                and value == "0"
+            ):
+                req_filters.exist_paused_threads = True
+                continue
+            if key == "is_alive" and predicate == "=" and value == "True":
+                req_filters.is_alive = True
+                continue
+            else:
+                continue
+
+        request = GetAllWorkerInfoRequest(limit=limit, filters=req_filters)
         reply = await self._gcs_worker_info_stub.GetAllWorkerInfo(
             request, timeout=timeout
         )
@@ -384,10 +425,11 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_task_info(
-        self, node_id: str, timeout: int = None, limit: int = None
+        self,
+        node_id: str,
+        timeout: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ) -> Optional[GetTasksInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
         stub = self._raylet_stubs.get(node_id)
         if not stub:
             raise ValueError(f"Raylet for a node id, {node_id} doesn't exist.")
@@ -399,10 +441,11 @@ class StateDataSourceClient:
 
     @handle_grpc_network_errors
     async def get_object_info(
-        self, node_id: str, timeout: int = None, limit: int = None
+        self,
+        node_id: str,
+        timeout: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ) -> Optional[GetObjectsInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         stub = self._raylet_stubs.get(node_id)
         if not stub:
@@ -415,10 +458,11 @@ class StateDataSourceClient:
         return reply
 
     async def get_runtime_envs_info(
-        self, node_id: str, timeout: int = None, limit: int = None
+        self,
+        node_id: str,
+        timeout: int = None,
+        limit: int = RAY_MAX_LIMIT_FROM_DATA_SOURCE,
     ) -> Optional[GetRuntimeEnvsInfoReply]:
-        if not limit:
-            limit = RAY_MAX_LIMIT_FROM_DATA_SOURCE
 
         address = self._runtime_env_agent_addresses.get(node_id)
         if not address:

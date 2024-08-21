@@ -310,7 +310,9 @@ class StateAPIManager:
             node_data_in_dict's schema is in NodeState
         """
         try:
-            reply = await self._client.get_all_node_info(timeout=option.timeout)
+            reply = await self._client.get_all_node_info(
+                timeout=option.timeout, filters=option.filters
+            )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
@@ -329,10 +331,7 @@ class StateAPIManager:
 
             result.append(data)
 
-        total_nodes = len(result)
-        # No reason to truncate node because they are usually small.
-        num_after_truncation = len(result)
-
+        num_after_truncation = len(result) + reply.num_filtered
         result = self._filter(result, option.filters, NodeState, option.detail)
         num_filtered = len(result)
 
@@ -341,7 +340,7 @@ class StateAPIManager:
         result = list(islice(result, option.limit))
         return ListApiResponse(
             result=result,
-            total=total_nodes,
+            total=reply.total,
             num_after_truncation=num_after_truncation,
             num_filtered=num_filtered,
         )
@@ -354,7 +353,10 @@ class StateAPIManager:
             worker_data_in_dict's schema is in WorkerState
         """
         try:
-            reply = await self._client.get_all_worker_info(timeout=option.timeout)
+            reply = await self._client.get_all_worker_info(
+                timeout=option.timeout,
+                filters=option.filters,
+            )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
@@ -372,7 +374,7 @@ class StateAPIManager:
             data["worker_launched_time_ms"] = int(data["worker_launched_time_ms"])
             result.append(data)
 
-        num_after_truncation = len(result)
+        num_after_truncation = len(result) + reply.num_filtered
         result = self._filter(result, option.filters, WorkerState, option.detail)
         num_filtered = len(result)
         # Sort to make the output deterministic.
