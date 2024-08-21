@@ -704,7 +704,7 @@ class CompiledDAG:
             MultiOutputNode,
         )
 
-        self.input_task_idx, self.output_task_idx = None, None
+        self.input_task_idx = None
         self.actor_task_count.clear()
         self._type_hints.clear()
 
@@ -847,7 +847,7 @@ class CompiledDAG:
                 task.dag_node, InputAttributeNode
             ):
                 continue
-            if len(task.downstream_node_idxs) == 0:
+            if len(task.downstream_node_idxs) == 0 and task.dag_node.is_output_node:
                 assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
 
@@ -1737,6 +1737,7 @@ def build_compiled_dag_from_ray_dag(
         compiled_dag._add_node(node)
         return node
 
-    dag.apply_recursive(_build_compiled_dag)
+    root = dag._find_root()
+    root.bfs(_build_compiled_dag)
     compiled_dag._get_or_compile()
     return compiled_dag

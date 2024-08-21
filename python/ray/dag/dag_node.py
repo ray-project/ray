@@ -58,12 +58,23 @@ class DAGNode(DAGNodeBase):
         self._bound_other_args_to_resolve: Optional[Dict[str, Any]] = (
             other_args_to_resolve or {}
         )
+
+        # TODO: Pickle `bound_args` and `bound_kwargs` so that we can support
+        # case like [DAGNode, DAGNode]
+        self._downstream_nodes: List[DAGNode] = []
+        for arg in self._bound_args:
+            if isinstance(arg, DAGNode):
+                arg._downstream_nodes.append(self)
+        for arg in self._bound_kwargs.values():
+            if isinstance(arg, DAGNode):
+                arg._downstream_nodes.append(self)
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
         self._type_hint: Optional[ChannelOutputType] = ChannelOutputType()
+        self.is_output_node = False
 
     def with_type_hint(self, typ: ChannelOutputType):
         if typ.is_direct_return:
@@ -167,6 +178,7 @@ class DAGNode(DAGNodeBase):
         if _max_buffered_results is None:
             _max_buffered_results = ctx.max_buffered_results
 
+        self.is_output_node = True
         return build_compiled_dag_from_ray_dag(
             self,
             _execution_timeout,
@@ -334,6 +346,28 @@ class DAGNode(DAGNodeBase):
                 lambda node: node.apply_recursive(fn)
             )
         )
+
+    def bfs(self, fn: "Callable[[DAGNode], T]"):
+        """Breadth-first search on the DAG."""
+        visited = set()
+        queue = [self]
+        while queue:
+            node = queue.pop(0)
+            if node not in visited:
+                fn(node)
+                visited.add(node)
+                queue.extend(node._downstream_nodes)
+
+    def _find_root(self) -> "DAGNode":
+        """Return the root node of the DAG."""
+        root = self
+        while len(root._bound_args) != 0 or len(root._bound_kwargs) != 0:
+            for arg in list(root._bound_args) + list(root._bound_kwargs.values()):
+                if isinstance(arg, DAGNode):
+                    root = arg
+                    break
+        assert type(root).__name__ == "InputNode"
+        return root
 
     def apply_functional(
         self,
