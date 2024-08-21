@@ -27,7 +27,7 @@ namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
 Worker::Worker(const JobID &job_id,
-               const int runtime_env_hash,
+               int runtime_env_hash,
                const WorkerID &worker_id,
                const Language &language,
                rpc::WorkerType worker_type,
@@ -135,6 +135,10 @@ const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
 
+std::optional<bool> Worker::GetIsGpu() const { return is_gpu_; }
+
+std::optional<bool> Worker::GetIsActorWorker() const { return is_actor_worker_; }
+
 int Worker::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
 void Worker::AssignActorId(const ActorID &actor_id) {
@@ -209,39 +213,44 @@ void Worker::SetIsActorWorker(bool is_actor_worker) {
       << ", actual: " << is_actor_worker;
 }
 
-Worker::TaskUnfitReason Worker::FitsForTask(const TaskSpecification &task_spec) const {
-  if (IsDead()) {
-    return TaskUnfitReason::OTHERS;
+WorkerUnfitForTaskReason WorkerFitsForTask(const WorkerInterface &worker,
+                                           const TaskSpecification &task_spec) {
+  if (worker.IsDead()) {
+    return WorkerUnfitForTaskReason::OTHERS;
   }
-  if (GetLanguage() != task_spec.GetLanguage()) {
-    return TaskUnfitReason::OTHERS;
+  if (worker.GetLanguage() != task_spec.GetLanguage()) {
+    return WorkerUnfitForTaskReason::OTHERS;
   }
   // Don't allow worker reuse across jobs or root detached actors. Reuse worker with
   // unassigned job_id and root detached actor id is OK.
-  if (!GetAssignedJobId().IsNil() && GetAssignedJobId() != task_spec.JobId()) {
-    return TaskUnfitReason::ROOT_MISMATCH;
+  JobID job_id = worker.GetAssignedJobId();
+  if (!job_id.IsNil() && job_id != task_spec.JobId()) {
+    return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
-  if (!GetRootDetachedActorId().IsNil() &&
-      GetRootDetachedActorId() != task_spec.RootDetachedActorId()) {
-    return TaskUnfitReason::ROOT_MISMATCH;
+  ActorID root_detached_actor_id = worker.GetRootDetachedActorId();
+  if (!root_detached_actor_id.IsNil() &&
+      root_detached_actor_id != task_spec.RootDetachedActorId()) {
+    return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
-  if (is_gpu_.has_value()) {
+  auto is_gpu = worker.GetIsGpu();
+  if (is_gpu) {
     bool task_is_gpu =
         task_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0;
-    if (is_gpu_.value() != task_is_gpu) {
-      return TaskUnfitReason::RUNTIME_ENV_MISMATCH;
+    if (is_gpu.value() != task_is_gpu) {
+      return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
     }
   }
-  if (is_actor_worker_.has_value() &&
-      is_actor_worker_.value() != task_spec.IsActorCreationTask()) {
-    return TaskUnfitReason::RUNTIME_ENV_MISMATCH;
+  auto is_actor_worker = worker.GetIsActorWorker();
+  if (is_actor_worker.has_value() &&
+      is_actor_worker.value() != task_spec.IsActorCreationTask()) {
+    return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
   }
   // TODO(clarng): consider re-using worker that has runtime envionrment
   // if the task doesn't require one.
-  if (GetRuntimeEnvHash() != task_spec.GetRuntimeEnvHash()) {
-    return TaskUnfitReason::RUNTIME_ENV_MISMATCH;
+  if (worker.GetRuntimeEnvHash() != task_spec.GetRuntimeEnvHash()) {
+    return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
   }
-  return TaskUnfitReason::NONE;
+  return WorkerUnfitForTaskReason::NONE;
 }
 
 }  // namespace raylet

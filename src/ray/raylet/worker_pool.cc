@@ -1217,9 +1217,9 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   auto worker_fits_for_task_fn =
       [&](const std::pair<std::shared_ptr<WorkerInterface>, int64_t> &pair) -> bool {
     const auto &worker = pair.first;
-    Worker::TaskUnfitReason reason = worker->FitsForTask(task_spec);
+    WorkerUnfitForTaskReason reason = WorkerFitsForTask(*worker, task_spec);
     switch (reason) {
-    case Worker::TaskUnfitReason::NONE: {
+    case WorkerUnfitForTaskReason::NONE: {
       // Worker itself is OK; check other conditions.
       // Skip if the dynamic_options doesn't match.
       if (LookupWorkerDynamicOptions(worker->GetStartupToken()) != dynamic_options) {
@@ -1234,16 +1234,19 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       // OK, we can use this worker.
       return true;
     }
-    case Worker::TaskUnfitReason::ROOT_MISMATCH:
+    case WorkerUnfitForTaskReason::ROOT_MISMATCH:
       skip_cached_worker_job_mismatch++;
       stats::NumCachedWorkersSkippedJobMismatch.Record(1);
       return false;
-    case Worker::TaskUnfitReason::RUNTIME_ENV_MISMATCH:
+    case WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH:
       skip_cached_worker_runtime_env_mismatch++;
       stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(1);
       return false;
-    case Worker::TaskUnfitReason::OTHERS:
+    case WorkerUnfitForTaskReason::OTHERS:
       return false;
+    default:
+      RAY_CHECK(false) << "Unexpected WorkerUnfitForTaskReason "
+                       << static_cast<int>(reason);
     }
   };
 

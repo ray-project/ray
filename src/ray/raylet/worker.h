@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"
@@ -67,6 +68,8 @@ class WorkerInterface {
   virtual void AssignTaskId(const TaskID &task_id) = 0;
   virtual const TaskID &GetAssignedTaskId() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
+  virtual std::optional<bool> GetIsGpu() const = 0;
+  virtual std::optional<bool> GetIsActorWorker() const = 0;
   virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
@@ -114,15 +117,6 @@ class WorkerInterface {
 
   virtual const ActorID &GetRootDetachedActorId() const = 0;
 
-  enum class TaskUnfitReason {
-    NONE = 0,                  // OK
-    ROOT_MISMATCH = 1,         // job ID or root detached actor ID mismatch
-    RUNTIME_ENV_MISMATCH = 2,  // runtime env hash mismatch, is_gpu or is_actor mismatch.
-    OTHERS = 3,                // reasons we don't do stats for (e.g. language)
-  };
-  // If this worker can serve the task.
-  virtual TaskUnfitReason FitsForTask(const TaskSpecification &task_spec) const = 0;
-
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -139,6 +133,16 @@ class WorkerInterface {
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration);
 };
 
+enum class WorkerUnfitForTaskReason {
+  NONE = 0,                  // OK
+  ROOT_MISMATCH = 1,         // job ID or root detached actor ID mismatch
+  RUNTIME_ENV_MISMATCH = 2,  // runtime env hash mismatch, is_gpu or is_actor mismatch.
+  OTHERS = 3,                // reasons we don't do stats for (e.g. language)
+};
+// If this worker can serve the task.
+WorkerUnfitForTaskReason WorkerFitsForTask(const WorkerInterface &worker,
+                                           const TaskSpecification &task_spec);
+
 /// Worker class encapsulates the implementation details of a worker. A worker
 /// is the execution container around a unit of Ray work, such as a task or an
 /// actor. Ray units of work execute in the context of a Worker.
@@ -147,7 +151,7 @@ class Worker : public WorkerInterface {
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
   Worker(const JobID &job_id,
-         const int runtime_env_hash,
+         int runtime_env_hash,
          const WorkerID &worker_id,
          const Language &language,
          rpc::WorkerType worker_type,
@@ -156,7 +160,7 @@ class Worker : public WorkerInterface {
          rpc::ClientCallManager &client_call_manager,
          StartupToken startup_token);
   /// A destructor responsible for freeing all worker state.
-  ~Worker() {}
+  ~Worker() = default;
   rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
@@ -183,6 +187,8 @@ class Worker : public WorkerInterface {
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   const JobID &GetAssignedJobId() const;
+  std::optional<bool> GetIsGpu() const;
+  std::optional<bool> GetIsActorWorker() const;
   int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
@@ -255,9 +261,6 @@ class Worker : public WorkerInterface {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
-
-  // If this worker can serve the task.
-  TaskUnfitReason FitsForTask(const TaskSpecification &task_spec) const;
 
   void SetJobId(const JobID &job_id);
   void SetIsGpu(bool is_gpu);
