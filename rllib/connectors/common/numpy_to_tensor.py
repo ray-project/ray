@@ -113,7 +113,8 @@ class NumpyToTensor(ConnectorV2):
                 module_data = convert_to_tf_tensor(module_data, device=self._device)
             else:
                 raise ValueError(
-                    "`NumpyToTensor`does NOT support frameworks other than torch and tensorflow!"
+                    "`NumpyToTensor`does NOT support frameworks other than torch and "
+                    "tensorflow!"
                 )
             if infos is not None:
                 module_data[Columns.INFOS] = infos
