@@ -183,8 +183,8 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
 void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                                           rpc::GetAllNodeInfoReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  size_t limit =
-      (request.limit() > 0) ? request.limit() : std::numeric_limits<size_t>::max();
+  int64_t limit =
+      (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
   NodeID filter_node_id = request.filters().has_node_id()
                               ? NodeID::FromBinary(request.filters().node_id())
                               : NodeID::Nil();
@@ -208,8 +208,7 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
       [limit, reply, filter_fn, &num_added, &num_filtered](
           const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
         for (const auto &entry : nodes) {
-          // It's a shame protobuf sizes are int, not size_t.
-          if (static_cast<size_t>(reply->node_info_list_size()) >= limit) {
+          if (num_added >= limit) {
             break;
           }
           if (filter_fn(*entry.second)) {
@@ -225,12 +224,16 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
     add_to_response(dead_nodes_);
   } else if (filter_state == rpc::GcsNodeInfo::ALIVE) {
     add_to_response(alive_nodes_);
+    num_filtered += dead_nodes_.size();
   } else if (filter_state == rpc::GcsNodeInfo::DEAD) {
     add_to_response(dead_nodes_);
+    num_filtered += alive_nodes_.size();
   } else {
     Status s = Status::InvalidArgument(
         absl::StrCat("Unexpected filter: state = ", *filter_state));
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, s);
+    ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
+    return;
   }
   size_t total = alive_nodes_.size() + dead_nodes_.size();
   reply->set_total(total);
