@@ -59,15 +59,22 @@ class DAGNode(DAGNodeBase):
             other_args_to_resolve or {}
         )
 
-        # TODO: Pickle `bound_args` and `bound_kwargs` so that we can support
-        # case like [DAGNode, DAGNode]
+        # The list of nodes that use this DAG node as input.
         self._downstream_nodes: List[DAGNode] = []
-        for arg in self._bound_args:
-            if isinstance(arg, DAGNode):
-                arg._downstream_nodes.append(self)
-        for arg in self._bound_kwargs.values():
-            if isinstance(arg, DAGNode):
-                arg._downstream_nodes.append(self)
+        # The list of nodes that this DAG node uses as input.
+        scanner = _PyObjScanner()
+        self._upstream_nodes: List[DAGNode] = scanner.find_nodes(
+            [
+                self._bound_args,
+                self._bound_kwargs,
+                self._bound_other_args_to_resolve,
+            ]
+        )
+        scanner.clear()
+        # Update upstream dependencies.
+        for upstream_node in self._upstream_nodes:
+            upstream_node._downstream_nodes.append(self)
+
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
         # Cached values from last call to execute()
@@ -356,17 +363,22 @@ class DAGNode(DAGNodeBase):
             if node not in visited:
                 fn(node)
                 visited.add(node)
-                queue.extend(node._downstream_nodes)
+                # Add all unseen downstream and upstream nodes to the queue.
+                # This function should be called by the root of the DAG. However,
+                # in some invalid cases, some nodes may not be descendants of the
+                # root. Therefore, we also add upstream nodes to the queue so that
+                # a meaningful error message can be raised when the DAG is compiled.
+                for node in node._downstream_nodes + node._upstream_nodes:
+                    if node not in visited:
+                        queue.append(node)
 
     def _find_root(self) -> "DAGNode":
         """Return the root node of the DAG."""
         root = self
-        while len(root._bound_args) != 0 or len(root._bound_kwargs) != 0:
-            for arg in list(root._bound_args) + list(root._bound_kwargs.values()):
-                if isinstance(arg, DAGNode):
-                    root = arg
-                    break
-        assert type(root).__name__ == "InputNode"
+        while type(root).__name__ != "InputNode":
+            if len(root._upstream_nodes) == 0:
+                raise ValueError("No InputNode found in the DAG.")
+            root = root._upstream_nodes[0]
         return root
 
     def apply_functional(
