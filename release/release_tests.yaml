@@ -242,7 +242,7 @@
       env: eks
       frequency: manual
       cluster:
-        cluster_compute: compute_gpu_4x4_eks.yaml
+        cluster_compute: dataset/compute_gpu_4x4_eks.yaml
 
 
 # 300 GB image classification parquet data with 16 GPUs
