@@ -293,5 +293,5 @@ class ReplicaScheduler(ABC):
 
     @property
     @abstractmethod
-    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+    def curr_replicas(self) -> Dict[ReplicaID, ReplicaWrapper]:
         pass

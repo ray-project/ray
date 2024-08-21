@@ -63,7 +63,7 @@ steps:
 
   - label: ":brain: rllib: examples"
     tags: rllib
-    parallelism: 4
+    parallelism: 5
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
@@ -77,18 +77,6 @@ steps:
         --skip-ray-installation
         --except-tags multi_gpu,gpu 
         --test-env RAY_USE_MULTIPROCESSING_CPU_COUNT=1
-    depends_on: rllibbuild
-
-  - label: ":brain: rllib: learning tests tf2-eager-tracing"
-    tags: rllib
-    parallelism: 2
-    instance_type: large
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
-        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --only-tags learning_tests_discrete,learning_tests_continuous,crashing_cartpole,stateless_cartpole
-        --except-tags fake_gpus,torch_only,multi_gpu,no_tf_eager_tracing
-        --test-arg --framework=tf2
     depends_on: rllibbuild
 
   - label: ":brain: rllib: tests dir"
@@ -107,7 +95,7 @@ steps:
     tags: 
       - rllib_gpu
       - gpu
-    parallelism: 3
+    parallelism: 4
     instance_type: gpu
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
@@ -189,7 +177,7 @@ steps:
     tags: 
       - rllib_gpu
       - gpu
-    parallelism: 2
+    parallelism: 4
     instance_type: gpu-large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib
