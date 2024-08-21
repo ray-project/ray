@@ -13,7 +13,7 @@ drop into a PDB session that you can then use to:
 
 .. warning::
 
-    The Ray Debugger is a legacy feature and will be deprecated in 3 months. You should use the :doc:`Ray Distributed Debugger <../../ray-distributed-debugger>` instead.
+    The Ray Debugger is deprecated. Use the :doc:`Ray Distributed Debugger <../../ray-distributed-debugger>` instead.
 
 Getting Started
 ---------------
