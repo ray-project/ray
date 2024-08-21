@@ -180,7 +180,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             A dict of information about the nodes in the cluster.
         """
         try:
-            nodes = await self.get_all_node_info(timeout=5)
+            nodes = await self.get_all_node_info(timeout=GCS_RPC_TIMEOUT_SECONDS)
             return {
                 node_id.hex(): gcs_node_info_to_dict(node_info)
                 for node_id, node_info in nodes.items()
@@ -215,11 +215,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         # TODO(architkulkarni): Remove once State API exposes which
                         # node is the head node.
                         await self._gcs_aio_client.internal_kv_put(
-                            "head_node_id".encode(),
+                            ray_constants.KV_HEAD_NODE_ID_KEY,
                             node_id.encode(),
                             overwrite=True,
                             namespace=ray_constants.KV_NAMESPACE_JOB,
-                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
+                            timeout=GCS_RPC_TIMEOUT_SECONDS,
                         )
                     node_id_to_ip[node_id] = ip
                     node_id_to_hostname[node_id] = hostname
@@ -240,7 +240,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         agent_port = await self._gcs_aio_client.internal_kv_get(
                             key.encode(),
                             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
+                            timeout=GCS_RPC_TIMEOUT_SECONDS,
                         )
                         if agent_port:
                             agents[node_id] = json.loads(agent_port)

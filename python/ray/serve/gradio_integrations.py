@@ -2,6 +2,7 @@ import logging
 from typing import Callable
 
 from ray import serve
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.util.annotations import PublicAPI
 
@@ -11,7 +12,7 @@ except ModuleNotFoundError:
     print("Gradio isn't installed. Run `pip install gradio` to install Gradio.")
     raise
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="alpha")
