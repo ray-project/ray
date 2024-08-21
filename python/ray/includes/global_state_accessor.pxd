@@ -132,4 +132,4 @@ cdef extern from * namespace "ray::gcs" nogil:
                                  c_int32_t port,
                                  const c_string& password,
                                  c_bool use_ssl,
-                                 const c_string& key)
+                                 const c_string& key_prefix)
