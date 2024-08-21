@@ -225,7 +225,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         return min(self.num_pending_requests, self.max_num_scheduling_tasks)
 
     @property
-    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+    def curr_replicas(self) -> Dict[ReplicaID, ReplicaWrapper]:
         return self._replicas
 
     @property

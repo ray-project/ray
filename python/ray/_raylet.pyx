@@ -2690,15 +2690,14 @@ cdef class GcsClient:
         if self.use_old_client:
             self.inner = OldGcsClient(address, nums_reconnect_retry, cluster_id)
         else:
-            # GcsRpcClient implicitly retries on GetClusterId in Connection. We set
-            # the total timeout to be 1s * (nums_reconnect_retry + 1) to match the old
-            # behavior. The 1s is hard coded in PythonGcsClient retry code:
-            # https://github.com/ray-project/ray/blob/8999fd5194c0f21f845d7bd059e39b6b7d680051/src/ray/gcs/gcs_client/gcs_client.cc#L252 # noqa
-            # Config py_gcs_connect_timeout_s is applied to PythonGcsClient but it's
-            # not effective for gRPC connection failure. We use it as a max timeout.
-            max_timeout_ms = RayConfig.instance().py_gcs_connect_timeout_s() * 1000
-            timeout_ms = min(1000 * (nums_reconnect_retry + 1), max_timeout_ms)
-
+            # For timeout (DEADLINE_EXCEEDED): Both OldGcsClient and NewGcsClient
+            # tries once with timeout_ms.
+            #
+            # For other RpcError (UNAVAILABLE, UNKNOWN): OldGcsClient tries this for
+            # (nums_reconnect_retry + 1) times, each time for timeous_ms (+1s sleep
+            # between each retry). NewGcsClient tries indefinitely until it thinks GCS
+            # is down and kills itself.
+            timeout_ms = RayConfig.instance().py_gcs_connect_timeout_s() * 1000
             self.inner = NewGcsClient.standalone(address, cluster_id, timeout_ms)
         logger.debug(f"Created GcsClient. inner {self.inner}")
 

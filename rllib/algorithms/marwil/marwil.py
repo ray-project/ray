@@ -310,8 +310,17 @@ class MARWILConfig(AlgorithmConfig):
         # Assert that for a local learner the number of iterations is 1. Note,
         # this is needed because we have no iterators, but instead a single
         # batch returned directly from the `OfflineData.sample` method.
-        if self.num_learners == 0 and not self.dataset_num_iters_per_learner:
-            self.dataset_num_iters_per_learner = 1
+        if (
+            self.num_learners == 0
+            and not self.dataset_num_iters_per_learner
+            and self.enable_rl_module_and_learner
+        ):
+            raise ValueError(
+                "When using a local Learner (`config.num_learners=0`), the number of "
+                "iterations per learner (`dataset_num_iters_per_learner`) has to be "
+                "defined! Set this hyperparameter through `config.offline_data("
+                "dataset_num_iters_per_learner=...)`."
+            )
 
     @property
     def _model_auto_keys(self):
