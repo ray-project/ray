@@ -846,8 +846,11 @@ class CompiledDAG:
                     ):
                         raise ValueError(
                             "Compiled DAG does not support NCCL communication between "
-                            "methods on the same actor. Please remove the NCCL type "
-                            "hint between these methods."
+                            "methods on the same actor. NCCL type hint is specified "
+                            "for the channel from method "
+                            f"{upstream_node.dag_node.get_method_name()} to the method "
+                            f"{dag_node.get_method_name()}. Please remove the NCCL "
+                            "type hint between these methods."
                         )
 
                 upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle

@@ -1,6 +1,7 @@
 # coding: utf-8
 import logging
 import os
+import re
 import sys
 import torch
 import time
@@ -443,13 +444,14 @@ def test_torch_tensor_nccl_within_same_actor(ray_start_regular):
 
         dag = workers[0].aggregate.bind(*activations)
 
+    pattern = re.compile(
+        r"Compiled DAG does not support NCCL communication between methods "
+        r"on the same actor\. .*Please remove the NCCL type hint between "
+        r"these methods\."
+    )
     with pytest.raises(
         ValueError,
-        match=(
-            "Compiled DAG does not support NCCL communication between methods "
-            "on the same actor. Please remove the NCCL type hint between "
-            "these methods."
-        ),
+        match=pattern,
     ):
         dag.experimental_compile()
     if saved_ray_adag_enable_detect_deadlock is not None:
