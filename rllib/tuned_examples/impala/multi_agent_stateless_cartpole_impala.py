@@ -1,5 +1,6 @@
-from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.algorithms.impala import IMPALAConfig
+from ray.rllib.connectors.env_to_module import MeanStdFilter
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentStatelessCartPole
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -8,34 +9,44 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
-parser = add_rllib_example_script_args(default_timesteps=2000000)
+parser = add_rllib_example_script_args(default_timesteps=5000000)
 parser.set_defaults(
     enable_new_api_stack=True,
     num_agents=2,
+    num_env_runners=4,
 )
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
-register_env("env", lambda cfg: MultiAgentCartPole(config=cfg))
+register_env(
+    "multi_stateless_cart",
+    lambda cfg: MultiAgentStatelessCartPole(config=cfg),
+)
 
 
 config = (
-    APPOConfig()
-    # Enable new API stack and use EnvRunner.
+    IMPALAConfig()
     .api_stack(
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment("env", env_config={"num_agents": args.num_agents})
+    .environment("multi_stateless_cart", env_config={"num_agents": args.num_agents})
+    .env_runners(
+        env_to_module_connector=lambda env: MeanStdFilter(),
+    )
     .training(
-        vf_loss_coeff=0.005,
+        lr=0.0004 * ((args.num_gpus or 1) ** 0.5),
+        vf_loss_coeff=0.05,
+        grad_clip=20.0,
         entropy_coeff=0.0,
     )
     .rl_module(
         model_config_dict={
             "vf_share_layers": True,
+            "use_lstm": True,
             "uses_new_env_runners": True,
+            "max_seq_len": 20,
         },
     )
     .multi_agent(
@@ -45,8 +56,8 @@ config = (
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 400.0 * args.num_agents,
-    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0 * args.num_agents,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
 }
 
 

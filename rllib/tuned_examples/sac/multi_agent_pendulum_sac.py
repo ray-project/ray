@@ -22,10 +22,7 @@ parser.set_defaults(
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
-register_env(
-    "multi_agent_pendulum",
-    lambda _: MultiAgentPendulum({"num_agents": args.num_agents}),
-)
+register_env("multi_agent_pendulum", lambda cfg: MultiAgentPendulum(config=cfg))
 
 config = (
     SACConfig()
@@ -33,7 +30,7 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment("multi_agent_pendulum")
+    .environment("multi_agent_pendulum", env_config={"num_agents": args.num_agents})
     .training(
         initial_alpha=1.001,
         lr=0.001 * ((args.num_gpus or 1) ** 0.5),

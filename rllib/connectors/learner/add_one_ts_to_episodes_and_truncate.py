@@ -3,6 +3,7 @@ from typing import Any, List, Optional
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.postprocessing.episodes import add_one_ts_to_episodes_and_truncate
 from ray.rllib.utils.typing import EpisodeType
@@ -100,6 +101,12 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
 
         # batch: - - - - - - - T B0- - - - - R Bx- - - - R Bx
         # mask : t t t t t t t t f t t t t t t f t t t t t f
+
+        if isinstance(episodes[0], MultiAgentEpisode):
+            for i, ma_episode in enumerate(episodes):
+                ma_episode.id_ += "_" + str(i)
+                for sa_episode in ma_episode.agent_episodes.values():
+                    sa_episode.multi_agent_episode_id = ma_episode.id_
 
         for i, sa_episode in enumerate(
             self.single_agent_episode_iterator(episodes, agents_that_stepped_only=False)
