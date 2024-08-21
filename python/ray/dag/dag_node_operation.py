@@ -36,9 +36,6 @@ class _DAGNodeOperation:
         self.local_idx = local_idx
         self.type = operation_type
 
-    def __repr__(self) -> str:
-        return f"{self.type}({self.local_idx})"
-
 
 @total_ordering
 class _DAGOperationGraphNode:
