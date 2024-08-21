@@ -627,6 +627,39 @@ py_test(
     srcs = ["tuned_examples/ppo/cartpole_truncated_ppo.py"],
     args = ["--as-test", "--enable-new-api-stack"]
 )
+# StatelessCartPole
+py_test(
+    name = "learning_tests_stateless_cartpole_ppo",
+    main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "torch_only"],
+    size = "large",
+    srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
+    args = ["--as-test", "--enable-new-api-stack"]
+)
+py_test(
+    name = "learning_tests_stateless_cartpole_ppo_gpu",
+    main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
+    size = "large",
+    srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+)
+py_test(
+    name = "learning_tests_stateless_cartpole_ppo_multi_cpu",
+    main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "large",
+    srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+)
+py_test(
+    name = "learning_tests_stateless_cartpole_ppo_multi_gpu",
+    main = "tuned_examples/ppo/stateless_cartpole_ppo.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
+    size = "large",
+    srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+)
 # Pendulum
 py_test(
     name = "learning_tests_pendulum_ppo",
