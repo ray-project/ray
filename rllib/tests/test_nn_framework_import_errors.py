@@ -5,16 +5,6 @@ import pytest
 import ray.rllib.algorithms.ppo as ppo
 
 
-def test_dont_import_tf_error():
-    """Check error being thrown, if tf not installed but configured."""
-    # Do not import tf for testing purposes.
-    os.environ["RLLIB_TEST_NO_TF_IMPORT"] = "1"
-
-    config = ppo.PPOConfig().environment("CartPole-v1")
-    with pytest.raises(ImportError, match="However, no installation was found"):
-        config.build()
-
-
 def test_dont_import_torch_error():
     """Check error being thrown, if torch not installed but configured."""
     # Do not import tf for testing purposes.
@@ -25,5 +15,4 @@ def test_dont_import_torch_error():
 
 
 if __name__ == "__main__":
-    test_dont_import_tf_error()
     test_dont_import_torch_error()

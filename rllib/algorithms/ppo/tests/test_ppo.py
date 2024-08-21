@@ -172,7 +172,6 @@ class TestPPO(unittest.TestCase):
                 policy = algo.get_policy()
                 entropy_coeff = algo.get_policy().entropy_coeff
                 lr = policy.cur_lr
-                entropy_coeff, lr = policy.get_session().run([entropy_coeff, lr])
                 check(entropy_coeff, 0.1)
                 check(lr, config.lr)
 
