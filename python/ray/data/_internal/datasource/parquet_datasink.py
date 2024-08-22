@@ -59,7 +59,7 @@ class ParquetDatasink(_FileDatasink):
     ) -> Any:
         import pyarrow.parquet as pq
 
-        blocks = list(block for block in blocks if BlockAccessor.for_block(block).num_rows() > 0)
+        blocks = [b for b in blocks if BlockAccessor.for_block(b).num_rows() > 0]
 
         if len(blocks) == 0:
             return "skip"
