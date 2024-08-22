@@ -45,7 +45,6 @@ config = (
     )
     .rl_module(
         model_config_dict={
-            "vf_share_layers": True,
             "use_lstm": True,
             "uses_new_env_runners": True,
             "max_seq_len": 50,
@@ -58,8 +57,8 @@ config = (
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 200.0 * args.num_agents,
-    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 300.0 * args.num_agents,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
 }
 
 if __name__ == "__main__":
