@@ -34,3 +34,6 @@ urllib3 < 1.27
 
 # External dependencies such as ML libraries should be mocked out, not added here.
 # See doc/source/conf.py for examples of how to mock out external dependencies.
+click==8.1.7
+boto3==1.35.2
+requests==2.32.3

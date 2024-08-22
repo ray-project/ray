@@ -59,24 +59,21 @@ You can continue to set it manually to override the default.
 There is also a maximum queue limit that proxies respect when assigning requests
 to replicas. Define the limit with `max_ongoing_requests`. Set
 `max_ongoing_requests` to ~20 to 50% higher than `target_ongoing_requests`.
-Note that `target_ongoing_requests` should always be strictly less than
-`max_ongoing_requests`, otherwise the deployment never scales up.
 
-- Setting it too low limits upscaling. For instance, if your target value is 50
-and `max_ongoing_requests` is 51, then even if the traffic increases
-significantly, the requests will queue up at the proxy instead of at the
-replicas. As a result, the autoscaler only increases the number of replicas at
-most 2% at a time, which is very slow.
+- Setting it too low can throttle throughput. Instead of being forwarded to
+replicas for concurrent execution, requests will tend to queue up at the proxy,
+waiting for replicas to finish processing existing requests.
+
+:::{note}
+`max_ongoing_requests` should be tuned higher especially for lightweight
+requests, else the overall throughput will be impacted.
+:::
 
 - Setting it too high can lead to imbalanced routing. Concretely, this can lead
 to very high tail latencies during upscale, because when the autoscaler is
 scaling a deployment up due to a traffic spike, most or all of the requests
 might be assigned to the existing replicas before the new replicas are started.
 
-:::{note}
-`max_ongoing_requests` should be tuned higher for lightweight requests, else the
-overall throughput will be impacted.
-:::
 
 ### [Required] Define upper and lower autoscaling limits
 
