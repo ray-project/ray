@@ -18,6 +18,7 @@ from ray.util.annotations import PublicAPI
 class FlattenObservations(ConnectorV2):
     """A connector piece that flattens all observation components into a 1D array.
 
+    - Should be used only in env-to-module pipelines.
     - Works directly on the incoming episodes list and changes the last observation
     in-place (write the flattened observation back into the episode).
     - This connector does NOT alter the incoming batch (`data`) when called.
