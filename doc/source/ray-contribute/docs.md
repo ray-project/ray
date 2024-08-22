@@ -75,7 +75,7 @@ In this approach, the incremental build only builds the changes you made in your
 To do this, we first trace your commit tree to find the latest commit that we already cached on S3. 
 Once the commit is found, we fetch its corresponding cache from S3 and extract into the `doc/` directory. Simultaneously, we track all the files that have changed from that commit to current `HEAD`, including any unstaged changes.
 
-Sphinx then rebuilds only the pages that depend on your changes, leaving the rest untouched from the cache.
+Sphinx then rebuilds only the pages that your changes affect, leaving the rest untouched from the cache.
 
 
 To use this option, you can run:
