@@ -5178,7 +5178,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 
 
 def del_key_prefix_from_storage(host, port, password, use_ssl, key_prefix):
-    return RedisDelKeyPrefixSync(host, port, password, use_ssl, key)
+    return RedisDelKeyPrefixSync(host, port, password, use_ssl, key_prefix)
 
 
 def get_session_key_from_storage(host, port, password, use_ssl, config, key):

@@ -32,9 +32,9 @@ namespace gcs {
 
 // Typed key to avoid forgetting to prepend external_storage_namespace.
 struct RedisKey {
-  explicit RedisKey(absl::string_view external_storage_namespace,
-                    absl::string_view table_name);
-  const std::string redis_key;
+  const std::string external_storage_namespace;
+  const std::string table_name;
+  std::string ToString() const;
 };
 
 struct RedisMatchPattern {
@@ -58,7 +58,7 @@ struct RedisCommand {
   std::vector<std::string> ToRedisArgs() const {
     std::vector<std::string> redis_args;
     redis_args.push_back(command);
-    redis_args.push_back(redis_key.redis_key);
+    redis_args.push_back(redis_key.ToString());
     for (const auto &arg : args) {
       redis_args.push_back(arg);
     }
@@ -223,15 +223,21 @@ class RedisStoreClient : public StoreClient {
                       std::function<void(int64_t)> callback);
 
   // Send the redis command to the server. This method will make request to be
-  // serialized for each key in keys. At a given time, only one request for a key
-  // will be in flight.
+  // serialized for each key in keys. At a given time, only one request for a {table_name,
+  // key} will be in flight.
   //
-  // \param keys The keys in the request.
+  // \param keys Used as concurrency key.
   // \param args The redis commands
   // \param redis_callback The callback to call when the reply is received.
-  void SendRedisCmd(std::vector<RedisConcurrencyKey> keys,
-                    RedisCommand command,
-                    RedisCallback redis_callback);
+  void SendRedisCmdWithKeys(std::vector<std::string> keys,
+                            RedisCommand command,
+                            RedisCallback redis_callback);
+
+  // Conveinence method for SendRedisCmdWithKeys with keys = command.args.
+  // Reason for this method: if you call SendRedisCmd(command.args, std::move(command)),
+  // it's UB because C++ don't have arg evaluation order guarantee, hence command.args
+  // may become empty.
+  void SendRedisCmd(RedisCommand command, RedisCallback redis_callback);
 
   // HMGET external_storage_namespace@table_name key1 key2 ...
   // `keys` are chunked to multiple HMGET commands by
