@@ -8,6 +8,7 @@
 
 ## setup.py install_requires
 click>=7.0
+cupy-cuda12x; sys_platform != 'darwin'
 filelock
 jsonschema
 msgpack<2.0.0,>=1.0.0

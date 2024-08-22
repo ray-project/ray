@@ -15,10 +15,38 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import batch, BatchedNdArray
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class AddStatesFromEpisodesToBatch(ConnectorV2):
     """Gets last STATE_OUT from running episode and adds it as STATE_IN to the batch.
+
+    Note: This is one of the default env-to-module or Learner ConnectorV2 pieces that
+    are added automatically by RLlib into every env-to-module/Learner connector
+    pipeline, unless `config.add_default_connectors_to_env_to_module_pipeline` or
+    `config.add_default_connectors_to_learner_pipeline ` are set to
+    False.
+
+    The default env-to-module connector pipeline is:
+    [
+        [0 or more user defined ConnectorV2 pieces],
+        AddObservationsFromEpisodesToBatch,
+        AddStatesFromEpisodesToBatch,
+        AgentToModuleMapping,  # only in multi-agent setups!
+        BatchIndividualItems,
+        NumpyToTensor,
+    ]
+    The default Learner connector pipeline is:
+    [
+        [0 or more user defined ConnectorV2 pieces],
+        AddObservationsFromEpisodesToBatch,
+        AddColumnsFromEpisodesToTrainBatch,
+        AddStatesFromEpisodesToBatch,
+        AgentToModuleMapping,  # only in multi-agent setups!
+        BatchIndividualItems,
+        NumpyToTensor,
+    ]
 
     If the RLModule is stateful, the episodes' STATE_OUTS will be extracted
     and restructured under a new STATE_IN key.
@@ -32,6 +60,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
     reshaped into (B, T=max_seq_len (learner) or 1 (env-to-module), ...) and will be
     zero-padded, if necessary.
 
+    This ConnectorV2:
     - Operates on a list of Episode objects.
     - Gets the most recent STATE_OUT from all the given episodes and adds them under
     the STATE_IN key to the batch under construction.
@@ -308,13 +337,14 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     num_items=len(seq_lens),
                     single_agent_episode=sa_episode,
                 )
-                self.add_n_batch_items(
-                    batch=data,
-                    column=Columns.LOSS_MASK,
-                    items_to_add=mask,
-                    num_items=len(mask),
-                    single_agent_episode=sa_episode,
-                )
+                if not shared_data.get("_added_loss_mask_for_valid_episode_ts"):
+                    self.add_n_batch_items(
+                        batch=data,
+                        column=Columns.LOSS_MASK,
+                        items_to_add=mask,
+                        num_items=len(mask),
+                        single_agent_episode=sa_episode,
+                    )
             else:
                 assert not sa_episode.is_finalized
 

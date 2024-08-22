@@ -186,6 +186,15 @@ Delta Sharing
 
    read_delta_sharing_tables
 
+Iceberg
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_iceberg
+
 Lance
 -----
 

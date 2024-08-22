@@ -720,7 +720,7 @@ RAY_CONFIG(uint32_t,
            std::getenv("RAY_preallocate_plasma_memory") != nullptr &&
                    std::getenv("RAY_preallocate_plasma_memory") == std::string("1")
                ? 120
-               : 10)
+               : 30)
 
 /// The scheduler will treat these predefined resource types as unit_instance.
 /// Default predefined_unit_instance_resources is "GPU".
@@ -744,10 +744,6 @@ RAY_CONFIG(uint64_t, resource_broadcast_batch_size, 512)
 
 // Maximum ray sync message batch size in bytes (1MB by default) between nodes.
 RAY_CONFIG(uint64_t, max_sync_message_batch_bytes, 1 * 1024 * 1024)
-
-// If enabled and worker stated in container, the container will add
-// resource limit.
-RAY_CONFIG(bool, worker_resource_limits_enabled, false)
 
 // When enabled, workers will not be re-used across tasks requesting different
 // resources (e.g., CPU vs GPU).

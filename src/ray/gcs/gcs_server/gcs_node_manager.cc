@@ -183,16 +183,61 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
 void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                                           rpc::GetAllNodeInfoReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  // Here the unsafe allocate is safe here, because entry.second's life cycle is longer
-  // then reply.
-  // The request will be sent when call send_reply_callback and after that, reply will
-  // not be used any more. But entry is still valid.
-  for (const auto &entry : alive_nodes_) {
-    *reply->add_node_info_list() = *entry.second;
+  int64_t limit =
+      (request.limit() > 0) ? request.limit() : std::numeric_limits<int64_t>::max();
+  NodeID filter_node_id = request.filters().has_node_id()
+                              ? NodeID::FromBinary(request.filters().node_id())
+                              : NodeID::Nil();
+  std::optional<rpc::GcsNodeInfo::GcsNodeState> filter_state = std::nullopt;
+  if (request.filters().has_state()) {
+    filter_state = request.filters().state();
   }
-  for (const auto &entry : dead_nodes_) {
-    *reply->add_node_info_list() = *entry.second;
+  std::string filter_node_name = request.filters().node_name();
+  auto filter_fn = [&filter_node_id, &filter_node_name](const rpc::GcsNodeInfo &node) {
+    if (!filter_node_id.IsNil() && filter_node_id != NodeID::FromBinary(node.node_id())) {
+      return false;
+    }
+    if (!filter_node_name.empty() && filter_node_name != node.node_name()) {
+      return false;
+    }
+    return true;
+  };
+  int64_t num_added = 0;
+  int64_t num_filtered = 0;
+  auto add_to_response =
+      [limit, reply, filter_fn, &num_added, &num_filtered](
+          const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &nodes) {
+        for (const auto &entry : nodes) {
+          if (num_added >= limit) {
+            break;
+          }
+          if (filter_fn(*entry.second)) {
+            *reply->add_node_info_list() = *entry.second;
+            num_added += 1;
+          } else {
+            num_filtered += 1;
+          }
+        }
+      };
+  if (filter_state == std::nullopt) {
+    add_to_response(alive_nodes_);
+    add_to_response(dead_nodes_);
+  } else if (filter_state == rpc::GcsNodeInfo::ALIVE) {
+    add_to_response(alive_nodes_);
+    num_filtered += dead_nodes_.size();
+  } else if (filter_state == rpc::GcsNodeInfo::DEAD) {
+    add_to_response(dead_nodes_);
+    num_filtered += alive_nodes_.size();
+  } else {
+    Status s = Status::InvalidArgument(
+        absl::StrCat("Unexpected filter: state = ", *filter_state));
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, s);
+    ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
+    return;
   }
+  size_t total = alive_nodes_.size() + dead_nodes_.size();
+  reply->set_total(total);
+  reply->set_num_filtered(num_filtered);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
