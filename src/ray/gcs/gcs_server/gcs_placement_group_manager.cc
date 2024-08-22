@@ -942,7 +942,7 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   // Bundles that are PREPARED or COMMITTED that we wanna keep. All others are going to be removed
   // by raylet.
-  absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> used_bundles;
+  absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> bundles_in_use;
   // Bundles that are COMMITTED that we want the Scheduler to track.
   absl::flat_hash_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
       commited_bundles;
