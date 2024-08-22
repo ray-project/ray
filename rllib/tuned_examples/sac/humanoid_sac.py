@@ -31,7 +31,9 @@ config = (
     .environment("Humanoid-v4")
     .training(
         initial_alpha=1.001,
-        lr=0.00005,
+        actor_lr=0.00005,
+        critic_lr=0.00005,
+        alpha_lr=0.00005,
         target_entropy="auto",
         n_step=(1, 3),
         tau=0.005,
