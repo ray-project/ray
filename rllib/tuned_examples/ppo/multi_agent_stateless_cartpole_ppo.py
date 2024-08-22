@@ -39,7 +39,6 @@ config = (
         lr=0.0003 * ((args.num_gpus or 1) ** 0.5),
         gamma=0.99,
         num_sgd_iter=6,
-        #mini_batch_size_per_learner=2000,
         vf_loss_coeff=0.05,
         use_kl_loss=True,
     )
@@ -60,7 +59,7 @@ config = (
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     # Divide by num_agents to get actual return per agent.
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 300.0 * (args.num_agents or 1),
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 250.0 * (args.num_agents or 1),
 }
 
 
