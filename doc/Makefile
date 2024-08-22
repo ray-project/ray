@@ -8,6 +8,7 @@ SPHINXOPTS    = -a -E -W -j auto
 LOCALSPHINXOPTS = -W -j auto
 LINKCHECKOPTS = -a -E -j auto
 SPHINXBUILD   = sphinx-build
+SPHINXAUTOBUILD = sphinx-autobuild --port 0 --open-browser --ignore "*.log" --ignore "*data/examples*" --ignore "*train/examples*" --ignore "*serve/examples*"
 PAPER         =
 BUILDDIR      = _build
 
@@ -84,7 +85,7 @@ RAY_DIR := $(shell pwd | rev | cut -d'/' -f2- | rev)
 local:
 	python load_doc_cache.py --ray-dir=$(RAY_DIR)
 	python update_cache_env.py --ray-dir=$(RAY_DIR)
-	$(SPHINXBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
+	$(SPHINXAUTOBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
 
 dirhtml:
 	$(SPHINXBUILD) -b dirhtml $(ALLSPHINXOPTS) $(BUILDDIR)/dirhtml
