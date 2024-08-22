@@ -4061,7 +4061,7 @@
       env: eks
       frequency: manual
       cluster:
-        cluster_compute: data_ingest_benchmark_compute_eks.yaml
+        cluster_compute: data_ingest_benchmark_compute.yaml
 
 - name: streaming_data_ingest_benchmark_100gb_gpu
   group: data-tests
