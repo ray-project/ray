@@ -17,10 +17,7 @@ parser.set_defaults(
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
-register_env(
-    "multi_agent_pendulum",
-    lambda _: MultiAgentPendulum({"num_agents": args.num_agents}),
-)
+register_env("multi_agent_pendulum", lambda cfg: MultiAgentPendulum(config=cfg))
 
 config = (
     PPOConfig()
@@ -28,7 +25,7 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment("multi_agent_pendulum")
+    .environment("multi_agent_pendulum", env_config={"num_agents": args.num_agents})
     .rl_module(
         model_config_dict={
             "fcnet_activation": "relu",

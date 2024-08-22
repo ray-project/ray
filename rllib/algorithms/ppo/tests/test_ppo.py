@@ -5,14 +5,12 @@ import numpy as np
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.algorithms.ppo.ppo_tf_policy import PPOTF2Policy
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.core.columns import Columns
 from ray.rllib.evaluation.postprocessing import (
     compute_gae_for_sample_batch,
     Postprocessing,
 )
-from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -23,7 +21,6 @@ from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_off_policyness,
     check_train_results,
-    framework_iterator,
     check_inference_w_connectors,
 )
 
@@ -159,39 +156,34 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config):
-            for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
-                print("Env={}".format(env))
-                for lstm in [False, True]:
-                    print("LSTM={}".format(lstm))
-                    config.training(
-                        model=dict(
-                            use_lstm=lstm,
-                            lstm_use_prev_action=lstm,
-                            lstm_use_prev_reward=lstm,
-                        )
+        for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
+            print("Env={}".format(env))
+            for lstm in [False, True]:
+                print("LSTM={}".format(lstm))
+                config.training(
+                    model=dict(
+                        use_lstm=lstm,
+                        lstm_use_prev_action=lstm,
+                        lstm_use_prev_reward=lstm,
                     )
+                )
 
-                    algo = config.build(env=env)
-                    policy = algo.get_policy()
-                    entropy_coeff = algo.get_policy().entropy_coeff
-                    lr = policy.cur_lr
-                    if fw == "tf":
-                        entropy_coeff, lr = policy.get_session().run(
-                            [entropy_coeff, lr]
-                        )
-                    check(entropy_coeff, 0.1)
-                    check(lr, config.lr)
+                algo = config.build(env=env)
+                policy = algo.get_policy()
+                entropy_coeff = algo.get_policy().entropy_coeff
+                lr = policy.cur_lr
+                check(entropy_coeff, 0.1)
+                check(lr, config.lr)
 
-                    for i in range(num_iterations):
-                        results = algo.train()
-                        check_train_results(results)
-                        print(results)
+                for i in range(num_iterations):
+                    results = algo.train()
+                    check_train_results(results)
+                    print(results)
 
-                    algo.evaluate()
+                algo.evaluate()
 
-                    check_inference_w_connectors(policy, env_name=env)
-                    algo.stop()
+                check_inference_w_connectors(policy, env_name=env)
+                algo.stop()
 
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether PPO can be built with all frameworks."""
@@ -225,45 +217,40 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config):
-            for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
-                print("Env={}".format(env))
-                for lstm in [False, True]:
-                    print("LSTM={}".format(lstm))
-                    config.training(
-                        model=dict(
-                            use_lstm=lstm,
-                            lstm_use_prev_action=lstm,
-                            lstm_use_prev_reward=lstm,
-                        )
+        for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
+            print("Env={}".format(env))
+            for lstm in [False, True]:
+                print("LSTM={}".format(lstm))
+                config.training(
+                    model=dict(
+                        use_lstm=lstm,
+                        lstm_use_prev_action=lstm,
+                        lstm_use_prev_reward=lstm,
                     )
+                )
 
-                    algo = config.build(env=env)
-                    policy = algo.get_policy()
-                    entropy_coeff = algo.get_policy().entropy_coeff
-                    lr = policy.cur_lr
-                    if fw == "tf":
-                        entropy_coeff, lr = policy.get_session().run(
-                            [entropy_coeff, lr]
-                        )
-                    check(entropy_coeff, 0.1)
-                    check(lr, config.lr)
+                algo = config.build(env=env)
+                policy = algo.get_policy()
+                entropy_coeff = algo.get_policy().entropy_coeff
+                lr = policy.cur_lr
+                check(entropy_coeff, 0.1)
+                check(lr, config.lr)
 
-                    for i in range(num_iterations):
-                        results = algo.train()
-                        print(results)
-                        check_train_results(results)
-                        # 2 sgd iters per update, 2 minibatches per trainbatch -> 4x
-                        # avg(0.0, 1.0, 2.0, 3.0) -> 1.5
-                        off_policy_ness = check_off_policyness(
-                            results, lower_limit=1.5, upper_limit=1.5
-                        )
-                        print(f"off-policy'ness={off_policy_ness}")
-
-                    check_compute_single_action(
-                        algo, include_prev_action_reward=True, include_state=lstm
+                for i in range(num_iterations):
+                    results = algo.train()
+                    print(results)
+                    check_train_results(results)
+                    # 2 sgd iters per update, 2 minibatches per trainbatch -> 4x
+                    # avg(0.0, 1.0, 2.0, 3.0) -> 1.5
+                    off_policy_ness = check_off_policyness(
+                        results, lower_limit=1.5, upper_limit=1.5
                     )
-                    algo.stop()
+                    print(f"off-policy'ness={off_policy_ness}")
+
+                check_compute_single_action(
+                    algo, include_prev_action_reward=True, include_state=lstm
+                )
+                algo.stop()
 
     def test_ppo_exploration_setup(self):
         """Tests, whether PPO runs with different exploration setups."""
@@ -280,34 +267,32 @@ class TestPPO(unittest.TestCase):
         )
         obs = np.array(0)
 
-        # Test against all frameworks.
-        for fw, sess in framework_iterator(config, session=True):
-            # Default Agent should be setup with StochasticSampling.
-            algo = config.build()
-            # explore=False, always expect the same (deterministic) action.
-            a_ = algo.compute_single_action(
-                obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
+        # Default Agent should be setup with StochasticSampling.
+        algo = config.build()
+        # explore=False, always expect the same (deterministic) action.
+        a_ = algo.compute_single_action(
+            obs, explore=False, prev_action=np.array(2), prev_reward=np.array(1.0)
+        )
+
+        for _ in range(50):
+            a = algo.compute_single_action(
+                obs,
+                explore=False,
+                prev_action=np.array(2),
+                prev_reward=np.array(1.0),
             )
+            check(a, a_)
 
-            for _ in range(50):
-                a = algo.compute_single_action(
-                    obs,
-                    explore=False,
-                    prev_action=np.array(2),
-                    prev_reward=np.array(1.0),
+        # With explore=True (default), expect stochastic actions.
+        actions = []
+        for _ in range(300):
+            actions.append(
+                algo.compute_single_action(
+                    obs, prev_action=np.array(2), prev_reward=np.array(1.0)
                 )
-                check(a, a_)
-
-            # With explore=True (default), expect stochastic actions.
-            actions = []
-            for _ in range(300):
-                actions.append(
-                    algo.compute_single_action(
-                        obs, prev_action=np.array(2), prev_reward=np.array(1.0)
-                    )
-                )
-            check(np.mean(actions), 1.5, atol=0.2)
-            algo.stop()
+            )
+        check(np.mean(actions), 1.5, atol=0.2)
+        algo.stop()
 
     def test_ppo_free_log_std(self):
         """Tests the free log std option works.
@@ -334,45 +319,31 @@ class TestPPO(unittest.TestCase):
             )
         )
 
-        for fw, sess in framework_iterator(config, session=True):
-            algo = config.build()
-            policy = algo.get_policy()
+        algo = config.build()
+        policy = algo.get_policy()
 
-            # Check the free log std var is created.
-            if fw == "torch":
-                matching = [
-                    v for (n, v) in policy.model.named_parameters() if "log_std" in n
-                ]
-            else:
-                matching = [
-                    v for v in policy.model.trainable_variables() if "log_std" in str(v)
-                ]
-            assert len(matching) == 1, matching
-            log_std_var = matching[0]
+        # Check the free log std var is created.
+        matching = [v for (n, v) in policy.model.named_parameters() if "log_std" in n]
+        assert len(matching) == 1, matching
+        log_std_var = matching[0]
 
-            # linter yells at you if you don't pass in the parameters.
-            # reason: https://docs.python-guide.org/writing/gotchas/
-            # #late-binding-closures
-            def get_value(fw=fw, policy=policy, log_std_var=log_std_var):
-                if fw == "tf":
-                    return policy.get_session().run(log_std_var)[0]
-                elif fw == "torch":
-                    return log_std_var.detach().cpu().numpy()[0]
-                else:
-                    return log_std_var.numpy()[0]
+        # linter yells at you if you don't pass in the parameters.
+        # reason: https://docs.python-guide.org/writing/gotchas/
+        # #late-binding-closures
+        def get_value(fw="torch", policy=policy, log_std_var=log_std_var):
+            return log_std_var.detach().cpu().numpy()[0]
 
-            # Check the variable is initially zero.
-            init_std = get_value()
-            assert init_std == 0.0, init_std
-            batch = compute_gae_for_sample_batch(policy, CARTPOLE_FAKE_BATCH.copy())
-            if fw == "torch":
-                batch = policy._lazy_tensor_dict(batch)
-            policy.learn_on_batch(batch)
+        # Check the variable is initially zero.
+        init_std = get_value()
+        assert init_std == 0.0, init_std
+        batch = compute_gae_for_sample_batch(policy, CARTPOLE_FAKE_BATCH.copy())
+        batch = policy._lazy_tensor_dict(batch)
+        policy.learn_on_batch(batch)
 
-            # Check the variable is updated.
-            post_std = get_value()
-            assert post_std != 0.0, post_std
-            algo.stop()
+        # Check the variable is updated.
+        post_std = get_value()
+        assert post_std != 0.0, post_std
+        algo.stop()
 
     def test_ppo_loss_function(self):
         """Tests the PPO loss function math.
@@ -397,108 +368,62 @@ class TestPPO(unittest.TestCase):
             )
         )
 
-        for fw, sess in framework_iterator(config, session=True):
-            algo = config.build()
-            policy = algo.get_policy()
+        algo = config.build()
+        policy = algo.get_policy()
 
-            # Check no free log std var by default.
-            if fw == "torch":
-                matching = [
-                    v for (n, v) in policy.model.named_parameters() if "log_std" in n
-                ]
-            else:
-                matching = [
-                    v for v in policy.model.trainable_variables() if "log_std" in str(v)
-                ]
-            assert len(matching) == 0, matching
+        # Check no free log std var by default.
+        matching = [v for (n, v) in policy.model.named_parameters() if "log_std" in n]
+        assert len(matching) == 0, matching
 
-            # Post-process (calculate simple (non-GAE) advantages) and attach
-            # to train_batch dict.
-            # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
-            # [0.50005, -0.505, 0.5]
-            train_batch = compute_gae_for_sample_batch(
-                policy, CARTPOLE_FAKE_BATCH.copy()
-            )
-            if fw == "torch":
-                train_batch = policy._lazy_tensor_dict(train_batch)
+        # Post-process (calculate simple (non-GAE) advantages) and attach
+        # to train_batch dict.
+        # A = [0.99^2 * 0.5 + 0.99 * -1.0 + 1.0, 0.99 * 0.5 - 1.0, 0.5] =
+        # [0.50005, -0.505, 0.5]
+        train_batch = compute_gae_for_sample_batch(policy, CARTPOLE_FAKE_BATCH.copy())
+        train_batch = policy._lazy_tensor_dict(train_batch)
 
-            # Check Advantage values.
-            check(train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5])
+        # Check Advantage values.
+        check(train_batch[Postprocessing.VALUE_TARGETS], [0.50005, -0.505, 0.5])
 
-            # Calculate actual PPO loss.
-            if fw == "tf2":
-                PPOTF2Policy.loss(policy, policy.model, Categorical, train_batch)
-            elif fw == "torch":
-                PPOTorchPolicy.loss(
-                    policy, policy.model, policy.dist_class, train_batch
-                )
+        # Calculate actual PPO loss.
+        PPOTorchPolicy.loss(policy, policy.model, policy.dist_class, train_batch)
 
-            vars = (
-                policy.model.variables()
-                if fw != "torch"
-                else list(policy.model.parameters())
-            )
-            if fw == "tf":
-                vars = policy.get_session().run(vars)
-            expected_shared_out = fc(
-                train_batch[Columns.OBS],
-                vars[0 if fw != "torch" else 2],
-                vars[1 if fw != "torch" else 3],
-                framework=fw,
-            )
-            expected_logits = fc(
-                expected_shared_out,
-                vars[2 if fw != "torch" else 0],
-                vars[3 if fw != "torch" else 1],
-                framework=fw,
-            )
-            expected_value_outs = fc(
-                expected_shared_out, vars[4], vars[5], framework=fw
-            )
+        vars = list(policy.model.parameters())
+        expected_shared_out = fc(
+            train_batch[Columns.OBS],
+            vars[2],
+            vars[3],
+            framework="torch",
+        )
+        expected_logits = fc(
+            expected_shared_out,
+            vars[0],
+            vars[1],
+            framework="torch",
+        )
+        expected_value_outs = fc(
+            expected_shared_out, vars[4], vars[5], framework="torch"
+        )
 
-            kl, entropy, pg_loss, vf_loss, overall_loss = self._ppo_loss_helper(
-                policy,
-                policy.model,
-                Categorical if fw != "torch" else TorchCategorical,
-                train_batch,
-                expected_logits,
-                expected_value_outs,
-                sess=sess,
-            )
-            if sess:
-                policy_sess = policy.get_session()
-                k, e, pl, v, tl = policy_sess.run(
-                    [
-                        policy._mean_kl_loss,
-                        policy._mean_entropy,
-                        policy._mean_policy_loss,
-                        policy._mean_vf_loss,
-                        policy._total_loss,
-                    ],
-                    feed_dict=policy._get_loss_inputs_dict(train_batch, shuffle=False),
-                )
-                check(k, kl)
-                check(e, entropy)
-                check(pl, np.mean(-pg_loss))
-                check(v, np.mean(vf_loss), decimals=4)
-                check(tl, overall_loss, decimals=4)
-            elif fw == "torch":
-                check(policy.model.tower_stats["mean_kl_loss"], kl)
-                check(policy.model.tower_stats["mean_entropy"], entropy)
-                check(policy.model.tower_stats["mean_policy_loss"], np.mean(-pg_loss))
-                check(
-                    policy.model.tower_stats["mean_vf_loss"],
-                    np.mean(vf_loss),
-                    decimals=4,
-                )
-                check(policy.model.tower_stats["total_loss"], overall_loss, decimals=4)
-            else:
-                check(policy._mean_kl_loss, kl)
-                check(policy._mean_entropy, entropy)
-                check(policy._mean_policy_loss, np.mean(-pg_loss))
-                check(policy._mean_vf_loss, np.mean(vf_loss), decimals=4)
-                check(policy._total_loss, overall_loss, decimals=4)
-            algo.stop()
+        kl, entropy, pg_loss, vf_loss, overall_loss = self._ppo_loss_helper(
+            policy,
+            policy.model,
+            TorchCategorical,
+            train_batch,
+            expected_logits,
+            expected_value_outs,
+            sess=None,
+        )
+        check(policy.model.tower_stats["mean_kl_loss"], kl)
+        check(policy.model.tower_stats["mean_entropy"], entropy)
+        check(policy.model.tower_stats["mean_policy_loss"], np.mean(-pg_loss))
+        check(
+            policy.model.tower_stats["mean_vf_loss"],
+            np.mean(vf_loss),
+            decimals=4,
+        )
+        check(policy.model.tower_stats["total_loss"], overall_loss, decimals=4)
+        algo.stop()
 
     def _ppo_loss_helper(
         self, policy, model, dist_class, train_batch, logits, vf_outs, sess=None

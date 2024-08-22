@@ -745,9 +745,7 @@ class CompiledDAG:
                         "Compiled DAGs currently only support actor method nodes"
                     )
                 else:
-                    raise ValueError(
-                        f"Found unsupported node of type {type(task.dag_node)}"
-                    )
+                    raise ValueError(f"Found unsupported node of type {type(dag_node)}")
 
             if isinstance(dag_node, ClassMethodNode):
                 actor_handle = dag_node._get_actor_handle()
@@ -775,10 +773,10 @@ class CompiledDAG:
                         "the driver cannot participate in the NCCL group"
                     )
 
-            if type(task.dag_node.type_hint) == ChannelOutputType:
+            if type(dag_node.type_hint) == ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
-                task.dag_node.with_type_hint(self._default_type_hint)
+                dag_node.with_type_hint(self._default_type_hint)
 
             for _, val in task.kwargs.items():
                 if isinstance(val, DAGNode):
@@ -794,8 +792,8 @@ class CompiledDAG:
                 upstream_node_idx = self.dag_node_to_idx[arg]
                 upstream_node = self.idx_to_task[upstream_node_idx]
                 downstream_actor_handle = None
-                if isinstance(task.dag_node, ClassMethodNode):
-                    downstream_actor_handle = task.dag_node._get_actor_handle()
+                if isinstance(dag_node, ClassMethodNode):
+                    downstream_actor_handle = dag_node._get_actor_handle()
 
                 if isinstance(upstream_node.dag_node, InputAttributeNode):
                     # Record all of the keys used to index the InputNode.
@@ -830,6 +828,31 @@ class CompiledDAG:
                             "or they must index to specific args or kwargs."
                         )
                     direct_input = True
+
+                elif isinstance(upstream_node.dag_node, ClassMethodNode):
+                    from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
+
+                    if (
+                        # Ray aDAG deadlock detection has the same check, but
+                        # it may be turned off because of false positives.
+                        # In that case, we need this check to be active.
+                        # TODO: When we clean up Ray aDAG deadlock detection
+                        # this check should be done at one place only.
+                        not RAY_ADAG_ENABLE_DETECT_DEADLOCK
+                        and downstream_actor_handle is not None
+                        and downstream_actor_handle
+                        == upstream_node.dag_node._get_actor_handle()
+                        and upstream_node.dag_node.type_hint.requires_nccl()
+                    ):
+                        raise ValueError(
+                            "Compiled DAG does not support NCCL communication between "
+                            "methods on the same actor. NCCL type hint is specified "
+                            "for the channel from method "
+                            f"{upstream_node.dag_node.get_method_name()} to method "
+                            f"{dag_node.get_method_name()} on actor "
+                            f"{downstream_actor_handle}. Please remove the NCCL "
+                            "type hint between these methods."
+                        )
 
                 upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
                 task.arg_type_hints.append(upstream_node.dag_node.type_hint)
@@ -1278,7 +1301,7 @@ class CompiledDAG:
             on the same actor.
 
         Reason: Each actor executes tasks in the order that they are
-                bound in. Therefore task.{bind_index+1} happens before
+                bound in. Therefore task.{bind_index+1} happens after
                 task.{bind_index}.
 
         #2: Add an edge from the writer to the reader

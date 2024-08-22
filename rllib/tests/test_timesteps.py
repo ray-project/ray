@@ -4,7 +4,7 @@ import unittest
 import ray
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check
 
 
 class TestTimeSteps(unittest.TestCase):
@@ -34,27 +34,26 @@ class TestTimeSteps(unittest.TestCase):
         obs = np.array(1)
         obs_batch = np.array([1])
 
-        for _ in framework_iterator(config):
-            algo = config.build()
-            policy = algo.get_policy()
+        algo = config.build()
+        policy = algo.get_policy()
 
-            for i in range(1, 21):
-                algo.compute_single_action(obs)
-                check(int(policy.global_timestep), i)
-            for i in range(1, 21):
-                policy.compute_actions(obs_batch)
-                check(int(policy.global_timestep), i + 20)
+        for i in range(1, 21):
+            algo.compute_single_action(obs)
+            check(int(policy.global_timestep), i)
+        for i in range(1, 21):
+            policy.compute_actions(obs_batch)
+            check(int(policy.global_timestep), i + 20)
 
-            # Artificially set ts to 100Bio, then keep computing actions and
-            # train.
-            crazy_timesteps = int(1e11)
-            policy.on_global_var_update({"timestep": crazy_timesteps})
-            # Run for 10 more ts.
-            for i in range(1, 11):
-                policy.compute_actions(obs_batch)
-                check(int(policy.global_timestep), i + crazy_timesteps)
-            algo.train()
-            algo.stop()
+        # Artificially set ts to 100Bio, then keep computing actions and
+        # train.
+        crazy_timesteps = int(1e11)
+        policy.on_global_var_update({"timestep": crazy_timesteps})
+        # Run for 10 more ts.
+        for i in range(1, 11):
+            policy.compute_actions(obs_batch)
+            check(int(policy.global_timestep), i + crazy_timesteps)
+        algo.train()
+        algo.stop()
 
 
 if __name__ == "__main__":
