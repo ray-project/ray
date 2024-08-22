@@ -361,11 +361,12 @@
       frequency: manual
       cluster:
         cluster_compute: horovod/compute_tpl_gce.yaml
-    - __suffix__: eks
-      env: eks
-      frequency: manual
-      cluster:
-        cluster_compute: horovod/compute_tpl_eks.yaml
+    # TODO (shomilj): Uncomment when NFS is supported.
+    # - __suffix__: eks
+    #   env: eks
+    #   frequency: manual
+    #   cluster:
+    #     cluster_compute: horovod/compute_tpl_eks.yaml
 
   run:
     timeout: 36000
@@ -768,11 +769,12 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gpu_1_gce.yaml
-    - __suffix__: eks
-      env: eks
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gpu_1_eks.yaml
+    # TODO (shomilj): Uncomment when NFS is supported.
+    # - __suffix__: eks
+    #   env: eks
+    #   frequency: manual
+    #   cluster:
+    #     cluster_compute: compute_gpu_1_eks.yaml
 
 
 - name: air_benchmark_pytorch_training_e2e_gpu_4x4_100gb
@@ -805,11 +807,12 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gpu_4x4_gce.yaml
-    - __suffix__: eks
-      env: eks
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gpu_4x4_eks.yaml
+    # TODO (shomilj): Uncomment when NFS is supported.
+    # - __suffix__: eks
+    #   env: eks
+    #   frequency: manual
+    #   cluster:
+    #     cluster_compute: compute_gpu_4x4_eks.yaml
 
 # Test tiny, and medium input files to check that performance stays about
 # constant.
@@ -3530,11 +3533,11 @@
       frequency: manual
       cluster:
         cluster_compute: distributed/many_nodes_tests/compute_config_gce.yaml
-    # - __suffix__: eks
-    #   env: eks
-    #   frequency: manual
-    #   cluster:
-    #     cluster_compute: distributed/many_nodes_tests/compute_config_eks.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: distributed/many_nodes_tests/compute_config_eks.yaml
 
 #- name: many_nodes_multi_master_test
 #  group: core-daily-test
@@ -3573,6 +3576,9 @@
       frequency: manual
       cluster:
         cluster_compute: placement_group_tests/compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: placement_group_performance_test
   group: core-daily-test
@@ -3597,6 +3603,9 @@
       frequency: manual
       cluster:
         cluster_compute: placement_group_tests/pg_perf_test_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 
 #########################
@@ -3629,6 +3638,11 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: single_node_eks.yaml
 
 - name: object_store
   group: core-scalability-test
@@ -3657,6 +3671,11 @@
       frequency: manual
       cluster:
         cluster_compute: object_store_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: object_store_eks.yaml
 
 - name: many_actors
   group: core-scalability-test
@@ -3685,6 +3704,11 @@
       frequency: manual
       cluster:
         cluster_compute: distributed_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: distributed_eks.yaml
 
 - name: many_actors_smoke_test
   group: core-scalability-test
@@ -3705,6 +3729,13 @@
     wait_for_nodes:
       num_nodes: 2
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: distributed_smoke_test_eks.yaml
 
 - name: many_tasks
   group: core-scalability-test
@@ -3733,6 +3764,11 @@
       frequency: manual
       cluster:
         cluster_compute: distributed_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: distributed_eks.yaml
 
 - name: many_pgs
   group: core-scalability-test
@@ -3761,6 +3797,11 @@
       frequency: manual
       cluster:
         cluster_compute: distributed_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: distributed_eks.yaml
 
 
 - name: many_pgs_smoke_test
@@ -3782,6 +3823,13 @@
     wait_for_nodes:
       num_nodes: 2
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: distributed_smoke_test_eks.yaml
 
 - name: many_nodes
   group: core-scalability-test
@@ -3810,6 +3858,11 @@
       frequency: manual
       cluster:
         cluster_compute: many_nodes_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: many_nodes_eks.yaml
 
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
@@ -3839,7 +3892,9 @@
       frequency: manual
       cluster:
         cluster_compute: scheduling_gce.yaml
-
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 # - name: scheduling_test_many_5s_tasks_single_node
 #   group: core-scalability-test
@@ -3911,6 +3966,9 @@
         cluster_compute: single_node_benchmark_compute_gce.yaml
       run:
         script: python parquet_metadata_resolution.py --num-files 915 --cloud gcp
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: dataset_random_access
   group: data-tests
@@ -3940,6 +3998,11 @@
       frequency: manual
       cluster:
         cluster_compute: pipelined_training_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: pipelined_training_compute_eks.yaml
 
 - name: stable_diffusion_benchmark
   group: data-tests
@@ -3965,6 +4028,9 @@
       frequency: manual
       cluster:
         cluster_compute: stable_diffusion_benchmark_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
@@ -3991,6 +4057,11 @@
       frequency: manual
       cluster:
         cluster_compute: data_ingest_benchmark_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: data_ingest_benchmark_compute_eks.yaml
 
 - name: streaming_data_ingest_benchmark_100gb_gpu
   group: data-tests
@@ -4017,6 +4088,11 @@
       frequency: manual
       cluster:
         cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: data_ingest_benchmark_compute_gpu_eks.yaml
 
 # This test case will early stop the data ingestion iteration on the GPU actors.
 # This is a common usage in PyTorch Lightning
@@ -4048,6 +4124,9 @@
       frequency: manual
       cluster:
         cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: aggregate_benchmark
   group: data-tests
@@ -4072,6 +4151,9 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: read_parquet_benchmark_single_node
   group: data-tests
@@ -4098,6 +4180,9 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: read_images_benchmark_single_node
   group: data-tests
@@ -4123,6 +4208,9 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 # TODO: Re-enable this test once we fix https://github.com/ray-project/ray/issues/40686.
 # - name: read_images_benchmark_multi_node
@@ -4172,6 +4260,9 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: read_images_train_4_gpu
   group: data-tests
@@ -4196,6 +4287,9 @@
       frequency: manual
       cluster:
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: read_images_train_4_gpu_worker_chaos
   group: data-tests
@@ -4221,6 +4315,9 @@
       frequency: manual
       cluster:
         cluster_compute: ../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: read_images_train_4_gpu_node_chaos
   group: data-tests
@@ -4246,6 +4343,9 @@
       frequency: manual
       cluster:
         cluster_compute: ../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: read_images_train_16_gpu
   group: data-tests
@@ -4270,6 +4370,9 @@
       frequency: manual
       cluster:
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: read_images_train_16_gpu_preserve_order
   group: data-tests
@@ -4294,6 +4397,9 @@
       frequency: manual
       cluster:
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: read_parquet_train_4_gpu
   group: data-tests
@@ -4318,6 +4424,9 @@
       frequency: manual
       cluster:
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: read_parquet_train_16_gpu
   group: data-tests
@@ -4342,6 +4451,9 @@
       frequency: manual
       cluster:
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: read_images_train_1_gpu_5_cpu
   group: data-tests
@@ -4366,6 +4478,9 @@
       frequency: manual
       cluster:
         cluster_compute: compute_gpu_1g5c_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
@@ -4392,6 +4507,9 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: map_batches_benchmark_single_node
   group: data-tests
@@ -4417,6 +4535,9 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: iter_tensor_batches_benchmark_single_node
   group: data-tests
@@ -4442,6 +4563,9 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: iter_tensor_batches_benchmark_multi_node
   group: data-tests
@@ -4467,6 +4591,9 @@
       frequency: manual
       cluster:
         cluster_compute: multi_node_benchmark_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: iter_batches_benchmark_single_node
   group: data-tests
@@ -4492,6 +4619,9 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: dataset_shuffle_random_shuffle_1tb
   group: data-tests
@@ -4521,6 +4651,9 @@
       frequency: manual
       cluster:
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: dataset_shuffle_sort_1tb
   group: data-tests
@@ -4551,6 +4684,9 @@
       frequency: manual
       cluster:
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
   group: data-tests
@@ -4582,6 +4718,9 @@
       frequency: manual
       cluster:
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: dataset_shuffle_push_based_sort_1tb
   group: data-tests
@@ -4612,6 +4751,9 @@
       frequency: manual
       cluster:
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
   group: data-tests
@@ -4645,6 +4787,7 @@
         script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=40000 --partition-size=1e9 --shuffle
         wait_for_nodes:
           num_nodes: 100
+  # requires 4000 GB volume
 
 ##################
 # Core Chaos tests
@@ -4674,6 +4817,9 @@
       frequency: manual
       cluster:
         cluster_compute: chaos_test/compute_template_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: chaos_many_tasks_terminate_instance
   group: core-nightly-test
@@ -4719,6 +4865,9 @@
       frequency: manual
       cluster:
         cluster_compute: chaos_test/compute_template_gce.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: chaos_many_actors_terminate_instance
   group: core-nightly-test
@@ -4739,6 +4888,9 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: chaos_dask_on_ray_large_scale_test_no_spilling
   group: data-tests
