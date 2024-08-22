@@ -6,7 +6,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check
 
 
 algorithms_and_configs = {
@@ -96,27 +96,26 @@ class TestAlgorithmWithLearnerSaveAndRestore(unittest.TestCase):
     def test_save_and_restore(self):
         for algo_name in algorithms_and_configs:
             config = algorithms_and_configs[algo_name]
-            for _ in framework_iterator(config, frameworks=["torch", "tf2"]):
-                with tempfile.TemporaryDirectory() as tmpdir:
-                    # create an algorithm, checkpoint it, then train for 2 iterations
-                    ray.get(save_and_train.remote(config, "CartPole-v1", tmpdir))
-                    # load that checkpoint into a new algorithm and train for 2
-                    # iterations
-                    results_algo_2 = ray.get(
-                        load_and_train.remote(config, "CartPole-v1", tmpdir)
-                    )
+            with tempfile.TemporaryDirectory() as tmpdir:
+                # create an algorithm, checkpoint it, then train for 2 iterations
+                ray.get(save_and_train.remote(config, "CartPole-v1", tmpdir))
+                # load that checkpoint into a new algorithm and train for 2
+                # iterations
+                results_algo_2 = ray.get(
+                    load_and_train.remote(config, "CartPole-v1", tmpdir)
+                )
 
-                    # load that checkpoint into another new algorithm and train for 2
-                    # iterations
-                    results_algo_3 = ray.get(
-                        load_and_train.remote(config, "CartPole-v1", tmpdir)
-                    )
+                # load that checkpoint into another new algorithm and train for 2
+                # iterations
+                results_algo_3 = ray.get(
+                    load_and_train.remote(config, "CartPole-v1", tmpdir)
+                )
 
-                    # check that the results are the same across loaded algorithms
-                    # they won't be the same as the first algorithm since the random
-                    # state that is used for each algorithm is not preserved across
-                    # checkpoints.
-                    check(results_algo_3, results_algo_2)
+                # check that the results are the same across loaded algorithms
+                # they won't be the same as the first algorithm since the random
+                # state that is used for each algorithm is not preserved across
+                # checkpoints.
+                check(results_algo_3, results_algo_2)
 
 
 if __name__ == "__main__":

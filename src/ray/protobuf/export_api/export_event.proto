@@ -1,4 +1,4 @@
-// Copyright 2020-2021 The Ray Authors.
+// Copyright 2024 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -19,6 +19,7 @@ package ray.rpc;
 
 import "src/ray/protobuf/export_api/export_task_event.proto";
 import "src/ray/protobuf/export_api/export_node_data.proto";
+import "src/ray/protobuf/export_api/export_actor_data.proto";
 
 // ExportEvent defines events stored by the export API. This
 // schema is public and any changes must be backward compatible.
@@ -26,6 +27,7 @@ message ExportEvent {
   enum SourceType {
     EXPORT_TASK = 0;
     EXPORT_NODE = 1;
+    EXPORT_ACTOR = 2;
   }
 
   // event_id is the unique ID of this event
@@ -39,5 +41,6 @@ message ExportEvent {
   oneof event_data {
     ExportTaskEventData task_event_data = 4;
     ExportNodeData node_event_data = 5;
+    ExportActorData actor_event_data = 6;
   }
 }

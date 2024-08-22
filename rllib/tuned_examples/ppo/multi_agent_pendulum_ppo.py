@@ -9,7 +9,10 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(num_agents=2)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    num_agents=2,
+)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()

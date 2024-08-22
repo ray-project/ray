@@ -154,3 +154,18 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+
+cc_test(
+    name = "proto_schema_backward_compatibility_test",
+    size = "small",
+    srcs = ["proto_schema_backward_compatibility_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        # "//src/ray/util",
+        "@boost//:range",
+        "@com_google_googletest//:gtest_main",
+        "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
