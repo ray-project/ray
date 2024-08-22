@@ -864,9 +864,14 @@ class CompiledDAG:
             if isinstance(task.dag_node, ClassMethodNode):
                 # Create output buffers for the actor method.
                 assert len(task.output_channels) == 0
-                # `readers` is the nodes that are ordered after the current one (`task`)
-                # in the DAG.
-                output_to_readers: Dict[CompiledTask, List[CompiledTask]] = defaultdict(list)
+                # `output_to_readers` stores the reader tasks for each output of the
+                # current node. If the current node returns one output, the readers are
+                # the downstream nodes of the current node. If the current node returns
+                # multiple outputs, the readers of each output are the downstream nodes
+                # of the `ClassMethodOutputNode` with an output index.
+                output_to_readers: Dict[CompiledTask, List[CompiledTask]] = defaultdict(
+                    list
+                )
                 for idx in task.downstream_node_idxs:
                     downstream_task = self.idx_to_task[idx]
                     if not isinstance(downstream_task.dag_node, ClassMethodOutputNode):
@@ -878,6 +883,8 @@ class CompiledDAG:
                             self.idx_to_task[idx]
                             for idx in downstream_task.downstream_node_idxs
                         ]
+                # `output_task_to_reader_and_node_list` stores the reader actors
+                # and the reader node IDs for each output of the current node.
                 output_task_to_reader_and_node_list: Dict[
                     CompiledTask, List[Tuple["ray.actor.ActorHandle", str]]
                 ] = {task: [] for task in output_to_readers}
