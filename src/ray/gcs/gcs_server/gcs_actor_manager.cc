@@ -396,7 +396,8 @@ void GcsActorManager::HandleGetActorInfo(rpc::GetActorInfoRequest request,
 void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
                                             rpc::GetAllActorInfoReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  auto limit = request.has_limit() ? request.limit() : -1;
+  size_t limit =
+      (request.limit() > 0) ? request.limit() : std::numeric_limits<size_t>::max();
   RAY_LOG(DEBUG) << "Getting all actor info.";
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
 
@@ -417,13 +418,13 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   };
 
   if (request.show_dead_jobs() == false) {
-    auto total_actors = registered_actors_.size() + destroyed_actors_.size();
+    size_t total_actors = registered_actors_.size() + destroyed_actors_.size();
     reply->set_total(total_actors);
 
-    auto count = 0;
-    auto num_filtered = 0;
+    size_t count = 0;
+    size_t num_filtered = 0;
     for (const auto &iter : registered_actors_) {
-      if (limit != -1 && count >= limit) {
+      if (count >= limit) {
         break;
       }
 
@@ -439,7 +440,7 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
     }
 
     for (const auto &iter : destroyed_actors_) {
-      if (limit != -1 && count >= limit) {
+      if (count >= limit) {
         break;
       }
       // With filters, skip the actor if it doesn't match the filter.
@@ -471,10 +472,10 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
         RAY_CHECK(arena != nullptr);
         auto ptr = google::protobuf::Arena::Create<
             absl::flat_hash_map<ActorID, rpc::ActorTableData>>(arena, std::move(result));
-        auto count = 0;
-        auto num_filtered = 0;
+        size_t count = 0;
+        size_t num_filtered = 0;
         for (const auto &pair : *ptr) {
-          if (limit != -1 && count >= limit) {
+          if (count >= limit) {
             break;
           }
           // With filters, skip the actor if it doesn't match the filter.
