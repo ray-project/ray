@@ -406,6 +406,11 @@ def filter_out_undoc_class_members(member_name, class_name, module_name):
         return ""
 
 
+def has_public_constructor(class_name, module_name):
+    cls = getattr(import_module(module_name), class_name)
+    return _is_public_api(cls)
+
+
 def get_api_groups(method_names, class_name, module_name):
     api_groups = set()
     cls = getattr(import_module(module_name), class_name)
@@ -443,6 +448,7 @@ def _is_api_group(obj, group):
 FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
 FILTERS["get_api_groups"] = get_api_groups
 FILTERS["select_api_group"] = select_api_group
+FILTERS["has_public_constructor"] = has_public_constructor
 
 
 def add_custom_assets(
@@ -562,6 +568,7 @@ autodoc_mock_imports = [
     "aiohttp",
     "aiosignal",
     "composer",
+    "cupy",
     "dask",
     "datasets",
     "fastapi",

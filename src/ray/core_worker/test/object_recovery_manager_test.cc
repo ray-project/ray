@@ -75,7 +75,7 @@ class MockRayletClient : public PinObjectsInterface {
     for (const auto &callback : callbacks_snapshot) {
       rpc::PinObjectIDsReply reply;
       reply.add_successes(success);
-      callback(Status::OK(), reply);
+      callback(Status::OK(), std::move(reply));
     }
     return flushed;
   }

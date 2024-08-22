@@ -1256,14 +1256,6 @@ def pregenerate_example_rsts(
             )
 
 
-ray_prefix = "ray-"
-min_version = "1.11.0"
-repo_url = "https://github.com/ray-project/ray.git"
-static_dir_name = "_static"
-version_json_filename = "versions.json"
-dereference_suffix = "^{}"
-
-
 def generate_version_url(version):
     return f"https://docs.ray.io/en/{version}/"
 
@@ -1272,6 +1264,13 @@ def generate_versions_json():
     """Gets the releases from the remote repo, sorts them in semver order,
     and generates the JSON needed for the version switcher
     """
+
+    ray_prefix = "ray-"
+    min_version = "1.11.0"
+    repo_url = "https://github.com/ray-project/ray.git"
+    static_dir_name = "_static"
+    version_json_filename = "versions.json"
+    dereference_suffix = "^{}"
 
     version_json_data = []
 

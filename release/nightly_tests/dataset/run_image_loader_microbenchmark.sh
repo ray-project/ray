@@ -4,10 +4,10 @@
 # Exit if any of the test commands fail.
 set -x -e pipeline
 
-DIR="/tmp/imagenet-1gb"
-MOSAIC_DIR="/tmp/mosaicml-data"
-TFRECORDS_DIR="/tmp/tf-data"
-PARQUET_DIR="/tmp/parquet-data"
+DIR="/mnt/cluster_storage/imagenet-1gb"
+MOSAIC_DIR="/mnt/cluster_storage/mosaicml-data"
+TFRECORDS_DIR="/mnt/cluster_storage/tf-data"
+PARQUET_DIR="/mnt/cluster_storage/parquet-data"
 
 rm -rf "$DIR"
 rm -rf "$MOSAIC_DIR"

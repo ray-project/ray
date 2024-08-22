@@ -17,8 +17,10 @@ from typing import (
     Tuple,
 )
 
+from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
     RequestMetadata,
@@ -89,19 +91,23 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         event_loop: asyncio.AbstractEventLoop,
         deployment_id: DeploymentID,
+        handle_source: DeploymentHandleSource,
         prefer_local_node_routing: bool = False,
         prefer_local_az_routing: bool = False,
         self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
+        self_actor_handle: Optional[ActorHandle] = None,
         self_availability_zone: Optional[str] = None,
         use_replica_queue_len_cache: bool = False,
         get_curr_time_s: Optional[Callable[[], float]] = None,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
+        self._handle_source = handle_source
         self._prefer_local_node_routing = prefer_local_node_routing
         self._prefer_local_az_routing = prefer_local_az_routing
         self._self_node_id = self_node_id
+        self._self_actor_handle = self_actor_handle
         self._self_availability_zone = self_availability_zone
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
 
@@ -219,7 +225,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         return min(self.num_pending_requests, self.max_num_scheduling_tasks)
 
     @property
-    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+    def curr_replicas(self) -> Dict[ReplicaID, ReplicaWrapper]:
         return self._replicas
 
     @property
@@ -240,7 +246,17 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         new_replica_id_set = set()
         new_colocated_replica_ids = defaultdict(set)
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
+
         for r in replicas:
+            # If on the proxy, replica needs to call back into the proxy with
+            # `receive_asgi_messages` which can be blocked when GCS is down.
+            # To prevent that from happening, push proxy handle eagerly
+            if (
+                self._handle_source == DeploymentHandleSource.PROXY
+                and r.replica_id not in self._replicas
+            ):
+                r.push_proxy_handle(self._self_actor_handle)
+
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
             if self._self_node_id is not None and r.node_id == self._self_node_id:
@@ -263,6 +279,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 extra={"log_to_stderr": False},
             )
 
+        # Get list of new replicas
+        new_ids = new_replica_id_set - self._replica_id_set
+        replicas_to_ping = [new_replicas.get(id) for id in new_ids]
+
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
         self._colocated_replica_ids = new_colocated_replica_ids
@@ -272,6 +292,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._replica_queue_len_cache.remove_inactive_replicas(
             active_replica_ids=new_replica_id_set
         )
+        # Populate cache for new replicas
+        self._loop.create_task(self._probe_queue_lens(replicas_to_ping, 0))
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
 
@@ -442,6 +464,19 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     self.num_scheduling_tasks_in_backoff
                 )
 
+    def on_replica_actor_died(self, replica_id: ReplicaID):
+        """Drop replica from replica set so it's not considered for future requests."""
+
+        self._replicas.pop(replica_id, None)
+        self._replica_id_set.discard(replica_id)
+        for id_set in self._colocated_replica_ids.values():
+            id_set.discard(replica_id)
+
+    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
+        """Invalidate cache entry so active probing is required for the next request."""
+
+        self._replica_queue_len_cache.invalidate_key(replica_id)
+
     async def _probe_queue_lens(
         self,
         replicas: List[ReplicaWrapper],
@@ -521,12 +556,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 # raised even when a replica is temporarily unavailable.
                 # See https://github.com/ray-project/ray/issues/44185 for details.
                 if isinstance(t.exception(), ActorDiedError):
-                    self._replicas.pop(replica.replica_id, None)
-                    self._replica_id_set.discard(replica.replica_id)
-                    for id_set in self._colocated_replica_ids.values():
-                        id_set.discard(replica.replica_id)
+                    self.on_replica_actor_died(replica.replica_id)
                     msg += " This replica will no longer be considered for requests."
+                # Replica is temporarily unavailable because of network issues, or
+                # replica has died but GCS is down so ActorUnavailableError will
+                # be raised until the GCS recovers. For the time being, invalidate
+                # the cache entry so that we don't try to send requests to this
+                # replica without actively probing.
                 elif isinstance(t.exception(), ActorUnavailableError):
+                    self.on_replica_actor_unavailable(replica.replica_id)
                     msg = (
                         "Failed to fetch queue length for "
                         f"{replica.replica_id}. Replica is temporarily "

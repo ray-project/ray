@@ -203,7 +203,6 @@ int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); 
 
 int TaskSpecification::GetRuntimeEnvHash() const {
   WorkerCacheKey env = {SerializedRuntimeEnv(),
-                        GetRequiredResources().GetResourceMap(),
                         IsActorCreationTask(),
                         GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0,
                         !(RootDetachedActorId().IsNil())};
@@ -593,16 +592,11 @@ std::string TaskSpecification::CallSiteString() const {
   return stream.str();
 }
 
-WorkerCacheKey::WorkerCacheKey(
-    const std::string serialized_runtime_env,
-    const absl::flat_hash_map<std::string, double> &required_resources,
-    bool is_actor,
-    bool is_gpu,
-    bool is_root_detached_actor)
-    : serialized_runtime_env(serialized_runtime_env),
-      required_resources(RayConfig::instance().worker_resource_limits_enabled()
-                             ? required_resources
-                             : absl::flat_hash_map<std::string, double>{}),
+WorkerCacheKey::WorkerCacheKey(std::string serialized_runtime_env,
+                               bool is_actor,
+                               bool is_gpu,
+                               bool is_root_detached_actor)
+    : serialized_runtime_env(std::move(serialized_runtime_env)),
       is_actor(is_actor && RayConfig::instance().isolate_workers_across_task_types()),
       is_gpu(is_gpu && RayConfig::instance().isolate_workers_across_resource_types()),
       is_root_detached_actor(is_root_detached_actor),
@@ -623,15 +617,6 @@ std::size_t WorkerCacheKey::CalculateHash() const {
     boost::hash_combine(hash, is_actor);
     boost::hash_combine(hash, is_gpu);
     boost::hash_combine(hash, is_root_detached_actor);
-
-    std::vector<std::pair<std::string, double>> resource_vars(required_resources.begin(),
-                                                              required_resources.end());
-    // Sort the variables so different permutations yield the same hash.
-    std::sort(resource_vars.begin(), resource_vars.end());
-    for (auto &pair : resource_vars) {
-      boost::hash_combine(hash, pair.first);
-      boost::hash_combine(hash, pair.second);
-    }
   }
   return hash;
 }
@@ -642,13 +627,12 @@ bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
 }
 
 bool WorkerCacheKey::EnvIsEmpty() const {
-  return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty() &&
-         !is_gpu && !is_root_detached_actor;
+  return IsRuntimeEnvEmpty(serialized_runtime_env) && !is_gpu && !is_root_detached_actor;
 }
 
 std::size_t WorkerCacheKey::Hash() const { return hash_; }
 
-int WorkerCacheKey::IntHash() const { return (int)Hash(); }
+int WorkerCacheKey::IntHash() const { return static_cast<int>(Hash()); }
 
 std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   RAY_CHECK(IsActorCreationTask());
@@ -660,6 +644,7 @@ std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
     auto &curr_group_message = actor_creation_task_spec.concurrency_groups(i);
     std::vector<ray::FunctionDescriptor> function_descriptors;
     const auto func_descriptors_size = curr_group_message.function_descriptors_size();
+    function_descriptors.reserve(func_descriptors_size);
     for (auto j = 0; j < func_descriptors_size; ++j) {
       function_descriptors.push_back(FunctionDescriptorBuilder::FromProto(
           curr_group_message.function_descriptors(j)));

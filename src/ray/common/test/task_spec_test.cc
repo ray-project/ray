@@ -208,13 +208,13 @@ TEST(TaskSpecTest, TestWorkerCacheKey) {
   runtime_env_info_A.set_serialized_runtime_env(serialized_runtime_env_A);
   TaskSpecification task_spec;
   task_spec.GetMutableMessage().mutable_runtime_env_info()->CopyFrom(runtime_env_info_A);
-  const WorkerCacheKey key_A = {serialized_runtime_env_A, {}, false, false, false};
+  const WorkerCacheKey key_A = {serialized_runtime_env_A, false, false, false};
   ASSERT_EQ(task_spec.GetRuntimeEnvHash(), key_A.IntHash());
   ActorID actor_id =
       ActorID::Of(JobID::FromInt(1), TaskID::FromRandom(JobID::FromInt(1)), 0);
   task_spec.GetMutableMessage().set_root_detached_actor_id(actor_id.Binary());
   ASSERT_NE(task_spec.GetRuntimeEnvHash(), key_A.IntHash());
-  const WorkerCacheKey key_B = {serialized_runtime_env_A, {}, false, false, true};
+  const WorkerCacheKey key_B = {serialized_runtime_env_A, false, false, true};
   ASSERT_EQ(task_spec.GetRuntimeEnvHash(), key_B.IntHash());
 }
 

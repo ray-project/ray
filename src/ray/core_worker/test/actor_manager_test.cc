@@ -50,7 +50,8 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
     auto it = callback_map_.find(actor_id);
     if (it == callback_map_.end()) return false;
     auto actor_state_notification_callback = it->second;
-    actor_state_notification_callback(actor_id, actor_data);
+    auto copied = actor_data;
+    actor_state_notification_callback(actor_id, std::move(copied));
     return true;
   }
 
@@ -66,7 +67,8 @@ class MockActorInfoAccessor : public gcs::ActorInfoAccessor {
       return false;
     }
 
-    if (!ActorStateNotificationPublished(actor_id, actor_data)) {
+    auto copied = actor_data;
+    if (!ActorStateNotificationPublished(actor_id, std::move(copied))) {
       return false;
     }
 
@@ -116,8 +118,6 @@ class MockActorTaskSubmitter : public ActorTaskSubmitterInterface {
                     int64_t num_restarts,
                     bool dead,
                     const rpc::ActorDeathCause &death_cause));
-  MOCK_METHOD3(KillActor,
-               void(const ActorID &actor_id, bool force_kill, bool no_restart));
 
   MOCK_METHOD0(CheckTimeoutTasks, void());
 
@@ -149,7 +149,7 @@ class MockReferenceCounter : public ReferenceCounterInterface {
                     bool add_local_ref,
                     const absl::optional<NodeID> &pinned_at_raylet_id));
 
-  MOCK_METHOD2(SetDeleteCallback,
+  MOCK_METHOD2(SetObjectPrimaryCopyDeleteCallback,
                bool(const ObjectID &object_id,
                     const std::function<void(const ObjectID &)> callback));
 
@@ -203,7 +203,7 @@ class ActorManagerTest : public ::testing::Test {
                                                        ray_namespace,
                                                        -1,
                                                        false);
-    EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
+    EXPECT_CALL(*reference_counter_, SetObjectPrimaryCopyDeleteCallback(_, _))
         .WillRepeatedly(testing::Return(true));
     actor_manager_->AddNewActorHandle(std::move(actor_handle),
                                       call_site,
@@ -242,7 +242,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                                                      "",
                                                      -1,
                                                      false);
-  EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
+  EXPECT_CALL(*reference_counter_, SetObjectPrimaryCopyDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
 
   // Add an actor handle.
@@ -319,7 +319,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
                                                      "",
                                                      -1,
                                                      false);
-  EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
+  EXPECT_CALL(*reference_counter_, SetObjectPrimaryCopyDeleteCallback(_, _))
       .WillRepeatedly(testing::Return(true));
   ObjectID outer_object_id = ObjectID::Nil();
 

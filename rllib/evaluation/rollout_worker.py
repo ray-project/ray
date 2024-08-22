@@ -732,7 +732,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             lambda env: (env.observation_space, env.action_space)
         )
         if env_spaces:
-            spaces["__env__"] = env_spaces[0]
+            from ray.rllib.env import INPUT_ENV_SPACES
+
+            spaces[INPUT_ENV_SPACES] = env_spaces[0]
         return spaces
 
     @ray.method(num_returns=2)
@@ -1547,7 +1549,14 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 }
 
             for pid, w in weights.items():
-                self.policy_map[pid].set_weights(w)
+                if pid in self.policy_map:
+                    self.policy_map[pid].set_weights(w)
+                elif log_once("set_weights_on_non_existent_policy"):
+                    logger.warning(
+                        "`RolloutWorker.set_weights()` used with weights from "
+                        f"policyID={pid}, but this policy cannot be found on this "
+                        f"worker! Skipping ..."
+                    )
 
         self.weights_seq_no = weights_seq_no
 
