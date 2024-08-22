@@ -318,7 +318,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///             status events being dropped.
   void GetTaskStatusEventsToSend(
       std::vector<std::shared_ptr<TaskEvent>> *status_events_to_send,
-      std::vector<std::shared_ptr<TaskEvent>> *dropped_status_events_to_write,
+      std::vector<std::shared_ptr<TaskEvent>> *status_events_to_write_for_export,
       absl::flat_hash_set<TaskAttempt> *dropped_task_attempts_to_send)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -349,7 +349,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param profile_events_to_send Task profile events to be written.
   void WriteExportData(
       std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_send,
-      std::vector<std::shared_ptr<TaskEvent>> &&dropped_status_events_to_write,
+      std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_write_for_export,
       std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send);
 
   /// Reset the counters during flushing data to GCS.
@@ -423,7 +423,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Status events that were dropped but will still be written in
   /// the export API. Circular buffer to limit memory for these dropped events.
-  boost::circular_buffer<std::shared_ptr<TaskEvent>> dropped_status_events_for_export_
+  boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_for_export_
       ABSL_GUARDED_BY(mutex_);
 
   /// Buffered task attempts that were dropped due to status events being dropped.
