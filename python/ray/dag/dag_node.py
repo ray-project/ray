@@ -4,6 +4,8 @@ from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.util.annotations import DeveloperAPI
 import copy
 
+from itertools import chain
+
 from typing import (
     Optional,
     Union,
@@ -60,20 +62,9 @@ class DAGNode(DAGNodeBase):
         )
 
         # The list of nodes that use this DAG node as input.
-        self._downstream_nodes: List[DAGNode] = []
+        self._downstream_nodes: List["DAGNode"] = []
         # The list of nodes that this DAG node uses as input.
-        scanner = _PyObjScanner()
-        self._upstream_nodes: List[DAGNode] = scanner.find_nodes(
-            [
-                self._bound_args,
-                self._bound_kwargs,
-                self._bound_other_args_to_resolve,
-            ]
-        )
-        scanner.clear()
-        # Update upstream dependencies.
-        for upstream_node in self._upstream_nodes:
-            upstream_node._downstream_nodes.append(self)
+        self._upstream_nodes: List["DAGNode"] = self._prepare_upstream_nodes()
 
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
@@ -82,6 +73,22 @@ class DAGNode(DAGNodeBase):
 
         self._type_hint: Optional[ChannelOutputType] = ChannelOutputType()
         self.is_output_node = False
+
+    def _prepare_upstream_nodes(self) -> List["DAGNode"]:
+        """Retrieve upstream nodes and update their downstream dependencies."""
+        scanner = _PyObjScanner()
+        upstream_nodes: List["DAGNode"] = scanner.find_nodes(
+            [
+                self._bound_args,
+                self._bound_kwargs,
+                self._bound_other_args_to_resolve,
+            ]
+        )
+        scanner.clear()
+        # Update dependencies.
+        for upstream_node in upstream_nodes:
+            upstream_node._downstream_nodes.append(self)
+        return upstream_nodes
 
     def with_type_hint(self, typ: ChannelOutputType):
         if typ.is_direct_return:
@@ -332,9 +339,11 @@ class DAGNode(DAGNodeBase):
                     self.input_node_uuid = None
 
                 def __call__(self, node: "DAGNode"):
+                    from ray.dag.input_node import InputNode
+
                     if node._stable_uuid not in self.cache:
                         self.cache[node._stable_uuid] = self.fn(node)
-                    if type(node).__name__ == "InputNode":
+                    if isinstance(node, InputNode):
                         if not self.input_node_uuid:
                             self.input_node_uuid = node._stable_uuid
                         elif self.input_node_uuid != node._stable_uuid:
@@ -368,14 +377,20 @@ class DAGNode(DAGNodeBase):
                 # in some invalid cases, some nodes may not be descendants of the
                 # root. Therefore, we also add upstream nodes to the queue so that
                 # a meaningful error message can be raised when the DAG is compiled.
-                for node in node._downstream_nodes + node._upstream_nodes:
+                for node in chain.from_iterable(
+                    [node._downstream_nodes, node._upstream_nodes]
+                ):
                     if node not in visited:
                         queue.append(node)
 
     def _find_root(self) -> "DAGNode":
-        """Return the root node of the DAG."""
+        """
+        Return the root node of the DAG. The root node must be an InputNode.
+        """
+        from ray.dag.input_node import InputNode
+
         root = self
-        while type(root).__name__ != "InputNode":
+        while not isinstance(root, InputNode):
             if len(root._upstream_nodes) == 0:
                 raise ValueError("No InputNode found in the DAG.")
             root = root._upstream_nodes[0]
