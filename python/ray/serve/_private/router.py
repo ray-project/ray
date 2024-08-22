@@ -9,7 +9,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import ActorDiedError, ActorUnavailableError
+from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -495,7 +495,9 @@ class Router:
         # Return new args and new kwargs
         return new_args, new_kwargs
 
-    def process_finished_request(self, replica_id: ReplicaID, result):
+    def _process_finished_request(
+        self, replica_id: ReplicaID, result: Union[Any, RayError]
+    ):
         self._metrics_manager.dec_num_running_requests_for_replica(replica_id)
         if isinstance(result, ActorDiedError):
             # Replica has died but controller hasn't notified the router yet.
@@ -513,6 +515,9 @@ class Router:
             # send requests to this replica without actively probing, and retry
             # scheduling request.
             self._replica_scheduler.on_replica_actor_unavailable(replica_id)
+            logger.warning(
+                f"Request failed because {replica_id} is temporarily unavailable."
+            )
 
     async def schedule_and_send_request(
         self, pr: PendingRequest
@@ -567,6 +572,7 @@ class Router:
                 # send requests to this replica without actively probing, and retry
                 # scheduling request.
                 self._replica_scheduler.on_replica_actor_unavailable(replica.replica_id)
+                logger.warning(f"{replica.replica_id} is temporarily unavailable.")
 
             # If the replica rejects the request, retry the scheduling process. The
             # request will be placed on the front of the queue to avoid tail latencies.
@@ -610,7 +616,7 @@ class Router:
                     self._metrics_manager.inc_num_running_requests_for_replica(
                         replica_id
                     )
-                    callback = partial(self.process_finished_request, replica_id)
+                    callback = partial(self._process_finished_request, replica_id)
                     if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
                         ref._on_completed(callback)
                     else:
