@@ -866,7 +866,7 @@ class CompiledDAG:
                 assert len(task.output_channels) == 0
                 # `readers` is the nodes that are ordered after the current one (`task`)
                 # in the DAG.
-                output_to_readers: Dict[CompiledTask, List[CompiledTask]] = {}
+                output_to_readers: Dict[CompiledTask, List[CompiledTask]] = defaultdict(list)
                 for idx in task.downstream_node_idxs:
                     downstream_task = self.idx_to_task[idx]
                     if not isinstance(downstream_task.dag_node, ClassMethodOutputNode):

@@ -237,7 +237,7 @@ class ClassMethodOutputNode(DAGNode):
     def __init__(
         self,
         method_name: str,
-        method_args: Tuple[Any, ...],
+        method_args: Tuple[ClassMethodNode, int],
         method_kwargs: Dict[str, Any],
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
@@ -261,8 +261,8 @@ class ClassMethodOutputNode(DAGNode):
             BIND_INDEX_KEY, None
         )
 
-        self.class_method_node: ClassMethodNode = method_args[0]
-        self.output_idx: int = method_args[1]
+        self.class_method_node = method_args[0]
+        self.output_idx = method_args[1]
 
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
@@ -297,13 +297,7 @@ class ClassMethodOutputNode(DAGNode):
         with value in bound_args and bound_kwargs via bottom-up recursion when
         current node is executed.
         """
-        raise NotImplementedError("Not implemented yet")
-        method_body = getattr(self._parent_class_node, self._method_name)
-        # Execute with bound args.
-        return method_body.options(**self._bound_options).remote(
-            *self._bound_args,
-            **self._bound_kwargs,
-        )
+        return self._bound_args[0][self.output_idx]
 
     def __str__(self) -> str:
         return get_dag_node_str(self, f"{self._method_name}()")

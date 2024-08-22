@@ -140,11 +140,11 @@ def test_two_returns_first(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
         o1, o2 = a.return_two.bind(i)
-        dag = MultiOutputNode([o1])
+        dag = o1
 
     compiled_dag = dag.experimental_compile()
     res = ray.get(compiled_dag.execute(1))
-    assert res == [1]
+    assert res == 1
 
     compiled_dag.teardown()
 
@@ -153,16 +153,32 @@ def test_two_returns_second(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
         o1, o2 = a.return_two.bind(i)
-        dag = MultiOutputNode([o2])
+        dag = o2
 
     compiled_dag = dag.experimental_compile()
     res = ray.get(compiled_dag.execute(1))
-    assert res == [2]
+    assert res == 2
 
     compiled_dag.teardown()
 
 
-def test_two_returns_three_actors(ray_start_regular):
+def test_two_returns_one_reader(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        o3 = b.echo.bind(o1)
+        o4 = b.echo.bind(o2)
+        dag = MultiOutputNode([o3, o4])
+
+    compiled_dag = dag.experimental_compile()
+    res = ray.get(compiled_dag.execute(1))
+    assert res == [1, 2]
+
+    compiled_dag.teardown()
+
+
+def test_two_returns_two_readers(ray_start_regular):
     a = Actor.remote(0)
     b = Actor.remote(0)
     c = Actor.remote(0)
