@@ -66,6 +66,24 @@ struct RedisCommand {
   }
 };
 
+struct RedisConcurrencyKey {
+  std::string table_name;
+  std::string key;
+
+  template <typename H>
+  friend H AbslHashValue(H h, const RedisConcurrencyKey &k) {
+    return H::combine(std::move(h), k.table_name, k.key);
+  }
+  bool operator==(const RedisConcurrencyKey &other) const {
+    return table_name == other.table_name && key == other.key;
+  }
+};
+
+inline std::ostream &operator<<(std::ostream &os, const RedisConcurrencyKey &key) {
+  os << "{" << key.table_name << ", " << key.key << "}";
+  return os;
+}
+
 // StoreClient using Redis as persistence backend.
 // Note in redis term a "key" points to a hash table and a "field" is a key, a "value"
 // is just a value. We double quote "key" and "field" to avoid confusion.
@@ -187,7 +205,7 @@ class RedisStoreClient : public StoreClient {
   //
   // \return The number of queues newly added. A queue will be added
   // only when there is no in-flight request for the key.
-  size_t PushToSendingQueue(const std::vector<std::string> &keys,
+  size_t PushToSendingQueue(const std::vector<RedisConcurrencyKey> &keys,
                             std::function<void()> send_request)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
@@ -198,7 +216,7 @@ class RedisStoreClient : public StoreClient {
   //
   // \return The requests to send.
   std::vector<std::function<void()>> TakeRequestsFromSendingQueue(
-      const std::vector<std::string> &keys) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      const std::vector<RedisConcurrencyKey> &keys) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status DeleteByKeys(const std::string &table_name,
                       const std::vector<std::string> &keys,
@@ -211,7 +229,7 @@ class RedisStoreClient : public StoreClient {
   // \param keys The keys in the request.
   // \param args The redis commands
   // \param redis_callback The callback to call when the reply is received.
-  void SendRedisCmd(std::vector<std::string> keys,
+  void SendRedisCmd(std::vector<RedisConcurrencyKey> keys,
                     RedisCommand command,
                     RedisCallback redis_callback);
 
@@ -228,7 +246,7 @@ class RedisStoreClient : public StoreClient {
 
   // The pending redis requests queue for each key.
   // The queue will be poped when the request is processed.
-  absl::flat_hash_map<std::string, std::queue<std::function<void()>>>
+  absl::flat_hash_map<RedisConcurrencyKey, std::queue<std::function<void()>>>
       pending_redis_request_by_key_ ABSL_GUARDED_BY(mu_);
   FRIEND_TEST(RedisStoreClientTest, Random);
 };

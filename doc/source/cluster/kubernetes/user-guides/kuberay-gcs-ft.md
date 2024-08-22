@@ -136,12 +136,18 @@ export REDIS_POD=$(kubectl get pods --selector=app=redis -o custom-columns=POD:m
 kubectl exec -it $REDIS_POD -- redis-cli -a "5241590000000000"
 
 # Step 6.4: Check the keys in Redis.
+# Note: the schema changed in Ray 2.35.0. Previously we use a single HASH table,
+# now we use multiple HASH tables with a common prefix.
+
 KEYS *
 # [Example output]:
-# 1) "864b004c-6305-42e3-ac46-adfa8eb6f752"
+# 1) "RAY864b004c-6305-42e3-ac46-adfa8eb6f752:actors"
+# [Example output Before Ray 2.35.0]:
+# 2) "864b004c-6305-42e3-ac46-adfa8eb6f752"
+#
 
 # Step 6.5: Check the value of the key.
-SCAN 0 MATCH 864b004c-6305-42e3-ac46-adfa8eb6f752*
+SCAN 0 MATCH RAY864b004c-6305-42e3-ac46-adfa8eb6f752*
 ```
 
 In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `ray.io/external-storage-namespace` annotation isn't set for the RayCluster.

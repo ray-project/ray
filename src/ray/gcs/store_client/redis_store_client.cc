@@ -22,6 +22,7 @@
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "ray/gcs/redis_context.h"
+#include "ray/util/container_util.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -100,7 +101,12 @@ void RedisStoreClient::MGetValues(const std::string &table_name,
         callback(std::move(*key_value_map));
       }
     };
-    SendRedisCmd(command.args, std::move(command), std::move(mget_callback));
+    SendRedisCmd(ray::mapped(command.args,
+                             [&table_name](const std::string &key) {
+                               return RedisConcurrencyKey{table_name, key};
+                             }),
+                 std::move(command),
+                 std::move(mget_callback));
   }
 }
 
@@ -128,7 +134,7 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name,
           callback(added_num != 0);
         };
   }
-  SendRedisCmd({key}, std::move(command), std::move(write_callback));
+  SendRedisCmd({{table_name, key}}, std::move(command), std::move(write_callback));
   return Status::OK();
 }
 
@@ -150,7 +156,7 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
   RedisCommand command{.command = "HGET",
                        .redis_key = RedisKey(external_storage_namespace_, table_name),
                        .args = {key}};
-  SendRedisCmd({key}, std::move(command), std::move(redis_callback));
+  SendRedisCmd({{table_name, key}}, std::move(command), std::move(redis_callback));
   return Status::OK();
 }
 
@@ -200,7 +206,7 @@ Status RedisStoreClient::AsyncMultiGet(
   return Status::OK();
 }
 
-size_t RedisStoreClient::PushToSendingQueue(const std::vector<std::string> &keys,
+size_t RedisStoreClient::PushToSendingQueue(const std::vector<RedisConcurrencyKey> &keys,
                                             std::function<void()> send_request) {
   size_t queue_added = 0;
   for (const auto &key : keys) {
@@ -226,7 +232,7 @@ size_t RedisStoreClient::PushToSendingQueue(const std::vector<std::string> &keys
 }
 
 std::vector<std::function<void()>> RedisStoreClient::TakeRequestsFromSendingQueue(
-    const std::vector<std::string> &keys) {
+    const std::vector<RedisConcurrencyKey> &keys) {
   std::vector<std::function<void()>> send_requests;
   for (const auto &key : keys) {
     auto [op_iter, added] =
@@ -243,7 +249,7 @@ std::vector<std::function<void()>> RedisStoreClient::TakeRequestsFromSendingQueu
   return send_requests;
 }
 
-void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
+void RedisStoreClient::SendRedisCmd(std::vector<RedisConcurrencyKey> keys,
                                     RedisCommand command,
                                     RedisCallback redis_callback) {
   RAY_CHECK(!keys.empty());
@@ -325,7 +331,12 @@ Status RedisStoreClient::DeleteByKeys(const std::string &table,
             }
           }
         };
-    SendRedisCmd(command.args, std::move(command), std::move(delete_callback));
+    SendRedisCmd(ray::mapped(command.args,
+                             [&table](const std::string &key) {
+                               return RedisConcurrencyKey{table, key};
+                             }),
+                 std::move(command),
+                 std::move(delete_callback));
   }
   return Status::OK();
 }
@@ -456,7 +467,7 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
   RedisCommand command = {
       "HEXISTS", RedisKey(external_storage_namespace_, table_name), {key}};
   SendRedisCmd(
-      {key},
+      {{table_name, key}},
       std::move(command),
       [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
         bool exists = reply->ReadAsInteger() > 0;

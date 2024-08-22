@@ -130,4 +130,15 @@ void erase_if(std::list<T> &list, std::function<bool(const T &)> predicate) {
   }
 }
 
+// [T] -> (T -> U) -> [U]
+template <typename T, typename F>
+auto mapped(const std::vector<T> &vec, F transform) {
+  std::vector<decltype(transform(std::declval<T>()))> result;
+  result.reserve(vec.size());
+  for (const auto &elem : vec) {
+    result.push_back(transform(elem));
+  }
+  return result;
+}
+
 }  // namespace ray
