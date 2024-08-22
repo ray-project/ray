@@ -32,12 +32,13 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_node_manager_(gcs_node_manager),
       cluster_resource_scheduler_(cluster_resource_scheduler),
-      raylet_client_pool_(raylet_client_pool) {}
+      raylet_client_pool_(std::move(raylet_client_pool)) {}
 
-void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(SchedulePgRequest request) {
-  auto placement_group = std::move(request.placement_group);
-  auto failure_callback = std::move(request.failure_callback);
-  auto success_callback = std::move(request.success_callback);
+void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
+    const SchedulePgRequest &request) {
+  const auto &placement_group = request.placement_group;
+  const auto &failure_callback = request.failure_callback;
+  const auto &success_callback = request.success_callback;
   // We need to ensure that the PrepareBundleResources won't be sent before the reply of
   // ReleaseUnusedBundles is returned.
   if (!nodes_of_releasing_unused_bundles_.empty()) {
@@ -295,6 +296,17 @@ void GcsPlacementGroupScheduler::CommitAllBundles(
     const std::shared_ptr<LeaseStatusTracker> &lease_status_tracker,
     const PGSchedulingFailureCallback &schedule_failure_handler,
     const PGSchedulingSuccessfulCallback &schedule_success_handler) {
+  // TOCTOU: this method is called after an async write to Redis. If the PG is cancelled
+  // after the write, we don't commit the bundles. Instead we just return them.
+  if (lease_status_tracker->GetLeasingState() == LeasingState::CANCELLED) {
+    DestroyPlacementGroupCommittedBundleResources(
+        lease_status_tracker->GetPlacementGroup()->GetPlacementGroupID());
+    ReturnBundleResources(lease_status_tracker->GetBundleLocations());
+    schedule_failure_handler(lease_status_tracker->GetPlacementGroup(),
+                             /*is_feasible=*/true);
+    return;
+  }
+
   const std::shared_ptr<BundleLocations> &prepared_bundle_locations =
       lease_status_tracker->GetPreparedBundleLocations();
   std::unordered_map<NodeID, std::vector<std::shared_ptr<const BundleSpecification>>>
@@ -939,7 +951,7 @@ const std::vector<std::shared_ptr<const BundleSpecification>>
   return bundles_to_schedule_;
 }
 
-const LeasingState LeaseStatusTracker::GetLeasingState() const { return leasing_state_; }
+LeasingState LeaseStatusTracker::GetLeasingState() const { return leasing_state_; }
 
 void LeaseStatusTracker::MarkPlacementGroupScheduleCancelled() {
   UpdateLeasingState(LeasingState::CANCELLED);

@@ -37,7 +37,7 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
  public:
   MockPlacementGroupScheduler() = default;
 
-  void ScheduleUnplacedBundles(SchedulePgRequest request) override {
+  void ScheduleUnplacedBundles(const SchedulePgRequest &request) override {
     placement_groups_.push_back(request.placement_group);
   }
 

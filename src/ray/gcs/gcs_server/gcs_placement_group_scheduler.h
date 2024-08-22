@@ -50,19 +50,18 @@ using raylet_scheduling_policy::SchedulingResultStatus;
 using ScheduleMap = absl::flat_hash_map<BundleID, NodeID, pair_hash>;
 
 struct SchedulePgRequest {
+  /// The placement group to be scheduled.
   std::shared_ptr<GcsPlacementGroup> placement_group;
+  // Called if the pg failed to schedule (prepare or commit).
   PGSchedulingFailureCallback failure_callback;
+  // Called if the pg is successfully committed.
   PGSchedulingSuccessfulCallback success_callback;
 };
 
 class GcsPlacementGroupSchedulerInterface {
  public:
   /// Schedule unplaced bundles of the specified placement group.
-  ///
-  /// \param placement_group The placement group to be scheduled.
-  /// \param failure_callback Called if the pg failed to schedule (prepare or commit).
-  /// \param success_callback Called if the pg is committed.
-  virtual void ScheduleUnplacedBundles(SchedulePgRequest request) = 0;
+  virtual void ScheduleUnplacedBundles(const SchedulePgRequest &request) = 0;
 
   /// Get and remove bundles belong to the specified node.
   ///
@@ -221,7 +220,7 @@ class LeaseStatusTracker {
   /// Return the leasing state.
   ///
   /// \return Leasing state.
-  const LeasingState GetLeasingState() const;
+  LeasingState GetLeasingState() const;
 
   /// Mark that this leasing is cancelled.
   void MarkPlacementGroupScheduleCancelled();

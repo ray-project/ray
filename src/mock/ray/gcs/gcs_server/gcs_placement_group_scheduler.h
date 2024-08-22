@@ -28,7 +28,10 @@ namespace gcs {
 class MockGcsPlacementGroupSchedulerInterface
     : public GcsPlacementGroupSchedulerInterface {
  public:
-  MOCK_METHOD(void, ScheduleUnplacedBundles, (SchedulePgRequest request), (override));
+  MOCK_METHOD(void,
+              ScheduleUnplacedBundles,
+              (const SchedulePgRequest &request),
+              (override));
   MOCK_METHOD((absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>),
               GetAndRemoveBundlesOnNode,
               (const NodeID &node_id),
@@ -87,7 +90,10 @@ namespace gcs {
 
 class MockGcsPlacementGroupScheduler : public GcsPlacementGroupScheduler {
  public:
-  MOCK_METHOD(void, ScheduleUnplacedBundles, (SchedulePgRequest request), (override));
+  MOCK_METHOD(void,
+              ScheduleUnplacedBundles,
+              (const SchedulePgRequest &request),
+              (override));
   MOCK_METHOD(void,
               DestroyPlacementGroupBundleResourcesIfExists,
               (const PlacementGroupID &placement_group_id),

@@ -27,12 +27,25 @@ namespace gcs {
 namespace {
 
 ExponentialBackOff CreateDefaultBackoff() {
-  const auto initial_delay_ns =
-      1000000 * RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms();
+  // std::chrono conversions are unwieldy but safer.
+  // ms -> ns
+  using std::chrono::duration_cast;
+  using std::chrono::milliseconds;
+  using std::chrono::nanoseconds;
+  const uint64_t initial_delay_ns =
+      duration_cast<nanoseconds>(
+          milliseconds(
+              RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms()))
+          .count();
+  const uint64_t max_delay_ns =
+      duration_cast<nanoseconds>(
+          milliseconds(
+              RayConfig::instance().gcs_create_placement_group_retry_max_interval_ms()))
+          .count();
   return ExponentialBackOff(
       initial_delay_ns,
       RayConfig::instance().gcs_create_placement_group_retry_multiplier(),
-      1000000 * RayConfig::instance().gcs_create_placement_group_retry_max_interval_ms());
+      max_delay_ns);
 }
 }  // namespace
 
@@ -427,7 +440,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
               },
           .success_callback =
               [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-                OnPlacementGroupCreationSuccess(std::move(placement_group));
+                OnPlacementGroupCreationSuccess(placement_group);
               }});
       is_new_placement_group_scheduled = true;
     }
@@ -940,8 +953,8 @@ void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {
 }
 
 void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
-  // Bundles that are PREPARED or COMMITTED that we wanna keep. All others are going to be removed
-  // by raylet.
+  // Bundles that are PREPARED or COMMITTED that we wanna keep. All others are going to be
+  // removed by raylet.
   absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> bundles_in_use;
   // Bundles that are COMMITTED that we want the Scheduler to track.
   absl::flat_hash_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
@@ -967,9 +980,9 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
     }
     if (state == rpc::PlacementGroupTableData::PREPARED) {
       RAY_CHECK(!placement_group->HasUnplacedBundles());
-      // The PG is PREPARED. Add to `used_bundles` and `prepared_pgs`.
+      // The PG is PREPARED. Add to `bundles_in_use` and `prepared_pgs`.
       for (const auto &bundle : item.second.bundles()) {
-        used_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
+        bundles_in_use[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
       }
       prepared_pgs.emplace_back(SchedulePgRequest{
           .placement_group = placement_group,
@@ -981,7 +994,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
               },
           .success_callback =
               [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-                OnPlacementGroupCreationSuccess(std::move(placement_group));
+                OnPlacementGroupCreationSuccess(placement_group);
               },
       });
     }
@@ -990,7 +1003,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
       const auto &bundles = item.second.bundles();
       for (const auto &bundle : bundles) {
         if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
-          used_bundles[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
+          bundles_in_use[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
           commited_bundles[PlacementGroupID::FromBinary(
                                bundle.bundle_id().placement_group_id())]
               .emplace_back(std::make_shared<BundleSpecification>(bundle));
@@ -1015,7 +1028,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 
   // Notify raylets to release unused bundles.
-  gcs_placement_group_scheduler_->ReleaseUnusedBundles(used_bundles);
+  gcs_placement_group_scheduler_->ReleaseUnusedBundles(bundles_in_use);
   gcs_placement_group_scheduler_->Initialize(commited_bundles, prepared_pgs);
 
   for (const auto &placement_group_id : groups_to_remove) {
