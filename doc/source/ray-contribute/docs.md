@@ -56,7 +56,31 @@ pip install -r requirements-doc.txt
 Don't use `-U` in this step. You don't want to upgrade dependencies because `requirements-doc.txt` pins exact versions you need to build the docs.
 
 ### Build documentation
-Build the documentation by running the following command:
+Before building, you can clean your environment first by running:
+```shell
+make clean
+```
+
+Then, there are 2 options to build documentation locally that you can choose from:
+#### 1. Incremental build with global cache
+
+In this approach, we only build the changes you've made in your branch compared to your last pull from upstream master. The rest is cached with pre-built doc pages from your last upstream pull. (for every new commit pushed to Ray, we build all the documentation pages from that commit and store them on S3 as cache)
+
+To do this, we first trace your commit tree to find the latest commit that we already cached on S3. 
+Once the commit is found, we fetch its corresponding cache from S3 and extract into the `doc/` directory. Simultaneously, we track all the files that have changed from that commit to current `HEAD`, including any unstaged changes.
+
+Sphinx then rebuilds only the pages that depend on your changes, leaving the rest untouched from the cache.
+
+We highly recommend this option if you need to make frequent uncomplicated changes.
+
+To use this option, you can run:
+```shell
+make local
+```
+
+#### 2. Full build from scratch
+With this option, Sphinx would rebuild all files in `doc/` directory, ignoring all cache and saved environment.
+Because of this, you would get a really clean build but it would be much slower at the same time.
 
 ```shell
 make develop
