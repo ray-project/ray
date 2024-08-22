@@ -142,6 +142,9 @@ def test_two_returns_first(ray_start_regular):
         o1, o2 = a.return_two.bind(i)
         dag = o1
 
+    res = dag.execute(1)
+    assert ray.get(res) == 1
+
     compiled_dag = dag.experimental_compile()
     res = ray.get(compiled_dag.execute(1))
     assert res == 1
@@ -154,6 +157,9 @@ def test_two_returns_second(ray_start_regular):
     with InputNode() as i:
         o1, o2 = a.return_two.bind(i)
         dag = o2
+
+    res = dag.execute(1)
+    assert ray.get(res) == 2
 
     compiled_dag = dag.experimental_compile()
     res = ray.get(compiled_dag.execute(1))
@@ -171,6 +177,9 @@ def test_two_returns_one_reader(ray_start_regular):
         o4 = b.echo.bind(o2)
         dag = MultiOutputNode([o3, o4])
 
+    res = dag.execute(1)
+    assert ray.get(res) == [1, 2]
+
     compiled_dag = dag.experimental_compile()
     res = ray.get(compiled_dag.execute(1))
     assert res == [1, 2]
@@ -187,6 +196,9 @@ def test_two_returns_two_readers(ray_start_regular):
         o3 = b.echo.bind(o1)
         o4 = c.echo.bind(o2)
         dag = MultiOutputNode([o3, o4])
+
+    res = dag.execute(1)
+    assert ray.get(res) == [1, 2]
 
     compiled_dag = dag.experimental_compile()
     res = ray.get(compiled_dag.execute(1))
