@@ -434,7 +434,12 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .reporting(min_sample_timesteps_per_iteration=1)
-            .training(replay_buffer_config={"type": "EpisodeReplayBuffer"})
+            .training(
+                replay_buffer_config={"type": "EpisodeReplayBuffer"},
+                # We need to set the base `lr` to `None` b/c SAC in the new stack
+                # has its own learning rates.
+                lr=None,
+            )
         )
 
     def test_multi_gpu(self):
@@ -787,6 +792,9 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .training(
                 replay_buffer_config={"type": "EpisodeReplayBuffer"},
+                # We need to set the base `lr` to `None` b/c new stack SAC has its
+                # specific learning rates for actor, critic, and alpha.
+                lr=None,
             )
             .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
