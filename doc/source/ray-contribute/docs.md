@@ -61,7 +61,11 @@ Before building, clean your environment first by running:
 make clean
 ```
 
-Then, there are 2 options to build documentation locally that you can choose from:
+Choose from the following 2 options to build documentation locally:
+
+- Incremental build
+- Full build
+
 #### 1. Incremental build with global cache
 
 In this approach, we only build the changes you've made in your branch compared to your last pull from upstream master. The rest is cached with pre-built doc pages from your last upstream pull. (for every new commit pushed to Ray, we build all the documentation pages from that commit and store them on S3 as cache)
