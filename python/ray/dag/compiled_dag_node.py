@@ -884,12 +884,13 @@ class CompiledDAG:
                 dag_nodes: List = []
                 for readers in output_to_readers.values():
                     dag_nodes.extend(reader.dag_node for reader in readers)
-                read_by_multi_output_node = 0
+                read_by_multi_output_node = False
                 for dag_node in dag_nodes:
                     if isinstance(dag_node, MultiOutputNode):
-                        read_by_multi_output_node += 1
-                if read_by_multi_output_node != 0:
-                    if len(dag_nodes) != read_by_multi_output_node:
+                        read_by_multi_output_node = True
+                        break
+                if read_by_multi_output_node:
+                    if len(readers) != 1:
                         raise ValueError(
                             "DAG outputs currently can only be read by the driver or "
                             "the same actor that is also the InputNode, not by both "
