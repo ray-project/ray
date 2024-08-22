@@ -15,6 +15,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import NodeID
 from ray._private import ray_constants
+from ray._private.accelerators import get_all_accelerator_resource_names
 from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
@@ -371,6 +372,27 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             return dashboard_optional_utils.rest_response(
                 success=False, message=f"Unknown view {view}"
             )
+
+    @routes.get("/nodes_resource_flag")
+    @dashboard_optional_utils.aiohttp_cache
+    async def get_nodes_resource_flag(self, req) -> aiohttp.web.Response:
+        nodes_logical_resources = await asyncio.gather(
+            self.get_nodes_logical_resources()
+        )
+
+        search_data = get_all_accelerator_resource_names()
+        resource_flag = []
+        for item in nodes_logical_resources:
+            for key, value in item.items():
+                for search_item in search_data:
+                    if search_item in value:
+                        resource_flag.append(search_item)
+
+        return dashboard_optional_utils.rest_response(
+            success=True,
+            message="Node summary fetched.",
+            resource_flag=resource_flag,
+        )
 
     @routes.get("/nodes/{node_id}")
     @dashboard_optional_utils.aiohttp_cache

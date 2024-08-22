@@ -2,7 +2,7 @@ import _ from "lodash";
 import { useState } from "react";
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
-import { getNodeList } from "../../../service/node";
+import { getNodeList, getNodeResourceFlag } from "../../../service/node";
 import { useSorter } from "../../../util/hook";
 
 export const useNodeList = () => {
@@ -34,17 +34,23 @@ export const useNodeList = () => {
     async () => {
       const { data } = await getNodeList();
       const { data: rspData, msg } = data;
+      const resourceFlagData = await getNodeResourceFlag();
       if (msg) {
         setMsg(msg);
       } else {
         setMsg("");
       }
-      return rspData;
+      return {
+        summary: rspData?.summary || {},
+        resourceFlag: resourceFlagData?.data?.data?.resourceFlag || {},
+        nodeLogicalResources: rspData?.nodeLogicalResources || {},
+      };
     },
     { refreshInterval: isRefreshing ? API_REFRESH_INTERVAL_MS : 0 },
   );
 
   const nodeList = data?.summary ?? [];
+  const resourceFlag = data?.resourceFlag ?? [];
   const nodeLogicalResources = data?.nodeLogicalResources ?? {};
 
   const nodeListWithAdditionalInfo = nodeList.map((e) => ({
@@ -76,6 +82,7 @@ export const useNodeList = () => {
     });
   });
   return {
+    resourceFlag: resourceFlag,
     nodeList: filteredList,
     msg,
     isLoading,

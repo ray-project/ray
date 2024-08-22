@@ -23,7 +23,7 @@ from ray._private.metrics_agent import Gauge, MetricsAgent, Record
 from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
 from ray._raylet import WorkerID
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
-from ray.dashboard import k8s_utils
+from ray.dashboard import k8s_utils, npu_utils
 from ray.dashboard.consts import COMPONENT_METRICS_TAG_KEYS, GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.modules.reporter.profile_manager import (
     CpuProfilingManager,
@@ -751,6 +751,7 @@ class ReporterAgent(
             "network_speed": network_speed_stats,
             # Deprecated field, should be removed with frontend.
             "cmdline": self._get_raylet().get("cmdline", []),
+            "npus": npu_utils._get_npu_info(),
         }
 
     def _generate_reseted_stats_record(self, component_name: str) -> List[Record]:

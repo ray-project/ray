@@ -73,6 +73,7 @@ const columns = [
   },
   {
     label: "GPU",
+    flag: "GPU",
     helpInfo: (
       <Typography>
         Usage of each GPU device. If no GPU usage is detected, here are the
@@ -87,7 +88,15 @@ const columns = [
       </Typography>
     ),
   },
-  { label: "GRAM" },
+  { label: "GRAM", flag: "GPU" },
+  {
+    label: "NPU",
+    flag: "NPU",
+    helpInfo: (
+      <Typography>Indicates the NPU AI core usage of each device.</Typography>
+    ),
+  },
+  { label: "HBM", flag: "NPU" },
   { label: "Object Store Memory" },
   {
     label: "Disk(root)",
@@ -228,6 +237,7 @@ export const NodeCard = (props: { node: NodeDetail }) => {
 
 const Nodes = () => {
   const {
+    resourceFlag,
     msg,
     isLoading,
     isRefreshing,
@@ -352,26 +362,34 @@ const Nodes = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  {columns.map(({ label, helpInfo }) => (
-                    <TableCell align="center" key={label}>
-                      <Box
-                        display="flex"
-                        justifyContent="center"
-                        alignItems="center"
-                      >
-                        {label}
-                        {helpInfo && (
-                          <HelpInfo sx={{ marginLeft: 1 }}>{helpInfo}</HelpInfo>
-                        )}
-                      </Box>
-                    </TableCell>
-                  ))}
+                  {columns.map(({ label, helpInfo, flag }) => {
+                    if (flag && !resourceFlag.includes(flag)) {
+                      return null;
+                    }
+                    return (
+                      <TableCell align="center" key={label}>
+                        <Box
+                          display="flex"
+                          justifyContent="center"
+                          alignItems="center"
+                        >
+                          {label}
+                          {helpInfo && (
+                            <HelpInfo sx={{ marginLeft: 1 }}>
+                              {helpInfo}
+                            </HelpInfo>
+                          )}
+                        </Box>
+                      </TableCell>
+                    );
+                  })}
                 </TableRow>
               </TableHead>
               <TableBody>
                 {list.map((node) => (
                   <NodeRows
                     key={node.raylet.nodeId}
+                    resourceFlag={resourceFlag}
                     node={node}
                     isRefreshing={isRefreshing}
                     startExpanded={nodeList.length === 1}
