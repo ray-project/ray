@@ -75,7 +75,6 @@ Once the commit is found, we fetch its corresponding cache from S3 and extract i
 
 Sphinx then rebuilds only the pages that depend on your changes, leaving the rest untouched from the cache.
 
-We highly recommend this option if you need to make frequent uncomplicated changes.
 
 To use this option, you can run:
 ```shell
