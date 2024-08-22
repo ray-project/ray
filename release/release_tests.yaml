@@ -3530,11 +3530,11 @@
       frequency: manual
       cluster:
         cluster_compute: distributed/many_nodes_tests/compute_config_gce.yaml
-    - __suffix__: eks
-      env: eks
-      frequency: manual
-      cluster:
-        cluster_compute: distributed/many_nodes_tests/compute_config_eks.yaml
+    # - __suffix__: eks
+    #   env: eks
+    #   frequency: manual
+    #   cluster:
+    #     cluster_compute: distributed/many_nodes_tests/compute_config_eks.yaml
 
 #- name: many_nodes_multi_master_test
 #  group: core-daily-test
