@@ -955,7 +955,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
     auto placement_group =
         std::make_shared<GcsPlacementGroup>(item.second, placement_group_state_counter_);
     const auto state = item.second.state();
-    const auto pg_id = placement_group->GetPlacementGroupID();
+    const auto &pg_id = placement_group->GetPlacementGroupID();
     if (state == rpc::PlacementGroupTableData::REMOVED) {
       // ignore this pg...
       continue;
