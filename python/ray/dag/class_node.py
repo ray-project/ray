@@ -260,9 +260,10 @@ class ClassMethodOutputNode(DAGNode):
         self._bind_index: Optional[int] = other_args_to_resolve.get(
             BIND_INDEX_KEY, None
         )
-
-        self.class_method_node = method_args[0]
-        self.output_idx = method_args[1]
+        # The upstream ClassMethodNode that this node is outputting from.
+        self._class_method_node = method_args[0]
+        # The output index of the return value.
+        self._output_idx = method_args[1]
 
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
@@ -297,7 +298,7 @@ class ClassMethodOutputNode(DAGNode):
         with value in bound_args and bound_kwargs via bottom-up recursion when
         current node is executed.
         """
-        return self._bound_args[0][self.output_idx]
+        return self._bound_args[0][self._output_idx]
 
     def __str__(self) -> str:
         return get_dag_node_str(self, f"{self._method_name}()")
@@ -319,4 +320,12 @@ class ClassMethodOutputNode(DAGNode):
 
     @property
     def num_returns(self) -> int:
-        return self.class_method_node.num_returns
+        return self._class_method_node.num_returns
+
+    @property
+    def class_method_node(self) -> ClassMethodNode:
+        return self._class_method_node
+
+    @property
+    def output_idx(self) -> int:
+        return self._output_idx
