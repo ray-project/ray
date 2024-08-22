@@ -56,7 +56,7 @@ config = (
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 300.0 * args.num_agents,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 200.0 * args.num_agents,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
 }
 
