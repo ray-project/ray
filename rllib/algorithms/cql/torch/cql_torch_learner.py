@@ -105,17 +105,17 @@ class CQLTorchLearner(SACTorchLearner):
 
         # The critic loss is composed of the standard SAC Critic L2 loss and the
         # CQL entropy loss.
-        action_dist_next = action_dist_class.from_logits(
-            fwd_out["action_dist_inputs_next"]
-        )
-        # Sample the actions for the next state.
-        actions_next = (
-            # Note, we do not need to backpropagate through the
-            # next actions.
-            action_dist_next.sample()
-            if not config._deterministic_loss
-            else action_dist_next.to_deterministic().sample()
-        )
+        # action_dist_next = action_dist_class.from_logits(
+        #     fwd_out["action_dist_inputs_next"]
+        # )
+        # # Sample the actions for the next state.
+        # actions_next = (
+        #     # Note, we do not need to backpropagate through the
+        #     # next actions.
+        #     action_dist_next.sample()
+        #     if not config._deterministic_loss
+        #     else action_dist_next.to_deterministic().sample()
+        # )
 
         # Get the Q-values for the actually selected actions in the offline data.
         # In the critic loss we use these as predictions.
@@ -125,17 +125,19 @@ class CQLTorchLearner(SACTorchLearner):
 
         # Compute Q-values from the target Q network for the next state with the
         # sampled actions for the next state.
-        q_batch_next = {
-            Columns.OBS: batch[Columns.NEXT_OBS],
-            Columns.ACTIONS: actions_next,
-        }
+        # q_batch_next = {
+        #     Columns.OBS: batch[Columns.NEXT_OBS],
+        #     Columns.ACTIONS: actions_next,
+        # }
         # Note, if `twin_q` is `True`, `SACTorchRLModule.forward_target` calculates
         # the Q-values for both, `qf_target` and `qf_twin_target` and
         # returns the minimum.
-        q_target_next = self.module[module_id].forward_target(q_batch_next)
+        # q_target_next = self.module[module_id].forward_target(q_batch_next)
 
         # Now mask all Q-values with terminating next states in the targets.
-        q_next_masked = (1.0 - batch[Columns.TERMINATEDS].float()) * q_target_next
+        q_next_masked = (1.0 - batch[Columns.TERMINATEDS].float()) * fwd_out[
+            "q_target_next"
+        ]
 
         # Compute the right hand side of the Bellman equation. Detach this node
         # from the computation graph as we do not want to backpropagate through

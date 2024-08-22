@@ -84,6 +84,12 @@ class CQLConfig(SACConfig):
         self.lagrangian_thresh = 5.0
         self.min_q_weight = 5.0
         self.lr = 3e-4
+        # Note, the new stack defines learning rates for each component.
+        # The base learning rate `lr` has to be set to `None`, if using
+        # the new stack.
+        self.actor_lr = 2e-4,
+        self.critic_lr = 8e-4
+        self.alpha_lr = 9e-4
 
         # Changes to Algorithm's/SACConfig's default:
 
