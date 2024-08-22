@@ -355,6 +355,8 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   Note: If the local directory contains a ``.gitignore`` file, the files and paths specified there are not uploaded to the cluster.  You can disable this by setting the environment variable `RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1` on the machine doing the uploading.
 
+  Note: If the local directory contains symbolic links, the links will be followed and the files they point to will be uploaded to the cluster.
+
 - ``py_modules`` (List[str|module]): Specifies Python modules to be available for import in the Ray workers.  (For more ways to specify packages, see also the ``pip`` and ``conda`` fields below.)
   Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip or wheel file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local `.whl` file.
 
