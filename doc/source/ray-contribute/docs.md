@@ -84,7 +84,7 @@ make local
 ```
 
 #### 2. Full build from scratch
-With this option, Sphinx would rebuild all files in `doc/` directory, ignoring all cache and saved environment.
+In the full build option, Sphinx rebuilds all files in `doc/` directory, ignoring all cache and saved environment.
 Because of this, you would get a really clean build but it would be much slower at the same time.
 
 ```shell
