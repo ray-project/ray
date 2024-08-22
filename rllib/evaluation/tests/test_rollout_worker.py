@@ -191,7 +191,7 @@ class TestRolloutWorker(unittest.TestCase):
                     NUM_AGENT_STEPS_SAMPLED, result["info"][NUM_AGENT_STEPS_SAMPLED]
                 )
             )
-            global_timesteps = policy.global_timestep.numpy()
+            global_timesteps = policy.global_timestep
             print("global_timesteps={}".format(global_timesteps))
             expected_lr = 0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
             lr = policy.cur_lr
