@@ -431,7 +431,7 @@ class PhysicalOperator(Operator):
         This method is called by the resource manager and the streaming
         executor to display the number of currently running CPUs and GPUs in the
         progress bar.
-        
+
         Note, this method returns `current_processor_usage() -
         pending_processor_usage()` by default. Subclasses should only override
         `pending_processor_usage()` if needed.
