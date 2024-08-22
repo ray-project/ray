@@ -288,8 +288,8 @@ void TaskEventBufferImpl::Stop() {
 bool TaskEventBufferImpl::Enabled() const { return enabled_; }
 
 void TaskEventBufferImpl::GetTaskStatusEventsToSend(
-    std::vector<std::unique_ptr<TaskEvent>> *status_events_to_send,
-    std::vector<std::unique_ptr<TaskEvent>> *dropped_status_events_to_write,
+    std::vector<std::shared_ptr<TaskEvent>> *status_events_to_send,
+    std::vector<std::shared_ptr<TaskEvent>> *dropped_status_events_to_write,
     absl::flat_hash_set<TaskAttempt> *dropped_task_attempts_to_send) {
   absl::MutexLock lock(&mutex_);
 
@@ -349,7 +349,7 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
 }
 
 void TaskEventBufferImpl::GetTaskProfileEventsToSend(
-    std::vector<std::unique_ptr<TaskEvent>> *profile_events_to_send) {
+    std::vector<std::shared_ptr<TaskEvent>> *profile_events_to_send) {
   absl::MutexLock lock(&profile_mutex_);
 
   size_t batch_size =
@@ -375,13 +375,13 @@ void TaskEventBufferImpl::GetTaskProfileEventsToSend(
 }
 
 std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateDataToSend(
-    std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
-    std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send,
+    std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_send,
+    std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send,
     absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send) {
   // Aggregate the task events by TaskAttempt.
   absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
   auto to_rpc_event_fn = [this, &agg_task_events, &dropped_task_attempts_to_send](
-                             std::unique_ptr<TaskEvent> &event) {
+                             std::shared_ptr<TaskEvent> &event) {
     if (dropped_task_attempts_to_send.count(event->GetTaskAttempt())) {
       // We are marking this as data loss due to some missing task status updates.
       // We will not send this event to GCS.
@@ -429,12 +429,12 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateDataToSend(
 }
 
 void TaskEventBufferImpl::WriteExportData(
-    std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
-    std::vector<std::unique_ptr<TaskEvent>> &&dropped_status_events_to_write,
-    std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send) {
+    std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_send,
+    std::vector<std::shared_ptr<TaskEvent>> &&dropped_status_events_to_write,
+    std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send) {
   absl::flat_hash_map<TaskAttempt, std::shared_ptr<rpc::ExportTaskEventData>>
       agg_task_events;
-  auto to_rpc_event_fn = [&agg_task_events](std::unique_ptr<TaskEvent> &event) {
+  auto to_rpc_event_fn = [&agg_task_events](std::shared_ptr<TaskEvent> &event) {
     // Aggregate events by task attempt before converting to proto
     if (!agg_task_events.count(event->GetTaskAttempt())) {
       auto inserted = agg_task_events.insert(
@@ -448,19 +448,19 @@ void TaskEventBufferImpl::WriteExportData(
 
   // Combine status_events_to_send and dropped_status_events_to_write so
   // the aggregation logic in to_rpc_event_fn is combined across both.
-  std::vector<std::unique_ptr<TaskEvent>> all_status_events_to_send;
-  all_status_events_to_send.reserve(status_events_to_send.size() +
-                                    dropped_status_events_to_write.size());
-  all_status_events_to_send.insert(all_status_events_to_send.end(),
-                                   std::make_move_iterator(status_events_to_send.begin()),
-                                   std::make_move_iterator(status_events_to_send.end()));
-  all_status_events_to_send.insert(
-      all_status_events_to_send.end(),
-      std::make_move_iterator(dropped_status_events_to_write.begin()),
-      std::make_move_iterator(dropped_status_events_to_write.end()));
+  // std::vector<std::unique_ptr<TaskEvent>> all_status_events_to_send;
+  // all_status_events_to_send.reserve(status_events_to_send.size() +
+  //                                   dropped_status_events_to_write.size());
+  // all_status_events_to_send.insert(all_status_events_to_send.end(),
+  //                                  std::make_move_iterator(status_events_to_send.begin()),
+  //                                  std::make_move_iterator(status_events_to_send.end()));
+  // all_status_events_to_send.insert(
+  //     all_status_events_to_send.end(),
+  //     std::make_move_iterator(dropped_status_events_to_write.begin()),
+  //     std::make_move_iterator(dropped_status_events_to_write.end()));
 
-  std::for_each(all_status_events_to_send.begin(),
-                all_status_events_to_send.end(),
+  std::for_each(dropped_status_events_to_write.begin(),
+                dropped_status_events_to_write.end(),
                 to_rpc_event_fn);
   std::for_each(
       profile_events_to_send.begin(), profile_events_to_send.end(), to_rpc_event_fn);
@@ -489,8 +489,8 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   }
 
   // Take out status events from the buffer.
-  std::vector<std::unique_ptr<TaskEvent>> status_events_to_send;
-  std::vector<std::unique_ptr<TaskEvent>> dropped_status_events_to_write;
+  std::vector<std::shared_ptr<TaskEvent>> status_events_to_send;
+  std::vector<std::shared_ptr<TaskEvent>> dropped_status_events_to_write;
   absl::flat_hash_set<TaskAttempt> dropped_task_attempts_to_send;
   status_events_to_send.reserve(RayConfig::instance().task_events_send_batch_size());
   GetTaskStatusEventsToSend(&status_events_to_send,
@@ -498,7 +498,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
                             &dropped_task_attempts_to_send);
 
   // Take profile events from the status events.
-  std::vector<std::unique_ptr<TaskEvent>> profile_events_to_send;
+  std::vector<std::shared_ptr<TaskEvent>> profile_events_to_send;
   profile_events_to_send.reserve(RayConfig::instance().task_events_send_batch_size());
   GetTaskProfileEventsToSend(&profile_events_to_send);
 
@@ -585,8 +585,9 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
   if (!enabled_) {
     return;
   }
+  std::shared_ptr<TaskEvent> status_event_shared_ptr = std::move(status_event);
 
-  if (dropped_task_attempts_unreported_.count(status_event->GetTaskAttempt())) {
+  if (dropped_task_attempts_unreported_.count(status_event_shared_ptr->GetTaskAttempt())) {
     // This task attempt has been dropped before, so we drop this event.
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
@@ -597,7 +598,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
         stats_counter_.Increment(
             TaskEventBufferCounter::kNumDroppedTaskStatusEventsForExportAPIStored);
       }
-      dropped_status_events_for_export_.push_back(std::move(status_event));
+      dropped_status_events_for_export_.push_back(status_event_shared_ptr);
     }
     return;
   }
@@ -610,7 +611,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
 
     RAY_LOG_EVERY_N(WARNING, 100000)
         << "Dropping task status events for task: "
-        << status_event->GetTaskAttempt().first
+        << status_event_shared_ptr->GetTaskAttempt().first
         << ", set a higher value for "
            "RAY_task_events_max_num_status_events_buffer_on_worker("
         << RayConfig::instance().task_events_max_num_status_events_buffer_on_worker()
@@ -619,19 +620,20 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     if (inserted.second) {
       stats_counter_.Increment(TaskEventBufferCounter::kNumDroppedTaskAttemptsStored);
     }
-    if (export_event_write_enabled_) {
-      // If dropped_status_events_for_export_ is full, the oldest event will be
-      // dropped in the circular buffer and replaced with the current event.
-      if (!dropped_status_events_for_export_.full()) {
-        stats_counter_.Increment(
-            TaskEventBufferCounter::kNumDroppedTaskStatusEventsForExportAPIStored);
-      }
-      dropped_status_events_for_export_.push_back(std::move(to_evict));
-    }
   } else {
     stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventsStored);
   }
-  status_events_.push_back(std::move(status_event));
+  status_events_.push_back(status_event_shared_ptr);
+  if (export_event_write_enabled_) {
+    std::cout << "DEBUG dropped_status_events_for_export_ size " << dropped_status_events_for_export_.size() << "\n";
+    // If dropped_status_events_for_export_ is full, the oldest event will be
+    // dropped in the circular buffer and replaced with the current event.
+    if (!dropped_status_events_for_export_.full()) {
+      stats_counter_.Increment(
+          TaskEventBufferCounter::kNumDroppedTaskStatusEventsForExportAPIStored);
+    }
+    dropped_status_events_for_export_.push_back(status_event_shared_ptr);
+  }
 }
 
 void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile_event) {
@@ -639,10 +641,11 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
   if (!enabled_) {
     return;
   }
-  auto profile_events_itr = profile_events_.find(profile_event->GetTaskAttempt());
+  std::shared_ptr<TaskEvent> profile_event_shared_ptr = std::move(profile_event);
+  auto profile_events_itr = profile_events_.find(profile_event_shared_ptr->GetTaskAttempt());
   if (profile_events_itr == profile_events_.end()) {
     auto inserted = profile_events_.insert(
-        {profile_event->GetTaskAttempt(), std::vector<std::unique_ptr<TaskEvent>>()});
+        {profile_event_shared_ptr->GetTaskAttempt(), std::vector<std::shared_ptr<TaskEvent>>()});
     RAY_CHECK(inserted.second);
     profile_events_itr = inserted.first;
   }
@@ -675,7 +678,7 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
   }
 
   stats_counter_.Increment(TaskEventBufferCounter::kNumTaskProfileEventsStored);
-  profile_events_itr->second.push_back(std::move(profile_event));
+  profile_events_itr->second.push_back(profile_event_shared_ptr);
 }
 
 const std::string TaskEventBufferImpl::DebugString() {

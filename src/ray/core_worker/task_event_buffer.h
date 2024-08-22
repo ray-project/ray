@@ -317,8 +317,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param[out] dropped_task_attempts_to_send Task attempts that were dropped due to
   ///             status events being dropped.
   void GetTaskStatusEventsToSend(
-      std::vector<std::unique_ptr<TaskEvent>> *status_events_to_send,
-      std::vector<std::unique_ptr<TaskEvent>> *dropped_status_events_to_write,
+      std::vector<std::shared_ptr<TaskEvent>> *status_events_to_send,
+      std::vector<std::shared_ptr<TaskEvent>> *dropped_status_events_to_write,
       absl::flat_hash_set<TaskAttempt> *dropped_task_attempts_to_send)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -326,7 +326,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///
   /// \param[out] profile_events_to_send Task profile events to be sent.
   void GetTaskProfileEventsToSend(
-      std::vector<std::unique_ptr<TaskEvent>> *profile_events_to_send)
+      std::vector<std::shared_ptr<TaskEvent>> *profile_events_to_send)
       ABSL_LOCKS_EXCLUDED(profile_mutex_);
 
   /// Get the task events to GCS.
@@ -337,8 +337,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///        status events being dropped.
   /// \return A unique_ptr to rpc::TaskEvents to be sent to GCS.
   std::unique_ptr<rpc::TaskEventData> CreateDataToSend(
-      std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
-      std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send,
+      std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_send,
+      std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send,
       absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send);
 
   /// Write task events for the Export API.
@@ -348,9 +348,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///           not be sent to GCS. These will still be written in the Export API.
   /// \param profile_events_to_send Task profile events to be written.
   void WriteExportData(
-      std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
-      std::vector<std::unique_ptr<TaskEvent>> &&dropped_status_events_to_write,
-      std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send);
+      std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_send,
+      std::vector<std::shared_ptr<TaskEvent>> &&dropped_status_events_to_write,
+      std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send);
 
   /// Reset the counters during flushing data to GCS.
   void ResetCountersForFlush();
@@ -418,12 +418,12 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task status events.
-  boost::circular_buffer<std::unique_ptr<TaskEvent>> status_events_
+  boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_
       ABSL_GUARDED_BY(mutex_);
 
   /// Status events that were dropped but will still be written in
   /// the export API. Circular buffer to limit memory for these dropped events.
-  boost::circular_buffer<std::unique_ptr<TaskEvent>> dropped_status_events_for_export_
+  boost::circular_buffer<std::shared_ptr<TaskEvent>> dropped_status_events_for_export_
       ABSL_GUARDED_BY(mutex_);
 
   /// Buffered task attempts that were dropped due to status events being dropped.
@@ -432,7 +432,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
       ABSL_GUARDED_BY(mutex_);
 
   /// Buffered task profile events. A FIFO queue to be sent to GCS.
-  absl::flat_hash_map<TaskAttempt, std::vector<std::unique_ptr<TaskEvent>>>
+  absl::flat_hash_map<TaskAttempt, std::vector<std::shared_ptr<TaskEvent>>>
       profile_events_ ABSL_GUARDED_BY(profile_mutex_);
 
   /// Stats counter map.
