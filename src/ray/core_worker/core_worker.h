@@ -1153,7 +1153,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// generator. We use this to notify the owner of the dynamically created
   /// objects.
   Status SealReturnObject(const ObjectID &return_id,
-                          std::shared_ptr<RayObject> return_object,
+                          const std::shared_ptr<RayObject> &return_object,
                           const ObjectID &generator_id,
                           const rpc::Address &caller_address);
 
