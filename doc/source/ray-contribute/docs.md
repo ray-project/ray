@@ -68,6 +68,11 @@ Choose from the following 2 options to build documentation locally:
 
 #### 1. Incremental build with global cache and live rendering
 
+To use this option, you can run:
+```shell
+make local
+```
+
 This option is recommended if you need to make frequent uncomplicated changes.
 
 In this approach, Sphinx only builds the changes you made in your branch compared to your last pull from upstream master. The rest of doc is cached with pre-built doc pages from your last commit from upstream (for every new commit pushed to Ray, CI builds all the documentation pages from that commit and store them on S3 as cache).
@@ -78,11 +83,6 @@ Once the build finds the commit, it fetches the corresponding cache from S3 and 
 Sphinx then rebuilds only the pages that your changes affect, leaving the rest untouched from the cache.
 
 When build finishes, the doc page would automatically pop up on your browser. If any change is made in the `doc/` directory, Sphinx would automatically rebuild and reload your doc page. You can stop it by interrupting with `Ctrl+C`.
-
-To use this option, you can run:
-```shell
-make local
-```
 
 
 #### 2. Full build from scratch
