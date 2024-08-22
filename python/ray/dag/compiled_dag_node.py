@@ -864,11 +864,11 @@ class CompiledDAG:
             if isinstance(task.dag_node, ClassMethodNode):
                 # Create output buffers for the actor method.
                 assert len(task.output_channels) == 0
-                # `output_to_readers` stores the reader tasks for each output of the
-                # current node. If the current node returns one output, the readers are
-                # the downstream nodes of the current node. If the current node returns
-                # multiple outputs, the readers of each output are the downstream nodes
-                # of the `ClassMethodOutputNode` with an output index.
+                # `output_to_readers` stores the reader tasks for each output of
+                # the current node. If the current node returns one output, the
+                # readers are the downstream nodes of the current node. If the
+                # current node returns multiple outputs, the readers of each
+                # output are the downstream nodes of the ClassMethodOutputNode.
                 output_to_readers: Dict[CompiledTask, List[CompiledTask]] = defaultdict(
                     list
                 )
@@ -883,9 +883,9 @@ class CompiledDAG:
                             self.idx_to_task[idx]
                             for idx in downstream_task.downstream_node_idxs
                         ]
-                # `output_task_to_reader_and_node_list` stores the reader actors
-                # and the reader node IDs for each output of the current node.
-                output_task_to_reader_and_node_list: Dict[
+                # `output_to_reader_and_node_list` stores the reader actors and
+                # the reader node IDs for each output of the current node.
+                output_to_reader_and_node_list: Dict[
                     CompiledTask, List[Tuple["ray.actor.ActorHandle", str]]
                 ] = {task: [] for task in output_to_readers}
                 dag_nodes: List = []
@@ -925,7 +925,7 @@ class CompiledDAG:
 
                     #     compiled_dag.teardown()
                     assert self._dag_creator_actor is not None
-                    for output_task, readers in output_to_readers.items():
+                    for output, readers in output_to_readers.items():
                         reader_and_node_list: List[
                             Tuple["ray.actor.ActorHandle", str]
                         ] = []
@@ -936,11 +936,9 @@ class CompiledDAG:
                                     self._get_node_id(self._dag_creator_actor),
                                 )
                             )
-                        output_task_to_reader_and_node_list[
-                            output_task
-                        ] = reader_and_node_list
+                        output_to_reader_and_node_list[output] = reader_and_node_list
                 else:
-                    for output_task, readers in output_to_readers.items():
+                    for output, readers in output_to_readers.items():
                         reader_and_node_list: List[
                             Tuple["ray.actor.ActorHandle", str]
                         ] = []
@@ -949,15 +947,14 @@ class CompiledDAG:
                             reader_and_node_list.append(
                                 (reader_handle, self._get_node_id(reader_handle))
                             )
-                        output_task_to_reader_and_node_list[
-                            output_task
-                        ] = reader_and_node_list
+                        output_to_reader_and_node_list[output] = reader_and_node_list
 
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 for (
-                    output_task,
+                    output,
                     reader_and_node_list,
-                ) in output_task_to_reader_and_node_list.items():
+                ) in output_to_reader_and_node_list.items():
+                    # Create an output channel for each output of the current node.
                     output_channel = ray.get(
                         fn.remote(
                             do_allocate_channel,
@@ -966,17 +963,24 @@ class CompiledDAG:
                         )
                     )
                     output_idx = None
-                    output_task_node = output_task.dag_node
-                    if isinstance(output_task_node, ClassMethodOutputNode):
-                        output_idx = output_task_node.output_idx
-                        output_task.output_channels.append(output_channel)
-                        output_task.output_idxs.append(output_idx)
+                    downstream_node = output.dag_node
+                    if isinstance(downstream_node, ClassMethodOutputNode):
+                        output_idx = downstream_node.output_idx
                     task.output_channels.append(output_channel)
                     task.output_idxs.append(output_idx)
                 actor_handle = task.dag_node._get_actor_handle()
                 assert actor_handle is not None
                 self.actor_refs.add(actor_handle)
                 self.actor_to_tasks[actor_handle].append(task)
+            elif isinstance(task.dag_node, ClassMethodOutputNode):
+                task_node = task.dag_node
+                upstream_node = task_node.class_method_node
+                upstream_task = self.idx_to_task[self.dag_node_to_idx[upstream_node]]
+                for i in range(len(upstream_task.output_channels)):
+                    if upstream_task.output_idxs[i] == task_node.output_idx:
+                        task.output_channels.append(upstream_task.output_channels[i])
+                        task.output_idxs.append(upstream_task.output_idxs[i])
+                assert len(task.output_channels) == 1
             elif isinstance(task.dag_node, InputNode):
                 reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                 # TODO (kevin85421): Currently, the shared memory channel doesn't
@@ -1069,9 +1073,9 @@ class CompiledDAG:
                         has_at_least_one_channel_input = True
                     elif isinstance(arg, DAGNode):  # Other DAGNodes
                         arg_idx = self.dag_node_to_idx[arg]
-                        output_task = self.idx_to_task[arg_idx]
-                        assert len(output_task.output_channels) == 1
-                        arg_channel = output_task.output_channels[0]
+                        upstream_task = self.idx_to_task[arg_idx]
+                        assert len(upstream_task.output_channels) == 1
+                        arg_channel = upstream_task.output_channels[0]
                         assert arg_channel is not None
                         resolved_args.append(arg_channel)
                         has_at_least_one_channel_input = True
