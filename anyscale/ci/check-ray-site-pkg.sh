@@ -4,7 +4,7 @@ set -euo pipefail
 
 source anyscale/ci/setup-env.sh
 
-PY_VERSION_CODES=(py39 py310 py311)
+PY_VERSION_CODES=(py39 py310 py311 py312)
 
 TMP="$(mktemp -d)"
 
