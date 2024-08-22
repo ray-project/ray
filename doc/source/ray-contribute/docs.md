@@ -73,7 +73,7 @@ Use incremental builds if you need to make frequent uncomplicated changes.
 In this approach, the incremental build only builds the changes you made in your branch compared to your last pull from upstream master. The incremental build caches the rest cache with pre-built doc pages from your last upstream pull. For every new commit pushed to Ray, CI builds all the documentation pages from that commit and store them on S3 as cache.
 
 To do this, we first trace your commit tree to find the latest commit that we already cached on S3. 
-Once the commit is found, we fetch its corresponding cache from S3 and extract into the `doc/` directory. Simultaneously, we track all the files that have changed from that commit to current `HEAD`, including any unstaged changes.
+Once the build finds the commit, it fetches the corresponding cache from S3 and extracts it into the `doc/` directory. Simultaneously, CI tracks all the files that have changed from that commit to current `HEAD`, including any unstaged changes.
 
 Sphinx then rebuilds only the pages that your changes affect, leaving the rest untouched from the cache.
 
