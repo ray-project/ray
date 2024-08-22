@@ -85,7 +85,7 @@ make local
 
 #### 2. Full build from scratch
 In the full build option, Sphinx rebuilds all files in `doc/` directory, ignoring all cache and saved environment.
-Because of this, you would get a really clean build but it would be much slower at the same time.
+Because of this behavior, you get a really clean build but it's much slower.
 
 ```shell
 make develop
