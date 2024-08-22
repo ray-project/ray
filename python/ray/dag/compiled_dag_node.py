@@ -848,8 +848,9 @@ class CompiledDAG:
                             "Compiled DAG does not support NCCL communication between "
                             "methods on the same actor. NCCL type hint is specified "
                             "for the channel from method "
-                            f"{upstream_node.dag_node.get_method_name()} to the method "
-                            f"{dag_node.get_method_name()}. Please remove the NCCL "
+                            f"{upstream_node.dag_node.get_method_name()} to method "
+                            f"{dag_node.get_method_name()} on actor "
+                            f"{downstream_actor_handle}. Please remove the NCCL "
                             "type hint between these methods."
                         )
 
