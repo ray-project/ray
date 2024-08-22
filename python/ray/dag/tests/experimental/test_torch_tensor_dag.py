@@ -70,7 +70,7 @@ class TorchTensorWorker:
         return
 
 
-@ray.remote(num_gpus=1)
+@ray.remote(num_cpus=1)
 class TrainWorker:
     """
     This class simulates a training worker.
@@ -82,11 +82,8 @@ class TrainWorker:
     def entrypoint(self, inp):
         pass
 
-    def aggregate(self, *args):
-        return args[0]
-
     def forward(self, inp):
-        return torch.randn(10, 10).cuda()
+        return torch.randn(10, 10)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -431,15 +428,11 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
 def test_torch_tensor_nccl_within_same_actor(ray_start_regular, monkeypatch):
     monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
 
-    workers = [TrainWorker.remote() for _ in range(2)]
+    worker = TrainWorker.remote()
     with InputNode() as inp:
-        entrypoint = workers[0].entrypoint.bind(inp)
-        activations = [worker.forward.bind(entrypoint) for worker in workers]
-
-        for activation in activations:
-            activation.with_type_hint(TorchTensorType(transport=TorchTensorType.NCCL))
-
-        dag = workers[0].aggregate.bind(*activations)
+        entrypoint = worker.entrypoint.bind(inp)
+        entrypoint = entrypoint.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = worker.forward.bind(entrypoint)
 
     pattern = re.compile(
         r"Compiled DAG does not support NCCL communication between methods "
