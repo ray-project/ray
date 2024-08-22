@@ -2,7 +2,8 @@ import io
 import logging
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
-
+from queue import Queue, Empty
+import threading
 import ray
 import ray.exceptions
 from ray._raylet import SerializedObject
@@ -474,10 +475,68 @@ class Channel(ChannelInterface):
         Close this channel by setting the error bit on both the writer_ref and the
         reader_ref.
         """
+        print("SANG-TODO close!")
         self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
         if self.is_local_node(self._reader_node_id):
             self.ensure_registered_as_reader()
         self._worker.core_worker.experimental_channel_set_error(self._reader_ref)
+
+
+class _CloseSignal:
+    pass
+
+
+# @DeveloperAPI
+class BufferedRemoteChannel(ChannelInterface):
+
+    def __init__(self, channel: ChannelInterface):
+        self._channel = channel
+        self._background_thread_started = False
+        self.t = None
+        self.queue = None
+
+    def ensure_registered_as_writer(self):
+        """
+        Check whether the process is a valid writer. This method must be idempotent.
+        """
+        return self._channel.ensure_registered_as_writer()
+
+    def ensure_registered_as_reader(self):
+        """
+        Check whether the process is a valid reader. This method must be idempotent.
+        """
+        return self._channel.ensure_registered_as_reader()
+
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
+        if not self._background_thread_started:
+            self.start()
+            self._background_thread_started = True
+
+        self.queue.put((value, timeout))
+
+    def read(self, timeout: Optional[float] = None) -> Any:
+        # We don't allow to read if it is used for write.
+        # Otherwise we need to make self._channel thread-safe.
+        assert not self._background_thread_started
+        return self._channel.read(timeout)
+
+    def close(self) -> None:
+        self.queue.put(((_CloseSignal(), -1)))
+        self._channel.close()
+
+    def start(self):
+        self.queue = Queue()
+        self.t = threading.Thread(target=self._start_writer, daemon=True)
+        self.t.start()
+
+    def _start_writer(self):
+        # This function runs as a daemon, so be careful not to perform critical
+        # task here.
+        while True:
+            next_inp, timeout = self.queue.get()
+            if isinstance(next_inp, _CloseSignal):
+                break
+            self._channel.write(next_inp, timeout)
 
 
 @PublicAPI(stability="alpha")
@@ -534,7 +593,8 @@ class CompositeChannel(ChannelInterface):
         # Create a shared memory channel for the writer and the remote readers.
         if len(remote_reader_and_node_list) != 0:
             remote_channel = Channel(self._writer, remote_reader_and_node_list)
-            self._channels.add(remote_channel)
+            self._channels.add(BufferedRemoteChannel(remote_channel))
+            # self._channels.add(remote_channel)
             for reader, _ in remote_reader_and_node_list:
                 actor_id = self._get_actor_id(reader)
                 self._channel_dict[actor_id] = remote_channel
