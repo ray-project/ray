@@ -4091,8 +4091,6 @@
     - __suffix__: eks
       env: eks
       frequency: manual
-      cluster:
-        cluster_compute: data_ingest_benchmark_compute_gpu_eks.yaml
 
 # This test case will early stop the data ingestion iteration on the GPU actors.
 # This is a common usage in PyTorch Lightning
