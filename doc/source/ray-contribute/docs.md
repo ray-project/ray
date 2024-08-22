@@ -56,7 +56,7 @@ pip install -r requirements-doc.txt
 Don't use `-U` in this step. You don't want to upgrade dependencies because `requirements-doc.txt` pins exact versions you need to build the docs.
 
 ### Build documentation
-Before building, you can clean your environment first by running:
+Before building, clean your environment first by running:
 ```shell
 make clean
 ```
