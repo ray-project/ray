@@ -1899,13 +1899,6 @@ py_test(
 )
 
 py_test(
-    name = "test_random_encoder",
-    tags = ["team:rllib", "utils"],
-    size = "large",
-    srcs = ["utils/exploration/tests/test_random_encoder.py"]
-)
-
-py_test(
     name = "test_torch_utils",
     tags = ["team:rllib", "utils", "gpu"],
     size = "medium",

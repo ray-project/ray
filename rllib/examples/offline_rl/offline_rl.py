@@ -107,7 +107,6 @@ if __name__ == "__main__":
     num_iterations = 5
     min_reward = -300
 
-    # Test for torch framework (tf not implemented yet).
     cql_algorithm = cql.CQL(config=config)
     learnt = False
     for i in range(num_iterations):
