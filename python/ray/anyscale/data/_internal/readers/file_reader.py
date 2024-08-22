@@ -4,10 +4,14 @@ from typing import Any, Dict, Iterable, List, Optional
 
 import pyarrow
 
-from ray.data._internal.util import make_async_gen
+from ray.data._internal.util import call_with_retry, make_async_gen
 from ray.data.block import DataBatch
 from ray.data.context import DataContext
 from ray.data.datasource import Partitioning, PathPartitionParser
+from ray.data.datasource.file_based_datasource import (
+    OPEN_FILE_MAX_ATTEMPTS,
+    OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
+)
 
 
 # TODO(@bveeramani): Consolidate this with `FileBasedDatasource` so that there aren't
@@ -78,7 +82,15 @@ class FileReader(abc.ABC):
         else:
             open_args["compression"] = compression
 
-        file = filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
+        file = call_with_retry(
+            lambda: filesystem.open_input_stream(
+                path,
+                buffer_size=buffer_size,
+                **open_args,
+            ),
+            description=f"open file {path}",
+            match=ctx.retried_io_errors,
+        )
 
         if compression == "snappy":
             import snappy
@@ -121,7 +133,13 @@ class FileReader(abc.ABC):
                     parse = PathPartitionParser(self._partitioning)
                     partitions = parse(path)
 
-                file = self.open_input_source(path, filesystem=filesystem)
+                file = call_with_retry(
+                    lambda: self.open_input_source(path, filesystem=filesystem),
+                    description=f"open file {path}",
+                    match=ctx.retried_io_errors,
+                    max_attempts=OPEN_FILE_MAX_ATTEMPTS,
+                    max_backoff_s=OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
+                )
                 for batch in self.read_stream(file, path):
                     if self._include_paths:
                         batch = _add_column_to_batch(batch, "path", path)
