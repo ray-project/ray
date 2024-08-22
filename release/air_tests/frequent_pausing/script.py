@@ -52,7 +52,7 @@ class FrequentPausesScheduler(FIFOScheduler):
 tuner = Tuner(
     func,
     tune_config=TuneConfig(num_samples=2, scheduler=FrequentPausesScheduler()),
-    run_config=RunConfig(storage_path="/mnt/cluster_storage", name="frequent_pausing"),
+    run_config=RunConfig(storage_path="/mnt/local_storage", name="frequent_pausing"),
 )
 
 tuner.fit()
