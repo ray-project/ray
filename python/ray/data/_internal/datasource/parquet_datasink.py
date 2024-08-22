@@ -59,9 +59,9 @@ class ParquetDatasink(_FileDatasink):
     ) -> Any:
         import pyarrow.parquet as pq
 
-        blocks = list(blocks)
+        blocks = list(block for block in blocks if BlockAccessor.for_block(block).num_rows() > 0)
 
-        if all(BlockAccessor.for_block(block).num_rows() == 0 for block in blocks):
+        if len(blocks) == 0:
             return "skip"
 
         filename = self.filename_provider.get_filename_for_block(
