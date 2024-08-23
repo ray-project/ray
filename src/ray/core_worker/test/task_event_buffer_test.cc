@@ -326,8 +326,6 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
   ReadContentFromFile(
       vc, log_dir_ + "/events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
   EXPECT_EQ((int)vc.size(), num_events);
-  json event_data_arr_json = {};
-  json expected_event_data_arr_json = {};
   for (size_t i = 0; i < num_events; i++) {
     json export_event_as_json = json::parse(vc[i]);
     EXPECT_EQ(export_event_as_json["source_type"].get<std::string>(), "EXPORT_TASK");
@@ -336,27 +334,14 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
     EXPECT_EQ(export_event_as_json.contains("event_data"), true);
 
     json event_data = export_event_as_json["event_data"].get<json>();
-    event_data_arr_json.push_back(event_data);
 
     std::string expected_event_data_str;
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   *expected_data[i], &expected_event_data_str, options)
                   .ok());
     json expected_event_data = json::parse(expected_event_data_str);
-    expected_event_data_arr_json.push_back(expected_event_data);
+    EXPECT_EQ(event_data, expected_event_data);
   }
-
-  // Sort observed and expected event data json (array of events) for comparison.
-  // All events in a single flush get the same timestamp (because it is not part of
-  // event_data) and the order of events written may be different than received if events
-  // are dropped.
-  std::vector<json> event_data_arr_vec = event_data_arr_json.get<std::vector<json>>();
-  std::vector<json> expected_event_data_arr_vec =
-      expected_event_data_arr_json.get<std::vector<nlohmann::json>>();
-  std::sort(event_data_arr_vec.begin(), event_data_arr_vec.end());
-  std::sort(expected_event_data_arr_vec.begin(), expected_event_data_arr_vec.end());
-
-  EXPECT_EQ(event_data_arr_vec, expected_event_data_arr_vec);
 
   // Expect no more events.
   ASSERT_EQ(task_event_buffer_->GetNumTaskEventsStored(), 0);

@@ -192,7 +192,7 @@ enum TaskEventBufferCounter {
   kNumTaskProfileEventsStored,
   kNumTaskStatusEventsStored,
   kNumDroppedTaskAttemptsStored,
-  kNumDroppedTaskStatusEventsForExportAPIStored,
+  kNumTaskStatusEventsForExportAPIStored,
   kTotalNumTaskProfileEventDropped,
   kTotalNumTaskStatusEventDropped,
   kTotalNumTaskAttemptsReported,
@@ -311,9 +311,10 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Get data related to task status events to be send to GCS.
   ///
   /// \param[out] status_events_to_send Task status events to be sent.
-  /// \param[out] dropped_status_events_to_write Full task status events that were dropped
-  ///              and will not be send to GCS. These will only be written to the Export
-  ///              API.
+  /// \param[out] status_events_to_write_for_export Task status events that will
+  ///              be written to the Export API. This includes both status events
+  ///              that are sent to GCS, and as many dropped status events that
+  ///              fit in the buffer.
   /// \param[out] dropped_task_attempts_to_send Task attempts that were dropped due to
   ///             status events being dropped.
   void GetTaskStatusEventsToSend(
@@ -343,12 +344,12 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   /// Write task events for the Export API.
   ///
-  /// \param status_events_to_send Task status events to be written.
-  /// \param status_events_to_send Task status events that were dropped and will
-  ///           not be sent to GCS. These will still be written in the Export API.
+  /// \param status_events_to_write_for_export Task status events that will
+  ///              be written to the Export API. This includes both status events
+  ///              that are sent to GCS, and as many dropped status events that
+  ///              fit in the buffer.
   /// \param profile_events_to_send Task profile events to be written.
   void WriteExportData(
-      std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_send,
       std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_write_for_export,
       std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send);
 
@@ -421,8 +422,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_
       ABSL_GUARDED_BY(mutex_);
 
-  /// Status events that were dropped but will still be written in
-  /// the export API. Circular buffer to limit memory for these dropped events.
+  /// Status events that will be written in the export API. This could
+  /// contain events that were dropped from being sent to GCS. A circular
+  /// buffer is used to limit memory.
   boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_for_export_
       ABSL_GUARDED_BY(mutex_);
 
