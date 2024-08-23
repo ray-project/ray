@@ -10,7 +10,7 @@ from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import PublicAPI, DeveloperAPI
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -475,68 +475,55 @@ class Channel(ChannelInterface):
         Close this channel by setting the error bit on both the writer_ref and the
         reader_ref.
         """
-        print("SANG-TODO close!")
         self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
         if self.is_local_node(self._reader_node_id):
             self.ensure_registered_as_reader()
         self._worker.core_worker.experimental_channel_set_error(self._reader_ref)
 
 
-class _CloseSignal:
-    pass
+@DeveloperAPI
+class BufferedChannel(ChannelInterface):
 
-
-# @DeveloperAPI
-class BufferedRemoteChannel(ChannelInterface):
-
-    def __init__(self, channel: ChannelInterface):
-        self._channel = channel
-        self._background_thread_started = False
-        self.t = None
-        self.queue = None
+    def __init__(
+            self,
+            writer: Optional[ray.actor.ActorHandle],
+            reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+            capacity: int = 10,
+        ):
+        self._capacity = capacity
+        self._channels = [Channel(writer, reader_and_node_list) for _ in range(capacity)]
+        self._next_write_index = 0
+        self._next_read_index = 0
 
     def ensure_registered_as_writer(self):
         """
         Check whether the process is a valid writer. This method must be idempotent.
         """
-        return self._channel.ensure_registered_as_writer()
+        for chan in self._channels:
+            chan.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self):
         """
         Check whether the process is a valid reader. This method must be idempotent.
         """
-        return self._channel.ensure_registered_as_reader()
+        for chan in self._channels:
+            chan.ensure_registered_as_reader()
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
-        if not self._background_thread_started:
-            self.start()
-            self._background_thread_started = True
-
-        self.queue.put((value, timeout))
+        self._channels[self._next_write_index].write(value, timeout)
+        self._next_write_index += 1
+        self._next_write_index %= self._capacity
 
     def read(self, timeout: Optional[float] = None) -> Any:
-        # We don't allow to read if it is used for write.
-        # Otherwise we need to make self._channel thread-safe.
-        assert not self._background_thread_started
-        return self._channel.read(timeout)
+        output = self._channels[self._next_read_index].read(timeout)
+        self._next_read_index += 1
+        self._next_read_index %= self._capacity
+        return output
 
     def close(self) -> None:
-        self.queue.put(((_CloseSignal(), -1)))
-        self._channel.close()
-
-    def start(self):
-        self.queue = Queue()
-        self.t = threading.Thread(target=self._start_writer, daemon=True)
-        self.t.start()
-
-    def _start_writer(self):
-        # This function runs as a daemon, so be careful not to perform critical
-        # task here.
-        while True:
-            next_inp, timeout = self.queue.get()
-            if isinstance(next_inp, _CloseSignal):
-                break
-            self._channel.write(next_inp, timeout)
+        # self.queue.put(((_CloseSignal(), -1)))
+        for chan in self._channels:
+            chan.close()
 
 
 @PublicAPI(stability="alpha")
@@ -593,8 +580,9 @@ class CompositeChannel(ChannelInterface):
         # Create a shared memory channel for the writer and the remote readers.
         if len(remote_reader_and_node_list) != 0:
             remote_channel = Channel(self._writer, remote_reader_and_node_list)
-            self._channels.add(BufferedRemoteChannel(remote_channel))
-            # self._channels.add(remote_channel)
+            remote_channel = BufferedChannel(self._writer, remote_reader_and_node_list)
+            self._channels.add(remote_channel)
+
             for reader, _ in remote_reader_and_node_list:
                 actor_id = self._get_actor_id(reader)
                 self._channel_dict[actor_id] = remote_channel

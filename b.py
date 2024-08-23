@@ -30,7 +30,8 @@ dag = dag.experimental_compile()
 
 output_refs = []
 s = time.time()
-for i in range(2):
+for i in range(100):
+    print("submit!")
     output_refs.append(dag.execute(i))
 for ref in output_refs:
     ray.get(ref)

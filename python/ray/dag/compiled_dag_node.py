@@ -1708,7 +1708,6 @@ class CompiledDAG:
 
     def __del__(self):
         monitor = getattr(self, "_monitor", None)
-        print("SANG-TODO del", monitor)
         if monitor is not None:
             # Teardown asynchronously.
             # NOTE(swang): Somehow, this can get called after the CoreWorker
