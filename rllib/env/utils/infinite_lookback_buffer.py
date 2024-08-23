@@ -1,6 +1,8 @@
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import gymnasium as gym
+import msgpack
+import msgpack_numpy as m
 import numpy as np
 import tree  # pip install dm_tree
 
@@ -33,6 +35,32 @@ class InfiniteLookbackBuffer:
         self.finalized = not isinstance(self.data, list)
         self.space_struct = None
         self.space = space
+
+    def get_state(self, encode=False) -> Dict[str, Any]:
+
+        return {
+            "data": msgpack.packb(self.data, default=m.encode) if encode else self.data,
+            "lookback": self.lookback,
+            "finalized": self.finalized,
+            "space_struct": self.space_struct,
+            "space": self.space,
+        }
+
+    @staticmethod
+    def from_state(state: Dict[str, Any], decode=False) -> None:
+
+        buffer = InfiniteLookbackBuffer()
+        buffer.data = (
+            msgpack.unpackb(state["data"], default=m.decode)
+            if decode
+            else state["data"]
+        )
+        buffer.lookback = state["lookback"]
+        buffer.finalized = state["finalized"]
+        buffer.space_struct = state["space_struct"]
+        buffer.space = state["space"]
+
+        return buffer
 
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""

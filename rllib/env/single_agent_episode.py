@@ -323,7 +323,7 @@ class SingleAgentEpisode:
             if isinstance(v, InfiniteLookbackBuffer):
                 self.extra_model_outputs[k] = v
             else:
-                # We cannot use the defaultdict's own constructore here as this would
+                # We cannot use the defaultdict's own constructor here as this would
                 # auto-set the lookback buffer to 0 (there is no data passed to that
                 # constructor). Then, when we manually have to set the data property,
                 # the lookback buffer would still be (incorrectly) 0.
@@ -1700,6 +1700,8 @@ class SingleAgentEpisode:
         Returns:
             A dict containing all the data from the episode.
         """
+        infos = self.infos.get_state()
+        infos["data"] = np.array([info if info else None for info in infos["data"]])
         return {
             "id_": self.id_,
             "agent_id": self.agent_id,
@@ -1707,11 +1709,16 @@ class SingleAgentEpisode:
             "multi_agent_episode_id": self.multi_agent_episode_id,
             # TODO (simon): Check, if we need to have a `get_state` method for
             #  `InfiniteLookbackBuffer` and call it here.
-            "observations": self.observations,
-            "actions": self.actions,
-            "rewards": self.rewards,
-            "infos": self.infos,
-            "extra_model_outputs": self.extra_model_outputs,
+            "observations": self.observations.get_state(),
+            "actions": self.actions.get_state(),
+            "rewards": self.rewards.get_state(),
+            "infos": infos,  # self.infos.get_state(),
+            "extra_model_outputs": {
+                k: v.get_state() if v else v
+                for k, v in self.extra_model_outputs.items()
+            }
+            if len(self.extra_model_outputs) > 0
+            else None,
             "is_terminated": self.is_terminated,
             "is_truncated": self.is_truncated,
             "t_started": self.t_started,
@@ -1720,7 +1727,9 @@ class SingleAgentEpisode:
             "_action_space": self._action_space,
             "_start_time": self._start_time,
             "_last_step_time": self._last_step_time,
-            "_temporary_timestep_data": self._temporary_timestep_data,
+            "_temporary_timestep_data": dict(self._temporary_timestep_data)
+            if len(self._temporary_timestep_data) > 0
+            else None,
         }
 
     @staticmethod
@@ -1739,11 +1748,24 @@ class SingleAgentEpisode:
         episode.agent_id = state["agent_id"]
         episode.module_id = state["module_id"]
         episode.multi_agent_episode_id = state["multi_agent_episode_id"]
-        episode.observations = state["observations"]
-        episode.actions = state["actions"]
-        episode.rewards = state["rewards"]
-        episode.infos = state["infos"]
-        episode.extra_model_outputs = state["extra_model_outputs"]
+        episode.observations = InfiniteLookbackBuffer.from_state(state["observations"])
+        episode.actions = InfiniteLookbackBuffer.from_state(state["actions"])
+        episode.rewards = InfiniteLookbackBuffer.from_state(state["rewards"])
+        episode.infos = InfiniteLookbackBuffer.from_state(
+            state["infos"] if state["infos"][0] else np.array()
+        )
+        episode.extra_model_outputs = (
+            {
+                k: InfiniteLookbackBuffer.from_state(v)
+                for k, v in state["extra_model_outputs"].items()
+            }
+            if state["extra_model_outputs"]
+            else defaultdict(
+                functools.partial(
+                    InfiniteLookbackBuffer, lookback=episode.observations.lookback
+                ),
+            )
+        )
         episode.is_terminated = state["is_terminated"]
         episode.is_truncated = state["is_truncated"]
         episode.t_started = state["t_started"]
@@ -1752,8 +1774,9 @@ class SingleAgentEpisode:
         episode._action_space = state["_action_space"]
         episode._start_time = state["_start_time"]
         episode._last_step_time = state["_last_step_time"]
-        episode._temporary_timestep_data = state["_temporary_timestep_data"]
-
+        episode._temporary_timestep_data = defaultdict(
+            list, state["_temporary_timestep_data"] or {}
+        )
         # Validate the episode.
         episode.validate()
 

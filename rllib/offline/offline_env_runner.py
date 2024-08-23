@@ -124,7 +124,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         # Add data to the buffers.
         if self.output_write_episodes:
-            self._samples.extend(samples)
+            self._samples.extend([eps.get_state() for eps in samples])
         else:
             self._map_episodes_to_data(samples)
 
