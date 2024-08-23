@@ -62,7 +62,6 @@ def _set_xla_env_vars():
     os.environ["FI_EFA_FORK_SAFE"] = "1"
     os.environ["XLA_TRANSFER_SEED_ASYNC"] = "1"
     os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
-    os.environ["NCCL_ASYNC_ERROR_HANDLING"] = "1"
 
 
 def _setup_xla_torch_process_group():
