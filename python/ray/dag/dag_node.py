@@ -377,11 +377,11 @@ class DAGNode(DAGNodeBase):
                 # in some invalid cases, some nodes may not be descendants of the
                 # root. Therefore, we also add upstream nodes to the queue so that
                 # a meaningful error message can be raised when the DAG is compiled.
-                for node in chain.from_iterable(
+                for neighbor in chain.from_iterable(
                     [node._downstream_nodes, node._upstream_nodes]
                 ):
-                    if node not in visited:
-                        queue.append(node)
+                    if neighbor not in visited:
+                        queue.append(neighbor)
 
     def _find_root(self) -> "DAGNode":
         """
