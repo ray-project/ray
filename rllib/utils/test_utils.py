@@ -13,7 +13,6 @@ import os
 import pprint
 import random
 import re
-import sys
 import time
 import tree  # pip install dm_tree
 from typing import (
@@ -22,7 +21,6 @@ from typing import (
     Dict,
     List,
     Optional,
-    Sequence,
     Tuple,
     Type,
     Union,
@@ -62,13 +60,6 @@ if TYPE_CHECKING:
 
 jax, _ = try_import_jax()
 tf1, tf, tfv = try_import_tf()
-if tf1:
-    eager_mode = None
-    try:
-        from tensorflow.python.eager.context import eager_mode
-    except (ImportError, ModuleNotFoundError):
-        pass
-
 torch, _ = try_import_torch()
 
 logger = logging.getLogger(__name__)
@@ -358,8 +349,14 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             assert bool(x) is not bool(y), f"ERROR: x ({x}) is y ({y})!"
         else:
             assert bool(x) is bool(y), f"ERROR: x ({x}) is not y ({y})!"
-    # Nones or primitives.
-    elif x is None or y is None or isinstance(x, (str, int)):
+    # Nones or primitives (excluding int vs float, which should be compared with
+    # tolerance/decimals as well).
+    elif (
+        x is None
+        or y is None
+        or isinstance(x, str)
+        or (isinstance(x, int) and isinstance(y, int))
+    ):
         if false is True:
             assert x != y, f"ERROR: x ({x}) is the same as y ({y})!"
         else:
@@ -376,6 +373,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             if false is False:
                 raise e
     # Everything else (assume numeric or tf/torch.Tensor).
+    # Also includes int vs float comparison, which is performed with tolerance/decimals.
     else:
         if tf1 is not None:
             # y should never be a Tensor (y=expected value).
@@ -945,105 +943,6 @@ def check_train_results(train_results: ResultDict):
                 assert np.isscalar(value), f"'key' value not a scalar ({value})!"
 
     return train_results
-
-
-def framework_iterator(
-    config: Optional["AlgorithmConfig"] = None,
-    frameworks: Sequence[str] = ("tf2", "tf", "torch"),
-    session: bool = False,
-    time_iterations: Optional[dict] = None,
-) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
-    """An generator that allows for looping through n frameworks for testing.
-
-    Provides the correct config entries ("framework") as well
-    as the correct eager/non-eager contexts for tf/tf2.
-
-    Args:
-        config: An optional config dict or AlgorithmConfig object. This will be modified
-            (value for "framework" changed) depending on the iteration.
-        frameworks: A list/tuple of the frameworks to be tested.
-            Allowed are: "tf2", "tf", "torch", and None.
-        session: If True and only in the tf-case: Enter a tf.Session()
-            and yield that as second return value (otherwise yield (fw, None)).
-            Also sets a seed (42) on the session to make the test
-            deterministic.
-        time_iterations: If provided, will write to the given dict (by
-            framework key) the times in seconds that each (framework's)
-            iteration takes.
-
-    Yields:
-        If `session` is False: The current framework [tf2|tf|torch] used.
-        If `session` is True: A tuple consisting of the current framework
-        string and the tf1.Session (if fw="tf", otherwise None).
-    """
-    config = config or {}
-    frameworks = [frameworks] if isinstance(frameworks, str) else list(frameworks)
-
-    for fw in frameworks:
-        # Skip tf if on new API stack.
-        if fw == "tf" and config.get("enable_rl_module_and_learner", False):
-            logger.warning("Skipping `framework=tf` (new API stack configured)!")
-            continue
-        # Skip if tf/tf2 and py >= 3.11.
-        elif fw in ["tf", "tf2"] and (
-            sys.version_info.major == 3 and sys.version_info.minor >= 9
-        ):
-            logger.warning("Skipping `framework=tf/tf2` (python >= 3.9)!")
-            continue
-
-        # Skip non-installed frameworks.
-        if fw == "torch" and not torch:
-            logger.warning("framework_iterator skipping torch (not installed)!")
-            continue
-        if fw != "torch" and not tf:
-            logger.warning(
-                "framework_iterator skipping {} (tf not installed)!".format(fw)
-            )
-            continue
-        elif fw == "tf2" and tfv != 2:
-            logger.warning("framework_iterator skipping tf2.x (tf version is < 2.0)!")
-            continue
-        elif fw == "jax" and not jax:
-            logger.warning("framework_iterator skipping JAX (not installed)!")
-            continue
-        assert fw in ["tf2", "tf", "torch", "jax", None]
-
-        # Do we need a test session?
-        sess = None
-        if fw == "tf" and session is True:
-            sess = tf1.Session()
-            sess.__enter__()
-            tf1.set_random_seed(42)
-
-        if isinstance(config, dict):
-            config["framework"] = fw
-        else:
-            config.framework(fw)
-
-        eager_ctx = None
-        # Enable eager mode for tf2.
-        if fw == "tf2":
-            eager_ctx = eager_mode()
-            eager_ctx.__enter__()
-            assert tf1.executing_eagerly()
-        # Make sure, eager mode is off.
-        elif fw == "tf":
-            assert not tf1.executing_eagerly()
-
-        # Yield current framework + tf-session (if necessary).
-        print(f"framework={fw}")
-        time_started = time.time()
-        yield fw if session is False else (fw, sess)
-        if time_iterations is not None:
-            time_total = time.time() - time_started
-            time_iterations[fw] = time_total
-            print(f".. took {time_total}sec")
-
-        # Exit any context we may have entered.
-        if eager_ctx:
-            eager_ctx.__exit__(None, None, None)
-        elif sess:
-            sess.__exit__(None, None, None)
 
 
 @Deprecated(new="run_learning_tests_from_yaml_or_py(config_files=...)", error=False)
@@ -1809,47 +1708,46 @@ def check_reproducibilty(
             )
         )
 
-        for fw in framework_iterator(algo_config, **fw_kwargs):
-            print(
-                f"Testing reproducibility of {algo_class.__name__}"
-                f" with {num_workers} workers on fw = {fw}"
-            )
-            print("/// config")
-            pprint.pprint(algo_config.to_dict())
-            # test tune.Tuner().fit() reproducibility
-            results1 = tune.Tuner(
-                algo_class,
-                param_space=algo_config.to_dict(),
-                run_config=air.RunConfig(stop=stop_dict, verbose=1),
-            ).fit()
-            results1 = results1.get_best_result().metrics
+        print(
+            f"Testing reproducibility of {algo_class.__name__}"
+            f" with {num_workers} workers"
+        )
+        print("/// config")
+        pprint.pprint(algo_config.to_dict())
+        # test tune.Tuner().fit() reproducibility
+        results1 = tune.Tuner(
+            algo_class,
+            param_space=algo_config.to_dict(),
+            run_config=air.RunConfig(stop=stop_dict, verbose=1),
+        ).fit()
+        results1 = results1.get_best_result().metrics
 
-            results2 = tune.Tuner(
-                algo_class,
-                param_space=algo_config.to_dict(),
-                run_config=air.RunConfig(stop=stop_dict, verbose=1),
-            ).fit()
-            results2 = results2.get_best_result().metrics
+        results2 = tune.Tuner(
+            algo_class,
+            param_space=algo_config.to_dict(),
+            run_config=air.RunConfig(stop=stop_dict, verbose=1),
+        ).fit()
+        results2 = results2.get_best_result().metrics
 
-            # Test rollout behavior.
+        # Test rollout behavior.
+        check(
+            results1[ENV_RUNNER_RESULTS]["hist_stats"],
+            results2[ENV_RUNNER_RESULTS]["hist_stats"],
+        )
+        # As well as training behavior (minibatch sequence during SGD
+        # iterations).
+        # As well as training behavior (minibatch sequence during SGD
+        # iterations).
+        if algo_config.enable_rl_module_and_learner:
             check(
-                results1[ENV_RUNNER_RESULTS]["hist_stats"],
-                results2[ENV_RUNNER_RESULTS]["hist_stats"],
+                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
             )
-            # As well as training behavior (minibatch sequence during SGD
-            # iterations).
-            # As well as training behavior (minibatch sequence during SGD
-            # iterations).
-            if algo_config.enable_rl_module_and_learner:
-                check(
-                    results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
-                    results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
-                )
-            else:
-                check(
-                    results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-                    results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-                )
+        else:
+            check(
+                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+            )
 
 
 def get_cartpole_dataset_reader(batch_size: int = 1) -> "DatasetReader":
@@ -2030,85 +1928,80 @@ def test_ckpt_restore(
     if replay_buffer:
         config["store_buffer_in_checkpoints"] = True
 
-    frameworks = (["tf2"] if tf2 else []) + ["torch", "tf"]
-    for fw in framework_iterator(config, frameworks=frameworks):
-        env = gym.make(env_name)
-        alg1 = config.environment(env_name).framework(fw).build()
-        alg2 = config.environment(env_name).build()
+    env = gym.make(env_name)
+    alg1 = config.environment(env_name).framework("torch").build()
+    alg2 = config.environment(env_name).build()
 
-        policy1 = alg1.get_policy()
+    policy1 = alg1.get_policy()
 
-        res = alg1.train()
-        print("current status: " + str(res))
+    res = alg1.train()
+    print("current status: " + str(res))
 
-        # Check optimizer state as well.
-        optim_state = policy1.get_state().get("_optimizer_variables")
+    # Check optimizer state as well.
+    optim_state = policy1.get_state().get("_optimizer_variables")
 
-        checkpoint = alg1.save()
+    checkpoint = alg1.save()
 
-        # Test if we can restore multiple times (at least twice, assuming failure
-        # would mainly stem from improperly reused variables)
-        for num_restores in range(2):
-            # Sync the models
-            alg2.restore(checkpoint)
+    # Test if we can restore multiple times (at least twice, assuming failure
+    # would mainly stem from improperly reused variables)
+    for num_restores in range(2):
+        # Sync the models
+        alg2.restore(checkpoint)
 
-        # Compare optimizer state with re-loaded one.
-        if optim_state:
-            s2 = alg2.get_policy().get_state().get("_optimizer_variables")
-            # Tf -> Compare states 1:1.
-            if fw in ["tf2", "tf"]:
-                check(s2, optim_state)
-            # For torch, optimizers have state_dicts with keys=params,
-            # which are different for the two models (ignore these
-            # different keys, but compare all values nevertheless).
-            else:
-                for i, s2_ in enumerate(s2):
-                    check(
-                        list(s2_["state"].values()),
-                        list(optim_state[i]["state"].values()),
-                    )
-
-        # Compare buffer content with restored one.
-        if replay_buffer:
-            data = alg1.local_replay_buffer.replay_buffers["default_policy"]._storage[
-                42 : 42 + 42
-            ]
-            new_data = alg2.local_replay_buffer.replay_buffers[
-                "default_policy"
-            ]._storage[42 : 42 + 42]
-            check(data, new_data)
-
-        # Check, whether the eval EnvRunnerGroup has the same policies and
-        # `policy_mapping_fn`.
-        if eval_env_runner_group:
-            eval_mapping_src = inspect.getsource(alg1.eval_env_runner.policy_mapping_fn)
+    # Compare optimizer state with re-loaded one.
+    if optim_state:
+        s2 = alg2.get_policy().get_state().get("_optimizer_variables")
+        # Tf -> Compare states 1:1.
+        # For torch, optimizers have state_dicts with keys=params,
+        # which are different for the two models (ignore these
+        # different keys, but compare all values nevertheless).
+        for i, s2_ in enumerate(s2):
             check(
-                eval_mapping_src,
-                inspect.getsource(alg2.eval_env_runner.policy_mapping_fn),
-            )
-            check(
-                eval_mapping_src,
-                inspect.getsource(alg2.env_runner.policy_mapping_fn),
-                false=True,
+                list(s2_["state"].values()),
+                list(optim_state[i]["state"].values()),
             )
 
-        for _ in range(1):
-            obs = env.observation_space.sample()
-            a1 = _get_mean_action_from_algorithm(alg1, obs)
-            a2 = _get_mean_action_from_algorithm(alg2, obs)
-            print("Checking computed actions", alg1, obs, a1, a2)
-            if abs(a1 - a2) > 0.1:
-                raise AssertionError(
-                    "algo={} [a1={} a2={}]".format(str(alg1.__class__), a1, a2)
-                )
-        # Stop algo 1.
-        alg1.stop()
+    # Compare buffer content with restored one.
+    if replay_buffer:
+        data = alg1.local_replay_buffer.replay_buffers["default_policy"]._storage[
+            42 : 42 + 42
+        ]
+        new_data = alg2.local_replay_buffer.replay_buffers["default_policy"]._storage[
+            42 : 42 + 42
+        ]
+        check(data, new_data)
 
-        if run_restored_algorithm:
-            # Check that algo 2 can still run.
-            print("Starting second run on Algo 2...")
-            alg2.train()
-        alg2.stop()
+    # Check, whether the eval EnvRunnerGroup has the same policies and
+    # `policy_mapping_fn`.
+    if eval_env_runner_group:
+        eval_mapping_src = inspect.getsource(alg1.eval_env_runner.policy_mapping_fn)
+        check(
+            eval_mapping_src,
+            inspect.getsource(alg2.eval_env_runner.policy_mapping_fn),
+        )
+        check(
+            eval_mapping_src,
+            inspect.getsource(alg2.env_runner.policy_mapping_fn),
+            false=True,
+        )
+
+    for _ in range(1):
+        obs = env.observation_space.sample()
+        a1 = _get_mean_action_from_algorithm(alg1, obs)
+        a2 = _get_mean_action_from_algorithm(alg2, obs)
+        print("Checking computed actions", alg1, obs, a1, a2)
+        if abs(a1 - a2) > 0.1:
+            raise AssertionError(
+                "algo={} [a1={} a2={}]".format(str(alg1.__class__), a1, a2)
+            )
+    # Stop algo 1.
+    alg1.stop()
+
+    if run_restored_algorithm:
+        # Check that algo 2 can still run.
+        print("Starting second run on Algo 2...")
+        alg2.train()
+    alg2.stop()
 
 
 def check_supported_spaces(
@@ -2137,11 +2030,8 @@ def check_supported_spaces(
 
 
     """
-    # do these imports here because otherwise we have circular imports
+    # Do these imports here because otherwise we have circular imports.
     from ray.rllib.examples.envs.classes.random_env import RandomEnv
-    from ray.rllib.models.tf.complex_input_net import ComplexInputNetwork as ComplexNet
-    from ray.rllib.models.tf.fcnet import FullyConnectedNetwork as FCNet
-    from ray.rllib.models.tf.visionnet import VisionNetwork as VisionNet
     from ray.rllib.models.torch.complex_input_net import (
         ComplexInputNetwork as TorchComplexNet,
     )
@@ -2192,8 +2082,6 @@ def check_supported_spaces(
         "tuple",
         "dict",
     ]
-
-    rlmodule_supported_frameworks = ("torch", "tf2")
 
     # The action spaces that we test RLModules with
     rlmodule_supported_action_spaces = ["discrete", "continuous"]
@@ -2261,25 +2149,16 @@ def check_supported_spaces(
             if alg not in ["SAC", "PPO"]:
                 # 2D (image) input: Expect VisionNet.
                 if o_name in ["atari", "image"]:
-                    if fw == "torch":
-                        assert isinstance(algo.get_policy().model, TorchVisionNet)
-                    else:
-                        assert isinstance(algo.get_policy().model, VisionNet)
+                    assert isinstance(algo.get_policy().model, TorchVisionNet)
                 # 1D input: Expect FCNet.
                 elif o_name == "continuous":
-                    if fw == "torch":
-                        assert isinstance(algo.get_policy().model, TorchFCNet)
-                    else:
-                        assert isinstance(algo.get_policy().model, FCNet)
+                    assert isinstance(algo.get_policy().model, TorchFCNet)
                 # Could be either one: ComplexNet (if disabled Preprocessor)
                 # or FCNet (w/ Preprocessor).
                 elif o_name == "vector2d":
-                    if fw == "torch":
-                        assert isinstance(
-                            algo.get_policy().model, (TorchComplexNet, TorchFCNet)
-                        )
-                    else:
-                        assert isinstance(algo.get_policy().model, (ComplexNet, FCNet))
+                    assert isinstance(
+                        algo.get_policy().model, (TorchComplexNet, TorchFCNet)
+                    )
             if train:
                 algo.train()
             algo.stop()
@@ -2288,21 +2167,14 @@ def check_supported_spaces(
     if not frameworks:
         frameworks = ("tf2", "tf", "torch")
 
-    if config.enable_rl_module_and_learner:
-        # Only test the frameworks that are supported by RLModules.
-        frameworks = tuple(
-            fw for fw in frameworks if fw in rlmodule_supported_frameworks
-        )
-
     _do_check_remote = ray.remote(_do_check)
     _do_check_remote = _do_check_remote.options(num_gpus=1 if use_gpu else 0)
-    for _ in framework_iterator(config, frameworks=frameworks):
-        # Test all action spaces first.
-        for a_name in action_spaces_to_test.keys():
-            o_name = default_observation_space
-            ray.get(_do_check_remote.remote(alg, config, a_name, o_name))
+    # Test all action spaces first.
+    for a_name in action_spaces_to_test.keys():
+        o_name = default_observation_space
+        ray.get(_do_check_remote.remote(alg, config, a_name, o_name))
 
-        # Now test all observation spaces.
-        for o_name in observation_spaces_to_test.keys():
-            a_name = default_action_space
-            ray.get(_do_check_remote.remote(alg, config, a_name, o_name))
+    # Now test all observation spaces.
+    for o_name in observation_spaces_to_test.keys():
+        a_name = default_action_space
+        ray.get(_do_check_remote.remote(alg, config, a_name, o_name))
