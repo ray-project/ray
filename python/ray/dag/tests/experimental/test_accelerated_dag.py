@@ -1185,6 +1185,55 @@ class TestLeafNode:
         compiled_dag.teardown()
 
 
+def test_output_node(ray_start_regular):
+    @ray.remote
+    class Worker:
+        def __init__(self):
+            pass
+
+        def echo(self, data):
+            return data
+
+    worker1 = Worker.remote()
+    worker2 = Worker.remote()
+    worker3 = Worker.remote()
+    with pytest.raises(ValueError):
+        with InputNode() as input_data:
+            dag = MultiOutputNode(worker1.echo.bind(input_data))
+
+    with InputNode() as input_data:
+        dag = MultiOutputNode([worker1.echo.bind(input_data)])
+    compiled_dag = dag.experimental_compile()
+
+    assert ray.get(compiled_dag.execute(1)) == [1]
+    assert ray.get(compiled_dag.execute(2)) == [2]
+    compiled_dag.teardown()
+
+    with InputNode() as input_data:
+        dag = MultiOutputNode(
+            [worker1.echo.bind(input_data.x), worker2.echo.bind(input_data.y)]
+        )
+    compiled_dag = dag.experimental_compile()
+
+    ref = compiled_dag.execute(x=1, y=2)
+    assert ray.get(ref) == [1, 2]
+    compiled_dag.teardown()
+
+    with InputNode() as input_data:
+        dag = MultiOutputNode(
+            [
+                worker1.echo.bind(input_data.x),
+                worker2.echo.bind(input_data.y),
+                worker3.echo.bind(input_data.x),
+            ]
+        )
+    compiled_dag = dag.experimental_compile()
+
+    ref = compiled_dag.execute(x=1, y=2)
+    assert ray.get(ref) == [1, 2, 1]
+    compiled_dag.teardown()
+
+
 def test_simulate_pipeline_parallelism(ray_start_regular):
     """
     This pattern simulates the case of pipeline parallelism training, where `w0_input`
