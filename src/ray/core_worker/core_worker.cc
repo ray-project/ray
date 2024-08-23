@@ -3125,18 +3125,19 @@ Status CoreWorker::ExecuteTask(
 }
 
 Status CoreWorker::SealReturnObject(const ObjectID &return_id,
-                                    std::shared_ptr<RayObject> return_object,
+                                    const std::shared_ptr<RayObject> &return_object,
                                     const ObjectID &generator_id,
                                     const rpc::Address &caller_address) {
   RAY_LOG(DEBUG).WithField(return_id) << "Sealing return object";
-  Status status = Status::OK();
+
   RAY_CHECK(return_object);
   RAY_CHECK(!options_.is_local_mode);
-  std::unique_ptr<rpc::Address> caller_address_ptr =
-      std::make_unique<rpc::Address>(caller_address);
+
+  Status status = Status::OK();
+  auto caller_address_ptr = std::make_unique<rpc::Address>(caller_address);
+
   if (return_object->GetData() != nullptr && return_object->GetData()->IsPlasmaBuffer()) {
-    status = SealExisting(
-        return_id, /*pin_object=*/true, generator_id, std::move(caller_address_ptr));
+    status = SealExisting(return_id, true, generator_id, caller_address_ptr);
     if (!status.ok()) {
       RAY_LOG(FATAL).WithField(return_id)
           << "Failed to seal object in store: " << status.message();
@@ -3235,13 +3236,13 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
           }
         });
     return true;
-  } else {
-    // Failed to get the existing copy of the return object. It must have been
-    // evicted before we could pin it.
-    // TODO(swang): We should allow the owner to retry this task instead of
-    // immediately returning an error to the application.
-    return false;
   }
+
+  // Failed to get the existing copy of the return object. It must have been
+  // evicted before we could pin it.
+  // TODO(swang): We should allow the owner to retry this task instead of
+  // immediately returning an error to the application.
+  return false;
 }
 
 ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
@@ -4308,8 +4309,8 @@ void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,
                                     rpc::SpillObjectsReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
   if (options_.spill_objects != nullptr) {
-    auto object_refs =
-        VectorFromProtobuf<rpc::ObjectReference>(request.object_refs_to_spill());
+    auto object_refs = VectorFromProtobuf<rpc::ObjectReference>(
+        std::move(*request.mutable_object_refs_to_spill()));
     std::vector<std::string> object_urls = options_.spill_objects(object_refs);
     for (size_t i = 0; i < object_urls.size(); i++) {
       reply->add_spilled_objects_url(std::move(object_urls[i]));

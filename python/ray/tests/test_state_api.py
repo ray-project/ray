@@ -794,7 +794,9 @@ async def test_api_manager_list_nodes(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     id = b"1234"
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[generate_node_data(id), generate_node_data(b"12345")]
+        node_info_list=[generate_node_data(id), generate_node_data(b"12345")],
+        total=2,
+        num_filtered=0,
     )
     result = await state_api_manager.list_nodes(option=create_api_options())
     data = result.result
@@ -814,6 +816,11 @@ async def test_api_manager_list_nodes(state_api_manager):
     Test limit
     """
     assert len(result.result) == 2
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[generate_node_data(id)],
+        total=2,
+        num_filtered=1,
+    )
     result = await state_api_manager.list_nodes(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
@@ -827,6 +834,11 @@ async def test_api_manager_list_nodes(state_api_manager):
         result = await state_api_manager.list_nodes(
             option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[generate_node_data(id)],
+        total=2,
+        num_filtered=1,
+    )
     result = await state_api_manager.list_nodes(
         option=create_api_options(filters=[("node_id", "=", bytearray(id).hex())])
     )
