@@ -625,7 +625,6 @@ def test_dag_exception_chained(ray_start_regular, capsys):
     compiled_dag.teardown()
 
 
-# Pending
 def test_dag_exception_multi_output(ray_start_regular, capsys):
     # Test application throwing exceptions with a DAG with multiple outputs.
     a = Actor.remote(0)
@@ -891,7 +890,6 @@ def test_dag_fault_tolerance(ray_start_regular):
     compiled_dag.teardown()
 
 
-# Pending
 def test_dag_fault_tolerance_sys_exit(ray_start_regular):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=True)
@@ -908,16 +906,17 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular):
         for j in range(len(actors)):
             assert ray.get(refs[j]) == i + 1
 
-    # with pytest.raises(RayChannelError, match="Channel closed."):
-    #     for i in range(99):
-    #         ref = compiled_dag.execute(1)
-    #         ray.get(ref)
+    with pytest.raises(RayChannelError, match="Channel closed."):
+        for i in range(99):
+            refs = compiled_dag.execute(1)
+            for j in range(len(actors)):
+                ray.get(refs[j])
 
     # Remaining actors are still alive.
-    # with pytest.raises(ray.exceptions.RayActorError):
-    #     ray.get(actors[0].echo.remote("hello"))
-    # actors.pop(0)
-    # ray.get([actor.echo.remote("hello") for actor in actors])
+    with pytest.raises(ray.exceptions.RayActorError):
+        ray.get(actors[0].echo.remote("hello"))
+    actors.pop(0)
+    ray.get([actor.echo.remote("hello") for actor in actors])
 
     # Remaining actors can be reused.
     with InputNode() as i:
@@ -1422,7 +1421,6 @@ class TestActorInputOutput:
         ref = replica.call.remote(1)
         assert ray.get(ref) == 3
 
-    # Pending
     def test_multiple_readers_multiple_writers(ray_start_cluster):
         """
         Replica -> Worker1 -> Replica
@@ -1442,8 +1440,7 @@ class TestActorInputOutput:
                 self.compiled_dag = dag.experimental_compile()
 
             def call(self, value):
-                ref = self.compiled_dag.execute(value)
-                return ray.get(ref)
+                return [ray.get(ref) for ref in self.compiled_dag.execute(value)]
 
         replica = Replica.remote()
         ref = replica.call.remote(1)
@@ -1477,7 +1474,6 @@ class TestActorInputOutput:
         ref = replica.call.remote(1)
         assert ray.get(ref) == 4
 
-    # Pending
     def test_single_reader_multiple_writers(ray_start_cluster):
         """
         Replica -> Worker1 -> Worker1 -> Replica
@@ -1499,7 +1495,7 @@ class TestActorInputOutput:
                 self.compiled_dag = dag.experimental_compile()
 
             def call(self, value):
-                return ray.get(self.compiled_dag.execute(value))
+                return [ray.get(ref) for ref in self.compiled_dag.execute(value)]
 
         replica = Replica.remote()
         ref = replica.call.remote(1)

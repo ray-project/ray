@@ -197,8 +197,9 @@ def test_pp(ray_start_cluster):
         dag = MultiOutputNode(outputs)
 
     compiled_dag = dag.experimental_compile()
-    ref = compiled_dag.execute(1)
-    assert ray.get(ref) == [1] * TP
+    refs = compiled_dag.execute(1)
+    for i in range(TP):
+        assert ray.get(refs[i]) == 1
 
     # So that raylets' error messages are printed to the driver
     time.sleep(2)

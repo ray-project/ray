@@ -184,13 +184,13 @@ def test_simulate_pp_2workers_2batches_1f1b(ray_start_regular, monkeypatch):
             assert operation.type == expected_schedule[i][1]
 
     tensor_cpu = torch.zeros(10, 10)
-    ref = compiled_dag.execute(tensor_cpu)
-    tensors = ray.get(ref)
     tensor_cuda = tensor_cpu.to("cuda:0")
+    refs = compiled_dag.execute(tensor_cpu)
 
-    assert len(tensors) == 2
-    for t in tensors:
-        assert torch.equal(t, tensor_cuda)
+    assert len(refs) == 2
+    for ref in refs:
+        tensor = ray.get(ref)
+        assert torch.equal(tensor, tensor_cuda)
 
     compiled_dag.teardown()
 
@@ -355,13 +355,13 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
             assert operation.type == expected_schedule[i][1]
 
     tensor_cpu = torch.zeros(10, 10)
-    ref = compiled_dag.execute(tensor_cpu)
-    tensors = ray.get(ref)
     tensor_cuda = tensor_cpu.to("cuda:0")
+    refs = compiled_dag.execute(tensor_cpu)
 
-    assert len(tensors) == 3
-    for t in tensors:
-        assert torch.equal(t, tensor_cuda)
+    assert len(refs) == 3
+    for ref in refs:
+        tensor = ray.get(ref)
+        assert torch.equal(tensor, tensor_cuda)
 
     compiled_dag.teardown()
 
