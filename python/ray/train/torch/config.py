@@ -105,7 +105,7 @@ def _setup_torch_process_group(
             and TORCH_NCCL_BLOCKING_WAIT_ENV_VAR not in os.environ
         ):
             logger.debug(
-                f"Setting {TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR} to fail if NCCL collective communication operations are timing out. "  # noqa: E501
+                f"Setting {TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR}=1 to fail if NCCL collective communication operations are timing out. "  # noqa: E501
                 f"To override this behavior, you can set {TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR}=0."  # noqa: E501
             )
             os.environ[TORCH_NCCL_ASYNC_ERROR_HANDLING_ENV_VAR] = "1"
