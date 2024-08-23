@@ -415,17 +415,18 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 `column`.
         """
         sub_key = None
-        if (
-            single_agent_episode is not None
-            and single_agent_episode.agent_id is not None
-        ):
-            sub_key = (
-                single_agent_episode.multi_agent_episode_id,
-                single_agent_episode.agent_id,
-                single_agent_episode.module_id,
-            )
-        elif single_agent_episode is not None:
-            sub_key = (single_agent_episode.id_,)
+        # SAEpisode is provided ...
+        if single_agent_episode is not None:
+            # ... and has `agent_id` -> Use agent ID and module ID from it.
+            if single_agent_episode.agent_id is not None:
+                sub_key = (
+                    single_agent_episode.multi_agent_episode_id,
+                    single_agent_episode.agent_id,
+                    single_agent_episode.module_id,
+                )
+            # Otherwise, just use episode's ID.
+            else:
+                sub_key = (single_agent_episode.id_,)
 
         if column not in batch:
             batch[column] = [] if sub_key is None else {sub_key: []}

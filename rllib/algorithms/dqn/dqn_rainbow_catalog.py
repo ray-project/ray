@@ -173,9 +173,9 @@ class DQNRainbowCatalog(Catalog):
             `self._encoder_config` defined by the parent class.
         """
         # Check, if we use
-        use_noisy = model_config_dict["noisy"]
-        use_lstm = model_config_dict["use_lstm"]
-        use_attention = model_config_dict["use_attention"]
+        use_noisy = model_config_dict.get("noisy", False)
+        use_lstm = model_config_dict.get("use_lstm", False)
+        use_attention = model_config_dict.get("use_attention", False)
 
         # In cases of LSTM or Attention, fall back to the basic encoder.
         if use_noisy and not use_lstm and not use_attention:

@@ -26,7 +26,7 @@ from ray.rllib.algorithms.dreamerv3.utils.summaries import (
 )
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
@@ -437,13 +437,13 @@ class DreamerV3Config(AlgorithmConfig):
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import (
                 DreamerV3TfRLModule,
             )
 
-            return SingleAgentRLModuleSpec(
+            return RLModuleSpec(
                 module_class=DreamerV3TfRLModule, catalog_class=DreamerV3Catalog
             )
         else:

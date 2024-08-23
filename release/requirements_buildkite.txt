@@ -115,6 +115,10 @@ annotated-types==0.7.0 \
 anyscale==0.24.23 \
     --hash=sha256:31f208ed659cc8f3f1b18f417b2dea8cbcfb32bf4726900ca78fade6f003e408
     # via -r release/requirements_buildkite.in
+appnope==0.1.4 \
+    --hash=sha256:1de3860566df9caf38f01f86f65e0e13e379af54f9e4bee1e66b48f2efffd1ee \
+    --hash=sha256:502575ee11cd7a28c0205f379b525beefebab9d161b7c964670864014ed7213c
+    # via -r release/requirements-doc.txt
 asttokens==2.4.1 \
     --hash=sha256:051ed49c3dcae8913ea7cd08e46a606dba30b79993209636c4875bc1d637bc24 \
     --hash=sha256:b03869718ba9a6eb027e134bfdf69f38a236d681c83c160d510768af11254ba0

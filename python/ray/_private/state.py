@@ -793,7 +793,9 @@ class GlobalState:
 
         Returns:
             A dictionary mapping resource name to the total quantity of that
-                resource in the cluster.
+                resource in the cluster. Note that if a resource (e.g., "CPU")
+                is currently not available (i.e., quantity is 0), it will not
+                be included in this dictionary.
         """
         self._check_connected()
 
@@ -1008,7 +1010,9 @@ def available_resources():
 
     Returns:
         A dictionary mapping resource name to the total quantity of that
-            resource in the cluster.
+            resource in the cluster. Note that if a resource (e.g., "CPU")
+            is currently not available (i.e., quantity is 0), it will not
+            be included in this dictionary.
     """
     return state.available_resources()
 

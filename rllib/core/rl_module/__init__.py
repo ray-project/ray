@@ -1,11 +1,11 @@
 import logging
 import re
 
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
+from ray.rllib.core.rl_module.multi_rl_module import (
+    MultiRLModule,
+    MultiRLModuleSpec,
 )
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
@@ -45,9 +45,9 @@ def validate_module_id(policy_id: str, error: bool = False) -> None:
 
 
 __all__ = [
-    "MultiAgentRLModule",
-    "MultiAgentRLModuleSpec",
+    "MultiRLModule",
+    "MultiRLModuleSpec",
     "RLModule",
-    "SingleAgentRLModuleSpec",
+    "RLModuleSpec",
     "validate_module_id",
 ]

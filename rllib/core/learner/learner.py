@@ -27,11 +27,11 @@ from ray.rllib.connectors.learner.learner_connector_pipeline import (
 )
 from ray.rllib.core import COMPONENT_OPTIMIZER, COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module import validate_module_id
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
+from ray.rllib.core.rl_module.multi_rl_module import (
+    MultiRLModule,
+    MultiRLModuleSpec,
 )
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -52,6 +52,8 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED,
+    LEARNER_CONNECTOR_TIMER,
+    MODULE_TRAIN_BATCH_SIZE_MEAN,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
@@ -132,8 +134,8 @@ class Learner(Checkpointable):
             If the module is a single agent module, after building the module it will
             be converted to a multi-agent module with a default key. Can be none if the
             module is provided directly via the `module` argument. Refer to
-            ray.rllib.core.rl_module.SingleAgentRLModuleSpec
-            or ray.rllib.core.rl_module.MultiAgentRLModuleSpec for more info.
+            ray.rllib.core.rl_module.RLModuleSpec
+            or ray.rllib.core.rl_module.MultiRLModuleSpec for more info.
         module: If learner is being used stand-alone, the RLModule can be optionally
             passed in directly instead of the through the `module_spec`.
 
@@ -151,7 +153,7 @@ class Learner(Checkpointable):
                 PPOTorchRLModule
             )
             from ray.rllib.core import COMPONENT_RL_MODULE
-            from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+            from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
             env = gym.make("CartPole-v1")
 
@@ -173,7 +175,7 @@ class Learner(Checkpointable):
             # Add a new module, perhaps for league based training.
             learner.add_module(
                 module_id="new_player",
-                module_spec=SingleAgentRLModuleSpec(
+                module_spec=RLModuleSpec(
                     module_class=PPOTorchRLModule,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
@@ -197,10 +199,10 @@ class Learner(Checkpointable):
             # Set the state of the learner.
             learner.set_state(state)
 
-            # Get the weights of the underlying multi-agent RLModule.
+            # Get the weights of the underlying MultiRLModule.
             weights = learner.get_state(components=COMPONENT_RL_MODULE)
 
-            # Set the weights of the underlying multi-agent RLModule.
+            # Set the weights of the underlying MultiRLModule.
             learner.set_state({COMPONENT_RL_MODULE: weights})
 
 
@@ -225,15 +227,13 @@ class Learner(Checkpointable):
         self,
         *,
         config: "AlgorithmConfig",
-        module_spec: Optional[
-            Union[SingleAgentRLModuleSpec, MultiAgentRLModuleSpec]
-        ] = None,
+        module_spec: Optional[Union[RLModuleSpec, MultiRLModuleSpec]] = None,
         module: Optional[RLModule] = None,
     ):
         # TODO (sven): Figure out how to do this
         self.config = config.copy(copy_frozen=False)
-        self._module_spec = module_spec
-        self._module_obj = module
+        self._module_spec: Optional[MultiRLModuleSpec] = module_spec
+        self._module_obj: Optional[MultiRLModule] = module
         self._device = None
 
         # Set a seed, if necessary.
@@ -250,8 +250,8 @@ class Learner(Checkpointable):
 
         # These are the attributes that are set during build.
 
-        # The actual MARLModule used by this Learner.
-        self._module: Optional[MultiAgentRLModule] = None
+        # The actual MultiRLModule used by this Learner.
+        self._module: Optional[MultiRLModule] = None
         # Our Learner connector pipeline.
         self._learner_connector: Optional[LearnerConnectorPipeline] = None
         # These are set for properly applying optimizers and adding or removing modules.
@@ -294,7 +294,7 @@ class Learner(Checkpointable):
             # TODO (sven): Figure out which space to provide here. For now,
             #  it doesn't matter, as the default connector piece doesn't use
             #  this information anyway.
-            #  module_spec = self._module_spec.as_multi_agent()
+            #  module_spec = self._module_spec.as_multi_rl_module_spec()
             self._learner_connector = self.config.build_learner_connector(
                 input_observation_space=None,
                 input_action_space=None,
@@ -316,8 +316,8 @@ class Learner(Checkpointable):
         return self._distributed
 
     @property
-    def module(self) -> MultiAgentRLModule:
-        """The multi-agent RLModule that is being trained."""
+    def module(self) -> MultiRLModule:
+        """The MultiRLModule that is being trained."""
         return self._module
 
     def register_optimizer(
@@ -428,7 +428,7 @@ class Learner(Checkpointable):
     ) -> None:
         """Configures an optimizer for the given module_id.
 
-        This method is called for each RLModule in the Multi-Agent RLModule being
+        This method is called for each RLModule in the MultiRLModule being
         trained by the Learner, as well as any new module added during training via
         `self.add_module()`. It should configure and construct one or more optimizers
         and register them via calls to `self.register_optimizer()` along with the
@@ -444,7 +444,7 @@ class Learner(Checkpointable):
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def compute_gradients(
-        self, loss_per_module: Dict[str, TensorType], **kwargs
+        self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
         """Computes the gradients based on the given losses.
 
@@ -472,7 +472,7 @@ class Learner(Checkpointable):
         algorithm specific gradient postprocessing steps.
 
         This default implementation calls `self.postprocess_gradients_for_module()`
-        on each of the sub-modules in our MultiAgentRLModule: `self.module` and
+        on each of the sub-modules in our MultiRLModule: `self.module` and
         returns the accumulated gradients dicts.
 
         Args:
@@ -566,7 +566,7 @@ class Learner(Checkpointable):
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def apply_gradients(self, gradients_dict: ParamDict) -> None:
-        """Applies the gradients to the MultiAgentRLModule parameters.
+        """Applies the gradients to the MultiRLModule parameters.
 
         Args:
             gradients_dict: A dictionary of gradients in the same (flat) format as
@@ -696,11 +696,11 @@ class Learner(Checkpointable):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        module_spec: RLModuleSpec,
         config_overrides: Optional[Dict] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
-    ) -> MultiAgentRLModuleSpec:
-        """Adds a module to the underlying MultiAgentRLModule.
+    ) -> MultiRLModuleSpec:
+        """Adds a module to the underlying MultiRLModule.
 
         Changes this Learner's config in order to make this architectural change
         permanent wrt. to checkpointing.
@@ -718,7 +718,7 @@ class Learner(Checkpointable):
                 returns False) will not be updated.
 
         Returns:
-            The new MultiAgentRLModuleSpec (after the RLModule has been added).
+            The new MultiRLModuleSpec (after the RLModule has been added).
         """
         validate_module_id(module_id, error=True)
         self._check_is_built()
@@ -739,9 +739,7 @@ class Learner(Checkpointable):
             self.config.multi_agent(
                 algorithm_config_overrides_per_module={module_id: config_overrides}
             )
-        self.config.rl_module(
-            rl_module_spec=MultiAgentRLModuleSpec.from_module(self.module)
-        )
+        self.config.rl_module(rl_module_spec=MultiRLModuleSpec.from_module(self.module))
         if new_should_module_be_updated is not None:
             self.config.multi_agent(policies_to_train=new_should_module_be_updated)
 
@@ -758,7 +756,7 @@ class Learner(Checkpointable):
         module_id: ModuleID,
         *,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
-    ) -> MultiAgentRLModuleSpec:
+    ) -> MultiRLModuleSpec:
         """Removes a module from the Learner.
 
         Args:
@@ -771,7 +769,7 @@ class Learner(Checkpointable):
                 returns False) will not be updated.
 
         Returns:
-            The new MultiAgentRLModuleSpec (after the RLModule has been removed).
+            The new MultiRLModuleSpec (after the RLModule has been removed).
         """
         self._check_is_built()
         module = self.module[module_id]
@@ -791,7 +789,7 @@ class Learner(Checkpointable):
                     del self._optimizer_lr_schedules[optimizer]
             del self._module_optimizers[module_id]
 
-        # Remove the module from the MARLModule.
+        # Remove the module from the MultiRLModule.
         self.module.remove_module(module_id)
 
         # Change self.config to reflect the new architecture.
@@ -801,9 +799,7 @@ class Learner(Checkpointable):
         self.config.algorithm_config_overrides_per_module.pop(module_id, None)
         if new_should_module_be_updated is not None:
             self.config.multi_agent(policies_to_train=new_should_module_be_updated)
-        self.config.rl_module(
-            rl_module_spec=MultiAgentRLModuleSpec.from_module(self.module)
-        )
+        self.config.rl_module(rl_module_spec=MultiRLModuleSpec.from_module(self.module))
 
         # Remove all stats from the module from our metrics logger, so we don't report
         # results from this module again.
@@ -835,18 +831,15 @@ class Learner(Checkpointable):
 
     @OverrideToImplementCustomLogic
     def compute_loss(
-        self,
-        *,
-        fwd_out: Dict[str, Any],
-        batch: Dict[str, Any],
-    ) -> Union[TensorType, Dict[str, Any]]:
+        self, *, fwd_out: Dict[str, Any], batch: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Computes the loss for the module being optimized.
 
         This method must be overridden by multiagent-specific algorithm learners to
         specify the specific loss computation logic. If the algorithm is single agent
         `compute_loss_for_module()` should be overridden instead.
         `fwd_out` is the output of the `forward_train()` method of the underlying
-        MultiAgentRLModule. `batch` is the data that was used to compute `fwd_out`.
+        MultiRLModule. `batch` is the data that was used to compute `fwd_out`.
         The returned dictionary must contain a key called
         ALL_MODULES, which will be used to compute gradients. It is recommended
         to not compute any forward passes within this method, and to use the
@@ -892,7 +885,7 @@ class Learner(Checkpointable):
         self,
         *,
         module_id: ModuleID,
-        config: Optional["AlgorithmConfig"] = None,
+        config: "AlgorithmConfig",
         batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
@@ -936,7 +929,7 @@ class Learner(Checkpointable):
 
         You can use this method to take more than one backward pass on the batch.
         The same `minibatch_size` and `num_iters` will be used for all module ids in
-        MultiAgentRLModule.
+        MultiRLModule.
 
         Args:
             batch: A batch of training data to update from.
@@ -981,7 +974,7 @@ class Learner(Checkpointable):
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        min_total_mini_batches: int = 0,
+        num_total_mini_batches: int = 0,
         # Deprecated args.
         reduce_fn=DEPRECATED_VALUE,
     ) -> ResultDict:
@@ -989,7 +982,7 @@ class Learner(Checkpointable):
 
         You can use this method to take more than one backward pass on the batch.
         The same `minibatch_size` and `num_iters` will be used for all module ids in
-        MultiAgentRLModule.
+        MultiRLModule.
 
         Args:
             episodes: An list of episode objects to update from.
@@ -999,13 +992,14 @@ class Learner(Checkpointable):
             minibatch_size: The size of the minibatch to use for each update.
             num_iters: The number of complete passes over all the sub-batches
                 in the input multi-agent batch.
-            min_total_mini_batches: The minimum number of mini-batches to loop through
+            num_total_mini_batches: The total number of mini-batches to loop through
                 (across all `num_sgd_iter` SGD iterations). It's required to set this
                 for multi-agent + multi-GPU situations in which the MultiAgentEpisodes
                 themselves are roughly sharded equally, however, they might contain
                 SingleAgentEpisodes with very lopsided length distributions. Thus,
-                without this limit it can happen that one Learner goes through a
-                different number of mini-batches than other Learners, causing deadlocks.
+                without this fixed, pre-computed value it can happen that one Learner
+                goes through a different number of mini-batches than other Learners,
+                causing a deadlock.
 
         Returns:
             A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
@@ -1029,8 +1023,86 @@ class Learner(Checkpointable):
             timesteps=timesteps,
             minibatch_size=minibatch_size,
             num_iters=num_iters,
-            min_total_mini_batches=min_total_mini_batches,
+            num_total_mini_batches=num_total_mini_batches,
         )
+
+    def update_from_iterator(
+        self,
+        iterator,
+        *,
+        timesteps: Optional[Dict[str, Any]] = None,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = None,
+        **kwargs,
+    ):
+        self._check_is_built()
+        minibatch_size = minibatch_size or 32
+
+        # Call `before_gradient_based_update` to allow for non-gradient based
+        # preparations-, logging-, and update logic to happen.
+        self.before_gradient_based_update(timesteps=timesteps or {})
+
+        def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
+            # Note, the incoming batch is a dictionary with a numpy array
+            # holding the `MultiAgentBatch`.
+            batch = self._convert_batch_type(batch["batch"][0])
+            return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
+
+        i = 0
+        for batch in iterator.iter_batches(
+            batch_size=minibatch_size,
+            _finalize_fn=_finalize_fn,
+            **kwargs,
+        ):
+            # Update the iteration counter.
+            i += 1
+
+            # Note, `_finalize_fn`  must return a dictionary.
+            batch = batch["batch"]
+            # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
+            # found in this batch. If not, throw an error.
+            unknown_module_ids = set(batch.policy_batches.keys()) - set(
+                self.module.keys()
+            )
+            if len(unknown_module_ids) > 0:
+                raise ValueError(
+                    "Batch contains one or more ModuleIDs that are not in this "
+                    f"Learner! Found IDs: {unknown_module_ids}"
+                )
+
+            # Log metrics.
+            self._log_steps_trained_metrics(batch)
+
+            # Make the actual in-graph/traced `_update` call. This should return
+            # all tensor values (no numpy).
+            fwd_out, loss_per_module, tensor_metrics = self._update(
+                batch.policy_batches
+            )
+
+            self._set_slicing_by_batch_id(batch, value=False)
+            # If `num_iters` is reached break and return.
+            if num_iters and i == num_iters:
+                break
+
+        logger.info(f"[Learner] Iterations run in epoch: {i}")
+        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+        # to actual (numpy) values.
+        self.metrics.tensors_to_numpy(tensor_metrics)
+
+        # Log all individual RLModules' loss terms and its registered optimizers'
+        # current learning rates.
+        for mid, loss in convert_to_numpy(loss_per_module).items():
+            self.metrics.log_value(
+                key=(mid, self.TOTAL_LOSS_KEY),
+                value=loss,
+                window=1,
+            )
+        # Call `after_gradient_based_update` to allow for non-gradient based
+        # cleanups-, logging-, and update logic to happen.
+        self.after_gradient_based_update(timesteps=timesteps or {})
+
+        # Reduce results across all minibatch update steps.
+        return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
@@ -1137,95 +1209,6 @@ class Learner(Checkpointable):
         """
         raise NotImplementedError
 
-    def update_from_iterator(
-        self,
-        iterator,
-        *,
-        timesteps: Optional[Dict[str, Any]] = None,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = None,
-        **kwargs,
-    ):
-        self._check_is_built()
-        minibatch_size = minibatch_size or 32
-
-        # Call `before_gradient_based_update` to allow for non-gradient based
-        # preparations-, logging-, and update logic to happen.
-        self.before_gradient_based_update(timesteps=timesteps or {})
-
-        def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
-            # Note, the incoming batch is a dictionary with a numpy array
-            # holding the `MultiAgentBatch`.
-            batch = self._convert_batch_type(batch["batch"][0])
-            return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
-
-        i = 0
-        for batch in iterator.iter_batches(
-            batch_size=minibatch_size,
-            _finalize_fn=_finalize_fn,
-            **kwargs,
-        ):
-            # Update the iteration counter.
-            i += 1
-
-            # Note, `_finalize_fn`  must return a dictionary.
-            batch = batch["batch"]
-            # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
-            # found in this batch. If not, throw an error.
-            unknown_module_ids = set(batch.policy_batches.keys()) - set(
-                self.module.keys()
-            )
-            if len(unknown_module_ids) > 0:
-                raise ValueError(
-                    "Batch contains one or more ModuleIDs that are not in this "
-                    f"Learner! Found IDs: {unknown_module_ids}"
-                )
-
-            # Log metrics.
-            self.metrics.log_dict(
-                {
-                    (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
-                    (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
-                    **{
-                        (mid, NUM_MODULE_STEPS_TRAINED): len(b)
-                        for mid, b in batch.policy_batches.items()
-                    },
-                },
-                reduce="sum",
-                clear_on_reduce=True,
-            )
-
-            # Make the actual in-graph/traced `_update` call. This should return
-            # all tensor values (no numpy).
-            fwd_out, loss_per_module, tensor_metrics = self._update(
-                batch.policy_batches
-            )
-
-            self._set_slicing_by_batch_id(batch, value=False)
-            # If `num_iters` is reached break and return.
-            if num_iters and i == num_iters:
-                break
-
-        logger.info(f"[Learner] Iterations run in epoch: {i}")
-        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-        # to actual (numpy) values.
-        self.metrics.tensors_to_numpy(tensor_metrics)
-
-        # Log all individual RLModules' loss terms and its registered optimizers'
-        # current learning rates.
-        for mid, loss in convert_to_numpy(loss_per_module).items():
-            self.metrics.log_value(
-                key=(mid, self.TOTAL_LOSS_KEY),
-                value=loss,
-                window=1,
-            )
-        # Call `after_gradient_based_update` to allow for non-gradient based
-        # cleanups-, logging-, and update logic to happen.
-        self.after_gradient_based_update(timesteps=timesteps or {})
-
-        # Reduce results across all minibatch update steps.
-        return self.metrics.reduce()
-
     def _update_from_batch_or_episodes(
         self,
         *,
@@ -1239,7 +1222,7 @@ class Learner(Checkpointable):
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        min_total_mini_batches: int = 0,
+        num_total_mini_batches: int = 0,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
 
         self._check_is_built()
@@ -1261,22 +1244,23 @@ class Learner(Checkpointable):
         # Call the learner connector.
         if self._learner_connector is not None and episodes is not None:
             # Call the learner connector pipeline.
-            shared_data = {}
-            batch = self._learner_connector(
-                rl_module=self.module,
-                data=batch if batch is not None else {},
-                episodes=episodes,
-                shared_data=shared_data,
-            )
-            # Convert to a batch.
-            # TODO (sven): Try to not require MultiAgentBatch anymore.
-            batch = MultiAgentBatch(
-                {
-                    module_id: SampleBatch(module_data)
-                    for module_id, module_data in batch.items()
-                },
-                env_steps=sum(len(e) for e in episodes),
-            )
+            with self.metrics.log_time((ALL_MODULES, LEARNER_CONNECTOR_TIMER)):
+                shared_data = {}
+                batch = self._learner_connector(
+                    rl_module=self.module,
+                    data=batch if batch is not None else {},
+                    episodes=episodes,
+                    shared_data=shared_data,
+                )
+                # Convert to a batch.
+                # TODO (sven): Try to not require MultiAgentBatch anymore.
+                batch = MultiAgentBatch(
+                    {
+                        module_id: SampleBatch(module_data)
+                        for module_id, module_data in batch.items()
+                    },
+                    env_steps=sum(len(e) for e in episodes),
+                )
         # Have to convert to MultiAgentBatch.
         elif isinstance(batch, SampleBatch):
             assert len(self.module) == 1
@@ -1300,31 +1284,15 @@ class Learner(Checkpointable):
             if not self.should_module_be_updated(module_id, batch):
                 del batch.policy_batches[module_id]
 
-        # Log all timesteps (env, agent, modules) based on given episodes.
-        if self._learner_connector is not None and episodes is not None:
-            self._log_steps_trained_metrics(episodes, batch, shared_data)
-        # TODO (sven): Possibly remove this if-else block entirely. We might be in a
-        #  world soon where we always learn from episodes, never from an incoming batch.
-        else:
-            self.metrics.log_dict(
-                {
-                    (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
-                    (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
-                    **{
-                        (mid, NUM_MODULE_STEPS_TRAINED): len(b)
-                        for mid, b in batch.policy_batches.items()
-                    },
-                },
-                reduce="sum",
-                clear_on_reduce=True,
-            )
+        # Log all timesteps (env, agent, modules) based on given episodes/batch.
+        self._log_steps_trained_metrics(batch)
 
         if minibatch_size:
             if self._learner_connector is not None:
                 batch_iter = partial(
                     MiniBatchCyclicIterator,
                     uses_new_env_runners=True,
-                    min_total_mini_batches=min_total_mini_batches,
+                    num_total_mini_batches=num_total_mini_batches,
                 )
             else:
                 batch_iter = MiniBatchCyclicIterator
@@ -1472,7 +1440,7 @@ class Learner(Checkpointable):
             True if the module is compatible with the learner.
         """
 
-    def _make_module(self) -> MultiAgentRLModule:
+    def _make_module(self) -> MultiRLModule:
         """Construct the multi-agent RL module for the learner.
 
         This method uses `self._module_specs` or `self._module_obj` to construct the
@@ -1481,11 +1449,12 @@ class Learner(Checkpointable):
         need to happen for instantiation of the module.
 
         Returns:
-            A constructed MultiAgentRLModule.
+            A constructed MultiRLModule.
         """
         # Module was provided directly through constructor -> Use as-is.
         if self._module_obj is not None:
             module = self._module_obj
+            self._module_spec = MultiRLModuleSpec.from_module(module)
         # RLModuleSpec was provided directly through constructor -> Use it to build the
         # RLModule.
         elif self._module_spec is not None:
@@ -1495,8 +1464,8 @@ class Learner(Checkpointable):
         else:
             module = self.config.get_multi_agent_module_spec().build()
 
-        # If not already, convert to MultiAgentRLModule.
-        module = module.as_multi_agent()
+        # If not already, convert to MultiRLModule.
+        module = module.as_multi_rl_module()
 
         return module
 
@@ -1586,54 +1555,33 @@ class Learner(Checkpointable):
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
 
-    def _log_steps_trained_metrics(self, episodes, batch, shared_data):
-        # Logs this iteration's steps trained, based on given `episodes`.
-        env_steps = sum(len(e) for e in episodes)
-        log_dict = defaultdict(dict)
-        orig_lengths = shared_data.get("_sa_episodes_lengths", {})
-        for sa_episode in self._learner_connector.single_agent_episode_iterator(
-            episodes, agents_that_stepped_only=False
-        ):
-            mid = (
-                sa_episode.module_id
-                if sa_episode.module_id is not None
-                else DEFAULT_MODULE_ID
-            )
-            # Do not log steps trained for those ModuleIDs that should not be updated.
-            if mid != ALL_MODULES and mid not in batch.policy_batches:
-                continue
+    def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
+        """Logs this iteration's steps trained, based on given `batch`."""
 
-            _len = (
-                orig_lengths[sa_episode.id_]
-                if sa_episode.id_ in orig_lengths
-                else len(sa_episode)
+        log_dict = defaultdict(dict)
+        for mid, module_batch in batch.policy_batches.items():
+            module_batch_size = len(module_batch)
+            # Log average batch size (for each module).
+            self.metrics.log_value(
+                key=(mid, MODULE_TRAIN_BATCH_SIZE_MEAN),
+                value=module_batch_size,
             )
-            # TODO (sven): Decide, whether agent_ids should be part of LEARNER_RESULTS.
-            #  Currently and historically, only ModuleID keys and ALL_MODULES were used
-            #  and expected. Does it make sense to include e.g. agent steps trained?
-            #  I'm not sure atm.
-            # aid = (
-            #    sa_episode.agent_id if sa_episode.agent_id is not None
-            #    else DEFAULT_AGENT_ID
-            # )
+            # Log module steps (for each module).
             if NUM_MODULE_STEPS_TRAINED not in log_dict[mid]:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] = _len
+                log_dict[mid][NUM_MODULE_STEPS_TRAINED] = module_batch_size
             else:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] += _len
-            # TODO (sven): See above.
-            # if NUM_AGENT_STEPS_TRAINED not in log_dict[aid]:
-            #    log_dict[aid][NUM_AGENT_STEPS_TRAINED] = _len
-            # else:
-            #    log_dict[aid][NUM_AGENT_STEPS_TRAINED] += _len
+                log_dict[mid][NUM_MODULE_STEPS_TRAINED] += module_batch_size
+
+            # Log module steps (sum of all modules).
             if NUM_MODULE_STEPS_TRAINED not in log_dict[ALL_MODULES]:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = _len
+                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = module_batch_size
             else:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += _len
+                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += module_batch_size
 
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
-            env_steps,
+            batch.env_steps(),
             reduce="sum",
             clear_on_reduce=True,
         )

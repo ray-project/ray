@@ -22,6 +22,8 @@ import "src/ray/protobuf/runtime_env_common.proto";
 option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
+// Note: The Language enum is used in the export API so it is public
+// and any modifications must be backward compatible.
 enum Language {
   PYTHON = 0;
   JAVA = 1;
@@ -178,6 +180,8 @@ message ConcurrencyGroup {
 // TODO(hchen): We may want to make these errors more specific. E.g., we may
 // want to distinguish between intentional and expected actor failures, and
 // between worker process failure and node failure.
+// Note: The ErrorType enum is used in the export API so it is public
+// and any modifications must be backward compatible.
 enum ErrorType {
   // Indicates that a task failed because the worker died unexpectedly while
   // executing it.
@@ -299,6 +303,8 @@ message NodeDiedErrorContext {
 /// execution exceptions. This should be used by the frontend
 /// to represent a user application error. Errors originating from the
 /// backend such as from the raylet should be propagated as RayErrorInfo.
+// Note: RayException is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message RayException {
   // Language of this exception.
   Language language = 1;
@@ -322,6 +328,8 @@ message NodeDeathInfo {
   string reason_message = 2;
 }
 
+// Note: ActorDeathCause is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message ActorDeathCause {
   oneof context {
     // Indicates that this actor is marked as DEAD due to actor creation task failure.
@@ -334,15 +342,21 @@ message ActorDeathCause {
 }
 // ---Actor death contexts start----
 // Indicates that this actor is marked as DEAD due to runtime environment setup failure.
+// Note: RuntimeEnvFailedContext is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message RuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
   string error_message = 1;
 }
 
+// Note: ActorUnschedulableContext is used in the export API and state API so it is
+// public. Any modifications must be backward compatible.
 message ActorUnschedulableContext {
   string error_message = 1;
 }
 
+// Note: ActorDiedErrorContext is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message ActorDiedErrorContext {
   string error_message = 1;
   // The id of owner of the actor.
@@ -369,6 +383,8 @@ message ActorDiedErrorContext {
 }
 
 // Context for task OOM.
+// Note: OomContext is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message OomContext {
   // The error message
   string error_message = 1;
