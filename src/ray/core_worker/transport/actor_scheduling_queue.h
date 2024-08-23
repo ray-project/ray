@@ -57,6 +57,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
 
   /// Add a new actor task's callbacks to the worker queue.
   void Add(int64_t seq_no,
+           rpc::PushTaskReply *reply,
            int64_t client_processed_up_to,
            std::function<void(rpc::SendReplyCallback)> accept_request,
            std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
@@ -108,6 +109,48 @@ class ActorSchedulingQueue : public SchedulingQueue {
   /// A map of actor task IDs -> is_canceled
   /// Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
+
+  /// Proxy the SendReplyCallback to keep the reply and status in the cache.
+  // 1. First seen seq_no: create an Idempotent reply entry. Executes InboundRequest.
+  // 2. Idempotent seq_no: add the callback to the existing Idempotent reply entry.
+  // 3. Execution finished: call each callback in the Idempotent reply entry. If any of
+  // them succeeded, remove the entry.
+  // 4. Idempotent seq_no after execution finished: keep replying same thing until a
+  // success.
+  class IdempotentReplies {
+   public:
+    // using Key = std::pair<WorkerID, int64_t /*seq_no*/>;
+    using Key = int64_t;  // seq_no
+
+    // 3 states:
+    // - new entry -> create entry, make a SendReplyCallback and execute.
+    // - existing entry with running InboundRequest -> add callback to the entry.
+    // - existing entry with finished InboundRequest -> call the callback, see if it
+    // succeeded.
+    // Returns true, if please continue running, your send_reply_callback is changed.
+    // Returns false, if please early return.
+    bool RegisterIdempotentReply(const Key &key,
+                                 rpc::PushTaskReply *reply,
+                                 rpc::SendReplyCallback *send_reply_callback);
+    void ExecuteFinished(const Key &key, rpc::PushTaskReply *reply, const Status &status);
+
+    void CallAllCallbacks(const Key &key);
+
+   private:
+    void CallbackFinished(const Key &key, bool success);
+
+    struct CachedReply {
+      bool execution_finished = false;
+      bool reply_succeeded = true;
+      rpc::PushTaskReply reply;
+      Status status;
+      std::atomic<size_t> num_replies_on_the_fly = 0;
+      std::vector<std::pair<rpc::PushTaskReply *, rpc::SendReplyCallback>> vec;
+    };
+    // Use unique_ptr to keep the CachedReply memory stable.
+    absl::flat_hash_map<Key, std::unique_ptr<CachedReply>> idempotent_replies_;
+  };
+  IdempotentReplies idempotent_replies_;
 
   friend class SchedulingQueueTest;
 };

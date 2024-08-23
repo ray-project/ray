@@ -952,10 +952,11 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   bool will_retry = false;
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
-  bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
-  // If the actor isn't dead and it's a user exception, we should update the seq no. If an
-  // actor is dead and restarted, the seqno is reset, and we don't need to update it when
-  // resubmitting a task.
+  // If the actor isn't dead and it's a user exception, we should update the seq no.
+  // If an actor has connection issue and recovered, don't update the seqno to keep
+  // the order of the tasks.
+  // If an actor is dead and restarted, don't update the seqno to keep the order of the
+  // tasks.
   bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
                       error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
   {
@@ -968,7 +969,8 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
     spec = it->second.spec;
     num_retries_left = it->second.num_retries_left;
     num_oom_retries_left = it->second.num_oom_retries_left;
-    if (task_failed_due_to_oom) {
+    if (error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY) {
+      // Out of memory errors has its own retry count.
       if (num_oom_retries_left > 0) {
         will_retry = true;
         it->second.num_oom_retries_left--;
@@ -977,7 +979,14 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
       } else {
         RAY_CHECK(num_oom_retries_left == 0);
       }
+    } else if (error_info.error_type() == rpc::ErrorType::ACTOR_UNAVAILABLE) {
+      // Actor unavailable errors does not consume a retry count. We still only retry
+      // when there are retry counts though, because the unavailable actor may die and
+      // we don't want the task be retried on the new actor (the retry will be user
+      // visible).
+      will_retry = true;
     } else {
+      // Other errors consume the retry count.
       if (num_retries_left > 0) {
         will_retry = true;
         it->second.num_retries_left--;
@@ -997,20 +1006,21 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   std::ostringstream stream;
   std::string num_retries_left_str =
       num_retries_left == -1 ? "infinite" : std::to_string(num_retries_left);
-  RAY_LOG(INFO) << "task " << spec.TaskId() << " retries left: " << num_retries_left_str
-                << ", oom retries left: " << num_oom_retries_left
-                << ", task failed due to oom: " << task_failed_due_to_oom;
+  RAY_LOG(INFO).WithField(spec.TaskId())
+      << "task retries left: " << num_retries_left_str
+      << ", oom retries left: " << num_oom_retries_left
+      << ", task failed due to: " << rpc::ErrorType_Name(error_info.error_type());
   if (will_retry) {
-    RAY_LOG(INFO) << "Attempting to resubmit task " << spec.TaskId()
-                  << " for attempt number: " << spec.AttemptNumber();
+    RAY_LOG(INFO).WithField(spec.TaskId())
+        << "Attempting to resubmit task for attempt number: " << spec.AttemptNumber();
     // TODO(clarng): clean up and remove task_retry_delay_ms that is relied
     // on by some tests.
-    int32_t delay_ms = task_failed_due_to_oom
+    int32_t delay_ms = (error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY)
                            ? ExponentialBackoff::GetBackoffMs(
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    retry_task_callback_(spec, /*object_recovery*/ false, update_seqno, delay_ms);
+    retry_task_callback_(spec, /*object_recovery=*/false, update_seqno, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()

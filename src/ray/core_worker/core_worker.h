@@ -1440,6 +1440,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
  private:
   static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
 
+  // Retries a task immediately. Updates task_spec by attempt_number and actor_counter.
+  void RetryTask(TaskToRetry &task_to_retry);
+
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestPyModulesInherit);

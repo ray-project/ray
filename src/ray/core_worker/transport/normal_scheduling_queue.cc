@@ -37,6 +37,7 @@ size_t NormalSchedulingQueue::Size() const {
 /// Add a new task's callbacks to the worker queue.
 void NormalSchedulingQueue::Add(
     int64_t seq_no,
+    rpc::PushTaskReply *reply,
     int64_t client_processed_up_to,
     std::function<void(rpc::SendReplyCallback)> accept_request,
     std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,

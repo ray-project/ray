@@ -552,16 +552,10 @@ std::string TaskSpecification::RuntimeEnvDebugString() const {
 }
 
 bool TaskSpecification::IsRetriable() const {
-  if (IsActorTask()) {
-    return false;
-  }
   if (IsActorCreationTask() && MaxActorRestarts() == 0) {
     return false;
   }
-  if (IsNormalTask() && MaxRetries() == 0) {
-    return false;
-  }
-  return true;
+  return MaxRetries() == 0;
 }
 
 void TaskSpecification::EmitTaskMetrics() const {

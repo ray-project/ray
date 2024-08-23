@@ -15,6 +15,7 @@
 #include "ray/core_worker/transport/task_receiver.h"
 
 #include <thread>
+#include <utility>
 
 #include "ray/common/task/task.h"
 #include "ray/gcs/pb_util.h"
@@ -29,8 +30,8 @@ void TaskReceiver::Init(std::shared_ptr<rpc::CoreWorkerClientPool> client_pool,
                         rpc::Address rpc_address,
                         std::shared_ptr<DependencyWaiter> dependency_waiter) {
   waiter_ = std::move(dependency_waiter);
-  rpc_address_ = rpc_address;
-  client_pool_ = client_pool;
+  rpc_address_ = std::move(rpc_address);
+  client_pool_ = std::move(client_pool);
 }
 
 void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
@@ -263,6 +264,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     }
 
     it->second->Add(request.sequence_number(),
+                    reply,
                     request.client_processed_up_to(),
                     std::move(accept_callback),
                     std::move(cancel_callback),
@@ -276,6 +278,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     RAY_LOG(DEBUG) << "Adding task " << task_spec.TaskId()
                    << " to normal scheduling task queue.";
     normal_scheduling_queue_->Add(request.sequence_number(),
+                                  reply,
                                   request.client_processed_up_to(),
                                   std::move(accept_callback),
                                   std::move(cancel_callback),

@@ -70,6 +70,7 @@ size_t ActorSchedulingQueue::Size() const {
 /// Add a new actor task's callbacks to the worker queue.
 void ActorSchedulingQueue::Add(
     int64_t seq_no,
+    rpc::PushTaskReply *reply,  // DO NOT SUBMIT use this
     int64_t client_processed_up_to,
     std::function<void(rpc::SendReplyCallback)> accept_request,
     std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
@@ -82,6 +83,11 @@ void ActorSchedulingQueue::Add(
   RAY_CHECK(seq_no != -1);
 
   RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+
+  if (!idempotent_replies_.RegisterIdempotentReply(seq_no, reply, &send_reply_callback)) {
+    return;
+  }
+
   if (client_processed_up_to >= next_seq_no_) {
     RAY_LOG(ERROR) << "client skipping requests " << next_seq_no_ << " to "
                    << client_processed_up_to;
@@ -230,6 +236,99 @@ void ActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(TaskID task_id,
 
   absl::MutexLock lock(&mu_);
   pending_task_id_to_is_canceled.erase(task_id);
+}
+
+void ActorSchedulingQueue::IdempotentReplies::CallAllCallbacks(const Key &key) {
+  auto it = idempotent_replies_.find(key);
+  RAY_CHECK(it != idempotent_replies_.end());
+  auto &entry = *it->second;
+
+  auto replies = std::move(entry.vec);
+  entry.vec.clear();
+
+  entry.num_replies_on_the_fly += replies.size();
+  RAY_LOG(ERROR) << "Calling " << replies.size() << " callbacks for seq_no " << key
+                 << ", now on the fly:" << entry.num_replies_on_the_fly;
+  for (auto &reply : replies) {
+    *reply.first = entry.reply;
+    reply.second(
+        entry.status,
+        /*success=*/
+        [this, key]() { this->CallbackFinished(key, true); },
+        /*failure=*/
+        [this, key]() { this->CallbackFinished(key, false); });
+  }
+}
+
+void ActorSchedulingQueue::IdempotentReplies::CallbackFinished(const Key &key,
+                                                               bool success) {
+  auto it = idempotent_replies_.find(key);
+  RAY_CHECK(it != idempotent_replies_.end());
+  auto &entry = *it->second;
+
+  if (success) {
+    entry.reply_succeeded = true;
+  }
+  entry.num_replies_on_the_fly--;
+  RAY_LOG(ERROR) << "Callback finished for seq_no " << key << " num_replies_on_the_fly "
+                 << entry.num_replies_on_the_fly;
+  if (entry.num_replies_on_the_fly == 0 && entry.reply_succeeded) {
+    idempotent_replies_.erase(it);
+  }
+}
+
+bool ActorSchedulingQueue::IdempotentReplies::RegisterIdempotentReply(
+    const Key &key,
+    rpc::PushTaskReply *reply,
+    rpc::SendReplyCallback *send_reply_callback) {
+  auto it = idempotent_replies_.find(key);
+  if (it == idempotent_replies_.end()) {
+    // Create entry.
+    RAY_LOG(ERROR) << "Creating new entry for seq_no " << key;
+    idempotent_replies_[key] = std::make_unique<CachedReply>();
+    auto &entry = *idempotent_replies_[key];
+
+    entry.vec.emplace_back(reply, *send_reply_callback);
+    // Change the callback to execute.
+    *send_reply_callback = [reply, key, this](Status status,
+                                              std::function<void()> success,
+                                              std::function<void()> failure) {
+      RAY_CHECK(success == nullptr);
+      RAY_CHECK(failure == nullptr);
+      this->ExecuteFinished(key, reply, status);
+    };
+    return true;
+  }
+  auto &entry = *it->second;
+  RAY_LOG(ERROR) << "Registering callback for seq_no " << key << " execution_finished "
+                 << entry.execution_finished << " num_replies_on_the_fly "
+                 << entry.num_replies_on_the_fly;
+  if (!entry.execution_finished) {
+    // Add callback to the entry.
+    entry.vec.emplace_back(reply, *send_reply_callback);
+    return false;
+  }
+  entry.vec.emplace_back(reply, *send_reply_callback);
+  CallAllCallbacks(key);
+  return false;
+}
+
+void ActorSchedulingQueue::IdempotentReplies::ExecuteFinished(const Key &key,
+                                                              rpc::PushTaskReply *reply,
+                                                              const Status &status) {
+  auto it = idempotent_replies_.find(key);
+  RAY_CHECK(it != idempotent_replies_.end());
+  auto &entry = *it->second;
+
+  // Copies!
+  entry.reply = *reply;
+  entry.status = status;
+  entry.execution_finished = true;
+
+  RAY_LOG(ERROR) << "ExecuteFinished " << key << " num_replies_on_the_fly "
+                 << entry.num_replies_on_the_fly << " pending size " << entry.vec.size();
+
+  CallAllCallbacks(key);
 }
 
 }  // namespace core
