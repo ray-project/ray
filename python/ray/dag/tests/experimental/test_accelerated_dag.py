@@ -657,7 +657,8 @@ def test_dag_errors(ray_start_regular):
     dag = a.inc.bind(1)
     with pytest.raises(
         ValueError,
-        match="No InputNode found in the DAG.",
+        match="No InputNode found in the DAG: when traversing upwards, "
+        "no upstream node was found for",
     ):
         dag.experimental_compile()
 

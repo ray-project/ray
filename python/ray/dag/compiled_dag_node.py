@@ -1760,6 +1760,6 @@ def build_compiled_dag_from_ray_dag(
         return node
 
     root = dag._find_root()
-    root.bfs(_build_compiled_dag)
+    root.traverse_and_apply(_build_compiled_dag)
     compiled_dag._get_or_compile()
     return compiled_dag

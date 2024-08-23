@@ -61,10 +61,10 @@ class DAGNode(DAGNodeBase):
             other_args_to_resolve or {}
         )
 
-        # The list of nodes that use this DAG node as input.
+        # The list of nodes that use this DAG node as an argument.
         self._downstream_nodes: List["DAGNode"] = []
-        # The list of nodes that this DAG node uses as input.
-        self._upstream_nodes: List["DAGNode"] = self._prepare_upstream_nodes()
+        # The list of nodes that this DAG node uses as an argument.
+        self._upstream_nodes: List["DAGNode"] = self._collect_upstream_nodes()
 
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
@@ -74,13 +74,13 @@ class DAGNode(DAGNodeBase):
         self._type_hint: Optional[ChannelOutputType] = ChannelOutputType()
         self.is_output_node = False
 
-    def _prepare_upstream_nodes(self) -> List["DAGNode"]:
+    def _collect_upstream_nodes(self) -> List["DAGNode"]:
         """
         Retrieve upstream nodes and update their downstream dependencies.
 
         TODO (kevin85421): Currently, the upstream nodes and downstream nodes have
         circular references. Therefore, it relies on the garbage collector to clean
-        them up.
+        them up instead of reference counting.
         """
         scanner = _PyObjScanner()
         upstream_nodes: List["DAGNode"] = scanner.find_nodes(
@@ -198,6 +198,9 @@ class DAGNode(DAGNodeBase):
         if _max_buffered_results is None:
             _max_buffered_results = ctx.max_buffered_results
 
+        # Whether this node is an output node in the DAG. We cannot determine
+        # this in the constructor because the output node is determined when
+        # `experimental_compile` is called.
         self.is_output_node = True
         return build_compiled_dag_from_ray_dag(
             self,
@@ -369,8 +372,11 @@ class DAGNode(DAGNodeBase):
             )
         )
 
-    def bfs(self, fn: "Callable[[DAGNode], T]"):
-        """Breadth-first search on the DAG."""
+    def traverse_and_apply(self, fn: "Callable[[DAGNode], T]"):
+        """
+        Traverse all nodes in the connected component of the DAG that contains
+        the `self` node, and apply the given function to each node.
+        """
         visited = set()
         queue = [self]
         while queue:
@@ -378,11 +384,23 @@ class DAGNode(DAGNodeBase):
             if node not in visited:
                 fn(node)
                 visited.add(node)
-                # Add all unseen downstream and upstream nodes to the queue.
-                # This function should be called by the root of the DAG. However,
-                # in some invalid cases, some nodes may not be descendants of the
-                # root. Therefore, we also add upstream nodes to the queue so that
-                # a meaningful error message can be raised when the DAG is compiled.
+                """
+                Add all unseen downstream and upstream nodes to the queue.
+                This function should be called by the root of the DAG. However,
+                in some invalid cases, some nodes may not be descendants of the
+                root. Therefore, we also add upstream nodes to the queue so that
+                a meaningful error message can be raised when the DAG is compiled.
+
+                ```
+                with InputNode() as inp:
+                    dag = MultiOutputNode([a1.inc.bind(inp), a2.inc.bind(1)])
+                ```
+
+                In the above example, `a2.inc` is not a descendant of inp. If we only
+                add downstream nodes to the queue, the `a2.inc` node will not be visited
+                , and the error message will be hard to understand, such as a key error
+                in the compiled DAG.
+                """
                 for neighbor in chain.from_iterable(
                     [node._downstream_nodes, node._upstream_nodes]
                 ):
@@ -395,12 +413,15 @@ class DAGNode(DAGNodeBase):
         """
         from ray.dag.input_node import InputNode
 
-        root = self
-        while not isinstance(root, InputNode):
-            if len(root._upstream_nodes) == 0:
-                raise ValueError("No InputNode found in the DAG.")
-            root = root._upstream_nodes[0]
-        return root
+        node = self
+        while not isinstance(node, InputNode):
+            if len(node._upstream_nodes) == 0:
+                raise ValueError(
+                    "No InputNode found in the DAG: when traversing upwards, "
+                    "no upstream node was found for {node}."
+                )
+            node = node._upstream_nodes[0]
+        return node
 
     def apply_functional(
         self,
