@@ -4377,8 +4377,8 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
   const size_t num_objects_with_references = reference_counter_->Size();
   const size_t num_pending_tasks = task_manager_->NumPendingTasks();
   const int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
-  // We consider the worker to be idle if it doesn't own any objects and it doesn't have
-  // any object pinning RPCs in flight and it doesn't have pending tasks.
+  // We consider the worker to be idle if it doesn't have object references and it doesn't
+  // have any object pinning RPCs in flight and it doesn't have pending tasks.
   bool is_idle = (num_objects_with_references == 0) && (pins_in_flight == 0) &&
                  (num_pending_tasks == 0);
   bool force_exit = request.force_exit();
