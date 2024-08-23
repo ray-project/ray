@@ -17,6 +17,8 @@
 #include <functional>
 #include <future>
 #include <string>
+#include <filesystem>
+#include <fstream>
 
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
@@ -34,6 +36,18 @@ static inline std::vector<rpc::ObjectReference> ObjectIdsToRefs(
     refs.push_back(ref);
   }
   return refs;
+}
+
+// Read all lines of a file into vector vc
+inline void ReadContentFromFile(std::vector<std::string> &vc,
+                         std::string log_file) {
+  std::string line;
+  std::ifstream read_file;
+  read_file.open(log_file, std::ios::binary);
+  while (std::getline(read_file, line)) {
+    vc.push_back(line);
+  }
+  read_file.close();
 }
 
 class Buffer;
