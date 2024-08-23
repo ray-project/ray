@@ -152,6 +152,7 @@ class CompiledTask:
         self.idx = idx
         self.dag_node = dag_node
 
+        # Dict from task index to actor handle for immediate downstream tasks.
         self.downstream_actor_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
         self.output_channel = None
         self.arg_type_hints: List["ChannelOutputType"] = []
@@ -731,7 +732,7 @@ class CompiledDAG:
 
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
-        for node_idx, task in self.idx_to_task.items():
+        for task_idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
             if not (
                 isinstance(dag_node, InputNode)
@@ -854,7 +855,7 @@ class CompiledDAG:
                             "type hint between these methods."
                         )
 
-                upstream_task.downstream_actor_idxs[node_idx] = downstream_actor_handle
+                upstream_task.downstream_actor_idxs[task_idx] = downstream_actor_handle
                 task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
                 if upstream_task.dag_node.type_hint.requires_nccl():
