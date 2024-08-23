@@ -80,7 +80,8 @@ class DAGNode(DAGNodeBase):
 
         TODO (kevin85421): Currently, the upstream nodes and downstream nodes have
         circular references. Therefore, it relies on the garbage collector to clean
-        them up instead of reference counting.
+        them up instead of reference counting. We should consider using weak references
+        to avoid circular references.
         """
         scanner = _PyObjScanner()
         upstream_nodes: List["DAGNode"] = scanner.find_nodes(
@@ -418,7 +419,7 @@ class DAGNode(DAGNodeBase):
             if len(node._upstream_nodes) == 0:
                 raise ValueError(
                     "No InputNode found in the DAG: when traversing upwards, "
-                    "no upstream node was found for {node}."
+                    f"no upstream node was found for {node}."
                 )
             node = node._upstream_nodes[0]
         return node
