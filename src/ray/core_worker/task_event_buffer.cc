@@ -593,7 +593,7 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
   }
 
   if (status_events_.full()) {
-    auto &to_evict = status_events_.front();
+    const auto &to_evict = status_events_.front();
     auto inserted = dropped_task_attempts_unreported_.insert(to_evict->GetTaskAttempt());
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
