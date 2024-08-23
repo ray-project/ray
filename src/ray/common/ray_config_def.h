@@ -513,7 +513,7 @@ RAY_CONFIG(uint64_t,
 RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 
 /// Max number of task events to be written in a single flush iteration. This
-/// caps the number of file writes per iteration. 
+/// caps the number of file writes per iteration.
 RAY_CONFIG(uint64_t, export_task_events_write_batch_size, 10 * 1000)
 
 /// Max number of profile events allowed to be tracked for a single task.

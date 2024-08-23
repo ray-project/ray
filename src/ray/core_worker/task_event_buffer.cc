@@ -326,17 +326,15 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
 
   // Get the export events data to write.
   if (export_event_write_enabled_) {
-    size_t num_to_write =
-        std::min(static_cast<size_t>(RayConfig::instance().export_task_events_write_batch_size()),
-                 static_cast<size_t>(status_events_for_export_.size()));
+    size_t num_to_write = std::min(
+        static_cast<size_t>(RayConfig::instance().export_task_events_write_batch_size()),
+        static_cast<size_t>(status_events_for_export_.size()));
     status_events_to_write_for_export->insert(
         status_events_to_write_for_export->end(),
         std::make_move_iterator(status_events_for_export_.begin()),
-        std::make_move_iterator(status_events_for_export_.begin() +
-                                num_to_write));
-    status_events_for_export_.erase(
-        status_events_for_export_.begin(),
-        status_events_for_export_.begin() + num_to_write);
+        std::make_move_iterator(status_events_for_export_.begin() + num_to_write));
+    status_events_for_export_.erase(status_events_for_export_.begin(),
+                                    status_events_for_export_.begin() + num_to_write);
     stats_counter_.Decrement(
         TaskEventBufferCounter::kNumTaskStatusEventsForExportAPIStored,
         status_events_to_write_for_export->size());
@@ -436,7 +434,8 @@ void TaskEventBufferImpl::WriteExportData(
   // Maintain insertion order to agg_task_events so events are written
   // in the same order as the buffer.
   std::vector<TaskAttempt> agg_task_event_insertion_order;
-  auto to_rpc_event_fn = [&agg_task_events, &agg_task_event_insertion_order](std::shared_ptr<TaskEvent> &event) {
+  auto to_rpc_event_fn = [&agg_task_events, &agg_task_event_insertion_order](
+                             std::shared_ptr<TaskEvent> &event) {
     // Aggregate events by task attempt before converting to proto
     if (!agg_task_events.count(event->GetTaskAttempt())) {
       auto inserted = agg_task_events.insert(
@@ -455,7 +454,7 @@ void TaskEventBufferImpl::WriteExportData(
   std::for_each(
       profile_events_to_send.begin(), profile_events_to_send.end(), to_rpc_event_fn);
 
-  for (auto& task_attempt : agg_task_event_insertion_order) {
+  for (auto &task_attempt : agg_task_event_insertion_order) {
     RayExportEvent(agg_task_events[task_attempt]).SendEvent();
   }
 }
@@ -576,7 +575,8 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
   }
   std::shared_ptr<TaskEvent> status_event_shared_ptr = std::move(status_event);
 
-  if (dropped_task_attempts_unreported_.count(status_event_shared_ptr->GetTaskAttempt())) {
+  if (dropped_task_attempts_unreported_.count(
+          status_event_shared_ptr->GetTaskAttempt())) {
     // This task attempt has been dropped before, so we drop this event.
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
@@ -630,10 +630,11 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
     return;
   }
   std::shared_ptr<TaskEvent> profile_event_shared_ptr = std::move(profile_event);
-  auto profile_events_itr = profile_events_.find(profile_event_shared_ptr->GetTaskAttempt());
+  auto profile_events_itr =
+      profile_events_.find(profile_event_shared_ptr->GetTaskAttempt());
   if (profile_events_itr == profile_events_.end()) {
-    auto inserted = profile_events_.insert(
-        {profile_event_shared_ptr->GetTaskAttempt(), std::vector<std::shared_ptr<TaskEvent>>()});
+    auto inserted = profile_events_.insert({profile_event_shared_ptr->GetTaskAttempt(),
+                                            std::vector<std::shared_ptr<TaskEvent>>()});
     RAY_CHECK(inserted.second);
     profile_events_itr = inserted.first;
   }
@@ -657,7 +658,8 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
     // driver task id and it could generate large number of profile events when submitting
     // many tasks.
     RAY_LOG_EVERY_N(WARNING, 100000)
-        << "Dropping profiling events for task: " << profile_event_shared_ptr->GetTaskAttempt().first
+        << "Dropping profiling events for task: "
+        << profile_event_shared_ptr->GetTaskAttempt().first
         << ", set a higher value for RAY_task_events_max_num_profile_events_per_task("
         << max_num_profile_event_per_task
         << "), or RAY_task_events_max_num_profile_events_buffer_on_worker ("
