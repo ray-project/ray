@@ -56,26 +56,38 @@ class MARWILConfig(AlgorithmConfig):
         from ray.rllib.algorithms.marwil import MARWILConfig
 
         # Get the base path (to ray/rllib)
-        base_path = Path(__file__).parents[3]
+        base_path = Path(__file__).parents[2]
         # Get the path to the data in rllib folder.
         data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
 
         config = MARWILConfig()
         # Enable the new API stack.
-        config = config.api_stack(
+        config.api_stack(
             enable_rl_module_and_learner=True,
             enable_env_runner_and_connector_v2=True,
         )
+        # Define the environment for which to learn a policy
+        # from offline data.
+        config.environment("CartPole-v1")
         # Set the training parameters.
-        config = config.training(beta=1.0, lr=1e-5, gamma=0.99)
+        config.training(
+            beta=1.0,
+            lr=1e-5,
+            gamma=0.99,
+            # We must define a train batch size for each
+            # learner (here 1 local learner).
+            train_batch_size_per_learner=2000,
+        )
         # Define the data source for offline data.
-        config = config.offline_data(
+        config.offline_data(
             input_=[data_path.as_posix()],
+            # Run exactly one update per training iteration.
+            dataset_num_iters_per_learner=1,
         )
 
         # Build an `Algorithm` object from the config and run 1 training
         # iteration.
-        algo = build()
+        algo = config.build()
         algo.train()
 
     .. testcode::
@@ -85,24 +97,35 @@ class MARWILConfig(AlgorithmConfig):
         from ray import tune
 
         # Get the base path (to ray/rllib)
-        base_path = Path(__file__).parents[3]
+        base_path = Path(__file__).parents[2]
         # Get the path to the data in rllib folder.
         data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
 
         config = MARWILConfig()
+        # Enable the new API stack.
+        config.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         # Print out some default values
         print(f"beta: {config.beta}")
         # Update the config object.
         config.training(
             lr=tune.grid_search([1e-3, 1e-4]),
             beta=0.75,
+            # We must define a train batch size for each
+            # learner (here 1 local learner).
+            train_batch_size_per_learner=2000,
         )
         # Set the config's data path.
         config.offline_data(
             input_=[data_path.as_posix()],
+            # Set the number of updates to be run per learner
+            # per training step.
+            dataset_num_iters_per_learner=1,
         )
         # Set the config's environment for evalaution.
-        config.environment(env="CartPole_v1")
+        config.environment(env="CartPole-v1")
         # Set up a tuner to run the experiment.
         tuner = tune.Tuner(
             "MARWIL",
