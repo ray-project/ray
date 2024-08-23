@@ -31,6 +31,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
+#include "ray/util/event.h"
 
 namespace ray {
 namespace gcs {
@@ -187,6 +188,9 @@ class GcsActor {
   /// Get the mutable ActorTableData of this actor.
   rpc::ActorTableData *GetMutableActorTableData();
   rpc::TaskSpec *GetMutableTaskSpec();
+  /// Write an event containing this actor's ActorTableData
+  /// to file for the Export API.
+  void WriteActorExportEvent() const;
 
   const ResourceRequest &GetAcquiredResources() const;
   void SetAcquiredResources(ResourceRequest &&resource_request);
@@ -211,6 +215,25 @@ class GcsActor {
       counter_->Increment(std::make_pair(cur_state, GetActorTableData().class_name()));
     }
     last_metric_state_ = cur_state;
+  }
+
+  rpc::ExportActorData::ActorState ConvertActorStateToExport(rpc::ActorTableData::ActorState actor_state) const {
+    switch (actor_state) {
+        case rpc::ActorTableData::DEPENDENCIES_UNREADY:
+            return rpc::ExportActorData::DEPENDENCIES_UNREADY;
+        case rpc::ActorTableData::PENDING_CREATION:
+            return rpc::ExportActorData::PENDING_CREATION;
+        case rpc::ActorTableData::ALIVE:
+            return rpc::ExportActorData::ALIVE;
+        case rpc::ActorTableData::RESTARTING:
+            return rpc::ExportActorData::RESTARTING;
+        case rpc::ActorTableData::DEAD:
+            return rpc::ExportActorData::DEAD;
+        default:
+            // Unknown rpc::ActorTableData::ActorState value
+            RAY_LOG(FATAL) << "Invalid value for rpc::ActorTableData::ActorState" << rpc::ActorTableData::ActorState_Name(actor_state);
+            return rpc::ExportActorData::DEAD;
+    }
   }
 
   /// The actor meta data which contains the task specification as well as the state of
