@@ -1,6 +1,6 @@
 import logging
 import threading
-from typing import Optional, Type
+from typing import Optional
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -31,69 +31,53 @@ def register_custom_torch_dist_backend(backend: Optional[str] = None) -> None:
         NPUTorchDeviceManager.register_custom_torch_dist_backend()
 
 
-def get_torch_device_manager_cls_by_resources(
-    resources: Optional[dict],
-) -> Type[TorchDeviceManager]:
-    existing_device_manager = None
-
-    # input resources may be None
-    if not resources:
-        return DEFAULT_TORCH_DEVICE_MANAGER_CLS
-
-    # select correct accelerator type from resources
-    for resource_type, resource_value in resources.items():
-        device_manager = SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER.get(
-            resource_type, None
-        )
-        if resource_value and device_manager:
-            # An error will raise when multiple accelerators are specified.
-            if existing_device_manager:
-                raise RuntimeError(
-                    "Unable to determine the appropriate DeviceManager "
-                    f"for the specified resources {resources}."
-                )
-            else:
-                existing_device_manager = device_manager
-
-    return existing_device_manager or DEFAULT_TORCH_DEVICE_MANAGER_CLS
-
-
-def get_torch_device_manager_cls_by_device_type(device_type: str):
-    if device_type.lower() == ray_constants.GPU.lower() or device_type == "cuda":
-        return CUDATorchDeviceManager
-    elif device_type.lower() == ray_constants.NPU.lower():
-        return NPUTorchDeviceManager
-    elif device_type.lower() == ray_constants.HPU.lower():
-        return HPUTorchDeviceManager
-    elif device_type.lower() == "cpu":
-        return CPUTorchDeviceManager
-
-    raise RuntimeError(f"Device type {device_type} cannot be recognized.")
-
-
 _torch_device_manager = None
 _torch_device_manager_lock = threading.Lock()
 
 
-def get_torch_device_manager(device_type: Optional[str] = None) -> TorchDeviceManager:
-    if device_type:
-        # Specify the device type to retrieve the device manager directly,
-        # rather than relying on the remote environment to determine it.
-        return get_torch_device_manager_cls_by_device_type(device_type)()
+def get_torch_device_manager_by_context() -> TorchDeviceManager:
+    global _torch_device_manager
 
     with _torch_device_manager_lock:
         if not _torch_device_manager:
-            init_torch_device_manager()
+            existing_device_manager_cls = None
+            resources = ray.get_runtime_context().get_accelerator_ids()
+
+            # select correct accelerator type from resources
+            for resource_type, resource_value in resources.items():
+                device_manager_cls = SUPPORTED_ACCELERATOR_TORCH_DEVICE_MANAGER.get(
+                    resource_type, None
+                )
+                if resource_value and device_manager_cls:
+                    # An error will raise when multiple accelerators are specified.
+                    if existing_device_manager_cls:
+                        raise RuntimeError(
+                            "Unable to determine the appropriate DeviceManager "
+                            f"for the specified resources {resources}."
+                        )
+                    else:
+                        existing_device_manager_cls = device_manager_cls
+
+            device_manager_cls = (
+                existing_device_manager_cls or DEFAULT_TORCH_DEVICE_MANAGER_CLS
+            )
+
+            _torch_device_manager = device_manager_cls()
 
     return _torch_device_manager
 
 
-def init_torch_device_manager() -> None:
-    global _torch_device_manager
+def get_torch_device_manager_by_device_type(device_type: str):
+    if device_type.lower() == ray_constants.GPU.lower() or device_type == "cuda":
+        return CUDATorchDeviceManager()
+    elif device_type.lower() == ray_constants.NPU.lower():
+        return NPUTorchDeviceManager()
+    elif device_type.lower() == ray_constants.HPU.lower():
+        return HPUTorchDeviceManager()
+    elif device_type.lower() == "cpu":
+        return CPUTorchDeviceManager()
 
-    resources = ray.get_runtime_context().get_accelerator_ids()
-
-    _torch_device_manager = get_torch_device_manager_cls_by_resources(resources)()
+    raise RuntimeError(f"Device type {device_type} cannot be recognized.")
 
 
 __all__ = [
@@ -103,6 +87,6 @@ __all__ = [
     HPUTorchDeviceManager,
     NPUTorchDeviceManager,
     register_custom_torch_dist_backend,
-    get_torch_device_manager,
-    init_torch_device_manager,
+    get_torch_device_manager_by_context,
+    get_torch_device_manager_by_device_type,
 ]

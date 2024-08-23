@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ray.air._internal.device_manager import get_torch_device_manager
+from ray.air._internal.device_manager import get_torch_device_manager_by_context
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
 
@@ -16,7 +16,7 @@ def get_devices() -> List[torch.device]:
     the current worker.
     If no accelerators are assigned, then it returns a list with a single CPU device.
     """
-    return get_torch_device_manager().get_devices()
+    return get_torch_device_manager_by_context().get_devices()
 
 
 def convert_pandas_to_torch_tensor(

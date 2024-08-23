@@ -8,10 +8,7 @@ import torch
 import torch.distributed as dist
 
 import ray
-from ray.air._internal.device_manager import (
-    init_torch_device_manager,
-    register_custom_torch_dist_backend,
-)
+from ray.air._internal.device_manager import register_custom_torch_dist_backend
 from ray.train._internal.utils import get_address_and_port
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import Backend, BackendConfig
@@ -209,5 +206,4 @@ class _TorchBackend(Backend):
     def on_training_start(
         self, worker_group: WorkerGroup, backend_config: BackendConfig
     ):
-        worker_group.execute(init_torch_device_manager)
         worker_group.execute(_set_torch_distributed_env_vars)

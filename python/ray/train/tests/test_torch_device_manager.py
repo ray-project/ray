@@ -5,7 +5,7 @@ import ray
 from ray.air._internal.device_manager import (
     CUDATorchDeviceManager,
     NPUTorchDeviceManager,
-    get_torch_device_manager,
+    get_torch_device_manager_by_context,
 )
 from ray.air._internal.device_manager.npu import NPU_TORCH_PACKAGE_AVAILABLE
 from ray.cluster_utils import Cluster
@@ -44,7 +44,7 @@ def ray_1_node_1_gpu_1_npu():
 
 def test_cuda_device_manager(ray_2_node_2_gpu):
     def train_fn():
-        assert isinstance(get_torch_device_manager(), CUDATorchDeviceManager)
+        assert isinstance(get_torch_device_manager_by_context(), CUDATorchDeviceManager)
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn,
@@ -58,7 +58,7 @@ def test_cuda_device_manager(ray_2_node_2_gpu):
 
 def test_npu_device_manager(ray_2_node_2_npus):
     def train_fn():
-        assert isinstance(get_torch_device_manager(), NPUTorchDeviceManager)
+        assert isinstance(get_torch_device_manager_by_context(), NPUTorchDeviceManager)
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_fn,

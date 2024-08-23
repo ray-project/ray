@@ -20,7 +20,10 @@ from torch.utils.data import (
 )
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray.air._internal.device_manager import get_torch_device_manager
+from ray.air._internal.device_manager import (
+    get_torch_device_manager_by_context,
+    get_torch_device_manager_by_device_type,
+)
 from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
 from ray.train._internal.session import get_accelerator, set_accelerator
@@ -366,7 +369,7 @@ class _TorchAccelerator(Accelerator):
         self.amp_is_enabled = amp
         self.scaler = GradScaler() if amp else None
         self._seed = None
-        self.device_manager = get_torch_device_manager()
+        self.device_manager = get_torch_device_manager_by_context()
 
     def prepare_model(
         self,
@@ -635,7 +638,7 @@ class _WrappedDataLoader(DataLoader):
         self.dataloader_iter = None
         self.device = device
 
-        self.device_manager = get_torch_device_manager(device.type)
+        self.device_manager = get_torch_device_manager_by_device_type(device.type)
 
         # disable auto transfer (host->device) if cpu is used
         if device.type != "cpu" and self.device_manager.supports_stream():
