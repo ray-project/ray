@@ -16,6 +16,7 @@ sphinx-sitemap==2.5.1
 sphinxcontrib-redoc==1.6.0
 sphinx-remove-toctrees==0.0.3
 sphinx_design==0.5.0
+sphinx-autobuild==2024.4.16
 pydata-sphinx-theme==0.14.1
 autodoc_pydantic==2.2.0
 appnope
