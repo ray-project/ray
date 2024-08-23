@@ -23,7 +23,7 @@ def rconfig(**config_opts):
 
 
 def test_compact_node(mock_deployment_state_manager):  # noqa: F811
-    create_dsm, _, cluster_node_info_cache = mock_deployment_state_manager
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
     cluster_node_info_cache.add_node("node1", {"CPU": 9})
     cluster_node_info_cache.add_node("node2", {"CPU": 4})
     cluster_node_info_cache.add_node("node3", {"CPU": 5})
@@ -112,7 +112,7 @@ def test_compact_node(mock_deployment_state_manager):  # noqa: F811
 
 
 def test_compaction_cancelled(mock_deployment_state_manager):  # noqa: F811
-    create_dsm, _, cluster_node_info_cache = mock_deployment_state_manager
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
     cluster_node_info_cache.add_node("node1", {"CPU": 3})
     cluster_node_info_cache.add_node("node2", {"CPU": 3})
 
