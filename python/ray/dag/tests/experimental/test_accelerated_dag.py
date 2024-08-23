@@ -1186,6 +1186,11 @@ class TestLeafNode:
 
 
 def test_output_node(ray_start_regular):
+    """
+    This test is similar to the `test_output_node` in `test_output_node.py`, but
+    this test is for the accelerated DAG.
+    """
+
     @ray.remote
     class Worker:
         def __init__(self):

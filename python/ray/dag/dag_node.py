@@ -75,7 +75,13 @@ class DAGNode(DAGNodeBase):
         self.is_output_node = False
 
     def _prepare_upstream_nodes(self) -> List["DAGNode"]:
-        """Retrieve upstream nodes and update their downstream dependencies."""
+        """
+        Retrieve upstream nodes and update their downstream dependencies.
+
+        TODO (kevin85421): Currently, the upstream nodes and downstream nodes have
+        circular references. Therefore, it relies on the garbage collector to clean
+        them up.
+        """
         scanner = _PyObjScanner()
         upstream_nodes: List["DAGNode"] = scanner.find_nodes(
             [
