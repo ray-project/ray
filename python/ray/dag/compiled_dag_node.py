@@ -339,7 +339,9 @@ class ExecutableTask:
         # Input reader to read input data from upstream DAG nodes.
         self.input_reader: ReaderInterface = SynchronousReader(self.input_channels)
         # Output writer to write output data to downstream DAG nodes.
-        self.output_writer: WriterInterface = SynchronousWriter(self.output_channel)
+        self.output_writer: WriterInterface = SynchronousWriter(
+            self.output_channels, self.output_idxs
+        )
         # Store the intermediate result of a READ or COMPUTE operation.
         # The result of a READ operation will be used by a COMPUTE operation,
         # and the result of a COMPUTE operation will be used by a WRITE operation.
@@ -706,7 +708,6 @@ class CompiledDAG:
         from ray.dag import (
             DAGNode,
             ClassMethodNode,
-            ClassMethodOutputNode,
             FunctionNode,
             InputAttributeNode,
             InputNode,
@@ -747,7 +748,6 @@ class CompiledDAG:
                 or isinstance(dag_node, InputAttributeNode)
                 or isinstance(dag_node, MultiOutputNode)
                 or isinstance(dag_node, ClassMethodNode)
-                or isinstance(dag_node, ClassMethodOutputNode)
             ):
                 if isinstance(dag_node, FunctionNode):
                     # TODO(swang): Support non-actor tasks.
@@ -757,7 +757,7 @@ class CompiledDAG:
                 else:
                     raise ValueError(f"Found unsupported node of type {type(dag_node)}")
 
-            if isinstance(dag_node, ClassMethodNode):
+            if isinstance(dag_node, ClassMethodNode) and dag_node.is_class_method_call:
                 actor_handle = dag_node._get_actor_handle()
                 if actor_handle is None:
                     raise ValueError(
@@ -796,7 +796,10 @@ class CompiledDAG:
                 upstream_node_idx = self.dag_node_to_idx[arg]
                 upstream_node = self.idx_to_task[upstream_node_idx]
                 downstream_actor_handle = None
-                if isinstance(dag_node, ClassMethodNode):
+                if (
+                    isinstance(dag_node, ClassMethodNode)
+                    and dag_node.is_class_method_call
+                ):
                     downstream_actor_handle = dag_node._get_actor_handle()
 
                 if isinstance(upstream_node.dag_node, InputAttributeNode):
@@ -833,7 +836,10 @@ class CompiledDAG:
                         )
                     direct_input = True
 
-                elif isinstance(upstream_node.dag_node, ClassMethodNode):
+                elif (
+                    isinstance(upstream_node.dag_node, ClassMethodNode)
+                    and upstream_node.dag_node.is_class_method_call
+                ):
                     from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
 
                     if (
@@ -949,7 +955,6 @@ class CompiledDAG:
             InputAttributeNode,
             MultiOutputNode,
             ClassMethodNode,
-            ClassMethodOutputNode,
         )
 
         if self.input_task_idx is None:
@@ -974,28 +979,36 @@ class CompiledDAG:
             if type_hint.requires_nccl():
                 type_hint.set_nccl_group_id(self._nccl_group_id)
 
-            if isinstance(task.dag_node, ClassMethodNode):
+            if (
+                isinstance(task.dag_node, ClassMethodNode)
+                and task.dag_node.is_class_method_call
+            ):
                 # Create output buffers for the actor method.
                 assert len(task.output_channels) == 0
                 # `output_to_readers` stores the reader tasks for each output of
                 # the current node. If the current node returns one output, the
                 # readers are the downstream nodes of the current node. If the
                 # current node returns multiple outputs, the readers of each
-                # output are the downstream nodes of the ClassMethodOutputNode.
+                # output are the downstream nodes of the ClassMethodNode that
+                # is a class method output.
                 output_to_readers: Dict[CompiledTask, List[CompiledTask]] = defaultdict(
                     list
                 )
                 for idx in task.downstream_node_idxs:
                     downstream_task = self.idx_to_task[idx]
-                    if not isinstance(downstream_task.dag_node, ClassMethodOutputNode):
-                        if task not in output_to_readers:
-                            output_to_readers[task] = []
-                        output_to_readers[task].append(downstream_task)
-                    else:
+                    downstream_node = downstream_task.dag_node
+                    if (
+                        isinstance(downstream_node, ClassMethodNode)
+                        and downstream_node.is_class_method_output
+                    ):
                         output_to_readers[downstream_task] = [
                             self.idx_to_task[idx]
                             for idx in downstream_task.downstream_node_idxs
                         ]
+                    else:
+                        if task not in output_to_readers:
+                            output_to_readers[task] = []
+                        output_to_readers[task].append(downstream_task)
                 # `output_to_reader_and_node_list` stores the reader actors and
                 # the reader node IDs for each output of the current node.
                 output_to_reader_and_node_list: Dict[
@@ -1077,7 +1090,10 @@ class CompiledDAG:
                     )
                     output_idx = None
                     downstream_node = output.dag_node
-                    if isinstance(downstream_node, ClassMethodOutputNode):
+                    if (
+                        isinstance(downstream_node, ClassMethodNode)
+                        and downstream_node.is_class_method_output
+                    ):
                         output_idx = downstream_node.output_idx
                     task.output_channels.append(output_channel)
                     task.output_idxs.append(output_idx)
@@ -1085,9 +1101,12 @@ class CompiledDAG:
                 assert actor_handle is not None
                 self.actor_refs.add(actor_handle)
                 self.actor_to_tasks[actor_handle].append(task)
-            elif isinstance(task.dag_node, ClassMethodOutputNode):
+            elif (
+                isinstance(task.dag_node, ClassMethodNode)
+                and task.dag_node.is_class_method_output
+            ):
                 task_node = task.dag_node
-                upstream_node = task_node.class_method_node
+                upstream_node = task_node.class_method_call
                 upstream_task = self.idx_to_task[self.dag_node_to_idx[upstream_node]]
                 for i in range(len(upstream_task.output_channels)):
                     if upstream_task.output_idxs[i] == task_node.output_idx:
@@ -1122,10 +1141,8 @@ class CompiledDAG:
                     )
                 ]
             else:
-                assert (
-                    isinstance(task.dag_node, InputAttributeNode)
-                    or isinstance(task.dag_node, MultiOutputNode)
-                    or isinstance(task.dag_node, ClassMethodOutputNode)
+                assert isinstance(task.dag_node, InputAttributeNode) or isinstance(
+                    task.dag_node, MultiOutputNode
                 )
 
             for idx in task.downstream_node_idxs:
@@ -1445,7 +1462,10 @@ class CompiledDAG:
         from ray.dag import ClassMethodNode
 
         def _get_next_task_idx(task: "CompiledTask") -> Optional[int]:
-            if not isinstance(task.dag_node, ClassMethodNode):
+            if (
+                not isinstance(task.dag_node, ClassMethodNode)
+                or task.dag_node.is_class_method_output
+            ):
                 return None
             actor_handle = task.dag_node._get_actor_handle()
             bind_index = task.dag_node._get_bind_index()
@@ -1474,9 +1494,15 @@ class CompiledDAG:
             """
             task1 = self.idx_to_task[idx1]
             task2 = self.idx_to_task[idx2]
-            if not isinstance(task1.dag_node, ClassMethodNode):
+            if (
+                not isinstance(task1.dag_node, ClassMethodNode)
+                or task1.dag_node.is_class_method_output
+            ):
                 return False
-            if not isinstance(task2.dag_node, ClassMethodNode):
+            if (
+                not isinstance(task2.dag_node, ClassMethodNode)
+                or task2.dag_node.is_class_method_output
+            ):
                 return False
             actor_id_1 = task1.dag_node._get_actor_handle()._actor_id
             actor_id_2 = task2.dag_node._get_actor_handle()._actor_id

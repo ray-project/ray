@@ -8,6 +8,7 @@ from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
     PREV_CLASS_METHOD_CALL_KEY,
     BIND_INDEX_KEY,
+    IS_CLASS_METHOD_OUTPUT_KEY,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -164,6 +165,23 @@ class ClassMethodNode(DAGNode):
         self._bind_index: Optional[int] = other_args_to_resolve.get(
             BIND_INDEX_KEY, None
         )
+        # Represent if the ClassMethodNode is a class method output. If True,
+        # the node is a placeholder for a return value from the ClassMethodNode
+        # that returns multiple values. If False, the node is a class method call.
+        self._is_class_method_output: bool = other_args_to_resolve.get(
+            IS_CLASS_METHOD_OUTPUT_KEY, False
+        )
+        # The upstream class method call that returns multiple values. It is None
+        # when `_is_class_method_output` is False.
+        self._class_method_call: Optional["ClassMethodNode"] = None
+        # The output index of the return value from the upstream class method call.
+        # It is None when `_is_class_method_output` is False.
+        self._output_idx: Optional[int] = None
+        if self._is_class_method_output:
+            # Set the upstream ClassMethodNode and the output index of the return
+            # value from `method_args`.
+            self._class_method_call = method_args[0]
+            self._output_idx = method_args[1]
 
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
@@ -198,12 +216,15 @@ class ClassMethodNode(DAGNode):
         with value in bound_args and bound_kwargs via bottom-up recursion when
         current node is executed.
         """
-        method_body = getattr(self._parent_class_node, self._method_name)
-        # Execute with bound args.
-        return method_body.options(**self._bound_options).remote(
-            *self._bound_args,
-            **self._bound_kwargs,
-        )
+        if self.is_class_method_call:
+            method_body = getattr(self._parent_class_node, self._method_name)
+            # Execute with bound args.
+            return method_body.options(**self._bound_options).remote(
+                *self._bound_args,
+                **self._bound_kwargs,
+            )
+        else:
+            return self._bound_args[0][self._output_idx]
 
     def __str__(self) -> str:
         return get_dag_node_str(self, f"{self._method_name}()")
@@ -225,107 +246,27 @@ class ClassMethodNode(DAGNode):
 
     @property
     def num_returns(self) -> int:
-        num_returns = self._bound_options.get("num_returns", None)
-        if num_returns is None:
-            method = self._get_remote_method(self._method_name)
-            num_returns = method.__getstate__()["num_returns"]
-        return num_returns
-
-
-@DeveloperAPI
-class ClassMethodOutputNode(DAGNode):
-    def __init__(
-        self,
-        method_name: str,
-        method_args: Tuple[ClassMethodNode, int],
-        method_kwargs: Dict[str, Any],
-        method_options: Dict[str, Any],
-        other_args_to_resolve: Dict[str, Any],
-    ):
-
-        self._bound_args = method_args or []
-        self._bound_kwargs = method_kwargs or {}
-        self._bound_options = method_options or {}
-        self._method_name: str = method_name
-        # Parse other_args_to_resolve and assign to variables
-        self._parent_class_node: Union[
-            ClassNode, ReferenceType["ray._private.actor.ActorHandle"]
-        ] = other_args_to_resolve.get(PARENT_CLASS_NODE_KEY)
-        # Used to track lineage of ClassMethodCall to preserve deterministic
-        # submission and execution order.
-        self._prev_class_method_call: Optional[
-            ClassMethodNode
-        ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
-        # The index/order when bind() is called on this class method
-        self._bind_index: Optional[int] = other_args_to_resolve.get(
-            BIND_INDEX_KEY, None
-        )
-        # The upstream ClassMethodNode that this node is outputting from.
-        self._class_method_node = method_args[0]
-        # The output index of the return value.
-        self._output_idx = method_args[1]
-
-        # The actor creation task dependency is encoded as the first argument,
-        # and the ordering dependency as the second, which ensures they are
-        # executed prior to this node.
-        super().__init__(
-            method_args,
-            method_kwargs,
-            method_options,
-            other_args_to_resolve=other_args_to_resolve,
-        )
-
-    def _copy_impl(
-        self,
-        new_args: List[Any],
-        new_kwargs: Dict[str, Any],
-        new_options: Dict[str, Any],
-        new_other_args_to_resolve: Dict[str, Any],
-    ):
-        return ClassMethodOutputNode(
-            self._method_name,
-            new_args,
-            new_kwargs,
-            new_options,
-            other_args_to_resolve=new_other_args_to_resolve,
-        )
-
-    def _execute_impl(self, *args, **kwargs):
-        """Executor of ClassMethodNode by ray.remote()
-
-        Args and kwargs are to match base class signature, but not in the
-        implementation. All args and kwargs should be resolved and replaced
-        with value in bound_args and bound_kwargs via bottom-up recursion when
-        current node is executed.
-        """
-        return self._bound_args[0][self._output_idx]
-
-    def __str__(self) -> str:
-        return get_dag_node_str(self, f"{self._method_name}()")
-
-    def get_method_name(self) -> str:
-        return self._method_name
-
-    def _get_bind_index(self) -> int:
-        return self._bind_index
-
-    def _get_remote_method(self, method_name):
-        method_body = getattr(self._parent_class_node, method_name)
-        return method_body
-
-    def _get_actor_handle(self) -> Optional["ray.actor.ActorHandle"]:
-        if not isinstance(self._parent_class_node, ray.actor.ActorHandle):
-            return None
-        return self._parent_class_node
+        if self.is_class_method_call:
+            num_returns = self._bound_options.get("num_returns", None)
+            if num_returns is None:
+                method = self._get_remote_method(self._method_name)
+                num_returns = method.__getstate__()["num_returns"]
+            return num_returns
+        else:
+            return self._class_method_call.num_returns
 
     @property
-    def num_returns(self) -> int:
-        return self._class_method_node.num_returns
+    def is_class_method_call(self) -> bool:
+        return not self._is_class_method_output
 
     @property
-    def class_method_node(self) -> ClassMethodNode:
-        return self._class_method_node
+    def is_class_method_output(self) -> bool:
+        return self._is_class_method_output
 
     @property
-    def output_idx(self) -> int:
+    def class_method_call(self) -> Optional["ClassMethodNode"]:
+        return self._class_method_call
+
+    @property
+    def output_idx(self) -> Optional[int]:
         return self._output_idx

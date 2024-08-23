@@ -3,7 +3,6 @@ from ray.dag.function_node import FunctionNode
 from ray.dag.class_node import (
     ClassNode,
     ClassMethodNode,
-    ClassMethodOutputNode,
 )
 from ray.dag.input_node import (
     InputNode,
@@ -22,7 +21,6 @@ from ray.dag.context import DAGContext
 __all__ = [
     "ClassNode",
     "ClassMethodNode",
-    "ClassMethodOutputNode",
     "DAGNode",
     "FunctionNode",
     "InputNode",
