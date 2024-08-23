@@ -35,15 +35,15 @@ class ListifyDataForVectorEnv(ConnectorV2):
 
     Single agent case:
     Convert from:
-    [col] -> [(env_vector_idx,)] -> [list of items].
+    [col] -> [(episode_id,)] -> [list of items].
     To:
-    [col] -> [list of items, sorted by env vector idx].
+    [col] -> [list of items].
 
     Multi-agent case:
     Convert from:
-    [col] -> [(env_vector_idx, agent_id, module_id)] -> list of items.
+    [col] -> [(episode_id, agent_id, module_id)] -> list of items.
     To:
-    [col] -> [list of multi-agent dicts, sorted by env vector idx].
+    [col] -> [list of multi-agent dicts].
     """
 
     @override(ConnectorV2)

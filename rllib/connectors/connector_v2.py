@@ -31,7 +31,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
 
     A ConnectorV2 ("connector piece") is usually part of a whole series of connector
     pieces within a so-called connector pipeline, which in itself also abides to this
-    very API..
+    very API.
     For example, you might have a connector pipeline consisting of two connector pieces,
     A and B, both instances of subclasses of ConnectorV2 and each one performing a
     particular transformation on their input data. The resulting connector pipeline
