@@ -682,6 +682,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
             [this, actor](const Status &status) {
               // The backend storage is supposed to be reliable, so the status must be ok.
               RAY_CHECK_OK(status);
+              actor->WriteActorExportEvent();
               // If a creator dies before this callback is called, the actor could have
               // been already destroyed. It is okay not to invoke a callback because we
               // don't need to reply to the creator as it is already dead.
@@ -693,7 +694,6 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                 // should overwrite the actor state to DEAD to avoid race condition.
                 return;
               }
-              actor->WriteActorExportEvent();
               RAY_CHECK_OK(gcs_publisher_->PublishActor(
                   actor->GetActorID(), actor->GetActorTableData(), nullptr));
               // Invoke all callbacks for all registration requests of this actor

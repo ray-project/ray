@@ -13,6 +13,10 @@
 // limitations under the License.
 
 #include <memory>
+#include <filesystem>
+#include <fstream>
+#include <chrono>
+#include <thread>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -24,6 +28,7 @@
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/pubsub/publisher.h"
+#include "ray/util/event.h"
 // clang-format on
 
 namespace ray {
@@ -111,6 +116,20 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
   instrumented_io_context &io_service_;
 };
 
+void ReadContentFromFile(std::vector<std::string> &vc,
+                         std::string log_file,
+                         std::string filter = "") {
+  std::string line;
+  std::ifstream read_file;
+  read_file.open(log_file, std::ios::binary);
+  while (std::getline(read_file, line)) {
+    if (filter.empty() || line.find(filter) != std::string::npos) {
+      vc.push_back(line);
+    }
+  }
+  read_file.close();
+}
+
 class GcsActorManagerTest : public ::testing::Test {
  public:
   GcsActorManagerTest()
@@ -160,11 +179,13 @@ class GcsActorManagerTest : public ::testing::Test {
       auto job_id = JobID::FromInt(i);
       job_namespace_table_[job_id] = "";
     }
+    log_dir_ = "event_123";
   }
 
   virtual ~GcsActorManagerTest() {
     io_service_.stop();
     thread_io_service_->join();
+    std::filesystem::remove_all(log_dir_.c_str());
   }
 
   void WaitActorCreated(const ActorID &actor_id) {
@@ -286,9 +307,12 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   PeriodicalRunner periodical_runner_;
+  std::string log_dir_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {
+  std::vector<SourceTypeVariant> source_types = {rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR};
+  RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
   rpc::CreateActorRequest create_actor_request;
@@ -323,6 +347,33 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 0);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);
+
+  // Check correct export events are written for each of the 4 state transitions
+  int num_retry = 5;
+  int num_export_events = 4;
+  std::vector<std::string> expected_states = {"DEPENDENCIES_UNREADY", "PENDING_CREATION", "ALIVE", "DEAD"};
+  std::vector<std::string> vc;
+  for (int i = 0; i < num_retry; i++) {
+    ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
+    if ((int)vc.size() == num_export_events) {
+      for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
+        json export_event_as_json = json::parse(vc[event_idx]);
+        json event_data = export_event_as_json["event_data"].get<json>();
+        ASSERT_EQ(event_data["state"], expected_states[event_idx]);
+        if (event_idx == num_export_events - 1){
+          // Verify death cause for last actor DEAD event
+          ASSERT_EQ(event_data["death_cause"]["actor_died_error_context"]["error_message"], "The actor is dead because all references to the actor were removed.");
+        }
+      }
+      return;
+    } else {
+      // Sleep and retry
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      vc.clear();
+    }
+  }
+  ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
+  ASSERT_TRUE(false) << "Export API only wrote " << (int)vc.size() << " lines, but expecting 4.\n";
 }
 
 TEST_F(GcsActorManagerTest, TestDeadCount) {

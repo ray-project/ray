@@ -186,7 +186,9 @@ EventManager &EventManager::Instance() {
   return instance_;
 }
 
-bool EventManager::IsEmpty() { return reporter_map_.empty(); }
+bool EventManager::IsEmpty() {
+  return reporter_map_.empty() && export_log_reporter_map_.empty();
+}
 
 void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
   for (const auto &element : reporter_map_) {
