@@ -204,10 +204,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     node_id = node["nodeId"]
                     ip = node["nodeManagerAddress"]
                     hostname = node["nodeManagerHostname"]
-                    if (
-                        ip == self._dashboard_head.ip
-                        and not self._head_node_registration_time_s
-                    ):
+                    if node["isHeadNode"] and not self._head_node_registration_time_s:
                         self._head_node_registration_time_s = (
                             time.time() - self._module_start_time
                         )
