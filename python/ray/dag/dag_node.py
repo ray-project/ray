@@ -133,6 +133,7 @@ class DAGNode(DAGNodeBase):
         enable_asyncio: bool = False,
         _asyncio_max_queue_size: Optional[int] = None,
         _max_buffered_results: Optional[int] = None,
+        _max_buffered_inputs: Optional[int] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -153,6 +154,10 @@ class DAGNode(DAGNodeBase):
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
+            _max_buffered_inputs: The maximum number of in-flight requests that
+                are allowed to be buffered. Before submitting more requests,
+                the caller is responsible for calling ray.get to clear finished
+                in-flight requests.
 
         Returns:
             A compiled DAG.
@@ -174,6 +179,7 @@ class DAGNode(DAGNodeBase):
             enable_asyncio,
             _asyncio_max_queue_size,
             _max_buffered_results,
+            _max_buffered_inputs,
         )
 
     def execute(

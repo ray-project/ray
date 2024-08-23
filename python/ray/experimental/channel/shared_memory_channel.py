@@ -101,6 +101,7 @@ class SharedMemoryType(ChannelOutputType):
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        max_buffered_inputs: Optional[int] = None,
     ) -> "Channel":
         """
         Instantiate a ChannelInterface class that can be used
@@ -127,6 +128,8 @@ class SharedMemoryType(ChannelOutputType):
                 cpu_data_typ = SharedMemoryType(
                     buffer_size_bytes=self.buffer_size_bytes
                 )
+                # Currently, max_buffered_inputs is not supported.
+                # TODO(sang): Fix it.
                 return NestedTorchTensorNcclChannel(
                     writer,
                     reader_and_node_list,
@@ -134,7 +137,7 @@ class SharedMemoryType(ChannelOutputType):
                     cpu_data_typ=cpu_data_typ,
                 )
 
-        return CompositeChannel(writer, reader_and_node_list)
+        return CompositeChannel(writer, reader_and_node_list, max_buffered_inputs)
 
     def set_nccl_group_id(self, group_id: str) -> None:
         assert self.requires_nccl()
@@ -488,10 +491,13 @@ class BufferedChannel(ChannelInterface):
             self,
             writer: Optional[ray.actor.ActorHandle],
             reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-            capacity: int = 10,
-        ):
-        self._capacity = capacity
-        self._channels = [Channel(writer, reader_and_node_list) for _ in range(capacity)]
+            max_buffer_inputs: int,
+    ):
+        self._max_buffer_inputs = max_buffer_inputs
+        self._channels = [
+            Channel(writer, reader_and_node_list)
+                for _ in range(max_buffer_inputs)
+        ]
         self._next_write_index = 0
         self._next_read_index = 0
 
@@ -510,14 +516,23 @@ class BufferedChannel(ChannelInterface):
             chan.ensure_registered_as_reader()
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
-        self._channels[self._next_write_index].write(value, timeout)
+        try:
+            self._channels[self._next_write_index].write(value, 1)
+        except ray.exceptions.RayChannelTimeoutError:
+            # If we cannot write immediately, it means the buffer is full.
+            raise ray.exceptions.RayChannelBufferAtMaxCapacity(
+                f"There are more than {self._max_buffer_inputs} in flight "
+                "requests in the channel. Call ray.get before submitting "
+                "additional requests or increase `max_buffer_inputs`. "
+                "`adag.experimental_compile(_max_buffered_inputs=...)`"
+            ) from None
         self._next_write_index += 1
-        self._next_write_index %= self._capacity
+        self._next_write_index %= self._max_buffer_inputs
 
     def read(self, timeout: Optional[float] = None) -> Any:
         output = self._channels[self._next_read_index].read(timeout)
         self._next_read_index += 1
-        self._next_read_index %= self._capacity
+        self._next_read_index %= self._max_buffer_inputs
         return output
 
     def close(self) -> None:
@@ -544,6 +559,7 @@ class CompositeChannel(ChannelInterface):
         self,
         writer: Optional[ray.actor.ActorHandle],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        max_buffered_inputs: int,
         _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
         _channels: Optional[Set[ChannelInterface]] = None,
         _writer_registered: bool = False,
@@ -551,6 +567,7 @@ class CompositeChannel(ChannelInterface):
     ):
         self._writer = writer
         self._reader_and_node_list = reader_and_node_list
+        self._max_buffered_inputs = max_buffered_inputs
         self._writer_registered = _writer_registered
         self._reader_registered = _reader_registered
         # A dictionary that maps the actor ID to the channel object.
@@ -579,8 +596,10 @@ class CompositeChannel(ChannelInterface):
         # There are some remote readers which are not the same Ray actor as the writer.
         # Create a shared memory channel for the writer and the remote readers.
         if len(remote_reader_and_node_list) != 0:
-            remote_channel = Channel(self._writer, remote_reader_and_node_list)
-            remote_channel = BufferedChannel(self._writer, remote_reader_and_node_list)
+            remote_channel = BufferedChannel(
+                self._writer,
+                remote_reader_and_node_list,
+                max_buffered_inputs)
             self._channels.add(remote_channel)
 
             for reader, _ in remote_reader_and_node_list:
@@ -622,6 +641,7 @@ class CompositeChannel(ChannelInterface):
         return CompositeChannel, (
             self._writer,
             self._reader_and_node_list,
+            self._max_buffered_inputs,
             self._channel_dict,
             self._channels,
             self._writer_registered,

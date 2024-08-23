@@ -63,6 +63,7 @@ def do_allocate_channel(
     self,
     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
+    max_buffered_inputs: int,
 ) -> ChannelInterface:
     """Generic actor method to allocate an output channel.
 
@@ -70,6 +71,8 @@ def do_allocate_channel(
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
+        max_buffered_inputs: Maximum number of inputs that can be buffered to
+            this channel before raising an exception.
 
     Returns:
         The allocated channel.
@@ -84,6 +87,7 @@ def do_allocate_channel(
     output_channel = typ.create_channel(
         self_actor,
         reader_and_node_list,
+        max_buffered_inputs=max_buffered_inputs,
     )
     return output_channel
 
@@ -510,6 +514,7 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         asyncio_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
+        max_buffered_inputs: Optional[int] = None,
     ):
         """
         Args:
@@ -538,6 +543,10 @@ class CompiledDAG:
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
+            max_buffered_inputs: The maximum number of in-flight requests that
+                are allowed to be buffered. Before submitting more requests,
+                the caller is responsible for calling ray.get to clear finished
+                in-flight requests.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -569,6 +578,9 @@ class CompiledDAG:
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
             self._max_buffered_results = ctx.max_buffered_results
+        self._max_buffered_inputs = max_buffered_inputs
+        if self._max_buffered_inputs is None:
+            self._max_buffered_inputs = ctx.max_buffered_inputs
         # Used to ensure that the future returned to the
         # caller corresponds to the correct DAG output. I.e.
         # order of futures added to fut_queue should match the
@@ -1007,6 +1019,7 @@ class CompiledDAG:
                         do_allocate_channel,
                         reader_and_node_list,
                         typ=type_hint,
+                        max_buffered_inputs=self._max_buffered_inputs,
                     )
                 )
                 actor_handle = task.dag_node._get_actor_handle()
@@ -1036,6 +1049,7 @@ class CompiledDAG:
                     self,
                     reader_and_node_list,
                     typ=type_hint,
+                    max_buffered_inputs=self._max_buffered_inputs,
                 )
             else:
                 assert isinstance(task.dag_node, InputAttributeNode) or isinstance(
@@ -1724,6 +1738,7 @@ def build_compiled_dag_from_ray_dag(
     enable_asyncio: bool = False,
     asyncio_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
+    max_buffered_inputs: Optional[int] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         execution_timeout,
@@ -1731,6 +1746,7 @@ def build_compiled_dag_from_ray_dag(
         enable_asyncio,
         asyncio_max_queue_size,
         max_buffered_results,
+        max_buffered_inputs,
     )
 
     def _build_compiled_dag(node):

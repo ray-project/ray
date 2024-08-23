@@ -845,6 +845,13 @@ class RayChannelTimeoutError(RayChannelError, TimeoutError):
     pass
 
 
+@PublicAPI(stability="alpha")
+class RayChannelBufferAtMaxCapacity(RaySystemError):
+    """Raised when the accelerated DAG channel's buffer is at max capacity"""
+
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,

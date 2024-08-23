@@ -78,6 +78,7 @@ class ChannelOutputType:
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        max_buffered_inputs: Optional[int] = None,
     ) -> "ChannelInterface":
         """
         Instantiate a ChannelInterface class that can be used
@@ -87,6 +88,8 @@ class ChannelOutputType:
             writer: The actor that may write to the channel. None signifies the driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
+            max_buffered_inputs: The maximum number of inputs that are allowed to be
+                submitted before raising an exception. None means there's no limit.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.

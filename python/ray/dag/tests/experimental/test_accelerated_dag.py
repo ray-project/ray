@@ -23,6 +23,7 @@ from ray.tests.conftest import *  # noqa
 from ray._private.utils import (
     get_or_create_event_loop,
 )
+from ray.dag import DAGContext
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 
@@ -1316,6 +1317,82 @@ def test_payload_large(ray_start_cluster):
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
+
+
+@pytest.fixture
+def temporary_reduce_timeout(request):
+    ctx = DAGContext.get_current()
+    original = ctx.execution_timeout
+    ctx.execution_timeout = request.param
+    yield
+    ctx.execution_timeout = original
+
+
+@pytest.mark.parametrize("temporary_reduce_timeout", [1], indirect=True)
+def test_buffering_inputs(shutdown_only, temporary_reduce_timeout):
+    ray.init()
+
+    @ray.remote
+    class Actor1:
+        def fwd(self, x):
+            print("Actor1 fwd")
+            time.sleep(00.1)
+            return x
+
+    @ray.remote
+    class Actor2:
+        def fwd(self, x):
+            print("Actor2 fwd")
+            time.sleep(00.1)
+            return x
+
+        def bwd(self, x, y):
+            print("Actor2 bwd")
+            time.sleep(0.1)
+            return x
+
+    actor1 = Actor1.remote()
+    actor2 = Actor2.remote()
+
+    with InputNode() as input_node:
+        ref1 = actor1.fwd.bind(input_node)
+        ref2 = actor2.fwd.bind(input_node)
+        dag = actor2.bwd.bind(ref1, ref2)
+    dag = dag.experimental_compile()
+
+    output_refs = []
+    # Test the regular case.
+    for i in range(DAGContext.get_current().max_buffered_inputs - 1):
+        print("submit!")
+        output_refs.append(dag.execute(i))
+    for ref in output_refs:
+        ray.get(ref)
+
+    # Test there are more items than max buffered inputs.
+    output_refs = []
+    with pytest.raises(ray.exceptions.RayChannelBufferAtMaxCapacity):
+        for i in range(DAGContext.get_current().max_buffered_inputs + 1):
+            print("submit!")
+            output_refs.append(dag.execute(i))
+        for ref in output_refs:
+            ray.get(ref)
+
+    # # Make sure it works properly after that.
+    # for i in range(DAGContext.get_current().max_buffered_inputs):
+    #     print("submit!")
+    #     output_refs.append(dag.execute(i))
+    # for i, ref in enumerate(output_refs):
+    #     assert ray.get(ref) == i
+
+    dag.teardown()
+
+# Test 
+# - regular buffering
+#   - regular
+#   - it fills up all the buffer and restart.
+# - buffering is full and it times out (should raise an exception).
+# warning if resizing happens.
+
 
 
 class TestActorInputOutput:
