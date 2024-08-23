@@ -394,5 +394,40 @@ def test_worker_group_callback():
     assert hooks.shutdown_hook_called
 
 
+def test_shutdown_hook_with_dead_actors():
+    """Check that the shutdown hook raises correctly if run
+    on a mix of alive and dead actors."""
+
+    class ShutdownCallback(WorkerGroupCallback):
+        def before_worker_group_shutdown(self, worker_group):
+            # Mock a hanging collective call on the remaining workers.
+            def f():
+                print(ray.train.get_context().get_world_rank())
+                time.sleep(10)
+
+            wg.execute(f)
+
+    def conditional_failure():
+        if ray.train.get_context().get_world_rank() % 2 == 0:
+            ray.actor.exit_actor()
+
+    wg = WorkerGroup(callbacks=[ShutdownCallback()])
+    wg.start(train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 1})
+
+    # Kill some of the actors
+    try:
+        wg.execute(conditional_failure)
+    except RayActorError:
+        pass
+
+    # The shutdown hook should not hang here and should immediately raise.
+    start = time.monotonic()
+    with pytest.raises(RayActorError):
+        wg.shutdown()
+
+    # Should not wait for the full 10 seconds.
+    assert time.monotonic() - start < 1
+
+
 if __name__ == "__main__":
     pytest.main(["-v", __file__])

@@ -3,13 +3,13 @@ import os
 from collections import defaultdict
 from typing import List
 
-import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.ray_constants import env_bool
 from ray.train import BackendConfig
 from ray.train.constants import ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV
 from ray.train.v2._internal.execution.callback import WorkerGroupCallback
 from ray.train.v2._internal.execution.worker_group import ActorMetadata, WorkerGroup
+from ray.train.v2._internal.util import ray_get_safe
 from ray.train.v2.api.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
@@ -111,7 +111,7 @@ def _share_accelerator_ids(
                 rank, set_accelerator_ids, accelerator_ids=visible_accelerator_ids
             )
         )
-    ray.get(futures)
+    ray_get_safe(futures)
 
 
 def _get_visible_accelerator_ids_per_worker(

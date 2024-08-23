@@ -1,9 +1,11 @@
 import functools
 import time
 from datetime import datetime
-from typing import Any, Callable, ContextManager, Dict, Optional, TypeVar, Union
+from typing import Any, Callable, ContextManager, Dict, List, Optional, TypeVar, Union
 
+import ray
 from ray.train._internal.utils import count_required_parameters
+from ray.types import ObjectRef
 
 T = TypeVar("T")
 
@@ -90,3 +92,41 @@ def _copy_doc(copy_func):
         return func
 
     return wrapped
+
+
+def ray_get_safe(
+    object_refs: Union[ObjectRef, List[ObjectRef]]
+) -> Union[Any, List[Any]]:
+    """This is a safe version of `ray.get` that raises an exception immediately
+    if an input task dies, while the others are still running.
+
+    TODO(ml-team, core-team): This is NOT a long-term solution,
+    and we should not maintain this function indefinitely.
+    This is a mitigation for a Ray Core bug, and should be removed when
+    that is fixed.
+    See here: https://github.com/ray-project/ray/issues/47204
+
+    Args:
+        object_refs: A single or list of object refs to wait on.
+
+    Returns:
+        task_outputs: The outputs of the tasks.
+
+    Raises:
+        `RayTaskError`/`RayActorError`: if any of the tasks encounter a runtime error
+            or fail due to actor/task death (ex: node failure).
+    """
+    is_list = isinstance(object_refs, list)
+    object_refs = object_refs if is_list else [object_refs]
+
+    unready = object_refs
+    task_to_output = {}
+    while unready:
+        ready, unready = ray.wait(unready, num_returns=1)
+        if ready:
+            for task, task_output in zip(ready, ray.get(ready)):
+                task_to_output[task] = task_output
+
+    assert len(task_to_output) == len(object_refs)
+    ordered_outputs = [task_to_output[task] for task in object_refs]
+    return ordered_outputs if is_list else ordered_outputs[0]

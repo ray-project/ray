@@ -121,6 +121,15 @@ py_test(
 )
 
 py_test(
+    name = "test_util",
+    size = "small",
+    srcs = ["tests/test_util.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
     name = "test_v2_api",
     size = "small",
     srcs = ["tests/test_v2_api.py"],

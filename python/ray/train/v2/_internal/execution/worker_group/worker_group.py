@@ -34,7 +34,11 @@ from ray.train.v2._internal.execution.worker_group.worker import (
     Worker,
     WorkerStatus,
 )
-from ray.train.v2._internal.util import bundle_to_remote_args, time_monotonic
+from ray.train.v2._internal.util import (
+    bundle_to_remote_args,
+    ray_get_safe,
+    time_monotonic,
+)
 from ray.train.v2.api.config import RunConfig
 from ray.types import ObjectRef
 from ray.util.placement_group import placement_group, remove_placement_group
@@ -163,7 +167,9 @@ class WorkerGroup:
         ]
 
         try:
-            actor_metadatas = ray.get([actor.get_metadata.remote() for actor in actors])
+            actor_metadatas = ray_get_safe(
+                [actor.get_metadata.remote() for actor in actors]
+            )
         except RayActorError as actor_error:
             for actor in actors:
                 ray.kill(actor)
@@ -196,7 +202,7 @@ class WorkerGroup:
             )
             for i, worker in enumerate(self._workers)
         ]
-        ray.get(context_init_tasks)
+        ray_get_safe(context_init_tasks)
 
     def start(
         self,
@@ -281,7 +287,7 @@ class WorkerGroup:
 
             # Launch the training function on each worker.
             # This task should start a worker thread and return immediately.
-            ray.get(
+            ray_get_safe(
                 [worker.actor.run_train_fn.remote(train_fn) for worker in self._workers]
             )
 
@@ -600,7 +606,7 @@ class WorkerGroup:
         """
         self._assert_workers_started()
 
-        return ray.get(self.execute_async(fn, *fn_args, **fn_kwargs))
+        return ray_get_safe(self.execute_async(fn, *fn_args, **fn_kwargs))
 
     def execute_single_async(
         self, rank: int, fn: Callable[..., T], *fn_args, **fn_kwargs
