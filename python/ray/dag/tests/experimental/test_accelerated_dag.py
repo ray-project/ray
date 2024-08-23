@@ -985,6 +985,36 @@ def test_asyncio(ray_start_regular, max_queue_size):
 
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
+def test_asyncio_multi_output(ray_start_regular, max_queue_size):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
+
+    loop = get_or_create_event_loop()
+    compiled_dag = dag.experimental_compile(
+        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
+    )
+
+    async def main(i):
+        # Use numpy so that the return value will be zero-copy deserialized. If
+        # there is a memory leak in the DAG backend, then only the first task
+        # will succeed.
+        val = np.ones(100) * i
+        futs = await compiled_dag.execute_async(val)
+
+        assert len(futs) == 2
+        for fut in futs:
+            result = await fut
+            assert (result == val).all()
+
+    loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
+    # Note: must teardown before starting a new Ray session, otherwise you'll get
+    # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("max_queue_size", [None, 2])
 def test_asyncio_exceptions(ray_start_regular, max_queue_size):
     a = Actor.remote(0)
     with InputNode() as i:
