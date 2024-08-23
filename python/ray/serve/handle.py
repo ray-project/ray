@@ -29,6 +29,7 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     is_running_in_asyncio_loop,
 )
+from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -535,6 +536,14 @@ class DeploymentResponse(_DeploymentResponseBase):
         ).__await__()
         result = yield from obj_ref.__await__()
         return result
+
+    def __reduce__(self):
+        raise RayServeException(
+            "`DeploymentResponse` is not serializable. If you are passing the "
+            "`DeploymentResponse` in a nested object (e.g. a list or dictionary) to a "
+            "downstream deployment handle call, that is no longer supported. Please "
+            "only pass `DeploymentResponse` objects as top level arguments."
+        )
 
     def result(self, *, timeout_s: Optional[float] = None) -> Any:
         """Fetch the result of the handle call synchronously.

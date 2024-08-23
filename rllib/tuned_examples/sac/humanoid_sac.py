@@ -1,16 +1,26 @@
+"""This is WIP.
+
+On a single-GPU machine, with the --num-gpus=1 command line option, this example should
+learn a episode return of >1000 in ~10h, which is still very basic, but does somewhat
+prove SAC's capabilities. Some more hyperparameter fine tuning, longer runs, and
+more scale (`--num-gpus > 1` and `--num-env-runners > 0`) should help push this up.
+"""
+
 from torch import nn
 
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
-    default_timesteps=20000,
-    default_reward=-250.0,
+    default_timesteps=1000000,
+    default_reward=12000.0,
+    default_iters=2000,
 )
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
+
 
 config = (
     SACConfig()
@@ -18,30 +28,28 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment("Pendulum-v1")
+    .environment("Humanoid-v4")
     .training(
         initial_alpha=1.001,
-        # Use a smaller learning rate for the policy.
-        actor_lr=2e-4 * (args.num_gpus or 1) ** 0.5,
-        critic_lr=8e-4 * (args.num_gpus or 1) ** 0.5,
-        alpha_lr=9e-4 * (args.num_gpus or 1) ** 0.5,
-        lr=None,
+        actor_lr=0.00005,
+        critic_lr=0.00005,
+        alpha_lr=0.00005,
         target_entropy="auto",
-        n_step=(2, 5),
+        n_step=(1, 3),
         tau=0.005,
         train_batch_size_per_learner=256,
         target_network_update_freq=1,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
-            "capacity": 100000,
-            "alpha": 1.0,
-            "beta": 0.0,
+            "capacity": 1000000,
+            "alpha": 0.6,
+            "beta": 0.4,
         },
-        num_steps_sampled_before_learning_starts=256 * (args.num_gpus or 1),
+        num_steps_sampled_before_learning_starts=10000,
     )
     .rl_module(
         model_config_dict={
-            "fcnet_hiddens": [256, 256],
+            "fcnet_hiddens": [1024, 1024],
             "fcnet_activation": "relu",
             "fcnet_weights_initializer": nn.init.xavier_uniform_,
             "post_fcnet_hiddens": [],
@@ -52,6 +60,7 @@ config = (
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,
+        min_sample_timesteps_per_iteration=1000,
     )
 )
 
