@@ -72,7 +72,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_);
   auto cb = [](Status s) {};
-  const SchedulePgRequest &request;
+  SchedulePgRequest request;
   std::function<void(bool)> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
       .WillOnce(DoAll(SaveArg<4>(&put_cb), Return(Status::OK())));
@@ -98,7 +98,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_);
   auto cb = [](Status s) {};
-  const SchedulePgRequest &request;
+  SchedulePgRequest request;
   std::function<void(bool)> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
       .WillOnce(DoAll(SaveArg<4>(&put_cb), Return(Status::OK())));
@@ -154,7 +154,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
       Mocker::GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
   auto pg2 = std::make_shared<GcsPlacementGroup>(req2, "", counter_);
   auto cb = [](Status s) {};
-  const SchedulePgRequest &request;
+  SchedulePgRequest request;
   std::function<void(bool)> put_cb;
   EXPECT_CALL(*store_client_, AsyncPut(_, _, _, _, _))
       .Times(2)
