@@ -704,7 +704,7 @@ class CompiledDAG:
             MultiOutputNode,
         )
 
-        self.input_task_idx = None
+        self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
         self._type_hints.clear()
 
