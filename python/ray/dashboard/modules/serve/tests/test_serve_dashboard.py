@@ -1,14 +1,13 @@
 import copy
 import os
+import subprocess
 import sys
-from collections.abc import Iterator
-from concurrent.futures import ProcessPoolExecutor
+from pathlib import Path
 from typing import Dict
 
 import pytest
 import requests
 
-from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import (
     ApplicationStatus,
@@ -20,7 +19,6 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve.schema import ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
-from ray.serve.tests.test_config_files import world
 from ray.tests.conftest import *  # noqa: F401 F403
 from ray.util.state import list_actors
 
@@ -460,26 +458,11 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
     print("Finished checking application details.")
 
 
-@pytest.fixture
-def serve_start_and_shutdown(ray_start_stop: None) -> Iterator[None]:
-    """
-    See https://github.com/ray-project/ray/pull/45522#issuecomment-2159403223
-    """
-    serve.start()
-    yield
-    serve.shutdown()
-
-
-def submit_imperative_apps() -> None:
-    serve.run(world.DagNode, name="app1", route_prefix="/apple")
-    serve.run(world.DagNode, name="app2", route_prefix="/banana")
-
-
 @pytest.mark.skipif(
     sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
 )
 @pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
-def test_get_serve_instance_details_for_imperative_apps(serve_start_and_shutdown, url):
+def test_get_serve_instance_details_for_imperative_apps(ray_start_stop, url):
     """
     Most behavior is checked by test_get_serve_instance_details.
     This test mostly checks for the different behavior of
@@ -488,8 +471,10 @@ def test_get_serve_instance_details_for_imperative_apps(serve_start_and_shutdown
     # Submit the apps in a subprocess, since doing it from the main process
     # seems to make Serve stop unexpectedly
     # https://github.com/ray-project/ray/pull/45522#discussion_r1720479757
-    with ProcessPoolExecutor() as pool:
-        pool.submit(submit_imperative_apps).result(timeout=60)
+    deploy = subprocess.run(
+        [sys.executable, str(Path(__file__).parent / "deploy_imperative_serve_apps.py")]
+    )
+    assert deploy.returncode == 200
 
     def applications_running():
         response = requests.get(url, timeout=15)
