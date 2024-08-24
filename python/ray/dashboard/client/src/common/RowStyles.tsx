@@ -1,9 +1,7 @@
 const rowStyles = {
   idCol: {
     display: "block",
-    width: "50px",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
+    width: "100%",
     whiteSpace: "nowrap",
   },
   OverflowCol: {

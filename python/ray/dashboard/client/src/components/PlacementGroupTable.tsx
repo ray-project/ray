@@ -12,6 +12,10 @@ import {
   Theme,
   Tooltip,
 } from "@mui/material";
+import Accordion from "@mui/material/Accordion";
+import AccordionDetails from "@mui/material/AccordionDetails";
+import AccordionSummary from "@mui/material/AccordionSummary";
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
@@ -24,19 +28,30 @@ import { StatusChip } from "./StatusChip";
 
 const BundleResourceRequirements = ({
   bundles,
-  sx,
 }: {
   bundles: Bundle[];
   sx?: SxProps<Theme>;
 }) => {
+  const resources = bundles.map(({ unit_resources }) => unit_resources);
+  if (resources.length === 0) {
+    return <>-</>;
+  }
+  if (resources.length === 1) {
+    return <>{JSON.stringify(resources[0])}</>;
+  }
   return (
-    <Box sx={sx}>
-      {bundles.map(({ unit_resources }, index) => {
-        return `{${Object.entries(unit_resources || {})
-          .map(([key, val]) => `${key}: ${val}`)
-          .join(", ")}}, `;
-      })}
-    </Box>
+    <Accordion>
+      <AccordionSummary expandIcon={<ArrowDropDownIcon />}>
+        Expand to see all
+      </AccordionSummary>
+      <AccordionDetails>
+        <ul>
+          {resources.map((resource, index) => {
+            return <li key={index}>{JSON.stringify(resource)}</li>;
+          })}
+        </ul>
+      </AccordionDetails>
+    </Accordion>
   );
 };
 
@@ -180,21 +195,7 @@ const PlacementGroupTable = ({
                     <StatusChip type="placementGroup" status={state} />
                   </TableCell>
                   <TableCell align="center">
-                    <Tooltip
-                      title={<BundleResourceRequirements bundles={bundles} />}
-                      arrow
-                    >
-                      <BundleResourceRequirements
-                        sx={{
-                          display: "block",
-                          width: "100px",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        bundles={bundles}
-                      />
-                    </Tooltip>
+                    <BundleResourceRequirements bundles={bundles} />
                   </TableCell>
                   <TableCell align="center">
                     {stats ? stats.scheduling_state : "-"}
