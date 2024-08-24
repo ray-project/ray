@@ -23,11 +23,12 @@ assert (
 
 # Define the data paths.
 data_path = "tests/data/cartpole/cartpole-v1_large"
+data_path = "tests/data/cartpole/large.json"
 base_path = Path(__file__).parents[2]
 print(f"base_path={base_path}")
 data_path = "local://" / base_path / data_path
 print(f"data_path={data_path}")
-
+args.no_tune = True
 # Define the BC config.
 config = (
     BCConfig()
@@ -49,6 +50,8 @@ config = (
     # as remote learners.
     .offline_data(
         input_=[data_path.as_posix()],
+        input_read_method="read_json",
+        input_read_sample_batches=True,
         # Define the number of reading blocks, these should be larger than 1
         # and aligned with the data size.
         input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 2)},
@@ -73,9 +76,28 @@ config = (
     )
 )
 
+# algo = config.build()
+# from ray.rllib.offline.offline_prelearner import SCHEMA
+
+# oplr = algo.offline_data.prelearner_class(
+#     config=algo.offline_data.config,
+#     learner=algo.offline_data.learner_handles[0],
+#     spaces=algo.offline_data.spaces["__env__"],
+# )
+
+
+# rows = algo.offline_data.data.take(2)
+# algo.offline_data.prelearner_class._map_batch_to_episode(
+#     False,
+#     rows,
+#     finalize=False,
+#     schema=SCHEMA | algo.offline_data.config.input_read_schema,
+#     input_compress_columns=algo.offline_data.config.input_compress_columns,
+# )
+
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 120.0,
-    TRAINING_ITERATION_TIMER: 350.0,
+    TRAINING_ITERATION_TIMER: 350,
 }
 
 if __name__ == "__main__":

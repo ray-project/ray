@@ -4,6 +4,7 @@ import ray
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
@@ -41,8 +42,18 @@ class OfflineData:
             logger.error(e)
         # Avoids reinstantiating the batch iterator each time we sample.
         self.batch_iterator = None
+        self.map_method = (
+            "map"
+            if self.config.input_read_episodes or self.config.input_read_sample_batches
+            else "map_batches"
+        )
         self.map_batches_kwargs = (
             self.default_map_batches_kwargs | self.config.map_batches_kwargs
+        )
+        self.iter_method = (
+            "iter_rows"
+            if self.config.input_read_episodes or self.config.input_read_sample_batches
+            else "iter_batches"
         )
         self.iter_batches_kwargs = (
             self.default_iter_batches_kwargs | self.config.iter_batches_kwargs
@@ -72,19 +83,35 @@ class OfflineData:
             # TODO (simon, sven): The iterator depends on the `num_samples`, i.e.abs
             # sampling later with a different batch size would need a
             # reinstantiation of the iterator.
-            self.batch_iterator = self.data.map_batches(
-                self.prelearner_class,
-                fn_constructor_kwargs={
-                    "config": self.config,
-                    "learner": self.learner_handles[0],
-                    "spaces": self.spaces["__env__"],
-                },
-                batch_size=num_samples,
-                **self.map_batches_kwargs,
-            ).iter_batches(
-                batch_size=num_samples,
-                **self.iter_batches_kwargs,
-            )
+            if self.config.input_read_sample_batches:
+                self.batch_iterator = self.data.map(
+                    self.prelearner_class,
+                    fn_constructor_kwargs={
+                        "config": self.config,
+                        "learner": self.learner_handles[0],
+                        "spaces": self.spaces[INPUT_ENV_SPACES],
+                    },
+                    concurrency=1,
+                    # batch_size=num_samples,
+                    # **self.map_batches_kwargs,
+                ).iter_batches(
+                    batch_size=num_samples,
+                    # **self.iter_batches_kwargs,
+                )
+            else:
+                self.batch_iterator = self.data.map_batches(
+                    self.prelearner_class,
+                    fn_constructor_kwargs={
+                        "config": self.config,
+                        "learner": self.learner_handles[0],
+                        "spaces": self.spaces[INPUT_ENV_SPACES],
+                    },
+                    batch_size=num_samples,
+                    **self.map_batches_kwargs,
+                ).iter_batches(
+                    batch_size=num_samples,
+                    **self.iter_batches_kwargs,
+                )
 
         # Do we want to return an iterator or a single batch?
         if return_iterator:

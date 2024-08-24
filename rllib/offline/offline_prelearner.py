@@ -90,6 +90,7 @@ class OfflinePreLearner:
 
         self.config = config
         self.input_read_episodes = self.config.input_read_episodes
+        self.input_read_sample_batches = self.config.input_read_sample_batches
         # We need this learner to run the learner connector pipeline.
         # If it is a `Learner` instance, the `Learner` is local.
         if isinstance(learner, Learner):
@@ -144,7 +145,16 @@ class OfflinePreLearner:
         # If we directly read in episodes we just convert to list.
         if self.input_read_episodes:
             episodes = batch["item"].tolist()
-        # Otherwise we ap the batch to episodes.
+        # Else, if we have old stack `SampleBatch`es.
+        elif self.input_read_sample_batches:
+            episodes = OfflinePreLearner._map_batch_to_episode(
+                self._is_multi_agent,
+                batch,
+                finalize=False,
+                schema=SCHEMA | self.config.input_read_schema,
+                input_compress_columns=self.config.input_compress_columns,
+            )["episodes"]
+        # Otherwise we map the batch to episodes.
         else:
             episodes = self._map_to_episodes(
                 self._is_multi_agent,
@@ -227,7 +237,7 @@ class OfflinePreLearner:
     @staticmethod
     def _map_to_episodes(
         is_multi_agent: bool,
-        batch: Dict[str, np.ndarray],
+        batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
         finalize: bool = False,
         input_compress_columns: Optional[List[str]] = None,
@@ -288,7 +298,7 @@ class OfflinePreLearner:
                             unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
                             observation_space,
                         )
-                        if Columns.NEXT_OBS in input_compress_columns
+                        if Columns.OBS in input_compress_columns
                         else convert(
                             batch[schema[Columns.NEXT_OBS]][i], observation_space
                         ),
@@ -334,11 +344,108 @@ class OfflinePreLearner:
                             else v[i]
                         ]
                         for k, v in batch.items()
-                        if (k not in schema and k not in schema.values())
+                        if (
+                            k not in schema
+                            and k not in schema.values()
+                            and k not in ["dones", "agent_index", "type"]
+                        )
                     },
                     len_lookback_buffer=0,
                 )
 
+            if finalize:
+                episode.finalize()
+            episodes.append(episode)
+        # Note, `map_batches` expects a `Dict` as return value.
+        return {"episodes": episodes}
+
+    def _map_batch_to_episode(
+        is_multi_agent: bool,
+        batch: Dict[str, Union[list, np.ndarray]],
+        schema: Dict[str, str] = SCHEMA,
+        finalize: bool = False,
+        input_compress_columns: Optional[List[str]] = None,
+    ) -> Dict[str, List[EpisodeType]]:
+
+        episodes = []
+        # Note, the `batch` will contain multiple rows and each row contains
+        # a single `SampleBatch` with experiences from one or more episodes.
+        # Loop over rows.
+        # for b in batch:
+        b = batch
+        # If multi-agent we need to extract the agent ID.
+        # TODO (simon): Check, what happens with the module ID.
+        if is_multi_agent:
+            agent_id = (
+                # The old stack uses "agent_index" instead of "agent_id".
+                b[schema["agent_index"]][0]
+                if schema["agent_index"] in b
+                else None
+            )
+        else:
+            agent_id = None
+
+        if is_multi_agent:
+            # TODO (simon): Add support for multi-agent episodes.
+            pass
+        else:
+            obs = (
+                unpack_if_needed(b[schema[Columns.OBS]])
+                if schema[Columns.OBS] in input_compress_columns
+                else b[schema[Columns.OBS]]
+            )
+            obs.append(
+                unpack_if_needed(b[schema[Columns.NEXT_OBS]][-1])
+                if schema[Columns.OBS] in input_compress_columns
+                else b[schema[Columns.NEXT_OBS]][-1]
+            )
+            episode = SingleAgentEpisode(
+                id_=b[schema[Columns.EPS_ID]][0],
+                agent_id=agent_id,
+                observations=obs,
+                infos=(
+                    b[schema[Columns.INFOS]]
+                    if schema[Columns.INFOS] in b
+                    else [{}] * len(obs)
+                ),
+                # Actions might be (a) serialized and/or (b) converted to a JSONable
+                # (when a composite space was used). We unserializer and then
+                # reconvert from JSONable to space sample.
+                actions=(
+                    unpack_if_needed(b[schema[Columns.ACTIONS]])
+                    if Columns.ACTIONS in input_compress_columns
+                    else b[schema[Columns.ACTIONS]]
+                ),
+                rewards=b[schema[Columns.REWARDS]],
+                terminated=(
+                    any(b[schema[Columns.TERMINATEDS]])
+                    if schema[Columns.TERMINATEDS] in b
+                    else any(b["dones"])
+                ),
+                truncated=(
+                    any(b[schema[Columns.TRUNCATEDS]])
+                    if schema[Columns.TRUNCATEDS] in b
+                    else False
+                ),
+                # TODO (simon): Results in zero-length episodes in connector.
+                # t_started=batch[Columns.T if Columns.T in batch else
+                # "unroll_id"][i][0],
+                # TODO (simon): Single-dimensional columns are not supported.
+                # Extra model outputs might be serialized. We unserialize them here
+                # if needed.
+                # TODO (simon): Check, if we need here also reconversion from
+                # JSONable in case of composite spaces.
+                extra_model_outputs={
+                    k: unpack_if_needed(v) if k in input_compress_columns else v
+                    for k, v in b.items()
+                    if (
+                        k not in schema
+                        and k not in schema.values()
+                        and k not in ["dones", "agent_index", "type"]
+                    )
+                },
+                len_lookback_buffer=0,
+            )
             if finalize:
                 episode.finalize()
             episodes.append(episode)
