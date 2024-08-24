@@ -341,7 +341,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       "DEPENDENCIES_UNREADY", "PENDING_CREATION", "ALIVE", "DEAD"};
   std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
-    ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
+    Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
     if ((int)vc.size() == num_export_events) {
       for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
         json export_event_as_json = json::parse(vc[event_idx]);
@@ -361,7 +361,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       vc.clear();
     }
   }
-  ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
+  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
   ASSERT_TRUE(false) << "Export API only wrote " << (int)vc.size()
                      << " lines, but expecting 4.\n";
 }
