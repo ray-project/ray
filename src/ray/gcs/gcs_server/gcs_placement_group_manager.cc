@@ -430,18 +430,19 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
       stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
       stats->set_scheduling_started_time_ns(absl::GetCurrentTimeNanos());
       MarkSchedulingStarted(placement_group_id);
+      // We can't use designated initializers thanks to MSVC (error C7555).
       gcs_placement_group_scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
-          .placement_group = placement_group,
-          .failure_callback =
-              [this, backoff](std::shared_ptr<GcsPlacementGroup> placement_group,
-                              bool is_feasible) {
-                OnPlacementGroupCreationFailed(
-                    std::move(placement_group), backoff, is_feasible);
-              },
-          .success_callback =
-              [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-                OnPlacementGroupCreationSuccess(placement_group);
-              }});
+          /*placement_group=*/placement_group,
+          /*failure_callback=*/
+          [this, backoff](std::shared_ptr<GcsPlacementGroup> placement_group,
+                          bool is_feasible) {
+            OnPlacementGroupCreationFailed(
+                std::move(placement_group), backoff, is_feasible);
+          },
+          /*success_callback=*/
+          [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+            OnPlacementGroupCreationSuccess(placement_group);
+          }});
       is_new_placement_group_scheduled = true;
     }
     // If the placement group is not registered == removed.
