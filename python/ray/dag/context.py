@@ -20,8 +20,9 @@ DEFAULT_ASYNCIO_MAX_QUEUE_SIZE = int(
 # The maximum memory usage for buffered results is 1 GB.
 DEFAULT_MAX_BUFFERED_RESULTS = int(os.environ.get("RAY_DAG_max_buffered_results", 1000))
 # The default number of in-filght inputs that can be submitted before consuming the
-# output. The memory overhead per channel is
+# output. The CPU memory overhead per shared memory channel is
 # DEFAULT_BUFFER_SIZE_BYTES * DEFAULT_MAX_BUFFERED_INPUTS even when channel is unused.
+# There's no additional memory impact on Nccl channels.
 DEFAULT_MAX_BUFFERED_INPUTS = int(os.environ.get("RAY_DAG_max_buffered_results", 10))
 
 
