@@ -87,7 +87,7 @@ def do_allocate_channel(
     output_channel = typ.create_channel(
         self_actor,
         reader_and_node_list,
-        max_buffered_inputs=max_buffered_inputs,
+        num_shm_buffers=max_buffered_inputs,
     )
     return output_channel
 
