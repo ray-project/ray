@@ -112,6 +112,7 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
   if (!timeout_point) {
     RAY_CHECK_EQ(sem_wait(sem), 0);
   } else {
+
 #if defined(__APPLE__)
 
     bool got_sem = false;
