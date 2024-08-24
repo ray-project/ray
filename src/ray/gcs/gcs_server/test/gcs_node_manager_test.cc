@@ -27,9 +27,27 @@
 // clang-format on
 
 namespace ray {
+
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
+    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
+    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+        [this](const rpc::Address &) { return raylet_client_; });
+    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+        std::make_unique<ray::pubsub::MockPublisher>());
+  }
+
+ protected:
+  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
+  std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
+  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+};
+
+class GcsNodeManagerExportAPITest : public ::testing::Test {
+ public:
+  GcsNodeManagerExportAPITest() {
     std::promise<bool> promise;
     thread_io_service_.reset(new std::thread([this, &promise] {
       std::unique_ptr<boost::asio::io_service::work> work(
@@ -47,7 +65,7 @@ class GcsNodeManagerTest : public ::testing::Test {
     log_dir_ = "event_123";
   }
 
-  virtual ~GcsNodeManagerTest() {
+  virtual ~GcsNodeManagerExportAPITest() {
     io_service_.stop();
     thread_io_service_->join();
     std::filesystem::remove_all(log_dir_.c_str());
@@ -118,7 +136,7 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   }
 }
 
-TEST_F(GcsNodeManagerTest, TestExportEvents) {
+TEST_F(GcsNodeManagerExportAPITest, TestExportEvents) {
   // Test adding and removing node, and that export events are written
   RayConfig::instance().initialize(
       R"(
