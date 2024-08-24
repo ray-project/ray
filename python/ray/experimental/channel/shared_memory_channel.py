@@ -100,7 +100,7 @@ class SharedMemoryType(ChannelOutputType):
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-        max_buffered_inputs: Optional[int] = None,
+        num_shm_buffers: Optional[int] = None,
     ) -> "Channel":
         """
         Instantiate a ChannelInterface class that can be used
@@ -110,6 +110,8 @@ class SharedMemoryType(ChannelOutputType):
             writer: The actor that may write to the channel. None signifies the driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
+            num_shm_buffers: The number of shared memory buffer per channel.
+                It is currently ignored for nccl channel.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
@@ -127,8 +129,7 @@ class SharedMemoryType(ChannelOutputType):
                 cpu_data_typ = SharedMemoryType(
                     buffer_size_bytes=self.buffer_size_bytes
                 )
-                # Currently, max_buffered_inputs is not supported.
-                # TODO(sang): Fix it.
+                # TODO(sang): We don't support buffers for nccl channel now.
                 return NestedTorchTensorNcclChannel(
                     writer,
                     reader_and_node_list,
@@ -136,7 +137,7 @@ class SharedMemoryType(ChannelOutputType):
                     cpu_data_typ=cpu_data_typ,
                 )
 
-        return CompositeChannel(writer, reader_and_node_list, max_buffered_inputs)
+        return CompositeChannel(writer, reader_and_node_list, num_shm_buffers)
 
     def set_nccl_group_id(self, group_id: str) -> None:
         assert self.requires_nccl()
@@ -484,17 +485,25 @@ class Channel(ChannelInterface):
 
 
 @DeveloperAPI
-class BufferedChannel(ChannelInterface):
+class BufferedSharedMemoryChannel(ChannelInterface):
+    """A Channel that allow to buffer inputs.
+
+    The write/read APIs are non-blocking as long as the buffers are not
+    exhausted. The caller of the API should guarantee to consume buffers
+    before they are exhausted, otherwise write/read raises
+    `RayChannelTimeoutError`.
+    """
+
     def __init__(
         self,
         writer: Optional[ray.actor.ActorHandle],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-        max_buffer_inputs: int,
+        num_shm_buffers: int,
         typ: Optional[Union[int, SharedMemoryType]] = None,
     ):
-        self._max_buffer_inputs = max_buffer_inputs
+        self._num_shm_buffers = num_shm_buffers
         self._channels = [
-            Channel(writer, reader_and_node_list, typ) for _ in range(max_buffer_inputs)
+            Channel(writer, reader_and_node_list, typ) for _ in range(num_shm_buffers)
         ]
         self._next_write_index = 0
         self._next_read_index = 0
@@ -516,12 +525,12 @@ class BufferedChannel(ChannelInterface):
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         self._channels[self._next_write_index].write(value, timeout)
         self._next_write_index += 1
-        self._next_write_index %= self._max_buffer_inputs
+        self._next_write_index %= self._num_shm_buffers
 
     def read(self, timeout: Optional[float] = None) -> Any:
         output = self._channels[self._next_read_index].read(timeout)
         self._next_read_index += 1
-        self._next_read_index %= self._max_buffer_inputs
+        self._next_read_index %= self._num_shm_buffers
         return output
 
     def close(self) -> None:
@@ -558,7 +567,7 @@ class CompositeChannel(ChannelInterface):
         self,
         writer: Optional[ray.actor.ActorHandle],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-        max_buffered_inputs: int,
+        num_shm_buffers: int,
         _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
         _channels: Optional[Set[ChannelInterface]] = None,
         _writer_registered: bool = False,
@@ -566,7 +575,7 @@ class CompositeChannel(ChannelInterface):
     ):
         self._writer = writer
         self._reader_and_node_list = reader_and_node_list
-        self._max_buffered_inputs = max_buffered_inputs
+        self._num_shm_buffers = num_shm_buffers
         self._writer_registered = _writer_registered
         self._reader_registered = _reader_registered
         # A dictionary that maps the actor ID to the channel object.
@@ -595,8 +604,8 @@ class CompositeChannel(ChannelInterface):
         # There are some remote readers which are not the same Ray actor as the writer.
         # Create a shared memory channel for the writer and the remote readers.
         if len(remote_reader_and_node_list) != 0:
-            remote_channel = BufferedChannel(
-                self._writer, remote_reader_and_node_list, max_buffered_inputs
+            remote_channel = BufferedSharedMemoryChannel(
+                self._writer, remote_reader_and_node_list, num_shm_buffers
             )
             self._channels.add(remote_channel)
 
@@ -639,7 +648,7 @@ class CompositeChannel(ChannelInterface):
         return CompositeChannel, (
             self._writer,
             self._reader_and_node_list,
-            self._max_buffered_inputs,
+            self._num_shm_buffers,
             self._channel_dict,
             self._channels,
             self._writer_registered,

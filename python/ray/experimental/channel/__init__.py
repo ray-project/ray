@@ -11,7 +11,7 @@ from ray.experimental.channel.common import (  # noqa: F401
 )
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.shared_memory_channel import (
-    BufferedChannel,
+    BufferedSharedMemoryChannel,
     Channel,
     CompositeChannel,
 )
@@ -29,5 +29,5 @@ __all__ = [
     "TorchTensorNcclChannel",
     "IntraProcessChannel",
     "CompositeChannel",
-    "BufferedChannel",
+    "BufferedSharedMemoryChannel",
 ]

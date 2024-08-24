@@ -134,7 +134,7 @@ Status PlasmaObjectHeader::WriteAcquire(
   RAY_CHECK(sem.header_sem);
 
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.object_sem, timeout_point));
-  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
 
   RAY_CHECK_EQ(num_read_acquires_remaining, 0UL);
   RAY_CHECK_EQ(num_read_releases_remaining, 0UL);
@@ -168,7 +168,7 @@ Status PlasmaObjectHeader::ReadAcquire(
     const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) {
   RAY_CHECK(sem.header_sem);
 
-  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
 
   // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.

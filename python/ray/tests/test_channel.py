@@ -1225,7 +1225,7 @@ def test_buffered_channel(shutdown_only):
             self.write_index = 0
 
         def setup(self, driver_actor):
-            self._channel = ray_channel.BufferedChannel(
+            self._channel = ray_channel.BufferedSharedMemoryChannel(
                 ray.get_runtime_context().current_actor,
                 [(driver_actor, get_actor_node_id(driver_actor))],
                 BUFFER_SIZE,
