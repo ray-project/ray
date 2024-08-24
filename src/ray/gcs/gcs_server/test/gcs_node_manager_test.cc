@@ -12,10 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <memory>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
-#include <chrono>
+#include <memory>
 #include <thread>
 
 // clang-format off
@@ -124,13 +124,14 @@ TEST_F(GcsNodeManagerTest, TestListener) {
 TEST_F(GcsNodeManagerTest, TestExportEvents) {
   // Test adding and removing node, and that export events are written
   RayConfig::instance().initialize(
-        R"(
+      R"(
 {
   "enable_export_api_write": true
 }
   )");
 
-  const std::vector<ray::SourceTypeVariant> source_types = {rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
+  const std::vector<ray::SourceTypeVariant> source_types = {
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
   RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
   gcs::GcsNodeManager node_manager(
       gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
@@ -145,23 +146,27 @@ TEST_F(GcsNodeManagerTest, TestExportEvents) {
   node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
   int num_retry = 5;
   for (int i = 0; i < num_retry; i++) {
-    if (node_manager.GetAliveNode(node_id).has_value()){
-      ASSERT_EQ(node_manager.GetAliveNode(node_id).value()->state(), rpc::GcsNodeInfo::ALIVE);
+    if (node_manager.GetAliveNode(node_id).has_value()) {
+      ASSERT_EQ(node_manager.GetAliveNode(node_id).value()->state(),
+                rpc::GcsNodeInfo::ALIVE);
     } else {
       // Sleep and retry
       std::this_thread::sleep_for(std::chrono::seconds(1));
     }
   }
-  ASSERT_TRUE(node_manager.GetAliveNode(node_id).has_value()) << "No alive node found after HandleRegisterNode";
+  ASSERT_TRUE(node_manager.GetAliveNode(node_id).has_value())
+      << "No alive node found after HandleRegisterNode";
 
   rpc::UnregisterNodeRequest unregister_request;
   unregister_request.set_node_id(node_id.Binary());
-  unregister_request.mutable_node_death_info()->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+  unregister_request.mutable_node_death_info()->set_reason(
+      rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
   unregister_request.mutable_node_death_info()->set_reason_message("mock reason message");
   rpc::UnregisterNodeReply unregister_reply;
-  node_manager.HandleUnregisterNode(unregister_request, &unregister_reply, send_reply_callback);
+  node_manager.HandleUnregisterNode(
+      unregister_request, &unregister_reply, send_reply_callback);
   ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
-  
+
   int num_export_events = 2;
   std::vector<std::string> expected_states = {"ALIVE", "DEAD"};
   std::vector<std::string> vc;

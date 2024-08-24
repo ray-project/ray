@@ -43,21 +43,26 @@ void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
   /// Write node_info as a export node event if
   /// enable_export_api_write() is enabled.
   if (RayConfig::instance().enable_export_api_write()) {
-    std::shared_ptr<rpc::ExportNodeData> export_node_data_ptr = std::make_shared<rpc::ExportNodeData>();
+    std::shared_ptr<rpc::ExportNodeData> export_node_data_ptr =
+        std::make_shared<rpc::ExportNodeData>();
     export_node_data_ptr->set_node_id(node_info.node_id());
     export_node_data_ptr->set_node_manager_address(node_info.node_manager_address());
-    export_node_data_ptr->mutable_resources_total()->insert(node_info.resources_total().begin(),
-                                                    node_info.resources_total().end());
+    export_node_data_ptr->mutable_resources_total()->insert(
+        node_info.resources_total().begin(), node_info.resources_total().end());
     export_node_data_ptr->set_node_name(node_info.node_name());
     export_node_data_ptr->set_start_time_ms(node_info.start_time_ms());
     export_node_data_ptr->set_end_time_ms(node_info.end_time_ms());
     export_node_data_ptr->set_is_head_node(node_info.is_head_node());
     export_node_data_ptr->mutable_labels()->insert(node_info.labels().begin(),
-                                                    node_info.labels().end());
+                                                   node_info.labels().end());
     export_node_data_ptr->set_state(ConvertGCSNodeStateToExport(node_info.state()));
-    if (!node_info.death_info().reason_message().empty() || node_info.death_info().reason() != rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNSPECIFIED){
-      export_node_data_ptr->mutable_death_info()->set_reason_message(node_info.death_info().reason_message());
-      export_node_data_ptr->mutable_death_info()->set_reason(ConvertNodeDeathReasonToExport(node_info.death_info().reason()));
+    if (!node_info.death_info().reason_message().empty() ||
+        node_info.death_info().reason() !=
+            rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNSPECIFIED) {
+      export_node_data_ptr->mutable_death_info()->set_reason_message(
+          node_info.death_info().reason_message());
+      export_node_data_ptr->mutable_death_info()->set_reason(
+          ConvertNodeDeathReasonToExport(node_info.death_info().reason()));
     }
     RayExportEvent(export_node_data_ptr).SendEvent();
   }
@@ -283,11 +288,7 @@ void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
   if (iter == alive_nodes_.end()) {
     auto node_addr =
         node->node_manager_address() + ":" + std::to_string(node->node_manager_port());
-    try {
-      node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
-    } catch (const std::length_error& e) {
-      std::cerr << "Memory allocation error: " << e.what() << std::endl;
-    }
+    node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
     alive_nodes_.emplace(node_id, node);
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
