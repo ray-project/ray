@@ -163,13 +163,6 @@ class DataOrganizer:
         ]
 
     @classmethod
-    async def get_all_node_details(cls):
-        return [
-            await DataOrganizer.get_node_info(node_id)
-            for node_id in DataSource.nodes.keys()
-        ]
-
-    @classmethod
     async def get_agent_infos(
         cls, target_node_ids: Optional[List[str]] = None
     ) -> Dict[str, Dict[str, Any]]:
