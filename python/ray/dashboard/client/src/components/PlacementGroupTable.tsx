@@ -1,3 +1,4 @@
+import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import {
   Box,
   InputAdornment,
@@ -15,7 +16,6 @@ import {
 import Accordion from "@mui/material/Accordion";
 import AccordionDetails from "@mui/material/AccordionDetails";
 import AccordionSummary from "@mui/material/AccordionSummary";
-import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
@@ -34,10 +34,10 @@ const BundleResourceRequirements = ({
 }) => {
   const resources = bundles.map(({ unit_resources }) => unit_resources);
   if (resources.length === 0) {
-    return <>-</>;
+    return <React.Fragment>-</React.Fragment>;
   }
   if (resources.length === 1) {
-    return <>{JSON.stringify(resources[0])}</>;
+    return <React.Fragment>{JSON.stringify(resources[0])}</React.Fragment>;
   }
   return (
     <Accordion>
