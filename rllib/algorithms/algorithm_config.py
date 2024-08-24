@@ -1422,7 +1422,7 @@ class AlgorithmConfig(_Config):
                 workers.
             torch_ddp_kwargs: The kwargs to pass into
                 `torch.nn.parallel.DistributedDataParallel` when using `num_learners
-                > 1. This is specifically helpful when searching for unused parameters
+                > 1`. This is specifically helpful when searching for unused parameters
                 that are not used in the backward pass. This can give hints for errors
                 in custom models where some parameters do not get touched in the
                 backward pass although they should.
