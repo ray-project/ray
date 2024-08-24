@@ -74,7 +74,8 @@ class DataOrganizer:
         for node_id in list(DataSource.nodes.keys()):
             workers = await cls.get_node_workers(node_id)
             for worker in workers:
-                for stats in worker.get("coreWorkerStats", []):
+                stats = worker.get("coreWorkerStats", {})
+                if stats:
                     worker_id = stats["workerId"]
                     core_worker_stats[worker_id] = stats
             node_workers[node_id] = workers
@@ -94,14 +95,14 @@ class DataOrganizer:
         for core_worker_stats in node_stats.get("coreWorkersStats", []):
             pid = core_worker_stats["pid"]
             pids_on_node.add(pid)
-            pid_to_worker_stats.setdefault(pid, []).append(core_worker_stats)
+            pid_to_worker_stats[pid] = core_worker_stats
             pid_to_language[pid] = core_worker_stats["language"]
             pid_to_job_id[pid] = core_worker_stats["jobId"]
 
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]
-            worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, [])
+            worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, {})
             worker["language"] = pid_to_language.get(
                 pid, dashboard_consts.DEFAULT_LANGUAGE
             )
