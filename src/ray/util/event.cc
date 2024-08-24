@@ -130,6 +130,8 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   std::string event_data_as_string;
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
+  // Required so enum with value 0 is not omitted
+  options.always_print_primitive_fields = true;
   if (export_event.has_task_event_data()) {
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   export_event.task_event_data(), &event_data_as_string, options)
@@ -163,7 +165,6 @@ void LogEventReporter::Report(const rpc::Event &event, const json &custom_fields
 void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
   RAY_CHECK(ExportEvent_SourceType_IsValid(export_event.source_type()));
   std::string result = ExportEventToString(export_event);
-  std::cout << "ReportExportEvent ExportEventToString " << result << "\n";
   log_sink_->info(result);
   if (force_flush_) {
     Flush();

@@ -53,9 +53,10 @@ void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
   export_node_data_ptr->mutable_labels()->insert(node_info.labels().begin(),
                                                    node_info.labels().end());
   export_node_data_ptr->set_state(ConvertGCSNodeStateToExport(node_info.state()));
-  export_node_data_ptr->mutable_death_info()->set_reason_message(node_info.death_info().reason_message());
-  export_node_data_ptr->mutable_death_info()->set_reason(ConvertNodeDeathReasonToExport(node_info.death_info().reason()));
-
+  if (!node_info.death_info().reason_message().empty() || node_info.death_info().reason() != rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNSPECIFIED){
+    export_node_data_ptr->mutable_death_info()->set_reason_message(node_info.death_info().reason_message());
+    export_node_data_ptr->mutable_death_info()->set_reason(ConvertNodeDeathReasonToExport(node_info.death_info().reason()));
+  }
   RayExportEvent(export_node_data_ptr).SendEvent();
 }
 
@@ -274,38 +275,21 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
 }
 
 void GcsNodeManager::AddNode(std::shared_ptr<rpc::GcsNodeInfo> node) {
-  std::cout << "DEBUG AddNode\n";
   auto node_id = NodeID::FromBinary(node->node_id());
-  std::cout << "DEBUG node_id " << node_id << "\n";
   auto iter = alive_nodes_.find(node_id);
   if (iter == alive_nodes_.end()) {
-    std::cout << "DEBUG adding node because not found\n";
     auto node_addr =
         node->node_manager_address() + ":" + std::to_string(node->node_manager_port());
-    std::cout << "DEBUG node addr " << node_addr << "\n";
     try {
       node_map_.insert(NodeIDAddrBiMap::value_type(node_id, node_addr));
     } catch (const std::length_error& e) {
       std::cerr << "Memory allocation error: " << e.what() << std::endl;
     }
-    std::cout << "DEBUG insert\n";
     alive_nodes_.emplace(node_id, node);
-    std::cout << "DEBUG emplace\n";
     // Notify all listeners.
     for (auto &listener : node_added_listeners_) {
-      std::cout << "DEBUG notify listener\n";
       listener(node);
     }
-    std::cout << "DEBUG finish notifying listeners\n";
-  } else {
-    std::cout << "DEBUG not adding node because already found\n";
-  }
-  std::cout << "DEBUG finish adding\n";
-  auto iter_found = alive_nodes_.find(node_id);
-  if (iter_found == alive_nodes_.end()) {
-    std::cout << "DEBUG node not found\n";
-  } else {
-    std::cout << "DEBUG node found\n";
   }
 }
 

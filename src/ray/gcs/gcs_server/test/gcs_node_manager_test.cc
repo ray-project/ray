@@ -60,20 +60,13 @@ class GcsNodeManagerTest : public ::testing::Test {
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    log_dir_ = GenerateLogDir();
+    log_dir_ = "event_123";
   }
 
   virtual ~GcsNodeManagerTest() {
     io_service_.stop();
     thread_io_service_->join();
     std::filesystem::remove_all(log_dir_.c_str());
-  }
-
-  std::string GenerateLogDir() {
-    std::string log_dir_generate = std::string(5, ' ');
-    FillRandom(&log_dir_generate);
-    std::string log_dir = "event" + StringToHex(log_dir_generate);
-    return log_dir;
   }
 
  protected:
@@ -101,45 +94,45 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
 }
 
-// TEST_F(GcsNodeManagerTest, TestListener) {
-//   gcs::GcsNodeManager node_manager(
-//       gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
-//   // Test AddNodeAddedListener.
-//   int node_count = 1000;
-//   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
-//   node_manager.AddNodeAddedListener(
-//       [&added_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
-//         added_nodes.emplace_back(std::move(node));
-//       });
-//   for (int i = 0; i < node_count; ++i) {
-//     auto node = Mocker::GenNodeInfo();
-//     node_manager.AddNode(node);
-//   }
-//   ASSERT_EQ(node_count, added_nodes.size());
+TEST_F(GcsNodeManagerTest, TestListener) {
+  gcs::GcsNodeManager node_manager(
+      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+  // Test AddNodeAddedListener.
+  int node_count = 1000;
+  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
+  node_manager.AddNodeAddedListener(
+      [&added_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
+        added_nodes.emplace_back(std::move(node));
+      });
+  for (int i = 0; i < node_count; ++i) {
+    auto node = Mocker::GenNodeInfo();
+    node_manager.AddNode(node);
+  }
+  ASSERT_EQ(node_count, added_nodes.size());
 
-//   // Test GetAllAliveNodes.
-//   auto &alive_nodes = node_manager.GetAllAliveNodes();
-//   ASSERT_EQ(added_nodes.size(), alive_nodes.size());
-//   for (const auto &node : added_nodes) {
-//     ASSERT_EQ(1, alive_nodes.count(NodeID::FromBinary(node->node_id())));
-//   }
+  // Test GetAllAliveNodes.
+  auto &alive_nodes = node_manager.GetAllAliveNodes();
+  ASSERT_EQ(added_nodes.size(), alive_nodes.size());
+  for (const auto &node : added_nodes) {
+    ASSERT_EQ(1, alive_nodes.count(NodeID::FromBinary(node->node_id())));
+  }
 
-//   // Test AddNodeRemovedListener.
-//   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> removed_nodes;
-//   node_manager.AddNodeRemovedListener(
-//       [&removed_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
-//         removed_nodes.emplace_back(std::move(node));
-//       });
-//   rpc::NodeDeathInfo death_info;
-//   for (int i = 0; i < node_count; ++i) {
-//     node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()), death_info);
-//   }
-//   ASSERT_EQ(node_count, removed_nodes.size());
-//   ASSERT_TRUE(node_manager.GetAllAliveNodes().empty());
-//   for (int i = 0; i < node_count; ++i) {
-//     ASSERT_EQ(added_nodes[i], removed_nodes[i]);
-//   }
-// }
+  // Test AddNodeRemovedListener.
+  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> removed_nodes;
+  node_manager.AddNodeRemovedListener(
+      [&removed_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
+        removed_nodes.emplace_back(std::move(node));
+      });
+  rpc::NodeDeathInfo death_info;
+  for (int i = 0; i < node_count; ++i) {
+    node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()), death_info);
+  }
+  ASSERT_EQ(node_count, removed_nodes.size());
+  ASSERT_TRUE(node_manager.GetAllAliveNodes().empty());
+  for (int i = 0; i < node_count; ++i) {
+    ASSERT_EQ(added_nodes[i], removed_nodes[i]);
+  }
+}
 
 TEST_F(GcsNodeManagerTest, TestExportEvents) {
   // Test adding and removing node, and that export events are written
@@ -149,7 +142,6 @@ TEST_F(GcsNodeManagerTest, TestExportEvents) {
       gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
-  std::cout << "DEBUG node id from test " << node_id << "\n";
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
   rpc::RegisterNodeReply register_reply;
@@ -157,27 +149,45 @@ TEST_F(GcsNodeManagerTest, TestExportEvents) {
       [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
 
   node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
-  if (node_manager.GetAliveNode(node_id).has_value()){
-    ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
-  } else {
-    ASSERT_TRUE(false) << "No alive node found after HandleRegisterNode";
+  int num_retry = 5;
+  for (int i = 0; i < num_retry; i++) {
+    if (node_manager.GetAliveNode(node_id).has_value()){
+      ASSERT_EQ(node_manager.GetAliveNode(node_id).value()->state(), rpc::GcsNodeInfo::ALIVE);
+    } else {
+      // Sleep and retry
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
   }
+  ASSERT_TRUE(node_manager.GetAliveNode(node_id).has_value()) << "No alive node found after HandleRegisterNode";
 
   rpc::UnregisterNodeRequest unregister_request;
   unregister_request.set_node_id(node_id.Binary());
   unregister_request.mutable_node_death_info()->set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
   unregister_request.mutable_node_death_info()->set_reason_message("mock reason message");
   rpc::UnregisterNodeReply unregister_reply;
-  // node_manager.RemoveNode(node_id, death_info);
   node_manager.HandleUnregisterNode(unregister_request, &unregister_reply, send_reply_callback);
   ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
   
-  std::this_thread::sleep_for(std::chrono::seconds(5));
+  int num_export_events = 2;
+  std::vector<std::string> expected_states = {"ALIVE", "DEAD"};
   std::vector<std::string> vc;
-  ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
-  std::cout << "DEBUG num lines " << (int)vc.size() << "\n";
-  for (auto line : vc) {
-    std::cout << "DEBUG line: " << line << "\n";
+  for (int i = 0; i < num_retry; i++) {
+    ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
+    if ((int)vc.size() == num_export_events) {
+      for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
+        json event_data = json::parse(vc[event_idx])["event_data"].get<json>();
+        ASSERT_EQ(event_data["state"], expected_states[event_idx]);
+        if (event_idx == num_export_events - 1) {
+          // Verify death cause for last node DEAD event
+          ASSERT_EQ(event_data["death_info"]["reason"], "UNEXPECTED_TERMINATION");
+          ASSERT_EQ(event_data["death_info"]["reason_message"], "mock reason message");
+        }
+      }
+    } else {
+      // Sleep and retry
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      vc.clear();
+    }
   }
 }
 
