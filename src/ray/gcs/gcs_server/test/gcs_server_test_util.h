@@ -383,18 +383,6 @@ struct GcsServerMocker {
 
     size_t GetWaitingRemovedBundlesSize() { return waiting_removed_bundles_.size(); }
 
-    using gcs::GcsPlacementGroupScheduler::ScheduleUnplacedBundles;
-    // Extra conveinence overload for the mock tests to keep using the old interface.
-    void ScheduleUnplacedBundles(
-        const std::shared_ptr<gcs::GcsPlacementGroup> &placement_group,
-        gcs::PGSchedulingFailureCallback failure_callback,
-        gcs::PGSchedulingSuccessfulCallback success_callback) {
-      ScheduleUnplacedBundles(
-          gcs::SchedulePgRequest{.placement_group = placement_group,
-                                 .failure_callback = failure_callback,
-                                 .success_callback = success_callback});
-    };
-
    protected:
     friend class GcsPlacementGroupSchedulerTest;
     FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
