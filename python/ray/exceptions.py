@@ -47,7 +47,6 @@ class RayError(Exception):
     def from_ray_exception(ray_exception):
         if ray_exception.language == PYTHON:
             try:
-                breakpoint()
                 return pickle.loads(ray_exception.serialized_exception)
             except Exception as e:
                 msg = "Failed to unpickle serialized exception"
