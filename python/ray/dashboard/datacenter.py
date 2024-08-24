@@ -1,9 +1,7 @@
 import asyncio
 import logging
-from concurrent.futures import ThreadPoolExecutor
 
 import ray.dashboard.consts as dashboard_consts
-from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.utils import (
     Dict,
     MutableNotificationDict,
@@ -14,6 +12,7 @@ from ray.dashboard.utils import (
 logger = logging.getLogger(__name__)
 
 
+# NOT thread safe. Every assignment must be on the main event loop thread.
 class DataSource:
     # {node id hex(str): node stats(dict of GetNodeStatsReply
     # in node_manager.proto)}
@@ -68,24 +67,29 @@ class DataOrganizer:
 
     @classmethod
     @async_loop_forever(dashboard_consts.ORGANIZE_DATA_INTERVAL_SECONDS)
-    async def organize(cls, thread_pool_executor: ThreadPoolExecutor):
-        await get_or_create_event_loop().run_in_executor(
-            thread_pool_executor,
-            cls.sync_organize,
-        )
+    async def organize(cls):
+        """
+        Organizes data: read from (node_physical_stats, node_stats) and updates
+        (node_workers, node_worker_stats).
 
-    @classmethod
-    def sync_organize(cls):
+        This methods is not really async, but DataSource is not thread safe so we need
+        to make sure it's on the main event loop thread. To avoid blocking the main
+        event loop, we yield after each node processed.
+        """
         node_workers = {}
         core_worker_stats = {}
         # nodes may change during process, so we create a copy of keys().
         for node_id in list(DataSource.nodes.keys()):
+            # If the node is removed during the last yield, workers will be empty and
+            # it's fine.
             workers = cls.get_node_workers(node_id)
             for worker in workers:
                 for stats in worker.get("coreWorkerStats", []):
                     worker_id = stats["workerId"]
                     core_worker_stats[worker_id] = stats
             node_workers[node_id] = workers
+            # Yield https://github.com/python/asyncio/issues/284
+            await asyncio.sleep(0)
         DataSource.node_workers.reset(node_workers)
         DataSource.core_worker_stats.reset(core_worker_stats)
 

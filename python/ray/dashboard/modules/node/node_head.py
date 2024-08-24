@@ -407,6 +407,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             return_exceptions=True,
         )
 
+        new_node_stats = {}
+
         def postprocess():
             for node_info, reply in zip(nodes, replies):
                 node_id, _ = node_info
@@ -431,12 +433,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     logger.exception(f"Error updating node stats of {node_id}.")
                     logger.exception(reply)
                 else:
-                    reply_dict = node_stats_to_dict(reply)
-                    DataSource.node_stats[node_id] = reply_dict
+                    new_node_stats[node_id] = node_stats_to_dict(reply)
 
         await get_or_create_event_loop().run_in_executor(
             self._dashboard_head._thread_pool_executor, postprocess
         )
+        for node_id, new_stat in new_node_stats.items():
+            DataSource.node_stats[node_id] = new_stat
 
     async def run(self, server):
         self.get_all_node_info = GetAllNodeInfo(self._dashboard_head)

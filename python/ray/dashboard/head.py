@@ -126,7 +126,9 @@ class DashboardHead:
         self._modules_loaded = False
 
         self._thread_pool_executor = ThreadPoolExecutor(
-            thread_name_prefix="dashboard_head_tpe"
+            # We limit number of workers to avoid starving the event loop thread.
+            max_workers=dashboard_consts.RAY_DASHBOARD_THREAD_POOL_MAX_WORKERS,
+            thread_name_prefix="dashboard_head_tpe",
         )
 
         self.gcs_address = None
