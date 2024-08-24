@@ -681,6 +681,12 @@ class CompiledDAG:
 
         self._dag_creator_actor = _get_or_create_local_actor_handle()
 
+    def increment_max_execution_index(self) -> None:
+        """Incrment the max execution index. It is used only by
+        async reader to update _max_execution_index correctly.
+        """
+        self._max_execution_index += 1
+
     @property
     def has_single_output(self):
         return self._has_single_output
@@ -1556,6 +1562,18 @@ class CompiledDAG:
         monitor.start()
         return monitor
 
+    def raise_if_too_many_inflight_requests(self):
+        num_in_flight_requests = self._execution_index - self._max_execution_index
+        if num_in_flight_requests > self._max_buffered_inputs:
+            raise ray.exceptions.RayChannelBufferAtMaxCapacity(
+                f"There are {num_in_flight_requests} in-flight requests which "
+                "is more than the max buffer size of the dag: "
+                f"{self._max_buffered_inputs}. Retrieve the output using "
+                "ray.get before submitting more requests or increase "
+                "`max_buffer_inputs`. "
+                "`adag.experimental_compile(_max_buffered_inputs=...)`"
+            )
+
     def _execute_until(
         self,
         execution_index: int,
@@ -1587,7 +1605,7 @@ class CompiledDAG:
         while self._max_execution_index < execution_index:
             if self._max_execution_index + 1 == execution_index:
                 # Directly fetch and return without buffering
-                self._max_execution_index += 1
+                self.increment_max_execution_index()
                 return self._dag_output_fetcher.read(timeout)
             # Otherwise, buffer the result
             if len(self._result_buffer) >= self._max_buffered_results:
@@ -1596,7 +1614,7 @@ class CompiledDAG:
                     f"buffered results is {self._max_buffered_results}; call ray.get() "
                     "on previous CompiledDAGRefs to free them up from buffer."
                 )
-            self._max_execution_index += 1
+            self.increment_max_execution_index()
             start_time = time.monotonic()
             self._result_buffer[
                 self._max_execution_index
@@ -1645,6 +1663,7 @@ class CompiledDAG:
         else:
             inp = RayDAGArgs(args=args, kwargs=kwargs)
 
+        self.raise_if_too_many_inflight_requests()
         self._dag_submitter.write(inp, self._execution_timeout)
 
         ref = CompiledDAGRef(self, self._execution_index)
@@ -1703,6 +1722,7 @@ class CompiledDAG:
             else:
                 inp = RayDAGArgs(args=args, kwargs=kwargs)
 
+            self.raise_if_too_many_inflight_requests()
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()

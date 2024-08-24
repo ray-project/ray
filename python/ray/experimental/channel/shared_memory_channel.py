@@ -2,15 +2,14 @@ import io
 import logging
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
-from queue import Queue, Empty
-import threading
+
 import ray
 import ray.exceptions
 from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -486,17 +485,15 @@ class Channel(ChannelInterface):
 
 @DeveloperAPI
 class BufferedChannel(ChannelInterface):
-
     def __init__(
-            self,
-            writer: Optional[ray.actor.ActorHandle],
-            reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-            max_buffer_inputs: int,
+        self,
+        writer: Optional[ray.actor.ActorHandle],
+        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        max_buffer_inputs: int,
     ):
         self._max_buffer_inputs = max_buffer_inputs
         self._channels = [
-            Channel(writer, reader_and_node_list)
-                for _ in range(max_buffer_inputs)
+            Channel(writer, reader_and_node_list) for _ in range(max_buffer_inputs)
         ]
         self._next_write_index = 0
         self._next_read_index = 0
@@ -516,16 +513,7 @@ class BufferedChannel(ChannelInterface):
             chan.ensure_registered_as_reader()
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
-        try:
-            self._channels[self._next_write_index].write(value, 1)
-        except ray.exceptions.RayChannelTimeoutError:
-            # If we cannot write immediately, it means the buffer is full.
-            raise ray.exceptions.RayChannelBufferAtMaxCapacity(
-                f"There are more than {self._max_buffer_inputs} in flight "
-                "requests in the channel. Call ray.get before submitting "
-                "additional requests or increase `max_buffer_inputs`. "
-                "`adag.experimental_compile(_max_buffered_inputs=...)`"
-            ) from None
+        self._channels[self._next_write_index].write(value, timeout)
         self._next_write_index += 1
         self._next_write_index %= self._max_buffer_inputs
 
@@ -597,9 +585,8 @@ class CompositeChannel(ChannelInterface):
         # Create a shared memory channel for the writer and the remote readers.
         if len(remote_reader_and_node_list) != 0:
             remote_channel = BufferedChannel(
-                self._writer,
-                remote_reader_and_node_list,
-                max_buffered_inputs)
+                self._writer, remote_reader_and_node_list, max_buffered_inputs
+            )
             self._channels.add(remote_channel)
 
             for reader, _ in remote_reader_and_node_list:

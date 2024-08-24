@@ -1324,7 +1324,7 @@ def temporary_reduce_timeout(request):
     ctx = DAGContext.get_current()
     original = ctx.execution_timeout
     ctx.execution_timeout = request.param
-    yield
+    yield ctx.execution_timeout
     ctx.execution_timeout = original
 
 
@@ -1332,67 +1332,95 @@ def temporary_reduce_timeout(request):
 def test_buffering_inputs(shutdown_only, temporary_reduce_timeout):
     ray.init()
 
+    MAX_BUFFERED_INPUTS = 10
+    DAG_EXECUTION_TIME = 0.2
+
+    # Timeout should be larger than a single execution time.
+    assert temporary_reduce_timeout > DAG_EXECUTION_TIME
+    # Entire execution time (iteration * execution) should be higher than
+    # the timeout for testing.
+    assert DAG_EXECUTION_TIME * MAX_BUFFERED_INPUTS > temporary_reduce_timeout
+
     @ray.remote
     class Actor1:
         def fwd(self, x):
             print("Actor1 fwd")
-            time.sleep(00.1)
-            return x
-
-    @ray.remote
-    class Actor2:
-        def fwd(self, x):
-            print("Actor2 fwd")
-            time.sleep(00.1)
-            return x
-
-        def bwd(self, x, y):
-            print("Actor2 bwd")
-            time.sleep(0.1)
+            time.sleep(DAG_EXECUTION_TIME)
             return x
 
     actor1 = Actor1.remote()
-    actor2 = Actor2.remote()
 
+    # Since the timeout is 1 second, if buffering is not working,
+    # it will timeout (0.12s for each dag * MAX_BUFFERED_INPUTS).
     with InputNode() as input_node:
-        ref1 = actor1.fwd.bind(input_node)
-        ref2 = actor2.fwd.bind(input_node)
-        dag = actor2.bwd.bind(ref1, ref2)
-    dag = dag.experimental_compile()
+        dag = actor1.fwd.bind(input_node)
 
-    output_refs = []
+    # With buffering it should work.
+    dag = dag.experimental_compile(_max_buffered_inputs=MAX_BUFFERED_INPUTS)
+
     # Test the regular case.
-    for i in range(DAGContext.get_current().max_buffered_inputs - 1):
-        print("submit!")
-        output_refs.append(dag.execute(i))
-    for ref in output_refs:
-        ray.get(ref)
-
-    # Test there are more items than max buffered inputs.
     output_refs = []
-    with pytest.raises(ray.exceptions.RayChannelBufferAtMaxCapacity):
-        for i in range(DAGContext.get_current().max_buffered_inputs + 1):
-            print("submit!")
-            output_refs.append(dag.execute(i))
-        for ref in output_refs:
-            ray.get(ref)
+    for i in range(MAX_BUFFERED_INPUTS):
+        output_refs.append(dag.execute(i))
+    for i, ref in enumerate(output_refs):
+        assert ray.get(ref) == i
 
-    # # Make sure it works properly after that.
-    # for i in range(DAGContext.get_current().max_buffered_inputs):
-    #     print("submit!")
-    #     output_refs.append(dag.execute(i))
-    # for i, ref in enumerate(output_refs):
-    #     assert ray.get(ref) == i
+    # Test there are more items than max bufcfered inputs.
+    output_refs = []
+    for i in range(MAX_BUFFERED_INPUTS):
+        output_refs.append(dag.execute(i))
+    with pytest.raises(ray.exceptions.RayChannelBufferAtMaxCapacity):
+        dag.execute(1)
+    assert len(output_refs) == MAX_BUFFERED_INPUTS
+    for i, ref in enumerate(output_refs):
+        assert ray.get(ref) == i
+
+    # Make sure it works properly after that.
+    output_refs = []
+    for i in range(MAX_BUFFERED_INPUTS):
+        output_refs.append(dag.execute(i))
+    for i, ref in enumerate(output_refs):
+        assert ray.get(ref) == i
 
     dag.teardown()
 
-# Test 
-# - regular buffering
-#   - regular
-#   - it fills up all the buffer and restart.
-# - buffering is full and it times out (should raise an exception).
-# warning if resizing happens.
+    # Test async case
+    with InputNode() as input_node:
+        async_dag = actor1.fwd.bind(input_node)
 
+    async_dag = async_dag.experimental_compile(
+        _max_buffered_inputs=MAX_BUFFERED_INPUTS,
+        enable_asyncio=True,
+    )
+
+    async def main():
+        # Test the regular case.
+        output_refs = []
+        for i in range(MAX_BUFFERED_INPUTS):
+            output_refs.append(await async_dag.execute_async(i))
+        for i, ref in enumerate(output_refs):
+            assert await ref == i
+
+        # Test there are more items than max bufcfered inputs.
+        output_refs = []
+        for i in range(MAX_BUFFERED_INPUTS):
+            output_refs.append(await async_dag.execute_async(i))
+        with pytest.raises(ray.exceptions.RayChannelBufferAtMaxCapacity):
+            await async_dag.execute_async(1)
+        assert len(output_refs) == MAX_BUFFERED_INPUTS
+        for i, ref in enumerate(output_refs):
+            assert await ref == i
+
+        # Make sure it works properly after that.
+        output_refs = []
+        for i in range(MAX_BUFFERED_INPUTS):
+            output_refs.append(await async_dag.execute_async(i))
+        for i, ref in enumerate(output_refs):
+            assert await ref == i
+
+    loop = get_or_create_event_loop()
+    loop.run_until_complete(main())
+    dag.teardown()
 
 
 class TestActorInputOutput:
