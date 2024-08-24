@@ -152,7 +152,8 @@ class CompiledTask:
         self.idx = idx
         self.dag_node = dag_node
 
-        self.downstream_node_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
+        # Dict from task index to actor handle for immediate downstream tasks.
+        self.downstream_actor_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
         self.output_channel = None
         self.arg_type_hints: List["ChannelOutputType"] = []
 
@@ -166,7 +167,7 @@ class CompiledTask:
 
     @property
     def num_readers(self) -> int:
-        return len(self.downstream_node_idxs)
+        return len(self.downstream_actor_idxs)
 
     def __str__(self) -> str:
         return f"""
@@ -731,7 +732,7 @@ class CompiledDAG:
 
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
-        for node_idx, task in self.idx_to_task.items():
+        for task_idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
             if not (
                 isinstance(dag_node, InputNode)
@@ -745,9 +746,7 @@ class CompiledDAG:
                         "Compiled DAGs currently only support actor method nodes"
                     )
                 else:
-                    raise ValueError(
-                        f"Found unsupported node of type {type(task.dag_node)}"
-                    )
+                    raise ValueError(f"Found unsupported node of type {type(dag_node)}")
 
             if isinstance(dag_node, ClassMethodNode):
                 actor_handle = dag_node._get_actor_handle()
@@ -775,10 +774,10 @@ class CompiledDAG:
                         "the driver cannot participate in the NCCL group"
                     )
 
-            if type(task.dag_node.type_hint) == ChannelOutputType:
+            if type(dag_node.type_hint) == ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
-                task.dag_node.with_type_hint(self._default_type_hint)
+                dag_node.with_type_hint(self._default_type_hint)
 
             for _, val in task.kwargs.items():
                 if isinstance(val, DAGNode):
@@ -792,19 +791,19 @@ class CompiledDAG:
                     continue
 
                 upstream_node_idx = self.dag_node_to_idx[arg]
-                upstream_node = self.idx_to_task[upstream_node_idx]
+                upstream_task = self.idx_to_task[upstream_node_idx]
                 downstream_actor_handle = None
-                if isinstance(task.dag_node, ClassMethodNode):
-                    downstream_actor_handle = task.dag_node._get_actor_handle()
+                if isinstance(dag_node, ClassMethodNode):
+                    downstream_actor_handle = dag_node._get_actor_handle()
 
-                if isinstance(upstream_node.dag_node, InputAttributeNode):
+                if isinstance(upstream_task.dag_node, InputAttributeNode):
                     # Record all of the keys used to index the InputNode.
                     # During execution, we will check that the user provides
                     # the same args and kwargs.
-                    if isinstance(upstream_node.dag_node.key, int):
-                        input_positional_args.add(upstream_node.dag_node.key)
-                    elif isinstance(upstream_node.dag_node.key, str):
-                        input_kwargs.add(upstream_node.dag_node.key)
+                    if isinstance(upstream_task.dag_node.key, int):
+                        input_positional_args.add(upstream_task.dag_node.key)
+                    elif isinstance(upstream_task.dag_node.key, str):
+                        input_kwargs.add(upstream_task.dag_node.key)
                     else:
                         raise ValueError(
                             "InputNode() can only be indexed using int "
@@ -821,9 +820,9 @@ class CompiledDAG:
 
                     # If the upstream node is an InputAttributeNode, treat the
                     # DAG's input node as the actual upstream node
-                    upstream_node = self.idx_to_task[self.input_task_idx]
+                    upstream_task = self.idx_to_task[self.input_task_idx]
 
-                elif isinstance(upstream_node.dag_node, InputNode):
+                elif isinstance(upstream_task.dag_node, InputNode):
                     if direct_input is not None and not direct_input:
                         raise ValueError(
                             "All tasks must either use InputNode() directly, "
@@ -831,10 +830,35 @@ class CompiledDAG:
                         )
                     direct_input = True
 
-                upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
-                task.arg_type_hints.append(upstream_node.dag_node.type_hint)
+                elif isinstance(upstream_task.dag_node, ClassMethodNode):
+                    from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
 
-                if upstream_node.dag_node.type_hint.requires_nccl():
+                    if (
+                        # Ray aDAG deadlock detection has the same check, but
+                        # it may be turned off because of false positives.
+                        # In that case, we need this check to be active.
+                        # TODO: When we clean up Ray aDAG deadlock detection
+                        # this check should be done at one place only.
+                        not RAY_ADAG_ENABLE_DETECT_DEADLOCK
+                        and downstream_actor_handle is not None
+                        and downstream_actor_handle
+                        == upstream_task.dag_node._get_actor_handle()
+                        and upstream_task.dag_node.type_hint.requires_nccl()
+                    ):
+                        raise ValueError(
+                            "Compiled DAG does not support NCCL communication between "
+                            "methods on the same actor. NCCL type hint is specified "
+                            "for the channel from method "
+                            f"{upstream_task.dag_node.get_method_name()} to method "
+                            f"{dag_node.get_method_name()} on actor "
+                            f"{downstream_actor_handle}. Please remove the NCCL "
+                            "type hint between these methods."
+                        )
+
+                upstream_task.downstream_actor_idxs[task_idx] = downstream_actor_handle
+                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
+
+                if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL group.
                     nccl_actors.add(downstream_actor_handle)
 
@@ -847,7 +871,7 @@ class CompiledDAG:
                 task.dag_node, InputAttributeNode
             ):
                 continue
-            if len(task.downstream_node_idxs) == 0:
+            if len(task.downstream_actor_idxs) == 0:
                 assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
 
@@ -951,7 +975,7 @@ class CompiledDAG:
             if isinstance(task.dag_node, ClassMethodNode):
                 # `readers` is the nodes that are ordered after the current one (`task`)
                 # in the DAG.
-                readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
+                readers = [self.idx_to_task[idx] for idx in task.downstream_actor_idxs]
                 reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                 dag_nodes = [reader.dag_node for reader in readers]
                 read_by_multi_output_node = False
@@ -1023,7 +1047,7 @@ class CompiledDAG:
                 # when we support multiple readers for both shared memory channel
                 # and IntraProcessChannel.
                 reader_handles_set = set()
-                for idx in task.downstream_node_idxs:
+                for idx in task.downstream_actor_idxs:
                     reader_task = self.idx_to_task[idx]
                     assert isinstance(reader_task.dag_node, ClassMethodNode)
                     reader_handle = reader_task.dag_node._get_actor_handle()
@@ -1042,7 +1066,7 @@ class CompiledDAG:
                     task.dag_node, MultiOutputNode
                 )
 
-            for idx in task.downstream_node_idxs:
+            for idx in task.downstream_actor_idxs:
                 frontier.append(idx)
 
         # Validate input channels for tasks that have not been visited
@@ -1278,7 +1302,7 @@ class CompiledDAG:
             on the same actor.
 
         Reason: Each actor executes tasks in the order that they are
-                bound in. Therefore task.{bind_index+1} happens before
+                bound in. Therefore task.{bind_index+1} happens after
                 task.{bind_index}.
 
         #2: Add an edge from the writer to the reader
@@ -1393,7 +1417,7 @@ class CompiledDAG:
             # on the same actor.
             next_task_idx = _get_next_task_idx(task)
             _add_edge(graph, idx, next_task_idx)
-            for downstream_idx in task.downstream_node_idxs:
+            for downstream_idx in task.downstream_actor_idxs:
                 # Add an edge from the writer to the reader.
                 _add_edge(graph, idx, downstream_idx)
                 if task.dag_node.type_hint.requires_nccl():

@@ -3,7 +3,6 @@
 # Checkpoints will be located in ~/ray_results/...
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.utils.test_utils import framework_iterator
 
 # Build a PPOConfig object.
 config = (
@@ -17,8 +16,7 @@ config = (
     )
 )
 
-for fw in framework_iterator(config):
-    algo = config.build()
-    results = algo.train()
-    algo.save()
-    algo.stop()
+algo = config.build()
+results = algo.train()
+algo.save()
+algo.stop()

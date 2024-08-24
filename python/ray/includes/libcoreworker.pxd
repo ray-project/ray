@@ -158,15 +158,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int64_t *task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_object)
         CRayStatus SealReturnObject(
-            const CObjectID& return_id,
-            shared_ptr[CRayObject] return_object,
-            const CObjectID& generator_id,
+            const CObjectID &return_id,
+            const shared_ptr[CRayObject] &return_object,
+            const CObjectID &generator_id,
             const CAddress &caller_address
         )
         c_bool PinExistingReturnObject(
-            const CObjectID& return_id,
+            const CObjectID &return_id,
             shared_ptr[CRayObject] *return_object,
-            const CObjectID& generator_id,
+            const CObjectID &generator_id,
             const CAddress &caller_address)
         void AsyncDelObjectRefStream(const CObjectID &generator_id)
         CRayStatus TryReadObjectRefStream(

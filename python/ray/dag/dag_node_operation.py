@@ -274,13 +274,13 @@ def _build_dag_node_operation_graph(
             # The edge from the InputNode has no impact on the final execution
             # schedule.
             continue
-        for downstream_dag_idx in task.downstream_node_idxs:
-            downstream_dag_node = idx_to_task[downstream_dag_idx].dag_node
+        for downstream_actor_idx in task.downstream_actor_idxs:
+            downstream_dag_node = idx_to_task[downstream_actor_idx].dag_node
             if isinstance(downstream_dag_node, MultiOutputNode):
                 continue
             _add_edge(
                 graph[dag_idx][_DAGNodeOperationType.WRITE],
-                graph[downstream_dag_idx][_DAGNodeOperationType.READ],
+                graph[downstream_actor_idx][_DAGNodeOperationType.READ],
             )
     return graph
 

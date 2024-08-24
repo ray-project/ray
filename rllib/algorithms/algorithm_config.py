@@ -326,6 +326,7 @@ class AlgorithmConfig(_Config):
         self.normalize_actions = True
         self.clip_actions = False
         self._is_atari = None
+        self.disable_env_checking = False
         # Deprecated settings:
         self.env_task_fn = None
         self.render_env = False
@@ -376,9 +377,9 @@ class AlgorithmConfig(_Config):
         self.lr = 0.001
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
-        self.train_batch_size = 32
         # Simple logic for now: If None, use `train_batch_size`.
         self.train_batch_size_per_learner = None
+        self.train_batch_size = 32  # @OldAPIStack
         # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
         #  the main AlgorithmConfig. We should not require the user to provide those
         #  settings in both, the AlgorithmConfig (as property) AND the model config
@@ -567,7 +568,6 @@ class AlgorithmConfig(_Config):
         self.custom_async_evaluation_function = DEPRECATED_VALUE
         self._enable_rl_module_api = DEPRECATED_VALUE
         self.auto_wrap_old_gym_envs = DEPRECATED_VALUE
-        self.disable_env_checking = DEPRECATED_VALUE
         self.always_attach_evaluation_results = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
@@ -1518,11 +1518,11 @@ class AlgorithmConfig(_Config):
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
         clip_actions: Optional[bool] = NotProvided,
+        disable_env_checking: Optional[bool] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
         action_mask_key: Optional[str] = NotProvided,
         # Deprecated args.
         auto_wrap_old_gym_envs=DEPRECATED_VALUE,
-        disable_env_checking=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1562,6 +1562,11 @@ class AlgorithmConfig(_Config):
             clip_actions: If True, the RLlib default ModuleToEnv connector will clip
                 actions according to the env's bounds (before sending them into the
                 `env.step()` call).
+            disable_env_checking: Disable RLlib's env checks after a gymnasium.Env
+                instance has been constructed in an EnvRunner. Note that the checks
+                include an `env.reset()` and `env.step()` (with a random action), which
+                might tinker with your env's logic and behavior and thus negatively
+                influence sample collection- and/or learning behavior.
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
                 this.
@@ -1577,12 +1582,6 @@ class AlgorithmConfig(_Config):
                 old="AlgorithmConfig.environment(auto_wrap_old_gym_envs=..)",
                 error=True,
             )
-        if disable_env_checking != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.environment(disable_env_checking=..)",
-                error=True,
-            )
-
         if env is not NotProvided:
             self.env = env
         if env_config is not NotProvided:
@@ -1601,6 +1600,8 @@ class AlgorithmConfig(_Config):
             self.normalize_actions = normalize_actions
         if clip_actions is not NotProvided:
             self.clip_actions = clip_actions
+        if disable_env_checking is not NotProvided:
+            self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
             self._is_atari = is_atari
         if action_mask_key is not NotProvided:

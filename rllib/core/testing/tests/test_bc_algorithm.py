@@ -8,14 +8,12 @@ from ray.rllib.core.testing.torch.bc_module import (
     BCTorchMultiAgentModuleWithSharedEncoder,
 )
 from ray.rllib.core.testing.tf.bc_module import (
-    DiscreteBCTFModule,
     BCTfRLModuleWithSharedGlobalEncoder,
     BCTfMultiAgentModuleWithSharedEncoder,
 )
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
-from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 
 
@@ -37,16 +35,11 @@ class TestLearner(unittest.TestCase):
             .training(model={"fcnet_hiddens": [32, 32]})
         )
 
-        # TODO (Kourosh): Add tf2 support
-        for fw in framework_iterator(config, frameworks=("torch")):
-            algo = config.build(env="CartPole-v1")
-            policy = algo.get_policy()
-            rl_module = policy.model
+        algo = config.build(env="CartPole-v1")
+        policy = algo.get_policy()
+        rl_module = policy.model
 
-            if fw == "torch":
-                assert isinstance(rl_module, DiscreteBCTorchModule)
-            elif fw == "tf2":
-                assert isinstance(rl_module, DiscreteBCTFModule)
+        assert isinstance(rl_module, DiscreteBCTorchModule)
 
     def test_bc_algorithm_marl(self):
         """Tests simple extension of single-agent to independent multi-agent case."""
@@ -63,17 +56,12 @@ class TestLearner(unittest.TestCase):
             .environment(MultiAgentCartPole, env_config={"num_agents": 2})
         )
 
-        # TODO (Kourosh): Add tf2 support
-        for fw in framework_iterator(config, frameworks=("torch")):
-            algo = config.build()
-            for policy_id in policies:
-                policy = algo.get_policy(policy_id=policy_id)
-                rl_module = policy.model
+        algo = config.build()
+        for policy_id in policies:
+            policy = algo.get_policy(policy_id=policy_id)
+            rl_module = policy.model
 
-                if fw == "torch":
-                    assert isinstance(rl_module, DiscreteBCTorchModule)
-                elif fw == "tf2":
-                    assert isinstance(rl_module, DiscreteBCTFModule)
+            assert isinstance(rl_module, DiscreteBCTorchModule)
 
     def test_bc_algorithm_w_custom_multi_rl_module(self):
         """Tests the independent multi-agent case with shared encoders."""
