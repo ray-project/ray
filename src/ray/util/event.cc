@@ -166,6 +166,7 @@ void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
   RAY_CHECK(ExportEvent_SourceType_IsValid(export_event.source_type()));
   std::string result = ExportEventToString(export_event);
   log_sink_->info(result);
+
   if (force_flush_) {
     Flush();
   }
