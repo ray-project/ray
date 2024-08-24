@@ -63,7 +63,7 @@ def do_allocate_channel(
     self,
     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
-    max_buffered_inputs: int,
+    num_shm_buffers: int,
 ) -> ChannelInterface:
     """Generic actor method to allocate an output channel.
 
@@ -71,8 +71,8 @@ def do_allocate_channel(
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
-        max_buffered_inputs: Maximum number of inputs that can be buffered to
-            this channel before raising an exception.
+        num_shm_buffers: The number of shared memory buffer per channel.
+            It is currently ignored for nccl channel.
 
     Returns:
         The allocated channel.
@@ -87,7 +87,7 @@ def do_allocate_channel(
     output_channel = typ.create_channel(
         self_actor,
         reader_and_node_list,
-        num_shm_buffers=max_buffered_inputs,
+        num_shm_buffers=num_shm_buffers,
     )
     return output_channel
 
@@ -1025,7 +1025,7 @@ class CompiledDAG:
                         do_allocate_channel,
                         reader_and_node_list,
                         typ=type_hint,
-                        max_buffered_inputs=self._max_buffered_inputs,
+                        num_shm_buffers=self._max_buffered_inputs,
                     )
                 )
                 actor_handle = task.dag_node._get_actor_handle()
@@ -1055,7 +1055,7 @@ class CompiledDAG:
                     self,
                     reader_and_node_list,
                     typ=type_hint,
-                    max_buffered_inputs=self._max_buffered_inputs,
+                    num_shm_buffers=self._max_buffered_inputs,
                 )
             else:
                 assert isinstance(task.dag_node, InputAttributeNode) or isinstance(
