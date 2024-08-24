@@ -123,6 +123,13 @@ TEST_F(GcsNodeManagerTest, TestListener) {
 
 TEST_F(GcsNodeManagerTest, TestExportEvents) {
   // Test adding and removing node, and that export events are written
+  RayConfig::instance().initialize(
+        R"(
+{
+  "enable_export_api_write": true
+}
+  )");
+
   const std::vector<ray::SourceTypeVariant> source_types = {rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
   RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
   gcs::GcsNodeManager node_manager(
