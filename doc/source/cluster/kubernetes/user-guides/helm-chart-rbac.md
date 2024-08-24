@@ -121,7 +121,7 @@ helm install raycluster kuberay/ray-cluster --version 1.0.0
 helm install raycluster kuberay/ray-cluster --version 1.0.0 -n n1
 helm install raycluster kuberay/ray-cluster --version 1.0.0 -n n2
 
-# KubeRay only creates a RayCluster in `default`.
+# KubeRay only creates a RayCluster in the `default` namespace.
 kubectl get raycluster -A
 # NAMESPACE   NAME                 DESIRED WORKERS   AVAILABLE WORKERS   STATUS   AGE
 # default     raycluster-kuberay   1                 1                   ready    54s
@@ -177,7 +177,7 @@ helm install raycluster kuberay/ray-cluster --version 1.0.0
 helm install raycluster kuberay/ray-cluster --version 1.0.0 -n n1
 helm install raycluster kuberay/ray-cluster --version 1.0.0 -n n2
 
-# KubeRay creates a RayCluster only in n1 and n2.
+# KubeRay creates a RayCluster only in the `n1` and `n2` namespaces.
 kubectl get raycluster -A
 # NAMESPACE   NAME                 DESIRED WORKERS   AVAILABLE WORKERS   STATUS   AGE
 # default     raycluster-kuberay                                                  74s
