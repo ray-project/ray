@@ -3,6 +3,7 @@ import logging
 from typing import Any, List, Optional
 
 import ray.dashboard.consts as dashboard_consts
+from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.utils import (
     Dict,
     MutableNotificationDict,
@@ -68,7 +69,7 @@ class DataOrganizer:
 
     @classmethod
     @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_UPDATING_INTERVAL)
-    async def organize(cls):
+    async def organize(cls, thread_pool_executor):
         """
         Organizes data: read from (node_physical_stats, node_stats) and updates
         (node_workers, node_worker_stats).
@@ -81,16 +82,16 @@ class DataOrganizer:
         core_worker_stats = {}
         # nodes may change during process, so we create a copy of keys().
         for node_id in list(DataSource.nodes.keys()):
-            # If the node is removed during the last yield, workers will be empty and
-            # it's fine.
-            workers = cls.get_node_workers(node_id)
+            # Offloads the blocking operation to a thread pool executor. This also
+            # yields to the event loop.
+            workers = await get_or_create_event_loop().run_in_executor(
+                thread_pool_executor, cls.get_node_workers, node_id
+            )
             for worker in workers:
                 for stats in worker.get("coreWorkerStats", []):
                     worker_id = stats["workerId"]
                     core_worker_stats[worker_id] = stats
             node_workers[node_id] = workers
-            # Yield https://github.com/python/asyncio/issues/284
-            await asyncio.sleep(0)
         DataSource.node_workers.reset(node_workers)
         DataSource.core_worker_stats.reset(core_worker_stats)
 

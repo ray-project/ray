@@ -49,7 +49,8 @@ class DashboardAgent:
         self.ip = node_ip_address
         self.minimal = minimal
         self.thread_pool_executor = ThreadPoolExecutor(
-            thread_name_prefix="dashboard_agent_tpe"
+            max_workers=dashboard_consts.RAY_AGENT_THREAD_POOL_MAX_WORKERS,
+            thread_name_prefix="dashboard_agent_tpe",
         )
 
         assert gcs_address is not None
