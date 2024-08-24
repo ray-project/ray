@@ -358,7 +358,7 @@ class TestBuildDAGNodeOperationGraph:
             2: CompiledTask(2, ClassMethodNode()),
             3: CompiledTask(3, MultiOutputNode()),
         }
-        idx_to_task[1].downstream_node_idxs = {2: fake_actor_2}
+        idx_to_task[1].downstream_actor_idxs = {2: fake_actor_2}
 
         actor_to_operation_nodes = {
             fake_actor_1: [
@@ -402,7 +402,7 @@ class TestBuildDAGNodeOperationGraph:
             dag_idx_2: CompiledTask(dag_idx_2, ClassMethodNode()),
             3: CompiledTask(3, MultiOutputNode()),
         }
-        idx_to_task[dag_idx_1].downstream_node_idxs = {dag_idx_2: fake_actor}
+        idx_to_task[dag_idx_1].downstream_actor_idxs = {dag_idx_2: fake_actor}
 
         actor_to_operation_nodes = {
             fake_actor: [
@@ -450,8 +450,8 @@ class TestBuildDAGNodeOperationGraph:
             dag_idx_4: CompiledTask(dag_idx_4, ClassMethodNode()),
             5: CompiledTask(5, MultiOutputNode()),
         }
-        idx_to_task[dag_idx_1].downstream_node_idxs = {dag_idx_4: fake_actor_2}
-        idx_to_task[dag_idx_2].downstream_node_idxs = {dag_idx_3: fake_actor_1}
+        idx_to_task[dag_idx_1].downstream_actor_idxs = {dag_idx_4: fake_actor_2}
+        idx_to_task[dag_idx_2].downstream_actor_idxs = {dag_idx_3: fake_actor_1}
 
         actor_to_operation_nodes = {
             fake_actor_1: [

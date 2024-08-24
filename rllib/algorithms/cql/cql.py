@@ -83,6 +83,7 @@ class CQLConfig(SACConfig):
         self.lagrangian = False
         self.lagrangian_thresh = 5.0
         self.min_q_weight = 5.0
+        self.lr = 3e-4
 
         # Changes to Algorithm's/SACConfig's default:
 
