@@ -29,19 +29,6 @@
 // clang-format on
 
 namespace ray {
-void ReadContentFromFile(std::vector<std::string> &vc,
-                         std::string log_file,
-                         std::string filter = "") {
-  std::string line;
-  std::ifstream read_file;
-  read_file.open(log_file, std::ios::binary);
-  while (std::getline(read_file, line)) {
-    if (filter.empty() || line.find(filter) != std::string::npos) {
-      vc.push_back(line);
-    }
-  }
-  read_file.close();
-}
 
 class GcsNodeManagerTest : public ::testing::Test {
  public:
@@ -172,7 +159,7 @@ TEST_F(GcsNodeManagerTest, TestExportEvents) {
   std::vector<std::string> expected_states = {"ALIVE", "DEAD"};
   std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
-    ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
+    Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
     if ((int)vc.size() == num_export_events) {
       for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
         json event_data = json::parse(vc[event_idx])["event_data"].get<json>();
@@ -183,12 +170,16 @@ TEST_F(GcsNodeManagerTest, TestExportEvents) {
           ASSERT_EQ(event_data["death_info"]["reason_message"], "mock reason message");
         }
       }
+      return;
     } else {
       // Sleep and retry
       std::this_thread::sleep_for(std::chrono::seconds(1));
       vc.clear();
     }
   }
+  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
+  ASSERT_TRUE(false) << "Export API only wrote " << (int)vc.size()
+                     << " lines, but expecting " << num_export_events << ".\n";
 }
 
 }  // namespace ray
