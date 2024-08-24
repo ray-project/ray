@@ -390,9 +390,7 @@ struct GcsServerMocker {
         gcs::PGSchedulingFailureCallback failure_callback,
         gcs::PGSchedulingSuccessfulCallback success_callback) {
       ScheduleUnplacedBundles(
-          gcs::SchedulePgRequest{.placement_group = placement_group,
-                                 .failure_callback = failure_callback,
-                                 .success_callback = success_callback});
+          gcs::SchedulePgRequest{placement_group, failure_callback, success_callback});
     };
 
    protected:

@@ -986,17 +986,16 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
         bundles_in_use[NodeID::FromBinary(bundle.node_id())].emplace_back(bundle);
       }
       prepared_pgs.emplace_back(SchedulePgRequest{
-          .placement_group = placement_group,
-          .failure_callback =
-              [this](std::shared_ptr<GcsPlacementGroup> placement_group,
-                     bool is_feasible) {
-                OnPlacementGroupCreationFailed(
-                    std::move(placement_group), CreateDefaultBackoff(), is_feasible);
-              },
-          .success_callback =
-              [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
-                OnPlacementGroupCreationSuccess(placement_group);
-              },
+          placement_group,
+          /*failure_callback=*/
+          [this](std::shared_ptr<GcsPlacementGroup> placement_group, bool is_feasible) {
+            OnPlacementGroupCreationFailed(
+                std::move(placement_group), CreateDefaultBackoff(), is_feasible);
+          },
+          /*success_callback=*/
+          [this](std::shared_ptr<GcsPlacementGroup> placement_group) {
+            OnPlacementGroupCreationSuccess(placement_group);
+          },
       });
     }
     if (state == rpc::PlacementGroupTableData::CREATED ||
