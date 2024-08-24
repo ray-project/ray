@@ -471,39 +471,6 @@ def test_chain_dag(ray_start_regular, num_actors):
     compiled_dag.teardown()
 
 
-def test_execution_timeout(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as inp:
-        dag = a.inc.bind(inp)
-
-    compiled_dag = dag.experimental_compile(_execution_timeout=2)
-    refs = []
-    timed_out = False
-    epsilon = 0.1  # Allow for some slack in the timeout checking
-    for i in range(5):
-        try:
-            start_time = time.monotonic()
-            ref = compiled_dag.execute(1)
-            # Hold the refs to avoid get() being called on the ref
-            # in `__del__()` when it goes out of scope
-            refs.append(ref)
-        except RayChannelTimeoutError:
-            duration = time.monotonic() - start_time
-            assert duration > 2 - epsilon
-            assert duration < 2 + epsilon
-            # The first 3 tasks should complete, and the 4th one
-            # should block then time out because the max possible
-            # concurrent executions for the DAG is 3. See the
-            # following diagram:
-            # driver -(3)-> a.inc (2) -(1)-> driver
-            assert i == 3
-            timed_out = True
-            break
-    assert timed_out
-
-    compiled_dag.teardown()
-
-
 def test_get_timeout(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as inp:

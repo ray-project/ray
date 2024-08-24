@@ -490,10 +490,11 @@ class BufferedChannel(ChannelInterface):
         writer: Optional[ray.actor.ActorHandle],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         max_buffer_inputs: int,
+        typ: Optional[Union[int, SharedMemoryType]] = None,
     ):
         self._max_buffer_inputs = max_buffer_inputs
         self._channels = [
-            Channel(writer, reader_and_node_list) for _ in range(max_buffer_inputs)
+            Channel(writer, reader_and_node_list, typ) for _ in range(max_buffer_inputs)
         ]
         self._next_write_index = 0
         self._next_read_index = 0
@@ -527,6 +528,16 @@ class BufferedChannel(ChannelInterface):
         # self.queue.put(((_CloseSignal(), -1)))
         for chan in self._channels:
             chan.close()
+
+    @property
+    def next_write_index(self):
+        # Testing only
+        return self._next_write_index
+
+    @property
+    def next_read_index(self):
+        # Testing only
+        return self._next_read_index
 
 
 @PublicAPI(stability="alpha")
