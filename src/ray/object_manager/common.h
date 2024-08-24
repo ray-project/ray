@@ -16,6 +16,8 @@
 
 #if defined(__APPLE__) || defined(__linux__)
 #include <semaphore.h>
+
+#include <ctime>
 #endif
 
 #include <atomic>
