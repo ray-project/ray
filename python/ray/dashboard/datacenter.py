@@ -29,8 +29,6 @@ class DataSource:
     nodes = Dict()
     # {node id hex(str): ip address(str)}
     node_id_to_ip = Dict()
-    # {node id hex(str): hostname(str)}
-    node_id_to_hostname = Dict()
     # {node id hex(str): worker list}
     node_workers = Dict()
     # {node id hex(str): {actor id hex(str): actor table data}}
@@ -53,7 +51,6 @@ class DataOrganizer:
         #   * agents
         #   * nodes
         #   * node_id_to_ip
-        #   * node_id_to_hostname
         alive_nodes = {
             node_id
             for node_id, node_info in DataSource.nodes.items()
