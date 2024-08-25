@@ -751,7 +751,7 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
             node_ip = agent[1]["ipAddress"]
             http_port = agent[1]["httpPort"]
             grpc_port = agent[1]["grpcPort"]
-            DataSource.nodes[node_id] = {"NodeManagerAddress": node_ip}
+            DataSource.nodes[node_id] = {"nodeManagerAddress": node_ip}
             DataSource.agents[node_id] = (http_port, grpc_port)
 
         def del_agent(agent):
