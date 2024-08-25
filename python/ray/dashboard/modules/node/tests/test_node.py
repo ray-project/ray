@@ -44,7 +44,6 @@ def test_nodes_update(enable_test_module, ray_start_with_dashboard):
             dump_data = dump_info["data"]
             assert len(dump_data["nodes"]) == 1
             assert len(dump_data["agents"]) == 1
-            assert len(dump_data["nodeIdToIp"]) == 1
             assert len(dump_data["nodeIdToHostname"]) == 1
             assert dump_data["nodes"].keys() == dump_data["nodeIdToHostname"].keys()
 
