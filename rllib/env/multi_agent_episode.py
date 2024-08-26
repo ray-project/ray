@@ -1675,7 +1675,7 @@ class MultiAgentEpisode:
             extra_model_outputs=extra_model_outputs,
             terminateds=terminateds,
             truncateds=truncateds,
-            len_lookback_buffer=ref_lookback,
+            len_lookback_buffer=_lb,
             env_t_started=self.env_t_started + start,
             agent_episode_ids={
                 aid: eid.id_ for aid, eid in self.agent_episodes.items()
