@@ -12,6 +12,8 @@ MAX_ERROR_STACK_TRACE_LENGTH = 3000
 class RunStatusEnum(str, Enum):
     """Enumeration for the status of a train run."""
 
+    # (Deprecated) The train run has started
+    STARTED = "STARTED"
     # The train run is running
     RUNNING = "RUNNING"
     # The train run was terminated as expected

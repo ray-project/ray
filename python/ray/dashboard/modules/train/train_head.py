@@ -25,7 +25,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         self._job_info_client = None
         self._gcs_actor_info_stub = None
 
-    @routes.get("/api/train/v3/runs")
+    @routes.get("/api/train/v2/runs")
     @dashboard_optional_utils.init_ray_and_catch_exceptions()
     @DeveloperAPI
     async def get_train_runs(self, req: Request) -> Response:
