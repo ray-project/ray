@@ -158,7 +158,7 @@ class HasOptions(Protocol):
         ...
 
 
-class RemoteFunctionNoArgs(Generic[R], HasOptions):
+class RemoteFunctionNoArgs(HasOptions, Generic[R]):
     def __init__(self, function: Callable[[], R]) -> None:
         pass
 
@@ -173,7 +173,7 @@ class RemoteFunctionNoArgs(Generic[R], HasOptions):
         ...
 
 
-class RemoteFunction0(Generic[R, T0], HasOptions):
+class RemoteFunction0(HasOptions, Generic[R, T0]):
     def __init__(self, function: Callable[[T0], R]) -> None:
         pass
 
@@ -190,7 +190,7 @@ class RemoteFunction0(Generic[R, T0], HasOptions):
         ...
 
 
-class RemoteFunction1(Generic[R, T0, T1], HasOptions):
+class RemoteFunction1(HasOptions, Generic[R, T0, T1]):
     def __init__(self, function: Callable[[T0, T1], R]) -> None:
         pass
 
@@ -209,7 +209,7 @@ class RemoteFunction1(Generic[R, T0, T1], HasOptions):
         ...
 
 
-class RemoteFunction2(Generic[R, T0, T1, T2], HasOptions):
+class RemoteFunction2(HasOptions, Generic[R, T0, T1, T2]):
     def __init__(self, function: Callable[[T0, T1, T2], R]) -> None:
         pass
 
@@ -230,7 +230,7 @@ class RemoteFunction2(Generic[R, T0, T1, T2], HasOptions):
         ...
 
 
-class RemoteFunction3(Generic[R, T0, T1, T2, T3], HasOptions):
+class RemoteFunction3(HasOptions, Generic[R, T0, T1, T2, T3]):
     def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
         pass
 
@@ -253,7 +253,7 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3], HasOptions):
         ...
 
 
-class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4], HasOptions):
+class RemoteFunction4(HasOptions, Generic[R, T0, T1, T2, T3, T4]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4], R]) -> None:
         pass
 
@@ -278,7 +278,7 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4], HasOptions):
         ...
 
 
-class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5], HasOptions):
+class RemoteFunction5(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
         pass
 
@@ -305,7 +305,7 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5], HasOptions):
         ...
 
 
-class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6], HasOptions):
+class RemoteFunction6(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]) -> None:
         pass
 
@@ -334,7 +334,7 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6], HasOptions):
         ...
 
 
-class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7], HasOptions):
+class RemoteFunction7(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
         pass
 
@@ -365,7 +365,7 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7], HasOptions):
         ...
 
 
-class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8], HasOptions):
+class RemoteFunction8(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
     def __init__(
         self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
     ) -> None:
@@ -400,7 +400,7 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8], HasOptions
         ...
 
 
-class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], HasOptions):
+class RemoteFunction9(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     def __init__(
         self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
     ) -> None:
