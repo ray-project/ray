@@ -8,6 +8,7 @@ from typing import List, Tuple
 from unittest.mock import MagicMock, AsyncMock
 
 import pytest
+import pytest_asyncio
 from ray._private.state_api_test_utils import get_state_api_manager
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
@@ -149,8 +150,8 @@ def state_source_client(gcs_address):
     return client
 
 
-@pytest.fixture
-def state_api_manager_e2e(ray_start_with_dashboard):
+@pytest_asyncio.fixture
+async def state_api_manager_e2e(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
     gcs_address = address_info["gcs_address"]
     manager = get_state_api_manager(gcs_address)
@@ -250,8 +251,8 @@ def generate_task_event(
     )
     state_updates = TaskStateUpdate(
         node_id=node_id,
+        state_ts_ns={state: 1},
     )
-    setattr(state_updates, TaskStatus.Name(state).lower() + "_ts", 1)
     return TaskEvents(
         task_id=id,
         job_id=job_id,
@@ -793,7 +794,9 @@ async def test_api_manager_list_nodes(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     id = b"1234"
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[generate_node_data(id), generate_node_data(b"12345")]
+        node_info_list=[generate_node_data(id), generate_node_data(b"12345")],
+        total=2,
+        num_filtered=0,
     )
     result = await state_api_manager.list_nodes(option=create_api_options())
     data = result.result
@@ -813,6 +816,11 @@ async def test_api_manager_list_nodes(state_api_manager):
     Test limit
     """
     assert len(result.result) == 2
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[generate_node_data(id)],
+        total=2,
+        num_filtered=1,
+    )
     result = await state_api_manager.list_nodes(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
@@ -826,6 +834,11 @@ async def test_api_manager_list_nodes(state_api_manager):
         result = await state_api_manager.list_nodes(
             option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[generate_node_data(id)],
+        total=2,
+        num_filtered=1,
+    )
     result = await state_api_manager.list_nodes(
         option=create_api_options(filters=[("node_id", "=", bytearray(id).hex())])
     )
@@ -1007,10 +1020,12 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     second = int(1e9)
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
-        running_ts=current + (2 * second),
-        finished_ts=current + (3 * second),
+        state_ts_ns={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+            TaskStatus.RUNNING: current + (2 * second),
+            TaskStatus.FINISHED: current + (3 * second),
+        },
     )
 
     """
@@ -1056,9 +1071,11 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     """
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
-        running_ts=current + (2 * second),
+        state_ts_ns={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+            TaskStatus.RUNNING: current + (2 * second),
+        },
     )
     events = TaskEvents(
         task_id=id,
@@ -1077,8 +1094,10 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     Test None of start & end time is updated.
     """
     state_updates = TaskStateUpdate(
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
+        state_ts_ns={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+        },
     )
     events = TaskEvents(
         task_id=id,
@@ -2424,7 +2443,11 @@ def test_list_get_tasks(shutdown_only):
         for task in tasks:
             assert task["job_id"] == job_id
 
-        tasks = list_tasks(filters=[("name", "=", "f_0")])
+        tasks = list_tasks(filters=[("name", "=", "f_0")], limit=1)
+        assert len(tasks) == 1
+
+        # using limit to make sure state filtering is done on the gcs side
+        tasks = list_tasks(filters=[("STATE", "=", "PENDING_ARGS_AVAIL")], limit=1)
         assert len(tasks) == 1
 
         return True
@@ -3584,16 +3607,38 @@ def test_job_info_is_running_task(shutdown_only):
     ray.get(signal.wait.remote())
 
     client = ray.worker.global_worker.gcs_client
-    job_id = ray.worker.global_worker.current_job_id.binary()
+    job_id = ray.worker.global_worker.current_job_id
     all_job_info = client.get_all_job_info()
     assert len(all_job_info) == 1
     assert job_id in all_job_info
-    assert client.get_all_job_info()[job_id].is_running_tasks is True
+    assert all_job_info[job_id].is_running_tasks is True
+
+
+def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
+    """
+    When there's a call to JobInfoGcsService.GetAllJobInfo, GCS sends RPC
+    CoreWorkerService.NumPendingTasks to all drivers for "is_running_task". Our driver
+    however has trouble serving such RPC, and GCS should timeout that RPC and unsest the
+    field.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=10)
+    address = cluster.address
+
+    monkeypatch.setenv(
+        "RAY_testing_asio_delay_us",
+        "CoreWorkerService.grpc_server.NumPendingTasks=2000000:2000000",
+    )
+    ray.init(address=address)
+
+    client = ray.worker.global_worker.gcs_client
+    my_job_id = ray.worker.global_worker.current_job_id
+    all_job_info = client.get_all_job_info()
+    assert list(all_job_info.keys()) == [my_job_id]
+    assert not all_job_info[my_job_id].HasField("is_running_tasks")
 
 
 if __name__ == "__main__":
-    import sys
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

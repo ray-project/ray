@@ -118,10 +118,12 @@ class TrainingIterator:
 
     def __next__(self):
         if self.is_finished():
+            self._backend_executor.report_final_run_status(errored=False)
             raise StopIteration
         try:
             next_results = self._run_with_error_handling(self._fetch_next_result)
             if next_results is None:
+                self._backend_executor.report_final_run_status(errored=False)
                 self._run_with_error_handling(self._finish_training)
                 self._finished_training = True
                 raise StopIteration
@@ -130,6 +132,7 @@ class TrainingIterator:
         except StartTraceback:
             # If this is a StartTraceback, then this is a user error.
             # We raise it directly
+            self._backend_executor.report_final_run_status(errored=True)
             try:
                 # Exception raised in at least one training worker. Immediately raise
                 # this error to the user and do not attempt to terminate gracefully.

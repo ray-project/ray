@@ -24,7 +24,7 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import MockKVStore
 from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import DeploymentSchema, ServeApplicationSchema
+from ray.serve.schema import DeploymentSchema, LoggingConfig, ServeApplicationSchema
 
 
 class MockEndpointState:
@@ -148,7 +148,7 @@ def mocked_application_state_manager() -> (
 
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     application_state_manager = ApplicationStateManager(
-        deployment_state_manager, MockEndpointState(), kv_store
+        deployment_state_manager, MockEndpointState(), kv_store, LoggingConfig()
     )
     yield application_state_manager, deployment_state_manager, kv_store
 
@@ -184,6 +184,7 @@ def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateMan
         deployment_state_manager,
         MockEndpointState(),
         lambda *args, **kwargs: None,
+        LoggingConfig(),
     )
     yield application_state, deployment_state_manager
 
@@ -541,7 +542,10 @@ def test_apply_app_configs_succeed(check_obj_ref_ready_nowait):
     deployment_id = DeploymentID(name="a", app_name="test_app")
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     app_state_manager = ApplicationStateManager(
-        deployment_state_manager, MockEndpointState(), kv_store
+        deployment_state_manager,
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
     )
 
     # Deploy config
@@ -588,7 +592,7 @@ def test_apply_app_configs_fail(check_obj_ref_ready_nowait):
     kv_store = MockKVStore()
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     app_state_manager = ApplicationStateManager(
-        deployment_state_manager, MockEndpointState(), kv_store
+        deployment_state_manager, MockEndpointState(), kv_store, LoggingConfig()
     )
 
     # Deploy config
@@ -630,7 +634,7 @@ def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
     kv_store = MockKVStore()
     deployment_state_manager = MockDeploymentStateManager(kv_store)
     app_state_manager = ApplicationStateManager(
-        deployment_state_manager, MockEndpointState(), kv_store
+        deployment_state_manager, MockEndpointState(), kv_store, LoggingConfig()
     )
 
     # Deploy an app via `deploy_app` - should not be affected.
@@ -807,7 +811,7 @@ def test_application_state_recovery(mocked_application_state_manager):
 
     # Create new application state manager, and it should call _recover_from_checkpoint
     new_app_state_manager = ApplicationStateManager(
-        new_deployment_state_manager, MockEndpointState(), kv_store
+        new_deployment_state_manager, MockEndpointState(), kv_store, LoggingConfig()
     )
     app_state = new_app_state_manager._application_states[app_name]
     assert app_state.status == ApplicationStatus.DEPLOYING
@@ -863,7 +867,7 @@ def test_recover_during_update(mocked_application_state_manager):
 
     # Create new application state manager, and it should call _recover_from_checkpoint
     new_app_state_manager = ApplicationStateManager(
-        new_deployment_state_manager, MockEndpointState(), kv_store
+        new_deployment_state_manager, MockEndpointState(), kv_store, LoggingConfig()
     )
     app_state = new_app_state_manager._application_states[app_name]
     ar_version = app_state._target_state.deployment_infos["d1"].version
@@ -959,7 +963,7 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_infos = override_deployment_info({"A": info}, config)
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -986,7 +990,7 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_infos = override_deployment_info({"A": info}, config)
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -1001,7 +1005,7 @@ class TestOverrideDeploymentInfo:
             deployments=[DeploymentSchema(name="A", route_prefix="/alice")],
         )
 
-        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_infos = override_deployment_info({"A": info}, config)
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/alice"
         assert updated_info.version == "123"
@@ -1018,7 +1022,7 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_infos = override_deployment_info({"A": info}, config)
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/bob"
         assert updated_info.version == "123"
@@ -1031,7 +1035,7 @@ class TestOverrideDeploymentInfo:
             deployments=[DeploymentSchema(name="A", route_prefix="/alice")],
         )
 
-        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_infos = override_deployment_info({"A": info}, config)
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/bob"
         assert updated_info.version == "123"
@@ -1049,7 +1053,7 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_infos = override_deployment_info({"A": info}, config)
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -1071,7 +1075,7 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_infos = override_deployment_info({"A": info}, config)
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -1096,7 +1100,7 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_infos = override_deployment_info({"A": info}, config)
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -1131,7 +1135,7 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_infos = override_deployment_info({"A": info}, config)
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"
@@ -1170,7 +1174,7 @@ class TestOverrideDeploymentInfo:
             ],
         )
 
-        updated_infos = override_deployment_info("default", {"A": info}, config)
+        updated_infos = override_deployment_info({"A": info}, config)
         updated_info = updated_infos["A"]
         assert updated_info.route_prefix == "/"
         assert updated_info.version == "123"

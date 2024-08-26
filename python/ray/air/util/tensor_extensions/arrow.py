@@ -84,6 +84,16 @@ def pyarrow_table_from_pydict(
         raise ArrowConversionError(str(pydict)) from e
 
 
+@DeveloperAPI
+def convert_list_to_pyarrow_array(
+    val: List[Any], enclosing_dict: Dict[str, Any]
+) -> pa.Array:
+    try:
+        return pa.array(val)
+    except Exception as e:
+        raise ArrowConversionError(str(enclosing_dict)) from e
+
+
 @PublicAPI(stability="beta")
 class ArrowTensorType(pa.ExtensionType):
     """

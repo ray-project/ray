@@ -62,6 +62,15 @@ if __name__ == "__main__":
     # same temp directory, adding a shared lock representing current ray node is
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
+
+    def preexec_function():
+        # Make Ray node process runs in a separate group,
+        # otherwise Ray node will be in the same group of parent process,
+        # if parent process is a Jupyter notebook kernel, when user
+        # clicks interrupt cell button, SIGINT signal is sent, then Ray node will
+        # receive SIGINT signal and it causes Ray node process dies.
+        os.setpgrp()
+
     process = subprocess.Popen(
         # 'ray start ...' command uses python that is set by
         # Shebang #! ..., the Shebang line is hardcoded in ray script,
@@ -71,6 +80,7 @@ if __name__ == "__main__":
         # '`sys.executable` `which ray` start ...'
         [sys.executable, shutil.which(ray_cli_cmd), "start", *arg_list],
         text=True,
+        preexec_fn=preexec_function,
     )
 
     def try_clean_temp_dir_at_exit():
@@ -175,7 +185,15 @@ if __name__ == "__main__":
             os._exit(143)
 
         signal.signal(signal.SIGTERM, sigterm_handler)
-        ret_code = process.wait()
+        while True:
+            try:
+                ret_code = process.wait()
+                break
+            except KeyboardInterrupt:
+                # Jupyter notebook interrupt button triggers SIGINT signal and
+                # `start_ray_node` (subprocess) will receive SIGINT signal and it
+                # causes KeyboardInterrupt exception being raised.
+                pass
         try_clean_temp_dir_at_exit()
         sys.exit(ret_code)
     except Exception:

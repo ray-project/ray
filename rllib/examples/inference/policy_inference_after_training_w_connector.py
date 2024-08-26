@@ -6,14 +6,14 @@ ConnectorV2 pair, and an Episode object to store the ongoing episode in.
 The RLModule contains an LSTM that requires its own previous STATE_OUT as new input
 at every episode step to compute a new action.
 
-This example shows ..
-  - .. how to use an already existing checkpoint to extract a single-agent RLModule
-  from (our policy network).
-  - .. how to setup this recovered policy net for action computations (with or without
-  using exploration).
-  - .. how to create a more complex env-loop in which the action-computing RLModule
-  requires its own previous state outputs as new input and how to use RLlib's Episode
-  APIs to achieve this.
+This example:
+    - shows how to use an already existing checkpoint to extract a single-agent RLModule
+    from (our policy network).
+    - shows how to setup this recovered policy net for action computations (with or
+    without using exploration).
+    - shows how to create a more complex env-loop in which the action-computing RLModule
+    requires its own previous state outputs as new input and how to use RLlib's Episode
+    APIs to achieve this.
 
 
 How to run this script
@@ -123,6 +123,8 @@ parser.set_defaults(
     checkpoint_at_end=True,
     # Use StatelessCartPole by default.
     env="stateless-cart",
+    # Script only runs on new API stack.
+    enable_new_api_stack=True,
 )
 parser.add_argument(
     "--explore-during-inference",
@@ -178,7 +180,7 @@ if __name__ == "__main__":
         connectors=[
             AddObservationsFromEpisodesToBatch(),
             AddStatesFromEpisodesToBatch(),
-            BatchIndividualItems(),
+            BatchIndividualItems(multi_agent=args.num_agents > 0),
             NumpyToTensor(),
         ],
     )
@@ -192,8 +194,9 @@ if __name__ == "__main__":
     rl_module = RLModule.from_checkpoint(
         os.path.join(
             best_result.checkpoint.path,
+            "learner_group",
             "learner",
-            "module_state",
+            "rl_module",
             DEFAULT_MODULE_ID,
         )
     )

@@ -14,6 +14,7 @@ srcs:
   - ci/env/install-dependencies.sh
   - ci/env/install-llvm-binaries.sh
   - ci/env/install-bazel.sh
+  - ci/env/install-miniconda.sh
   - ci/pipeline/determine_tests_to_run.py
   - ci/suppress_output
   - python/requirements.txt

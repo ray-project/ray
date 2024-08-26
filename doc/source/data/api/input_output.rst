@@ -101,7 +101,7 @@ TFRecords
 
    read_tfrecords
    Dataset.write_tfrecords
-
+   TFXReadOptions
 
 Pandas
 ------
@@ -176,6 +176,24 @@ Databricks
    :toctree: doc/
 
    read_databricks_tables
+
+Delta Sharing
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_delta_sharing_tables
+
+Iceberg
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_iceberg
 
 Lance
 -----
@@ -315,5 +333,3 @@ MetadataProvider API
    datasource.DefaultFileMetadataProvider
    datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
-
-   

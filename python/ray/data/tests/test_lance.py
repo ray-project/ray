@@ -28,7 +28,11 @@ from ray.data.datasource.path_util import _unwrap_protocol
         ),
     ],
 )
-def test_lance_read_basic(fs, data_path):
+@pytest.mark.parametrize(
+    "batch_size",
+    [None, 100],
+)
+def test_lance_read_basic(fs, data_path, batch_size):
     # NOTE: Lance only works with PyArrow 12 or above.
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:
@@ -51,7 +55,10 @@ def test_lance_read_basic(fs, data_path):
     )
     ds_lance.merge(df2, "one")
 
-    ds = ray.data.read_lance(path)
+    if batch_size is None:
+        ds = ray.data.read_lance(path)
+    else:
+        ds = ray.data.read_lance(path, scanner_options={"batch_size": batch_size})
 
     # Test metadata-only ops.
     assert ds.count() == 6

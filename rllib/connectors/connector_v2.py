@@ -1,6 +1,16 @@
 import abc
 from collections import defaultdict
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import gymnasium as gym
 import tree
@@ -8,14 +18,15 @@ import tree
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.spaces.space_utils import BatchedNdArray
-from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID
+from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID, StateDict
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class ConnectorV2(abc.ABC):
+class ConnectorV2(Checkpointable, abc.ABC):
     """Base class defining the API for an individual "connector piece".
 
     A ConnectorV2 ("connector piece") is usually part of a whole series of connector
@@ -84,8 +95,9 @@ class ConnectorV2(abc.ABC):
         self._action_space = None
         self._input_observation_space = None
         self._input_action_space = None
-        self.input_observation_space = input_observation_space
+
         self.input_action_space = input_action_space
+        self.input_observation_space = input_observation_space
 
     @OverrideToImplementCustomLogic
     def recompute_observation_space_from_input_spaces(self) -> gym.Space:
@@ -403,17 +415,18 @@ class ConnectorV2(abc.ABC):
                 `column`.
         """
         sub_key = None
-        if (
-            single_agent_episode is not None
-            and single_agent_episode.agent_id is not None
-        ):
-            sub_key = (
-                single_agent_episode.multi_agent_episode_id,
-                single_agent_episode.agent_id,
-                single_agent_episode.module_id,
-            )
-        elif single_agent_episode is not None:
-            sub_key = (single_agent_episode.id_,)
+        # SAEpisode is provided ...
+        if single_agent_episode is not None:
+            # ... and has `agent_id` -> Use agent ID and module ID from it.
+            if single_agent_episode.agent_id is not None:
+                sub_key = (
+                    single_agent_episode.multi_agent_episode_id,
+                    single_agent_episode.agent_id,
+                    single_agent_episode.module_id,
+                )
+            # Otherwise, just use episode's ID.
+            else:
+                sub_key = (single_agent_episode.id_,)
 
         if column not in batch:
             batch[column] = [] if sub_key is None else {sub_key: []}
@@ -806,21 +819,26 @@ class ConnectorV2(abc.ABC):
                 module_data[module_id][column] = data
         return dict(module_data)
 
-    def get_state(self) -> Dict[str, Any]:
-        """Returns the current state of this ConnectorV2 as a state dict.
-
-        Returns:
-            A state dict mapping any string keys to their (state-defining) values.
-        """
+    @override(Checkpointable)
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
         return {}
 
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of this ConnectorV2 to the given value.
+    @override(Checkpointable)
+    def set_state(self, state: StateDict) -> None:
+        pass
 
-        Args:
-            state: The state dict to define this ConnectorV2's new state.
-        """
-        return
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+        return (
+            (self.input_observation_space, self.input_action_space),  # *args
+            {},  # **kwargs
+        )
 
     def reset_state(self) -> None:
         """Resets the state of this ConnectorV2 to some initial value.

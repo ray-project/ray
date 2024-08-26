@@ -1,5 +1,8 @@
 # Production requirements. This is what readthedocs.com picks up
 
+# Required to build the docs on 3.12 due to pkg_resources deprecation
+setuptools>=70.0.0
+
 # Syntax highlighting
 Pygments==2.16.1
 
@@ -13,8 +16,10 @@ sphinx-sitemap==2.5.1
 sphinxcontrib-redoc==1.6.0
 sphinx-remove-toctrees==0.0.3
 sphinx_design==0.5.0
+sphinx-autobuild==2024.4.16
 pydata-sphinx-theme==0.14.1
 autodoc_pydantic==2.2.0
+appnope
 
 pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3
 
@@ -30,3 +35,6 @@ urllib3 < 1.27
 
 # External dependencies such as ML libraries should be mocked out, not added here.
 # See doc/source/conf.py for examples of how to mock out external dependencies.
+click==8.1.7
+boto3==1.35.2
+requests==2.32.3

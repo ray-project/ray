@@ -20,7 +20,7 @@ addgroup --gid 993 docker
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
 # Install miniconda
-curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py38_23.1.0-1-Linux-x86_64.sh > /tmp/miniconda.sh
+curl -sfL https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-Linux-x86_64.sh > /tmp/miniconda.sh
 bash /tmp/miniconda.sh -b -u -p /usr/local/bin/miniconda3
 rm /tmp/miniconda.sh
 /usr/local/bin/miniconda3/bin/conda init bash

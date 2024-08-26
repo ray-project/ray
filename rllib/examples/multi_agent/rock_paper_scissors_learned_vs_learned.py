@@ -15,13 +15,9 @@ import re
 
 from pettingzoo.classic import rps_v2
 
-from ray.rllib.connectors.env_to_module import (
-    AddObservationsFromEpisodesToBatch,
-    FlattenObservations,
-    WriteObservationsToEpisodes,
-)
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import ParallelPettingZooEnv
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -62,11 +58,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("RockPaperScissors")
         .env_runners(
-            env_to_module_connector=lambda env: (
-                AddObservationsFromEpisodesToBatch(),
-                FlattenObservations(multi_agent=True),
-                WriteObservationsToEpisodes(),
-            ),
+            env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
         )
         .multi_agent(
             policies={"p0", "p1"},
@@ -85,10 +77,10 @@ if __name__ == "__main__":
                 "max_seq_len": 15,
                 "vf_share_layers": True,
             },
-            rl_module_spec=MultiAgentRLModuleSpec(
+            rl_module_spec=MultiRLModuleSpec(
                 module_specs={
-                    "p0": SingleAgentRLModuleSpec(),
-                    "p1": SingleAgentRLModuleSpec(),
+                    "p0": RLModuleSpec(),
+                    "p1": RLModuleSpec(),
                 }
             ),
         )

@@ -3,7 +3,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.algorithms.impala import ImpalaConfig
+from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.examples.envs.classes.multi_agent import (
@@ -11,7 +11,7 @@ from ray.rllib.examples.envs.classes.multi_agent import (
     MultiAgentMountainCar,
 )
 from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.test_utils import check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import check_train_results
 from ray.tune.registry import register_env
 
 
@@ -36,18 +36,15 @@ def check_support_multiagent(alg: str, config: AlgorithmConfig):
 
     config.multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
 
-    for fw in framework_iterator(config):
-        if fw == "tf2" and alg == "IMPALA":
-            continue
-        if alg == "SAC":
-            a = config.build(env="multi_agent_mountaincar")
-        else:
-            a = config.build(env="multi_agent_cartpole")
+    if alg == "SAC":
+        a = config.build(env="multi_agent_mountaincar")
+    else:
+        a = config.build(env="multi_agent_cartpole")
 
-        results = a.train()
-        check_train_results(results)
-        print(results)
-        a.stop()
+    results = a.train()
+    check_train_results(results)
+    print(results)
+    a.stop()
 
 
 class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):
@@ -60,7 +57,7 @@ class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_multiagent(self):
-        check_support_multiagent("IMPALA", ImpalaConfig().resources(num_gpus=0))
+        check_support_multiagent("IMPALA", IMPALAConfig().resources(num_gpus=0))
 
     def test_ppo_multiagent(self):
         check_support_multiagent(
@@ -114,7 +111,7 @@ class TestSupportedMultiAgentMultiGPU(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_multiagent_multi_gpu(self):
-        check_support_multiagent("IMPALA", ImpalaConfig().resources(num_gpus=2))
+        check_support_multiagent("IMPALA", IMPALAConfig().resources(num_gpus=2))
 
 
 if __name__ == "__main__":

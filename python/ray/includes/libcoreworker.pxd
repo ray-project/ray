@@ -158,15 +158,16 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int64_t *task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_object)
         CRayStatus SealReturnObject(
-            const CObjectID& return_id,
-            shared_ptr[CRayObject] return_object,
-            const CObjectID& generator_id,
+            const CObjectID &return_id,
+            const shared_ptr[CRayObject] &return_object,
+            const CObjectID &generator_id,
             const CAddress &caller_address
         )
         c_bool PinExistingReturnObject(
-            const CObjectID& return_id,
+            const CObjectID &return_id,
             shared_ptr[CRayObject] *return_object,
-            const CObjectID& generator_id)
+            const CObjectID &generator_id,
+            const CAddress &caller_address)
         void AsyncDelObjectRefStream(const CObjectID &generator_id)
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
@@ -200,7 +201,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes, const
-                                                   CObjectID &outer_object_id)
+                                                   CObjectID &outer_object_id,
+                                                   c_bool add_local_ref)
         CRayStatus SerializeActorHandle(const CActorID &actor_id, c_string
                                         *bytes,
                                         CObjectID *c_actor_handle_id)
@@ -254,6 +256,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                                   const shared_ptr[CBuffer] &metadata,
                                   uint64_t data_size,
                                   int64_t num_readers,
+                                  int64_t timeout_ms,
                                   shared_ptr[CBuffer] *data)
         CRayStatus ExperimentalChannelWriteRelease(
                                   const CObjectID &object_id)

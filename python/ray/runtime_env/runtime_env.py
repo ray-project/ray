@@ -211,7 +211,6 @@ class RuntimeEnv(dict):
         # Example for using container
         RuntimeEnv(
             container={"image": "anyscale/ray-ml:nightly-py38-cpu",
-            "worker_path": "/root/python/ray/_private/workers/default_worker.py",
             "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]})
 
         # Example for set env_vars
@@ -250,7 +249,6 @@ class RuntimeEnv(dict):
             https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually
         container: Require a given (Docker) container image,
             The Ray worker process will run in a container with this image.
-            The `worker_path` is the default_worker.py path.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
         env_vars: Environment variables to set.

@@ -90,9 +90,9 @@ class WorkerLeaseInterface {
   /// \param workers_in_use Workers currently in use.
   /// \param callback Callback that will be called after raylet completes the release of
   /// unused workers. \return ray::Status
-  virtual void ReleaseUnusedWorkers(
+  virtual void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) = 0;
+      const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) = 0;
 
   virtual void CancelWorkerLease(
       const TaskID &task_id,
@@ -476,9 +476,9 @@ class RayletClient : public RayletClientInterface {
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override;
 
   /// Implements WorkerLeaseInterface.
-  void ReleaseUnusedWorkers(
+  void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override;
+      const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) override;
 
   void CancelWorkerLease(
       const TaskID &task_id,

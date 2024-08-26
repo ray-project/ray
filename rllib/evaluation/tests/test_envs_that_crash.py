@@ -91,7 +91,7 @@ class TestEnvsThatCrash(unittest.TestCase):
             # as we ignore worker failures.
             algo.train()
             # One worker has been removed -> Only one left.
-            self.assertEqual(algo.workers.num_healthy_remote_workers(), 1)
+            self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 1)
             algo.stop()
 
     def test_env_crash_on_one_worker_during_sampling_but_recreate_worker(self):
@@ -137,7 +137,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                 # as we recover from all worker failures.
                 print(f"iter {i}: ", algo.train())
                 # One worker has been removed.
-                self.assertEqual(algo.workers.num_healthy_remote_workers(), 1)
+                self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 1)
             algo.stop()
 
     def test_env_crash_during_sampling_but_restart_only_crashed_sub_env(self):
@@ -179,7 +179,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                 # as we recover from all sub-env failures.
                 algo.train()
                 # No worker has been removed. Still 2 left.
-                self.assertEqual(algo.workers.num_healthy_remote_workers(), 2)
+                self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 2)
             algo.stop()
 
 

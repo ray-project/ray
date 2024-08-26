@@ -411,6 +411,11 @@ class Test(dict):
         """
         default = {
             "RAY_BACKEND_LOG_JSON": "1",
+            # Logs the full stack trace from Ray Data in case of exception,
+            # which is useful for debugging failures.
+            "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT": "1",
+            # To make ray data compatible across multiple pyarrow versions.
+            "RAY_DATA_AUTOLOAD_PYEXTENSIONTYPE": "1",
         }
         default.update(
             _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))

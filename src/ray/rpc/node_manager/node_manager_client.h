@@ -111,7 +111,7 @@ class NodeManagerWorkerClient
 
   /// Release unused workers.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         ReleaseUnusedWorkers,
+                         ReleaseUnusedActorWorkers,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

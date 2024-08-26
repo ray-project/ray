@@ -986,6 +986,57 @@ def call_with_retry(
                 raise e from None
 
 
+def iterate_with_retry(
+    iterable_factory: Callable[[], Iterable],
+    description: str,
+    *,
+    match: Optional[List[str]] = None,
+    max_attempts: int = 10,
+    max_backoff_s: int = 32,
+) -> Any:
+    """Iterate through an iterable with retries.
+
+    If the iterable raises an exception, this function recreates and re-iterates
+    through the iterable, while skipping the items that have already been yielded.
+
+    Args:
+        iterable_factory: A no-argument function that creates the iterable.
+        match: A list of strings to match in the exception message. If ``None``, any
+            error is retried.
+        description: An imperitive description of the function being retried. For
+            example, "open the file".
+        max_attempts: The maximum number of attempts to retry.
+        max_backoff_s: The maximum number of seconds to backoff.
+    """
+    assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
+
+    num_items_yielded = 0
+    for i in range(max_attempts):
+        try:
+            iterable = iterable_factory()
+            for i, item in enumerate(iterable):
+                if i < num_items_yielded:
+                    # Skip items that have already been yielded.
+                    continue
+
+                num_items_yielded += 1
+                yield item
+            return
+        except Exception as e:
+            is_retryable = match is None or any(
+                [pattern in str(e) for pattern in match]
+            )
+            if is_retryable and i + 1 < max_attempts:
+                # Retry with binary expoential backoff with random jitter.
+                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
+                logger.debug(
+                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
+                )
+                time.sleep(backoff)
+            else:
+                raise e from None
+
+
 def create_dataset_tag(dataset_name: Optional[str], *args):
     tag = dataset_name or "dataset"
     for arg in args:

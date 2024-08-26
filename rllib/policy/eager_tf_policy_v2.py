@@ -43,7 +43,6 @@ from ray.rllib.utils.metrics import (
     NUM_GRAD_UPDATES_LIFETIME,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
@@ -885,8 +884,6 @@ class EagerTFPolicyV2(Policy):
         # Add models `forward_explore` extra fetches.
         extra_fetches = {}
 
-        input_dict = NestedDict(input_dict)
-
         fwd_out = self.model.forward_exploration(input_dict)
         # For recurrent models, we need to remove the time dimension.
         fwd_out = self.maybe_remove_time_dimension(fwd_out)
@@ -945,8 +942,6 @@ class EagerTFPolicyV2(Policy):
 
         # Add models `forward_explore` extra fetches.
         extra_fetches = {}
-
-        input_dict = NestedDict(input_dict)
 
         fwd_out = self.model.forward_inference(input_dict)
         # For recurrent models, we need to remove the time dimension.
@@ -1175,14 +1170,12 @@ class EagerTFPolicyV2(Policy):
     def _stats(self, samples, grads):
         fetches = {}
         if is_overridden(self.stats_fn):
-            fetches[LEARNER_STATS_KEY] = {
-                k: v for k, v in self.stats_fn(samples).items()
-            }
+            fetches[LEARNER_STATS_KEY] = dict(self.stats_fn(samples))
         else:
             fetches[LEARNER_STATS_KEY] = {}
 
-        fetches.update({k: v for k, v in self.extra_learn_fetches_fn().items()})
-        fetches.update({k: v for k, v in self.grad_stats_fn(samples, grads).items()})
+        fetches.update(dict(self.extra_learn_fetches_fn()))
+        fetches.update(dict(self.grad_stats_fn(samples, grads)))
         return fetches
 
     def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):
