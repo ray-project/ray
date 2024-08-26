@@ -20,10 +20,7 @@ parser.set_defaults(
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
-register_env(
-    "multi_agent_cartpole",
-    lambda _: MultiAgentCartPole({"num_agents": args.num_agents}),
-)
+register_env("multi_agent_cartpole", lambda cfg: MultiAgentCartPole(config=cfg))
 
 config = (
     DQNConfig()
@@ -31,7 +28,7 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment(env="multi_agent_cartpole")
+    .environment(env="multi_agent_cartpole", env_config={"num_agents": args.num_agents})
     .training(
         lr=0.0005 * (args.num_gpus or 1) ** 0.5,
         train_batch_size_per_learner=32,
