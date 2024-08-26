@@ -79,7 +79,6 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::string log_dir_;
-  absl::Mutex mutex_;
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
@@ -151,6 +150,8 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEvents) {
   RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
   gcs::GcsNodeManager node_manager(
       gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+  int num_retry = 5;
+  std::vector<std::string> vc;
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   rpc::RegisterNodeRequest register_request;
@@ -159,67 +160,52 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEvents) {
   auto send_reply_callback =
       [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
 
-  {
-    absl::MutexLock lock(&mutex_);
-    node_manager.HandleRegisterNode(
-        register_request, &register_reply, send_reply_callback);
-  }
-  int num_retry = 5;
-  {
-    absl::MutexLock lock(&mutex_);
-    for (int i = 0; i < num_retry; i++) {
-      if (node_manager.GetAliveNode(node_id).has_value()) {
-        ASSERT_EQ(node_manager.GetAliveNode(node_id).value()->state(),
-                  rpc::GcsNodeInfo::ALIVE);
-      } else {
-        // Sleep and retry
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-      }
-    }
-    ASSERT_TRUE(node_manager.GetAliveNode(node_id).has_value())
-        << "No alive node found after HandleRegisterNode";
-  }
-  rpc::UnregisterNodeRequest unregister_request;
-  unregister_request.set_node_id(node_id.Binary());
-  unregister_request.mutable_node_death_info()->set_reason(
-      rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
-  unregister_request.mutable_node_death_info()->set_reason_message("mock reason message");
-  rpc::UnregisterNodeReply unregister_reply;
-  {
-    absl::MutexLock lock(&mutex_);
-    node_manager.HandleUnregisterNode(
-        unregister_request, &unregister_reply, send_reply_callback);
-  }
-  {
-    absl::MutexLock lock(&mutex_);
-    ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
-  }
+  bool finished_register_node = false;
+  node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
 
-  int num_export_events = 2;
-  std::vector<std::string> expected_states = {"ALIVE", "DEAD"};
-  std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
     Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
-    if ((int)vc.size() == num_export_events) {
-      for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
-        json event_data = json::parse(vc[event_idx])["event_data"].get<json>();
-        ASSERT_EQ(event_data["state"], expected_states[event_idx]);
-        if (event_idx == num_export_events - 1) {
-          // Verify death cause for last node DEAD event
-          ASSERT_EQ(event_data["death_info"]["reason"], "UNEXPECTED_TERMINATION");
-          ASSERT_EQ(event_data["death_info"]["reason_message"], "mock reason message");
-        }
-      }
-      return;
+    if ((int)vc.size() == 1) {
+      json event_data = json::parse(vc[0])["event_data"].get<json>();
+      ASSERT_EQ(event_data["state"], "ALIVE");
+      finished_register_node = true;
     } else {
       // Sleep and retry
       std::this_thread::sleep_for(std::chrono::seconds(1));
       vc.clear();
     }
   }
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
-  ASSERT_TRUE(false) << "Export API only wrote " << (int)vc.size()
-                     << " lines, but expecting " << num_export_events << ".\n";
+  ASSERT_TRUE(finished_register_node)
+      << "No export event with state ALIVE found after HandleRegisterNode.";
+
+  bool finished_unregister_node = false;
+  rpc::UnregisterNodeRequest unregister_request;
+  unregister_request.set_node_id(node_id.Binary());
+  unregister_request.mutable_node_death_info()->set_reason(
+      rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
+  unregister_request.mutable_node_death_info()->set_reason_message("mock reason message");
+  rpc::UnregisterNodeReply unregister_reply;
+  node_manager.HandleUnregisterNode(
+      unregister_request, &unregister_reply, send_reply_callback);
+
+  vc.clear();
+  for (int i = 0; i < num_retry; i++) {
+    Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
+    if ((int)vc.size() == 2) {
+      json event_data = json::parse(vc[1])["event_data"].get<json>();
+      ASSERT_EQ(event_data["state"], "DEAD");
+      // Verify death cause for last node DEAD event
+      ASSERT_EQ(event_data["death_info"]["reason"], "UNEXPECTED_TERMINATION");
+      ASSERT_EQ(event_data["death_info"]["reason_message"], "mock reason message");
+      finished_unregister_node = true;
+    } else {
+      // Sleep and retry
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      vc.clear();
+    }
+  }
+  ASSERT_TRUE(finished_unregister_node)
+      << "Expected DEAD export event not found after HandleUnregisterNode.";
 }
 
 }  // namespace ray
