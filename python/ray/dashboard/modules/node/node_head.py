@@ -4,7 +4,7 @@ import logging
 import os
 import time
 from itertools import chain
-from typing import Dict
+from typing import Dict, Literal
 
 import aiohttp.web
 import grpc
@@ -108,8 +108,17 @@ class GetAllNodeInfoFromNewGcsClient:
     def __init__(self, dashboard_head):
         self.gcs_aio_client = dashboard_head.gcs_aio_client
 
-    async def __call__(self, timeout) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
-        return await self.gcs_aio_client.get_all_node_info(timeout=timeout)
+    async def __call__(
+        self,
+        filter_node_id: NodeID,
+        filter_state: Literal["ALIVE"] | Literal["DEAD"] | None,
+        filter_node_name: str | None,
+        limit,
+        timeout,
+    ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
+        return await self.gcs_aio_client.get_all_node_info(
+            filter_node_id, filter_state, filter_node_name, limit, timeout
+        )
 
 
 class GetAllNodeInfoFromGrpc:
@@ -119,8 +128,22 @@ class GetAllNodeInfoFromGrpc:
             gcs_channel
         )
 
-    async def __call__(self, timeout) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
-        request = gcs_service_pb2.GetAllNodeInfoRequest()
+    async def __call__(
+        self,
+        filter_node_id: NodeID,
+        filter_state: Literal["ALIVE"] | Literal["DEAD"] | None,
+        filter_node_name: str | None,
+        limit,
+        timeout,
+    ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
+        filters = gcs_service_pb2.GetAllNodeInfoRequest.Filters()
+        if filter_node_id is not None:
+            filters.node_id = filter_node_id.binary()
+        if filter_state is not None:
+            filters.state = gcs_pb2.GcsNodeInfo.GcsNodeState.Value(filter_state)
+        if filter_node_name is not None:
+            filters.node_name = filter_node_name
+        request = gcs_service_pb2.GetAllNodeInfoRequest(limit=limit, filters=filters)
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         if reply.status.code != 0:
             raise Exception(f"Failed to GetAllNodeInfo: {reply.status.message}")
@@ -180,7 +203,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             A dict of information about the nodes in the cluster.
         """
         try:
-            nodes = await self.get_all_node_info(timeout=GCS_RPC_TIMEOUT_SECONDS)
+            nodes = await self.get_all_node_info(
+                filter_node_id=None,
+                filter_state=None,
+                filter_node_name=None,
+                limit=None,
+                timeout=GCS_RPC_TIMEOUT_SECONDS,
+            )
             return {
                 node_id.hex(): gcs_node_info_to_dict(node_info)
                 for node_id, node_info in nodes.items()
@@ -195,7 +224,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         while True:
             try:
                 nodes = await self._get_nodes()
-
                 alive_node_ids = []
                 alive_node_infos = []
                 node_id_to_ip = {}

@@ -431,6 +431,10 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
             c_vector[CGcsNodeInfo] &result)
 
         CRayStatus AsyncGetAll(
+            CNodeID filter_node_id,
+            optional[CGcsNodeState] filter_state,
+            c_string filter_node_name,
+            int64_t limit,
             const MultiItemPyCallback[CGcsNodeInfo] &callback,
             int64_t timeout_ms)
 

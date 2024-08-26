@@ -16,7 +16,7 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # For how async API are implemented, see src/ray/gcs/gcs_client/python_callbacks.h
 from asyncio import Future
-from typing import List
+from typing import List, Literal
 from libcpp.utility cimport move
 import concurrent.futures
 from ray.includes.common cimport (
@@ -334,14 +334,38 @@ cdef class NewGcsClient:
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(
-        self, timeout: Optional[float] = None
+        self,
+        filter_node_id: NodeID | None,
+         filter_state: Literal["ALIVE"] | Literal["DEAD"] | None,
+         filter_node_name: str | None,
+          limit: int | None,
+        timeout: Optional[float] = None
     ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
+            CNodeID c_filter_node_id
+            int64_t c_filter_state_int
+            optional[CGcsNodeState] c_filter_state
+            c_string c_filter_node_name = filter_node_name.encode() if filter_node_name is not None else b""
+            int64_t c_limit = limit if limit is not None else -1
+
+        if filter_node_id is not None:
+            if not isinstance(filter_node_id, NodeID):
+                raise ValueError(f"Invalid filter_node_id type: {type(filter_node_id)}")
+            c_filter_node_id = (<NodeID>filter_node_id).native()
+        if filter_state is not None:
+            literal = filter_state.upper()
+            if literal not in GcsNodeInfo.GcsNodeState.keys():
+                raise ValueError(f"Invalid filter_state: {filter_state}")
+            py_enum_int = int(GcsNodeInfo.GcsNodeState.Value(filter_state.upper()))
+            c_filter_state_int = <int64_t>py_enum_int
+            c_filter_state = <CGcsNodeState>c_filter_state_int
+
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Nodes().AsyncGetAll(
+                    c_filter_node_id, c_filter_state, c_filter_node_name, c_limit,
                     MultiItemPyCallback[CGcsNodeInfo](
                         convert_get_all_node_info,
                         assign_and_decrement_fut,

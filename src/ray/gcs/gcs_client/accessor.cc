@@ -576,10 +576,26 @@ Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
   return Status::OK();
 }
 
-Status NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<GcsNodeInfo> &callback,
-                                     int64_t timeout_ms) {
+Status NodeInfoAccessor::AsyncGetAll(
+    NodeID filter_node_id,
+    std::optional<rpc::GcsNodeInfo::GcsNodeState> filter_state,
+    std::optional<std::string> filter_node_name,
+    int64_t limit,
+    const MultiItemCallback<GcsNodeInfo> &callback,
+    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
+  request.mutable_filters()->set_node_id(filter_node_id.Binary());
+  if (filter_state.has_value()) {
+    request.mutable_filters()->set_state(filter_state.value());
+  }
+  if (filter_node_name.has_value()) {
+    request.mutable_filters()->set_node_name(filter_node_name.value());
+  }
+  if (limit > 0) {
+    request.set_limit(limit);
+  }
+
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       request,
       [callback](const Status &status, rpc::GetAllNodeInfoReply &&reply) {

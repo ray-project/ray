@@ -357,10 +357,25 @@ class NodeInfoAccessor {
 
   /// Get information of all nodes from GCS asynchronously.
   ///
+  /// \param filter_node_id Only get node of this ID. If Nil, get all nodes.
+  /// \param filter_state Only get nodes of this state. If not set, get all nodes.
+  /// \param filter_node_name Only get nodes with this name. If not set, get all nodes.
+  /// \param limit Only get this many nodes. If <= 0, get all nodes.
   /// \param callback Callback that will be called after lookup finishes.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
+  virtual Status AsyncGetAll(NodeID filter_node_id,
+                             std::optional<rpc::GcsNodeInfo::GcsNodeState> filter_state,
+                             std::optional<std::string> filter_node_name,
+                             int64_t limit,
+                             const MultiItemCallback<rpc::GcsNodeInfo> &callback,
                              int64_t timeout_ms);
+
+  /// Convenience method to AsyncGetAll with no filters or limits.
+  Status AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
+                     int64_t timeout_ms) {
+    return AsyncGetAll(
+        NodeID::Nil(), std::nullopt, std::nullopt, -1, callback, timeout_ms);
+  }
 
   /// Subscribe to node addition and removal events from GCS and cache those information.
   ///
