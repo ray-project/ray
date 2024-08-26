@@ -1,4 +1,6 @@
 import gymnasium as gym
+import msgpack
+import msgpack_numpy as m
 import numpy as np
 import random
 import ray
@@ -143,7 +145,12 @@ class OfflinePreLearner:
 
         # If we directly read in episodes we just convert to list.
         if self.input_read_episodes:
-            episodes = batch["item"].tolist()
+            episodes = [
+                SingleAgentEpisode.from_state(
+                    msgpack.unpackb(state, object_hook=m.decode)
+                )
+                for state in batch["item"]
+            ]
         # Otherwise we ap the batch to episodes.
         else:
             episodes = self._map_to_episodes(
