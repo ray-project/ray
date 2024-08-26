@@ -180,7 +180,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             A dict of information about the nodes in the cluster.
         """
         try:
-            nodes = await self.get_all_node_info(timeout=5)
+            nodes = await self.get_all_node_info(timeout=GCS_RPC_TIMEOUT_SECONDS)
             return {
                 node_id.hex(): gcs_node_info_to_dict(node_info)
                 for node_id, node_info in nodes.items()
@@ -198,16 +198,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
                 alive_node_ids = []
                 alive_node_infos = []
-                node_id_to_ip = {}
-                node_id_to_hostname = {}
                 for node in nodes.values():
                     node_id = node["nodeId"]
-                    ip = node["nodeManagerAddress"]
-                    hostname = node["nodeManagerHostname"]
-                    if (
-                        ip == self._dashboard_head.ip
-                        and not self._head_node_registration_time_s
-                    ):
+                    if node["isHeadNode"] and not self._head_node_registration_time_s:
                         self._head_node_registration_time_s = (
                             time.time() - self._module_start_time
                         )
@@ -215,14 +208,12 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         # TODO(architkulkarni): Remove once State API exposes which
                         # node is the head node.
                         await self._gcs_aio_client.internal_kv_put(
-                            "head_node_id".encode(),
+                            ray_constants.KV_HEAD_NODE_ID_KEY,
                             node_id.encode(),
                             overwrite=True,
                             namespace=ray_constants.KV_NAMESPACE_JOB,
-                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
+                            timeout=GCS_RPC_TIMEOUT_SECONDS,
                         )
-                    node_id_to_ip[node_id] = ip
-                    node_id_to_hostname[node_id] = hostname
                     assert node["state"] in ["ALIVE", "DEAD"]
                     if node["state"] == "ALIVE":
                         alive_node_ids.append(node_id)
@@ -240,15 +231,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         agent_port = await self._gcs_aio_client.internal_kv_get(
                             key.encode(),
                             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
+                            timeout=GCS_RPC_TIMEOUT_SECONDS,
                         )
                         if agent_port:
                             agents[node_id] = json.loads(agent_port)
                 for node_id in agents.keys() - set(alive_node_ids):
                     agents.pop(node_id, None)
 
-                DataSource.node_id_to_ip.reset(node_id_to_ip)
-                DataSource.node_id_to_hostname.reset(node_id_to_hostname)
                 DataSource.agents.reset(agents)
                 DataSource.nodes.reset(nodes)
             except Exception:

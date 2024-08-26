@@ -106,7 +106,7 @@ class IMPALALearner(Learner):
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        min_total_mini_batches: int = 0,
+        num_total_mini_batches: int = 0,
         reduce_fn=None,  # Deprecated args.
         **kwargs,
     ) -> ResultDict:
