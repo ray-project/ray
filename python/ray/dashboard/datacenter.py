@@ -85,7 +85,7 @@ class DataOrganizer:
             # yields to the event loop.
             workers = await get_or_create_event_loop().run_in_executor(
                 thread_pool_executor,
-                cls.get_node_workers,
+                cls.merge_workers_for_node,
                 node_physical_stats,
                 node_stats,
             )
@@ -99,7 +99,7 @@ class DataOrganizer:
         DataSource.core_worker_stats.reset(core_worker_stats)
 
     @classmethod
-    def get_node_workers(cls, node_physical_stats, node_stats):
+    def merge_workers_for_node(cls, node_physical_stats, node_stats):
         workers = []
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
         pid_to_worker_stats = {}
