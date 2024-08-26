@@ -96,7 +96,7 @@ class FlattenObservations(ConnectorV2):
     """
 
     @override(ConnectorV2)
-    def recompute_observation_space(
+    def recompute_output_observation_space(
         self,
         input_observation_space,
         input_action_space,
