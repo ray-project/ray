@@ -92,6 +92,9 @@ class Actor:
     def read_input(self, x):
         return x
 
+    def get_events(self):
+        return getattr(self, "_adag_events", [])
+
 
 @ray.remote
 class Collector:
@@ -1422,6 +1425,24 @@ def test_payload_large(ray_start_cluster):
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
+
+
+def test_event_profiling(ray_start_regular):
+    ray.init(include_dashboard=False)
+    a = Actor.options(name="a").remote(0)
+    b = Actor.options(name="b").remote(10)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(x)
+        dag = MultiOutputNode([x, y])
+    adag = dag.experimental_compile()
+    ray.get(adag.execute(1))
+
+    a_events = ray.get(a.get_events.remote())
+    b_events = ray.get(b.get_events.remote())
+
+    assert a_events
+    assert b_events
 
 
 class TestActorInputOutput:

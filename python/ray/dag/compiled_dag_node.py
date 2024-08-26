@@ -1,5 +1,6 @@
 import asyncio
 from collections import defaultdict, deque
+from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
@@ -44,6 +45,8 @@ from ray.dag.dag_node_operation import (
     _build_dag_node_operation_graph,
     _generate_actor_to_execution_schedule,
 )
+
+from ray.dag.constants import RAY_ADAG_ENABLE_PROFILING
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -112,7 +115,27 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
+                start_t = time.time()
                 done = tasks[operation.local_idx].exec_operation(self, operation.type)
+                end_t = time.time()
+
+                if RAY_ADAG_ENABLE_PROFILING:
+                    if not hasattr(self, "_adag_events"):
+                        self._adag_events = []
+
+                    self._adag_events.append(
+                        _ExecutableTaskRecord(
+                            actor_classname=self.__class__.__name__,
+                            actor_name=ray.get_runtime_context().get_actor_name(),
+                            actor_id=ray.get_runtime_context().get_actor_id(),
+                            method_name=task.method_name,
+                            bind_index=task.bind_index,
+                            operation=operation.type.value,
+                            start_t_ms=start_t,
+                            end_t_ms=end_t,
+                        )
+                    )
+
                 if done:
                     break
     except Exception:
@@ -474,6 +497,21 @@ class ExecutableTask:
             return self._compute(class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
             return self._write()
+
+
+@dataclass
+class _ExecutableTaskRecord:
+    actor_classname: str
+    actor_name: str
+    actor_id: str
+    method_name: str
+    bind_index: int
+    operation: str
+    start_t: float
+    end_t: float
+
+    def to_dict(self):
+        return asdict(self)
 
 
 @DeveloperAPI
