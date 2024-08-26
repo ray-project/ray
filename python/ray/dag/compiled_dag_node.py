@@ -714,8 +714,28 @@ class CompiledDAG:
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
-                assert self.input_task_idx is None, "more than one InputNode found"
+                assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
+
+        # Find the (multi-)output node to the DAG.
+        for idx, task in self.idx_to_task.items():
+            if idx == self.input_task_idx or isinstance(
+                task.dag_node, InputAttributeNode
+            ):
+                continue
+            if len(task.downstream_actor_idxs) == 0 and task.dag_node.is_output_node:
+                assert self.output_task_idx is None, "More than one output node found"
+                self.output_task_idx = idx
+
+        assert self.output_task_idx is not None
+        output_node = self.idx_to_task[self.output_task_idx].dag_node
+        # Add an MultiOutputNode to the end of the DAG if it's not already there.
+        if not isinstance(output_node, MultiOutputNode):
+            self._has_single_output = True
+            output_node = MultiOutputNode([output_node])
+            self._add_node(output_node)
+            self.output_task_idx = self.dag_node_to_idx[output_node]
+
         # TODO: Support no-input DAGs (use an empty object to signal).
         if self.input_task_idx is None:
             raise NotImplementedError(
@@ -864,28 +884,6 @@ class CompiledDAG:
 
             if dag_node.type_hint is not None:
                 self._type_hints.append(dag_node.type_hint)
-
-        # Find the (multi-)output node to the DAG.
-        for idx, task in self.idx_to_task.items():
-            if idx == self.input_task_idx or isinstance(
-                task.dag_node, InputAttributeNode
-            ):
-                continue
-            if len(task.downstream_actor_idxs) == 0:
-                assert self.output_task_idx is None, "More than one output node found"
-                self.output_task_idx = idx
-
-        assert self.output_task_idx is not None
-        output_node = self.idx_to_task[self.output_task_idx].dag_node
-        # Add an MultiOutputNode to the end of the DAG if it's not already there.
-        if not isinstance(output_node, MultiOutputNode):
-            self._has_single_output = True
-            output_node = MultiOutputNode([output_node])
-            self._add_node(output_node)
-            self.output_task_idx = self.dag_node_to_idx[output_node]
-            # Preprocess one more time so that we have the right output node
-            # now.
-            self._preprocess()
 
         # If there were type hints indicating transport via NCCL, initialize
         # the NCCL group on the participating actors.
@@ -1761,6 +1759,7 @@ def build_compiled_dag_from_ray_dag(
         compiled_dag._add_node(node)
         return node
 
-    dag.apply_recursive(_build_compiled_dag)
+    root = dag._find_root()
+    root.traverse_and_apply(_build_compiled_dag)
     compiled_dag._get_or_compile()
     return compiled_dag
