@@ -27,8 +27,6 @@ class DataSource:
     agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
     nodes = Dict()
-    # {node id hex(str): ip address(str)}
-    node_id_to_ip = Dict()
     # {node id hex(str): worker list}
     node_workers = Dict()
     # {node id hex(str): {actor id hex(str): actor table data}}
@@ -50,7 +48,6 @@ class DataOrganizer:
         # we do not needs to purge them:
         #   * agents
         #   * nodes
-        #   * node_id_to_ip
         alive_nodes = {
             node_id
             for node_id, node_info in DataSource.nodes.items()
@@ -184,7 +181,7 @@ class DataOrganizer:
 
         def _create_agent_info(node_id: str):
             (http_port, grpc_port) = DataSource.agents[node_id]
-            node_ip = DataSource.node_id_to_ip[node_id]
+            node_ip = DataSource.nodes[node_id]["nodeManagerAddress"]
 
             return dict(
                 ipAddress=node_ip,

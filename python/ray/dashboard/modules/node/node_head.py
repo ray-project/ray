@@ -198,10 +198,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
                 alive_node_ids = []
                 alive_node_infos = []
-                node_id_to_ip = {}
                 for node in nodes.values():
                     node_id = node["nodeId"]
-                    ip = node["nodeManagerAddress"]
                     if node["isHeadNode"] and not self._head_node_registration_time_s:
                         self._head_node_registration_time_s = (
                             time.time() - self._module_start_time
@@ -216,7 +214,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                             namespace=ray_constants.KV_NAMESPACE_JOB,
                             timeout=GCS_RPC_TIMEOUT_SECONDS,
                         )
-                    node_id_to_ip[node_id] = ip
                     assert node["state"] in ["ALIVE", "DEAD"]
                     if node["state"] == "ALIVE":
                         alive_node_ids.append(node_id)
@@ -241,7 +238,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 for node_id in agents.keys() - set(alive_node_ids):
                     agents.pop(node_id, None)
 
-                DataSource.node_id_to_ip.reset(node_id_to_ip)
                 DataSource.agents.reset(agents)
                 DataSource.nodes.reset(nodes)
             except Exception:
