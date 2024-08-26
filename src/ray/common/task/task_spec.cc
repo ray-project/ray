@@ -126,6 +126,8 @@ void TaskSpecification::ComputeResources() {
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
+
+  runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
 }
 
 // Task specification getter methods.
@@ -201,10 +203,7 @@ bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
 
 int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); }
 
-int TaskSpecification::GetRuntimeEnvHash() const {
-  WorkerCacheKey env{SerializedRuntimeEnv()};
-  return env.IntHash();
-}
+int TaskSpecification::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
   if (!IsActorTask()) {
@@ -597,31 +596,16 @@ std::string TaskSpecification::CallSiteString() const {
   return stream.str();
 }
 
-WorkerCacheKey::WorkerCacheKey(std::string serialized_runtime_env)
-    : serialized_runtime_env(std::move(serialized_runtime_env)), hash_(CalculateHash()) {}
-
-std::size_t WorkerCacheKey::CalculateHash() const {
-  size_t hash = 0;
-  // Canonical hash for both "" and "{}".
-  if (EnvIsEmpty()) {
+int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env) {
+  if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
     return 0;
   }
+  size_t hash = 0;
+  // Add some yummy salt.
+  boost::hash_combine(hash, "RAY_RUNTIME_ENV");
   boost::hash_combine(hash, serialized_runtime_env);
-  return hash;
+  return static_cast<int>(hash);
 }
-
-bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
-  // FIXME we should compare fields
-  return Hash() == k.Hash();
-}
-
-bool WorkerCacheKey::EnvIsEmpty() const {
-  return IsRuntimeEnvEmpty(serialized_runtime_env);
-}
-
-std::size_t WorkerCacheKey::Hash() const { return hash_; }
-
-int WorkerCacheKey::IntHash() const { return static_cast<int>(Hash()); }
 
 std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   RAY_CHECK(IsActorCreationTask());

@@ -201,17 +201,6 @@ TEST(TaskSpecTest, TestTaskSpecBuilderRootDetachedActorId) {
   ASSERT_EQ(actor_spec_builder.Build().RootDetachedActorId(), actor_id);
 }
 
-TEST(TaskSpecTest, TestWorkerCacheKey) {
-  // Test TaskSpec calculates the correct WorkerCacheKey hash.
-  std::string serialized_runtime_env_A = "mock_env_A";
-  rpc::RuntimeEnvInfo runtime_env_info_A;
-  runtime_env_info_A.set_serialized_runtime_env(serialized_runtime_env_A);
-  TaskSpecification task_spec;
-  task_spec.GetMutableMessage().mutable_runtime_env_info()->CopyFrom(runtime_env_info_A);
-  const WorkerCacheKey key_A{serialized_runtime_env_A};
-  ASSERT_EQ(task_spec.GetRuntimeEnvHash(), key_A.IntHash());
-}
-
 TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
   rpc::SchedulingStrategy scheduling_strategy_1;
   auto expr_1 = scheduling_strategy_1.mutable_node_label_scheduling_strategy()
