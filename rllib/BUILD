@@ -3442,20 +3442,20 @@ py_test(
 # subdirectory: rl_modules/
 # ....................................
 py_test(
-    name = "examples/rl_modules/action_masking_rlm",
-    main = "examples/rl_modules/action_masking_rlm.py",
+    name = "examples/rl_modules/action_masking_rl_module",
+    main = "examples/rl_modules/action_masking_rl_module.py",
     tags = ["team:rllib", "examples"],
     size = "medium",
-    srcs = ["examples/rl_modules/action_masking_rlm.py"],
+    srcs = ["examples/rl_modules/action_masking_rl_module.py"],
     args = ["--enable-new-api-stack", "--stop-iters=5"],
 )
 
 py_test(
-    name = "examples/rl_modules/autoregressive_actions_rlm",
-    main = "examples/rl_modules/autoregressive_actions_rlm.py",
+    name = "examples/rl_modules/autoregressive_actions_rl_module",
+    main = "examples/rl_modules/autoregressive_actions_rl_module.py",
     tags = ["team:rllib", "examples"],
     size = "medium",
-    srcs = ["examples/rl_modules/autoregressive_actions_rlm.py"],
+    srcs = ["examples/rl_modules/autoregressive_actions_rl_module.py"],
     args = ["--enable-new-api-stack"],
 )
 py_test(

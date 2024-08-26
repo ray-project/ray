@@ -80,16 +80,18 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         # Q-network forward pass.
         qf_outs = self._qf(batch)
+        logits = qf_outs[QF_PREDS]
 
         # Get action distribution.
         action_dist_cls = self.get_exploration_action_dist_cls()
-        action_dist = action_dist_cls.from_logits(qf_outs[QF_PREDS])
+        action_dist = action_dist_cls.from_logits(logits)
         # Note, the deterministic version of the categorical distribution
         # outputs directly the `argmax` of the logits.
         exploit_actions = action_dist.to_deterministic().sample()
 
         # In inference, we only need the exploitation actions.
         output[Columns.ACTIONS] = exploit_actions
+        output[Columns.ACTION_DIST_INPUTS] = logits
 
         return output
 
@@ -110,10 +112,11 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         # Q-network forward pass.
         qf_outs = self._qf(batch)
+        logits = qf_outs[QF_PREDS]
 
         # Get action distribution.
         action_dist_cls = self.get_exploration_action_dist_cls()
-        action_dist = action_dist_cls.from_logits(qf_outs[QF_PREDS])
+        action_dist = action_dist_cls.from_logits(logits)
         # Note, the deterministic version of the categorical distribution
         # outputs directly the `argmax` of the logits.
         exploit_actions = action_dist.to_deterministic().sample()
@@ -144,6 +147,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 random_actions,
                 exploit_actions,
             )
+        output[Columns.ACTION_DIST_INPUTS] = logits
 
         return output
 

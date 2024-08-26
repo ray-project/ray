@@ -4,9 +4,8 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.torch_utils import FLOAT_MIN
 from ray.rllib.utils.typing import EpisodeType
@@ -14,7 +13,7 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class ActionMasking(ConnectorV2):
+class ActionMaskingOffPolicy(ConnectorV2):
     """Connector handling a simple action masking process for discrete action spaces.
 
     User needs to provide the key within the observation dict (observation space
@@ -28,7 +27,7 @@ class ActionMasking(ConnectorV2):
 
     - The connector will mask all non-allowed action logits to RLlib's FLOAT_MIN
     (see rllib.utils.torch_utils::FLOAT_MIN).
-    - The connector will only change SampleBatch.ACTION_DIST_INPUTS information in the
+    - The connector will only change Columns.ACTION_DIST_INPUTS information in the
     RLModule returned batch (by masking non-allowed logits as described above).
     - The connector will NOT perform the actual action sampling step, which is still
     left for the default module-to-env connector to do.
@@ -49,19 +48,13 @@ class ActionMasking(ConnectorV2):
         input_observation_space: Optional[gym.Space] = None,
         input_action_space: Optional[gym.Space] = None,
         *,
-        num_actions: int,
         allowed_actions_key: str = "allowed_actions",
         allowed_actions_location: str = "infos",
         **kwargs,
     ):
-        """Initializes a ActionMasking (connector piece) instance.
-
-        Args:
-            num_actions: The number of actions in the Discrete action space.
-        """
+        """Initializes a ActionMasking (connector piece) instance."""
         super().__init__(input_observation_space, input_action_space, **kwargs)
 
-        self.num_actions = num_actions
         self.allowed_actions_key = allowed_actions_key
         self.allowed_actions_location = allowed_actions_location
         assert self.allowed_actions_location in ["infos", "observations"]
@@ -77,12 +70,12 @@ class ActionMasking(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        logits = data.get(SampleBatch.ACTION_DIST_INPUTS)
+        logits = data.get(Columns.ACTION_DIST_INPUTS)
 
         if logits is None:
             raise ValueError(
                 f"`data` (RLModule output) must already have a column named "
-                " {SampleBatch.ACTION_DIST_INPUTS} in it for this connector to work!"
+                " {Columns.ACTION_DIST_INPUTS} in it for this connector to work!"
             )
 
         for sa_episode in self.single_agent_episode_iterator(episodes):
@@ -96,20 +89,20 @@ class ActionMasking(ConnectorV2):
                 )(indices=-1)[self.allowed_actions_key],
                 single_agent_episode=sa_episode,
             )
-            self.add_batch_item(
-                batch=data,
-                column="_dist_inputs_to_sample_from",
-                item_to_add=getattr(
-                    sa_episode,
-                    # Call `get_observations` or `get_infos` method.
-                    f"get_{self.allowed_actions_location}",
-                )(indices=-1)[self.allowed_actions_key],
-                single_agent_episode=sa_episode,
-            )
+            #self.add_batch_item(
+            #    batch=data,
+            #    column="_dist_inputs_to_sample_from",
+            #    item_to_add=getattr(
+            #        sa_episode,
+            #        # Call `get_observations` or `get_infos` method.
+            #        f"get_{self.allowed_actions_location}",
+            #    )(indices=-1)[self.allowed_actions_key],
+            #    single_agent_episode=sa_episode,
+            #)
 
         self.foreach_batch_item_change_in_place(
             batch=data,
-            column=[SampleBatch.ACTION_DIST_INPUTS, "_tmp_allowed_actions"],
+            column=[Columns.ACTION_DIST_INPUTS, "_tmp_allowed_actions"],
             func=self._change_logits_in_place,
         )
 
@@ -139,5 +132,5 @@ class ActionMasking(ConnectorV2):
         # (RLModule produced) logit values.
         #for i in allowed:
         #    changed_logits[i] = logits[i]
-        return changed_logits
+        return (changed_logits, allowed)
 
