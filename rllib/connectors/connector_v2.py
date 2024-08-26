@@ -1,6 +1,5 @@
 import abc
 from collections import defaultdict
-import inspect
 from typing import (
     Any,
     Callable,
@@ -21,7 +20,6 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID, StateDict
 from ray.util.annotations import PublicAPI
@@ -33,7 +31,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
 
     A ConnectorV2 ("connector piece") is usually part of a whole series of connector
     pieces within a so-called connector pipeline, which in itself also abides to this
-    very API.
+    very API..
     For example, you might have a connector pipeline consisting of two connector pieces,
     A and B, both instances of subclasses of ConnectorV2 and each one performing a
     particular transformation on their input data. The resulting connector pipeline
@@ -102,12 +100,8 @@ class ConnectorV2(Checkpointable, abc.ABC):
         self.input_observation_space = input_observation_space
 
     @OverrideToImplementCustomLogic
-    def recompute_output_observation_space(
-        self,
-        input_observation_space: gym.Space,
-        input_action_space: gym.Space,
-    ) -> gym.Space:
-        """Re-computes a new (output) observation space based on the input spaces.
+    def recompute_observation_space_from_input_spaces(self) -> gym.Space:
+        """Re-computes a new (output) observation space based on the input space.
 
         This method should be overridden by users to make sure a ConnectorPipelineV2
         knows how the input spaces through its individual ConnectorV2 pieces are being
@@ -123,70 +117,40 @@ class ConnectorV2(Checkpointable, abc.ABC):
             from ray.rllib.utils.test_utils import check
 
             class OneHotConnector(ConnectorV2):
-                def recompute_output_observation_space(
-                    self,
-                    input_observation_space,
-                    input_action_space,
-                ):
-                    return Box(0.0, 1.0, (input_observation_space.n,), np.float32)
+                def recompute_observation_space_from_input_spaces(self):
+                    return Box(0.0, 1.0, (self.input_observation_space.n,), np.float32)
 
                 def __call__(
                     self,
                     *,
                     rl_module,
-                    batch,
+                    data,
                     episodes,
                     explore=None,
                     shared_data=None,
                     **kwargs,
                 ):
-                    assert "obs" in batch
-                    batch["obs"] = one_hot(batch["obs"])
-                    return batch
+                    assert "obs" in data
+                    data["obs"] = one_hot(data["obs"])
+                    return data
 
             connector = OneHotConnector(input_observation_space=Discrete(2))
-            batch = {"obs": np.array([1, 0, 0], np.int32)}
-            output = connector(rl_module=None, batch=batch, episodes=None)
+            data = {"obs": np.array([1, 0, 0], np.int32)}
+            output = connector(rl_module=None, data=data, episodes=None)
 
             check(output, {"obs": np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 0.0]])})
 
         If this ConnectorV2 does not change the observation space in any way, leave
         this parent method implementation untouched.
 
-        Args:
-            input_observation_space: The input observation space (either coming from the
-                environment if `self` is the first connector piece in the pipeline or
-                from the previous connector piece in the pipeline).
-            input_action_space: The input action space (either coming from the
-                environment if `self is the first connector piece in the pipeline or
-                from the previous connector piece in the pipeline).
-
         Returns:
             The new observation space (after data has passed through this ConnectorV2
             piece).
         """
-        # Check, whether user is still overriding the old
-        # `recompute_observation_space_from_input_spaces()`.
-        parent_source = inspect.getsource(
-            ConnectorV2.recompute_observation_space_from_input_spaces
-        )
-        child_source = inspect.getsource(
-            self.recompute_observation_space_from_input_spaces
-        )
-        if parent_source == child_source:
-            return self.input_observation_space
-        else:
-            deprecation_warning(
-                old="ConnectorV2.recompute_observation_space_from_input_spaces()",
-                new="ConnectorV2.recompute_output_observation_space("
-                "input_observation_space: gym.Space, input_action_space: gym.Space) "
-                "-> gym.Space",
-                error=False,
-            )
-            return self.recompute_observation_space_from_input_spaces()
+        return self.input_observation_space
 
     @OverrideToImplementCustomLogic
-    def recompute_output_action_space(self) -> gym.Space:
+    def recompute_action_space_from_input_spaces(self) -> gym.Space:
         """Re-computes a new (output) action space based on the input space.
 
         This method should be overridden by users to make sure a ConnectorPipelineV2
@@ -200,61 +164,42 @@ class ConnectorV2(Checkpointable, abc.ABC):
             The new action space (after data has passed through this ConenctorV2
             piece).
         """
-        # Check, whether user is still overriding the old
-        # `recompute_action_space_from_input_spaces()`.
-        parent_source = inspect.getsource(
-            ConnectorV2.recompute_action_space_from_input_spaces
-        )
-        child_source = inspect.getsource(
-            self.recompute_action_space_from_input_spaces
-        )
-        if parent_source == child_source:
-            return self.input_action_space
-        else:
-            deprecation_warning(
-                old="ConnectorV2.recompute_action_space_from_input_spaces()",
-                new="ConnectorV2.recompute_output_action_space("
-                "input_observation_space: gym.Space, input_action_space: gym.Space) "
-                "-> gym.Space",
-                error=False,
-            )
-            return self.recompute_action_space_from_input_spaces()
+        return self.input_action_space
 
     @abc.abstractmethod
     def __call__(
         self,
         *,
         rl_module: RLModule,
-        batch: Dict[str, Any],
+        data: Any,
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        """Method for transforming an input `batch` into an output `batch`.
+        """Method for transforming input data into output data.
 
         Args:
             rl_module: The RLModule object that the connector connects to or from.
-            batch: The input data to be transformed by this connector. Transformations
+            data: The input data to be transformed by this connector. Transformations
                 might either be done in-place or a new structure may be returned.
-                Note that the information in `batch` will eventually either become the
+                Note that the information in `data` will eventually either become the
                 forward batch for the RLModule (env-to-module and learner connectors)
-                or the input to the `env.step()` call (module-to-env connectors). Note
-                that in the first case (`batch` is a forward batch for RLModule), the
-                information in `batch` will be discarded after that RLModule forward
-                pass. Any transformation of information (e.g. observation preprocessing)
-                that you have only done inside `batch` will be lost, unless you have
-                written it back into the corresponding `episodes` during the connector
-                pass.
+                or the input to the `env.step()` call (module-to-env connectors). In
+                the former case (`data` is a forward batch for RLModule), the
+                information in `data` will be discarded after the RLModule forward pass.
+                Any transformation of information (e.g. observation preprocessing) that
+                you have only done inside `data` will be lost, unless you have written
+                it back into the corresponding `episodes` during the connector pass.
             episodes: The list of SingleAgentEpisode or MultiAgentEpisode objects,
                 each corresponding to one slot in the vector env. Note that episodes
-                can be read from (e.g. to place information into `batch`), but also
+                can be read from (e.g. to place information into `data`), but also
                 written to. You should only write back (changed, transformed)
                 information into the episodes, if you want these changes to be
                 "permanent". For example if you sample from an environment, pick up
-                observations from the episodes and place them into `batch`, then
+                observations from the episodes and place them into `data`, then
                 transform these observations, and would like to make these
-                transformations permanent (note that `batch` gets discarded after the
+                transformations permanent (note that `data` gets discarded after the
                 RLModule forward pass), then you have to write the transformed
                 observations back into the episode to make sure you do not have to
                 perform the same transformation again on the learner (or replay buffer)
@@ -264,8 +209,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 RLModule's `forward_exploration` method should be called, if False, the
                 EnvRunner should call `forward_inference` instead.
             shared_data: Optional additional context data that needs to be exchanged
-                between different ConnectorV2 pieces (in the same pipeline) or across
-                ConnectorV2 pipelines (meaning between env-to-module and module-to-env).
+                between different Connector pieces and -pipelines.
             kwargs: Forward API-compatibility kwargs.
 
         Returns:
@@ -837,7 +781,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
     def switch_batch_from_column_to_module_ids(
         batch: Dict[str, Dict[ModuleID, Any]]
     ) -> Dict[ModuleID, Dict[str, Any]]:
-        """Switches the first two levels of a `col_name -> ModuleID -> data` type batch.
+        """Switches the first two levels of a `col -> ModuleID -> data` type batch.
 
         Assuming that the top level consists of column names as keys and the second
         level (under these columns) consists of ModuleID keys, the resulting batch
@@ -954,7 +898,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
         self._input_observation_space = value
         if value is not None:
             self._observation_space = (
-                self.recompute_output_observation_space(value, self.input_action_space)
+                self.recompute_observation_space_from_input_spaces()
             )
 
     @property
@@ -965,27 +909,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
     def input_action_space(self, value):
         self._input_action_space = value
         if value is not None:
-            self._action_space = self.recompute_output_action_space(
-                self.input_observation_space, value
-            )
+            self._action_space = self.recompute_action_space_from_input_spaces()
 
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
-
-    @Deprecated(
-        new="ConnectorV2.recompute_output_observation_space("
-        "input_observation_space: gym.Space, input_action_space: gym.Space) "
-        "-> gym.Space",
-        error=True,
-    )
-    def recompute_observation_space_from_input_spaces(self):
-        pass
-
-    @Deprecated(
-        new="ConnectorV2.recompute_action_observation_space("
-        "input_observation_space: gym.Space, input_action_space: gym.Space) "
-        "-> gym.Space",
-        error=True,
-    )
-    def recompute_action_space_from_input_spaces(self):
-        pass

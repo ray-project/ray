@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 import gymnasium as gym
 
@@ -78,9 +78,9 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         # Call the connector with the two created episodes.
         # Note that this particular connector works without an RLModule, so we
         # simplify here for the sake of this example.
-        output_batch = connector(
+        output_data = connector(
             rl_module=None,
-            batch={},
+            data={},
             episodes=episodes,
             explore=True,
             shared_data={},
@@ -88,7 +88,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         # The output data should now contain the last observations of both episodes,
         # in a "per-episode organized" fashion.
         check(
-            output_batch,
+            output_data,
             {
                 "obs": {
                     (episodes[0].id_,): [eps_1_last_obs],
@@ -127,15 +127,15 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        batch: Dict[str, Any],
+        data: Optional[Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         # If "obs" already in data, early out.
-        if Columns.OBS in batch:
-            return batch
+        if Columns.OBS in data:
+            return data
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
@@ -146,7 +146,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
         ):
             if self._as_learner_connector:
                 self.add_n_batch_items(
-                    batch,
+                    data,
                     Columns.OBS,
                     items_to_add=sa_episode.get_observations(slice(0, len(sa_episode))),
                     num_items=len(sa_episode),
@@ -155,9 +155,9 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
             else:
                 assert not sa_episode.is_finalized
                 self.add_batch_item(
-                    batch,
+                    data,
                     Columns.OBS,
                     item_to_add=sa_episode.get_observations(-1),
                     single_agent_episode=sa_episode,
                 )
-        return batch
+        return data

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 import gymnasium as gym
 
@@ -64,7 +64,7 @@ class BatchIndividualItems(ConnectorV2):
         from ray.rllib.connectors.common import BatchIndividualItems
         from ray.rllib.utils.test_utils import check
 
-        single_agent_batch = {
+        single_agent_data = {
             "obs": {
                 # Note that at this stage, next-obs is not part of the data anymore ..
                 ("MA-EPS0",): [0, 1],
@@ -81,18 +81,18 @@ class BatchIndividualItems(ConnectorV2):
         connector = BatchIndividualItems()
 
         # Call the connector (and thereby batch the individual items).
-        output_batch = connector(
+        output_data = connector(
             rl_module=None,  # This particular connector works without an RLModule.
-            batch=single_agent_batch,
+            data=single_agent_data,
             episodes=[],  # This particular connector works without a list of episodes.
             explore=True,
             shared_data={},
         )
 
-        # `output_batch` should now be batched (episode IDs should have been removed
-        # from the struct).
+        # `data` should now be batched (episode IDs should have been removed from the
+        # struct).
         check(
-            output_batch,
+            output_data,
             {"obs": [0, 1, 2, 3], "actions": [4, 5, 6, 7]},
         )
     """
@@ -123,7 +123,7 @@ class BatchIndividualItems(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        batch: Dict[str, Any],
+        data: Optional[Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -132,7 +132,7 @@ class BatchIndividualItems(ConnectorV2):
         is_multi_rl_module = isinstance(rl_module, MultiRLModule)
 
         # Convert lists of individual items into properly batched data.
-        for column, column_data in batch.copy().items():
+        for column, column_data in data.copy().items():
             # Multi-agent case: This connector piece should only be used after(!)
             # the AgentToModuleMapping connector has already been applied, leading
             # to a batch structure of:
@@ -155,7 +155,7 @@ class BatchIndividualItems(ConnectorV2):
             # Simple case: There is a list directly under `column`:
             # Batch the list.
             elif isinstance(column_data, list):
-                batch[column] = batch(
+                data[column] = batch(
                     column_data,
                     individual_items_already_have_batch_dim="auto",
                 )
@@ -174,7 +174,7 @@ class BatchIndividualItems(ConnectorV2):
                             memorized_map_structure.append(eps_id)
                         list_to_be_batched.append(item)
                 # INFOS should not be batched (remain a list).
-                batch[column] = (
+                data[column] = (
                     list_to_be_batched
                     if column == Columns.INFOS
                     else batch(
@@ -183,9 +183,9 @@ class BatchIndividualItems(ConnectorV2):
                     )
                 )
                 if is_multi_rl_module:
-                    if DEFAULT_MODULE_ID not in batch:
-                        batch[DEFAULT_MODULE_ID] = {}
-                    batch[DEFAULT_MODULE_ID][column] = batch.pop(column)
+                    if DEFAULT_MODULE_ID not in data:
+                        data[DEFAULT_MODULE_ID] = {}
+                    data[DEFAULT_MODULE_ID][column] = data.pop(column)
 
                 # Only record structure for OBS column.
                 if column == Columns.OBS:
@@ -198,4 +198,4 @@ class BatchIndividualItems(ConnectorV2):
             else:
                 raise NotImplementedError
 
-        return batch
+        return data

@@ -1,4 +1,4 @@
-from typing import Any, Collection, Dict, List, Optional
+from typing import Any, Collection, List, Optional
 
 import gymnasium as gym
 from gymnasium.spaces import Box
@@ -18,7 +18,6 @@ from ray.util.annotations import PublicAPI
 class FlattenObservations(ConnectorV2):
     """A connector piece that flattens all observation components into a 1D array.
 
-    - Should be used only in env-to-module pipelines.
     - Works directly on the incoming episodes list and changes the last observation
     in-place (write the flattened observation back into the episode).
     - This connector does NOT alter the incoming batch (`data`) when called.
@@ -71,16 +70,16 @@ class FlattenObservations(ConnectorV2):
         connector = FlattenObservations(obs_space, act_space)
 
         # Call our connector piece with the example data.
-        output_batch = connector(
+        output_data = connector(
             rl_module=None,  # This connector works without an RLModule.
-            batch={},  # This connector does not alter the input batch.
+            data={},  # This connector does not alter any data.
             episodes=[episode_1, episode_2],
             explore=True,
             shared_data={},
         )
 
         # The connector does not alter the data and acts as pure pass-through.
-        check(output_batch, {})
+        check(output_data, {})
 
         # The connector has flattened each item in the episodes to a 1D tensor.
         check(
@@ -96,11 +95,7 @@ class FlattenObservations(ConnectorV2):
     """
 
     @override(ConnectorV2)
-    def recompute_observation_space(
-        self,
-        input_observation_space,
-        input_action_space,
-    ) -> gym.Space:
+    def recompute_observation_space_from_input_spaces(self):
         self._input_obs_base_struct = get_base_struct_from_space(
             self.input_observation_space
         )
@@ -164,7 +159,7 @@ class FlattenObservations(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        batch: Dict[str, Any],
+        data: Optional[Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -208,4 +203,4 @@ class FlattenObservations(ConnectorV2):
             #  error).
             sa_episode.observation_space = self.observation_space
 
-        return batch
+        return data

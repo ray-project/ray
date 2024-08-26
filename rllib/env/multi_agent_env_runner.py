@@ -297,7 +297,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
-                    batch=to_env,
+                    data=to_env,
                     episodes=[self._episode],
                     explore=explore,
                     shared_data=self._shared_data,
@@ -494,7 +494,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
-                    batch=to_env,
+                    data=to_env,
                     episodes=[_episode],
                     explore=explore,
                     shared_data=_shared_data,

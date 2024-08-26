@@ -233,7 +233,7 @@ if __name__ == "__main__":
             rl_module_out = rl_module.forward_exploration(input_dict)
 
         to_env = module_to_env(
-            batch=rl_module_out,
+            data=rl_module_out,
             episodes=[episode],  # ConnectorV2 pipelines operate on lists of episodes.
             rl_module=rl_module,
             explore=args.explore_during_inference,

@@ -45,7 +45,7 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
         # Run the `Learner`'s connector pipeline.
         batch = self._learner_connector(
             rl_module=self._module,
-            batch=batch,
+            data=batch,
             episodes=episodes,
             shared_data={},
         )

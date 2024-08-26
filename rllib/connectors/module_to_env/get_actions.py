@@ -47,7 +47,7 @@ class GetActions(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        batch: Optional[Dict[str, Any]],
+        data: Optional[Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -56,36 +56,36 @@ class GetActions(ConnectorV2):
         is_multi_agent = isinstance(episodes[0], MultiAgentEpisode)
 
         if is_multi_agent:
-            for module_id, module_data in batch.copy().items():
+            for module_id, module_data in data.copy().items():
                 self._get_actions(module_data, rl_module[module_id], explore)
         else:
-            self._get_actions(batch, rl_module, explore)
+            self._get_actions(data, rl_module, explore)
 
-        return batch
+        return data
 
-    def _get_actions(self, batch, sa_rl_module, explore):
+    def _get_actions(self, data, sa_rl_module, explore):
         # Action have already been sampled -> Early out.
-        if Columns.ACTIONS in batch:
+        if Columns.ACTIONS in data:
             return
 
         # ACTION_DIST_INPUTS field returned by `forward_exploration|inference()` ->
         # Create a new action distribution object.
-        if Columns.ACTION_DIST_INPUTS in batch:
+        if Columns.ACTION_DIST_INPUTS in data:
             if explore:
                 action_dist_class = sa_rl_module.get_exploration_action_dist_cls()
             else:
                 action_dist_class = sa_rl_module.get_inference_action_dist_cls()
             action_dist = action_dist_class.from_logits(
-                batch[Columns.ACTION_DIST_INPUTS],
+                data[Columns.ACTION_DIST_INPUTS],
             )
             if not explore:
                 action_dist = action_dist.to_deterministic()
 
             # Sample actions from the distribution.
             actions = action_dist.sample()
-            batch[Columns.ACTIONS] = actions
+            data[Columns.ACTIONS] = actions
 
             # For convenience and if possible, compute action logp from distribution
             # and add to output.
-            if Columns.ACTION_LOGP not in batch:
-                batch[Columns.ACTION_LOGP] = action_dist.logp(actions)
+            if Columns.ACTION_LOGP not in data:
+                data[Columns.ACTION_LOGP] = action_dist.logp(actions)

@@ -74,16 +74,16 @@ class WriteObservationsToEpisodes(ConnectorV2):
 
         # Call the connector (and thereby write the transformed observations back
         # into the episodes).
-        output_batch = connector(
+        output_data = connector(
             rl_module=None,  # This particular connector works without an RLModule.
-            batch=batch,
+            data=batch,
             episodes=episodes,
             explore=True,
             shared_data={},
         )
 
         # The connector does NOT change the data batch being passed through.
-        check(output_batch, batch)
+        check(output_data, batch)
 
         # However, the connector has overwritten the last observations in the episodes.
         check(episodes[0].get_observations(-1), [0.0, 1.0])
@@ -95,13 +95,13 @@ class WriteObservationsToEpisodes(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        batch: Optional[Dict[str, Any]],
+        data: Optional[Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        observations = batch.get(Columns.OBS)
+        observations = data.get(Columns.OBS)
 
         if observations is None:
             raise ValueError(
@@ -127,5 +127,5 @@ class WriteObservationsToEpisodes(ConnectorV2):
             # Change the observation space of the sa_episode.
             sa_episode.observation_space = self.observation_space
 
-        # Return the unchanged `batch`.
-        return batch
+        # Return the unchanged batch data.
+        return data

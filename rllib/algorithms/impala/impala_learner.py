@@ -130,7 +130,7 @@ class IMPALALearner(Learner):
         with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
             batch = self._learner_connector(
                 rl_module=self.module,
-                batch={},
+                data={},
                 episodes=episodes,
                 shared_data={},
             )
