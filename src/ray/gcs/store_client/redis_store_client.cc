@@ -145,7 +145,7 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
     }
     RAY_CHECK(!reply->IsError())
         << "Failed to get from Redis with status: " << reply->ReadAsStatus();
-    callback(Status::OK(), result);
+    callback(Status::OK(), std::move(result));
   };
 
   RedisCommand command{/*command=*/"HGET",
