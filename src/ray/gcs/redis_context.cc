@@ -448,6 +448,15 @@ Status ValidateAndConnectRedisSentinel(RedisContext &context,
   }
 
   //use raw redis context since we need to parse a complex reply.
+  //sample reply (array of arrays):
+  // 1)  1) "name"
+  //     2) "redis-ha"
+  //     3) "ip"
+  //     4) "10.112.202.115"
+  //     5) "port"
+  //     6) "6379"
+  //     7) "runid"
+  //     8) "18a76cedbf445bd25bbd412c92e237137b5c7d4d"
   auto redis_reply = reinterpret_cast<redisReply *>(
       ::redisCommandArgv(context.sync_context(), cmds.size(), argv.data(), argc.data()));
 
