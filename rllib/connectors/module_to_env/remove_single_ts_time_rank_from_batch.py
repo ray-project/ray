@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -40,7 +40,7 @@ class RemoveSingleTsTimeRankFromBatch(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Optional[Dict[str, Any]],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -48,11 +48,11 @@ class RemoveSingleTsTimeRankFromBatch(ConnectorV2):
     ) -> Any:
         # If single ts time-rank had not been added, early out.
         if shared_data is None or not shared_data.get("_added_single_ts_time_rank"):
-            return data
+            return batch
 
-        data = tree.map_structure_with_path(
+        batch = tree.map_structure_with_path(
             lambda p, s: s if Columns.STATE_OUT in p else np.squeeze(s, axis=0),
-            data,
+            batch,
         )
 
-        return data
+        return batch

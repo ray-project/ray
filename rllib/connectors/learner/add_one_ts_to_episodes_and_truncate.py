@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
@@ -65,7 +65,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         shared_data = {}
         _ = connector(
             rl_module=None,  # Connector used here does not require RLModule.
-            data={},
+            batch={},
             episodes=[episode1, episode2],
             shared_data=shared_data,
         )
@@ -82,7 +82,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Optional[Dict[str, Any]],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -126,7 +126,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
 
             loss_mask = [True for _ in range(len_)] + [False]
             self.add_n_batch_items(
-                data,
+                batch,
                 Columns.LOSS_MASK,
                 loss_mask,
                 len_ + 1,
@@ -139,7 +139,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
                 + [True]  # extra timestep
             )
             self.add_n_batch_items(
-                data,
+                batch,
                 Columns.TERMINATEDS,
                 terminateds,
                 len_ + 1,
@@ -151,4 +151,4 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         # added to `data`.
         shared_data["_added_loss_mask_for_valid_episode_ts"] = True
 
-        return data
+        return batch

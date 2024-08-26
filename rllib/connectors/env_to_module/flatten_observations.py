@@ -1,4 +1,4 @@
-from typing import Any, Collection, List, Optional
+from typing import Any, Collection, Dict, List, Optional
 
 import gymnasium as gym
 from gymnasium.spaces import Box
@@ -71,16 +71,16 @@ class FlattenObservations(ConnectorV2):
         connector = FlattenObservations(obs_space, act_space)
 
         # Call our connector piece with the example data.
-        output_data = connector(
+        output_batch = connector(
             rl_module=None,  # This connector works without an RLModule.
-            data={},  # This connector does not alter any data.
+            batch={},  # This connector does not alter the input batch.
             episodes=[episode_1, episode_2],
             explore=True,
             shared_data={},
         )
 
         # The connector does not alter the data and acts as pure pass-through.
-        check(output_data, {})
+        check(output_batch, {})
 
         # The connector has flattened each item in the episodes to a 1D tensor.
         check(
@@ -96,7 +96,11 @@ class FlattenObservations(ConnectorV2):
     """
 
     @override(ConnectorV2)
-    def recompute_observation_space_from_input_spaces(self):
+    def recompute_observation_space(
+        self,
+        input_observation_space,
+        input_action_space,
+    ) -> gym.Space:
         self._input_obs_base_struct = get_base_struct_from_space(
             self.input_observation_space
         )
@@ -160,7 +164,7 @@ class FlattenObservations(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -204,4 +208,4 @@ class FlattenObservations(ConnectorV2):
             #  error).
             sa_episode.observation_space = self.observation_space
 
-        return data
+        return batch
