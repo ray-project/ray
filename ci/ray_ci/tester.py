@@ -369,15 +369,17 @@ def _get_test_targets(
     Get test targets that are owned by a particular team
     """
     query = _get_all_test_query(targets, team, except_tags, only_tags)
-    test_targets = set(
-        container.run_script_with_output(
+    test_targets = {
+        target
+        for target in container.run_script_with_output(
             [
                 f'bazel query "{query}"',
             ]
         )
         .strip()
         .split(os.linesep)
-    )
+        if target
+    }
     flaky_tests = set(_get_flaky_test_targets(team, operating_system, yaml_dir))
 
     if get_flaky_tests:

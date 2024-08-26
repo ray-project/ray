@@ -86,13 +86,14 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Wait for all object references to go out of scope, and then shutdown.
   ///
   /// \param shutdown The shutdown callback to call.
-  void DrainAndShutdown(std::function<void()> shutdown);
+  void DrainAndShutdown(std::function<void()> shutdown) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Return true if the worker owns any object.
-  bool OwnObjects() const;
+  /// Return the size of the reference count table
+  /// (i.e. the number of objects that have references).
+  size_t Size() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Return true if the object is owned by us.
-  bool OwnedByUs(const ObjectID &object_id) const;
+  bool OwnedByUs(const ObjectID &object_id) const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Increase the reference count for the ObjectID by one. If there is no
   /// entry for the ObjectID, one will be created. The object ID will not have
@@ -373,6 +374,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const
       ABSL_LOCKS_EXCLUDED(mutex_);
+
+  std::string DebugString() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Populate a table with ObjectIDs that we were or are still borrowing.
   /// This should be called when a task returns, and the argument should be any
@@ -724,6 +727,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       }
       return nested_reference_count.get();
     }
+
+    std::string DebugString() const;
 
     /// Description of the call site where the reference was created.
     std::string call_site = "<unknown>";
