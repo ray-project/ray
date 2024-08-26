@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.rllib.connectors.connector_pipeline_v2 import ConnectorPipelineV2
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -14,7 +14,7 @@ class EnvToModulePipeline(ConnectorPipelineV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any] = None,
+        batch: Optional[Dict[str, Any]] = None,
         episodes: List[EpisodeType],
         explore: bool,
         shared_data: Optional[dict] = None,
@@ -24,7 +24,7 @@ class EnvToModulePipeline(ConnectorPipelineV2):
         # Might just be empty and to be populated from `episodes`.
         return super().__call__(
             rl_module=rl_module,
-            data=data if data is not None else {},
+            batch=batch if batch is not None else {},
             episodes=episodes,
             explore=explore,
             shared_data=shared_data if shared_data is not None else {},

@@ -1,5 +1,5 @@
 import copy
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -58,9 +58,13 @@ class NormalizeAndClipActions(ConnectorV2):
     """
 
     @override(ConnectorV2)
-    def recompute_action_space_from_input_spaces(self) -> gym.Space:
-        self._action_space_struct = get_base_struct_from_space(self.input_action_space)
-        return self.input_action_space
+    def recompute_output_action_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
+        self._action_space_struct = get_base_struct_from_space(input_action_space)
+        return input_action_space
 
     def __init__(
         self,
@@ -105,7 +109,7 @@ class NormalizeAndClipActions(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Optional[Dict[str, Any]],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -132,11 +136,11 @@ class NormalizeAndClipActions(ConnectorV2):
         # computed/sampled actions intact.
         if self.normalize_actions or self.clip_actions:
             # Copy actions into separate column, just to go to the env.
-            data[Columns.ACTIONS_FOR_ENV] = copy.deepcopy(data[Columns.ACTIONS])
+            batch[Columns.ACTIONS_FOR_ENV] = copy.deepcopy(batch[Columns.ACTIONS])
             self.foreach_batch_item_change_in_place(
-                batch=data,
+                batch=batch,
                 column=Columns.ACTIONS_FOR_ENV,
                 func=_unsquash_or_clip,
             )
 
-        return data
+        return batch

@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -89,7 +89,7 @@ class NumpyToTensor(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -98,11 +98,11 @@ class NumpyToTensor(ConnectorV2):
         is_single_agent = False
         is_multi_rl_module = isinstance(rl_module, MultiRLModule)
         # `data` already a ModuleID to batch mapping format.
-        if not (is_multi_rl_module and all(c in rl_module._rl_modules for c in data)):
+        if not (is_multi_rl_module and all(c in rl_module._rl_modules for c in batch)):
             is_single_agent = True
-            data = {DEFAULT_MODULE_ID: data}
+            batch = {DEFAULT_MODULE_ID: batch}
 
-        for module_id, module_data in data.copy().items():
+        for module_id, module_data in batch.copy().items():
             infos = module_data.pop(Columns.INFOS, None)
             if rl_module.framework == "torch":
                 module_data = convert_to_torch_tensor(
@@ -118,6 +118,6 @@ class NumpyToTensor(ConnectorV2):
             # single-agent mode.
             if is_single_agent:
                 return module_data
-            data[module_id] = module_data
+            batch[module_id] = module_data
 
-        return data
+        return batch

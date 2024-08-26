@@ -1,5 +1,7 @@
 import abc
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
+
+import gymnasium as gym
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -21,11 +23,17 @@ class ObservationPreprocessor(ConnectorV2, abc.ABC):
     """
 
     @override(ConnectorV2)
-    def recompute_observation_space_from_input_spaces(self):
+    def recompute_output_observation_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
         # Users should override this method only in case the `ObservationPreprocessor`
         # changes the observation space of the pipeline. In this case, return the new
-        # observation space based on the incoming one (`self.input_observation_space`).
-        super().recompute_observation_space_from_input_spaces()
+        # observation space based on the incoming one (`input_observation_space`).
+        return super().recompute_output_observation_space(
+            input_observation_space, input_action_space
+        )
 
     @abc.abstractmethod
     def preprocess(self, observation):
@@ -44,7 +52,7 @@ class ObservationPreprocessor(ConnectorV2, abc.ABC):
         self,
         *,
         rl_module: RLModule,
-        data: Any,
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         persistent_data: Optional[dict] = None,
@@ -66,7 +74,7 @@ class ObservationPreprocessor(ConnectorV2, abc.ABC):
             #  error).
             sa_episode.observation_space = self.observation_space
 
-        # Leave `data` as is. RLlib's default connector will automatically
+        # Leave `batch` as is. RLlib's default connector will automatically
         # populate the OBS column therein from the episodes' now transformed
         # observations.
-        return data
+        return batch
