@@ -153,7 +153,7 @@ class CompiledTask:
         self.dag_node = dag_node
 
         # Dict from task index to actor handle for immediate downstream tasks.
-        self.downstream_actor_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
+        self.downstream_task_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
         self.output_channel = None
         self.arg_type_hints: List["ChannelOutputType"] = []
 
@@ -167,7 +167,7 @@ class CompiledTask:
 
     @property
     def num_readers(self) -> int:
-        return len(self.downstream_actor_idxs)
+        return len(self.downstream_task_idxs)
 
     def __str__(self) -> str:
         return f"""
@@ -633,15 +633,19 @@ class CompiledDAG:
         self._max_execution_index: int = -1
         self._result_buffer: Dict[int, Any] = {}
 
-        def _get_or_create_local_actor_handle():
+        def _get_creator_or_proxy_actor() -> "ray.actor.ActorHandle":
             """
-            Get the actor handle of the current process. If the current process is
-            the driver process, create a new actor handle DAGDriverProxyActor.
+            Get the creator actor or proxy actor handle of the DAG.
+
+            If the current process is an actor, it is the creator of the DAG,
+            its actor handle is returned. Otherwise, create a proxy actor and
+            return its actor handle. Note that this actor is always on the same
+            node where the DAG is created.
 
             Returns:
               Return the actor handle if the current task is an actor method.
-              Create a DAGDriverProxyActor actor if the current process is the
-              driver process.
+              Create a DAGDriverProxyActor actor and return its handle if the
+              current process is the driver process.
 
             Raises:
                 NotImplementedError: If the current process is a Ray task.
@@ -668,7 +672,7 @@ class CompiledDAG:
                 )
             ).remote()
 
-        self._dag_creator_actor = _get_or_create_local_actor_handle()
+        self._creator_or_proxy_actor = _get_creator_or_proxy_actor()
 
     @property
     def has_single_output(self):
@@ -723,7 +727,7 @@ class CompiledDAG:
                 task.dag_node, InputAttributeNode
             ):
                 continue
-            if len(task.downstream_actor_idxs) == 0 and task.dag_node.is_output_node:
+            if len(task.downstream_task_idxs) == 0 and task.dag_node.is_output_node:
                 assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
 
@@ -875,7 +879,7 @@ class CompiledDAG:
                             "type hint between these methods."
                         )
 
-                upstream_task.downstream_actor_idxs[task_idx] = downstream_actor_handle
+                upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
                 task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
                 if upstream_task.dag_node.type_hint.requires_nccl():
@@ -913,7 +917,7 @@ class CompiledDAG:
         if actor_handle in self.actor_to_node_id:
             return self.actor_to_node_id[actor_handle]
         node_id = None
-        if actor_handle == self._dag_creator_actor:
+        if actor_handle == self._creator_or_proxy_actor:
             node_id = ray.get_runtime_context().get_node_id()
         else:
             node_id = ray.get(
@@ -973,7 +977,7 @@ class CompiledDAG:
             if isinstance(task.dag_node, ClassMethodNode):
                 # `readers` is the nodes that are ordered after the current one (`task`)
                 # in the DAG.
-                readers = [self.idx_to_task[idx] for idx in task.downstream_actor_idxs]
+                readers = [self.idx_to_task[idx] for idx in task.downstream_task_idxs]
                 reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                 dag_nodes = [reader.dag_node for reader in readers]
                 read_by_multi_output_node = False
@@ -1009,11 +1013,11 @@ class CompiledDAG:
                     #     print(result)
 
                     #     compiled_dag.teardown()
-                    assert self._dag_creator_actor is not None
+                    assert self._creator_or_proxy_actor is not None
                     reader_and_node_list.append(
                         (
-                            self._dag_creator_actor,
-                            self._get_node_id(self._dag_creator_actor),
+                            self._creator_or_proxy_actor,
+                            self._get_node_id(self._creator_or_proxy_actor),
                         )
                     )
                 else:
@@ -1045,7 +1049,7 @@ class CompiledDAG:
                 # when we support multiple readers for both shared memory channel
                 # and IntraProcessChannel.
                 reader_handles_set = set()
-                for idx in task.downstream_actor_idxs:
+                for idx in task.downstream_task_idxs:
                     reader_task = self.idx_to_task[idx]
                     assert isinstance(reader_task.dag_node, ClassMethodNode)
                     reader_handle = reader_task.dag_node._get_actor_handle()
@@ -1064,7 +1068,7 @@ class CompiledDAG:
                     task.dag_node, MultiOutputNode
                 )
 
-            for idx in task.downstream_actor_idxs:
+            for idx in task.downstream_task_idxs:
                 frontier.append(idx)
 
         # Validate input channels for tasks that have not been visited
@@ -1415,7 +1419,7 @@ class CompiledDAG:
             # on the same actor.
             next_task_idx = _get_next_task_idx(task)
             _add_edge(graph, idx, next_task_idx)
-            for downstream_idx in task.downstream_actor_idxs:
+            for downstream_idx in task.downstream_task_idxs:
                 # Add an edge from the writer to the reader.
                 _add_edge(graph, idx, downstream_idx)
                 if task.dag_node.type_hint.requires_nccl():
