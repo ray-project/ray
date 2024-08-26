@@ -97,8 +97,9 @@ class DashboardHead:
         self._modules_to_load = modules_to_load
         self._modules_loaded = False
 
+        # A TPE holding background, compute-heavy, latency-tolerant jobs, typically
+        # state updates.
         self._thread_pool_executor = ThreadPoolExecutor(
-            # We limit number of workers to avoid starving the event loop thread.
             max_workers=dashboard_consts.RAY_DASHBOARD_THREAD_POOL_MAX_WORKERS,
             thread_name_prefix="dashboard_head_tpe",
         )

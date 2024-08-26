@@ -82,10 +82,15 @@ class DataOrganizer:
         core_worker_stats = {}
         # nodes may change during process, so we create a copy of keys().
         for node_id in list(DataSource.nodes.keys()):
+            node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
+            node_stats = DataSource.node_stats.get(node_id, {})
             # Offloads the blocking operation to a thread pool executor. This also
             # yields to the event loop.
             workers = await get_or_create_event_loop().run_in_executor(
-                thread_pool_executor, cls.get_node_workers, node_id
+                thread_pool_executor,
+                cls.get_node_workers,
+                node_physical_stats,
+                node_stats,
             )
             for worker in workers:
                 for stats in worker.get("coreWorkerStats", []):
@@ -96,10 +101,8 @@ class DataOrganizer:
         DataSource.core_worker_stats.reset(core_worker_stats)
 
     @classmethod
-    def get_node_workers(cls, node_id):
+    def get_node_workers(cls, node_physical_stats, node_stats):
         workers = []
-        node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
-        node_stats = DataSource.node_stats.get(node_id, {})
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
         pid_to_worker_stats = {}
         pid_to_language = {}

@@ -404,9 +404,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             return_exceptions=True,
         )
 
-        new_node_stats = {}
-
-        def postprocess():
+        def postprocess(nodes, replies):
+            """Pure function reorganizing the data into {node_id: stats}."""
+            new_node_stats = {}
             for node_info, reply in zip(nodes, replies):
                 node_id, _ = node_info
                 if isinstance(reply, asyncio.CancelledError):
@@ -432,8 +432,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 else:
                     new_node_stats[node_id] = node_stats_to_dict(reply)
 
-        await get_or_create_event_loop().run_in_executor(
-            self._dashboard_head._thread_pool_executor, postprocess
+        new_node_stats = await get_or_create_event_loop().run_in_executor(
+            self._dashboard_head._thread_pool_executor, postprocess, nodes, replies
         )
         for node_id, new_stat in new_node_stats.items():
             DataSource.node_stats[node_id] = new_stat
