@@ -946,9 +946,7 @@ class MultiAgentEpisode:
             assert self.env_t_to_agent_t[agent_id].get(-1) == self.SKIP_ENV_TS_TAG
             for i in range(1, self.env_t_to_agent_t[agent_id].lookback + 1):
                 if (
-                    self.env_t_to_agent_t[agent_id].get(
-                        -i, neg_indices_left_of_zero=True
-                    )
+                    self.env_t_to_agent_t[agent_id].get(-i, neg_index_as_lookback=True)
                     != self.SKIP_ENV_TS_TAG
                 ):
                     len_lookback_buffer = max(len_lookback_buffer, i)
@@ -1052,7 +1050,7 @@ class MultiAgentEpisode:
         *,
         env_steps: bool = True,
         # global_indices: bool = False,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         return_list: bool = False,
@@ -1066,7 +1064,7 @@ class MultiAgentEpisode:
                 individual observations in a batch of size len(indices).
                 A slice object is interpreted as a range of observations to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all observations (from ts=0 to the end).
@@ -1075,14 +1073,14 @@ class MultiAgentEpisode:
                 this episode.
             env_steps: Whether `indices` should be interpreted as environment time steps
                 (True) or per-agent timesteps (False).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with agent A's observations
                 [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the lookback buffer range
                 (ts=0 item is 7), will respond to `get_observations(-1, agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `6`} and to
+                neg_index_as_lookback=True)` with {A: `6`} and to
                 `get_observations(slice(-2, 1), agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `[5, 6,  7]`}.
+                neg_index_as_lookback=True)` with {A: `[5, 6,  7]`}.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
@@ -1117,7 +1115,7 @@ class MultiAgentEpisode:
             indices=indices,
             agent_ids=agent_ids,
             env_steps=env_steps,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             one_hot_discrete=one_hot_discrete,
             return_list=return_list,
@@ -1129,7 +1127,7 @@ class MultiAgentEpisode:
         agent_ids: Optional[Union[Collection[AgentID], AgentID]] = None,
         *,
         env_steps: bool = True,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         return_list: bool = False,
     ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
@@ -1142,7 +1140,7 @@ class MultiAgentEpisode:
                 individual info dicts in a list of size len(indices).
                 A slice object is interpreted as a range of info dicts to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all infos (from ts=0 to the end).
@@ -1151,14 +1149,14 @@ class MultiAgentEpisode:
                 this episode.
             env_steps: Whether `indices` should be interpreted as environment time steps
                 (True) or per-agent timesteps (False).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with agent A's info dicts
                 [{"l":4}, {"l":5}, {"l":6},  {"a":7}, {"b":8}, {"c":9}], where the
                 first 3 items are the lookback buffer (ts=0 item is {"a": 7}), will
-                respond to `get_infos(-1, agent_ids=A, neg_indices_left_of_zero=True)`
+                respond to `get_infos(-1, agent_ids=A, neg_index_as_lookback=True)`
                 with `{A: {"l":6}}` and to
-                `get_infos(slice(-2, 1), agent_ids=A, neg_indices_left_of_zero=True)`
+                `get_infos(slice(-2, 1), agent_ids=A, neg_index_as_lookback=True)`
                 with `{A: [{"l":5}, {"l":6},  {"a":7}]}`.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
@@ -1190,7 +1188,7 @@ class MultiAgentEpisode:
             indices=indices,
             agent_ids=agent_ids,
             env_steps=env_steps,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             return_list=return_list,
         )
@@ -1201,7 +1199,7 @@ class MultiAgentEpisode:
         agent_ids: Optional[Union[Collection[AgentID], AgentID]] = None,
         *,
         env_steps: bool = True,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         return_list: bool = False,
@@ -1215,7 +1213,7 @@ class MultiAgentEpisode:
                 individual actions in a batch of size len(indices).
                 A slice object is interpreted as a range of actions to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all actions (from ts=0 to the end).
@@ -1224,14 +1222,14 @@ class MultiAgentEpisode:
                 this episode.
             env_steps: Whether `indices` should be interpreted as environment time steps
                 (True) or per-agent timesteps (False).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with agent A's actions
                 [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the lookback buffer range
                 (ts=0 item is 7), will respond to `get_actions(-1, agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `6`} and to
+                neg_index_as_lookback=True)` with {A: `6`} and to
                 `get_actions(slice(-2, 1), agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `[5, 6,  7]`}.
+                neg_index_as_lookback=True)` with {A: `[5, 6,  7]`}.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
@@ -1266,7 +1264,7 @@ class MultiAgentEpisode:
             indices=indices,
             agent_ids=agent_ids,
             env_steps=env_steps,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             one_hot_discrete=one_hot_discrete,
             return_list=return_list,
@@ -1278,7 +1276,7 @@ class MultiAgentEpisode:
         agent_ids: Optional[Union[Collection[AgentID], AgentID]] = None,
         *,
         env_steps: bool = True,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[float] = None,
         return_list: bool = False,
     ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
@@ -1291,7 +1289,7 @@ class MultiAgentEpisode:
                 individual rewards in a batch of size len(indices).
                 A slice object is interpreted as a range of rewards to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all rewards (from ts=0 to the end).
@@ -1300,14 +1298,14 @@ class MultiAgentEpisode:
                 this episode.
             env_steps: Whether `indices` should be interpreted as environment time steps
                 (True) or per-agent timesteps (False).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with agent A's rewards
                 [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the lookback buffer range
                 (ts=0 item is 7), will respond to `get_rewards(-1, agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `6`} and to
+                neg_index_as_lookback=True)` with {A: `6`} and to
                 `get_rewards(slice(-2, 1), agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `[5, 6,  7]`}.
+                neg_index_as_lookback=True)` with {A: `[5, 6,  7]`}.
             fill: An optional float value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
@@ -1337,7 +1335,7 @@ class MultiAgentEpisode:
             indices=indices,
             agent_ids=agent_ids,
             env_steps=env_steps,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             return_list=return_list,
         )
@@ -1349,7 +1347,7 @@ class MultiAgentEpisode:
         agent_ids: Optional[Union[Collection[AgentID], AgentID]] = None,
         *,
         env_steps: bool = True,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         return_list: bool = False,
     ) -> Union[MultiAgentDict, List[MultiAgentDict]]:
@@ -1365,7 +1363,7 @@ class MultiAgentEpisode:
                 A slice object is interpreted as a range of extra model outputs to be
                 returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
                 If None, will return all extra model outputs (from ts=0 to the end).
@@ -1374,14 +1372,14 @@ class MultiAgentEpisode:
                 all agents in this episode.
             env_steps: Whether `indices` should be interpreted as environment time steps
                 (True) or per-agent timesteps (False).
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, an episode with agent A's actions
                 [4, 5, 6,  7, 8, 9], where [4, 5, 6] is the lookback buffer range
                 (ts=0 item is 7), will respond to `get_actions(-1, agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `6`} and to
+                neg_index_as_lookback=True)` with {A: `6`} and to
                 `get_actions(slice(-2, 1), agent_ids=[A],
-                neg_indices_left_of_zero=True)` with {A: `[5, 6,  7]`}.
+                neg_index_as_lookback=True)` with {A: `[5, 6,  7]`}.
             fill: An optional value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the episode's boundaries (including the
@@ -1417,7 +1415,7 @@ class MultiAgentEpisode:
             indices=indices,
             agent_ids=agent_ids,
             env_steps=env_steps,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             return_list=return_list,
         )
@@ -1481,7 +1479,12 @@ class MultiAgentEpisode:
         except KeyError:
             raise KeyError(f"Key {key} not found in temporary timestep data!")
 
-    def slice(self, slice_: slice) -> "MultiAgentEpisode":
+    def slice(
+        self,
+        slice_: slice,
+        *,
+        len_lookback_buffer: Optional[int] = None,
+    ) -> "MultiAgentEpisode":
         """Returns a slice of this episode with the given slice object.
 
         Works analogous to
@@ -1546,6 +1549,10 @@ class MultiAgentEpisode:
             slice_: The slice object to use for slicing. This should exclude the
                 lookback buffer, which will be prepended automatically to the returned
                 slice.
+            len_lookback_buffer: If not None, forces the returned slice to try to have
+                this number of timesteps in its lookback buffer (if available). If None
+                (default), tries to make the returned slice's lookback as large as the
+                current lookback buffer of this episode (`self`).
 
         Returns:
             The new MultiAgentEpisode representing the requested slice.
@@ -1632,24 +1639,27 @@ class MultiAgentEpisode:
         truncateds["__all__"] = all(truncateds.get(aid) for aid in self.agent_episodes)
 
         # Determine all other slice contents.
+        _lb = len_lookback_buffer if len_lookback_buffer is not None else ref_lookback
+        if start - _lb < 0 and ref_lookback < (_lb - start):
+            _lb = ref_lookback + start
         observations = self.get_observations(
-            slice(start - ref_lookback, stop + 1),
-            neg_indices_left_of_zero=True,
+            slice(start - _lb, stop + 1),
+            neg_index_as_lookback=True,
             return_list=True,
         )
         actions = self.get_actions(
-            slice(start - ref_lookback, stop),
-            neg_indices_left_of_zero=True,
+            slice(start - _lb, stop),
+            neg_index_as_lookback=True,
             return_list=True,
         )
         rewards = self.get_rewards(
-            slice(start - ref_lookback, stop),
-            neg_indices_left_of_zero=True,
+            slice(start - _lb, stop),
+            neg_index_as_lookback=True,
             return_list=True,
         )
         extra_model_outputs = self.get_extra_model_outputs(
-            indices=slice(start - ref_lookback, stop),
-            neg_indices_left_of_zero=True,
+            indices=slice(start - _lb, stop),
+            neg_index_as_lookback=True,
             return_list=True,
         )
 
@@ -2105,7 +2115,7 @@ class MultiAgentEpisode:
                 s != self.SKIP_ENV_TS_TAG
                 for s in self.env_t_to_agent_t[agent_id].get(
                     slice(-len_lookback_buffer_per_agent[agent_id], 0),
-                    neg_indices_left_of_zero=True,
+                    neg_index_as_lookback=True,
                 )
             )
             # Try to figure out the module ID for this agent.
@@ -2153,7 +2163,7 @@ class MultiAgentEpisode:
         indices,
         agent_ids=None,
         env_steps=True,
-        neg_indices_left_of_zero=False,
+        neg_index_as_lookback=False,
         fill=None,
         one_hot_discrete=False,
         return_list=False,
@@ -2165,7 +2175,7 @@ class MultiAgentEpisode:
             what=what,
             indices=indices,
             agent_ids=agent_ids,
-            neg_indices_left_of_zero=neg_indices_left_of_zero,
+            neg_index_as_lookback=neg_index_as_lookback,
             fill=fill,
             # Rewards and infos do not support one_hot_discrete option.
             one_hot_discrete=dict(
@@ -2198,7 +2208,7 @@ class MultiAgentEpisode:
         what,
         indices,
         agent_ids,
-        neg_indices_left_of_zero,
+        neg_index_as_lookback,
         fill,
         one_hot_discrete,
         extra_model_outputs_key,
@@ -2214,7 +2224,7 @@ class MultiAgentEpisode:
                 hanging_val = hanging_val[extra_model_outputs_key]
             agent_value = inf_lookback_buffer.get(
                 indices=indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
                 fill=fill,
                 _add_last_ts_value=hanging_val,
                 **one_hot_discrete,
@@ -2230,7 +2240,7 @@ class MultiAgentEpisode:
         what: str,
         indices: Union[int, slice, List[int]],
         agent_ids: Collection[AgentID],
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         extra_model_outputs_key: Optional[str] = None,
@@ -2249,17 +2259,17 @@ class MultiAgentEpisode:
                 individual data in a batch of size len(indices).
                 A slice object is interpreted as a range of data to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
             agent_ids: A collection of AgentIDs to filter for. Only data for those
                 agents will be returned, all other agents will be ignored.
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
-                respond to `get(-1, neg_indices_left_of_zero=True)` with `6` and to
-                `get(slice(-2, 1), neg_indices_left_of_zero=True)` with `[5, 6,  7]`.
+                respond to `get(-1, neg_index_as_lookback=True)` with `6` and to
+                `get(slice(-2, 1), neg_index_as_lookback=True)` with `[5, 6,  7]`.
             fill: An optional float value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the buffer's boundaries (including the
@@ -2291,7 +2301,7 @@ class MultiAgentEpisode:
                 continue
             agent_indices[agent_id] = self.env_t_to_agent_t[agent_id].get(
                 indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
                 fill=self.SKIP_ENV_TS_TAG,
                 # For those records where there is no "hanging" last timestep (all
                 # other than obs and infos), we have to ignore the last entry in
@@ -2336,7 +2346,7 @@ class MultiAgentEpisode:
         what: str,
         indices: Union[int, slice, List[int]],
         agent_ids: Collection[AgentID],
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         extra_model_outputs_key: Optional[str] = None,
@@ -2355,17 +2365,17 @@ class MultiAgentEpisode:
                 individual data in a batch of size len(indices).
                 A slice object is interpreted as a range of data to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
             agent_ids: A collection of AgentIDs to filter for. Only data for those
                 agents will be returned, all other agents will be ignored.
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
-                respond to `get(-1, neg_indices_left_of_zero=True)` with `6` and to
-                `get(slice(-2, 1), neg_indices_left_of_zero=True)` with `[5, 6,  7]`.
+                respond to `get(-1, neg_index_as_lookback=True)` with `6` and to
+                `get(slice(-2, 1), neg_index_as_lookback=True)` with `[5, 6,  7]`.
             fill: An optional float value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the buffer's boundaries (including the
@@ -2398,7 +2408,7 @@ class MultiAgentEpisode:
             hanging_val = self._get_hanging_value(what, agent_id)
             agent_indices = self.env_t_to_agent_t[agent_id].get(
                 indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
                 fill=self.SKIP_ENV_TS_TAG if fill is not None else None,
                 # For those records where there is no "hanging" last timestep (all
                 # other than obs and infos), we have to ignore the last entry in
@@ -2505,7 +2515,7 @@ class MultiAgentEpisode:
             # Provide filled value for this agent.
             return getattr(sa_episode, f"get_{what}")(
                 indices=1000000000000,
-                neg_indices_left_of_zero=False,
+                neg_index_as_lookback=False,
                 fill=fill,
                 **dict(
                     {}
@@ -2525,7 +2535,7 @@ class MultiAgentEpisode:
                     return {
                         key: sub_buffer.get(
                             indices=index_incl_lookback - sub_buffer.lookback,
-                            neg_indices_left_of_zero=True,
+                            neg_index_as_lookback=True,
                             fill=fill,
                             _add_last_ts_value=hanging_val,
                             **one_hot_discrete,
@@ -2536,7 +2546,7 @@ class MultiAgentEpisode:
             # Extract data directly from the infinite lookback buffer object.
             return inf_lookback_buffer.get(
                 indices=index_incl_lookback - inf_lookback_buffer.lookback,
-                neg_indices_left_of_zero=True,
+                neg_index_as_lookback=True,
                 fill=fill,
                 _add_last_ts_value=hanging_val,
                 **one_hot_discrete,
@@ -2611,7 +2621,7 @@ class MultiAgentEpisode:
         if self.SKIP_ENV_TS_TAG in indices_incl_lookback and fill is not None:
             single_fill_value = inf_lookback_buffer.get(
                 indices=1000000000000,
-                neg_indices_left_of_zero=False,
+                neg_index_as_lookback=False,
                 fill=fill,
                 **one_hot_discrete,
             )
@@ -2623,7 +2633,7 @@ class MultiAgentEpisode:
                     ret.append(
                         inf_lookback_buffer.get(
                             indices=i - getattr(sa_episode, what).lookback,
-                            neg_indices_left_of_zero=True,
+                            neg_index_as_lookback=True,
                             fill=fill,
                             _add_last_ts_value=hanging_val,
                             **one_hot_discrete,
@@ -2640,7 +2650,7 @@ class MultiAgentEpisode:
             ]
             ret = inf_lookback_buffer.get(
                 indices=indices,
-                neg_indices_left_of_zero=True,
+                neg_index_as_lookback=True,
                 fill=fill,
                 _add_last_ts_value=hanging_val,
                 **one_hot_discrete,

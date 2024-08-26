@@ -55,7 +55,8 @@ Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
   }
 
   main_io_service_.post(
-      [callback, data = std::move(data)]() { callback(Status::OK(), data); },
+      [callback, data = std::move(data)]() mutable  // allow data to be moved
+      { callback(Status::OK(), std::move(data)); },
       "GcsInMemoryStore.Get");
 
   return Status::OK();

@@ -32,7 +32,11 @@ steps:
       - ./ci/lint/lint.sh {{matrix}}
     matrix:
       - api_annotations
+      - api_policy_check core
+      - api_policy_check serve
       - api_policy_check data
+      - api_policy_check train
+      - api_policy_check rllib
 
   - label: ":lint-roller: lint: linkcheck"
     instance_type: medium

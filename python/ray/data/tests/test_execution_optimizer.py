@@ -57,7 +57,10 @@ from ray.data._internal.logical.util import (
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.planner.planner import Planner
 from ray.data._internal.stats import DatasetStats
+from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
+from ray.data.datasource import Datasource
+from ray.data.datasource.datasource import ReadTask
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import get_parquet_read_logical_op
 from ray.data.tests.util import column_udf, extract_values, named_values
@@ -108,6 +111,24 @@ def test_read_operator(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+
+
+def test_read_operator_emits_warning_for_large_read_tasks():
+    class StubDatasource(Datasource):
+        def estimate_inmemory_data_size(self) -> Optional[int]:
+            return None
+
+        def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
+            large_object = np.zeros((128, 1024, 1024), dtype=np.uint8)  # 128 MiB
+
+            def read_fn():
+                large_object
+                yield pd.DataFrame({"column": [0]})
+
+            return [ReadTask(read_fn, BlockMetadata(1, None, None, None, None))]
+
+    with pytest.warns(UserWarning):
+        ray.data.read_datasource(StubDatasource()).materialize()
 
 
 def test_split_blocks_operator(ray_start_regular_shared):

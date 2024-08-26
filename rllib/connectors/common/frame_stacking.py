@@ -74,11 +74,11 @@ class _FrameStacking(ConnectorV2):
                 episodes, agents_that_stepped_only=False
             ):
 
-                def _map_fn(s):
+                def _map_fn(s, _sa_episode=sa_episode):
                     # Squeeze out last dim.
                     s = np.squeeze(s, axis=-1)
                     # Calculate new shape and strides
-                    new_shape = (len(sa_episode), self.num_frames) + s.shape[1:]
+                    new_shape = (len(_sa_episode), self.num_frames) + s.shape[1:]
                     new_strides = (s.strides[0],) + s.strides
                     # Create a strided view of the array.
                     return np.transpose(
@@ -98,7 +98,7 @@ class _FrameStacking(ConnectorV2):
                         _map_fn,
                         sa_episode.get_observations(
                             indices=slice(-self.num_frames + 1, len(sa_episode)),
-                            neg_indices_left_of_zero=True,
+                            neg_index_as_lookback=True,
                             fill=0.0,
                         ),
                     ),

@@ -329,6 +329,7 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="BOHB doesn't support py312")
 class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}

@@ -8,11 +8,10 @@ import tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.filter import MeanStdFilter as _MeanStdFilter
+from ray.rllib.utils.filter import MeanStdFilter as _MeanStdFilter, RunningStat
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import AgentID, EpisodeType, StateDict
 from ray.util.annotations import PublicAPI
-from ray.rllib.utils.filter import RunningStat
 
 
 @PublicAPI(stability="alpha")
@@ -117,9 +116,16 @@ class MeanStdFilter(ConnectorV2):
         # anymore to the original observations).
         for sa_episode in self.single_agent_episode_iterator(episodes):
             sa_obs = sa_episode.get_observations(indices=-1)
-            normalized_sa_obs = self._filters[sa_episode.agent_id](
-                sa_obs, update=self._update_stats
-            )
+            try:
+                normalized_sa_obs = self._filters[sa_episode.agent_id](
+                    sa_obs, update=self._update_stats
+                )
+            except KeyError:
+                raise KeyError(
+                    "KeyError trying to access a filter by agent ID "
+                    f"`{sa_episode.agent_id}`! You probably did NOT pass the "
+                    f"`multi_agent=True` flag into the `MeanStdFilter()` constructor. "
+                )
             sa_episode.set_observations(at_indices=-1, new_data=normalized_sa_obs)
             #  We set the Episode's observation space to ours so that we can safely
             #  set the last obs to the new value (without causing a space mismatch

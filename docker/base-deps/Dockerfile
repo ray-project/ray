@@ -62,6 +62,8 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         # Necessary for Dataset to work properly.
         numpy\>=1.20 \
         psutil \
+        # Required a recent version of setuptools to be compatible with python 3.12+.
+        setuptools==71.1.0 \
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask \ 

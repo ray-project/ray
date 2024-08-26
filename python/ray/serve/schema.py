@@ -864,6 +864,18 @@ class ServeStatus:
 
 @PublicAPI(stability="stable")
 class ServeActorDetails(BaseModel, frozen=True):
+    """Detailed info about a Ray Serve actor.
+
+    Attributes:
+        node_id: ID of the node that the actor is running on.
+        node_ip: IP address of the node that the actor is running on.
+        actor_id: Actor ID.
+        actor_name: Actor name.
+        worker_id: Worker ID.
+        log_file_path: The relative path to the Serve actor's log file from the ray logs
+            directory.
+    """
+
     node_id: Optional[str] = Field(
         description="ID of the node that the actor is running on."
     )
@@ -1010,6 +1022,12 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 @PublicAPI(stability="stable")
 class ProxyDetails(ServeActorDetails, frozen=True):
+    """Detailed info about a Ray Serve ProxyActor.
+
+    Attributes:
+        status: The current status of the proxy.
+    """
+
     status: ProxyStatus = Field(description="Current status of the proxy.")
 
 

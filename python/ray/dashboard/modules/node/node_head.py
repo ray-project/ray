@@ -1,8 +1,10 @@
 import asyncio
 import json
 import logging
+import os
 import time
 from itertools import chain
+from typing import Dict
 
 import aiohttp.web
 import grpc
@@ -11,6 +13,7 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray import NodeID
 from ray._private import ray_constants
 from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 from ray.autoscaler._private.util import (
@@ -19,6 +22,7 @@ from ray.autoscaler._private.util import (
     parse_usage,
 )
 from ray.core.generated import (
+    gcs_pb2,
     gcs_service_pb2,
     gcs_service_pb2_grpc,
     node_manager_pb2,
@@ -85,14 +89,52 @@ def node_stats_to_dict(message):
         message.core_workers_stats.extend(core_workers_stats)
 
 
+class GetAllNodeInfo:
+    """
+    Gets all node info from GCS via gRPC NodeInfoGcsService.GetAllNodeInfo.
+    It makes the call via GcsAioClient or a direct gRPC stub, depending on the env var
+    RAY_USE_OLD_GCS_CLIENT.
+    """
+
+    def __new__(cls, *args, **kwargs):
+        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
+        if use_old_client:
+            return GetAllNodeInfoFromGrpc(*args, **kwargs)
+        else:
+            return GetAllNodeInfoFromNewGcsClient(*args, **kwargs)
+
+
+class GetAllNodeInfoFromNewGcsClient:
+    def __init__(self, dashboard_head):
+        self.gcs_aio_client = dashboard_head.gcs_aio_client
+
+    async def __call__(self, timeout) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
+        return await self.gcs_aio_client.get_all_node_info(timeout=timeout)
+
+
+class GetAllNodeInfoFromGrpc:
+    def __init__(self, dashboard_head):
+        gcs_channel = dashboard_head.aiogrpc_gcs_channel
+        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
+            gcs_channel
+        )
+
+    async def __call__(self, timeout) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
+        request = gcs_service_pb2.GetAllNodeInfoRequest()
+        reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
+        if reply.status.code != 0:
+            raise Exception(f"Failed to GetAllNodeInfo: {reply.status.message}")
+        nodes = {}
+        for message in reply.node_info_list:
+            nodes[NodeID(message.node_id)] = message
+        return nodes
+
+
 class NodeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
         self._stubs = {}
-        # NodeInfoGcsService
-        self._gcs_node_info_stub = None
-        # NodeResourceInfoGcsService
-        self._gcs_node_resource_info_sub = None
+        self.get_all_node_info = None
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
         # Total number of node updates happened.
@@ -137,18 +179,15 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         Returns:
             A dict of information about the nodes in the cluster.
         """
-        request = gcs_service_pb2.GetAllNodeInfoRequest()
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(
-            request, timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS
-        )
-        if reply.status.code == 0:
-            result = {}
-            for node_info in reply.node_info_list:
-                node_info_dict = gcs_node_info_to_dict(node_info)
-                result[node_info_dict["nodeId"]] = node_info_dict
-            return result
-        else:
-            logger.error("Failed to GetAllNodeInfo: %s", reply.status.message)
+        try:
+            nodes = await self.get_all_node_info(timeout=GCS_RPC_TIMEOUT_SECONDS)
+            return {
+                node_id.hex(): gcs_node_info_to_dict(node_info)
+                for node_id, node_info in nodes.items()
+            }
+        except Exception:
+            logger.exception("Failed to GetAllNodeInfo.")
+            raise
 
     async def _update_nodes(self):
         # TODO(fyrestone): Refactor code for updating actor / node / job.
@@ -165,10 +204,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     node_id = node["nodeId"]
                     ip = node["nodeManagerAddress"]
                     hostname = node["nodeManagerHostname"]
-                    if (
-                        ip == self._dashboard_head.ip
-                        and not self._head_node_registration_time_s
-                    ):
+                    if node["isHeadNode"] and not self._head_node_registration_time_s:
                         self._head_node_registration_time_s = (
                             time.time() - self._module_start_time
                         )
@@ -176,11 +212,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         # TODO(architkulkarni): Remove once State API exposes which
                         # node is the head node.
                         await self._gcs_aio_client.internal_kv_put(
-                            "head_node_id".encode(),
+                            ray_constants.KV_HEAD_NODE_ID_KEY,
                             node_id.encode(),
                             overwrite=True,
                             namespace=ray_constants.KV_NAMESPACE_JOB,
-                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
+                            timeout=GCS_RPC_TIMEOUT_SECONDS,
                         )
                     node_id_to_ip[node_id] = ip
                     node_id_to_hostname[node_id] = hostname
@@ -201,7 +237,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                         agent_port = await self._gcs_aio_client.internal_kv_get(
                             key.encode(),
                             namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
+                            timeout=GCS_RPC_TIMEOUT_SECONDS,
                         )
                         if agent_port:
                             agents[node_id] = json.loads(agent_port)
@@ -394,14 +430,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 DataSource.node_stats[node_id] = reply_dict
 
     async def run(self, server):
-        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
-        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
-            gcs_channel
-        )
-        self._gcs_node_resource_info_stub = (
-            gcs_service_pb2_grpc.NodeResourceInfoGcsServiceStub(gcs_channel)
-        )
-
+        self.get_all_node_info = GetAllNodeInfo(self._dashboard_head)
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),

@@ -183,8 +183,10 @@ class PhysicalOperator(Operator):
         self._target_max_block_size = target_max_block_size
         self._started = False
         self._in_task_submission_backpressure = False
+        self._in_task_output_backpressure = False
         self._metrics = OpRuntimeMetrics(self)
         self._estimated_num_output_bundles = None
+        self._estimated_output_num_rows = None
         self._execution_completed = False
 
     def __reduce__(self):
@@ -275,6 +277,19 @@ class PhysicalOperator(Operator):
         ``self._estimated_num_output_bundles`` appropriately.
         """
         return self._estimated_num_output_bundles
+
+    def num_output_rows_total(self) -> Optional[int]:
+        """Returns the total number of output rows of this operator,
+        or ``None`` if unable to provide a reasonable estimate (for example,
+        if no tasks have finished yet).
+
+        The value returned may be an estimate based off the consumption so far.
+        This is useful for reporting progress.
+
+        Subclasses should either override this method, or update
+        ``self._estimated_output_num_rows`` appropriately.
+        """
+        return self._estimated_output_num_rows
 
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.
