@@ -110,7 +110,7 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
     def _preprocess_batch(
         self, batch: Dict[str, TensorType], **kwargs
     ) -> Tuple[TensorType, Dict[str, TensorType]]:
-        """Extracts observations and action mask from the batch
+        """Extracts observations and action mask from the batch.
 
         Args:
             batch: A dictionary containing tensors (at least `Columns.OBS`)
