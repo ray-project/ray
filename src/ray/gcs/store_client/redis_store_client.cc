@@ -101,7 +101,7 @@ void RedisStoreClient::MGetValues(const std::string &table_name,
         callback(std::move(*key_value_map));
       }
     };
-    SendRedisCmd(std::move(command), std::move(mget_callback));
+    SendRedisCmdArgsAsKeys(std::move(command), std::move(mget_callback));
   }
 }
 
@@ -118,9 +118,9 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name,
                                   const std::string &data,
                                   bool overwrite,
                                   std::function<void(bool)> callback) {
-  RedisCommand command{.command = overwrite ? "HSET" : "HSETNX",
-                       .redis_key = RedisKey{external_storage_namespace_, table_name},
-                       .args = {key, data}};
+  RedisCommand command{/*command=*/overwrite ? "HSET" : "HSETNX",
+                       RedisKey{external_storage_namespace_, table_name},
+                       /*args=*/{key, data}};
   RedisCallback write_callback = nullptr;
   if (callback) {
     write_callback =
@@ -148,10 +148,10 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
     callback(Status::OK(), result);
   };
 
-  RedisCommand command{.command = "HGET",
-                       .redis_key = RedisKey{external_storage_namespace_, table_name},
-                       .args = {key}};
-  SendRedisCmd(std::move(command), std::move(redis_callback));
+  RedisCommand command{/*command=*/"HGET",
+                       RedisKey{external_storage_namespace_, table_name},
+                       /*args=*/{key}};
+  SendRedisCmdArgsAsKeys(std::move(command), std::move(redis_callback));
   return Status::OK();
 }
 
@@ -244,7 +244,8 @@ std::vector<std::function<void()>> RedisStoreClient::TakeRequestsFromSendingQueu
   return send_requests;
 }
 
-void RedisStoreClient::SendRedisCmd(RedisCommand command, RedisCallback redis_callback) {
+void RedisStoreClient::SendRedisCmdArgsAsKeys(RedisCommand command,
+                                              RedisCallback redis_callback) {
   auto copied = command.args;
   SendRedisCmdWithKeys(std::move(copied), std::move(command), std::move(redis_callback));
 }
@@ -336,7 +337,7 @@ Status RedisStoreClient::DeleteByKeys(const std::string &table,
             }
           }
         };
-    SendRedisCmd(std::move(command), std::move(delete_callback));
+    SendRedisCmdArgsAsKeys(std::move(command), std::move(delete_callback));
   }
   return Status::OK();
 }
@@ -466,7 +467,7 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
                                      std::function<void(bool)> callback) {
   RedisCommand command = {
       "HEXISTS", RedisKey{external_storage_namespace_, table_name}, {key}};
-  SendRedisCmd(
+  SendRedisCmdArgsAsKeys(
       std::move(command),
       [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
         bool exists = reply->ReadAsInteger() > 0;

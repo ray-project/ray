@@ -57,6 +57,7 @@ struct RedisCommand {
 
   std::vector<std::string> ToRedisArgs() const {
     std::vector<std::string> redis_args;
+    redis_args.reserve(2 + args.size());
     redis_args.push_back(command);
     redis_args.push_back(redis_key.ToString());
     for (const auto &arg : args) {
@@ -234,10 +235,10 @@ class RedisStoreClient : public StoreClient {
                             RedisCallback redis_callback);
 
   // Conveinence method for SendRedisCmdWithKeys with keys = command.args.
-  // Reason for this method: if you call SendRedisCmd(command.args, std::move(command)),
-  // it's UB because C++ don't have arg evaluation order guarantee, hence command.args
-  // may become empty.
-  void SendRedisCmd(RedisCommand command, RedisCallback redis_callback);
+  // Reason for this method: if you call SendRedisCmdWithKeys(command.args,
+  // std::move(command)), it's UB because C++ don't have arg evaluation order guarantee,
+  // hence command.args may become empty.
+  void SendRedisCmdArgsAsKeys(RedisCommand command, RedisCallback redis_callback);
 
   // HMGET external_storage_namespace@table_name key1 key2 ...
   // `keys` are chunked to multiple HMGET commands by
