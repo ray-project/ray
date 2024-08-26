@@ -147,7 +147,7 @@ class BatchIndividualItems(ConnectorV2):
                 module_data = column_data
                 for col, col_data in module_data.copy().items():
                     if isinstance(col_data, list) and col != Columns.INFOS:
-                        module_data[col] = batch(
+                        module_data[col] = batch_fn(
                             col_data,
                             individual_items_already_have_batch_dim="auto",
                         )
@@ -177,7 +177,7 @@ class BatchIndividualItems(ConnectorV2):
                 batch[column] = (
                     list_to_be_batched
                     if column == Columns.INFOS
-                    else batch(
+                    else batch_fn(
                         list_to_be_batched,
                         individual_items_already_have_batch_dim="auto",
                     )

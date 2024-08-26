@@ -13,7 +13,7 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import batch, BatchedNdArray
+from ray.rllib.utils.spaces.space_utils import batch as batch_fn, BatchedNdArray
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -417,7 +417,7 @@ def split_and_zero_pad_list(item_list, T: int):
 
         if current_t == T:
             ret.append(
-                batch(
+                batch_fn(
                     current_time_row,
                     individual_items_already_have_batch_dim="auto",
                 )
@@ -428,7 +428,7 @@ def split_and_zero_pad_list(item_list, T: int):
     if current_t > 0 and current_t < T:
         current_time_row.extend([zero_element] * (T - current_t))
         ret.append(
-            batch(current_time_row, individual_items_already_have_batch_dim="auto")
+            batch_fn(current_time_row, individual_items_already_have_batch_dim="auto")
         )
 
     return ret

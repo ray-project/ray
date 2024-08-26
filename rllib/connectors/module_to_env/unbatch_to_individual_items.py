@@ -6,7 +6,7 @@ import tree  # pip install dm_tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.spaces.space_utils import unbatch
+from ray.rllib.utils.spaces.space_utils import unbatch as unbatch_fn
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -50,12 +50,12 @@ class UnBatchToIndividualItems(ConnectorV2):
 
         # Simple case (no structure stored): Just unbatch.
         if memorized_map_structure is None:
-            return tree.map_structure(lambda s: unbatch(s), batch)
+            return tree.map_structure(lambda s: unbatch_fn(s), batch)
         # Single agent case: Memorized structure is a list, whose indices map to
         # eps_id values.
         elif isinstance(memorized_map_structure, list):
             for column, column_data in batch.copy().items():
-                column_data = unbatch(column_data)
+                column_data = unbatch_fn(column_data)
                 new_column_data = defaultdict(list)
                 for i, eps_id in enumerate(memorized_map_structure):
                     # Keys are always tuples to resemble multi-agent keys, which
@@ -73,7 +73,7 @@ class UnBatchToIndividualItems(ConnectorV2):
                         f"ModuleID={module_id} not found in `memorized_map_structure`!"
                     )
                 for column, column_data in module_data.items():
-                    column_data = unbatch(column_data)
+                    column_data = unbatch_fn(column_data)
                     new_column_data = defaultdict(list)
                     for i, (eps_id, agent_id) in enumerate(
                         memorized_map_structure[module_id]
