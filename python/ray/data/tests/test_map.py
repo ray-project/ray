@@ -1096,6 +1096,29 @@ def test_map_batches_async_generator(shutdown_only):
     assert output == expected_output, (output, expected_output)
 
 
+def test_map_batches_async_exception_propagation(shutdown_only):
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    class MyUDF:
+        def __init__(self):
+            pass
+
+        async def __call__(self, batch):
+            # This will trigger an assertion error.
+            assert False
+            yield batch
+
+    ds = ray.data.range(20)
+    ds = ds.map_batches(MyUDF, concurrency=2)
+
+    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+        ds.materialize()
+
+    assert "AssertionError" in str(exc_info.value)
+    assert "assert False" in str(exc_info.value)
+
+
 if __name__ == "__main__":
     import sys
 

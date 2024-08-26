@@ -31,7 +31,7 @@ An environment in RL is the agent's world, it is a simulation of the problem to 
 
 .. image:: images/env_key_concept1.png
 
-An RLlib environment consists of: 
+An RLlib environment consists of:
 
 1. all possible actions (**action space**)
 2. a complete description of the environment, nothing hidden (**state space**)
@@ -374,5 +374,3 @@ training update.
 :ref:`Replay Buffers <replay-buffer-reference-docs>`:
 RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay
 buffers that can be used for storing and sampling experiences.
-
-

@@ -154,7 +154,9 @@ class StreamingExecutor(Executor, threading.Thread):
                         output_split_idx
                     )
                     if self._outer._global_info:
-                        self._outer._global_info.update(1, dag.num_outputs_total())
+                        self._outer._global_info.update(
+                            item.num_rows(), dag.num_output_rows_total()
+                        )
                     return item
                 # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
                 # can leave dangling progress bars by skipping shutdown.
@@ -350,14 +352,18 @@ class StreamingExecutor(Executor, threading.Thread):
         return len(self._output_node.outqueue) == 0
 
     def _report_current_usage(self) -> None:
-        cur_usage = self._resource_manager.get_global_usage()
+        running_usage = self._resource_manager.get_global_running_usage()
+        pending_usage = self._resource_manager.get_global_pending_usage()
         limits = self._resource_manager.get_global_limits()
         resources_status = (
-            "Running: "
-            f"{cur_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
-            f"{cur_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
-            f"{cur_usage.object_store_memory_str()}/"
-            f"{limits.object_store_memory_str()} object_store_memory"
+            "Running. Resources: "
+            f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
+            f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
+            f"{running_usage.object_store_memory_str()}/"
+            f"{limits.object_store_memory_str()} object_store_memory "
+            "(pending: "
+            f"{pending_usage.cpu:.4g} CPU, "
+            f"{pending_usage.gpu:.4g} GPU)"
         )
         if self._global_info:
             self._global_info.set_description(resources_status)

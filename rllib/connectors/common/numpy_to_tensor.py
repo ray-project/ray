@@ -10,13 +10,45 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class NumpyToTensor(ConnectorV2):
     """Converts numpy arrays across the entire input data into (framework) tensors.
 
     The framework information is received via the provided `rl_module` arg in the
-    `__call__`.
+    `__call__()` method.
+
+    Note: This is one of the default env-to-module or Learner ConnectorV2 pieces that
+    are added automatically by RLlib into every env-to-module/Learner connector
+    pipeline, unless `config.add_default_connectors_to_env_to_module_pipeline` or
+    `config.add_default_connectors_to_learner_pipeline ` are set to
+    False.
+
+    The default env-to-module connector pipeline is:
+    [
+        [0 or more user defined ConnectorV2 pieces],
+        AddObservationsFromEpisodesToBatch,
+        AddStatesFromEpisodesToBatch,
+        AgentToModuleMapping,  # only in multi-agent setups!
+        BatchIndividualItems,
+        NumpyToTensor,
+    ]
+    The default Learner connector pipeline is:
+    [
+        [0 or more user defined ConnectorV2 pieces],
+        AddObservationsFromEpisodesToBatch,
+        AddColumnsFromEpisodesToTrainBatch,
+        AddStatesFromEpisodesToBatch,
+        AgentToModuleMapping,  # only in multi-agent setups!
+        BatchIndividualItems,
+        NumpyToTensor,
+    ]
+
+    This ConnectorV2:
+    - Loops through the input `data` and converts all found numpy arrays into
+    framework-specific tensors (possibly on a GPU).
     """
 
     def __init__(
@@ -37,6 +69,8 @@ class NumpyToTensor(ConnectorV2):
             pin_mempory: Whether to pin memory when creating (torch) tensors.
                 If None (default), pins memory if `as_learner_connector` is True,
                 otherwise doesn't pin memory.
+            device: An optional device to move the resulting tensors to. If not
+                provided, all data will be left on the CPU.
             **kwargs:
         """
         super().__init__(
@@ -68,7 +102,6 @@ class NumpyToTensor(ConnectorV2):
             is_single_agent = True
             data = {DEFAULT_MODULE_ID: data}
 
-        # TODO (sven): Support specifying a device (e.g. GPU).
         for module_id, module_data in data.copy().items():
             infos = module_data.pop(Columns.INFOS, None)
             if rl_module.framework == "torch":

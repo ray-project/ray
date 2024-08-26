@@ -24,7 +24,8 @@ class TestBC(unittest.TestCase):
         data_path = "tests/data/cartpole/cartpole-v1_large"
         base_path = Path(__file__).parents[3]
         print(f"base_path={base_path}")
-        data_path = "local://" + base_path.joinpath(data_path).as_posix()
+        data_path = "local://" / base_path / data_path
+
         print(f"data_path={data_path}")
 
         # Define the BC config.
@@ -46,7 +47,10 @@ class TestBC(unittest.TestCase):
             )
             # Note, the `input_` argument is the major argument for the
             # new offline API.
-            .offline_data(input_=[data_path])
+            .offline_data(
+                input_=[data_path.as_posix()],
+                dataset_num_iters_per_learner=1,
+            )
             .training(
                 lr=0.0008,
                 train_batch_size_per_learner=2000,
