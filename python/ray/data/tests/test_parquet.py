@@ -15,8 +15,8 @@ from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDat
 from ray.data._internal.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
     ParquetDatasource,
+    SerializedFragment,
     _deserialize_fragments_with_retry,
-    _SerializedFragment,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
@@ -66,7 +66,7 @@ def test_parquet_deserialize_fragments_with_retry(
     pq_ds = pq.ParquetDataset(
         data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
     )
-    serialized_fragments = [_SerializedFragment(p) for p in pq_ds.fragments]
+    serialized_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
 
     # test 1st attempt succeed
     fragments = _deserialize_fragments_with_retry(serialized_fragments)
@@ -1111,15 +1111,20 @@ def test_parquet_concurrency(ray_start_regular_shared, fs, data_path):
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_parquet_read_spread(ray_start_cluster, tmp_path):
+def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
     ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
         num_cpus=10,
+        object_store_memory=2 * 1024 * 1024 * 1024,
         _system_config={"max_direct_call_object_size": 0},
     )
-    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(
+        resources={"bar:2": 100},
+        num_cpus=10,
+        object_store_memory=2 * 1024 * 1024 * 1024,
+    )
     cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
     ray.init(cluster.address)
@@ -1139,6 +1144,9 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     path2 = os.path.join(data_path, "test2.parquet")
     df2.to_parquet(path2)
 
+    # Minimize the block size to prevent Ray Data from reading multiple fragments in a
+    # single task.
+    ray.data.DataContext.get_current().target_max_block_size = 1
     ds = ray.data.read_parquet(data_path)
 
     # Force reads.
@@ -1149,7 +1157,7 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     locations = []
     for block in block_refs:
         locations.extend(location_data[block]["node_ids"])
-    assert set(locations) == {node1_id, node2_id}
+    assert set(locations) == {node1_id, node2_id}, set(locations)
 
 
 def test_parquet_bulk_columns(ray_start_regular_shared):
@@ -1169,6 +1177,18 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
     for filename in os.listdir(tmp_path):
         table = pq.read_table(os.path.join(tmp_path, filename))
         assert len(table) == num_rows_per_file
+
+
+@pytest.mark.parametrize("shuffle", [True, False, "file"])
+def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
+
+    with pytest.raises(ValueError):
+        ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
+
+
+@pytest.mark.parametrize("shuffle", [None, "files"])
+def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffle):
+    ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 import requests
 import yaml
 
@@ -65,8 +66,8 @@ def get_node_ip_by_id(node_id: str) -> str:
     return node.node_ip
 
 
-@pytest.fixture
-def job_sdk_client(make_sure_dashboard_http_port_unused):
+@pytest_asyncio.fixture
+async def job_sdk_client(make_sure_dashboard_http_port_unused):
     with _ray_start(include_dashboard=True, num_cpus=1) as ctx:
         ip, _ = ctx.address_info["webui_url"].split(":")
         agent_address = f"{ip}:{DEFAULT_DASHBOARD_AGENT_LISTEN_PORT}"

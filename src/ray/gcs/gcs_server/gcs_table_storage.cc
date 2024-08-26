@@ -50,7 +50,7 @@ Status GcsTable<Key, Data>::Get(const Key &key,
       data.ParseFromString(*result);
       value = std::move(data);
     }
-    callback(status, value);
+    callback(status, std::move(value));
   };
   return store_client_->AsyncGet(table_name_, key.Binary(), on_done);
 }

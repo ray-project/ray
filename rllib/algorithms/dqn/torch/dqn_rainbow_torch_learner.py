@@ -255,4 +255,10 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
 
     def _reset_noise(self) -> None:
         # Reset the noise for all noisy modules, if necessary.
-        self.module.foreach_module(lambda mid, module: module._reset_noise(target=True))
+        self.module.foreach_module(
+            lambda mid, module: (
+                module._reset_noise(target=True)
+                if hasattr(module, "_reset_noise")
+                else None
+            )
+        )

@@ -13,7 +13,8 @@ from ray.rllib.core import (
     COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -101,8 +102,17 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # required in the learning step.
         self._cached_to_module = None
 
-        # Construct the RLModule.
-        self.module = self._make_module()
+        # Construct the MultiRLModule.
+        try:
+            module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
+                env=self.env, spaces=self.get_spaces(), inference_only=True
+            )
+            # Build the module from its spec.
+            self.module = module_spec.build()
+        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
+        # will not have an RLModule, but might still be usable with random actions.
+        except NotImplementedError:
+            self.module = None
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(self.env)
@@ -273,7 +283,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 )
                 self._cached_to_module = None
 
-                # MARLModule forward pass: Explore or not.
+                # MultiRLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
@@ -470,7 +480,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     shared_data=_shared_data,
                 )
 
-                # MARLModule forward pass: Explore or not.
+                # MultiRLModule forward pass: Explore or not.
                 if explore:
                     env_steps_lifetime = self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
@@ -588,6 +598,18 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
 
         return done_episodes_to_return
+
+    @override(EnvRunner)
+    def get_spaces(self):
+        return {
+            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
+            # Use the already agent-to-module translated spaces from our connector
+            # pipeline.
+            **{
+                mid: (o, self._env_to_module.action_space[mid])
+                for mid, o in self._env_to_module.observation_space.spaces.items()
+            },
+        }
 
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
@@ -755,7 +777,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     def assert_healthy(self):
         """Checks that self.__init__() has been completed properly.
 
-        Ensures that the instances has a `MultiAgentRLModule` and an
+        Ensures that the instances has a `MultiRLModule` and an
         environment defined.
 
         Raises:
@@ -815,17 +837,19 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         # Perform actual gym.make call.
         self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
-        try:
-            check_multiagent_environments(self.env.unwrapped)
-        except Exception as e:
-            logger.exception(e.args[0])
         self.num_envs = 1
-
-        # Create the MultiAgentEnv (is-a gymnasium env).
-        assert isinstance(self.env.unwrapped, MultiAgentEnv), (
-            "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
-            "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
-        )
+        # If required, check the created MultiAgentEnv.
+        if not self.config.disable_env_checking:
+            try:
+                check_multiagent_environments(self.env.unwrapped)
+            except Exception as e:
+                logger.exception(e.args[0])
+        # If not required, still check the type (must be MultiAgentEnv).
+        else:
+            assert isinstance(self.env.unwrapped, MultiAgentEnv), (
+                "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
+                "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
+            )
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True
@@ -842,31 +866,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     def stop(self):
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         self.env.close()
-
-    def _make_module(self):
-        # Create our own instance of the (single-agent) `RLModule` (which
-        # the needs to be weight-synched) each iteration.
-        # TODO (sven, simon): We have to rebuild the `AlgorithmConfig` to work on
-        #  `RLModule`s and not `Policy`s. Like here `policies`->`modules`.
-        try:
-            policy_dict, _ = self.config.get_multi_agent_setup(
-                spaces={
-                    mid: (o, self._env_to_module.action_space[mid])
-                    for mid, o in self._env_to_module.observation_space.spaces.items()
-                },
-            )
-            ma_rlm_spec: MultiAgentRLModuleSpec = self.config.get_marl_module_spec(
-                policy_dict=policy_dict,
-                # Built only a light version of the module in sampling and inference.
-                inference_only=True,
-            )
-
-            # Build the module from its spec.
-            return ma_rlm_spec.build()
-
-        # This error could be thrown, when only random actions are used.
-        except NotImplementedError:
-            return None
 
     def _setup_metrics(self):
         self.metrics = MetricsLogger()

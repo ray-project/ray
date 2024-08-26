@@ -136,10 +136,10 @@ new catalog via your ``DreamerV3Config`` object as follows:
 
 ```python
 from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import DreamerV3TfRLModule
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec 
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec 
 
 config.rl_module(
-    rl_module_spec=SingleAgentRLModuleSpec(
+    rl_module_spec=RLModuleSpec(
         module_class=DreamerV3TfRLModule,
         catalog_class=[your DreamerV3Catalog subclass],
     )

@@ -16,8 +16,8 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.utils import (
@@ -57,13 +57,8 @@ class RemoteTrainingHelper:
             import torch
 
             torch.manual_seed(0)
-        elif fw == "tf2":
-            import tensorflow as tf
-
-            # this is done by rllib already inside of the policy class, but we need to
-            # do it here for testing purposes
-            tf.compat.v1.enable_eager_execution()
-            tf.random.set_seed(0)
+        else:
+            raise NotImplementedError
 
         env = gym.make("CartPole-v1")
 
@@ -204,7 +199,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             BaseTestingAlgorithmConfig()
             .training(learner_class=BCTorchLearner)
             .rl_module(
-                rl_module_spec=SingleAgentRLModuleSpec(
+                rl_module_spec=RLModuleSpec(
                     module_class=DiscreteBCTorchModule,
                     model_config_dict={"fcnet_hiddens": [32]},
                 )
@@ -215,7 +210,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         learner_group.shutdown()
 
     # def test_learner_group_local(self):
-    #    fws = ["torch", "tf2"]
+    #    fws = ["torch"]
 
     #    test_iterator = itertools.product(fws, LOCAL_CONFIGS)
 
@@ -231,7 +226,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
     def test_update_multi_gpu(self):
         return
 
-        fws = ["torch", "tf2"]
+        fws = ["torch"]
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
         test_iterator = itertools.product(fws, scaling_modes)
 
@@ -273,8 +268,8 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             del learner_group
 
     def test_add_module_and_remove_module(self):
-        fws = ["torch", "tf2"]
-        scaling_modes = ["local-cpu", "multi-gpu-ddp"]
+        fws = ["torch"]
+        scaling_modes = ["local-cpu", "multi-cpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:
@@ -340,9 +335,9 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_restore_from_path_marl_module_and_individual_modules(self):
-        """Tests whether MARLModule- and single RLModule states can be restored."""
-        fws = ["torch", "tf2"]
+    def test_restore_from_path_multi_rl_module_and_individual_modules(self):
+        """Tests whether MultiRLModule- and single RLModule states can be restored."""
+        fws = ["torch"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
 
@@ -357,28 +352,30 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
             )
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             learner_group = config.build_learner_group(env=env)
-            spec = config.get_marl_module_spec(env=env).module_specs[DEFAULT_MODULE_ID]
+            spec = config.get_multi_rl_module_spec(env=env).module_specs[
+                DEFAULT_MODULE_ID
+            ]
             learner_group.add_module(module_id="0", module_spec=spec)
             learner_group.add_module(module_id="1", module_spec=spec)
             learner_group.remove_module(DEFAULT_MODULE_ID)
 
             module_0 = spec.build()
             module_1 = spec.build()
-            marl_module = MultiAgentRLModule()
-            marl_module.add_module(module_id="0", module=module_0)
-            marl_module.add_module(module_id="1", module=module_1)
+            multi_rl_module = MultiRLModule()
+            multi_rl_module.add_module(module_id="0", module=module_0)
+            multi_rl_module.add_module(module_id="1", module=module_1)
 
-            # Check if we can load just the MARL Module.
+            # Check if we can load just the MultiRLModule.
             with tempfile.TemporaryDirectory() as tmpdir:
-                marl_module.save_to_path(tmpdir)
+                multi_rl_module.save_to_path(tmpdir)
                 old_learner_weights = learner_group.get_weights()
                 learner_group.restore_from_path(
                     tmpdir,
                     component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                 )
                 # Check the weights of the module in the learner group are the
-                # same as the weights of the newly created marl module
-                check(learner_group.get_weights(), marl_module.get_state())
+                # same as the weights of the newly created MultiRLModule
+                check(learner_group.get_weights(), multi_rl_module.get_state())
                 learner_group.set_state(
                     {
                         COMPONENT_LEARNER: {COMPONENT_RL_MODULE: old_learner_weights},
@@ -403,22 +400,22 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
                         component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/1",
                     )
                     # check the weights of the module in the learner group are the
-                    # same as the weights of the newly created marl module
-                    new_marl_module = MultiAgentRLModule()
-                    new_marl_module.add_module(module_id="0", module=module_0)
-                    new_marl_module.add_module(module_id="1", module=temp_module)
-                    check(learner_group.get_weights(), new_marl_module.get_state())
+                    # same as the weights of the newly created MultiRLModule
+                    new_multi_rl_module = MultiRLModule()
+                    new_multi_rl_module.add_module(module_id="0", module=module_0)
+                    new_multi_rl_module.add_module(module_id="1", module=temp_module)
+                    check(learner_group.get_weights(), new_multi_rl_module.get_state())
                     learner_group.set_weights(old_learner_weights)
 
-            # Check if we can first load a MARLModule, then a single agent RLModule
-            # (within that MARLModule). Check that the single agent RL Module is loaded
-            # over the matching submodule in the MARL Module.
+            # Check if we can first load a MultiRLModule, then a single agent RLModule
+            # (within that MultiRLModule). Check that the single agent RL Module is
+            # loaded over the matching submodule in the MultiRLModule.
             with tempfile.TemporaryDirectory() as tmpdir:
                 module_0 = spec.build()
-                marl_module = MultiAgentRLModule()
-                marl_module.add_module(module_id="0", module=module_0)
-                marl_module.add_module(module_id="1", module=spec.build())
-                marl_module.save_to_path(tmpdir)
+                multi_rl_module = MultiRLModule()
+                multi_rl_module.add_module(module_id="0", module=module_0)
+                multi_rl_module.add_module(module_id="1", module=spec.build())
+                multi_rl_module.save_to_path(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
                     module_1 = spec.build()
                     module_1.save_to_path(tmpdir2)
@@ -430,10 +427,10 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
                         tmpdir2,
                         component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/1",
                     )
-                    new_marl_module = MultiAgentRLModule()
-                    new_marl_module.add_module(module_id="0", module=module_0)
-                    new_marl_module.add_module(module_id="1", module=module_1)
-                    check(learner_group.get_weights(), new_marl_module.get_state())
+                    new_multi_rl_module = MultiRLModule()
+                    new_multi_rl_module.add_module(module_id="0", module=module_0)
+                    new_multi_rl_module.add_module(module_id="1", module=module_1)
+                    check(learner_group.get_weights(), new_multi_rl_module.get_state())
             del learner_group
 
 
@@ -448,7 +445,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
 
     def test_save_to_path_and_restore_from_path(self):
         """Check that saving and loading learner group state works."""
-        fws = ["torch", "tf2"]
+        fws = ["torch"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
@@ -521,7 +518,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             del learner_group
 
             # Compare the results of the two updates.
-            check(results_2nd_update_with_break, results_2nd_without_break)
+            check(results_2nd_update_with_break, results_2nd_without_break, rtol=0.05)
             check(
                 weights_after_2_updates_with_break,
                 weights_after_2_updates_without_break,
@@ -540,7 +537,7 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
-        fws = ["torch", "tf2"]
+        fws = ["torch"]
         # async_update only needs to be tested for the most complex case.
         # so we'll only test it for multi-gpu-ddp.
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]

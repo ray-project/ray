@@ -1400,11 +1400,6 @@ class Dataset:
                 f"The length of locality_hints {len(locality_hints)} "
                 f"doesn't equal the number of splits {n}."
             )
-            # TODO: this is unreachable code.
-            if len(set(locality_hints)) != len(locality_hints):
-                raise ValueError(
-                    "locality_hints must not contain duplicate actor handles"
-                )
 
         bundle = self._plan.execute()
         owned_by_consumer = bundle.owns_blocks
@@ -2653,6 +2648,10 @@ class Dataset:
             The in-memory size of the dataset in bytes, or None if the
             in-memory size is not known.
         """
+        # If the size is known from metadata, return it.
+        if self._logical_plan.dag.aggregate_output_metadata().size_bytes is not None:
+            return self._logical_plan.dag.aggregate_output_metadata().size_bytes
+
         metadata = self._plan.execute().metadata
         if not metadata or metadata[0].size_bytes is None:
             return None
@@ -4059,6 +4058,7 @@ class Dataset:
         feature_columns: Union[str, List[str]],
         label_columns: Union[str, List[str]],
         *,
+        additional_columns: Union[str, List[str]] = None,
         prefetch_batches: int = 1,
         batch_size: int = 1,
         drop_last: bool = False,
@@ -4066,6 +4066,7 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         feature_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
         label_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
+        additional_type_spec: Union["tf.TypeSpec", Dict[str, "tf.TypeSpec"]] = None,
     ) -> "tf.data.Dataset":
         """Return a `TensorFlow Dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_
         over this :class:`~ray.data.Dataset`.
@@ -4121,13 +4122,45 @@ class Dataset:
             >>> ds.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
+            If your model accepts different types, shapes, or names of tensors as input, specify the type spec.
+            If type specs are not specified, they are automatically inferred from the schema of the dataset.
+
+            >>> import tensorflow as tf
+            >>> ds.to_tf(
+            ...     feature_columns="features",
+            ...     label_columns="target",
+            ...     feature_type_spec=tf.TensorSpec(shape=(None, 4), dtype=tf.float32, name="features"),
+            ...     label_type_spec=tf.TensorSpec(shape=(None,), dtype=tf.float32, name="label")
+            ... )
+            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float32, name='features'), TensorSpec(shape=(None,), dtype=tf.float32, name='label'))>
+
+            If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
+            A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
+
+            >>> ds = ds.add_column("sample weights", lambda df: 1)
+            >>> ds.to_tf(feature_columns="features", label_columns="target", additional_columns="sample weights")
+            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
+
+            If your model accepts different types, shapes, or names for the additional metadata, specify the type spec of the additional column.
+
+            >>> ds.to_tf(
+            ...     feature_columns="features",
+            ...     label_columns="target",
+            ...     additional_columns="sample weights",
+            ...     additional_type_spec=tf.TensorSpec(shape=(None,), dtype=tf.float32, name="weight")
+            ... )
+            <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.float32, name='weight'))>
+
         Args:
             feature_columns: Columns that correspond to model inputs. If this is a
                 string, the input data is a tensor. If this is a list, the input data
                 is a ``dict`` that maps column names to their tensor representation.
-            label_column: Columns that correspond to model targets. If this is a
+            label_columns: Columns that correspond to model targets. If this is a
                 string, the target data is a tensor. If this is a list, the target data
                 is a ``dict`` that maps column names to their tensor representation.
+            additional_columns: Columns that correspond to sample weights or other metadata.
+                If this is a string, the weight data is a tensor. If this is a list, the
+                weight data is a ``dict`` that maps column names to their tensor representation.
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
@@ -4154,6 +4187,10 @@ class Dataset:
                 only one column, specify a `tf.TypeSpec`. If there are multiple columns,
                 specify a ``dict`` that maps column names to their `tf.TypeSpec`.
                 Default is `None` to automatically infer the type of each column.
+            additional_type_spec: The `tf.TypeSpec` of `additional_columns`. If there
+                is only one column, specify a `tf.TypeSpec`. If there are multiple
+                columns, specify a ``dict`` that maps column names to their `tf.TypeSpec`.
+                Default is `None` to automatically infer the type of each column.
 
         Returns:
             A `TensorFlow Dataset`_ that yields inputs and targets.
@@ -4167,6 +4204,7 @@ class Dataset:
         return self.iterator().to_tf(
             feature_columns=feature_columns,
             label_columns=label_columns,
+            additional_columns=additional_columns,
             prefetch_batches=prefetch_batches,
             drop_last=drop_last,
             batch_size=batch_size,
@@ -4174,6 +4212,7 @@ class Dataset:
             local_shuffle_seed=local_shuffle_seed,
             feature_type_spec=feature_type_spec,
             label_type_spec=label_type_spec,
+            additional_type_spec=additional_type_spec,
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
@@ -4738,8 +4777,8 @@ class Dataset:
         futures, to bytes that can be stored and later deserialized, possibly on a
         different cluster.
 
-        Note that this will drop all computed data, and that everything is
-        recomputed from scratch after deserialization.
+        Note that this uses pickle and will drop all computed data, and that everything
+        is recomputed from scratch after deserialization.
 
         Use :py:meth:`Dataset.deserialize_lineage` to deserialize the serialized
         bytes returned from this method into a Dataset.
@@ -4827,8 +4866,8 @@ class Dataset:
         """
         Deserialize the provided lineage-serialized Dataset.
 
-        This assumes that the provided serialized bytes were serialized using
-        :py:meth:`Dataset.serialize_lineage`.
+        This uses pickle, and assumes that the provided serialized bytes were
+        serialized using :py:meth:`Dataset.serialize_lineage`.
 
         Examples:
 

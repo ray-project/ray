@@ -1,23 +1,17 @@
-import numpy as np
 from pathlib import Path
 import os
 import unittest
 
 import ray
 from ray.rllib.algorithms import cql
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
 )
-from ray.rllib.utils.test_utils import (
-    check_compute_single_action,
-    check_train_results,
-    framework_iterator,
-)
+from ray.rllib.utils.test_utils import check_compute_single_action, check_train_results
 
-tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
@@ -75,77 +69,51 @@ class TestCQL(unittest.TestCase):
         )
         num_iterations = 4
 
-        # Test for tf/torch frameworks.
-        for fw in framework_iterator(config):
-            algo = config.build()
-            for i in range(num_iterations):
-                results = algo.train()
-                check_train_results(results)
-                print(results)
-                eval_results = results.get(EVALUATION_RESULTS)
-                if eval_results:
-                    print(
-                        f"iter={algo.iteration} "
-                        f"R={eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}"
-                    )
-            check_compute_single_action(algo)
-
-            # Get policy and model.
-            pol = algo.get_policy()
-            cql_model = pol.model
-            if fw == "tf":
-                pol.get_session().__enter__()
-
-            # Example on how to do evaluation on the trained Algorithm
-            # using the data from CQL's global replay buffer.
-            # Get a sample (MultiAgentBatch).
-
-            batch = algo.env_runner.input_reader.next()
-            multi_agent_batch = batch.as_multi_agent()
-            # All experiences have been buffered for `default_policy`
-            batch = multi_agent_batch.policy_batches["default_policy"]
-
-            if fw == "torch":
-                obs = torch.from_numpy(batch["obs"])
-            else:
-                obs = batch["obs"]
-                batch["actions"] = batch["actions"].astype(np.float32)
-
-            # Pass the observations through our model to get the
-            # features, which then to pass through the Q-head.
-            model_out, _ = cql_model({"obs": obs})
-            # The estimated Q-values from the (historic) actions in the batch.
-            if fw == "torch":
-                q_values_old = cql_model.get_q_values(
-                    model_out, torch.from_numpy(batch["actions"])
+        algo = config.build()
+        for i in range(num_iterations):
+            results = algo.train()
+            check_train_results(results)
+            print(results)
+            eval_results = results.get(EVALUATION_RESULTS)
+            if eval_results:
+                print(
+                    f"iter={algo.iteration} "
+                    f"R={eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}"
                 )
-            else:
-                q_values_old = cql_model.get_q_values(
-                    tf.convert_to_tensor(model_out), batch["actions"]
-                )
+        check_compute_single_action(algo)
 
-            # The estimated Q-values for the new actions computed
-            # by our policy.
-            actions_new = pol.compute_actions_from_input_dict({"obs": obs})[0]
-            if fw == "torch":
-                q_values_new = cql_model.get_q_values(
-                    model_out, torch.from_numpy(actions_new)
-                )
-            else:
-                q_values_new = cql_model.get_q_values(model_out, actions_new)
+        # Get policy and model.
+        pol = algo.get_policy()
+        cql_model = pol.model
 
-            if fw == "tf":
-                q_values_old, q_values_new = pol.get_session().run(
-                    [q_values_old, q_values_new]
-                )
+        # Example on how to do evaluation on the trained Algorithm
+        # using the data from CQL's global replay buffer.
+        # Get a sample (MultiAgentBatch).
 
-            print(f"Q-val batch={q_values_old}")
-            print(f"Q-val policy={q_values_new}")
+        batch = algo.env_runner.input_reader.next()
+        multi_agent_batch = batch.as_multi_agent()
+        # All experiences have been buffered for `default_policy`
+        batch = multi_agent_batch.policy_batches["default_policy"]
 
-            if fw == "tf":
-                pol.get_session().__exit__(None, None, None)
+        obs = torch.from_numpy(batch["obs"])
 
-            algo.stop()
+        # Pass the observations through our model to get the
+        # features, which then to pass through the Q-head.
+        model_out, _ = cql_model({"obs": obs})
+        # The estimated Q-values from the (historic) actions in the batch.
+        q_values_old = cql_model.get_q_values(
+            model_out, torch.from_numpy(batch["actions"])
+        )
+
+        # The estimated Q-values for the new actions computed
+        # by our policy.
+        actions_new = pol.compute_actions_from_input_dict({"obs": obs})[0]
+        q_values_new = cql_model.get_q_values(model_out, torch.from_numpy(actions_new))
+
+        print(f"Q-val batch={q_values_old}")
+        print(f"Q-val policy={q_values_new}")
+
+        algo.stop()
 
 
 if __name__ == "__main__":

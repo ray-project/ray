@@ -24,6 +24,10 @@ from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.datasource.delta_sharing_datasource import (
+    DeltaSharingDatasource,
+)
+from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import ImageDatasource
 from ray.data._internal.datasource.json_datasource import JSONDatasource
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
@@ -64,7 +68,6 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     Connection,
     Datasource,
-    DeltaSharingDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
 )
@@ -80,7 +83,6 @@ from ray.data.datasource.file_based_datasource import (
     _wrap_arrow_serialization_workaround,
 )
 from ray.data.datasource.partitioning import Partitioning
-from ray.data.datasource.tfrecords_datasource import TFXReadOptions
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -96,7 +98,10 @@ if TYPE_CHECKING:
     import pyspark
     import tensorflow as tf
     import torch
+    from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
+
+    from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
 
 
 T = TypeVar("T")
@@ -418,7 +423,7 @@ def read_datasource(
     import uuid
 
     stats = DatasetStats(
-        metadata={"Read": [read_task.get_metadata() for read_task in read_tasks]},
+        metadata={"Read": [read_task.metadata for read_task in read_tasks]},
         parent=None,
         needs_stats_actor=True,
         stats_uuid=uuid.uuid4(),
@@ -752,6 +757,8 @@ def read_parquet(
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
     """
+    _validate_shuffle_arg(shuffle)
+
     if meta_provider is None:
         meta_provider = get_parquet_metadata_provider(override_num_blocks)
     arrow_parquet_args = _resolve_parquet_args(
@@ -1702,7 +1709,7 @@ def read_tfrecords(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
-    tfx_read_options: Optional[TFXReadOptions] = None,
+    tfx_read_options: Optional["TFXReadOptions"] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1844,7 +1851,9 @@ def read_tfrecords(
         and tfx_read
         and not tf_schema
     ):
-        from ray.data.datasource.tfrecords_datasource import _infer_schema_and_transform
+        from ray.data._internal.datasource.tfrecords_datasource import (
+            _infer_schema_and_transform,
+        )
 
         return _infer_schema_and_transform(ds)
 
@@ -2229,7 +2238,9 @@ def read_databricks_tables(
     Returns:
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
-    from ray.data.datasource.databricks_uc_datasource import DatabricksUCDatasource
+    from ray.data._internal.datasource.databricks_uc_datasource import (
+        DatabricksUCDatasource,
+    )
     from ray.util.spark.utils import get_spark_session, is_in_databricks_runtime
 
     def get_dbutils():
@@ -2829,7 +2840,9 @@ def from_huggingface(
     import datasets
     from aiohttp.client_exceptions import ClientResponseError
 
-    from ray.data.datasource.huggingface_datasource import HuggingFaceDatasource
+    from ray.data._internal.datasource.huggingface_datasource import (
+        HuggingFaceDatasource,
+    )
 
     if isinstance(dataset, (datasets.IterableDataset, datasets.Dataset)):
         try:
@@ -3001,12 +3014,97 @@ def from_torch(
 
 
 @PublicAPI
+def read_iceberg(
+    *,
+    table_identifier: str,
+    row_filter: Union[str, "BooleanExpression"] = None,
+    parallelism: int = -1,
+    selected_fields: Tuple[str, ...] = ("*",),
+    snapshot_id: Optional[int] = None,
+    scan_kwargs: Optional[Dict[str, str]] = None,
+    catalog_kwargs: Optional[Dict[str, str]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """Create a :class:`~ray.data.Dataset` from an Iceberg table.
+
+    The table to read from is specified using a fully qualified ``table_identifier``.
+    Using PyIceberg, any intended row filters, selection of specific fields and
+    picking of a particular snapshot ID are applied, and the files that satisfy
+    the query are distributed across Ray read tasks.
+    The number of output blocks is determined by ``override_num_blocks``
+    which can be requested from this interface or automatically chosen if
+    unspecified.
+
+    .. tip::
+
+        For more details on PyIceberg, see
+        - URI: https://py.iceberg.apache.org/
+
+    Examples:
+        >>> import ray
+        >>> from pyiceberg.expressions import EqualTo  #doctest: +SKIP
+        >>> ds = ray.data.read_iceberg( #doctest: +SKIP
+        ...     table_identifier="db_name.table_name",
+        ...     row_filter=EqualTo("column_name", "literal_value"),
+        ...     catalog_kwargs={"name": "default", "type": "glue"}
+        ... )
+
+    Args:
+        table_identifier: Fully qualified table identifier (``db_name.table_name``)
+        row_filter: A PyIceberg :class:`~pyiceberg.expressions.BooleanExpression`
+            to use to filter the data *prior* to reading
+        parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
+        selected_fields: Which columns from the data to read, passed directly to
+            PyIceberg's load functions. Should be an tuple of string column names.
+        snapshot_id: Optional snapshot ID for the Iceberg table, by default the latest
+            snapshot is used
+        scan_kwargs: Optional arguments to pass to PyIceberg's Table.scan() function
+             (e.g., case_sensitive, limit, etc.)
+        catalog_kwargs: Optional arguments to pass to PyIceberg's catalog.load_catalog()
+             function (e.g., name, type, etc.). For the function definition, see
+             `pyiceberg catalog
+             <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
+             #pyiceberg.catalog.load_catalog>`_.
+        ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources, and capped at the number of
+            physical files to be read. You shouldn't manually set this value in most
+            cases.
+
+    Returns:
+        :class:`~ray.data.Dataset` with rows from the Iceberg table.
+    """
+
+    # Setup the Datasource
+    datasource = IcebergDatasource(
+        table_identifier=table_identifier,
+        row_filter=row_filter,
+        selected_fields=selected_fields,
+        snapshot_id=snapshot_id,
+        scan_kwargs=scan_kwargs,
+        catalog_kwargs=catalog_kwargs,
+    )
+
+    dataset = read_datasource(
+        datasource=datasource,
+        parallelism=parallelism,
+        override_num_blocks=override_num_blocks,
+        ray_remote_args=ray_remote_args,
+    )
+
+    return dataset
+
+
+@PublicAPI
 def read_lance(
     uri: str,
     *,
     columns: Optional[List[str]] = None,
     filter: Optional[str] = None,
     storage_options: Optional[Dict[str, str]] = None,
+    scanner_options: Optional[Dict[str, Any]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -3033,6 +3131,10 @@ def read_lance(
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https\
                 ://lancedb.github.io/lance/read_and_write.html#object-store-configuration>`_.
+        scanner_options: Additional options to configure the `LanceDataset.scanner()`
+            method, such as `batch_size`. For more information,
+            see `LanceDB API doc <https://lancedb.github.io\
+            /lance/api/python/lance.html#lance.dataset.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -3051,6 +3153,7 @@ def read_lance(
         columns=columns,
         filter=filter,
         storage_options=storage_options,
+        scanner_options=scanner_options,
     )
 
     return read_datasource(
@@ -3142,3 +3245,11 @@ def _get_num_output_blocks(
     elif override_num_blocks is not None:
         parallelism = override_num_blocks
     return parallelism
+
+
+def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
+    if shuffle not in [None, "files"]:
+        raise ValueError(
+            f"Invalid value for 'shuffle': {shuffle}. "
+            "Valid values are None, 'files'."
+        )

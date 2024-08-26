@@ -14,13 +14,13 @@ from ray.rllib.algorithms.algorithm_config import (
     TorchCompileWhatToCompile,
 )
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleSpec,
+from ray.rllib.core.rl_module.multi_rl_module import (
+    MultiRLModule,
+    MultiRLModuleSpec,
 )
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
-    SingleAgentRLModuleSpec,
+    RLModuleSpec,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import (
     TorchCompileConfig,
@@ -208,10 +208,11 @@ class TorchLearner(Learner):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        # TODO (sven): Rename to `rl_module_spec`.
+        module_spec: RLModuleSpec,
         config_overrides: Optional[Dict] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
-    ) -> MultiAgentRLModuleSpec:
+    ) -> MultiRLModuleSpec:
         # Call super's add_module method.
         marl_spec = super().add_module(
             module_id=module_id,
@@ -250,13 +251,15 @@ class TorchLearner(Learner):
                         "torch compile."
                     )
                 self._module.add_module(
-                    module_id, TorchDDPRLModule(module), override=True
+                    module_id,
+                    TorchDDPRLModule(module, **self.config.torch_ddp_kwargs),
+                    override=True,
                 )
 
         return marl_spec
 
     @override(Learner)
-    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiAgentRLModuleSpec:
+    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiRLModuleSpec:
         marl_spec = super().remove_module(module_id, **kwargs)
 
         if self._torch_compile_complete_update:
@@ -329,7 +332,7 @@ class TorchLearner(Learner):
             if self._torch_compile_forward_train:
                 if isinstance(self._module, TorchRLModule):
                     self._module.compile(self._torch_compile_cfg)
-                elif isinstance(self._module, MultiAgentRLModule):
+                elif isinstance(self._module, MultiRLModule):
                     for module in self._module._rl_modules.values():
                         # Compile only TorchRLModules, e.g. we don't want to compile
                         # a RandomRLModule.
@@ -338,7 +341,7 @@ class TorchLearner(Learner):
                 else:
                     raise ValueError(
                         "Torch compile is only supported for TorchRLModule and "
-                        "MultiAgentRLModule."
+                        "MultiRLModule."
                     )
 
             self._possibly_compiled_update = self._uncompiled_update
@@ -396,25 +399,31 @@ class TorchLearner(Learner):
     def _make_modules_ddp_if_necessary(self) -> None:
         """Default logic for (maybe) making all Modules within self._module DDP."""
 
-        # If the module is a MultiAgentRLModule and nn.Module we can simply assume
+        # If the module is a MultiRLModule and nn.Module we can simply assume
         # all the submodules are registered. Otherwise, we need to loop through
         # each submodule and move it to the correct device.
         # TODO (Kourosh): This can result in missing modules if the user does not
-        #  register them in the MultiAgentRLModule. We should find a better way to
+        #  register them in the MultiRLModule. We should find a better way to
         #  handle this.
         if self._distributed:
             # Single agent module: Convert to `TorchDDPRLModule`.
             if isinstance(self._module, TorchRLModule):
-                self._module = TorchDDPRLModule(self._module)
+                self._module = TorchDDPRLModule(
+                    self._module, **self.config.torch_ddp_kwargs
+                )
             # Multi agent module: Convert each submodule to `TorchDDPRLModule`.
             else:
-                assert isinstance(self._module, MultiAgentRLModule)
+                assert isinstance(self._module, MultiRLModule)
                 for key in self._module.keys():
                     sub_module = self._module[key]
                     if isinstance(sub_module, TorchRLModule):
                         # Wrap and override the module ID key in self._module.
                         self._module.add_module(
-                            key, TorchDDPRLModule(sub_module), override=True
+                            key,
+                            TorchDDPRLModule(
+                                sub_module, **self.config.torch_ddp_kwargs
+                            ),
+                            override=True,
                         )
 
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
@@ -440,12 +449,12 @@ class TorchLearner(Learner):
                 )
 
     @override(Learner)
-    def _make_module(self) -> MultiAgentRLModule:
+    def _make_module(self) -> MultiRLModule:
         module = super()._make_module()
         self._map_module_to_device(module)
         return module
 
-    def _map_module_to_device(self, module: MultiAgentRLModule) -> None:
+    def _map_module_to_device(self, module: MultiRLModule) -> None:
         """Moves the module to the correct device."""
         if isinstance(module, torch.nn.Module):
             module.to(self._device)

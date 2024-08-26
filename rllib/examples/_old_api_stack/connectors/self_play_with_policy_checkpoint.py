@@ -64,7 +64,7 @@ class AddPolicyCallback(DefaultCallbacks):
         algorithm.add_policy(
             policy_id=OPPONENT_POLICY_ID,
             policy=policy,
-            evaluation_workers=True,
+            add_to_eval_env_runners=True,
         )
 
 
