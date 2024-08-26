@@ -16,7 +16,7 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # For how async API are implemented, see src/ray/gcs/gcs_client/python_callbacks.h
 from asyncio import Future
-from typing import List, Literal
+from typing import List, Literal, Union
 from libcpp.utility cimport move
 import concurrent.futures
 from ray.includes.common cimport (
@@ -335,10 +335,10 @@ cdef class NewGcsClient:
 
     def async_get_all_node_info(
         self,
-        filter_node_id: NodeID | None,
-         filter_state: Literal["ALIVE"] | Literal["DEAD"] | None,
-         filter_node_name: str | None,
-          limit: int | None,
+        filter_node_id: Optional[NodeID],
+        filter_state: Union[Literal["ALIVE"], Literal["DEAD"], None],
+        filter_node_name: Optional[str],
+        limit: Optional[int],
         timeout: Optional[float] = None
     ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
         cdef:
@@ -347,7 +347,7 @@ cdef class NewGcsClient:
             CNodeID c_filter_node_id
             int64_t c_filter_state_int
             optional[CGcsNodeState] c_filter_state
-            c_string c_filter_node_name = filter_node_name.encode() if filter_node_name is not None else b""
+            c_string c_filter_node_name
             int64_t c_limit = limit if limit is not None else -1
 
         if filter_node_id is not None:
@@ -361,6 +361,8 @@ cdef class NewGcsClient:
             py_enum_int = int(GcsNodeInfo.GcsNodeState.Value(filter_state.upper()))
             c_filter_state_int = <int64_t>py_enum_int
             c_filter_state = <CGcsNodeState>c_filter_state_int
+        if filter_node_name is not None:
+            c_filter_node_name = filter_node_name.encode()
 
         with nogil:
             check_status_timeout_as_rpc_error(

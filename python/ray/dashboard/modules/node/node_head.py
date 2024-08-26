@@ -4,7 +4,7 @@ import logging
 import os
 import time
 from itertools import chain
-from typing import Dict, Literal
+from typing import Dict, Literal, Optional, Union
 
 import aiohttp.web
 import grpc
@@ -110,11 +110,11 @@ class GetAllNodeInfoFromNewGcsClient:
 
     async def __call__(
         self,
-        filter_node_id: NodeID,
-        filter_state: Literal["ALIVE"] | Literal["DEAD"] | None,
-        filter_node_name: str | None,
-        limit,
-        timeout,
+        filter_node_id: Optional[NodeID],
+        filter_state: Union[Literal["ALIVE"], Literal["DEAD"], None],
+        filter_node_name: Optional[str],
+        limit: Optional[int],
+        timeout: Optional[float],
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
         return await self.gcs_aio_client.get_all_node_info(
             filter_node_id, filter_state, filter_node_name, limit, timeout
@@ -130,11 +130,11 @@ class GetAllNodeInfoFromGrpc:
 
     async def __call__(
         self,
-        filter_node_id: NodeID,
-        filter_state: Literal["ALIVE"] | Literal["DEAD"] | None,
-        filter_node_name: str | None,
-        limit,
-        timeout,
+        filter_node_id: Optional[NodeID],
+        filter_state: Union[Literal["ALIVE"], Literal["DEAD"], None],
+        filter_node_name: Optional[str],
+        limit: Optional[int],
+        timeout: Optional[float],
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
         filters = gcs_service_pb2.GetAllNodeInfoRequest.Filters()
         if filter_node_id is not None:
