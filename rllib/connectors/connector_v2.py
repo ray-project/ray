@@ -186,7 +186,11 @@ class ConnectorV2(Checkpointable, abc.ABC):
             return self.recompute_observation_space_from_input_spaces()
 
     @OverrideToImplementCustomLogic
-    def recompute_output_action_space(self) -> gym.Space:
+    def recompute_output_action_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
         """Re-computes a new (output) action space based on the input space.
 
         This method should be overridden by users to make sure a ConnectorPipelineV2
