@@ -27,8 +27,6 @@ class DataSource:
     agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
     nodes = Dict()
-    # {node id hex(str): hostname(str)}
-    node_id_to_hostname = Dict()
     # {node id hex(str): worker list}
     node_workers = Dict()
     # {node id hex(str): {actor id hex(str): actor table data}}
@@ -50,7 +48,6 @@ class DataOrganizer:
         # we do not needs to purge them:
         #   * agents
         #   * nodes
-        #   * node_id_to_hostname
         alive_nodes = {
             node_id
             for node_id, node_info in DataSource.nodes.items()
@@ -71,7 +68,8 @@ class DataOrganizer:
         for node_id in list(DataSource.nodes.keys()):
             workers = await cls.get_node_workers(node_id)
             for worker in workers:
-                for stats in worker.get("coreWorkerStats", []):
+                stats = worker.get("coreWorkerStats", {})
+                if stats:
                     worker_id = stats["workerId"]
                     core_worker_stats[worker_id] = stats
             node_workers[node_id] = workers
@@ -91,14 +89,14 @@ class DataOrganizer:
         for core_worker_stats in node_stats.get("coreWorkersStats", []):
             pid = core_worker_stats["pid"]
             pids_on_node.add(pid)
-            pid_to_worker_stats.setdefault(pid, []).append(core_worker_stats)
+            pid_to_worker_stats[pid] = core_worker_stats
             pid_to_language[pid] = core_worker_stats["language"]
             pid_to_job_id[pid] = core_worker_stats["jobId"]
 
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]
-            worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, [])
+            worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, {})
             worker["language"] = pid_to_language.get(
                 pid, dashboard_consts.DEFAULT_LANGUAGE
             )
@@ -155,13 +153,6 @@ class DataOrganizer:
     async def get_all_node_summary(cls):
         return [
             await DataOrganizer.get_node_info(node_id, get_summary=True)
-            for node_id in DataSource.nodes.keys()
-        ]
-
-    @classmethod
-    async def get_all_node_details(cls):
-        return [
-            await DataOrganizer.get_node_info(node_id)
             for node_id in DataSource.nodes.keys()
         ]
 

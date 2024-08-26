@@ -251,7 +251,9 @@ class TorchLearner(Learner):
                         "torch compile."
                     )
                 self._module.add_module(
-                    module_id, TorchDDPRLModule(module), override=True
+                    module_id,
+                    TorchDDPRLModule(module, **self.config.torch_ddp_kwargs),
+                    override=True,
                 )
 
         return marl_spec
@@ -406,7 +408,9 @@ class TorchLearner(Learner):
         if self._distributed:
             # Single agent module: Convert to `TorchDDPRLModule`.
             if isinstance(self._module, TorchRLModule):
-                self._module = TorchDDPRLModule(self._module)
+                self._module = TorchDDPRLModule(
+                    self._module, **self.config.torch_ddp_kwargs
+                )
             # Multi agent module: Convert each submodule to `TorchDDPRLModule`.
             else:
                 assert isinstance(self._module, MultiRLModule)
@@ -415,7 +419,11 @@ class TorchLearner(Learner):
                     if isinstance(sub_module, TorchRLModule):
                         # Wrap and override the module ID key in self._module.
                         self._module.add_module(
-                            key, TorchDDPRLModule(sub_module), override=True
+                            key,
+                            TorchDDPRLModule(
+                                sub_module, **self.config.torch_ddp_kwargs
+                            ),
+                            override=True,
                         )
 
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
