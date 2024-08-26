@@ -366,6 +366,7 @@ void RedisStoreClient::RedisScanner::ScanKeysAndValues(
                                                 std::move(redis_key),
                                                 std::move(match_pattern),
                                                 std::move(callback));
+  scanner->self_ref_ = scanner;
   scanner->Scan();
 }
 
@@ -376,6 +377,8 @@ void RedisStoreClient::RedisScanner::Scan() {
   absl::MutexLock lock(&mutex_);
   if (!cursor_.has_value()) {
     callback_(std::move(results_));
+    self_ref_.reset();
+    return;
   }
 
   size_t batch_count = RayConfig::instance().maximum_gcs_storage_operation_batch_size();
@@ -392,9 +395,9 @@ void RedisStoreClient::RedisScanner::Scan() {
   auto primary_context = redis_client_->GetPrimaryContext();
   primary_context->RunArgvAsync(
       command.ToRedisArgs(),
-      [this,
-       // keeps myself from being destructed waiting for async.
-       shared_this = shared_from_this()](const std::shared_ptr<CallbackReply> &reply) {
+      // self_ref to keep the scanner alive until the callback is called, even if it
+      // releases its self_ref in Scan().
+      [this, self_ref = self_ref_](const std::shared_ptr<CallbackReply> &reply) {
         OnScanCallback(reply);
       });
 }

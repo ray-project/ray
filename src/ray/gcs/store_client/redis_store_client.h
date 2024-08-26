@@ -150,7 +150,7 @@ class RedisStoreClient : public StoreClient {
   /// The scan is not locked with other operations. It's not guaranteed to be consistent
   /// with other operations. It's batched by
   /// RAY_maximum_gcs_storage_operation_batch_size.
-  class RedisScanner : std::enable_shared_from_this<RedisScanner> {
+  class RedisScanner {
    private:
     // We want a private ctor but can use make_shared.
     // See https://en.cppreference.com/w/cpp/memory/enable_shared_from_this
@@ -197,6 +197,9 @@ class RedisStoreClient : public StoreClient {
     std::shared_ptr<RedisClient> redis_client_;
 
     MapCallback<std::string, std::string> callback_;
+
+    // Holds a self-ref until the scan is done.
+    std::shared_ptr<RedisScanner> self_ref_;
   };
 
   // Push a request to the sending queue.
