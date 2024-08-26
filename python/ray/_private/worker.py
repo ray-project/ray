@@ -125,7 +125,40 @@ R = TypeVar("R")
 DAGNode = TypeVar("DAGNode")
 
 
-class RemoteFunctionNoArgs(Generic[R]):
+# Only used for type annotations as a placeholder
+Undefined: Any = object()
+
+
+# TypeVar for self-referential generics in `RemoteFunction[N]`.
+RF = TypeVar("RF", bound="HasOptions")
+
+
+class HasOptions(Protocol):
+    def options(
+        self: RF,
+        num_returns: Union[int, Literal["streaming"]] = Undefined,
+        num_cpus: Union[int, float] = Undefined,
+        num_gpus: Union[int, float] = Undefined,
+        resources: Dict[str, float] = Undefined,
+        accelerator_type: str = Undefined,
+        memory: Union[int, float] = Undefined,
+        max_calls: int = Undefined,
+        max_restarts: int = Undefined,
+        max_task_retries: int = Undefined,
+        max_retries: int = Undefined,
+        runtime_env: Dict[str, Any] = Undefined,
+        retry_exceptions: bool = Undefined,
+        scheduling_strategy: Union[
+            None,
+            Literal["DEFAULT"],
+            Literal["SPREAD"],
+            PlacementGroupSchedulingStrategy,
+        ] = Undefined,
+    ) -> RF:
+        ...
+
+
+class RemoteFunctionNoArgs(Generic[R], HasOptions):
     def __init__(self, function: Callable[[], R]) -> None:
         pass
 
@@ -140,7 +173,7 @@ class RemoteFunctionNoArgs(Generic[R]):
         ...
 
 
-class RemoteFunction0(Generic[R, T0]):
+class RemoteFunction0(Generic[R, T0], HasOptions):
     def __init__(self, function: Callable[[T0], R]) -> None:
         pass
 
@@ -157,7 +190,7 @@ class RemoteFunction0(Generic[R, T0]):
         ...
 
 
-class RemoteFunction1(Generic[R, T0, T1]):
+class RemoteFunction1(Generic[R, T0, T1], HasOptions):
     def __init__(self, function: Callable[[T0, T1], R]) -> None:
         pass
 
@@ -176,7 +209,7 @@ class RemoteFunction1(Generic[R, T0, T1]):
         ...
 
 
-class RemoteFunction2(Generic[R, T0, T1, T2]):
+class RemoteFunction2(Generic[R, T0, T1, T2], HasOptions):
     def __init__(self, function: Callable[[T0, T1, T2], R]) -> None:
         pass
 
@@ -197,7 +230,7 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
         ...
 
 
-class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
+class RemoteFunction3(Generic[R, T0, T1, T2, T3], HasOptions):
     def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
         pass
 
@@ -220,7 +253,7 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
         ...
 
 
-class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
+class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4], HasOptions):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4], R]) -> None:
         pass
 
@@ -245,7 +278,7 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
         ...
 
 
-class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
+class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5], HasOptions):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
         pass
 
@@ -272,7 +305,7 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
         ...
 
 
-class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
+class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6], HasOptions):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]) -> None:
         pass
 
@@ -301,7 +334,7 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
         ...
 
 
-class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
+class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7], HasOptions):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
         pass
 
@@ -332,7 +365,7 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
         ...
 
 
-class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
+class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8], HasOptions):
     def __init__(
         self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
     ) -> None:
@@ -367,7 +400,7 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
         ...
 
 
-class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
+class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], HasOptions):
     def __init__(
         self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
     ) -> None:
@@ -3141,10 +3174,6 @@ class RemoteDecorator(Protocol):
     @overload
     def __call__(self, __t: type) -> Any:
         ...
-
-
-# Only used for type annotations as a placeholder
-Undefined: Any = object()
 
 
 @overload
