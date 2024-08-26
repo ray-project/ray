@@ -8,10 +8,32 @@ from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class UnBatchToIndividualItems(ConnectorV2):
-    """Unbatches the given `data` back into the individual-batch-items format."""
+    """Unbatches the given `data` back into the individual-batch-items format.
+
+    Note: This is one of the default module-to-env ConnectorV2 pieces that
+    are added automatically by RLlib into every module-to-env connector pipeline,
+    unless `config.add_default_connectors_to_module_to_env_pipeline` is set to
+    False.
+
+    The default module-to-env connector pipeline is:
+    [
+        GetActions,
+        TensorToNumpy,
+        UnBatchToIndividualItems,
+        ModuleToAgentUnmapping,  # only in multi-agent setups!
+        RemoveSingleTsTimeRankFromBatch,
+
+        [0 or more user defined ConnectorV2 pieces],
+
+        NormalizeAndClipActions,
+        ListifyDataForVectorEnv,
+    ]
+    """
 
     @override(ConnectorV2)
     def __call__(

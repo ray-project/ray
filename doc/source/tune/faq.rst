@@ -450,7 +450,7 @@ your class trainable or to ``session.report()`` in your function trainable. The 
 The results are repeatedly serialized and written to disk, and this can take a long time.
 
 **Solution**: Use checkpoint by writing data to the trainable's current working directory instead. There are various ways
-to do that depending on whether you are using class or functional Trainable API. 
+to do that depending on whether you are using class or functional Trainable API.
 
 **You are training a large number of trials on a cluster, or you are saving huge checkpoints**
 

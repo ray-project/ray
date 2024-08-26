@@ -4,11 +4,7 @@ import ray
 import ray.rllib.algorithms.appo as appo
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
-from ray.rllib.utils.test_utils import (
-    check_compute_single_action,
-    check_train_results,
-    framework_iterator,
-)
+from ray.rllib.utils.test_utils import check_compute_single_action, check_train_results
 
 
 class TestAPPO(unittest.TestCase):
@@ -25,15 +21,14 @@ class TestAPPO(unittest.TestCase):
         config = appo.APPOConfig().env_runners(num_env_runners=1)
         num_iterations = 2
 
-        for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v1")
-            for i in range(num_iterations):
-                results = algo.train()
-                print(results)
-                check_train_results(results)
+        algo = config.build(env="CartPole-v1")
+        for i in range(num_iterations):
+            results = algo.train()
+            print(results)
+            check_train_results(results)
 
-            check_compute_single_action(algo)
-            algo.stop()
+        check_compute_single_action(algo)
+        algo.stop()
 
     def test_appo_compilation_use_kl_loss(self):
         """Test whether APPO can be built with kl_loss enabled."""
@@ -42,14 +37,13 @@ class TestAPPO(unittest.TestCase):
         )
         num_iterations = 2
 
-        for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v1")
-            for i in range(num_iterations):
-                results = algo.train()
-                check_train_results(results)
-                print(results)
-            check_compute_single_action(algo)
-            algo.stop()
+        algo = config.build(env="CartPole-v1")
+        for i in range(num_iterations):
+            results = algo.train()
+            check_train_results(results)
+            print(results)
+        check_compute_single_action(algo)
+        algo.stop()
 
     def test_appo_two_optimizers_two_lrs(self):
         # Not explicitly setting this should cause a warning, but not fail.
@@ -71,14 +65,13 @@ class TestAPPO(unittest.TestCase):
         num_iterations = 2
 
         # Only supported for tf so far.
-        for _ in framework_iterator(config, frameworks=("torch", "tf2", "tf")):
-            algo = config.build(env="CartPole-v1")
-            for i in range(num_iterations):
-                results = algo.train()
-                check_train_results(results)
-                print(results)
-            check_compute_single_action(algo)
-            algo.stop()
+        algo = config.build(env="CartPole-v1")
+        for i in range(num_iterations):
+            results = algo.train()
+            check_train_results(results)
+            print(results)
+        check_compute_single_action(algo)
+        algo.stop()
 
     def test_appo_entropy_coeff_schedule(self):
         # Initial lr, doesn't really matter because of the schedule below.
@@ -122,19 +115,18 @@ class TestAPPO(unittest.TestCase):
                 "entropy_coeff"
             ]
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            algo = config.build(env="CartPole-v1")
+        algo = config.build(env="CartPole-v1")
 
-            coeff = _step_n_times(algo, 10)  # 200 timesteps
-            # Should be close to the starting coeff of 0.01.
-            self.assertLessEqual(coeff, 0.01)
-            self.assertGreaterEqual(coeff, 0.001)
+        coeff = _step_n_times(algo, 10)  # 200 timesteps
+        # Should be close to the starting coeff of 0.01.
+        self.assertLessEqual(coeff, 0.01)
+        self.assertGreaterEqual(coeff, 0.001)
 
-            coeff = _step_n_times(algo, 20)  # 400 timesteps
-            # Should have annealed to the final coeff of 0.0001.
-            self.assertLessEqual(coeff, 0.001)
+        coeff = _step_n_times(algo, 20)  # 400 timesteps
+        # Should have annealed to the final coeff of 0.0001.
+        self.assertLessEqual(coeff, 0.001)
 
-            algo.stop()
+        algo.stop()
 
     def test_appo_learning_rate_schedule(self):
         config = (
@@ -173,15 +165,14 @@ class TestAPPO(unittest.TestCase):
                 "cur_lr"
             ]
 
-        for _ in framework_iterator(config):
-            algo = config.build(env="CartPole-v1")
+        algo = config.build(env="CartPole-v1")
 
-            lr1 = _step_n_times(algo, 10)  # 200 timesteps
-            lr2 = _step_n_times(algo, 10)  # 200 timesteps
+        lr1 = _step_n_times(algo, 10)  # 200 timesteps
+        lr2 = _step_n_times(algo, 10)  # 200 timesteps
 
-            self.assertGreater(lr1, lr2)
+        self.assertGreater(lr1, lr2)
 
-            algo.stop()
+        algo.stop()
 
     def test_appo_model_variables(self):
         config = (
@@ -202,13 +193,12 @@ class TestAPPO(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, frameworks=["tf2", "torch"]):
-            algo = config.build(env="CartPole-v1")
-            state = algo.get_policy(DEFAULT_POLICY_ID).get_state()
-            # Weights and Biases for the single hidden layer, the output layer
-            # of the policy and value networks. So 6 tensors in total.
-            # We should not get the tensors from the target model here.
-            self.assertEqual(len(state["weights"]), 6)
+        algo = config.build(env="CartPole-v1")
+        state = algo.get_policy(DEFAULT_POLICY_ID).get_state()
+        # Weights and Biases for the single hidden layer, the output layer
+        # of the policy and value networks. So 6 tensors in total.
+        # We should not get the tensors from the target model here.
+        self.assertEqual(len(state["weights"]), 6)
 
 
 if __name__ == "__main__":

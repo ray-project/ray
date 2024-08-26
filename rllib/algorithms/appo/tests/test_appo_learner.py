@@ -32,6 +32,7 @@ FAKE_BATCH = {
     Columns.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
+    Columns.LOSS_MASK: np.ones(shape=(frag_length,)),
 }
 
 

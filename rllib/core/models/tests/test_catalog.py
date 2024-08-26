@@ -44,7 +44,6 @@ from ray.rllib.models.torch.torch_distributions import (
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
-from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 _, tf, _ = try_import_tf()
@@ -320,63 +319,54 @@ class TestCatalog(unittest.TestCase):
                 model_config_dict=MODEL_DEFAULTS.copy(),
             )
 
-            for framework in framework_iterator(frameworks=["tf2", "torch"]):
+            dist_cls = catalog._get_dist_cls_from_action_space(
+                action_space=action_space,
+                framework="torch",
+            )
 
-                if framework == "tf2":
-                    framework = "tf2"
-
-                dist_cls = catalog._get_dist_cls_from_action_space(
+            # Check if we can query the required input dimensions
+            expected_cls = expected_cls_dict["torch"]
+            if (
+                expected_cls is TorchMultiDistribution
+                or expected_cls is TfMultiDistribution
+            ):
+                # For these special cases, we need to create partials of the
+                # expected classes so that we can calculate the required inputs
+                expected_cls = _multi_action_dist_partial_helper(
+                    catalog_cls=catalog,
                     action_space=action_space,
-                    framework=framework,
+                    framework="torch",
+                )
+            elif (
+                expected_cls is TorchMultiCategorical
+                or expected_cls is TfMultiCategorical
+            ):
+                # For these special cases, we need to create partials of the
+                # expected classes so that we can calculate the required inputs
+                expected_cls = _multi_categorical_dist_partial_helper(
+                    action_space=action_space, framework="torch"
                 )
 
-                # Check if we can query the required input dimensions
-                expected_cls = expected_cls_dict[framework]
-                if (
-                    expected_cls is TorchMultiDistribution
-                    or expected_cls is TfMultiDistribution
-                ):
-                    # For these special cases, we need to create partials of the
-                    # expected classes so that we can calculate the required inputs
-                    expected_cls = _multi_action_dist_partial_helper(
-                        catalog_cls=catalog,
-                        action_space=action_space,
-                        framework=framework,
-                    )
-                elif (
-                    expected_cls is TorchMultiCategorical
-                    or expected_cls is TfMultiCategorical
-                ):
-                    # For these special cases, we need to create partials of the
-                    # expected classes so that we can calculate the required inputs
-                    expected_cls = _multi_categorical_dist_partial_helper(
-                        action_space=action_space, framework=framework
-                    )
+            # Now that we have sorted out special cases, we can finally get the
+            # input_dim
+            input_dim = expected_cls.required_input_dim(action_space)
+            logits = np.ones((32, input_dim), dtype=np.float32)
+            logits = torch.from_numpy(logits)
+            # We don't need a model if we input tensors
+            dist = dist_cls.from_logits(logits=logits)
+            self.assertTrue(
+                isinstance(dist, expected_cls_dict["torch"]),
+                msg=f"Expected {expected_cls_dict['torch']}, " f"got {type(dist)}",
+            )
+            # Test if sampling works
+            actions = dist.sample()
+            # Test is logp works
+            dist.logp(actions)
 
-                # Now that we have sorted out special cases, we can finally get the
-                # input_dim
-                input_dim = expected_cls.required_input_dim(action_space)
-                logits = np.ones((32, input_dim), dtype=np.float32)
-                if framework == "torch":
-                    logits = torch.from_numpy(logits)
-                else:
-                    logits = tf.convert_to_tensor(logits)
-                # We don't need a model if we input tensors
-                dist = dist_cls.from_logits(logits=logits)
-                self.assertTrue(
-                    isinstance(dist, expected_cls_dict[framework]),
-                    msg=f"Expected {expected_cls_dict[framework]}, "
-                    f"got {type(dist)}",
-                )
-                # Test if sampling works
-                actions = dist.sample()
-                # Test is logp works
-                dist.logp(actions)
-
-                # For any array of actions in a possibly nested space, convert to
-                # numpy and pick the first one to check if it is in the action space.
-                action = tree.map_structure(lambda a: convert_to_numpy(a)[0], actions)
-                self.assertTrue(action_space.contains(action))
+            # For any array of actions in a possibly nested space, convert to
+            # numpy and pick the first one to check if it is in the action space.
+            action = tree.map_structure(lambda a: convert_to_numpy(a)[0], actions)
+            self.assertTrue(action_space.contains(action))
 
     def test_customize_catalog_from_algorithm_config(self):
         """Test if we can pass catalog to algorithm config and it ends up inside

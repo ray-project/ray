@@ -41,6 +41,24 @@ def set_progress_bars(enabled: bool) -> bool:
     )
 
 
+def extract_num_rows(result: Any) -> int:
+    """Extract the number of rows from a result object.
+
+    Args:
+        result: The result object from which to extract the number of rows.
+
+    Returns:
+        The number of rows, defaulting to 1 if it cannot be determined.
+    """
+    if hasattr(result, "num_rows"):
+        return result.num_rows
+    elif hasattr(result, "__len__"):
+        # For output is DataFrame,i.e. sort_sample
+        return len(result)
+    else:
+        return 1
+
+
 class ProgressBar:
     """Thin wrapper around tqdm to handle soft imports.
 
@@ -131,8 +149,14 @@ class ProgressBar:
     def block_until_complete(self, remaining: List[ObjectRef]) -> None:
         t = threading.current_thread()
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=False, timeout=0.1)
-            self.update(len(done))
+            done, remaining = ray.wait(
+                remaining, num_returns=len(remaining), fetch_local=False, timeout=0.1
+            )
+            total_rows_processed = 0
+            for _, result in zip(done, ray.get(done)):
+                num_rows = extract_num_rows(result)
+                total_rows_processed += num_rows
+            self.update(total_rows_processed)
 
             with _canceled_threads_lock:
                 if t in _canceled_threads:
@@ -148,12 +172,20 @@ class ProgressBar:
         # See https://github.com/ray-project/ray/issues/30375.
         fetch_local = True
         while remaining:
-            done, remaining = ray.wait(remaining, fetch_local=fetch_local, timeout=0.1)
+            done, remaining = ray.wait(
+                remaining,
+                num_returns=len(remaining),
+                fetch_local=fetch_local,
+                timeout=0.1,
+            )
             if fetch_local:
                 fetch_local = False
+            total_rows_processed = 0
             for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
-            self.update(len(done))
+                num_rows = extract_num_rows(result)
+                total_rows_processed += num_rows
+            self.update(total_rows_processed)
 
             with _canceled_threads_lock:
                 if t in _canceled_threads:
@@ -166,6 +198,10 @@ class ProgressBar:
         if self._bar and name != self._desc:
             self._desc = name
             self._bar.set_description(self._desc)
+
+    def refresh(self):
+        if self._bar:
+            self._bar.refresh()
 
     def update(self, i: int = 0, total: Optional[int] = None) -> None:
         if self._bar and (i != 0 or self._bar.total != total):
