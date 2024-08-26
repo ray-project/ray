@@ -162,6 +162,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEvents) {
 
   bool finished_register_node = false;
   node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
+  io_service_.poll();
 
   for (int i = 0; i < num_retry; i++) {
     Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
@@ -187,6 +188,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEvents) {
   rpc::UnregisterNodeReply unregister_reply;
   node_manager.HandleUnregisterNode(
       unregister_request, &unregister_reply, send_reply_callback);
+  io_service_.poll();
 
   vc.clear();
   for (int i = 0; i < num_retry; i++) {
