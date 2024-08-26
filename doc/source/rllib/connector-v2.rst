@@ -2,8 +2,6 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. include:: /_includes/rllib/new_api_stack_component.rst
-
 
 .. _connector-v2-docs:
 
@@ -229,7 +227,7 @@ Adding custom Learner connectors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To add custom Learner connector pieces, you need to call the
-:py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.learners` method of the algo config:
+:py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.learners` method of the algorithm config:
 
 .. testcode::
     :skipif: True
@@ -266,7 +264,7 @@ it into the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`. 
                 input_observation_space: gym.Space,
                 input_action_space: gym.Space,
             ) -> gym.Space:
-            # Based on the input observation space (), we return the output observation
+            # Based on the input observation space (), return the output observation
             # space. Implementing this method is crucial for the pipeline to know its output
             # spaces, which are an important piece of information to construct the succeeding
             # RLModule.
@@ -340,7 +338,7 @@ have already been through both env-to-module and module-to-env pipelines and mig
 Writing more complex custom ConnectorV2s
 ----------------------------------------
 
-Besides simply transforming one observation at a time in a preprocessor-style setup as shown above,
+Besides simply transforming one observation at a time in a preprocessor-style setup as shown preceding,
 here are four more examples showcasing more complex customizations of the different :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pipelines:
 
 * How to add rewards and or actions to the batch.
@@ -411,10 +409,10 @@ If you plug in this custom :py:class:`~ray.rllib.connectors.connector_v2.Connect
 your model should receive observations that have the most recent reward "attached" to it.
 
 Notice that in the example here, the transformed observations were written right back into the given episodes
-and not placed into the batch (`data`). This strategy of writing back those data that was pulled from episodes right back
+and not placed into the `batch`. This strategy of writing back those data that was pulled from episodes right back
 into the same episodes makes sure that from this point on, only the changed data is visible to all subsequent components (for example
-other ConnectorV2 pieces in the same pipeline or other ConnectorV2 pipelines). It does not touch the `data` batch
-(we returned `data` as-is). However, knowing that one of the subsequent :ref:`default env-to-module pieces <default-env-to-module-pipeline>`
+other ConnectorV2 pieces in the same pipeline or other ConnectorV2 pipelines). It does not touch the `batch`.
+However, knowing that one of the subsequent :ref:`default env-to-module pieces <default-env-to-module-pipeline>`
 is going to do exactly that, we can defer this task (of populating the batch with our changed data) to these default pieces.
 
 The next example, however, demonstrates a specific case - observation stacking - where this strategy fails and in
@@ -463,8 +461,8 @@ an already stacked previous observation. Instead, users should do the following:
             )
 
         def __call__(self, *, rl_module, batch, episodes, **kwargs):
-            # Assume that the input data is empty. Note that this may not be the case if you
-            # have other custom connector pieces before this one.
+            # Assume that the input `batch` is empty. Note that this may not be the case
+            # if you have other custom connector pieces before this one.
             assert not batch
 
             # Loop through all (single-agent) episodes.
