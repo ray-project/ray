@@ -49,17 +49,19 @@ using raylet_scheduling_policy::SchedulingResultStatus;
 
 using ScheduleMap = absl::flat_hash_map<BundleID, NodeID, pair_hash>;
 
+struct SchedulePgRequest {
+  /// The placement group to be scheduled.
+  std::shared_ptr<GcsPlacementGroup> placement_group;
+  // Called if the pg failed to schedule (prepare or commit).
+  PGSchedulingFailureCallback failure_callback;
+  // Called if the pg is successfully committed.
+  PGSchedulingSuccessfulCallback success_callback;
+};
+
 class GcsPlacementGroupSchedulerInterface {
  public:
   /// Schedule unplaced bundles of the specified placement group.
-  ///
-  /// \param placement_group The placement group to be scheduled.
-  /// \param failure_callback This function is called if the schedule is failed.
-  /// \param success_callback This function is called if the schedule is successful.
-  virtual void ScheduleUnplacedBundles(
-      std::shared_ptr<GcsPlacementGroup> placement_group,
-      PGSchedulingFailureCallback failure_callback,
-      PGSchedulingSuccessfulCallback success_callback) = 0;
+  virtual void ScheduleUnplacedBundles(const SchedulePgRequest &request) = 0;
 
   /// Get and remove bundles belong to the specified node.
   ///
@@ -101,10 +103,12 @@ class GcsPlacementGroupSchedulerInterface {
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param node_to_bundles Bundles used by each node.
+  /// \param prepared_pgs placement groups in state PREPARED. Need to be committed asap.
   virtual void Initialize(
       const absl::flat_hash_map<PlacementGroupID,
                                 std::vector<std::shared_ptr<BundleSpecification>>>
-          &group_to_bundles) = 0;
+          &group_to_bundles,
+      const std::vector<SchedulePgRequest> &prepared_pgs) = 0;
 
   virtual ~GcsPlacementGroupSchedulerInterface() {}
 };
@@ -128,6 +132,11 @@ class LeaseStatusTracker {
       const std::vector<std::shared_ptr<const BundleSpecification>> &unplaced_bundles,
       const ScheduleMap &schedule_map);
   ~LeaseStatusTracker() = default;
+
+  // Creates a LeaseStatusTracker that starts with PREPARED status.
+  static std::shared_ptr<LeaseStatusTracker> CreatePrepared(
+      std::shared_ptr<GcsPlacementGroup> placement_group,
+      const std::vector<std::shared_ptr<const BundleSpecification>> &unplaced_bundles);
 
   /// Indicate the tracker that prepare requests are sent to a specific node.
   ///
@@ -211,7 +220,7 @@ class LeaseStatusTracker {
   /// Return the leasing state.
   ///
   /// \return Leasing state.
-  const LeasingState GetLeasingState() const;
+  LeasingState GetLeasingState() const;
 
   /// Mark that this leasing is cancelled.
   void MarkPlacementGroupScheduleCancelled();
@@ -298,9 +307,7 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// \param placement_group to be scheduled.
   /// \param failure_callback This function is called if the schedule is failed.
   /// \param success_callback This function is called if the schedule is successful.
-  void ScheduleUnplacedBundles(std::shared_ptr<GcsPlacementGroup> placement_group,
-                               PGSchedulingFailureCallback failure_handler,
-                               PGSchedulingSuccessfulCallback success_handler) override;
+  void ScheduleUnplacedBundles(const SchedulePgRequest &request) override;
 
   /// Destroy the actual bundle resources or locked resources (for 2PC)
   /// on all nodes associated with this placement group.
@@ -346,10 +353,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param node_to_bundles Bundles used by each node.
+  /// \param prepared_pgs placement groups in state PREPARED. Need to be committed asap.
   void Initialize(
       const absl::flat_hash_map<PlacementGroupID,
                                 std::vector<std::shared_ptr<BundleSpecification>>>
-          &group_to_bundles) override;
+          &group_to_bundles,
+      const std::vector<SchedulePgRequest> &prepared_pgs) override;
 
   /// Add resources changed listener.
   void AddResourcesChangedListener(std::function<void()> listener);
