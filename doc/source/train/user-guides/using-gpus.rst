@@ -1,7 +1,7 @@
 .. _train_scaling_config:
 
 Configuring Scale and Resources
-==========================
+===============================
 Increasing the scale of a Ray Train training run is simple and can be done in a few lines of code.
 The main interface for this is the :class:`~ray.train.ScalingConfig`,
 which configures the number of workers and the resources they should use.
@@ -25,7 +25,7 @@ the :class:`~ray.train.ScalingConfig`:
 
 
 Using GPUs or HPUs
-----------
+------------------
 To use GPUs, pass ``use_gpu=True`` to the :class:`~ray.train.ScalingConfig`.
 This will request one GPU per training worker. In the example below, training will
 run on 8 GPUs (8 workers, each using one GPU).
