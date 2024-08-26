@@ -228,7 +228,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # Also, let module-to-env pipeline know that we had added a single timestep
         # time rank to the data (to remove it again).
         if not self._as_learner_connector:
-            for column, column_data in batch.copy().items():
+            for column in batch.keys():
                 self.foreach_batch_item_change_in_place(
                     batch=batch,
                     column=column,
@@ -250,11 +250,20 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             # Before adding STATE_IN to the `data`, zero-pad existing data and batch
             # into max_seq_len chunks.
             for column, column_data in batch.copy().items():
+                # Do not zero-pad INFOS column.
+                if column == Columns.INFOS:
+                    continue
                 for key, item_list in column_data.items():
-                    if column != Columns.INFOS:
-                        column_data[key] = split_and_zero_pad_list(
-                            item_list, T=self.max_seq_len
-                        )
+                    # Multi-agent case AND RLModule is not stateful -> Do not zero-pad
+                    # for this model.
+                    assert isinstance(key, tuple)
+                    if len(key) == 3:
+                        eps_id, aid, mid = key
+                        if not rl_module[mid].is_stateful():
+                            continue
+                    column_data[key] = split_and_zero_pad_list(
+                        item_list, T=self.max_seq_len
+                    )
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,

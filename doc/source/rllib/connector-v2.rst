@@ -490,9 +490,11 @@ an already stacked previous observation. Instead, users should do the following:
     .. code-block:: python
         from ray.rllib.connectors.common.frame_stacking import FrameStacking
 
+        # Framestacking on the EnvRunner side.
         config.env_runners(
             env_to_module_connector=lambda env: FrameStacking(num_frames=N),
         )
+        # Then again on the Learner side.
         config.training(
             learner_connector=lambda obs_space, act_space: FrameStacking(num_frames=N, as_learner_conector=True),
         )
