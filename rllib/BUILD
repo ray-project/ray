@@ -2516,6 +2516,25 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--algo=PPO"]
 )
 
+# Mixin heuristic actions (into evaluation/inference-only track).
+py_test(
+    name = "examples/actions/mixin_heuristic_actions_ppo",
+    main = "examples/actions/mixin_heuristic_actions.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/actions/mixin_heuristic_actions.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=500.0", "--framework=torch", "--algo=PPO"]
+)
+
+py_test(
+    name = "examples/actions/mixin_heuristic_actions_multi_agent_ppo",
+    main = "examples/actions/mixin_heuristic_actions.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/actions/mixin_heuristic_actions.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--stop-reward=1000.0", "--framework=torch", "--algo=PPO"]
+)
+
 # subdirectory: algorithms/
 
 #@OldAPIStack
