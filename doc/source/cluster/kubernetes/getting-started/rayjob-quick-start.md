@@ -164,8 +164,8 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ra
 ```
 
 The `ray-job.shutdown.yaml` defines a RayJob custom resource with `shutdownAfterJobFinishes: true` and `ttlSecondsAfterFinished: 10`.
-Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job is not deleted 
-because it contains the ray job logs and does not use any cluster resources once completed. In addition, the submitter job will always 
+Hence, the KubeRay operator deletes the RayCluster 10 seconds after the Ray job finishes. Note that the submitter job is not deleted
+because it contains the ray job logs and does not use any cluster resources once completed. In addition, the submitter job will always
 be cleaned up when the RayJob is eventually deleted due to its owner reference back to the RayJob.
 
 ## Step 8: Check the RayJob status
