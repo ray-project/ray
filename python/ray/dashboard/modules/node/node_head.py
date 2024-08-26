@@ -427,6 +427,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     logger.exception(reply)
                 else:
                     new_node_stats[node_id] = node_stats_to_dict(reply)
+            return new_node_stats
 
         new_node_stats = await get_or_create_event_loop().run_in_executor(
             self._dashboard_head._thread_pool_executor, postprocess, nodes, replies
