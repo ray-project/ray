@@ -2389,7 +2389,7 @@ pyx_library(
         ":python_callbacks",
         "//:core_worker_lib",
         "//:exported_internal",
-        "//:gcs_server_lib",
+        "//:redis_store_client",
         "//:global_state_accessor_lib",
         "//:raylet_lib",
         "//:redis_client",

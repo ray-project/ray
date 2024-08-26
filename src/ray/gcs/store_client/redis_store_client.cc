@@ -105,13 +105,18 @@ void RedisStoreClient::MGetValues(const std::string &table_name,
   }
 }
 
-RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
-    : external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
+RedisStoreClient::RedisStoreClient(const std::string &external_storage_namespace,
+                                   std::shared_ptr<RedisClient> redis_client)
+    : external_storage_namespace_(external_storage_namespace),
       redis_client_(std::move(redis_client)) {
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
 }
+
+RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
+    : RedisStoreClient(::RayConfig::instance().external_storage_namespace(),
+                       std::move(redis_client)) {}
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name,
                                   const std::string &key,
@@ -530,6 +535,90 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   }
   RAY_LOG(ERROR) << "Failed to delete keys with prefix " << key_prefix;
   return false;
+}
+
+// Internal KV protocol. This must be in sync with
+// `src/ray/gcs/gcs_server/store_client_kv.cc`. However we don't want a gcs_client
+// library depending on gcs_server right now, so we have to duplicate the code here.
+// TODO(ryw): move the whole protocol to a common place.
+namespace {
+
+constexpr std::string_view kNamespacePrefix = "@namespace_";
+constexpr std::string_view kNamespaceSep = ":";
+
+std::string MakeKey(const std::string &ns, const std::string &key) {
+  if (ns.empty()) {
+    return key;
+  }
+  return absl::StrCat(kNamespacePrefix, ns, kNamespaceSep, key);
+}
+
+}  // namespace
+
+bool RedisKVGetSync(const std::string &host,
+                    int32_t port,
+                    const std::string &password,
+                    bool use_ssl,
+                    const std::string &config,
+                    const std::string &kv_namespace,
+                    const std::string &key,
+                    std::string *data) {
+  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
+                                         ray::RayLog::ShutDownRayLog,
+                                         "ray_init",
+                                         ray::RayLogLevel::WARNING,
+                                         "" /* log_dir */);
+
+  RedisClientOptions options(host, port, password, use_ssl);
+
+  std::string config_list;
+  RAY_CHECK(absl::Base64Unescape(config, &config_list));
+  RayConfig::instance().initialize(config_list);
+
+  instrumented_io_context io_service;
+
+  auto thread = std::make_unique<std::thread>([&]() {
+    boost::asio::io_service::work work(io_service);
+    io_service.run();
+  });
+
+  Cleanup _([&]() {
+    io_service.stop();
+    thread->join();
+  });
+
+  auto redis_client = std::make_shared<RedisClient>(options);
+  auto status = redis_client->Connect(io_service);
+  RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
+
+  auto cli = std::make_unique<RedisStoreClient>(
+      RayConfig::instance().external_storage_namespace(), std::move(redis_client));
+
+  std::promise<bool> promise;
+  Status ret = cli->AsyncGet(
+      TablePrefix_Name(TablePrefix::KV),
+      MakeKey(kv_namespace, key),
+      [&promise, data, &key](Status status, std::optional<std::string> &&result) {
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Failed to retrieve the key " << key
+                        << " from persistent storage: " << status.ToString();
+          promise.set_value(false);
+          return;
+        }
+        if (!result.has_value()) {
+          RAY_LOG(INFO) << "The key " << key << " does not exist in persistent storage.";
+          promise.set_value(false);
+          return;
+        }
+        *data = std::move(result.value());
+        promise.set_value(true);
+      });
+  if (!ret.ok()) {
+    RAY_LOG(INFO) << "Failed to retrieve the key " << key
+                  << " from persistent storage: " << ret.ToString();
+    return false;
+  }
+  return promise.get_future().get();
 }
 
 }  // namespace gcs

@@ -23,7 +23,7 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
 from ray._private import storage
-from ray._raylet import GcsClient, get_session_key_from_storage
+from ray._raylet import GcsClient, get_kv_from_storage
 from ray._private.resource_spec import ResourceSpec
 from ray._private.services import serialize_config, get_address
 from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
@@ -377,12 +377,13 @@ class Node:
                 "The port must be a non-negative integer."
             )
 
-        return get_session_key_from_storage(
+        return get_kv_from_storage(
             redis_ip_address,
             int(redis_port),
             self._ray_params.redis_password,
             enable_redis_ssl,
             serialize_config(self._config),
+            ray_constants.KV_NAMESPACE_SESSION,
             b"session_name",
         )
 

@@ -160,7 +160,7 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-from ray.includes.global_state_accessor cimport RedisDelKeyPrefixSync, RedisGetKeySync
+from ray.includes.global_state_accessor cimport RedisDelKeyPrefixSync, RedisKVGetSync
 from ray.includes.optional cimport (
     optional, nullopt
 )
@@ -5180,7 +5180,7 @@ def del_key_prefix_from_storage(host, port, password, use_ssl, key_prefix):
     return RedisDelKeyPrefixSync(host, port, password, use_ssl, key_prefix)
 
 
-def get_session_key_from_storage(host, port, password, use_ssl, config, key):
+def get_kv_from_storage(host, port, password, use_ssl, config, kv_namespace, key):
     """
     Get the session key from the storage.
     Intended to be used for session_name only.
@@ -5190,12 +5190,13 @@ def get_session_key_from_storage(host, port, password, use_ssl, config, key):
         port: The task ID of the generator task.
         password: The redis password.
         use_ssl: Whether to use SSL.
-        config: The Ray config. Used to get storage namespace.
+        config: serailzed RayConfig. Used to override external_storage_config if any.
+        kv_namespace: kv namespace.
         key: The key to retrieve.
     """
     cdef:
         c_string data
-    result = RedisGetKeySync(host, port, password, use_ssl, config, key, &data)
+    result = RedisKVGetSync(host, port, password, use_ssl, config, kv_namespace, key, &data)
     if result:
         return data
     else:

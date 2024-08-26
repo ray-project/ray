@@ -105,6 +105,10 @@ inline std::ostream &operator<<(std::ostream &os, const RedisConcurrencyKey &key
 // [1] https://github.com/ray-project/ray/pull/35123#issuecomment-1546549046
 class RedisStoreClient : public StoreClient {
  public:
+  explicit RedisStoreClient(const std::string &external_storage_namespace,
+                            std::shared_ptr<RedisClient> redis_client);
+
+  // Conveinence ctor with RayConfig::instance().external_storage_namespace().
   explicit RedisStoreClient(std::shared_ptr<RedisClient> redis_client);
 
   Status AsyncPut(const std::string &table_name,
@@ -264,6 +268,16 @@ bool RedisDelKeyPrefixSync(const std::string &host,
                            const std::string &password,
                            bool use_ssl,
                            const std::string &key_prefix);
+
+// Helper function used by Python to get a key from redis.
+bool RedisKVGetSync(const std::string &host,
+                    int32_t port,
+                    const std::string &password,
+                    bool use_ssl,
+                    const std::string &config,
+                    const std::string &kv_namespace,
+                    const std::string &key,
+                    std::string *data);
 
 }  // namespace gcs
 
