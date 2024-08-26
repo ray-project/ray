@@ -200,6 +200,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
+        optional[int] GetActorState(const CActorID &actor_id)
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes, const
                                                    CObjectID &outer_object_id,
                                                    c_bool add_local_ref)
