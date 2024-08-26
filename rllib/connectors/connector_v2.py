@@ -200,6 +200,14 @@ class ConnectorV2(Checkpointable, abc.ABC):
         If this ConnectorV2 does not change the action space in any way, leave
         this parent method implementation untouched.
 
+        Args:
+            input_observation_space: The input observation space (either coming from the
+                environment if `self` is the first connector piece in the pipeline or
+                from the previous connector piece in the pipeline).
+            input_action_space: The input action space (either coming from the
+                environment if `self is the first connector piece in the pipeline or
+                from the previous connector piece in the pipeline).
+
         Returns:
             The new action space (after data has passed through this ConenctorV2
             piece).
