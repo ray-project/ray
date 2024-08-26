@@ -665,27 +665,21 @@ class BackendExecutor:
             from ray.train._internal.state.schema import (
                 MAX_ERROR_STACK_TRACE_LENGTH,
                 RunStatusEnum,
-                TrainRunError,
             )
 
             if errored:
                 run_status = RunStatusEnum.ERRORED
-                status_detail = "Terminated due to an error in the training function."
-                truncated_stack_trace = stack_trace[-MAX_ERROR_STACK_TRACE_LENGTH:]
-                run_error = TrainRunError(
-                    failed_rank=failed_rank, stack_trace=truncated_stack_trace
-                )
+                status_detail = f"Rank {failed_rank} worker raised an error: \n"
+                status_detail += stack_trace[-MAX_ERROR_STACK_TRACE_LENGTH:]
             else:
                 run_status = RunStatusEnum.FINISHED
                 status_detail = ""
-                run_error = None
 
             self.state_manager.end_train_run(
                 run_id=self._trial_info.run_id,
                 run_status=run_status,
                 status_detail=status_detail,
                 end_time_ms=int(time.time() * 1000),
-                run_error=run_error,
             )
 
     def get_with_failure_handling(self, remote_values):

@@ -50,7 +50,6 @@ RUN_INFO_JSON_SAMPLE = """{
     "run_status": "RUNNING",
     "status_detail": "",
     "end_time_ms": null,
-    "run_error": null,
     "workers": [
         {
         "actor_id": "3d86c25634a71832dac32c8802000000",
@@ -303,9 +302,9 @@ def test_train_run_status(ray_start_gpu_cluster, raise_error):
 
     def check_run_error(failed_rank, error_message):
         run = get_train_run()
-        assert run.run_error
-        assert run.run_error.failed_rank == failed_rank
-        assert error_message in run.run_error.stack_trace
+        assert run.status_detail
+        assert f"Rank {failed_rank} worker raised an error" in run.status_detail
+        assert error_message in run.status_detail
 
     failed_rank = 0
     error_message = "User Application Error"
