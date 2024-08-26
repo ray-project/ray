@@ -88,6 +88,9 @@ int main(int argc, char *argv[]) {
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
+    // This GCS server process emits GCS standard events, and Actor export events
+    // so the various source types are passed to RayEventInit. The type of an
+    // event is determined by the schema of its event data.
     const std::vector<ray::SourceTypeVariant> source_types = {
         ray::rpc::Event_SourceType::Event_SourceType_GCS,
         ray::rpc::ExportEvent_SourceType_EXPORT_ACTOR};
