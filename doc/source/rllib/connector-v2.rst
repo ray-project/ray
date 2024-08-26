@@ -178,6 +178,10 @@ It's discussed further below :ref:`how users can customize the behavior of the L
 Customizing ConnectorV2 Pipelines
 =================================
 
+
+Configuring custom ConnectorV2 pieces in the AlgorithmConfig
+------------------------------------------------------------
+
 Any of the three pipeline types (:ref:`env-to-module <env-to-module-pipeline>`,
 :ref:`module-to-env <module-to-env-pipeline>`, and :ref:`learner <learner-pipeline>`) can be customized by users through providing a
 connector builder function through their :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`. That function should return a single
@@ -266,16 +270,12 @@ it into the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`. 
 
     class OneHot(ObservationPreprocessor):
         # Converts int observations (Discrete) into one-hot tensors (Box).
-        def recompute_output_observation_space(
-                self,
-                input_observation_space: gym.Space,
-                input_action_space: gym.Space,
-            ) -> gym.Space:
+        def recompute_output_observation_space(self, in_obs_space, in_act_space):
             # Based on the input observation space (), return the output observation
             # space. Implementing this method is crucial for the pipeline to know its output
             # spaces, which are an important piece of information to construct the succeeding
             # RLModule.
-            return gym.spaces.Box(0.0, 1.0, (input_observation_space.n,), np.float32)
+            return gym.spaces.Box(0.0, 1.0, (in_obs_space.n,), np.float32)
 
         def preprocess(self, observation):
             # Convert an input observation (int) into a one-hot (float) tensor.
@@ -312,8 +312,8 @@ example `FrozenLake-v1 <https://gymnasium.farama.org/environments/toy_text/froze
     print(algo.train())
 
 
-Understanding ConnectorV2 Pipelines
------------------------------------
+ConnectorV2 pipelines in more detail
+------------------------------------
 
 Before diving into more complex and more powerful customization options of the different
 pipeline types (and walking through more examples), the generic inner workings of a
@@ -436,7 +436,7 @@ achieve this, too, by subclassing `ConnectorV2` and overriding the `__call__` me
 
 However, in this case, the implementation shouldn't write back the stacked observations into the episode
 (as updated observation), because doing so would make the next call to the same ConnectorV2 piece to look back onto
-an already stacked previous observation. Instead, users should do the following:
+an already stacked previous observation. Instead, users should manipulate the `batch` directly, as in this example:
 
 
 .. testcode::
@@ -444,15 +444,12 @@ an already stacked previous observation. Instead, users should do the following:
     import gymnasium as gym
     import numpy as np
     from ray.rllib.connectors.connector_v2 import ConnectorV2
+    from ray.rllib.core.columns import Columns
 
 
     class StackLast10Observations(ConnectorV2):
 
-        def recompute_output_observation_space(
-            self,
-            input_observation_space: gym.Space,
-            input_action_space: gym.Space,
-        ) -> gym.Space:
+        def recompute_output_observation_space(self, in_obs_space, in_act_space):
             # Assume the input observation space is a Box of shape (N,).
             assert (
                 isinstance(input_observation_space, gym.spaces.Box)
@@ -475,23 +472,38 @@ an already stacked previous observation. Instead, users should do the following:
 
             # Loop through all (single-agent) episodes.
             for single_agent_episode in self.single_agent_episode_iterator(episodes):
-                # Get the 2 most recent observations from the episodes.
-                last_2_obs = single_agent_episode.get_observations(
+                # Get the 10 most recent observations from the episodes.
+                last_10_obs = single_agent_episode.get_observations(
                     indices=[-10, -9, -8, -7, -6, -5, -4, -3, -2, -1], fill=0.0
                 )
                 # Concatenate the two observations.
-                new_obs = np.concatenate(last_2_obs, axis=0)
+                new_obs = np.concatenate(last_10_obs, axis=0)
 
-                # Write the new observation back into the episode (so it's "locked-in" for
-                # good).
-                single_agent_episode.set_observations(at_indices=-1, new_data=new_obs)
+                # Add the new observation to the `batch` using the
+                # `ConnectorV2.add_batch_item()` utility.
+                self.add_batch_item(
+                    batch=batch,
+                    column=Columns.OBS,
+                    item_to_add=new_obs,
+                    single_agent_episode=single_agent_episode,
+                )
 
-            # Return (unchanged) batch.
+                # Note that we do not write the stacked observations back into the episode
+                # as this would interfere with the next call of this same connector (it
+                # would try to stack already stacked observations and thus produce a shape error).
+
+            # Return batch (with stacked observations).
             return batch
 
+
+Now since the returned `batch` in the above env-to-module piece is discarded after the model forward pass
+(and not stored in the episodes), we have to make sure to perform the framestacking again on the Learner
+side of things.
+
+
 .. tip::
-    There is already an off-the-shelf ConnectorV2 piece available for users, which performs the task of
-    stacking the last `N` observations in the env-to-module and Learner pipelines:
+    There are already off-the-shelf ConnectorV2 pieces available to users. These perform the task of
+    stacking the last `N` observations in both the env-to-module and Learner pipelines:
 
     .. code-block:: python
 
@@ -508,13 +520,14 @@ an already stacked previous observation. Instead, users should do the following:
 
 
 
-TODO 2 examples:
-- env-to-module pipeline: add 10 most recent observations to batch (instead of the default behavior of only the most recent one).
-    - Explain that this can be either done by framestacking and directly writing back the stacked obs into the episode
-    - Or by also plugging in a Learner connector that performs the same step again on the Learner pipeline (saves space/traffic)
-- What about other columns? Add previous reward to the most recent observation.
 
 Point to more examples in the `examples/connectors` folder.
 
 TODO: Write an extra page on multi-agent specific cases.
 
+Debugging ConnectorV2 Pipelines
+===============================
+
+.. TODO (sven): Write a debugging RLlib page or update
+
+The best way to debug your custom ConnectorV2 pipelines is to
