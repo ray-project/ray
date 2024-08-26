@@ -3,6 +3,8 @@
 .. include:: /_includes/rllib/new_api_stack.rst
 
 
+.. TODO (sven): Write an extra page on multi-agent specific cases.
+
 .. _connector-v2-docs:
 
 
@@ -285,8 +287,8 @@ it into the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`. 
             return new_obs
 
 
-Now that the preprocessor is written, you can plug it into your AlgorithmConfig object and run an experiment
-with a Discrete observation env (observations are integers), for
+Now that the preprocessor is written, you can plug it into your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
+object and run an experiment with a Discrete observation env (observations are integers), for
 example `FrozenLake-v1 <https://gymnasium.farama.org/environments/toy_text/frozen_lake/>`__.
 
 
@@ -351,7 +353,6 @@ here are four more examples showcasing more complex customizations of the differ
 * How to add rewards and or actions to the batch.
 * How to stack the N most recent observations.
 * How to manipulate the action logits coming from the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
-* How to write a stateful ConnectorV2:py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece.
 
 
 Adding past rewards to the Model's input
@@ -523,11 +524,16 @@ side of things.
 
 Point to more examples in the `examples/connectors` folder.
 
-TODO: Write an extra page on multi-agent specific cases.
-
 Debugging ConnectorV2 Pipelines
 ===============================
 
-.. TODO (sven): Write a debugging RLlib page or update
+.. TODO (sven): Move the following to the "how to contribute to RLlib" page and rename that page "how to develop, debug and contribute to RLlib?"
 
-The best way to debug your custom ConnectorV2 pipelines is to
+You can debug your custom ConnectorV2 pipelines (and any RLlib component in general) through the following simple steps:
+
+* Run without any remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` workers. After defining your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object, do: `config.env_runners(num_env_runners=0)`.
+* Run without any remote :py:class:`~ray.rllib.core.learner.learner.Learner` workers. After defining your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object, do: `config.learners(num_learners=0)`.
+* Switch off Ray Tune, if applicable. After defining your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object, do: `algo = config.build()`, then `while True: algo.train()`.
+* Set a breakpoint in the ConnectorV2 piece (or any other RLlib component) you would like to debug and start the experiment script in your favorite IDE in debugging mode.
+
+.. figure:: images/debugging_rllib_in_ide.png
