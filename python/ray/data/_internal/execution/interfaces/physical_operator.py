@@ -183,6 +183,7 @@ class PhysicalOperator(Operator):
         self._target_max_block_size = target_max_block_size
         self._started = False
         self._in_task_submission_backpressure = False
+        self._in_task_output_backpressure = False
         self._metrics = OpRuntimeMetrics(self)
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
@@ -420,6 +421,32 @@ class PhysicalOperator(Operator):
 
         This method is called by the executor to decide how to allocate processors
         between different operators.
+        """
+        return ExecutionResources(0, 0, 0)
+
+    def running_processor_usage(self) -> ExecutionResources:
+        """Returns the estimated running CPU and GPU usage of this operator, excluding
+        object store memory.
+
+        This method is called by the resource manager and the streaming
+        executor to display the number of currently running CPUs and GPUs in the
+        progress bar.
+
+        Note, this method returns `current_processor_usage() -
+        pending_processor_usage()` by default. Subclasses should only override
+        `pending_processor_usage()` if needed.
+        """
+        usage = self.current_processor_usage()
+        usage = usage.subtract(self.pending_processor_usage())
+        return usage
+
+    def pending_processor_usage(self) -> ExecutionResources:
+        """Returns the estimated pending CPU and GPU usage of this operator, excluding
+        object store memory.
+
+        This method is called by the resource manager and the streaming
+        executor to display the number of currently pending actors in the
+        progress bar.
         """
         return ExecutionResources(0, 0, 0)
 

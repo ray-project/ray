@@ -679,6 +679,18 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   }
 }
 
+std::optional<rpc::ActorTableData::ActorState> ActorTaskSubmitter::GetLocalActorState(
+    const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+
+  auto iter = client_queues_.find(actor_id);
+  if (iter == client_queues_.end()) {
+    return std::nullopt;
+  } else {
+    return iter->second.state;
+  }
+}
+
 bool ActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
 

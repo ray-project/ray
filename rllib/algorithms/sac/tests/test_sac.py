@@ -22,7 +22,6 @@ from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
     check_train_results,
-    framework_iterator,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray import tune
@@ -119,47 +118,44 @@ class TestSAC(unittest.TestCase):
             ),
         )
 
-        for fw in framework_iterator(config):
-            # Test for different env types (discrete w/ and w/o image, + cont).
-            for env in [
-                "random_dict_env",
-                "random_tuple_env",
-                "CartPole-v1",
-            ]:
-                print("Env={}".format(env))
-                config.environment(env)
-                # Test making the Q-model a custom one for CartPole, otherwise,
-                # use the default model.
-                config.q_model_config["custom_model"] = (
-                    "batch_norm{}".format("_torch" if fw == "torch" else "")
-                    if env == "CartPole-v1"
-                    else None
-                )
-                algo = config.build()
-                for i in range(num_iterations):
-                    results = algo.train()
-                    check_train_results(results)
-                    print(results)
-                check_compute_single_action(algo)
+        # Test for different env types (discrete w/ and w/o image, + cont).
+        for env in [
+            "random_dict_env",
+            "random_tuple_env",
+            "CartPole-v1",
+        ]:
+            print("Env={}".format(env))
+            config.environment(env)
+            # Test making the Q-model a custom one for CartPole, otherwise,
+            # use the default model.
+            config.q_model_config["custom_model"] = (
+                "batch_norm{}".format("_torch") if env == "CartPole-v1" else None
+            )
+            algo = config.build()
+            for i in range(num_iterations):
+                results = algo.train()
+                check_train_results(results)
+                print(results)
+            check_compute_single_action(algo)
 
-                # Test, whether the replay buffer is saved along with
-                # a checkpoint (no point in doing it for all frameworks since
-                # this is framework agnostic).
-                if fw == "tf" and env == "CartPole-v1":
-                    checkpoint = algo.save()
-                    new_algo = config.build()
-                    new_algo.restore(checkpoint)
-                    # Get some data from the buffer and compare.
-                    data = algo.local_replay_buffer.replay_buffers[
-                        "default_policy"
-                    ]._storage[: 42 + 42]
-                    new_data = new_algo.local_replay_buffer.replay_buffers[
-                        "default_policy"
-                    ]._storage[: 42 + 42]
-                    check(data, new_data)
-                    new_algo.stop()
+            # Test, whether the replay buffer is saved along with
+            # a checkpoint (no point in doing it for all frameworks since
+            # this is framework agnostic).
+            if env == "CartPole-v1":
+                checkpoint = algo.save()
+                new_algo = config.build()
+                new_algo.restore(checkpoint)
+                # Get some data from the buffer and compare.
+                data = algo.local_replay_buffer.replay_buffers[
+                    "default_policy"
+                ]._storage[: 42 + 42]
+                new_data = new_algo.local_replay_buffer.replay_buffers[
+                    "default_policy"
+                ]._storage[: 42 + 42]
+                check(data, new_data)
+                new_algo.stop()
 
-                algo.stop()
+            algo.stop()
 
     def test_sac_dict_obs_order(self):
         dict_space = Dict(
@@ -210,13 +206,12 @@ class TestSAC(unittest.TestCase):
         )
         num_iterations = 1
 
-        for _ in framework_iterator(config):
-            algo = config.build()
-            for _ in range(num_iterations):
-                results = algo.train()
-                check_train_results(results)
-                print(results)
-            check_compute_single_action(algo)
+        algo = config.build()
+        for _ in range(num_iterations):
+            results = algo.train()
+            check_train_results(results)
+            print(results)
+        check_compute_single_action(algo)
 
     def _get_batch_helper(self, obs_size, actions, batch_size):
         return SampleBatch(
