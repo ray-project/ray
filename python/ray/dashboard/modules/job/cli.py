@@ -305,7 +305,7 @@ def submit(
     if not no_wait:
         if int(sdk_version) > 0:
             cli_logger.print(
-                "Tailing logs until the job exits " "(disable with --no-wait):"
+                "Tailing logs until the job exits (disable with --no-wait):"
             )
             job_status = get_or_create_event_loop().run_until_complete(
                 _tail_logs(client, job_id)

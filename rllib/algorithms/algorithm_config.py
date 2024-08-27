@@ -312,6 +312,8 @@ class AlgorithmConfig(_Config):
             "aot_eager" if sys.platform == "darwin" else "onnxrt"
         )
         self.torch_compile_worker_dynamo_mode = None
+        # Default kwargs for `torch.nn.parallel.DistributedDataParallel`.
+        self.torch_ddp_kwargs = {}
 
         # `self.api_stack()`
         self.enable_rl_module_and_learner = False
@@ -1379,6 +1381,7 @@ class AlgorithmConfig(_Config):
         torch_compile_worker: Optional[bool] = NotProvided,
         torch_compile_worker_dynamo_backend: Optional[str] = NotProvided,
         torch_compile_worker_dynamo_mode: Optional[str] = NotProvided,
+        torch_ddp_kwargs: Optional[Dict[str, Any]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1418,6 +1421,12 @@ class AlgorithmConfig(_Config):
                 the workers.
             torch_compile_worker_dynamo_mode: The torch dynamo mode to use on the
                 workers.
+            torch_ddp_kwargs: The kwargs to pass into
+                `torch.nn.parallel.DistributedDataParallel` when using `num_learners
+                > 1`. This is specifically helpful when searching for unused parameters
+                that are not used in the backward pass. This can give hints for errors
+                in custom models where some parameters do not get touched in the
+                backward pass although they should.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1459,6 +1468,8 @@ class AlgorithmConfig(_Config):
             )
         if torch_compile_worker_dynamo_mode is not NotProvided:
             self.torch_compile_worker_dynamo_mode = torch_compile_worker_dynamo_mode
+        if torch_ddp_kwargs is not NotProvided:
+            self.torch_ddp_kwargs = torch_ddp_kwargs
 
         return self
 
