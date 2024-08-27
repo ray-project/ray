@@ -489,11 +489,11 @@ class Cleanup {
 };
 
 // Returns True if at least 1 key is deleted, False otherwise.
-bool RedisDelKeyPrefixSync(const std::string &host,
-                           int32_t port,
-                           const std::string &password,
-                           bool use_ssl,
-                           const std::string &key_prefix) {
+bool RedisDelExternalStorageNamespaceSync(const std::string &host,
+                                          int32_t port,
+                                          const std::string &password,
+                                          bool use_ssl,
+                                          const std::string &external_storage_namespace) {
   RedisClientOptions options(host, port, password, use_ssl);
   auto cli = std::make_unique<RedisClient>(options);
 
@@ -513,26 +513,38 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
 
   auto context = cli->GetPrimaryContext();
-  std::vector<std::string> cmd{"KEYS", RedisMatchPattern::Prefix(key_prefix).escaped};
+  // Delete all such keys by using empty table name.
+  RedisKey redis_key{external_storage_namespace, /*table_name=*/""};
+  std::vector<std::string> cmd{"KEYS",
+                               RedisMatchPattern::Prefix(redis_key.ToString()).escaped};
   auto reply = context->RunArgvSync(cmd);
   const auto &keys = reply->ReadAsStringArray();
   if (keys.empty()) {
-    RAY_LOG(INFO) << "No keys found for prefix " << key_prefix;
+    RAY_LOG(INFO) << "No keys found for external storage namespace "
+                  << external_storage_namespace;
     return true;
   }
-  auto del_cmd = std::vector<std::string>{"DEL"};
+  auto delete_one_sync = [context](const std::string &key) {
+    auto del_cmd = std::vector<std::string>{"DEL", key};
+    auto del_reply = context->RunArgvSync(del_cmd);
+    return del_reply->ReadAsInteger() > 0;
+  };
+  size_t num_deleted = 0;
+  size_t num_failed = 0;
   for (const auto &key : keys) {
-    if (key.has_value()) {
-      del_cmd.push_back(key.value());
+    if ((!key.has_value()) || key->empty()) {
+      continue;
+    }
+    if (delete_one_sync(*key)) {
+      num_deleted++;
+    } else {
+      num_failed++;
     }
   }
-  auto del_reply = context->RunArgvSync(del_cmd);
-  if (del_reply->ReadAsInteger() > 0) {
-    RAY_LOG(INFO) << "Successfully deleted keys with prefix " << key_prefix;
-    return true;
-  }
-  RAY_LOG(ERROR) << "Failed to delete keys with prefix " << key_prefix;
-  return false;
+  RAY_LOG(INFO) << "Finished deleting keys with external storage namespace "
+                << external_storage_namespace << ". Deleted table count: " << num_deleted
+                << ", Failed table count: " << num_failed;
+  return num_failed == 0;
 }
 
 }  // namespace gcs

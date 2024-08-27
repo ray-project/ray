@@ -160,7 +160,7 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-from ray.includes.global_state_accessor cimport RedisDelKeyPrefixSync, RedisGetKeySync
+from ray.includes.global_state_accessor cimport RedisDelExternalStorageNamespaceSync, RedisGetKeySync
 from ray.includes.optional cimport (
     optional, nullopt
 )
@@ -5176,8 +5176,8 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         cpython.Py_DECREF(user_callback)
 
 
-def del_key_prefix_from_storage(host, port, password, use_ssl, key_prefix):
-    return RedisDelKeyPrefixSync(host, port, password, use_ssl, key_prefix)
+def del_external_storage_namespace_from_storage(host, port, password, use_ssl, key_prefix):
+    return RedisDelExternalStorageNamespaceSync(host, port, password, use_ssl, key_prefix)
 
 
 def get_session_key_from_storage(host, port, password, use_ssl, config, key):
