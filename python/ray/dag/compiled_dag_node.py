@@ -112,7 +112,9 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                done = tasks[operation.local_idx].exec_operation(self, operation.type)
+                done = tasks[operation.exec_task_idx].exec_operation(
+                    self, operation.type
+                )
                 if done:
                     break
     except Exception:
@@ -1205,14 +1207,14 @@ class CompiledDAG:
             _DAGOperationGraphNode. For the same actor, the index of the
             outer list corresponds to the index of the ExecutableTask in
             the list of `executable_tasks` in `actor_to_executable_tasks`,
-            i.e. `local_idx`. In the inner list, the order of operations
+            i.e. `exec_task_idx`. In the inner list, the order of operations
             is READ, COMPUTE, and WRITE.
 
             Example:
             {
                 actor1: [
-                    [READ COMPUTE WRITE] # local_idx 0
-                    [READ COMPUTE WRITE] # local_idx 1
+                    [READ COMPUTE WRITE] # exec_task_idx 0
+                    [READ COMPUTE WRITE] # exec_task_idx 1
                 ]
             }
         """
@@ -1224,7 +1226,7 @@ class CompiledDAG:
         ] = defaultdict(list)
 
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
-            for local_idx, exec_task in enumerate(executable_tasks):
+            for exec_task_idx, exec_task in enumerate(executable_tasks):
                 # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
                 # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
                 dag_idx = exec_task.dag_idx
@@ -1233,19 +1235,19 @@ class CompiledDAG:
                 requires_nccl = dag_node.type_hint.requires_nccl()
 
                 read_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(local_idx, _DAGNodeOperationType.READ),
+                    _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.READ),
                     dag_idx,
                     actor_handle,
                     requires_nccl,
                 )
                 compute_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(local_idx, _DAGNodeOperationType.COMPUTE),
+                    _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.COMPUTE),
                     dag_idx,
                     actor_handle,
                     requires_nccl,
                 )
                 write_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(local_idx, _DAGNodeOperationType.WRITE),
+                    _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.WRITE),
                     dag_idx,
                     actor_handle,
                     requires_nccl,
@@ -1255,7 +1257,9 @@ class CompiledDAG:
                 )
         return actor_to_operation_nodes
 
-    def _build_execution_schedule(self):
+    def _build_execution_schedule(
+        self,
+    ) -> Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]:
         """
         Generate an execution schedule for each actor. The schedule is a list of
         _DAGNodeOperation.
