@@ -314,6 +314,7 @@ class AlgorithmConfig(_Config):
         self.torch_compile_worker_dynamo_mode = None
         # Default kwargs for `torch.nn.parallel.DistributedDataParallel`.
         self.torch_ddp_kwargs = {}
+        self.torch_loss_scaling = False
 
         # `self.api_stack()`
         self.enable_rl_module_and_learner = False
@@ -1381,6 +1382,7 @@ class AlgorithmConfig(_Config):
         torch_compile_worker_dynamo_backend: Optional[str] = NotProvided,
         torch_compile_worker_dynamo_mode: Optional[str] = NotProvided,
         torch_ddp_kwargs: Optional[Dict[str, Any]] = NotProvided,
+        torch_loss_scaling: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1426,6 +1428,11 @@ class AlgorithmConfig(_Config):
                 that are not used in the backward pass. This can give hints for errors
                 in custom models where some parameters do not get touched in the
                 backward pass although they should.
+            torch_loss_scaling: Whether to scale the loss(es) computed on the
+                TorchLearner and then unscale again the computed gradients before
+                applying them. Note that this setting
+                only works on the new API stack, by doing
+                `config.api_stack(enable_rl_module_and_learner=True)`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1469,6 +1476,8 @@ class AlgorithmConfig(_Config):
             self.torch_compile_worker_dynamo_mode = torch_compile_worker_dynamo_mode
         if torch_ddp_kwargs is not NotProvided:
             self.torch_ddp_kwargs = torch_ddp_kwargs
+        if torch_loss_scaling is not NotProvided:
+            self.torch_loss_scaling = torch_loss_scaling
 
         return self
 
@@ -3158,6 +3167,13 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if _enable_rl_module_api != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
+                new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
+                error=True,
+            )
+
         if model_config_dict is not NotProvided:
             self._model_config_dict = model_config_dict
         if rl_module_spec is not NotProvided:
@@ -3173,12 +3189,6 @@ class AlgorithmConfig(_Config):
                 algorithm_config_overrides_per_module
             )
 
-        if _enable_rl_module_api != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
-                new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
-                error=False,
-            )
         return self
 
     def experimental(

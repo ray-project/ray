@@ -1,3 +1,4 @@
+from collections import defaultdict
 import logging
 from typing import (
     Any,
@@ -97,6 +98,10 @@ class TorchLearner(Learner):
                 torch_dynamo_mode=self.config.torch_compile_learner_dynamo_mode,
             )
 
+        # Loss scalers for mixed precision training. Map optimizer names to
+        # associated torch GradScaler objects.
+        self._amp_grad_scalers = defaultdict(lambda: torch.cuda.amp.GradScaler())
+
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
@@ -130,7 +135,7 @@ class TorchLearner(Learner):
         self.metrics.activate_tensor_mode()
 
         fwd_out = self.module.forward_train(batch)
-        loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
+        loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
 
         gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
@@ -149,7 +154,16 @@ class TorchLearner(Learner):
         for optim in self._optimizer_parameters:
             # `set_to_none=True` is a faster way to zero out the gradients.
             optim.zero_grad(set_to_none=True)
-        loss_per_module[ALL_MODULES].backward()
+
+        if self.config.torch_loss_scaling:
+            total_loss = sum(
+                self._amp_grad_scalers[mid].scale(loss)
+                for mid, loss in loss_per_module.items()
+            )
+        else:
+            total_loss = sum(loss_per_module.values())
+
+        total_loss.backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
         return grads
@@ -157,16 +171,27 @@ class TorchLearner(Learner):
     @override(Learner)
     def apply_gradients(self, gradients_dict: ParamDict) -> None:
         # Make sure the parameters do not carry gradients on their own.
-        for optim in self._optimizer_parameters:
-            optim.zero_grad(set_to_none=True)
+        #for optim in self._optimizer_parameters:
+        #   optim.zero_grad(set_to_none=True)
 
         # Set the gradient of the parameters.
         for pid, grad in gradients_dict.items():
             self._params[pid].grad = grad
 
         # For each optimizer call its step function.
-        for optim in self._optimizer_parameters:
-            optim.step()
+        for module_id, optimizer_names in self._module_optimizers.items():
+            for optimizer_name in optimizer_names:
+                optim = self.get_optimizer(module_id, optimizer_name)
+                # Unscale gradients, if applicable.
+                if self.config.torch_loss_scaling:
+                    self._amp_grad_scalers[module_id].step(optim)
+                else:
+                    optim.step()
+
+        # Reset the grad scalers, if applicable.
+        if self.config.torch_loss_scaling:
+            for scaler in self._amp_grad_scalers.values():
+                scaler.update()
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:

@@ -98,6 +98,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("CartPole-v1")
+        .framework(torch_loss_scaling=True)
         .env_runners(env_to_module_connector=lambda env: Float16Connector())
         .callbacks(Float16InitCallback)
         .training(lr=0.00001)
