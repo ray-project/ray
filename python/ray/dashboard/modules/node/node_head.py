@@ -4,7 +4,7 @@ import logging
 import os
 import time
 from itertools import chain
-from typing import Dict
+from typing import AsyncGenerator, Dict
 
 import aiohttp.web
 import grpc
@@ -15,6 +15,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import NodeID
 from ray._private import ray_constants
+from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
 from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
@@ -32,10 +33,7 @@ from ray.core.generated import (
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.node import node_consts
-from ray.dashboard.modules.node.node_consts import (
-    FREQUENT_UPDATE_TIMEOUT_SECONDS,
-    FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS,
-)
+from ray.dashboard.modules.node.node_consts import FREQUENT_UPDATE_TIMEOUT_SECONDS
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
@@ -138,8 +136,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self.get_all_node_info = None
         self._collect_memory_info = False
         DataSource.nodes.signal.append(self._update_stubs)
-        # Total number of node updates happened.
-        self._node_update_cnt = 0
         # The time where the module is started.
         self._module_start_time = time.time()
         # The time it takes until the head node is registered. None means
@@ -170,104 +166,90 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             "head_node_registration_time_s": self._head_node_registration_time_s,
             "registered_nodes": len(DataSource.nodes),
             "registered_agents": len(DataSource.agents),
-            "node_update_count": self._node_update_cnt,
             "module_lifetime_s": time.time() - self._module_start_time,
         }
 
-    async def _get_nodes(self):
-        """Read the client table.
-
-        Returns:
-            A dict of information about the nodes in the cluster.
+    async def _subscribe_nodes(self) -> AsyncGenerator[dict]:
         """
-        try:
-            nodes = await self.get_all_node_info(timeout=GCS_RPC_TIMEOUT_SECONDS)
-            return {
-                node_id.hex(): gcs_node_info_to_dict(node_info)
-                for node_id, node_info in nodes.items()
-            }
-        except Exception:
-            logger.exception("Failed to GetAllNodeInfo.")
-            raise
+        Yields the initial state of all nodes, then yields the updated state of nodes.
 
-    async def _update_nodes(self):
-        # TODO(fyrestone): Refactor code for updating actor / node / job.
-        # Subscribe actor channel.
+        It makes GetAllNodeInfo call only once after the subscription is done, to get
+        the initial state of the nodes.
+        """
+        gcs_addr = self._gcs_address
+        subscriber = GcsAioNodeInfoSubscriber(address=gcs_addr)
+        await subscriber.subscribe()
+
+        # Get all node info from GCS. For TOCTOU, it happens after the subscription.
+        all_node_info = await self.get_all_node_info(timeout=GCS_RPC_TIMEOUT_SECONDS)
+        for node_info in all_node_info.values():
+            yield gcs_node_info_to_dict(node_info)
+
         while True:
             try:
-                nodes = await self._get_nodes()
-
-                alive_node_ids = []
-                alive_node_infos = []
-                for node in nodes.values():
-                    node_id = node["nodeId"]
-                    if node["isHeadNode"] and not self._head_node_registration_time_s:
-                        self._head_node_registration_time_s = (
-                            time.time() - self._module_start_time
-                        )
-                        # Put head node ID in the internal KV to be read by JobAgent.
-                        # TODO(architkulkarni): Remove once State API exposes which
-                        # node is the head node.
-                        await self._gcs_aio_client.internal_kv_put(
-                            ray_constants.KV_HEAD_NODE_ID_KEY,
-                            node_id.encode(),
-                            overwrite=True,
-                            namespace=ray_constants.KV_NAMESPACE_JOB,
-                            timeout=GCS_RPC_TIMEOUT_SECONDS,
-                        )
-                    assert node["state"] in ["ALIVE", "DEAD"]
-                    if node["state"] == "ALIVE":
-                        alive_node_ids.append(node_id)
-                        alive_node_infos.append(node)
-
-                agents = dict(DataSource.agents)
-                for node_id in alive_node_ids:
-                    # Since the agent fate shares with a raylet,
-                    # the agent port will never change once it is discovered.
-                    if node_id not in agents:
-                        key = (
-                            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}"
-                            f"{node_id}"
-                        )
-                        agent_port = await self._gcs_aio_client.internal_kv_get(
-                            key.encode(),
-                            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                            timeout=GCS_RPC_TIMEOUT_SECONDS,
-                        )
-                        if agent_port:
-                            agents[node_id] = json.loads(agent_port)
-                for node_id in agents.keys() - set(alive_node_ids):
-                    agents.pop(node_id, None)
-
-                DataSource.agents.reset(agents)
-                DataSource.nodes.reset(nodes)
+                published = await subscriber.poll(batch_size=200)
+                for node_id, node_info in published:
+                    if node_id is not None:
+                        yield gcs_node_info_to_dict(node_info)
+                    # yield control to APIs
+                    await asyncio.sleep(0)
             except Exception:
-                logger.exception("Error updating nodes.")
-            finally:
-                self._node_update_cnt += 1
-                # _head_node_registration_time_s == None if head node is not
-                # registered.
-                head_node_not_registered = not self._head_node_registration_time_s
-                # Until the head node is registered, we update the
-                # node status more frequently.
-                # If the head node is not updated after 10 seconds, it just stops
-                # doing frequent update to avoid unexpected edge case.
+                logger.exception("Error updating nodes from subscriber.")
+
+    async def _update_node(self, node: dict):
+        node_id = node["nodeId"]  # hex
+        if node["isHeadNode"] and not self._head_node_registration_time_s:
+            self._head_node_registration_time_s = time.time() - self._module_start_time
+            # Put head node ID in the internal KV to be read by JobAgent.
+            # TODO(architkulkarni): Remove once State API exposes which
+            # node is the head node.
+            await self._gcs_aio_client.internal_kv_put(
+                ray_constants.KV_HEAD_NODE_ID_KEY,
+                node_id.encode(),
+                overwrite=True,
+                namespace=ray_constants.KV_NAMESPACE_JOB,
+                timeout=GCS_RPC_TIMEOUT_SECONDS,
+            )
+        assert node["state"] in ["ALIVE", "DEAD"]
+        is_alive = node["state"] == "ALIVE"
+        # prepare agents for alive node, and pop for dead node
+        if is_alive:
+            if node_id not in DataSource.agents:
+                key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" f"{node_id}"
+                agent_port = await self._gcs_aio_client.internal_kv_get(
+                    key.encode(),
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    timeout=GCS_RPC_TIMEOUT_SECONDS,
+                )
+                if agent_port:
+                    DataSource.agents[node_id] = json.loads(agent_port)
+        else:
+            # not alive
+            DataSource.agents.pop(node_id, None)
+
+    async def _update_nodes(self):
+        """
+        Subscribe to node updates and update the internal states. If the head node is
+        not registered after FREQUENT_UPDATE_TIMEOUT_SECONDS, it logs a warning once.
+        """
+        warning_shown = False
+        async for node in self._subscribe_nodes():
+            await self._update_node(node)
+            if not self._head_node_registration_time_s:
+                # head node is not registered yet
                 if (
-                    head_node_not_registered
-                    and self._node_update_cnt * FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS
-                    < FREQUENT_UPDATE_TIMEOUT_SECONDS
+                    not warning_shown
+                    and (time.time() - self._module_start_time)
+                    > FREQUENT_UPDATE_TIMEOUT_SECONDS
                 ):
-                    await asyncio.sleep(FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS)
-                else:
-                    if head_node_not_registered:
-                        logger.warning(
-                            "Head node is not registered even after "
-                            f"{FREQUENT_UPDATE_TIMEOUT_SECONDS} seconds. "
-                            "The API server might not work correctly. Please "
-                            "report a Github issue. Internal states :"
-                            f"{self.get_internal_states()}"
-                        )
-                    await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
+                    logger.warning(
+                        "Head node is not registered even after "
+                        f"{FREQUENT_UPDATE_TIMEOUT_SECONDS} seconds. "
+                        "The API server might not work correctly. Please "
+                        "report a Github issue. Internal states :"
+                        f"{self.get_internal_states()}"
+                    )
+                    warning_shown = True
 
     @routes.get("/internal/node_module")
     async def get_node_module_internal_state(self, req) -> aiohttp.web.Response:
