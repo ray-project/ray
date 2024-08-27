@@ -5,7 +5,7 @@ import os
 import time
 from collections import deque
 from itertools import chain
-from typing import AsyncGenerator, Dict
+from typing import AsyncGenerator, Dict, List
 
 import aiohttp.web
 import grpc
@@ -48,21 +48,6 @@ def gcs_node_info_to_dict(message):
     return dashboard_utils.message_to_dict(
         message, {"nodeId"}, always_print_fields_with_no_presence=True
     )
-
-
-def gcs_stats_to_dict(message):
-    decode_keys = {
-        "actorId",
-        "jobId",
-        "taskId",
-        "parentTaskId",
-        "sourceActorId",
-        "callerId",
-        "rayletId",
-        "workerId",
-        "placementGroupId",
-    }
-    return dashboard_utils.message_to_dict(message, decode_keys)
 
 
 def node_stats_to_dict(message):
@@ -153,7 +138,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
     async def _update_stubs(self, change):
         if change.old:
             node_id, node_info = change.old
-            self._stubs.pop(node_id)
+            self._stubs.pop(node_id, None)
         if change.new:
             # TODO(fyrestone): Handle exceptions.
             node_id, node_info = change.new
@@ -188,15 +173,28 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
         # Get all node info from GCS. For TOCTOU, it happens after the subscription.
         all_node_info = await self.get_all_node_info(timeout=GCS_RPC_TIMEOUT_SECONDS)
-        for node_info in all_node_info.values():
-            yield gcs_node_info_to_dict(node_info)
+
+        def convert(all_node_info) -> List[dict]:
+            return [
+                gcs_node_info_to_dict(node_info) for node_info in all_node_info.items()
+            ]
+
+        all_node_dict = await get_or_create_event_loop().run_in_executor(
+            self._dashboard_head._thread_pool_executor, convert, all_node_info
+        )
+        for node in all_node_dict:
+            yield node
 
         while True:
             try:
                 published = await subscriber.poll(batch_size=200)
                 for node_id, node_info in published:
                     if node_id is not None:
-                        yield gcs_node_info_to_dict(node_info)
+                        yield await get_or_create_event_loop().run_in_executor(
+                            self._dashboard_head._thread_pool_executor,
+                            gcs_node_info_to_dict,
+                            node_info,
+                        )
                     # yield control to APIs
                     await asyncio.sleep(0)
             except Exception:

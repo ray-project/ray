@@ -11,6 +11,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
+from ray._private.utils import get_or_create_event_loop
 from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.actor import actor_consts
@@ -142,6 +143,16 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 logger.info("Getting all actor info from GCS.")
 
                 actors = await self.get_all_actor_info(timeout=5)
+
+                def convert(actors) -> Dict[str, dict]:
+                    return {
+                        actor_id.hex(): actor_table_data_to_dict(actor_table_data)
+                        for actor_id, actor_table_data in actors.items()
+                    }
+
+                actor_dicts = await get_or_create_event_loop().run_in_executor(
+                    self._dashboard_head._thread_pool_executor, convert, actors
+                )
                 actor_dicts: Dict[str, dict] = {
                     actor_id.hex(): actor_table_data_to_dict(actor_table_data)
                     for actor_id, actor_table_data in actors.items()

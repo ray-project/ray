@@ -218,6 +218,7 @@ class DataOrganizer:
         result = {}
         for index, (actor_id, actor) in enumerate(actors.items()):
             result[actor_id] = await DataOrganizer._get_actor(actor)
+            logger.error(f"{actors}, {result}")
             # There can be thousands of actors including dead ones. Processing
             # them all can take many seconds, which blocks all other requests
             # to the dashboard. The ideal solution might be to implement

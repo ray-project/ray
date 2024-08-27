@@ -104,6 +104,7 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             assert detail["raylet"]["isHeadNode"] is True
             assert "raylet" in detail["cmdline"][0]
             assert len(detail["workers"]) >= 2
+            print(detail)
             assert len(detail["actors"]) == 2, detail["actors"]
 
             actor_worker_pids = set()
