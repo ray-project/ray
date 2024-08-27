@@ -436,7 +436,11 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    Status AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
+    Status AsyncGetAll(NodeID filter_node_id,
+                       std::optional<rpc::GcsNodeInfo::GcsNodeState> filter_state,
+                       std::optional<std::string> filter_node_name,
+                       int64_t limit,
+                       const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
                        int64_t timeout_ms) override {
       if (callback) {
         callback(Status::OK(), {});
