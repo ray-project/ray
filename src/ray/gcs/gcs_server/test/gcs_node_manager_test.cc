@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <chrono>
 #include <memory>
+#include <thread>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -25,6 +27,7 @@
 // clang-format on
 
 namespace ray {
+
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
@@ -41,6 +44,13 @@ class GcsNodeManagerTest : public ::testing::Test {
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
 };
+
+std::string GenerateLogDir() {
+  std::string log_dir_generate = std::string(5, ' ');
+  FillRandom(&log_dir_generate);
+  std::string log_dir = "event" + StringToHex(log_dir_generate);
+  return log_dir;
+}
 
 class GcsNodeManagerExportAPITest : public ::testing::Test {
  public:
@@ -59,12 +69,27 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    log_dir_ = "event_123";
+
+    RayConfig::instance().initialize(
+        R"(
+{
+  "enable_export_api_write": true
+}
+  )");
+    log_dir_ = GenerateLogDir();
+    const std::vector<ray::SourceTypeVariant> source_types = {
+        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
+    RayEventInit_(source_types,
+                  absl::flat_hash_map<std::string, std::string>(),
+                  log_dir_,
+                  "warning",
+                  false);
   }
 
   virtual ~GcsNodeManagerExportAPITest() {
     io_service_.stop();
     thread_io_service_->join();
+    EventManager::Instance().ClearReporters();
     std::filesystem::remove_all(log_dir_.c_str());
   }
 
@@ -133,23 +158,12 @@ TEST_F(GcsNodeManagerTest, TestListener) {
   }
 }
 
-TEST_F(GcsNodeManagerExportAPITest, TestExportEvents) {
-  // Test adding and removing node, and that export events are written
-  RayConfig::instance().initialize(
-      R"(
-{
-  "enable_export_api_write": true
-}
-  )");
-
-  const std::vector<ray::SourceTypeVariant> source_types = {
-      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
-  RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
+TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
+  // Test export event is written when a node is added with HandleRegisterNode
   gcs::GcsNodeManager node_manager(
       gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
-  std::vector<std::string> vc;
   auto node = Mocker::GenNodeInfo();
-  auto node_id = NodeID::FromBinary(node->node_id());
+
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
   rpc::RegisterNodeReply register_reply;
@@ -157,12 +171,34 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEvents) {
       [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
 
   node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
-  ASSERT_TRUE(io_service_.run_one() <= 1);
 
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
-  ASSERT_EQ((int)vc.size(), 1);
-  json event_data = json::parse(vc[0])["event_data"].get<json>();
-  ASSERT_EQ(event_data["state"], "ALIVE");
+  int num_retry = 5;
+  bool finished_register_node = false;
+  std::vector<std::string> vc;
+  for (int i = 0; i < num_retry; i++) {
+    Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
+    if ((int)vc.size() == 1) {
+      json event_data = json::parse(vc[0])["event_data"].get<json>();
+      ASSERT_EQ(event_data["state"], "ALIVE");
+      finished_register_node = true;
+      break;
+    } else {
+      // Sleep and retry
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      vc.clear();
+    }
+  }
+  ASSERT_TRUE(finished_register_node)
+      << "No export event with state ALIVE found after HandleRegisterNode.";
+}
+
+TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
+  // Test export event is written when a node is removed with HandleUnregisterNode
+  gcs::GcsNodeManager node_manager(
+      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = NodeID::FromBinary(node->node_id());
+  node_manager.AddNode(node);
 
   rpc::UnregisterNodeRequest unregister_request;
   unregister_request.set_node_id(node_id.Binary());
@@ -170,18 +206,34 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEvents) {
       rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
   unregister_request.mutable_node_death_info()->set_reason_message("mock reason message");
   rpc::UnregisterNodeReply unregister_reply;
+  auto send_reply_callback =
+      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+
   node_manager.HandleUnregisterNode(
       unregister_request, &unregister_reply, send_reply_callback);
-  ASSERT_TRUE(io_service_.run_one() <= 1);
 
+  int num_retry = 5;
+  bool finished_unregister_node = false;
+  std::vector<std::string> vc;
   vc.clear();
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
-  ASSERT_EQ((int)vc.size(), 2);
-  event_data = json::parse(vc[1])["event_data"].get<json>();
-  ASSERT_EQ(event_data["state"], "DEAD");
-  // Verify death cause for last node DEAD event
-  ASSERT_EQ(event_data["death_info"]["reason"], "UNEXPECTED_TERMINATION");
-  ASSERT_EQ(event_data["death_info"]["reason_message"], "mock reason message");
+  for (int i = 0; i < num_retry; i++) {
+    Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
+    if ((int)vc.size() == 1) {
+      json event_data = json::parse(vc[0])["event_data"].get<json>();
+      ASSERT_EQ(event_data["state"], "DEAD");
+      // Verify death cause for last node DEAD event
+      ASSERT_EQ(event_data["death_info"]["reason"], "UNEXPECTED_TERMINATION");
+      ASSERT_EQ(event_data["death_info"]["reason_message"], "mock reason message");
+      finished_unregister_node = true;
+      break;
+    } else {
+      // Sleep and retry
+      std::this_thread::sleep_for(std::chrono::seconds(1));
+      vc.clear();
+    }
+  }
+  ASSERT_TRUE(finished_unregister_node)
+      << "Expected DEAD export event not found after HandleUnregisterNode.";
 }
 
 }  // namespace ray
