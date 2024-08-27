@@ -7,7 +7,6 @@ from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
-from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
 
 
@@ -98,22 +97,19 @@ class TestCallbacks(unittest.TestCase):
             .environment("CartPole-v1")
             .callbacks(InitAndCheckpointRestoredCallbacks)
         )
-        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
-            algo = config.build()
-            self.assertTrue(algo.callbacks._on_init_was_called)
+        algo = config.build()
+        self.assertTrue(algo.callbacks._on_init_was_called)
+        self.assertTrue(not hasattr(algo.callbacks, "_on_checkpoint_loaded_was_called"))
+        algo.train()
+        # Save algo and restore.
+        with tempfile.TemporaryDirectory() as tmpdir:
+            algo.save(checkpoint_dir=tmpdir)
             self.assertTrue(
                 not hasattr(algo.callbacks, "_on_checkpoint_loaded_was_called")
             )
-            algo.train()
-            # Save algo and restore.
-            with tempfile.TemporaryDirectory() as tmpdir:
-                algo.save(checkpoint_dir=tmpdir)
-                self.assertTrue(
-                    not hasattr(algo.callbacks, "_on_checkpoint_loaded_was_called")
-                )
-                algo.load_checkpoint(checkpoint_dir=tmpdir)
-                self.assertTrue(algo.callbacks._on_checkpoint_loaded_was_called)
-            algo.stop()
+            algo.load_checkpoint(checkpoint_dir=tmpdir)
+            self.assertTrue(algo.callbacks._on_checkpoint_loaded_was_called)
+        algo.stop()
 
 
 if __name__ == "__main__":

@@ -531,6 +531,33 @@ Ray Data interoperates with distributed data processing frameworks like
             {'col1': 1, 'col2': '1'}
             {'col1': 2, 'col2': '2'}
 
+    .. tab-item:: Iceberg
+
+        To create a :class:`~ray.data.dataset.Dataset` from an `Iceberg Table
+        <https://iceberg.apache.org>`__,
+        call :func:`~ray.data.read_iceberg`. This function creates a ``Dataset`` backed by
+        the distributed files that underlie the Iceberg table.
+
+        ..
+
+        .. testcode::
+            :skipif: True
+
+            >>> import ray
+            >>> from pyiceberg.expressions import EqualTo
+            >>> ds = ray.data.read_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     row_filter=EqualTo("column_name", "literal_value"),
+            ...     catalog_kwargs={"name": "default", "type": "glue"}
+            ... )
+
+
+        .. testoutput::
+
+            {'col1': 0, 'col2': '0'}
+            {'col1': 1, 'col2': '1'}
+            {'col1': 2, 'col2': '2'}
+
     .. tab-item:: Modin
 
         To create a :class:`~ray.data.dataset.Dataset` from a Modin DataFrame, call

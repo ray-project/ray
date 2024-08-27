@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type, U
 
 import gymnasium as gym
 import numpy as np
+from packaging import version
 import tree  # pip install dm_tree
 
 import ray
@@ -41,7 +42,10 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import (
+    convert_to_torch_tensor,
+    TORCH_COMPILE_REQUIRED_VERSION,
+)
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     GradInfoDict,
@@ -520,6 +524,23 @@ class TorchPolicyV2(Policy):
                 framework=self.framework,
             )
 
+        # Compile the model, if requested by the user.
+        if self.config.get("torch_compile_learner"):
+            if (
+                torch is not None
+                and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
+            ):
+                raise ValueError("`torch.compile` is not supported for torch < 2.0.0!")
+
+            lw = "learner" if self.config.get("worker_index") else "worker"
+            model = torch.compile(
+                model,
+                backend=self.config.get(
+                    f"torch_compile_{lw}_dynamo_backend", "inductor"
+                ),
+                dynamic=False,
+                mode=self.config.get(f"torch_compile_{lw}_dynamo_mode"),
+            )
         return model, dist_class
 
     @override(Policy)

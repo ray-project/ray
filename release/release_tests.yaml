@@ -2790,6 +2790,42 @@
       cluster:
         cluster_compute: 8gpus_96cpus_gce.yaml
 
+
+# --------------------------
+# SAC
+# --------------------------
+- name: rllib_learning_tests_halfcheetah_sac_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: true
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 4gpus_64cpus.yaml
+
+  run:
+    timeout: 7200
+    script: python learning_tests/tuned_examples/sac/halfcheetah_sac.py --enable-new-api-stack --num-gpus=4 --num-env-runners=8 --stop-reward=1000.0 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 4gpus_64cpus_gce.yaml
+
+
 ########################
 # Core Nightly Tests
 ########################
@@ -4025,7 +4061,7 @@
     byod:
       type: gpu
       post_build_script: byod_install_mosaicml.sh
-    cluster_compute: single_node_benchmark_compute.yaml
+    cluster_compute: single_worker_node_0_head_node_benchmark_compute.yaml
 
   run:
     timeout: 1800
