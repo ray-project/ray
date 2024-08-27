@@ -250,6 +250,7 @@ cachetools==5.3.2
     #   google-auth
 certifi==2023.11.17
     # via
+    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   httpcore
     #   httpx
     #   kubernetes
@@ -371,7 +372,9 @@ cryptography==38.0.1
     #   sshpubkeys
     #   trustme
 cupy-cuda12x==13.1.0 ; sys_platform != "darwin"
-    # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    # via
+    #   -r /ray/ci/../python/requirements.txt
+    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
 cycler==0.12.1
     # via matplotlib
 cython==0.29.37
@@ -1619,6 +1622,8 @@ pycodestyle==2.7.0
     # via flake8
 pycparser==2.21
     # via cffi
+pycurl==7.45.3
+    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
 pydantic==2.5.0
     # via
     #   -r /ray/ci/../python/requirements.txt
