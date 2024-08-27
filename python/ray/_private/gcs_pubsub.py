@@ -284,14 +284,14 @@ class GcsAioNodeInfoSubscriber(_AioSubscriber):
     ):
         super().__init__(pubsub_pb2.GCS_NODE_INFO_CHANNEL, worker_id, address, channel)
 
-    async def poll(self, timeout=None) -> Tuple[bytes, str]:
+    async def poll(self, timeout=None, batch_size=100) -> Tuple[bytes, str]:
         """Polls for new resource usage message.
 
         Returns:
             A tuple of string reporter ID and resource usage json string.
         """
         await self._poll(timeout=timeout)
-        return self._pop_node_infos(self._queue)
+        return self._pop_node_infos(self._queue, batch_size=batch_size)
 
     @staticmethod
     def _pop_node_infos(queue, batch_size=100):

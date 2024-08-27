@@ -175,7 +175,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             "module_lifetime_s": time.time() - self._module_start_time,
         }
 
-    async def _subscribe_nodes(self) -> AsyncGenerator[dict]:
+    async def _subscribe_nodes(self) -> AsyncGenerator[dict, None]:
         """
         Yields the initial state of all nodes, then yields the updated state of nodes.
 
@@ -221,14 +221,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # prepare agents for alive node, and pop for dead node
         if is_alive:
             if node_id not in DataSource.agents:
-                key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}" f"{node_id}"
-                agent_port = await self._gcs_aio_client.internal_kv_get(
-                    key.encode(),
-                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=GCS_RPC_TIMEOUT_SECONDS,
-                )
-                if agent_port:
-                    DataSource.agents[node_id] = json.loads(agent_port)
+                asyncio.create_task(self._update_agent(node_id))
         else:
             # not alive
             DataSource.agents.pop(node_id, None)
@@ -236,6 +229,27 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             if len(self._dead_node_queue) > MAX_NODES_TO_CACHE:
                 DataSource.nodes.pop(self._dead_node_queue.popleft(), None)
         DataSource.nodes[node_id] = node
+
+    async def _update_agent(self, node_id):
+        """
+        Given a node, update the agent_port in DataSource.agents. Problem is it's not
+        present until agent.py starts, so we need to loop waiting for agent.py writes
+        its port to internal kv.
+        """
+        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}".encode()
+        while True:
+            agent_port = await self._gcs_aio_client.internal_kv_get(
+                key,
+                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                timeout=GCS_RPC_TIMEOUT_SECONDS,
+            )
+            if agent_port:
+                # Here we get the agent_port. But the node may be dead already. Only
+                # update DataSource.agents if the node is alive.
+                if DataSource.nodes.get(node_id, {}).get("state") == "ALIVE":
+                    DataSource.agents[node_id] = json.loads(agent_port)
+                break
+            await asyncio.sleep(1)
 
     async def _update_nodes(self):
         """
