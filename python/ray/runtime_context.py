@@ -73,7 +73,7 @@ class RuntimeContext(object):
                 this means that ray.init() was not called.
         """
         assert ray.is_initialized(), (
-            "Job ID is not available because " "Ray has not been initialized."
+            "Job ID is not available because Ray has not been initialized."
         )
         job_id = self.worker.current_job_id
         return job_id.hex()
@@ -106,7 +106,7 @@ class RuntimeContext(object):
                 this means that ray.init() was not called.
         """
         assert ray.is_initialized(), (
-            "Node ID is not available because " "Ray has not been initialized."
+            "Node ID is not available because Ray has not been initialized."
         )
         node_id = self.worker.current_node_id
         return node_id.hex()

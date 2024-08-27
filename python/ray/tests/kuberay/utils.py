@@ -26,7 +26,7 @@ RAY_PARENT = str(pathlib.Path(__file__).resolve().parents[5])
 
 RAYCLUSTERS_QUALIFIED = "rayclusters.ray.io"
 
-LOG_FORMAT = "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
+LOG_FORMAT = "[%(levelname)s %(asctime)s] %(filename)s: %(lineno)d  %(message)s"
 
 
 def switch_to_ray_parent_dir():
