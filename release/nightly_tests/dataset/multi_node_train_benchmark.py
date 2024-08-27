@@ -505,6 +505,21 @@ def split_input_files_per_worker(args):
     ]
 
 
+def get_s3fs_with_boto_creds():
+    import boto3
+    from pyarrow import fs
+
+    credentials = boto3.Session().get_credentials()
+
+    s3fs = fs.S3FileSystem(
+        access_key=credentials.access_key,
+        secret_key=credentials.secret_key,
+        session_token=credentials.token,
+        region="us-west-2",
+    )
+    return s3fs
+
+
 def get_torch_data_loader(worker_rank, batch_size, num_workers, transform=None):
     """Get PyTorch DataLoader for the specified training worker.
 
@@ -614,8 +629,10 @@ def benchmark_code(
                     field_names=["class"],
                     base_dir=args.data_root,
                 )
+                fs = get_s3fs_with_boto_creds()
                 ray_dataset = ray.data.read_images(
                     input_paths,
+                    filesystem=fs,
                     mode="RGB",
                     shuffle="files",
                     partitioning=partitioning,
