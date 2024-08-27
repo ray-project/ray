@@ -408,7 +408,7 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_cont
     ds = ray.data.range(size, override_num_blocks=size)
 
     def map_batches(batch):
-        # The range operator outputs many small batches,
+        # The range operator outputs many small batches.
         # Test that they will be accumulated to DEFAULT_BATCH_SIZE.
         assert len(batch["id"]) == DEFAULT_BATCH_SIZE
         return batch
