@@ -52,6 +52,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                 rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
           RAY_LOG(DEBUG) << message;
         } else {
+          stats::UnintentionalWorkerFailures.Record(1);
           RAY_LOG(WARNING)
               << message
               << ". Unintentional worker failures have been reported. If there "
@@ -81,7 +82,6 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                            << ", node id = " << node_id
                            << ", address = " << worker_address.ip_address();
           } else {
-            stats::UnintentionalWorkerFailures.Record(1);
             // Only publish worker_id and raylet_id in address as they are the only fields
             // used by sub clients.
             rpc::WorkerDeltaData worker_failure;
