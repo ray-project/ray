@@ -3868,7 +3868,8 @@ cdef class CoreWorker:
             unordered_map[CLineageReconstructionTask, uint64_t].iterator it
 
         with nogil:
-            tasks = CCoreWorkerProcess.GetCoreWorker().GetLocalLineageReconstructionTasks()
+            tasks = (CCoreWorkerProcess.GetCoreWorker().
+                    GetLocalLineageReconstructionTasks())
 
         result = []
         it = tasks.begin()
