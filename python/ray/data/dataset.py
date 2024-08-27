@@ -633,10 +633,10 @@ class Dataset:
         batch_format = _apply_batch_format(batch_format)
 
         min_rows_per_bundled_input = None
+        batch_size = _apply_batch_size(batch_size)
         if batch_size is not None and batch_size != "default":
             # Enable blocks bundling when batch_size is specified by caller.
             min_rows_per_bundled_input = batch_size
-        batch_size = _apply_batch_size(batch_size)
 
         if batch_format not in VALID_BATCH_FORMATS:
             raise ValueError(
