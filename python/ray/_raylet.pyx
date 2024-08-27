@@ -3869,7 +3869,7 @@ cdef class CoreWorker:
 
         with nogil:
             tasks = (CCoreWorkerProcess.GetCoreWorker().
-                    GetLocalLineageReconstructionTasks())
+                        GetLocalLineageReconstructionTasks())
 
         result = []
         it = tasks.begin()
