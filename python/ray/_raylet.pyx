@@ -5176,8 +5176,10 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         cpython.Py_DECREF(user_callback)
 
 
-def del_external_storage_namespace_from_storage(host, port, password, use_ssl, key_prefix):
-    return RedisDelExternalStorageNamespaceSync(host, port, password, use_ssl, key_prefix)
+def del_external_storage_namespace_from_storage(
+        host, port, password, use_ssl, key_prefix):
+    return RedisDelExternalStorageNamespaceSync(
+        host, port, password, use_ssl, key_prefix)
 
 
 def get_session_key_from_storage(host, port, password, use_ssl, config, key):
