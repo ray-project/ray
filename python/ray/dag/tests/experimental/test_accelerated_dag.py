@@ -93,6 +93,7 @@ class Actor:
         return x
 
     def get_events(self):
+        print(self._adag_events)
         return getattr(self, "_adag_events", [])
 
 
@@ -1427,22 +1428,33 @@ def test_payload_large(ray_start_cluster):
     compiled_dag.teardown()
 
 
-def test_event_profiling(ray_start_regular):
-    ray.init(include_dashboard=False)
+def test_event_profiling(monkeypatch):
+    monkeypatch.setenv("RAY_ADAG_ENABLE_PROFILING", "1")
+    ray.init()
+
     a = Actor.options(name="a").remote(0)
-    b = Actor.options(name="b").remote(10)
+    b = Actor.options(name="b").remote(0)
     with InputNode() as inp:
         x = a.inc.bind(inp)
-        y = b.inc.bind(x)
-        dag = MultiOutputNode([x, y])
+        y = b.inc.bind(inp)
+        z = b.inc.bind(y)
+        dag = MultiOutputNode([x, z])
     adag = dag.experimental_compile()
     ray.get(adag.execute(1))
 
     a_events = ray.get(a.get_events.remote())
     b_events = ray.get(b.get_events.remote())
 
-    assert a_events
-    assert b_events
+    # a: 1 x READ, 1 x COMPUTE, 1 x WRITE
+    assert len(a_events) == 3
+    # a: 2 x READ, 2 x COMPUTE, 2 x WRITE
+    assert len(b_events) == 6
+
+    for event in a_events + b_events:
+        assert event.actor_classname == "Actor"
+        assert event.actor_name in ["a", "b"]
+        assert event.method_name == "inc"
+        assert event.operation in ["READ", "COMPUTE", "WRITE"]
 
 
 class TestActorInputOutput:
