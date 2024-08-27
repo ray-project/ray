@@ -532,13 +532,14 @@ class TorchPolicyV2(Policy):
             ):
                 raise ValueError("`torch.compile` is not supported for torch < 2.0.0!")
 
+            lw = "learner" if self.config.get("worker_index") else "worker"
             model = torch.compile(
                 model,
                 backend=self.config.get(
-                    "torch_compile_learner_dynamo_backend", "inductor"
+                    f"torch_compile_{lw}_dynamo_backend", "inductor"
                 ),
                 dynamic=False,
-                mode=self.config.get("torch_compile_learner_dynamo_mode"),
+                mode=self.config.get(f"torch_compile_{lw}_dynamo_mode"),
             )
         return model, dist_class
 
