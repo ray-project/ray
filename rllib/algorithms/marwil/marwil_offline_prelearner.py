@@ -116,7 +116,7 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
         # bootstrapped vf) computations.
         batch_for_vf = self._learner_connector(
             rl_module=self._module,
-            data={},
+            batch={},
             episodes=episodes,
             shared_data={},
         )
