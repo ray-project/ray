@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import time
+from collections import deque
 from itertools import chain
 from typing import AsyncGenerator, Dict
 
@@ -38,6 +39,9 @@ from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
+
+# This is consistent with gcs_node_manager.cc
+MAX_NODES_TO_CACHE = int(os.environ.get("RAY_maximum_gcs_dead_node_cached_count", 1000))
 
 
 def gcs_node_info_to_dict(message):
@@ -141,6 +145,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
+        # Queue of dead nodes to be removed, up to MAX_NODES_TO_CACHE
+        self._dead_node_queue = deque()
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._gcs_address = dashboard_head.gcs_address
 
@@ -226,6 +232,10 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         else:
             # not alive
             DataSource.agents.pop(node_id, None)
+            self._dead_node_queue.append(node_id)
+            if len(self._dead_node_queue) > MAX_NODES_TO_CACHE:
+                DataSource.nodes.pop(self._dead_node_queue.popleft(), None)
+        DataSource.nodes[node_id] = node
 
     async def _update_nodes(self):
         """
