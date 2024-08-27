@@ -3,7 +3,6 @@ import dataclasses
 import json
 import logging
 import traceback
-from concurrent.futures import ThreadPoolExecutor
 from random import sample
 from typing import AsyncIterator, List, Optional
 
@@ -163,9 +162,6 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         super().__init__(dashboard_head)
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._job_info_client = None
-        self._upload_package_thread_pool_executor = ThreadPoolExecutor(
-            thread_name_prefix="job_head.upload_package"
-        )
 
         # It contains all `JobAgentSubmissionClient` that
         # `JobHead` has ever used, and will not be deleted
@@ -317,7 +313,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         try:
             data = await req.read()
             await get_or_create_event_loop().run_in_executor(
-                self._upload_package_thread_pool_executor,
+                self._dashboard_head._thread_pool_executor,
                 upload_package_to_gcs,
                 package_uri,
                 data,
