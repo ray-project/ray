@@ -629,6 +629,10 @@ def benchmark_code(
                     field_names=["class"],
                     base_dir=args.data_root,
                 )
+                # Note: We explicitly define a filesystem using boto credentials
+                # due to `AWS Error ACCESS_DENIED` issues with pyarrow.fs.
+                # See for more details and potential downsides:
+                # https://github.com/ray-project/ray/issues/47230#issuecomment-2313645254 # noqa: E501
                 fs = get_s3fs_with_boto_creds()
                 ray_dataset = ray.data.read_images(
                     input_paths,
