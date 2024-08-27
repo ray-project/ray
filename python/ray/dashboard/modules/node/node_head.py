@@ -16,6 +16,7 @@ import ray.dashboard.utils as dashboard_utils
 from ray import NodeID
 from ray._private import ray_constants
 from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     get_per_node_breakdown_as_dict,
@@ -395,31 +396,40 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             return_exceptions=True,
         )
 
-        for node_info, reply in zip(nodes, replies):
-            node_id, _ = node_info
-            if isinstance(reply, asyncio.CancelledError):
-                pass
-            elif isinstance(reply, grpc.RpcError):
-                if reply.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-                    logger.exception(
-                        f"Cannot reach the node, {node_id}, after timeout {TIMEOUT}. "
-                        "This node may have been overloaded, terminated, or "
-                        "the network is slow."
-                    )
-                elif reply.code() == grpc.StatusCode.UNAVAILABLE:
-                    logger.exception(
-                        f"Cannot reach the node, {node_id}. "
-                        "The node may have been terminated."
-                    )
-                else:
+        def postprocess(nodes, replies):
+            """Pure function reorganizing the data into {node_id: stats}."""
+            new_node_stats = {}
+            for node_info, reply in zip(nodes, replies):
+                node_id, _ = node_info
+                if isinstance(reply, asyncio.CancelledError):
+                    pass
+                elif isinstance(reply, grpc.RpcError):
+                    if reply.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                        logger.exception(
+                            f"Cannot reach the node, {node_id}, after timeout "
+                            f" {TIMEOUT}. This node may have been overloaded, "
+                            "terminated, or the network is slow."
+                        )
+                    elif reply.code() == grpc.StatusCode.UNAVAILABLE:
+                        logger.exception(
+                            f"Cannot reach the node, {node_id}. "
+                            "The node may have been terminated."
+                        )
+                    else:
+                        logger.exception(f"Error updating node stats of {node_id}.")
+                        logger.exception(reply)
+                elif isinstance(reply, Exception):
                     logger.exception(f"Error updating node stats of {node_id}.")
                     logger.exception(reply)
-            elif isinstance(reply, Exception):
-                logger.exception(f"Error updating node stats of {node_id}.")
-                logger.exception(reply)
-            else:
-                reply_dict = node_stats_to_dict(reply)
-                DataSource.node_stats[node_id] = reply_dict
+                else:
+                    new_node_stats[node_id] = node_stats_to_dict(reply)
+            return new_node_stats
+
+        new_node_stats = await get_or_create_event_loop().run_in_executor(
+            self._dashboard_head._thread_pool_executor, postprocess, nodes, replies
+        )
+        for node_id, new_stat in new_node_stats.items():
+            DataSource.node_stats[node_id] = new_stat
 
     async def run(self, server):
         self.get_all_node_info = GetAllNodeInfo(self._dashboard_head)
