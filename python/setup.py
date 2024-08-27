@@ -542,19 +542,19 @@ def build(build_python, build_java, build_cpp):
             env=dict(os.environ, CC="gcc"),
         )
 
-    # runtime env agent dependenceis
-    runtime_env_agent_pip_packages = ["aiohttp"]
-    subprocess.check_call(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "-q",
-            "--target=" + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
-        ]
-        + runtime_env_agent_pip_packages
-    )
+        # runtime env agent dependenceis
+        runtime_env_agent_pip_packages = ["aiohttp"]
+        subprocess.check_call(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-q",
+                "--target=" + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
+            ]
+            + runtime_env_agent_pip_packages
+        )
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
