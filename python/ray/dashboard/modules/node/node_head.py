@@ -243,12 +243,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
                 timeout=GCS_RPC_TIMEOUT_SECONDS,
             )
+            # The node may be dead already. Only update DataSource.agents if the node is
+            # still alive.
+            if DataSource.nodes.get(node_id, {}).get("state") != "ALIVE":
+                return
             if agent_port:
-                # Here we get the agent_port. But the node may be dead already. Only
-                # update DataSource.agents if the node is alive.
-                if DataSource.nodes.get(node_id, {}).get("state") == "ALIVE":
-                    DataSource.agents[node_id] = json.loads(agent_port)
-                break
+                DataSource.agents[node_id] = json.loads(agent_port)
+                return
             await asyncio.sleep(1)
 
     async def _update_nodes(self):
