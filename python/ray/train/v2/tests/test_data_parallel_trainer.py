@@ -167,19 +167,19 @@ def test_setup_working_directory(tmp_path, monkeypatch, env_disabled):
 
     def _check_same_working_directory():
         worker_working_dir = os.getcwd()
-        assert worker_working_dir == reference_working_dir
+        if env_disabled:
+            assert worker_working_dir != reference_working_dir
+        else:
+            assert worker_working_dir == reference_working_dir
 
     trainer = DataParallelTrainer(
         _check_same_working_directory,
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name=experiment_dir_name, storage_path=str(tmp_path)),
     )
-    result = trainer.fit()
 
-    if not env_disabled:
-        assert result.error is None
-    else:
-        assert isinstance(result.error, TrainingFailedError)
+    result = trainer.fit()
+    assert not result.error
 
 
 def test_datasets(restore_data_context):  # noqa: F811

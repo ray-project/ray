@@ -139,19 +139,12 @@ class DataParallelTrainer:
         self.scaling_config = scaling_config
         self.backend_config = backend_config or BackendConfig()
         self.run_config = run_config or RunConfig()
+        self.datasets = datasets or {}
+        self.data_config = dataset_config or DataConfig()
+
         if resume_from_checkpoint:
             logger.warning(RESUME_FROM_CHECKPOINT_DEPRECATION_WARNING)
         self.resume_from_checkpoint = resume_from_checkpoint
-
-        self.datasets = datasets or {}
-
-        dataset_config = dataset_config or DataConfig()
-        if not isinstance(dataset_config, DataConfig):
-            raise ValueError(
-                "`dataset_config` must be an instance of ray.train.DataConfig, "
-                f"was: {dataset_config}"
-            )
-        self.data_config = dataset_config
 
         # TODO: No support for below
         error_msg = "The '{}' argument is not supported yet."

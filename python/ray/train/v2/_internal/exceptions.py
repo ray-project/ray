@@ -94,15 +94,15 @@ class WorkerGroupStartupFailedError(RayTrainError):
     """
 
 
-class ControllerInitializationError(RayTrainError):
-    """Exception raised when the train driver fails to initialize from a snapshot.
+class CheckpointManagerInitializationError(RayTrainError):
+    """Exception raised when the checkpoint manager fails to initialize from a snapshot.
 
-    Example scenario:
-        1. The checkpoint manager snapshot version is not compatible with the current
-            version of Ray Train. Or,
-        2. The checkpoint manager snapshot JSON file is corrupted. Or,
-        3. The checkpoint manager snapshot contains checkpoints that can not be found
-            in the experiment storage directory.
+    Example scenarios:
+    1. The checkpoint manager snapshot version is old and
+        incompatible with the current version of Ray Train.
+    2. The checkpoint manager snapshot JSON file is corrupted.
+    3. The checkpoint manager snapshot references checkpoints that cannot be found
+        in the run storage path.
     """
 
 
@@ -115,7 +115,7 @@ class CollectiveTimeoutError(RayTrainError):
 class BroadcastCollectiveTimeoutError(CollectiveTimeoutError):
     """Exception raised when the broadcast operation times out.
 
-    There are two main reasons for the timeout:
+    There are two main timeout examples:
     1. If not all workers call `ray.train.report`, the entire worker group will
         hang until the timeout before raising. This prevents indefinite worker
         group hangs.

@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _TrainingResult
-from ray.train.v2._internal.exceptions import ControllerInitializationError
+from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
@@ -138,7 +138,7 @@ def test_load_state_error(tmp_path, json_state):
         checkpoint_config=CheckpointConfig(),
     )
     with pytest.raises(
-        ControllerInitializationError,
+        CheckpointManagerInitializationError,
     ):
         checkpoint_manager._load_state(json_state)
 

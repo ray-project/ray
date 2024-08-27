@@ -6,6 +6,16 @@ from ray._private.ray_constants import env_bool, env_set_by_user
 # Unsupported configs can use this value to detect if the user has set it.
 _UNSUPPORTED = "UNSUPPORTED"
 
+# The name of the file that is used to validate the storage.
+VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
+# The name of the file that is used to store the checkpoint manager snapshot.
+CHECKPOINT_MANAGER_SNAPSHOT_FILENAME = "checkpoint_manager_snapshot.json"
+
+
+# =====================
+# Environment Variables
+# =====================
+
 # Polling interval for the Train controller.
 # This determines how many seconds the controller will wait between
 # polling the worker group for its status.
@@ -20,13 +30,6 @@ DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S: float = 10 * 60
 # Timeout in seconds for the worker group to start.
 WORKER_GROUP_START_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"
 DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 30.0
-
-# The name of the file that is used to validate the storage.
-VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"
-# The name of the file that is used to store the checkpoint manager snapshot.
-CHECKPOINT_MANAGER_SNAPSHOT_FILENAME = "checkpoint_manager_snapshot.json"
-# The coding scheme used to encode the checkpoint manager snapshot.
-CHECKPOINT_MANAGER_SNAPSHOT_CODING_SCHEME = "utf-8"
 
 # Timeout in seconds for `ray.train.report` to block on synchronization barriers,
 # after which a timeout error will be raised.

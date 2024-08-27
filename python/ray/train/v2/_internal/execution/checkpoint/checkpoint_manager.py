@@ -1,9 +1,6 @@
 import logging
 from typing import List, Optional
 
-from pydantic import BaseModel
-from pydantic_core import from_json
-
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.checkpoint_manager import (
@@ -11,10 +8,19 @@ from ray.train._internal.checkpoint_manager import (
     _insert_into_sorted_list,
 )
 from ray.train._internal.session import _TrainingResult
-from ray.train.v2._internal.constants import CHECKPOINT_MANAGER_SNAPSHOT_CODING_SCHEME
-from ray.train.v2._internal.exceptions import ControllerInitializationError
+from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
 from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _delete_fs_path, _exists_at_fs_path
+
+try:
+    from pydantic import BaseModel
+    from pydantic_core import from_json
+except (ImportError, ModuleNotFoundError) as exc:
+    raise ImportError(
+        "`ray.train.v2` requires the pydantic package, which is missing. "
+        "Run the following command to fix this: `pip install pydantic`"
+    ) from exc
+
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +109,7 @@ class CheckpointManager(_CheckpointManager):
                 from_json(json_state)
             )
         except Exception as e:
-            raise ControllerInitializationError(repr(e)) from e
+            raise CheckpointManagerInitializationError(repr(e)) from e
         self._assert_checkpoints_exist()
 
         self._checkpoint_results = [
@@ -151,7 +157,7 @@ class CheckpointManager(_CheckpointManager):
                 "please configure a new, unique `RunConfig(name)` or delete the "
                 f"existing folder at '{self._storage_context.experiment_fs_path}'."
             )
-            json_state = f.read().decode(CHECKPOINT_MANAGER_SNAPSHOT_CODING_SCHEME)
+            json_state = f.read().decode("utf-8")
         self._load_state(json_state)
 
     def _write_state_to_storage(self):
@@ -160,11 +166,7 @@ class CheckpointManager(_CheckpointManager):
         with self._storage_context.storage_filesystem.open_output_stream(
             self._storage_context.checkpoint_manager_snapshot_path
         ) as f:
-            f.write(
-                checkpoint_manager_snapshot.encode(
-                    CHECKPOINT_MANAGER_SNAPSHOT_CODING_SCHEME
-                )
-            )
+            f.write(checkpoint_manager_snapshot.encode("utf-8"))
 
     def register_checkpoint(self, checkpoint_result: _TrainingResult):
         """Register new checkpoint and add to bookkeeping.
@@ -228,7 +230,7 @@ class CheckpointManager(_CheckpointManager):
         checkpoint folders of the experiment storage filesystem.
 
         Raises:
-            ControllerInitializationError: If the checkpoint manager snapshot
+            CheckpointManagerInitializationError: If the checkpoint manager snapshot
                 is not consistent with the stored checkpoints.
         """
         for checkpoint_result in self._checkpoint_results:
@@ -237,7 +239,7 @@ class CheckpointManager(_CheckpointManager):
             if not _exists_at_fs_path(
                 fs=checkpoint.filesystem, fs_path=checkpoint.path
             ):
-                raise ControllerInitializationError(
+                raise CheckpointManagerInitializationError(
                     message=(
                         "The run snapshot contains a reference to a checkpoint "
                         f"that does not exist anymore ({checkpoint}). You are "
