@@ -1061,6 +1061,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] actor_id The actor ID to decrease the reference count for.
   void RemoveActorHandleReference(const ActorID &actor_id);
 
+  /// Get the local actor state. nullopt if the state is unknown.
+  std::optional<rpc::ActorTableData::ActorState> GetLocalActorState(
+      const ActorID &actor_id) const;
+
   /// Add an actor handle from a serialized string.
   ///
   /// This should be called when an actor handle is given to us by another task

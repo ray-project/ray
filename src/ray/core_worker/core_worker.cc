@@ -2728,6 +2728,11 @@ void CoreWorker::RemoveActorHandleReference(const ActorID &actor_id) {
   reference_counter_->RemoveLocalReference(actor_handle_id, nullptr);
 }
 
+std::optional<rpc::ActorTableData::ActorState> CoreWorker::GetLocalActorState(
+    const ActorID &actor_id) const {
+  return actor_task_submitter_->GetLocalActorState(actor_id);
+}
+
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized,
                                                       const ObjectID &outer_object_id,
                                                       bool add_local_ref) {
