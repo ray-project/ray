@@ -3933,6 +3933,11 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   reference_counter_->PublishObjectLocationSnapshot(object_id);
 }
 
+std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
+CoreWorker::GetLocalOngoingLineageReconstructionTasks() const {
+  return task_manager_->GetOngoingLineageReconstructionTasks();
+}
+
 Status CoreWorker::GetLocalObjectLocations(
     const std::vector<ObjectID> &object_ids,
     std::vector<std::optional<ObjectLocation>> *results) {
