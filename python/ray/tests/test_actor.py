@@ -18,6 +18,7 @@ from ray._private.test_utils import (
 from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray._private.test_utils import SignalActor
+from ray.core.generated import gcs_pb2
 
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
@@ -1513,6 +1514,21 @@ def test_self_handle_leak(ray_start_regular_shared):
     # Check that there are no leaks after all handles have gone out of scope.
     a = None
     wait_for_pid_to_exit(pid)
+
+
+def test_get_local_actor_state(ray_start_regular_shared):
+    @ray.remote
+    class Actor:
+        def ping(self):
+            pass
+
+    actor = Actor.remote()
+    ray.get(actor.ping.remote())
+    assert actor._get_local_state() == gcs_pb2.ActorTableData.ActorState.ALIVE
+    ray.kill(actor)
+    wait_for_condition(
+        lambda: actor._get_local_state() == gcs_pb2.ActorTableData.ActorState.DEAD
+    )
 
 
 if __name__ == "__main__":

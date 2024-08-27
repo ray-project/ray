@@ -4373,11 +4373,11 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
-    def get_actor_state(self, ActorID actor_id):
+    def get_local_actor_state(self, ActorID actor_id):
         cdef:
             CActorID c_actor_id = actor_id.native()
             optional[int] state = nullopt
-        state = CCoreWorkerProcess.GetCoreWorker().GetActorState(c_actor_id)
+        state = CCoreWorkerProcess.GetCoreWorker().GetLocalActorState(c_actor_id)
         if state.has_value():
             return state.value()
         else:

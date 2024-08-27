@@ -1062,7 +1062,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void RemoveActorHandleReference(const ActorID &actor_id);
 
   /// Get the local actor state. nullopt if the state is unknown.
-  std::optional<rpc::ActorTableData::ActorState> GetActorState(
+  std::optional<rpc::ActorTableData::ActorState> GetLocalActorState(
       const ActorID &actor_id) const;
 
   /// Add an actor handle from a serialized string.

@@ -679,7 +679,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   }
 }
 
-std::optional<rpc::ActorTableData::ActorState> ActorTaskSubmitter::GetActorState(
+std::optional<rpc::ActorTableData::ActorState> ActorTaskSubmitter::GetLocalActorState(
     const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
 

@@ -184,7 +184,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   bool IsActorAlive(const ActorID &actor_id) const;
 
   /// Get the local actor state. nullopt if the state is unknown.
-  std::optional<rpc::ActorTableData::ActorState> GetActorState(
+  std::optional<rpc::ActorTableData::ActorState> GetLocalActorState(
       const ActorID &actor_id) const;
 
   /// Cancel an actor task of a given task spec.
