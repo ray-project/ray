@@ -55,14 +55,6 @@ std::string GenerateLogDir() {
 class GcsNodeManagerExportAPITest : public ::testing::Test {
  public:
   GcsNodeManagerExportAPITest() {
-    std::promise<bool> promise;
-    thread_io_service_.reset(new std::thread([this, &promise] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(io_service_));
-      promise.set_value(true);
-      io_service_.run();
-    }));
-    promise.get_future().get();
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
     client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
@@ -88,7 +80,6 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
 
   virtual ~GcsNodeManagerExportAPITest() {
     io_service_.stop();
-    thread_io_service_->join();
     EventManager::Instance().ClearReporters();
     std::filesystem::remove_all(log_dir_.c_str());
   }
@@ -99,7 +90,6 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   instrumented_io_context io_service_;
-  std::unique_ptr<std::thread> thread_io_service_;
   std::string log_dir_;
 };
 
@@ -171,6 +161,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
       [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
 
   node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
+  io_service_.poll();
 
   int num_retry = 5;
   bool finished_register_node = false;
@@ -211,6 +202,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
 
   node_manager.HandleUnregisterNode(
       unregister_request, &unregister_reply, send_reply_callback);
+  io_service_.poll();
 
   int num_retry = 5;
   bool finished_unregister_node = false;
