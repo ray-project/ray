@@ -16,7 +16,7 @@ import ray
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
-from ray.data.context import DataContext
+from ray.data.context import DEFAULT_BATCH_SIZE, DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
@@ -402,6 +402,22 @@ def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_cont
         row = ds_list[i]
         assert row["id"] == i + 1
     assert ds.count() == 300
+
+    # Test default batch_size
+    size = DEFAULT_BATCH_SIZE * 3
+    ds = ray.data.range(size, override_num_blocks=size)
+
+    def map_batches(batch):
+        # The range operator outputs many small batches,
+        # Test that they will be accumulated to DEFAULT_BATCH_SIZE.
+        assert len(batch["id"]) == DEFAULT_BATCH_SIZE
+        return batch
+
+    ds = ds.map_batches(
+        map_batches,
+        batch_size="default",
+    )
+    assert len(ds.take_all()) == size
 
     # Test the lambda returns different types than the batch_format
     # pandas => list block
