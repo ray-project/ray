@@ -3928,8 +3928,8 @@ void CoreWorker::ProcessSubscribeObjectLocations(
 }
 
 std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
-CoreWorker::GetLocalLineageReconstructionTasks() const {
-  return task_manager_->GetLineageReconstructionTasks();
+CoreWorker::GetLocalOngoingLineageReconstructionTasks() const {
+  return task_manager_->GetOngoingLineageReconstructionTasks();
 }
 
 Status CoreWorker::GetLocalObjectLocations(

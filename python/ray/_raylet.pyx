@@ -3862,14 +3862,14 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
 
-    def get_local_lineage_reconstruction_tasks(self):
+    def get_local_ongoing_lineage_reconstruction_tasks(self):
         cdef:
             unordered_map[CLineageReconstructionTask, uint64_t] tasks
             unordered_map[CLineageReconstructionTask, uint64_t].iterator it
 
         with nogil:
             tasks = (CCoreWorkerProcess.GetCoreWorker().
-                     GetLocalLineageReconstructionTasks())
+                     GetLocalOngoingLineageReconstructionTasks())
 
         result = []
         it = tasks.begin()

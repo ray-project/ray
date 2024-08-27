@@ -237,11 +237,15 @@ def free(object_refs: list, local_only: bool = False):
         worker.core_worker.free_objects(object_refs, local_only)
 
 
-def get_local_lineage_reconstruction_tasks() -> List[
+def get_local_ongoing_lineage_reconstruction_tasks() -> List[
     Tuple[common_pb2.LineageReconstructionTask, int]
 ]:
     """Return the locally submitted ongoing retry tasks
        triggered by lineage reconstruction.
+
+    NOTE: for the lineage reconstruction task status,
+    this method only returns the status known to the submitter
+    (i.e. it returns SUBMITTED_TO_WORKER instead of RUNNING).
 
     The return type is a list of pairs where pair.first is the
     lineage reconstruction task info and pair.second is the number
@@ -250,4 +254,4 @@ def get_local_lineage_reconstruction_tasks() -> List[
 
     worker = ray._private.worker.global_worker
     worker.check_connected()
-    return worker.core_worker.get_local_lineage_reconstruction_tasks()
+    return worker.core_worker.get_local_ongoing_lineage_reconstruction_tasks()

@@ -845,7 +845,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// reconstruction. Key is the lineage reconstruction task info.
   /// Value is the number of ongoing lineage reconstruction tasks of this type.
   std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
-  GetLocalLineageReconstructionTasks() const;
+  GetLocalOngoingLineageReconstructionTasks() const;
 
   /// Get the locations of a list objects. Locations that failed to be retrieved
   /// will be returned as nullptrs.

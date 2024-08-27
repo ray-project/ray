@@ -1479,7 +1479,7 @@ void TaskManager::SetTaskStatus(
 }
 
 std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
-TaskManager::GetLineageReconstructionTasks() const {
+TaskManager::GetOngoingLineageReconstructionTasks() const {
   absl::MutexLock lock(&mu_);
   std::unordered_map<rpc::LineageReconstructionTask, uint64_t> result;
   for (const auto &task_it : submissible_tasks_) {

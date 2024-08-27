@@ -349,7 +349,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
                   const shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes)
 
         unordered_map[CLineageReconstructionTask, uint64_t] \
-            GetLocalLineageReconstructionTasks() const
+            GetLocalOngoingLineageReconstructionTasks() const
 
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type
