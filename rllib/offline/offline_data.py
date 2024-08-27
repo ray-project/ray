@@ -83,35 +83,20 @@ class OfflineData:
             # TODO (simon, sven): The iterator depends on the `num_samples`, i.e.abs
             # sampling later with a different batch size would need a
             # reinstantiation of the iterator.
-            if self.config.input_read_sample_batches:
-                self.batch_iterator = self.data.map(
-                    self.prelearner_class,
-                    fn_constructor_kwargs={
-                        "config": self.config,
-                        "learner": self.learner_handles[0],
-                        "spaces": self.spaces[INPUT_ENV_SPACES],
-                    },
-                    concurrency=1,
-                    # batch_size=num_samples,
-                    # **self.map_batches_kwargs,
-                ).iter_batches(
-                    batch_size=num_samples,
-                    # **self.iter_batches_kwargs,
-                )
-            else:
-                self.batch_iterator = self.data.map_batches(
-                    self.prelearner_class,
-                    fn_constructor_kwargs={
-                        "config": self.config,
-                        "learner": self.learner_handles[0],
-                        "spaces": self.spaces[INPUT_ENV_SPACES],
-                    },
-                    batch_size=num_samples,
-                    **self.map_batches_kwargs,
-                ).iter_batches(
-                    batch_size=num_samples,
-                    **self.iter_batches_kwargs,
-                )
+
+            self.batch_iterator = self.data.map_batches(
+                self.prelearner_class,
+                fn_constructor_kwargs={
+                    "config": self.config,
+                    "learner": self.learner_handles[0],
+                    "spaces": self.spaces[INPUT_ENV_SPACES],
+                },
+                batch_size=num_samples,
+                **self.map_batches_kwargs,
+            ).iter_batches(
+                batch_size=num_samples,
+                **self.iter_batches_kwargs,
+            )
 
         # Do we want to return an iterator or a single batch?
         if return_iterator:

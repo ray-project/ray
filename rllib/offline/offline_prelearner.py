@@ -366,88 +366,103 @@ class OfflinePreLearner:
         finalize: bool = False,
         input_compress_columns: Optional[List[str]] = None,
     ) -> Dict[str, List[EpisodeType]]:
+        """Maps an old stack `SampleBatch` to new stack episodes."""
 
+        # Set `input_compress_columns` to an empty `list` if `None`.
+        input_compress_columns = input_compress_columns or []
+
+        # TODO (simon): CHeck, if needed. It could possibly happen that a batch contains
+        #   data from different episodes. Merging and resplitting the batch would then
+        # be the solution.
+        # Check, if batch comes actually from multiple episodes.
+        # episode_begin_indices = np.where(np.diff(np.hstack(batch["eps_id"])) != 0) + 1
+
+        # Define a container to collect episodes.
         episodes = []
-        # Note, the `batch` will contain multiple rows and each row contains
-        # a single `SampleBatch` with experiences from one or more episodes.
-        # Loop over rows.
-        # for b in batch:
-        b = batch
-        # If multi-agent we need to extract the agent ID.
-        # TODO (simon): Check, what happens with the module ID.
-        if is_multi_agent:
-            agent_id = (
-                # The old stack uses "agent_index" instead of "agent_id".
-                b[schema["agent_index"]][0]
-                if schema["agent_index"] in b
-                else None
-            )
-        else:
-            agent_id = None
+        # Loop over `SampleBatch`es in the `ray.data` batch (a dict).
+        for i, obs in enumerate(batch[schema[Columns.OBS]]):
 
-        if is_multi_agent:
-            # TODO (simon): Add support for multi-agent episodes.
-            pass
-        else:
-            obs = (
-                unpack_if_needed(b[schema[Columns.OBS]])
-                if schema[Columns.OBS] in input_compress_columns
-                else b[schema[Columns.OBS]]
-            )
-            obs.append(
-                unpack_if_needed(b[schema[Columns.NEXT_OBS]][-1])
-                if schema[Columns.OBS] in input_compress_columns
-                else b[schema[Columns.NEXT_OBS]][-1]
-            )
-            episode = SingleAgentEpisode(
-                id_=b[schema[Columns.EPS_ID]][0],
-                agent_id=agent_id,
-                observations=obs,
-                infos=(
-                    b[schema[Columns.INFOS]]
-                    if schema[Columns.INFOS] in b
-                    else [{}] * len(obs)
-                ),
-                # Actions might be (a) serialized and/or (b) converted to a JSONable
-                # (when a composite space was used). We unserializer and then
-                # reconvert from JSONable to space sample.
-                actions=(
-                    unpack_if_needed(b[schema[Columns.ACTIONS]])
-                    if Columns.ACTIONS in input_compress_columns
-                    else b[schema[Columns.ACTIONS]]
-                ),
-                rewards=b[schema[Columns.REWARDS]],
-                terminated=(
-                    any(b[schema[Columns.TERMINATEDS]])
-                    if schema[Columns.TERMINATEDS] in b
-                    else any(b["dones"])
-                ),
-                truncated=(
-                    any(b[schema[Columns.TRUNCATEDS]])
-                    if schema[Columns.TRUNCATEDS] in b
-                    else False
-                ),
-                # TODO (simon): Results in zero-length episodes in connector.
-                # t_started=batch[Columns.T if Columns.T in batch else
-                # "unroll_id"][i][0],
-                # TODO (simon): Single-dimensional columns are not supported.
-                # Extra model outputs might be serialized. We unserialize them here
-                # if needed.
-                # TODO (simon): Check, if we need here also reconversion from
-                # JSONable in case of composite spaces.
-                extra_model_outputs={
-                    k: unpack_if_needed(v) if k in input_compress_columns else v
-                    for k, v in b.items()
-                    if (
-                        k not in schema
-                        and k not in schema.values()
-                        and k not in ["dones", "agent_index", "type"]
-                    )
-                },
-                len_lookback_buffer=0,
-            )
-            if finalize:
-                episode.finalize()
-            episodes.append(episode)
+            # If multi-agent we need to extract the agent ID.
+            # TODO (simon): Check, what happens with the module ID.
+            if is_multi_agent:
+                agent_id = (
+                    # The old stack uses "agent_index" instead of "agent_id".
+                    batch[schema["agent_index"]][i][0]
+                    if schema["agent_index"] in batch
+                    else None
+                )
+            else:
+                agent_id = None
+
+            if is_multi_agent:
+                # TODO (simon): Add support for multi-agent episodes.
+                pass
+            else:
+                # Unpack observations, if needed.
+                obs = (
+                    unpack_if_needed(obs.tolist())
+                    if schema[Columns.OBS] in input_compress_columns
+                    else obs.tolist()
+                )
+                # Append the last `new_obs` to get the correct length of observations.
+                obs.append(
+                    unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i][-1])
+                    if schema[Columns.OBS] in input_compress_columns
+                    else batch[schema[Columns.NEXT_OBS]][i][-1]
+                )
+                # Create a `SingleAgentEpisode`.
+                episode = SingleAgentEpisode(
+                    id_=batch[schema[Columns.EPS_ID]][i][0],
+                    agent_id=agent_id,
+                    observations=obs,
+                    infos=(
+                        batch[schema[Columns.INFOS]][i]
+                        if schema[Columns.INFOS] in batch
+                        else [{}] * len(obs)
+                    ),
+                    # Actions might be (a) serialized. We unserialize them here.
+                    actions=(
+                        unpack_if_needed(batch[schema[Columns.ACTIONS]][i])
+                        if Columns.ACTIONS in input_compress_columns
+                        else batch[schema[Columns.ACTIONS]][i]
+                    ),
+                    rewards=batch[schema[Columns.REWARDS]][i],
+                    terminated=(
+                        any(batch[schema[Columns.TERMINATEDS]][i])
+                        if schema[Columns.TERMINATEDS] in batch
+                        else any(batch["dones"][i])
+                    ),
+                    truncated=(
+                        any(batch[schema[Columns.TRUNCATEDS]][i])
+                        if schema[Columns.TRUNCATEDS] in batch
+                        else False
+                    ),
+                    # TODO (simon): Results in zero-length episodes in connector.
+                    # t_started=batch[Columns.T if Columns.T in batch else
+                    # "unroll_id"][i][0],
+                    # TODO (simon): Single-dimensional columns are not supported.
+                    # Extra model outputs might be serialized. We unserialize them here
+                    # if needed.
+                    # TODO (simon): Check, if we need here also reconversion from
+                    # JSONable in case of composite spaces.
+                    extra_model_outputs={
+                        k: unpack_if_needed(v[i])
+                        if k in input_compress_columns
+                        else v[i]
+                        for k, v in batch.items()
+                        if (
+                            k not in schema
+                            and k not in schema.values()
+                            and k not in ["dones", "agent_index", "type"]
+                        )
+                    },
+                    len_lookback_buffer=0,
+                )
+                # Finalize, if necessary.
+                # TODO (simon, sven): Check, if we should convert all data to lists
+                # before. Right now only obs are lists.
+                if finalize:
+                    episode.finalize()
+                episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
