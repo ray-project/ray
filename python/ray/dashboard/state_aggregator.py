@@ -140,10 +140,13 @@ class StateAPIManager:
     the entries.
     """
 
-    def __init__(self, state_data_source_client: StateDataSourceClient):
+    def __init__(
+        self,
+        state_data_source_client: StateDataSourceClient,
+        thread_pool_executor: ThreadPoolExecutor,
+    ):
         self._client = state_data_source_client
-
-        self._thread_pool_executor = ThreadPoolExecutor(thread_name_prefix="state_head")
+        self._thread_pool_executor = thread_pool_executor
 
     @property
     def data_source_client(self):
