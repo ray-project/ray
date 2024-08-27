@@ -330,7 +330,7 @@ class MapOperator(OneToOneOperator, ABC):
                     * self._metrics.num_outputs_of_finished_tasks
                     / self._metrics.num_tasks_finished
                 )
-                self._estimated_num_output_rows = round(
+                self._estimated_output_num_rows = round(
                     estimated_num_tasks
                     * self._metrics.rows_task_outputs_generated
                     / self._metrics.num_tasks_finished
@@ -406,6 +406,10 @@ class MapOperator(OneToOneOperator, ABC):
 
     @abstractmethod
     def current_processor_usage(self) -> ExecutionResources:
+        raise NotImplementedError
+
+    @abstractmethod
+    def pending_processor_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod

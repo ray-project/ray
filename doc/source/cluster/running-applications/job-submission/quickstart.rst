@@ -76,7 +76,7 @@ To tell the Ray Jobs CLI how to find your Ray Cluster, pass the Ray Dashboard ad
 
 Alternatively, you can also pass the ``--address=http://127.0.0.1:8265`` flag explicitly to each Ray Jobs CLI command, or prepend each command with ``RAY_ADDRESS=http://127.0.0.1:8265``.
 
-Additionally, if you wish to pass headers per HTTP request to the Cluster, use the `RAY_JOB_HEADERS` environment variable.` This environment variable must be in JSON form.
+Additionally, if you wish to pass headers per HTTP request to the Cluster, use the `RAY_JOB_HEADERS` environment variable. This environment variable must be in JSON form.
 
 .. code-block:: bash
     

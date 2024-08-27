@@ -110,8 +110,10 @@ def test_serve_start_dictionary_grpc_options(ray_cluster):
 
     channel = grpc.insecure_channel("localhost:9000")
 
+    serve.run(g)
+
     # Ensures ListApplications method succeeding.
-    ping_grpc_list_applications(channel, [])
+    ping_grpc_list_applications(channel, ["default"])
 
     # Ensures Healthz method succeeding.
     ping_grpc_healthz(channel)

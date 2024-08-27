@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -57,7 +57,7 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
         # simplify here for the sake of this example.
         output_data = connector(
             rl_module=None,
-            data={},
+            batch={},
             episodes=episodes,
             explore=True,
             shared_data={},
@@ -93,15 +93,15 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # If "obs" already in data, early out.
-        if Columns.NEXT_OBS in data:
-            return data
+        # If "obs" already in `batch`, early out.
+        if Columns.NEXT_OBS in batch:
+            return batch
 
         for sa_episode in self.single_agent_episode_iterator(
             # This is a Learner-only connector -> Get all episodes (for train batch).
@@ -109,10 +109,10 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
             agents_that_stepped_only=False,
         ):
             self.add_n_batch_items(
-                data,
+                batch,
                 Columns.NEXT_OBS,
                 items_to_add=sa_episode.get_observations(slice(1, len(sa_episode) + 1)),
                 num_items=len(sa_episode),
                 single_agent_episode=sa_episode,
             )
-        return data
+        return batch
