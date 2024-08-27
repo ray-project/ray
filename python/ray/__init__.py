@@ -4,11 +4,7 @@ import logging
 import os
 import sys
 
-# For cases like docs builds, we want the default logging config.
-skip_reset = os.environ.get("SKIP_LOG_RESET", False)
-if not skip_reset:
-    log.generate_logging_config()
-
+log.generate_logging_config()
 logger = logging.getLogger(__name__)
 
 
@@ -28,18 +24,18 @@ def _configure_system():
                 "Please uninstall the package."
             )
 
-        import pkg_resources
+        import importlib.metadata
 
         try:
-            version_info = pkg_resources.require("pickle5")
-            version = tuple(int(n) for n in version_info[0].version.split("."))
+            version_str = importlib.metadata.version("pickle5")
+            version = tuple(int(n) for n in version_str.split("."))
             if version < (0, 0, 10):
                 logger.warning(
                     "Although not used by Ray, a version of pickle5 that leaks memory "
                     "is found in the environment. Please run 'pip install pickle5 -U' "
                     "to upgrade."
                 )
-        except pkg_resources.DistributionNotFound:
+        except importlib.metadata.PackageNotFoundError:
             logger.warning(
                 "You are using the 'pickle5' module, but "
                 "the exact version is unknown (possibly carried as "
@@ -47,19 +43,6 @@ def _configure_system():
                 "make sure you are using pickle5 >= 0.0.10 because "
                 "previous versions may leak memory."
             )
-
-    # MUST add pickle5 to the import path because it will be imported by some
-    # raylet modules.
-    #
-    # When running Python version < 3.8, Ray needs to use pickle5 instead of
-    # Python's built-in pickle. Add the directory containing pickle5 to the
-    # Python path so that we find the pickle5 version packaged with Ray and
-    # not a pre-existing pickle5.
-    if sys.version_info < (3, 8):
-        pickle5_path = os.path.join(
-            os.path.abspath(os.path.dirname(__file__)), "pickle5_files"
-        )
-        sys.path.insert(0, pickle5_path)
 
     # Importing psutil & setproctitle. Must be before ray._raylet is
     # initialized.
@@ -72,9 +55,9 @@ def _configure_system():
         platform.system() == "Linux"
         and "Microsoft".lower() in platform.release().lower()
     ):
-        import ray._private.compat  # noqa: E402
+        from ray._private import compat  # noqa: E402
 
-        ray._private.compat.patch_psutil()
+        compat.patch_psutil()
 
     # Expose ray ABI symbols which may be dependent by other shared
     # libraries such as _streaming.so. See BUILD.bazel:_raylet
@@ -93,9 +76,10 @@ _configure_system()
 # Delete configuration function.
 del _configure_system
 
-# Replaced with the current commit when building the wheels.
-__commit__ = "{{RAY_COMMIT_SHA}}"
-__version__ = "3.0.0.dev0"
+from ray import _version  # noqa: E402
+
+__commit__ = _version.commit
+__version__ = _version.version
 
 import ray._raylet  # noqa: E402
 
@@ -110,10 +94,12 @@ from ray._raylet import (  # noqa: E402,F401
     ObjectID,
     ObjectRef,
     ObjectRefGenerator,
+    DynamicObjectRefGenerator,
     TaskID,
     UniqueID,
     Language,
     PlacementGroupID,
+    ClusterID,
 )
 
 _config = _Config()
@@ -142,6 +128,8 @@ from ray._private.worker import (  # noqa: E402,F401
     shutdown,
     wait,
 )
+
+from ray._private.ray_logging.logging_config import LoggingConfig  # noqa: E402
 
 # We import ray.actor because some code is run in actor.py which initializes
 # some functions in the worker.
@@ -215,6 +203,7 @@ __all__ = [
     "LOCAL_MODE",
     "SCRIPT_MODE",
     "WORKER_MODE",
+    "LoggingConfig",
 ]
 
 # Public APIs that should automatically trigger ray.init().
@@ -253,6 +242,7 @@ NON_AUTO_INIT_APIS = {
     "show_in_dashboard",
     "shutdown",
     "timeline",
+    "LoggingConfig",
 }
 
 assert set(__all__) == AUTO_INIT_APIS | NON_AUTO_INIT_APIS
@@ -283,6 +273,7 @@ __all__ += [
     "ObjectID",
     "ObjectRef",
     "ObjectRefGenerator",
+    "DynamicObjectRefGenerator",
     "TaskID",
     "UniqueID",
     "PlacementGroupID",

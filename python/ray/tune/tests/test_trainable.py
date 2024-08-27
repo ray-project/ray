@@ -1,23 +1,13 @@
 import json
 import os
-import tempfile
-import time
-import uuid
 from typing import Dict, Union
-from unittest.mock import patch
 
 import pytest
 
 import ray
-from ray import tune
-from ray.air import session, Checkpoint
-from ray.air._internal.remote_storage import (
-    download_from_uri,
-    upload_to_uri,
-    delete_at_uri,
-)
-from ray.tune.logger import NoopLogger
-from ray.tune.syncer import _DefaultSyncer
+from ray import train, tune
+from ray.train._internal.storage import StorageContext
+from ray.train.tests.util import create_dict_checkpoint
 from ray.tune.trainable import wrap_function
 
 
@@ -84,21 +74,13 @@ class SavingTrainable(tune.Trainable):
         assert checkpoint_data == {"data": 1}, checkpoint_data
 
 
-def function_trainable_dict(config):
-    session.report(
-        {"metric": 2}, checkpoint=Checkpoint.from_dict({"checkpoint_data": 3})
-    )
+def function_trainable(config):
+    with create_dict_checkpoint({"checkpoint_data": 5}) as checkpoint:
+        train.report({"metric": 4}, checkpoint=checkpoint)
 
 
-def function_trainable_directory(config):
-    tmpdir = tempfile.mkdtemp("checkpoint_test")
-    with open(os.path.join(tmpdir, "data.json"), "w") as f:
-        json.dump({"checkpoint_data": 5}, f)
-    session.report({"metric": 4}, checkpoint=Checkpoint.from_directory(tmpdir))
-
-
-@pytest.mark.parametrize("return_type", ["object", "root", "subdir", "checkpoint"])
-def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type):
+@pytest.mark.parametrize("return_type", ["object", "root"])
+def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type, tmpdir):
     """Assert that restoring from a Trainable.save() future works with
     class trainables.
 
@@ -106,150 +88,48 @@ def test_save_load_checkpoint_path_class(ray_start_2_cpus, return_type):
     """
     trainable = ray.remote(SavingTrainable).remote(return_type=return_type)
 
-    saving_future = trainable.save.remote()
-
-    # Check for errors
-    ray.get(saving_future)
-
-    restoring_future = trainable.restore.remote(saving_future)
-
-    ray.get(restoring_future)
-
-
-@pytest.mark.parametrize("return_type", ["object", "root", "subdir", "checkpoint"])
-def test_save_load_checkpoint_object_class(ray_start_2_cpus, return_type):
-    """Assert that restoring from a Trainable.save_to_object() future works with
-    class trainables.
-
-    Needs Ray cluster so we get actual futures.
-    """
-    trainable = ray.remote(SavingTrainable).remote(return_type=return_type)
-
-    saving_future = trainable.save_to_object.remote()
-
-    # Check for errors
-    ray.get(saving_future)
-
-    restoring_future = trainable.restore_from_object.remote(saving_future)
-
-    ray.get(restoring_future)
-
-
-@pytest.mark.parametrize(
-    "fn_trainable", [function_trainable_dict, function_trainable_directory]
-)
-def test_save_load_checkpoint_path_fn(ray_start_2_cpus, fn_trainable):
-    """Assert that restoring from a Trainable.save() future works with
-    function trainables.
-
-    Needs Ray cluster so we get actual futures.
-    """
-    trainable_cls = wrap_function(fn_trainable)
-    trainable = ray.remote(trainable_cls).remote()
+    # Train one step
     ray.get(trainable.train.remote())
-
-    saving_future = trainable.save.remote()
-
-    # Check for errors
-    ray.get(saving_future)
-
-    restoring_future = trainable.restore.remote(saving_future)
-
-    ray.get(restoring_future)
-
-
-@pytest.mark.parametrize(
-    "fn_trainable", [function_trainable_dict, function_trainable_directory]
-)
-def test_save_load_checkpoint_object_fn(ray_start_2_cpus, fn_trainable):
-    """Assert that restoring from a Trainable.save_to_object() future works with
-    function trainables.
-
-    Needs Ray cluster so we get actual futures.
-    """
-    trainable_cls = wrap_function(fn_trainable)
-    trainable = ray.remote(trainable_cls).remote()
-    ray.get(trainable.train.remote())
-
-    saving_future = trainable.save_to_object.remote()
-
-    # Check for errors
-    ray.get(saving_future)
-
-    restoring_future = trainable.restore_from_object.remote(saving_future)
-
-    ray.get(restoring_future)
-
-
-def test_checkpoint_object_no_sync(tmpdir):
-    """Asserts that save_to_object() and restore_from_object() do not sync up/down"""
-    trainable = SavingTrainable(
-        "object", remote_checkpoint_dir="memory:///test/location"
-    )
 
     # Save checkpoint
-    trainable.save()
+    saving_future = trainable.save.remote()
 
-    check_dir = tmpdir / "check_save"
-    download_from_uri(uri="memory:///test/location", local_path=str(check_dir))
-    assert os.listdir(str(check_dir)) == ["checkpoint_000000"]
+    # Check for errors
+    ray.get(saving_future)
 
-    # Save to object
-    obj = trainable.save_to_object()
+    restoring_future = trainable.restore.remote(saving_future)
 
-    check_dir = tmpdir / "check_save_obj"
-    download_from_uri(uri="memory:///test/location", local_path=str(check_dir))
-    assert os.listdir(str(check_dir)) == ["checkpoint_000000"]
-
-    # Restore from object
-    trainable.restore_from_object(obj)
+    ray.get(restoring_future)
 
 
-@pytest.mark.parametrize("hanging", [True, False])
-def test_sync_timeout(tmpdir, monkeypatch, hanging):
-    monkeypatch.setenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "0")
+def test_save_load_checkpoint_path_fn(ray_start_2_cpus, tmp_path):
+    """Assert that restoring from a Trainable.save() future works with
+    function trainables.
 
-    orig_upload_fn = upload_to_uri
-
-    def _hanging_upload(*args, **kwargs):
-        time.sleep(200 if hanging else 0)
-        orig_upload_fn(*args, **kwargs)
-
-    class HangingSyncer(_DefaultSyncer):
-        def _sync_up_command(self, local_path: str, uri: str, exclude: list = None):
-            return (
-                _hanging_upload,
-                dict(local_path=local_path, uri=uri, exclude=exclude),
-            )
-
-    trainable = SavingTrainable(
-        "object",
-        remote_checkpoint_dir=f"memory:///test/location_hanging_{hanging}",
-        sync_config=tune.SyncConfig(syncer=HangingSyncer(sync_timeout=0.5)),
-    )
-
-    with patch("ray.air.checkpoint.upload_to_uri", _hanging_upload):
-        trainable.save()
-
-    check_dir = tmpdir / "check_save_obj"
-
-    try:
-        download_from_uri(
-            uri=f"memory:///test/location_hanging_{hanging}", local_path=str(check_dir)
+    Needs Ray cluster so we get actual futures.
+    """
+    trainable_cls = wrap_function(function_trainable)
+    trainable = ray.remote(trainable_cls).remote(
+        storage=StorageContext(
+            storage_path=str(tmp_path),
+            experiment_dir_name="exp",
+            trial_dir_name="trial",
         )
-    except FileNotFoundError:
-        hung = True
-    else:
-        hung = False
+    )
+    ray.get(trainable.train.remote())
 
-    assert hung == hanging
+    saving_future = trainable.save.remote()
 
-    if hanging:
-        assert not check_dir.exists()
-    else:
-        assert check_dir.listdir()
+    # Check for errors
+    ray.get(saving_future)
+
+    restoring_future = trainable.restore.remote(saving_future)
+
+    ray.get(restoring_future)
 
 
+# TODO(justinvyu): [fallback_to_latest]
+@pytest.mark.skip("Fallback to latest checkpoint is not implemented.")
 def test_find_latest_checkpoint_local(tmpdir):
     """Tests that we identify the latest available checkpoint correctly.
 
@@ -257,91 +137,19 @@ def test_find_latest_checkpoint_local(tmpdir):
     When the latest checkpoint is deleted, we should go back to the previous one.
     """
 
-    def _logger(config):
-        return NoopLogger(config, str(tmpdir))
 
-    trainable = SavingTrainable(
-        "object",
-        logger_creator=_logger,
-        remote_checkpoint_dir=None,
-        sync_config=tune.SyncConfig(sync_timeout=0.5),
-    )
-    assert trainable._get_latest_local_available_checkpoint() is None
-
-    trainable.save()  # 0
-
-    assert trainable._get_latest_local_available_checkpoint() == str(
-        tmpdir / "checkpoint_000000"
-    )
-
-    trainable.train()
-    trainable.save()  # 1
-
-    assert trainable._get_latest_local_available_checkpoint() == str(
-        tmpdir / "checkpoint_000001"
-    )
-
-    trainable.train()
-    trainable.save()  # 2
-
-    assert trainable._get_latest_local_available_checkpoint() == str(
-        tmpdir / "checkpoint_000002"
-    )
-
-    assert (tmpdir / "checkpoint_000002").exists()
-    (tmpdir / "checkpoint_000002").remove()
-
-    assert trainable._get_latest_local_available_checkpoint() == str(
-        tmpdir / "checkpoint_000001"
-    )
-
-
+# TODO(justinvyu): [fallback_to_latest]
+@pytest.mark.skip("Fallback to latest checkpoint is not implemented.")
 def test_find_latest_checkpoint_remote(tmpdir):
     """Tests that we identify the latest available checkpoint correctly.
 
     When new checkpoints are created, they should be the latest available ones.
     When the latest checkpoint is deleted, we should go back to the previous one.
     """
-    remote_uri = "memory:///test/location_latest_checkpoint"
-
-    def _logger(config):
-        return NoopLogger(config, str(tmpdir))
-
-    trainable = SavingTrainable(
-        "object",
-        logger_creator=_logger,
-        remote_checkpoint_dir=remote_uri,
-        sync_config=tune.SyncConfig(sync_timeout=0.5),
-    )
-    assert trainable._get_latest_remote_available_checkpoint() is None
-
-    trainable.save()  # 0
-
-    assert trainable._get_latest_remote_available_checkpoint() == str(
-        tmpdir / "checkpoint_000000"
-    )
-
-    trainable.train()
-    trainable.save()  # 1
-
-    assert trainable._get_latest_remote_available_checkpoint() == str(
-        tmpdir / "checkpoint_000001"
-    )
-
-    trainable.train()
-    trainable.save()  # 2
-
-    assert trainable._get_latest_remote_available_checkpoint() == str(
-        tmpdir / "checkpoint_000002"
-    )
-
-    delete_at_uri(remote_uri + "/checkpoint_000002")
-
-    assert trainable._get_latest_remote_available_checkpoint() == str(
-        tmpdir / "checkpoint_000001"
-    )
 
 
+# TODO(justinvyu): [fallback_to_latest]
+@pytest.mark.skip("Fallback to latest checkpoint is not implemented.")
 @pytest.mark.parametrize("upload_uri", [None, "memory:///test/location_recover_latest"])
 @pytest.mark.parametrize("fetch_from_cloud", [False, True])
 def test_recover_from_latest(tmpdir, upload_uri, fetch_from_cloud):
@@ -358,69 +166,6 @@ def test_recover_from_latest(tmpdir, upload_uri, fetch_from_cloud):
     If `fetch_from_cloud=True`, asserts that newer checkpoints on cloud are preferred
     over older checkpoints on local disk.
     """
-
-    def _logger(config):
-        return NoopLogger(config, str(tmpdir))
-
-    remote_checkpoint_dir = None
-    if upload_uri:
-        remote_checkpoint_dir = upload_uri + str(uuid.uuid4())
-
-    trainable = SavingTrainable(
-        "object",
-        logger_creator=_logger,
-        remote_checkpoint_dir=remote_checkpoint_dir,
-        sync_config=tune.SyncConfig(sync_timeout=0.5),
-    )
-
-    assert trainable._get_latest_available_checkpoint() is None
-    trainable.save()
-
-    assert trainable._get_latest_available_checkpoint() == str(
-        tmpdir / "checkpoint_000000"
-    )
-
-    trainable.train()
-    trainable.save()
-
-    assert trainable._get_latest_available_checkpoint() == str(
-        tmpdir / "checkpoint_000001"
-    )
-    trainable.train()
-    trainable.save()
-
-    assert trainable._get_latest_available_checkpoint() == str(
-        tmpdir / "checkpoint_000002"
-    )
-
-    # Re-create trainable
-    trainable = SavingTrainable(
-        "object",
-        logger_creator=_logger,
-        remote_checkpoint_dir=remote_checkpoint_dir,
-        sync_config=tune.SyncConfig(sync_timeout=0.5),
-    )
-
-    if remote_checkpoint_dir and fetch_from_cloud:
-        # Make us fetch checkpoint 2 from cloud
-        (tmpdir / "checkpoint_000002").remove()
-
-    trainable.restore(str(tmpdir / "not_found"), fallback_to_latest=True)
-    assert trainable.training_iteration == 2
-
-    # Delete existing checkpoint
-    (tmpdir / "checkpoint_000002").remove()
-
-    if remote_checkpoint_dir:
-        delete_at_uri(remote_checkpoint_dir + "/checkpoint_000002")
-
-        if fetch_from_cloud:
-            # Make us fetch checkpoint 1 from cloud
-            (tmpdir / "checkpoint_000001").remove()
-
-    trainable.restore(str(tmpdir / "checkpoint_000002"), fallback_to_latest=True)
-    # Fallback to checkpoint 1
-    assert trainable.training_iteration == 1
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@
    .. rubric:: {{ _('Methods') }}
 
    .. autosummary::
+      :nosignatures:
       :toctree:
 
    {% for item in methods %}
@@ -33,6 +34,7 @@
    .. rubric:: {{ _('Attributes') }}
 
    .. autosummary::
+      :nosignatures:
       :toctree:
 
    {% for item in attributes %}

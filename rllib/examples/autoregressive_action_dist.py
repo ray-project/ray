@@ -1,3 +1,5 @@
+# @OldAPIStack
+
 """
 Example of specifying an autoregressive action distribution.
 
@@ -31,8 +33,6 @@ $ python autoregressive_action_dist.py --no-autoreg
 Compare learning curve on TensorBoard:
 $ cd ~/ray-results/; tensorboard --logdir .
 
-Other options for running this example:
-$ python attention_net.py --help
 """
 
 import argparse
@@ -40,16 +40,22 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.examples.env.correlated_actions_env import CorrelatedActionsEnv
-from ray.rllib.examples.models.autoregressive_action_model import (
+from ray.air.constants import TRAINING_ITERATION
+from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedActionsEnv
+from ray.rllib.examples._old_api_stack.models.autoregressive_action_model import (
     AutoregressiveActionModel,
     TorchAutoregressiveActionModel,
 )
-from ray.rllib.examples.models.autoregressive_action_dist import (
+from ray.rllib.examples._old_api_stack.models.autoregressive_action_dist import (
     BinaryAutoregressiveDistribution,
     TorchBinaryAutoregressiveDistribution,
 )
 from ray.rllib.models import ModelCatalog
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.logger import pretty_print
 from ray.tune.registry import get_trainable_cls
@@ -139,6 +145,8 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
+        # Batch-norm models have not been migrated to the RL Module API yet.
+        .api_stack(enable_rl_module_and_learner=False)
         .environment(CorrelatedActionsEnv)
         .framework(args.framework)
         .training(gamma=0.5)
@@ -157,9 +165,9 @@ if __name__ == "__main__":
 
     # use stop conditions passed via CLI (or defaults)
     stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     # manual training loop using PPO without ``Tuner.fit()``.
@@ -176,8 +184,8 @@ if __name__ == "__main__":
             print(pretty_print(result))
             # stop training if the target train steps or reward are reached
             if (
-                result["timesteps_total"] >= args.stop_timesteps
-                or result["episode_reward_mean"] >= args.stop_reward
+                result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"] >= args.stop_timesteps
+                or result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward
             ):
                 break
 

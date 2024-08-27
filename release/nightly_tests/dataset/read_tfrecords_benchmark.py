@@ -91,12 +91,24 @@ def run_tfrecords_benchmark(benchmark: Benchmark):
     ]
 
     try:
-        benchmark.run("tfrecords-images-100-256", read_tfrecords, path=test_input[0])
-        benchmark.run("tfrecords-images-100-2048", read_tfrecords, path=test_input[1])
-        benchmark.run("tfrecords-images-1000-mix", read_tfrecords, path=test_input[2])
-        benchmark.run("tfrecords-random-int-1g", read_tfrecords, path=test_input[3])
-        benchmark.run("tfrecords-random-float-1g", read_tfrecords, path=test_input[4])
-        benchmark.run("tfrecords-random-bytes-1g", read_tfrecords, path=test_input[5])
+        benchmark.run_materialize_ds(
+            "tfrecords-images-100-256", read_tfrecords, path=test_input[0]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-images-100-2048", read_tfrecords, path=test_input[1]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-images-1000-mix", read_tfrecords, path=test_input[2]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-random-int-1g", read_tfrecords, path=test_input[3]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-random-float-1g", read_tfrecords, path=test_input[4]
+        )
+        benchmark.run_materialize_ds(
+            "tfrecords-random-bytes-1g", read_tfrecords, path=test_input[5]
+        )
 
     finally:
         for root in test_input:

@@ -7,7 +7,7 @@ from ray.tests.conftest import *  # noqa
 
 @pytest.mark.parametrize("pandas", [False, True])
 def test_basic(ray_start_regular_shared, pandas):
-    ds = ray.data.range(100, parallelism=10)
+    ds = ray.data.range(100, override_num_blocks=10)
     ds = ds.add_column("embedding", lambda b: b["id"] ** 2)
     if not pandas:
         ds = ds.map_batches(
@@ -32,7 +32,7 @@ def test_basic(ray_start_regular_shared, pandas):
 
 def test_empty_blocks(ray_start_regular_shared):
     ds = ray.data.range(10).repartition(20)
-    assert ds.num_blocks() == 20
+    assert ds._plan.initial_num_blocks() == 20
     rad = ds.to_random_access_dataset("id")
     for i in range(10):
         assert ray.get(rad.get_async(i)) == {"id": i}
@@ -45,7 +45,7 @@ def test_errors(ray_start_regular_shared):
 
 
 def test_stats(ray_start_regular_shared):
-    ds = ray.data.range(100, parallelism=10)
+    ds = ray.data.range(100, override_num_blocks=10)
     rad = ds.to_random_access_dataset("id", num_workers=1)
     stats = rad.stats()
     assert "Accesses per worker: 0 min, 0 max, 0 mean" in stats, stats

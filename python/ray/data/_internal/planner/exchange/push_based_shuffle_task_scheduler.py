@@ -1,8 +1,9 @@
 import logging
 import math
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Dict, List, Optional, Tuple, TypeVar, Union
 
 import ray
+from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
 from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
@@ -11,6 +12,7 @@ from ray.data._internal.planner.exchange.interfaces import (
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
+from ray.data._internal.util import convert_bytes_to_human_readable_str
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -27,8 +29,23 @@ class _MergeTaskSchedule:
     def __init__(self, output_num_blocks: int, num_merge_tasks_per_round: int):
         self.output_num_blocks = output_num_blocks
         self.num_merge_tasks_per_round = num_merge_tasks_per_round
-        self.merge_partition_size = output_num_blocks // num_merge_tasks_per_round
-        self._partitions_with_extra_task = output_num_blocks % num_merge_tasks_per_round
+        self.num_reducers_per_merger = output_num_blocks // num_merge_tasks_per_round
+        self._num_mergers_with_extra_reducer = (
+            output_num_blocks % num_merge_tasks_per_round
+        )
+
+        if self.num_reducers_per_merger == 0:
+            self.num_merge_tasks_per_round = self._num_mergers_with_extra_reducer
+            self.num_reducers_per_merger = 1
+            self._num_mergers_with_extra_reducer = 0
+
+    def __repr__(self):
+        return (
+            f"    num merge tasks per round: {self.num_merge_tasks_per_round}\n"
+            f"    num reduce tasks per merge task: {self.num_reducers_per_merger}\n"
+            "    num merge tasks with extra reduce task: "
+            f"{self._num_mergers_with_extra_reducer}"
+        )
 
     def get_num_reducers_per_merge_idx(self, merge_idx: int) -> int:
         """
@@ -37,21 +54,24 @@ class _MergeTaskSchedule:
         task index.
         """
         assert merge_idx < self.num_merge_tasks_per_round
-        partition_size = self.merge_partition_size
-        if merge_idx < self._partitions_with_extra_task:
-            partition_size += 1
-        return partition_size
+        num_reducers_for_cur_merger = self.num_reducers_per_merger
+        if merge_idx < self._num_mergers_with_extra_reducer:
+            num_reducers_for_cur_merger += 1
+        return num_reducers_for_cur_merger
 
     def get_merge_idx_for_reducer_idx(self, reducer_idx: int) -> int:
-        if reducer_idx < self.merge_partition_size * self._partitions_with_extra_task:
-            merge_idx = reducer_idx // (self.merge_partition_size + 1)
+        if (
+            reducer_idx
+            < (self.num_reducers_per_merger + 1) * self._num_mergers_with_extra_reducer
+        ):
+            merge_idx = reducer_idx // (self.num_reducers_per_merger + 1)
         else:
             reducer_idx -= (
-                self.merge_partition_size + 1
-            ) * self._partitions_with_extra_task
+                self.num_reducers_per_merger + 1
+            ) * self._num_mergers_with_extra_reducer
             merge_idx = (
-                self._partitions_with_extra_task
-                + reducer_idx // self.merge_partition_size
+                self._num_mergers_with_extra_reducer
+                + reducer_idx // self.num_reducers_per_merger
             )
         assert merge_idx < self.num_merge_tasks_per_round
         return merge_idx
@@ -69,18 +89,18 @@ class _MergeTaskSchedule:
         round_idx = 0
         while idx < self.output_num_blocks:
             for merge_idx in range(self.num_merge_tasks_per_round):
-                if merge_idx < self._partitions_with_extra_task:
-                    reduce_idx = merge_idx * (self.merge_partition_size + 1)
-                    partition_size = self.merge_partition_size + 1
+                if merge_idx < self._num_mergers_with_extra_reducer:
+                    reduce_idx = merge_idx * (self.num_reducers_per_merger + 1)
+                    num_reducers_for_cur_merger = self.num_reducers_per_merger + 1
                 else:
-                    reduce_idx = self._partitions_with_extra_task * (
-                        self.merge_partition_size + 1
+                    reduce_idx = self._num_mergers_with_extra_reducer * (
+                        self.num_reducers_per_merger + 1
                     )
-                    merge_idx -= self._partitions_with_extra_task
-                    reduce_idx += merge_idx * self.merge_partition_size
-                    partition_size = self.merge_partition_size
+                    merge_idx -= self._num_mergers_with_extra_reducer
+                    reduce_idx += merge_idx * self.num_reducers_per_merger
+                    num_reducers_for_cur_merger = self.num_reducers_per_merger
 
-                if round_idx >= partition_size:
+                if round_idx >= num_reducers_for_cur_merger:
                     continue
 
                 reduce_idx += round_idx
@@ -97,9 +117,13 @@ class _PushBasedShuffleStage:
         num_map_tasks_per_round: int,
         merge_task_placement: List[str],
     ):
+        # The number of rounds of map-merge tasks. Reducer tasks are given the
+        # outputs of the merge tasks as inputs. Reducer tasks receive one input
+        # per round.
         self.num_rounds = num_rounds
+        # The number of map tasks per round of map-merge tasks. The map task
+        # produces one output per merge task in the same round.
         self.num_map_tasks_per_round = num_map_tasks_per_round
-        self.num_merge_tasks_per_round = len(merge_task_placement)
 
         node_strategies = {
             node_id: {
@@ -114,11 +138,34 @@ class _PushBasedShuffleStage:
         ]
 
         self.merge_schedule = _MergeTaskSchedule(
-            output_num_blocks, self.num_merge_tasks_per_round
+            output_num_blocks, len(merge_task_placement)
         )
+
+    def get_estimated_num_refs(self) -> int:
+        # Number of intermediate blocks = Number of rounds x (map tasks per
+        # round * merge tasks per round).
+        num_intermediate_refs = self.num_rounds * (
+            self.num_map_tasks_per_round * self.merge_schedule.num_merge_tasks_per_round
+        )
+        # Number of input blocks + intermediate blocks + output blocks.
+        num_refs_total = (
+            (self.num_rounds * self.num_map_tasks_per_round)
+            + num_intermediate_refs
+            + self.merge_schedule.output_num_blocks
+        )
+        return num_refs_total
 
     def get_merge_task_options(self, merge_idx):
         return self._merge_task_options[merge_idx]
+
+    def __repr__(self):
+        return (
+            "num map tasks per round (num args per merge task): "
+            f"{self.num_map_tasks_per_round}\n"
+            f"num rounds (num args per reduce task): {self.num_rounds}\n"
+            "merge task placement: \n"
+            f"{self.merge_schedule}"
+        )
 
 
 class _PipelinedStageExecutor:
@@ -139,10 +186,12 @@ class _PipelinedStageExecutor:
 
         self._submit_round()
 
+        self._num_block_bytes_stored_at_driver = 0
+
     def __iter__(self):
         return self
 
-    def __next__(self):
+    def __next__(self) -> List[BlockMetadata]:
         """
         Submit one round of tasks. If we already have the max concurrent rounds
         in flight, first wait for the oldest round of tasks to finish.
@@ -158,6 +207,8 @@ class _PipelinedStageExecutor:
                     prev_metadata = self._progress_bar.fetch_until_complete(
                         prev_metadata_refs
                     )
+                    # TODO(swang): Eagerly free the previous round's args.
+                    # See https://github.com/ray-project/ray/issues/42145.
                 else:
                     prev_metadata = ray.get(prev_metadata_refs)
 
@@ -234,7 +285,7 @@ class _MergeStageIterator:
         # (ObjectRefs). Each merge task index corresponds to a partition of P
         # final reduce tasks.
         self._all_merge_results = [
-            [] for _ in range(self._stage.num_merge_tasks_per_round)
+            [] for _ in range(self._stage.merge_schedule.num_merge_tasks_per_round)
         ]
 
     def __next__(self):
@@ -262,10 +313,15 @@ class _MergeStageIterator:
         del merge_result
 
         self._merge_idx += 1
-        self._merge_idx %= self._stage.num_merge_tasks_per_round
+        self._merge_idx %= self._stage.merge_schedule.num_merge_tasks_per_round
         return metadata_ref
 
     def pop_merge_results(self) -> List[List[ObjectRef]]:
+        """Return a nested list of merge task results. The list at index i
+        stores the outputs of the i-th merge task submitted during each
+        map-merge round. Each merge task returns a list of outputs because it
+        may produce outputs for multiple downstream reduce tasks.
+        """
         all_merge_results = self._all_merge_results
         self._all_merge_results = []
         return all_merge_results
@@ -279,6 +335,7 @@ class _ReduceStageIterator:
         all_merge_results: List[List[List[ObjectRef]]],
         ray_remote_args,
         reduce_args: List[Any],
+        _debug_limit_execution_to_num_blocks: Optional[int],
     ):
         self._shuffle_reduce = shuffle_reduce
         self._stage = stage
@@ -294,7 +351,16 @@ class _ReduceStageIterator:
                 merge_results.pop(0) for merge_results in all_merge_results[merge_idx]
             ]
             self._reduce_arg_blocks.append((reduce_idx, reduce_arg_blocks))
+
         assert len(self._reduce_arg_blocks) == stage.merge_schedule.output_num_blocks
+
+        if _debug_limit_execution_to_num_blocks is not None:
+            self._reduce_arg_blocks = self._reduce_arg_blocks[
+                :_debug_limit_execution_to_num_blocks
+            ]
+            logger.debug(
+                f"Limiting execution to {len(self._reduce_arg_blocks)} reduce tasks"
+            )
 
         for merge_idx, merge_results in enumerate(all_merge_results):
             assert all(len(merge_result) == 0 for merge_result in merge_results), (
@@ -360,7 +426,9 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         N * P = R = total number of output blocks
         M / N = merge factor - the ratio of map : merge tasks is to improve
           pipelined parallelism. For example, if map takes twice as long to
-          execute as merge, then we should set this to 2.
+          execute as merge, then we should set this to 2. If pipeline bubbles
+          appear and the merge tasks are much longer than the map tasks, then
+          the merge factor should be decreased, and vice versa.
         See paper at https://arxiv.org/abs/2203.05072 for more details.
     """
 
@@ -368,12 +436,13 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         self,
         refs: List[RefBundle],
         output_num_blocks: int,
-        ctx: TaskContext,
+        task_ctx: TaskContext,
         map_ray_remote_args: Optional[Dict[str, Any]] = None,
         reduce_ray_remote_args: Optional[Dict[str, Any]] = None,
-        merge_factor: int = 2,
+        merge_factor: float = 2,
+        _debug_limit_execution_to_num_blocks: int = None,
     ) -> Tuple[List[RefBundle], StatsDict]:
-        logger.info("Using experimental push-based shuffle.")
+        logger.debug("Using experimental push-based shuffle.")
         # TODO: Preemptively clear the blocks list since we will incrementally delete
         # the last remaining references as we submit the dependent map tasks during the
         # map-merge stage.
@@ -388,8 +457,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # processed concurrently.
         input_blocks_list = []
         for ref_bundle in refs:
-            for block, _ in ref_bundle.blocks:
-                input_blocks_list.append(block)
+            input_blocks_list.extend(ref_bundle.block_refs)
         input_owned = all(b.owns_blocks for b in refs)
 
         if map_ray_remote_args is None:
@@ -411,6 +479,23 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             output_num_blocks,
         )
 
+        caller_memory_usage = (
+            stage.get_estimated_num_refs() * CALLER_MEMORY_USAGE_PER_OBJECT_REF
+        )
+        self.warn_on_driver_memory_usage(
+            caller_memory_usage,
+            "Execution is estimated to use at least "
+            f"{convert_bytes_to_human_readable_str(caller_memory_usage)}"
+            " of driver memory. Ensure that the driver machine has at least "
+            "this much memory to ensure job completion.",
+        )
+
+        # TODO(swang): Use INFO level. Currently there is no easy way to set
+        # the logging level to DEBUG from a driver script, so just print
+        # verbosely for now.
+        # See https://github.com/ray-project/ray/issues/42002.
+        logger.debug(f"Push-based shuffle schedule:\n{stage}")
+
         map_fn = self._map_partition
         merge_fn = self._merge
 
@@ -423,16 +508,19 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         shuffle_map = cached_remote_fn(map_partition)
         shuffle_map = shuffle_map.options(
             **map_ray_remote_args,
-            num_returns=1 + stage.num_merge_tasks_per_round,
+            num_returns=1 + stage.merge_schedule.num_merge_tasks_per_round,
         )
 
+        if _debug_limit_execution_to_num_blocks is not None:
+            input_blocks_list = input_blocks_list[:_debug_limit_execution_to_num_blocks]
+            logger.debug(f"Limiting execution to {len(input_blocks_list)} map tasks")
         map_stage_iter = _MapStageIterator(
             input_blocks_list,
             shuffle_map,
             [output_num_blocks, stage.merge_schedule, *self._exchange_spec._map_args],
         )
 
-        sub_progress_bar_dict = ctx.sub_progress_bar_dict
+        sub_progress_bar_dict = task_ctx.sub_progress_bar_dict
         bar_name = ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME
         assert bar_name in sub_progress_bar_dict, sub_progress_bar_dict
         map_bar = sub_progress_bar_dict[bar_name]
@@ -445,9 +533,10 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             map_stage_iter, shuffle_merge, stage, self._exchange_spec._reduce_args
         )
         merge_stage_executor = _PipelinedStageExecutor(
-            merge_stage_iter, stage.num_merge_tasks_per_round, max_concurrent_rounds=2
+            merge_stage_iter,
+            stage.merge_schedule.num_merge_tasks_per_round,
+            max_concurrent_rounds=2,
         )
-
         # Execute the map-merge stage. This submits tasks in rounds of M map
         # tasks and N merge tasks each. Task execution between map and merge is
         # pipelined, so that while executing merge for one round of inputs, we
@@ -468,7 +557,18 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             except StopIteration:
                 merge_done = True
                 break
+
+            self.warn_on_high_local_memory_store_usage()
+
         all_merge_results = merge_stage_iter.pop_merge_results()
+
+        if _debug_limit_execution_to_num_blocks is not None:
+            for merge_idx in range(len(all_merge_results)):
+                while len(all_merge_results[merge_idx]) < stage.num_rounds:
+                    # Repeat the first merge task's results.
+                    all_merge_results[merge_idx].append(
+                        all_merge_results[merge_idx][0][:]
+                    )
 
         # Execute and wait for the reduce stage.
         bar_name = ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME
@@ -482,6 +582,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             all_merge_results,
             reduce_ray_remote_args,
             self._exchange_spec._reduce_args,
+            _debug_limit_execution_to_num_blocks,
         )
 
         max_reduce_tasks_in_flight = output_num_blocks
@@ -506,6 +607,8 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
             except StopIteration:
                 break
 
+            self.warn_on_high_local_memory_store_usage()
+
         new_blocks = reduce_stage_iter.pop_reduce_results()
         sorted_blocks = [
             (block[0], block[1], reduce_stage_metadata[i])
@@ -517,6 +620,11 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         if sorted_blocks:
             _, new_blocks, reduce_stage_metadata = zip(*sorted_blocks)
         del sorted_blocks
+
+        if _debug_limit_execution_to_num_blocks is not None:
+            output_num_blocks = min(
+                _debug_limit_execution_to_num_blocks, output_num_blocks
+            )
 
         assert (
             len(new_blocks) == output_num_blocks
@@ -553,20 +661,35 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         *map_args: List[Any],
     ) -> List[Union[BlockMetadata, Block]]:
         mapper_outputs = map_fn(idx, block, output_num_blocks, *map_args)
-        meta = mapper_outputs.pop(-1)
 
-        parts = []
+        # A merge task may produce results for multiple downstream reducer
+        # tasks. Therefore, each map task should give each merge task a
+        # partition of its outputs, where the length of the partition is equal
+        # to the number of reducers downstream to the merge task.
+        partition = []
         merge_idx = 0
-        while mapper_outputs:
-            partition_size = schedule.get_num_reducers_per_merge_idx(merge_idx)
-            parts.append(mapper_outputs[:partition_size])
-            mapper_outputs = mapper_outputs[partition_size:]
-            merge_idx += 1
-        assert len(parts) == schedule.num_merge_tasks_per_round, (
-            len(parts),
+        while merge_idx < schedule.num_merge_tasks_per_round and mapper_outputs:
+            output = mapper_outputs.pop(0)
+            partition.append(output)
+
+            if len(partition) == schedule.get_num_reducers_per_merge_idx(merge_idx):
+                yield partition
+
+                partition = []
+                merge_idx += 1
+
+        assert not partition
+        assert len(mapper_outputs) == 1, (
+            mapper_outputs,
+            "The last output should be a BlockMetadata",
+        )
+        assert isinstance(mapper_outputs[0], BlockMetadata)
+        yield mapper_outputs[0]
+
+        assert merge_idx == schedule.num_merge_tasks_per_round, (
+            merge_idx,
             schedule.num_merge_tasks_per_round,
         )
-        return parts + [meta]
 
     @staticmethod
     def _merge(
@@ -609,13 +732,16 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
     def _compute_shuffle_schedule(
         num_cpus_per_node_map: Dict[str, int],
         num_input_blocks: int,
-        merge_factor: int,
+        merge_factor: float,
         num_output_blocks: int,
     ) -> _PushBasedShuffleStage:
         num_cpus_total = sum(v for v in num_cpus_per_node_map.values())
-        task_parallelism = min(num_cpus_total, num_input_blocks)
-
+        logger.debug(
+            f"Found {num_cpus_total} CPUs available CPUs for push-based shuffle."
+        )
         num_tasks_per_map_merge_group = merge_factor + 1
+        num_total_merge_tasks = math.ceil(num_input_blocks / merge_factor)
+
         num_merge_tasks_per_round = 0
         merge_task_placement = []
         leftover_cpus = 0
@@ -623,29 +749,61 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         # Each merge task should be grouped with `merge_factor` map tasks for
         # pipelining. These groups should then be spread across nodes according
         # to CPU availability for load-balancing.
+        num_input_blocks_remaining = num_input_blocks
         for node, num_cpus in num_cpus_per_node_map.items():
-            node_parallelism = min(
-                num_cpus, num_input_blocks // len(num_cpus_per_node_map)
+            # First find how many merge tasks we should run on this node.
+            # We take the min of the number of CPUs on this node and the number
+            # of input blocks that we haven't scheduled yet, in case there are
+            # fewer input blocks than CPU slots on this node.
+            num_cpu_slots = min(num_cpus, num_input_blocks_remaining)
+            num_merge_tasks_on_cur_node = round(
+                num_cpu_slots / num_tasks_per_map_merge_group
             )
-            num_merge_tasks = node_parallelism // num_tasks_per_map_merge_group
-            for i in range(num_merge_tasks):
+            # For small datasets, the number of tasks to run may be less than
+            # the total CPU slots available.
+            num_merge_tasks_on_cur_node = min(
+                num_merge_tasks_on_cur_node, num_total_merge_tasks
+            )
+            for i in range(num_merge_tasks_on_cur_node):
                 merge_task_placement.append(node)
-            num_merge_tasks_per_round += num_merge_tasks
+                # We schedule `merge_factor` many map tasks for every merge
+                # task. Subtract from the number of input blocks remaining to
+                # account for cases where the number of map tasks is smaller
+                # than the available CPU slots.
+                num_input_blocks_remaining -= merge_factor
+                num_cpus -= num_tasks_per_map_merge_group
+            num_merge_tasks_per_round += num_merge_tasks_on_cur_node
 
             # Handle the case where a single node cannot fit a group of map and
             # merge tasks, but we can spread the group across multiple distinct
             # nodes.
-            leftover_cpus += node_parallelism % num_tasks_per_map_merge_group
-            if num_merge_tasks == 0 and leftover_cpus > num_tasks_per_map_merge_group:
+            leftover_cpus += num_cpus
+            if (
+                leftover_cpus >= num_tasks_per_map_merge_group
+                and num_merge_tasks_per_round < num_total_merge_tasks
+            ):
                 merge_task_placement.append(node)
                 num_merge_tasks_per_round += 1
                 leftover_cpus -= num_tasks_per_map_merge_group
+                num_input_blocks_remaining -= merge_factor
+
+            num_input_blocks_remaining = max(0, num_input_blocks_remaining)
+
         if num_merge_tasks_per_round == 0:
-            merge_task_placement.append(list(num_cpus_per_node_map)[0])
-            num_merge_tasks_per_round = 1
+            # For small datasets, make sure we have at least one merge task.
+            for node, num_cpus in num_cpus_per_node_map.items():
+                if num_cpus >= 1:
+                    merge_task_placement.append(node)
+                    num_merge_tasks_per_round = 1
+                    break
 
         assert num_merge_tasks_per_round == len(merge_task_placement)
-        num_map_tasks_per_round = max(task_parallelism - num_merge_tasks_per_round, 1)
+        assert num_merge_tasks_per_round > 0, num_merge_tasks_per_round
+        # Use the remaining CPUs to execute map tasks.
+        num_map_tasks_per_round = num_cpus_total - num_merge_tasks_per_round
+        num_map_tasks_per_round = min(num_map_tasks_per_round, num_input_blocks)
+        # Make sure there is at least one map task in each round.
+        num_map_tasks_per_round = max(num_map_tasks_per_round, 1)
 
         num_rounds = math.ceil(num_input_blocks / num_map_tasks_per_round)
         return _PushBasedShuffleStage(
@@ -656,44 +814,14 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         )
 
 
-def _execute_pipelined_stage(
-    stage_fn: Callable[[T], Tuple[ObjectRef, U]],
-    prev_metadata_refs: List[ObjectRef],
-    stage_args: List[T],
-    progress_bar: Optional[ProgressBar] = None,
-) -> Tuple[List[BlockMetadata], List[ObjectRef], List[U]]:
-    """
-    Helper function to execute a stage of tasks. This will wait for the
-    previous round of tasks to complete before submitting the next.
-    """
-    # TODO(swang): Straggler tasks can cause pipeline bubbles. Instead of
-    # waiting for all previous tasks, we should wait for some tasks on each
-    # node to finish.
-    if progress_bar is not None:
-        prev_metadata = progress_bar.fetch_until_complete(prev_metadata_refs)
-    else:
-        prev_metadata = ray.get(prev_metadata_refs)
-    prev_metadata_refs.clear()
-
-    metadata_refs = []
-    data_outputs = []
-    while stage_args:
-        arg = stage_args.pop(0)
-        metadata_ref, data_output = stage_fn(arg)
-        metadata_refs.append(metadata_ref)
-        data_outputs.append(data_output)
-    return prev_metadata, metadata_refs, data_outputs
-
-
 def _get_num_cpus_per_node_map() -> Dict[str, int]:
-    nodes = ray.nodes()
+    total_resources_by_node = ray.state.total_resources_per_node()
     # Map from per-node resource name to number of CPUs available on that
     # node.
     num_cpus_per_node_map = {}
-    for node in nodes:
-        resources = node["Resources"]
+    for node_id, resources in total_resources_by_node.items():
         num_cpus = int(resources.get("CPU", 0))
         if num_cpus == 0:
             continue
-        num_cpus_per_node_map[node["NodeID"]] = num_cpus
+        num_cpus_per_node_map[node_id] = num_cpus
     return num_cpus_per_node_map

@@ -37,7 +37,7 @@ class UnionOperator(NAryOperator):
         self._input_idx_to_output = 0
 
         self._output_buffer: List[RefBundle] = []
-        self._stats: StatsDict = {}
+        self._stats: StatsDict = {"Union": []}
         super().__init__(*input_ops)
 
     def start(self, options: ExecutionOptions):
@@ -49,15 +49,22 @@ class UnionOperator(NAryOperator):
     def num_outputs_total(self) -> Optional[int]:
         num_outputs = 0
         for input_op in self.input_dependencies:
-            op_num_outputs = input_op.num_outputs_total()
-            # If at least one of the input ops has an unknown number of outputs,
-            # the number of outputs of the union operator is unknown.
-            if op_num_outputs is None:
+            input_num_outputs = input_op.num_outputs_total()
+            if input_num_outputs is None:
                 return None
-            num_outputs += op_num_outputs
+            num_outputs += input_num_outputs
         return num_outputs
 
-    def add_input(self, refs: RefBundle, input_index: int) -> None:
+    def num_output_rows_total(self) -> Optional[int]:
+        total_rows = 0
+        for input_op in self.input_dependencies:
+            input_num_rows = input_op.num_output_rows_total()
+            if input_num_rows is None:
+                return None
+            total_rows += input_num_rows
+        return total_rows
+
+    def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
 
@@ -100,7 +107,7 @@ class UnionOperator(NAryOperator):
         # Check if the output buffer still contains at least one block.
         return len(self._output_buffer) > 0
 
-    def get_next(self) -> RefBundle:
+    def _get_next_inner(self) -> RefBundle:
         return self._output_buffer.pop(0)
 
     def get_stats(self) -> StatsDict:

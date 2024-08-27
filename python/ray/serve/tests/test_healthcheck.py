@@ -1,14 +1,13 @@
 import pytest
 
 import ray
-from ray.exceptions import RayError
-from ray._private.test_utils import wait_for_condition
 from ray import serve
+from ray._private.test_utils import wait_for_condition
+from ray.exceptions import RayError
 from ray.serve._private.common import DeploymentStatus
-from ray.serve._private.constants import REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 from ray.serve._private.constants import (
+    REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
     SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
 
 
@@ -57,7 +56,7 @@ def check_new_actor_started(handle, original_actors):
     if not isinstance(original_actors, set):
         original_actors = {original_actors._actor_id}
     try:
-        return ray.get(handle.remote())._actor_id not in original_actors
+        return handle.remote().result()._actor_id not in original_actors
     except RayError:
         return False
 
@@ -80,7 +79,7 @@ def test_no_user_defined_method(serve_instance, use_class):
             return ray.get_runtime_context().current_actor
 
     h = serve.run(A.bind())
-    actor = ray.get(h.remote())
+    actor = h.remote().result()
     ray.kill(actor)
 
     # This would time out if we wait for multiple health check failures.
@@ -89,32 +88,38 @@ def test_no_user_defined_method(serve_instance, use_class):
 
 def test_user_defined_method_fails(serve_instance):
     h = serve.run(Patient.bind())
-    actor = ray.get(h.remote())
-    ray.get(h.set_should_fail.remote())
+    actor = h.remote().result()
+    h.set_should_fail.remote().result()
 
     wait_for_condition(check_new_actor_started, handle=h, original_actors=actor)
-    ray.get([h.remote() for _ in range(100)])
+    ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])
 
 
 def test_user_defined_method_hangs(serve_instance):
-    h = serve.run(Patient.bind())
-    actor = ray.get(h.remote())
-    ray.get(h.set_should_hang.remote())
+    h = serve.run(Patient.options(graceful_shutdown_timeout_s=0).bind())
+    actor = h.remote().result()
+    h.set_should_hang.remote().result()
 
     wait_for_condition(check_new_actor_started, handle=h, original_actors=actor)
-    ray.get([h.remote() for _ in range(100)])
+    ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])
 
 
 def test_multiple_replicas(serve_instance):
     h = serve.run(Patient.options(num_replicas=2).bind())
-    actors = {a._actor_id for a in ray.get([h.remote() for _ in range(100)])}
+    actors = {
+        a._actor_id
+        for a in ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])
+    }
     assert len(actors) == 2
 
-    ray.get(h.set_should_fail.remote())
+    h.set_should_fail.remote().result()
 
     wait_for_condition(check_new_actor_started, handle=h, original_actors=actors)
 
-    new_actors = {a._actor_id for a in ray.get([h.remote() for _ in range(100)])}
+    new_actors = {
+        a._actor_id
+        for a in ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])
+    }
     assert len(new_actors) == 2
     assert len(new_actors.intersection(actors)) == 1
 
@@ -137,10 +142,10 @@ def test_inherit_healthcheck(serve_instance):
             return ray.get_runtime_context().current_actor
 
     h = serve.run(Child.bind())
-    actors = {ray.get(h.remote())._actor_id for _ in range(100)}
+    actors = {h.remote().result()._actor_id for _ in range(100)}
     assert len(actors) == 1
 
-    ray.get(h.set_should_fail.remote())
+    h.set_should_fail.remote().result()
     wait_for_condition(check_new_actor_started, handle=h, original_actors=actors)
 
 
@@ -159,11 +164,11 @@ def test_nonconsecutive_failures(serve_instance):
             return ray.get_runtime_context().current_actor
 
     h = serve.run(FlakyHealthCheck.bind())
-    a1 = ray.get(h.remote())
+    a1 = h.remote().result()
 
     # Wait for 10 health check periods, should never get marked unhealthy.
     wait_for_condition(lambda: ray.get(counter.get.remote()) > 10)
-    assert ray.get(h.remote())._actor_id == a1._actor_id
+    assert h.remote().result()._actor_id == a1._actor_id
 
 
 def test_consecutive_failures(serve_instance):
@@ -192,10 +197,10 @@ def test_consecutive_failures(serve_instance):
     h = serve.run(ChronicallyUnhealthy.bind())
 
     def check_fails_3_times():
-        original_actor_id = ray.get(h.set_should_fail.remote())
+        original_actor_id = h.set_should_fail.remote().result()
 
         # Wait until a new actor is started.
-        wait_for_condition(lambda: ray.get(h.remote()) != original_actor_id)
+        wait_for_condition(lambda: h.remote().result() != original_actor_id)
 
         # Check that the health check failed N times before replica was killed.
         assert ray.get(counter.get.remote()) == REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD
@@ -221,11 +226,9 @@ def test_health_check_failure_makes_deployment_unhealthy(serve_instance):
     with pytest.raises(RuntimeError):
         serve.run(AlwaysUnhealthy.bind())
 
-    app_status = serve_instance.get_serve_status()
+    app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
     assert (
-        app_status.deployment_statuses[0].name
-        == f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}AlwaysUnhealthy"
-        and app_status.deployment_statuses[0].status == DeploymentStatus.UNHEALTHY
+        app_status.deployments["AlwaysUnhealthy"].status == DeploymentStatus.UNHEALTHY
     )
 
 
@@ -258,12 +261,9 @@ def test_health_check_failure_makes_deployment_unhealthy_transition(serve_instan
             return ray.get_runtime_context().current_actor
 
     def check_status(expected_status: DeploymentStatus):
-        app_status = serve_instance.get_serve_status()
-        return (
-            app_status.deployment_statuses[0].name == f"{SERVE_DEFAULT_APP_NAME}"
-            f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}WillBeUnhealthy"
-            and app_status.deployment_statuses[0].status == expected_status
-        )
+        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert app_status.deployments["WillBeUnhealthy"].status == expected_status
+        return True
 
     toggle = ray.remote(Toggle).remote()
     serve.run(WillBeUnhealthy.bind(toggle))

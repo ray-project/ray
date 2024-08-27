@@ -120,8 +120,8 @@ void RayServerBidiReactor::OnCancel() {
 
 void RayServerBidiReactor::OnDone() {
   io_context_.dispatch(
-      [this]() {
-        cleanup_cb_(GetRemoteNodeID(), false);
+      [this, cleanup_cb = cleanup_cb_, remote_node_id = GetRemoteNodeID()]() {
+        cleanup_cb(remote_node_id, false);
         delete this;
       },
       "");
@@ -245,8 +245,8 @@ void RaySyncer::Connect(const std::string &node_id,
 void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
   boost::asio::dispatch(
       io_context_.get_executor(), std::packaged_task<void()>([this, reactor]() {
-        RAY_CHECK(sync_reactors_.find(reactor->GetRemoteNodeID()) ==
-                  sync_reactors_.end());
+        RAY_CHECK(sync_reactors_.find(reactor->GetRemoteNodeID()) == sync_reactors_.end())
+            << reactor->GetRemoteNodeID();
         sync_reactors_[reactor->GetRemoteNodeID()] = reactor;
         // Send the view for new connections.
         for (const auto &[_, messages] : node_state_->GetClusterView()) {
@@ -300,7 +300,8 @@ void RaySyncer::Register(MessageType message_type,
                 }
                 OnDemandBroadcasting(message_type);
               },
-              pull_from_reporter_interval_ms);
+              pull_from_reporter_interval_ms,
+              "RaySyncer.OnDemandBroadcasting");
         }
 
         RAY_LOG(DEBUG) << "Registered components: "
@@ -354,9 +355,8 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         syncer_.sync_reactors_.erase(node_id);
         syncer_.node_state_->RemoveNode(node_id);
       });
-  RAY_LOG(DEBUG) << "Get connection from "
-                 << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " to "
-                 << NodeID::FromBinary(syncer_.GetLocalNodeID());
+  RAY_LOG(INFO).WithField(kLogKeyNodeID, NodeID::FromBinary(reactor->GetRemoteNodeID()))
+      << "Get connection";
   syncer_.Connect(reactor);
   return reactor;
 }

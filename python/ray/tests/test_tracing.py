@@ -37,7 +37,6 @@ def ray_start_cli_tracing(scope="function"):
     check_call_ray(
         ["start", "--head", "--tracing-startup-hook", setup_tracing_path],
     )
-    ray.init(address="auto")
     yield
     ray.shutdown()
     check_call_ray(["stop", "--force"])
@@ -101,7 +100,7 @@ def task_helper():
     ray.get(obj_ref)
 
     span_list = get_span_list()
-    assert len(span_list) == 2
+    assert len(span_list) == 2, span_list
 
     # The spans could show up in a different order, so just check that
     # all spans are as expected
@@ -112,7 +111,7 @@ def task_helper():
     }
 
 
-def sync_actor_helper(connect_to_cluster: bool = False):
+def sync_actor_helper():
     """Run a Ray sync actor and check the spans produced."""
 
     @ray.remote
@@ -123,9 +122,6 @@ def sync_actor_helper(connect_to_cluster: bool = False):
         def increment(self):
             self.value += 1
             return self.value
-
-    if connect_to_cluster:
-        ray.init(address="auto")
 
     # Create an actor from this class.
     counter = Counter.remote()
@@ -138,12 +134,12 @@ def sync_actor_helper(connect_to_cluster: bool = False):
     # The spans could show up in a different order, so just check that
     # all spans are as expected
     span_names = get_span_dict(span_list)
-    return span_names == {
+    assert span_names == {
         "sync_actor_helper.<locals>.Counter.__init__ ray.remote": 1,
         "sync_actor_helper.<locals>.Counter.increment ray.remote": 1,
         "Counter.__init__ ray.remote_worker": 1,
         "Counter.increment ray.remote_worker": 1,
-    }
+    }, span_names
 
 
 def async_actor_helper():
@@ -165,12 +161,12 @@ def async_actor_helper():
     # The spans could show up in a different order, so just check that
     # all spans are as expected
     span_names = get_span_dict(span_list)
-    return span_names == {
+    assert span_names == {
         "async_actor_helper.<locals>.AsyncActor.__init__ ray.remote": 1,
         "async_actor_helper.<locals>.AsyncActor.run_concurrent ray.remote": 4,
         "AsyncActor.__init__ ray.remote_worker": 1,
         "AsyncActor.run_concurrent ray.remote_worker": 4,
-    }
+    }, span_names
 
 
 def test_tracing_task_init_workflow(cleanup_dirs, ray_start_init_tracing):
@@ -182,23 +178,23 @@ def test_tracing_task_start_workflow(cleanup_dirs, ray_start_cli_tracing):
 
 
 def test_tracing_sync_actor_init_workflow(cleanup_dirs, ray_start_init_tracing):
-    assert sync_actor_helper()
+    sync_actor_helper()
 
 
 def test_tracing_sync_actor_start_workflow(cleanup_dirs, ray_start_cli_tracing):
-    assert sync_actor_helper()
+    sync_actor_helper()
 
 
 def test_tracing_async_actor_init_workflow(cleanup_dirs, ray_start_init_tracing):
-    assert async_actor_helper()
+    async_actor_helper()
 
 
 def test_tracing_async_actor_start_workflow(cleanup_dirs, ray_start_cli_tracing):
-    assert async_actor_helper()
+    async_actor_helper()
 
 
 def test_tracing_predefined_actor(cleanup_dirs, ray_start_cli_predefined_actor_tracing):
-    assert sync_actor_helper(connect_to_cluster=True)
+    sync_actor_helper()
 
 
 def test_wrapping(ray_start_init_tracing):

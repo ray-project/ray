@@ -118,7 +118,13 @@ To view the full list of supported file formats, see the
 
             print(ds.schema())
 
+        ..
+            The following `testoutput` is mocked because the order of column names can
+            be non-deterministic. For an example, see
+            https://buildkite.com/ray-project/oss-ci-build-branch/builds/4849#01892c8b-0cd0-4432-bc9f-9f86fcd38edd.
+
         .. testoutput::
+            :options: +MOCK
 
             Column  Type
             ------  ----
@@ -224,7 +230,7 @@ Finally, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
     predictions = ds.map_batches(
         ImageClassifier,
-        compute=ray.data.ActorPoolStrategy(size=2),
+        concurrency=2,
         batch_size=4
     )
     predictions.show(3)
@@ -237,17 +243,28 @@ Finally, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
 For more information on performing inference, see
 :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`
-and :ref:`Transforming batches with actors <transforming_data_actors>`.
+and :ref:`Stateful Transforms <stateful_transforms>`.
 
 .. _saving_images:
 
 Saving images
 -------------
 
-Save images with formats like Parquet, NumPy, and JSON. To view all supported formats,
+Save images with formats like PNG, Parquet, and NumPy. To view all supported formats,
 see the :ref:`Input/Output reference <input-output>`.
 
 .. tab-set::
+
+    .. tab-item:: Images
+
+        To save images as image files, call :meth:`~ray.data.Dataset.write_images`.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+            ds.write_images("/tmp/simple", column="image", file_format="png")
 
     .. tab-item:: Parquet
 
@@ -257,7 +274,7 @@ see the :ref:`Input/Output reference <input-output>`.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_parquet("/tmp/simple")
 
 
@@ -269,18 +286,7 @@ see the :ref:`Input/Output reference <input-output>`.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_numpy("/tmp/simple", column="image")
-
-    .. tab-item:: JSON
-
-        To save images in a JSON file, call :meth:`~ray.data.Dataset.write_json`.
-
-        .. testcode::
-
-            import ray
-
-            ds = ray.data.read_images("example://image-datasets/simple")
-            ds.write_json("/tmp/simple")
 
 For more information on saving data, see :ref:`Saving data <loading_data>`.

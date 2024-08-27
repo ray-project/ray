@@ -1,3 +1,8 @@
+
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
 .. _utils-reference-docs:
 
 RLlib Utilities
@@ -21,6 +26,7 @@ Built-in Exploration components
 .. currentmodule:: ray.rllib.utils.exploration
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ~exploration.Exploration
@@ -37,6 +43,7 @@ Built-in Exploration components
 Inference
 ~~~~~~~~~
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ~exploration.Exploration.get_exploration_action
@@ -45,6 +52,7 @@ Callback hooks
 ~~~~~~~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ~exploration.Exploration.before_compute_actions
@@ -57,6 +65,7 @@ Setting and getting states
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ~exploration.Exploration.get_state
@@ -80,6 +89,7 @@ Built-in Scheduler components
 .. currentmodule:: ray.rllib.utils.schedules
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ~schedule.Schedule
@@ -93,6 +103,7 @@ Methods
 ~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ~schedule.Schedule.value
@@ -107,6 +118,7 @@ Training Operations Utilities
 .. currentmodule:: ray.rllib.execution.train_ops
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ~multi_gpu_train_one_step
@@ -122,6 +134,7 @@ Import utilities
 .. currentmodule:: ray.rllib.utils.framework
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ~try_import_torch
@@ -135,6 +148,7 @@ Tensorflow utilities
 .. currentmodule:: ray.rllib.utils.tf_utils
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ~explained_variance
@@ -159,6 +173,7 @@ Torch utilities
 
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ~apply_grad_clipping
@@ -166,7 +181,6 @@ Torch utilities
    ~convert_to_torch_tensor
    ~explained_variance
    ~flatten_inputs_to_1d_tensor
-   ~get_device
    ~global_norm
    ~huber_loss
    ~l2_loss
@@ -185,6 +199,7 @@ Numpy utilities
 .. currentmodule:: ray.rllib.utils.numpy
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    ~aligned_array
@@ -200,3 +215,48 @@ Numpy utilities
    ~relu
    ~sigmoid
    ~softmax
+
+Checkpoint utilities
+~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.utils.checkpoints
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Checkpointable
+   convert_to_msgpack_checkpoint
+   convert_to_msgpack_policy_checkpoint
+   get_checkpoint_info
+   try_import_msgpack
+
+Policy utilities
+~~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.utils.policy
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   compute_log_likelihoods_from_input_dict
+   create_policy_for_framework
+   local_policy_inference
+   parse_policy_specs_from_checkpoint
+
+Other utilities
+~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   utils.tensor_dtype.get_np_dtype
+   common.CLIArguments
+   common.FrameworkEnum
+   common.SupportedFileType
+   core.rl_module.validate_module_id
+   train.load_experiments_from_file

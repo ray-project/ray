@@ -2,13 +2,13 @@
 
 # KubeRay Autoscaling
 
-This guide explains how to configure the Ray autoscaler on Kubernetes.
-The Ray autoscaler is a Ray cluster process that automatically scales a cluster up and down based on resource demand.
-The autoscaler does this by adjusting the number of nodes (Ray pods) in the cluster based on the resources required by tasks, actors or placement groups.
+This guide explains how to configure the Ray Autoscaler on Kubernetes.
+The Ray Autoscaler is a Ray cluster process that automatically scales a cluster up and down based on resource demand.
+The Autoscaler does this by adjusting the number of nodes (Ray Pods) in the cluster based on the resources required by tasks, actors, or placement groups.
 
-Note that the autoscaler only considers logical resource requests for scaling (i.e., those specified in ``@ray.remote`` and displayed in `ray status`), not physical machine utilization. If a user tries to launch an actor, task, or placement group but there are insufficient resources, the request will be queued. The autoscaler adds nodes to satisfy resource demands in this queue.
-The autoscaler also removes nodes after they become idle for some time.
-A node is considered idle if it has no active tasks, actors, or objects.
+The Autoscaler utilizes logical resource requests, indicated in `@ray.remote` and shown in `ray status`, not the physical machine utilization, to scale.
+If you launch an actor, task, or placement group and resources are insufficient, the Autoscaler queues the request.
+It adjusts the number of nodes to meet queue demands and removes idle nodes that have no tasks, actors, or objects over time.
 
 <!-- TODO(ekl): probably should change the default kuberay examples to not use autoscaling -->
 ```{admonition} When to use Autoscaling?
@@ -16,9 +16,14 @@ Autoscaling can reduce workload costs, but adds node launch overheads and can be
 We recommend starting with non-autoscaling clusters if you're new to Ray.
 ```
 
+```{admonition} Ray Autoscaling V2 alpha with KubeRay (@ray 2.10.0) 
+With Ray 2.10, Ray Autoscaler V2 alpha is available with KubeRay. It has improvements on observability and stability. Please see the [section](kuberay-autoscaler-v2) for more details.
+```
+
 ## Overview
-The following diagram illustrates the integration of the Ray Autoscaler
-with the KubeRay operator.
+
+The following diagram illustrates the integration of the Ray Autoscaler with the KubeRay operator.
+Although depicted as a separate entity for clarity, the Ray Autoscaler is actually a sidecar container within the Ray head Pod in the actual implementation.
 
 ```{eval-rst}
 .. image:: ../images/AutoscalerOperator.svg
@@ -27,200 +32,437 @@ with the KubeRay operator.
     Find the source document here (https://docs.google.com/drawings/d/1LdOg9JQuN5AOII-vDpSaFBsTeg0JGWcsbyNNLP1yovg/edit)
 ```
 
-Worker pod upscaling occurs through the following sequence of events:
-1. The user submits a Ray workload.
-2. Workload resource requirements are aggregated by the Ray head container
-   and communicated to the Ray autoscaler sidecar.
-3. The autoscaler determines that a Ray worker pod must be added to satisfy the workload's resource requirement.
-4. The autoscaler requests an additional worker pod by incrementing the RayCluster CR's `replicas` field.
-5. The KubeRay operator creates a Ray worker pod to match the new `replicas` specification.
-6. The Ray scheduler places the user's workload on the new worker pod.
+```{admonition} 3 levels of autoscaling in KubeRay
+  * **Ray actor/task**: Some Ray libraries, like Ray Serve, can automatically adjust the number of Serve replicas (i.e., Ray actors) based on the incoming request volume.
+  * **Ray node**: Ray Autoscaler automatically adjusts the number of Ray nodes (i.e., Ray Pods) based on the resource demand of Ray actors/tasks.
+  * **Kubernetes node**: If the Kubernetes cluster lacks sufficient resources for the new Ray Pods that the Ray Autoscaler creates, the Kubernetes Autoscaler can provision a new Kubernetes node. ***You must configure the Kubernetes Autoscaler yourself.***
+```
 
-See also the operator architecture diagram in the [KubeRay documentation](https://ray-project.github.io/kuberay/guidance/autoscaler/).
+* The Autoscaler scales up the cluster through the following sequence of events:
+  1. A user submits a Ray workload.
+  2. The Ray head container aggregates the workload resource requirements and communicates them to the Ray Autoscaler sidecar.
+  3. The Autoscaler decides to add a Ray worker Pod to satisfy the workload's resource requirement.
+  4. The Autoscaler requests an additional worker Pod by incrementing the RayCluster CR's `replicas` field.
+  5. The KubeRay operator creates a Ray worker Pod to match the new `replicas` specification.
+  6. The Ray scheduler places the user's workload on the new worker Pod.
+
+* The Autoscaler also scales down the cluster by removing idle worker Pods.
+If it finds an idle worker Pod, it reduces the count in the RayCluster CR's `replicas` field and adds the identified Pods to the CR's `workersToDelete` field.
+Then, the KubeRay operator deletes the Pods in the `workersToDelete` field.
 
 ## Quickstart
 
-First, follow the [KubeRay quickstart guide](kuberay-quickstart) to:
-* Install `kubectl` and `Helm`
-* Prepare a Kubernetes cluster
-* Deploy a KubeRay operator
+### Step 1: Create a Kubernetes cluster with Kind
 
-Next, create an autoscaling RayCluster custom resource.
 ```bash
-# Create an autoscaling RayCluster custom resource.
-kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-0.5/ray-operator/config/samples/ray-cluster.autoscaler.yaml
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
-Now, we can run a Ray program on the head pod that uses [``request_resources``](ref-autoscaler-sdk) to scale the cluster to a total of 3 CPUs. The head and worker pods in our [example cluster config](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml) each have a capacity of 1 CPU, and we specified a minimum of 1 worker pod. Thus, the request should trigger upscaling of one additional worker pod.
+### Step 2: Install the KubeRay operator
 
-Note that in real-life scenarios, you will want to use larger Ray pods. In fact, it is advantageous to size each Ray pod to take up an entire Kubernetes node. See the [configuration guide](kuberay-config) for more details.
+Follow [this document](kuberay-operator-deploy) to install the latest stable KubeRay operator via Helm repository.
 
-To run the Ray program, we will first get the name of the Ray head pod:
+### Step 3: Create a RayCluster custom resource with autoscaling enabled
 
 ```bash
-# Trigger Ray Pod upscaling
-export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
-kubectl exec $HEAD_POD -it -c ray-head -- python -c "import ray; ray.init(); ray.autoscaler.sdk.request_resources(num_cpus=4)"
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 ```
 
-The last command should trigger the upscaling of the Ray pod by requesting 4 CPUs. Initially, there is one head Pod and one worker Pod, each with 1 CPU. Next, the autoscaler will create two new worker Pods to utilize the remaining 2 CPUs.
+### Step 4: Verify the Kubernetes cluster status
 
 ```bash
-kubectl get pod --selector=ray.io/cluster=raycluster-autoscaler
-# NAME                                             READY   STATUS    RESTARTS   AGE
-# raycluster-autoscaler-head-pnb77                 2/2     Running   0          XXs
-# raycluster-autoscaler-worker-small-group-ng2p5   1/1     Running   0          XXs
-# raycluster-autoscaler-worker-small-group-s7pv6   1/1     Running   0          XXs
-# raycluster-autoscaler-worker-small-group-tb6d9   1/1     Running   0          XXs
-```
+# Step 4.1: List all Ray Pods in the `default` namespace.
+kubectl get pods -l=ray.io/is-ray-node=yes
 
-To get a summary of your cluster's status, run `ray status` on your cluster's Ray head node.
-```bash
-kubectl exec $HEAD_POD -it -c ray-head -- ray status
-# ======== Autoscaler status: 2023-04-07 xxxxxxxxxx ========
-# ....
-```
+# [Example output]
+# NAME                               READY   STATUS    RESTARTS   AGE
+# raycluster-autoscaler-head-6zc2t   2/2     Running   0          107s
 
-Alternatively, to examine the full autoscaling logs, fetch the stdout of the Ray head pod's autoscaler sidecar:
-```bash
-# This command gets the last 20 lines of autoscaler logs.
-kubectl logs $HEAD_POD -c autoscaler | tail -n 20
-# ======== Autoscaler status: 2023-04-07 xxxxxxxxxx ========
+# Step 4.2: Check the ConfigMap in the `default` namespace.
+kubectl get configmaps
+
+# [Example output]
+# NAME                  DATA   AGE
+# ray-example           2      21s
 # ...
 ```
 
+The RayCluster has one head Pod and zero worker Pods. The head Pod has two containers: a Ray head container and a Ray Autoscaler sidecar container.
+Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that houses two Python scripts: `detached_actor.py` and `terminate_detached_actor`.py.
+
+* `detached_actor.py` is a Python script that creates a detached actor which requires 1 CPU.
+  ```py
+  import ray
+  import sys
+
+  @ray.remote(num_cpus=1)
+  class Actor:
+    pass
+
+  ray.init(namespace="default_namespace")
+  Actor.options(name=sys.argv[1], lifetime="detached").remote()
+  ```
+
+* `terminate_detached_actor.py` is a Python script that terminates a detached actor.
+  ```py
+  import ray
+  import sys
+
+  ray.init(namespace="default_namespace")
+  detached_actor = ray.get_actor(sys.argv[1])
+  ray.kill(detached_actor)
+  ```
+
+### Step 5: Trigger RayCluster scale-up by creating detached actors
+
+```bash
+# Step 5.1: Create a detached actor "actor1" which requires 1 CPU.
+export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
+kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/detached_actor.py actor1
+
+# Step 5.2: The Ray Autoscaler creates a new worker Pod.
+kubectl get pods -l=ray.io/is-ray-node=yes
+
+# [Example output]
+# NAME                                             READY   STATUS    RESTARTS   AGE
+# raycluster-autoscaler-head-xxxxx                 2/2     Running   0          xxm
+# raycluster-autoscaler-worker-small-group-yyyyy   1/1     Running   0          xxm
+
+# Step 5.3: Create a detached actor which requires 1 CPU.
+kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/detached_actor.py actor2
+kubectl get pods -l=ray.io/is-ray-node=yes
+
+# [Example output]
+# NAME                                             READY   STATUS    RESTARTS   AGE
+# raycluster-autoscaler-head-xxxxx                 2/2     Running   0          xxm
+# raycluster-autoscaler-worker-small-group-yyyyy   1/1     Running   0          xxm
+# raycluster-autoscaler-worker-small-group-zzzzz   1/1     Running   0          xxm
+
+# Step 5.4: List all actors in the Ray cluster.
+kubectl exec -it $HEAD_POD -- ray list actors
+
+
+# ======= List: 2023-09-06 13:26:49.228594 ========
+# Stats:
+# ------------------------------
+# Total: 2
+
+# Table:
+# ------------------------------
+#     ACTOR_ID  CLASS_NAME    STATE    JOB_ID    NAME    ...
+#  0  xxxxxxxx  Actor         ALIVE    02000000  actor1  ...
+#  1  xxxxxxxx  Actor         ALIVE    03000000  actor2  ...
+```
+
+The Ray Autoscaler generates a new worker Pod for each new detached actor.
+This is because the `rayStartParams` field in the Ray head specifies `num-cpus: "0"`, preventing the Ray scheduler from scheduling any Ray actors or tasks on the Ray head Pod.
+In addition, each Ray worker Pod has a capacity of 1 CPU, so the Autoscaler creates a new worker Pod to satisfy the resource requirement of the detached actor which requires 1 CPU.
+
+* Using detached actors isn't necessary to trigger cluster scale-up.
+Normal actors and tasks can also initiate it.
+[Detached actors](actor-lifetimes) remain persistent even after the job's driver process exits, which is why the Autoscaler doesn't scale down the cluster automatically when the `detached_actor.py` process exits, making it more convenient for this tutorial.
+
+* In this RayCluster custom resource, each Ray worker Pod possesses only 1 logical CPU from the perspective of the Ray Autoscaler.
+Therefore, if you create a detached actor with `@ray.remote(num_cpus=2)`, the Autoscaler doesn't initiate the creation of a new worker Pod because the capacity of the existing Pod is limited to 1 CPU.
+
+* (Advanced) The Ray Autoscaler also offers a [Python SDK](ref-autoscaler-sdk), enabling advanced users, like Ray maintainers, to request resources directly from the Autoscaler. Generally, most users don't need to use the SDK.
+
+### Step 6: Trigger RayCluster scale-down by terminating detached actors
+
+```bash
+# Step 6.1: Terminate the detached actor "actor1".
+kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/terminate_detached_actor.py actor1
+
+# Step 6.2: A worker Pod will be deleted after `idleTimeoutSeconds` (default 60s) seconds.
+kubectl get pods -l=ray.io/is-ray-node=yes
+
+# [Example output]
+# NAME                                             READY   STATUS    RESTARTS   AGE
+# raycluster-autoscaler-head-xxxxx                 2/2     Running   0          xxm
+# raycluster-autoscaler-worker-small-group-zzzzz   1/1     Running   0          xxm
+
+# Step 6.3: Terminate the detached actor "actor2".
+kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/terminate_detached_actor.py actor2
+
+# Step 6.4: A worker Pod will be deleted after `idleTimeoutSeconds` (default 60s) seconds.
+kubectl get pods -l=ray.io/is-ray-node=yes
+
+# [Example output]
+# NAME                                             READY   STATUS    RESTARTS   AGE
+# raycluster-autoscaler-head-xxxxx                 2/2     Running   0          xxm
+```
+
+### Step 7: Ray Autoscaler observability
+
+```bash
+# Method 1: "ray status"
+kubectl exec $HEAD_POD -it -c ray-head -- ray status
+
+# [Example output]:
+# ======== Autoscaler status: 2023-09-06 13:42:46.372683 ========
+# Node status
+# ---------------------------------------------------------------
+# Healthy:
+#  1 head-group
+# Pending:
+#  (no pending nodes)
+# Recent failures:
+#  (no failures)
+
+# Resources
+# ---------------------------------------------------------------
+# Usage:
+#  0B/1.86GiB memory
+#  0B/514.69MiB object_store_memory
+
+# Demands:
+#  (no resource demands)
+
+# Method 2: "kubectl logs"
+kubectl logs $HEAD_POD -c autoscaler | tail -n 20
+
+# [Example output]:
+# 2023-09-06 13:43:22,029 INFO autoscaler.py:421 --
+# ======== Autoscaler status: 2023-09-06 13:43:22.028870 ========
+# Node status
+# ---------------------------------------------------------------
+# Healthy:
+#  1 head-group
+# Pending:
+#  (no pending nodes)
+# Recent failures:
+#  (no failures)
+
+# Resources
+# ---------------------------------------------------------------
+# Usage:
+#  0B/1.86GiB memory
+#  0B/514.69MiB object_store_memory
+
+# Demands:
+#  (no resource demands)
+# 2023-09-06 13:43:22,029 INFO autoscaler.py:464 -- The autoscaler took 0.036 seconds to complete the update iteration.
+```
+
+### Step 8: Clean up the Kubernetes cluster
+
+```bash
+# Delete RayCluster and ConfigMap
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml
+
+# Uninstall the KubeRay operator
+helm uninstall kuberay-operator
+```
+
 (kuberay-autoscaling-config)=
-## KubeRay Config Parameters
+## KubeRay Autoscaling Configurations
 
-There are two steps to enabling Ray autoscaling in the KubeRay `RayCluster` custom resource (CR) config:
+The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml) used in the quickstart example contains detailed comments about the configuration options.
+***It's recommended to read this section in conjunction with the YAML file.***
 
-1. Set `enableInTreeAutoscaling:true`. The KubeRay operator will then automatically configure an autoscaling sidecar container
-for the Ray head pod. The autoscaler container collects resource metrics from the Ray cluster
-and automatically adjusts the `replicas` field of each `workerGroupSpec` as needed to fulfill
-the requirements of your Ray application.
+### 1. Enabling autoscaling
 
-2. Set the fields `minReplicas` and `maxReplicas` to constrain the number of `replicas` of an autoscaling
-`workerGroup`. When deploying an autoscaling cluster, one typically sets `replicas` and `minReplicas`
-to the same value.
-The Ray autoscaler will then take over and modify the `replicas` field as pods are added to or removed from the cluster.
+* **`enableInTreeAutoscaling`**: By setting `enableInTreeAutoscaling: true`, the KubeRay operator automatically configures an autoscaling sidecar container for the Ray head Pod.
+* **`minReplicas` / `maxReplicas` / `replicas`**: 
+Set the `minReplicas` and `maxReplicas` fields to define the range for `replicas` in an autoscaling `workerGroup`.
+Typically, you would initialize both `replicas` and `minReplicas` with the same value during the deployment of an autoscaling cluster.
+Subsequently, the Ray Autoscaler adjusts the `replicas` field as it adds or removes Pods from the cluster.
 
-For an example, check out the [config file](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml) that we used in the above quickstart guide.
+### 2. Scale-up and scale-down speed
 
-### Upscaling and downscaling speed
+If necessary, you can regulate the pace of adding or removing nodes from the cluster.
+For applications with numerous short-lived tasks, considering a more conservative approach to adjusting the upscaling and downscaling speeds might be beneficial.
 
-If needed, you can also control the rate at which nodes should be added to or removed from the cluster. For applications with many short-lived tasks, you may wish to adjust the upscaling and downscaling speed to be more conservative.
+Utilize the `RayCluster` CR's `autoscalerOptions` field to accomplish this. This field encompasses the following sub-fields:
 
-Use the `RayCluster` CR's `autoscalerOptions` field to do so. The `autoscalerOptions` field
-carries the following subfields:
+* **`upscalingMode`**: This controls the rate of scale-up process. The valid values are:
+  - `Conservative`: Upscaling is rate-limited; the number of pending worker Pods is at most the number of worker pods connected to the Ray cluster.
+  - `Default`: Upscaling isn't rate-limited.
+  - `Aggressive`: An alias for Default; upscaling isn't rate-limited.
 
-**`upscalingMode`**: This controls the rate of Ray pod upscaling. The valid values are:
+* **`idleTimeoutSeconds`** (default 60s):
+This denotes the waiting time in seconds before scaling down an idle worker pod.
+A worker node is idle when it has no active tasks, actors, or referenced objects, either stored in-memory or spilled to disk.
 
-  - `Conservative`: Upscaling is rate-limited; the number of pending worker pods is at most the number
-      of worker pods connected to the Ray cluster.
-  - `Default`: Upscaling is not rate-limited.
-  - `Aggressive`: An alias for Default; upscaling is not rate-limited.
+### 3. Autoscaler sidecar container
 
-**`idleTimeoutSeconds`** (default 60s): This is the number of seconds to wait before scaling down an idle worker pod. Worker nodes are considered idle when they hold no active tasks, actors, or referenced objects (either in-memory or spilled to disk).
+The `autoscalerOptions` field also provides options for configuring the Autoscaler container. Usually, it's not necessary to specify these options.
 
-### Configuring the autoscaler sidecar container
-
-The `autoscalerOptions` field also provides options for configuring the autoscaler container. Usually, it is not necessary to specify these options.
-
-**`resources`**: The `resources` subfield of `autoscalerOptions` sets optional resource overrides
-for the autoscaler sidecar container. These overrides
-should be specified in the standard [container resource
-spec format](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#resources).
+* **`resources`**:
+The `resources` sub-field of `autoscalerOptions` sets optional resource overrides for the Autoscaler sidecar container.
+These overrides should be specified in the standard [container resource
+spec format](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/Pod-v1/#resources).
 The default values are indicated below:
-```
-resources:
-  limits:
-    cpu: "500m"
-    memory: "512Mi"
-  requests:
-    cpu: "500m"
-    memory: "512Mi"
-```
+  ```yaml
+  resources:
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+    requests:
+      cpu: "500m"
+      memory: "512Mi"
+  ```
 
-The following `autoscalerOptions` suboptions are also available for testing and development of the autoscaler itself.
+* **`image`**:
+This field overrides the Autoscaler container image.
+The container uses the same **image** as the Ray container by default. 
 
-**`image`**: This field overrides the autoscaler container image.
-If your `RayCluster`'s `spec.RayVersion` is at least `2.0.0`, the autoscaler will default to using
-**the same image** as the Ray container. (Ray autoscaler code is bundled with the rest of Ray.)
-For older Ray versions, the autoscaler will default to the image `rayproject/ray:2.0.0`.
+* **`imagePullPolicy`**:
+This field overrides the Autoscaler container's image pull policy.
+The default is `IfNotPresent`.
 
-**`imagePullPolicy`**: This field overrides the autoscaler container's
-image pull policy. The default is `IfNotPresent`.
-
-**`env`** and **`envFrom`**: These fields specify autoscaler container
-environment variables. These fields should be formatted following the
-[Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/pod-v1/#environment-variables)
+* **`env`** and **`envFrom`**:
+These fields specify Autoscaler container environment variables.
+These fields should be formatted following the [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/Pod-v1/#environment-variables)
 for container environment variables.
 
-## Understanding the Ray Autoscaler in the Context of Kubernetes
-We describe the relationship between the Ray autoscaler and other autoscalers in the Kubernetes
-ecosystem.
+### 4. Set the `rayStartParams` and the resource limits for the Ray container
 
-### Ray Autoscaler vs. Horizontal Pod Autoscaler
-The Ray autoscaler adjusts the number of Ray nodes in a Ray cluster.
-On Kubernetes, each Ray node is run as a Kubernetes pod. Thus in the context of Kubernetes,
-the Ray autoscaler scales Ray **pod quantities**. In this sense, the Ray autoscaler
-plays a role similar to that of the Kubernetes
-[Horizontal Pod Autoscaler](https://kubernetes.io/docs/tasks/run-application/horizontal-pod-autoscale/) (HPA).
-However, the following features distinguish the Ray Autoscaler from the HPA.
-#### Load metrics are based on application semantics
-The Horizontal Pod Autoscaler determines scale based on physical usage metrics like CPU
-and memory. By contrast, the Ray autoscaler uses the logical resources expressed in
-task and actor annotations. For instance, if each Ray container spec in your RayCluster CR indicates
-a limit of 10 CPUs, and you submit twenty tasks annotated with `@ray.remote(num_cpus=5)`,
-10 Ray pods will be created to satisfy the 100-CPU resource demand.
-In this respect, the Ray autoscaler is similar to the
-[Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler),
-which makes scaling decisions based on the logical resources expressed in container
-resource requests.
-#### Fine-grained control of scale-down
-To accommodate the statefulness of Ray applications, the Ray autoscaler has more
-fine-grained control over scale-down than the Horizontal Pod Autoscaler. In addition to
-determining desired scale, the Ray Autoscaler is able to select precisely which pods
-to scale down. The KubeRay operator then deletes that pod.
-By contrast, the Horizontal Pod Autoscaler can only decrease a replica count, without much
-control over which pods are deleted. For a Ray application, downscaling a random
-pod could be dangerous.
-#### Architecture: One Ray Autoscaler per Ray Cluster.
-Horizontal Pod Autoscaling is centrally controlled by a manager in the Kubernetes control plane;
-the manager controls the scale of many Kubernetes objects.
-By contrast, each Ray cluster is managed by its own Ray autoscaler process,
-running as a sidecar container in the Ray head pod. This design choice is motivated
-by the following considerations:
-- **Scalability.** Autoscaling each Ray cluster requires processing a significant volume of resource
-  data from that Ray cluster.
-- **Simplified versioning and compatibility.** The autoscaler and Ray are both developed
-  as part of the Ray repository. The interface between the autoscaler and the Ray core is complex.
-  To support multiple Ray clusters running at different Ray versions, it is thus best to match
-  Ray and Autoscaler code versions. Running one autoscaler per Ray cluster and matching the code versions
-  ensures compatibility.
+The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Ray Pod's resource requirements.
+The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster.
+Therefore, without this information, the Ray Autoscaler would report an error and fail to start.
+Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
 
-(kuberay-autoscaler-with-ray-autoscaler)=
-### Ray Autoscaler with Kubernetes Cluster Autoscaler
-The Ray Autoscaler and the
-[Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler)
-complement each other.
-After the Ray autoscaler decides to create a Ray pod, the Kubernetes Cluster Autoscaler
-can provision a Kubernetes node so that the pod can be placed.
-Similarly, after the Ray autoscaler decides to delete an idle pod, the Kubernetes
-Cluster Autoscaler can clean up the idle Kubernetes node that remains.
-It is recommended to configure your RayCluster so that only one Ray pod fits per Kubernetes node.
-If you follow this pattern, Ray Autoscaler pod scaling events will correspond roughly one-to-one with cluster autoscaler
-node scaling events. (We say "roughly" because it is possible for a Ray pod be deleted and replaced
-with a new Ray pod before the underlying Kubernetes node is scaled down.)
+* If users set `num-cpus` in `rayStartParams`, Ray Autoscaler would work regardless of the resource limits on the container.
+* If users don't set `rayStartParams`, the Ray container must have a specified CPU resource limit.
+
+```yaml
+headGroupSpec:
+  rayStartParams:
+    num-cpus: "0"
+  template:
+    spec:
+      containers:
+      - name: ray-head
+        resources:
+          # The Ray Autoscaler still functions if you comment out the `limits` field for the
+          # head container, as users have already specified `num-cpus` in `rayStartParams`.
+          limits:
+            cpu: "1"
+            memory: "2G"
+          requests:
+            cpu: "1"
+            memory: "2G"
+...
+workerGroupSpecs:
+- groupName: small-group
+  rayStartParams: {}
+  template:
+    spec:
+      containers:
+      - name: ray-worker
+        resources:
+          limits:
+            # The Ray Autoscaler will fail to start if the CPU resource limit for the worker
+            # container is commented out because `rayStartParams` is empty.
+            cpu: "1"
+            memory: "1G"
+          requests:
+            cpu: "1"
+            memory: "1G"
+```
 
 
-### Vertical Pod Autoscaler
-There is no relationship between the Ray Autoscaler and the Kubernetes
-[Vertical Pod Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler) (VPA),
-which is meant to size individual pods to the appropriate size based on current and past usage.
-If you find that the load on your individual Ray pods is too high, there are a number
-of manual techniques to decrease the load
-One method is to schedule fewer tasks/actors per node by increasing the resource
-requirements specified in the `ray.remote` annotation.
-For example, changing `@ray.remote(num_cpus=2)` to `@ray.remote(num_cpus=4)`
-will halve the quantity of that task or actor that can fit in a given Ray pod.
+## Next steps
+
+See [(Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes](ray-k8s-autoscaler-comparison) for more details about the relationship between the Ray Autoscaler and Kubernetes autoscalers.
+
+(kuberay-autoscaler-v2)=
+### Autoscaler V2 with KubeRay
+
+#### Prerequisites
+* Ray 2.10.0 or nightly Ray version
+* KubeRay 1.1.0 or later
+
+The release of Ray 2.10.0 introduces the alpha version of Ray Autoscaler V2 integrated with KubeRay, bringing enhancements in terms of observability and stability:
+
+
+1. **Observability**: The Autoscaler V2 provides instance level tracing on each Ray worker's lifecycle, making it easier to debug and understand the Autoscaler behavior. It also reports 
+the idle information (why it's idle, why it's not idle) of each node:
+
+```bash
+
+> ray status -v
+
+======== Autoscaler status: 2024-03-08 21:06:21.023751 ========
+GCS request time: 0.003238s
+
+Node status
+---------------------------------------------------------------
+Active:
+ 1 node_40f427230584b2d9c9f113d8db51d10eaf914aa9bf61f81dc7fabc64
+Idle:
+ 1 node_2d5fd3d4337ba5b5a8c3106c572492abb9a8de2dee9da7f6c24c1346
+Pending:
+ (no pending nodes)
+Recent failures:
+ (no failures)
+
+Resources
+---------------------------------------------------------------
+Total Usage:
+ 1.0/64.0 CPU
+ 0B/72.63GiB memory
+ 0B/33.53GiB object_store_memory
+
+Total Demands:
+ (no resource demands)
+
+Node: 40f427230584b2d9c9f113d8db51d10eaf914aa9bf61f81dc7fabc64
+ Usage:
+  1.0/32.0 CPU
+  0B/33.58GiB memory
+  0B/16.79GiB object_store_memory
+ # New in autoscaler V2: activity information
+ Activity:
+  Busy workers on node.
+  Resource: CPU currently in use.
+
+Node: 2d5fd3d4337ba5b5a8c3106c572492abb9a8de2dee9da7f6c24c1346
+ # New in autoscaler V2: idle information
+ Idle: 107356 ms
+ Usage:
+  0.0/32.0 CPU
+  0B/39.05GiB memory
+  0B/16.74GiB object_store_memory
+ Activity:
+  (no activity)
+```
+
+2. **Stability**
+Improvements in the termination of idle nodes have been made in Autoscaler V2. Unlike the V1 Autoscaler, which could prematurely terminate nodes no longer idle at the time of termination processing (potentially leading to task or actor failures), V2 employs Ray's graceful draining mechanism to ensure idle nodes are terminated without disrupting ongoing tasks or actors.
+
+
+In order to enable Autoscaler V2, one could modify the `ray-cluster.autoscaler.yaml` like below.
+
+```bash
+# Change 1: Select the Ray version to either the nightly build or version 2.10.0+
+
+spec:
+  # Specify Ray version 2.10.0 or use the nightly build.
+  rayVersion: '2.10.0'
+...
+
+
+# Change 2: Enable Autoscaler V2 by setting the RAY_enable_autoscaler_v2 environment variable on the Ray head container.
+  headGroupSpec:
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: rayproject/ray:2.10.0
+          # Include the environment variable.
+          env:
+            - name: RAY_enable_autoscaler_v2
+              value: "1"
+        restartPolicy: Never # Prevent container restart to maintain Ray health.
+
+
+# Change 3: Prevent Kubernetes from restarting Ray worker pod containers, enabling correct instance management by Ray.
+  workerGroupSpecs:
+  - replicas: 1
+    template:
+      spec:
+        restartPolicy: Never 
+        ...
+```

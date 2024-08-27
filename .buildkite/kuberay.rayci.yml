@@ -1,0 +1,45 @@
+group: "kuberay tests"
+steps:
+  - name: k8sbuild
+    wanda: ci/docker/k8s.build.wanda.yaml
+    depends_on:
+      - oss-ci-base_build
+
+  - label: ":kubernetes: operator"
+    tags:
+      - python
+      - docker
+    instance_type: medium
+    commands:
+      - bash ci/k8s/run-operator-tests.sh
+    docker_network: "host"
+    depends_on:
+      - k8sbuild
+      - manylinux
+      - forge
+      - raycpubase
+
+  - label: ":kubernetes: chaos {{matrix.workload}} under {{matrix.fault}}"
+    key: kuberay_tests
+    tags:
+      - python
+      - docker
+      - oss
+    instance_type: medium
+    commands:
+      - bash ci/k8s/run-chaos-test.sh {{matrix.fault}} {{matrix.workload}}
+    docker_network: "host"
+    matrix:
+      setup:
+        fault:
+          - "no_fault"
+          - "chaos_network_delay"
+          - "chaos_network_bandwidth"
+        workload:
+          - "test_potato_passer"
+          - "test_streaming_llm"
+          - "test_many_job_submissions"
+    depends_on:
+      - manylinux
+      - forge
+      - raycpubase

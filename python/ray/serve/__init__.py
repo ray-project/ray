@@ -1,26 +1,27 @@
 import ray._private.worker
 
 try:
+    from ray.serve._private.logging_utils import configure_default_serve_logger
     from ray.serve.api import (
-        build,
+        Application,
+        Deployment,
+        _run,
+        delete,
         deployment,
-        get_deployment,
+        get_app_handle,
+        get_deployment_handle,
+        get_multiplexed_model_id,
         get_replica_context,
         ingress,
-        list_deployments,
+        multiplexed,
         run,
         shutdown,
         start,
-        delete,
-        Application,
-        BuiltApplication,
-        Deployment,
-        multiplexed,
-        get_multiplexed_model_id,
+        status,
     )
-    from ray.serve.air_integrations import PredictorDeployment
     from ray.serve.batching import batch
     from ray.serve.config import HTTPOptions
+
 except ModuleNotFoundError as e:
     e.msg += (
         '. You can run `pip install "ray[serve]"` to install all Ray Serve'
@@ -28,28 +29,29 @@ except ModuleNotFoundError as e:
     )
     raise e
 
+# Setup default ray.serve logger to ensure all serve module logs are captured.
+configure_default_serve_logger()
 
 # Mute the warning because Serve sometimes intentionally calls
 # ray.get inside async actors.
 ray._private.worker.blocking_get_inside_async_warned = True
 
 __all__ = [
+    "_run",
     "batch",
-    "build",
     "start",
     "HTTPOptions",
     "get_replica_context",
     "shutdown",
     "ingress",
     "deployment",
-    "get_deployment",
-    "list_deployments",
     "run",
-    "PredictorDeployment",
     "delete",
     "Application",
-    "BuiltApplication",
     "Deployment",
     "multiplexed",
     "get_multiplexed_model_id",
+    "status",
+    "get_app_handle",
+    "get_deployment_handle",
 ]

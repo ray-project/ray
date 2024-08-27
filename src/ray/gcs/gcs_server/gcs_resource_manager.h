@@ -19,9 +19,11 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
+#include "ray/gcs/gcs_server/state_util.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/rpc/client_call.h"
@@ -30,14 +32,16 @@
 
 namespace ray {
 
-class GcsMonitorServerTest;
-
 using raylet::ClusterTaskManager;
+
 namespace gcs {
+class GcsNodeManager;
+class GcsServer;
+
 /// Ideally, the logic related to resource calculation should be moved from
-/// `gcs_resoruce_manager` to `cluster_resource_manager`, and all logic related to
+/// `gcs_resource_manager` to `cluster_resource_manager`, and all logic related to
 /// resource modification should directly depend on `cluster_resource_manager`, while
-/// `gcs_resoruce_manager` is still responsible for processing resource-related RPC
+/// `gcs_resource_manager` is still responsible for processing resource-related RPC
 /// request. We will split several small PR to achieve this goal, so as to prevent one PR
 /// from being too large to review.
 ///
@@ -59,6 +63,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   explicit GcsResourceManager(
       instrumented_io_context &io_context,
       ClusterResourceManager &cluster_resource_manager,
+      GcsNodeManager &gcs_node_manager,
       NodeID local_node_id,
       std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
@@ -67,23 +72,27 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Handle the resource update.
   void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
 
-  /// Handle get resource rpc request.
-  void HandleGetResources(rpc::GetResourcesRequest request,
-                          rpc::GetResourcesReply *reply,
-                          rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle get available resources of all nodes.
+  /// Autoscaler-specific RPC called from Python.
   void HandleGetAllAvailableResources(
       rpc::GetAllAvailableResourcesRequest request,
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle report resource usage rpc from a raylet.
-  void HandleReportResourceUsage(rpc::ReportResourceUsageRequest request,
-                                 rpc::ReportResourceUsageReply *reply,
-                                 rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle get total resources of all nodes.
+  /// Autoscaler-specific RPC called from Python.
+  void HandleGetAllTotalResources(rpc::GetAllTotalResourcesRequest request,
+                                  rpc::GetAllTotalResourcesReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle get ids of draining nodes.
+  /// Autoscaler-specific RPC called from Python.
+  void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
+                              rpc::GetDrainingNodesReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle get all resource usage rpc request.
+  /// Autoscaler-specific RPC called from Python.
   void HandleGetAllResourceUsage(rpc::GetAllResourceUsageRequest request,
                                  rpc::GetAllResourceUsageReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
@@ -109,7 +118,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   std::string DebugString() const;
 
   /// Add resources changed listener.
-  void AddResourcesChangedListener(std::function<void()> listener);
+  void AddResourcesChangedListener(std::function<void()> &&listener);
 
   // Update node normal task resources.
   void UpdateNodeNormalTaskResources(const NodeID &node_id,
@@ -118,13 +127,26 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Update resource usage of given node.
   ///
   /// \param node_id Node id.
-  /// \param request Request containing resource usage.
-  void UpdateNodeResourceUsage(const NodeID &node_id,
-                               const rpc::ResourcesData &resources);
+  /// \param resource_view_sync_message The resource usage of the node.
+  void UpdateNodeResourceUsage(
+      const NodeID &node_id,
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message);
 
   /// Process a new resource report from a node, independent of the rpc handler it came
   /// from.
-  void UpdateFromResourceReport(const rpc::ResourcesData &data);
+  ///
+  /// \param node_id Node id.
+  /// \param resource_view_sync_message The resource usage of the node.
+  void UpdateFromResourceView(
+      const NodeID &node_id,
+      const syncer::ResourceViewSyncMessage &resource_view_sync_message);
+
+  /// Update the resource usage of a node from syncer COMMANDS
+  ///
+  /// This is currently used for setting cluster full of actors info from syncer.
+  /// \param data The resource report.
+  void UpdateClusterFullOfActorsDetected(const NodeID &node_id,
+                                         bool cluster_full_of_actors_detected);
 
   /// Update the placement group load information so that it will be reported through
   /// heartbeat.
@@ -143,10 +165,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// \returns The mapping from node id to latest resource report.
   const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
 
-  /// Get aggregated resource load of all nodes.
-  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-  GetAggregatedResourceLoad() const;
-
   /// Get the placement group load info. This is used for autoscaler.
   const std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const {
     if (placement_group_load_.has_value()) {
@@ -156,14 +174,6 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   }
 
  private:
-  /// Aggregate nodes' pending task info.
-  ///
-  /// \param resources_data A node's pending task info (by shape).
-  /// \param aggregate_load[out] The aggregate pending task info (across the cluster).
-  void FillAggregateLoad(const rpc::ResourcesData &resources_data,
-                         std::unordered_map<google::protobuf::Map<std::string, double>,
-                                            rpc::ResourceDemand> *aggregate_load) const;
-
   /// io context. This is to ensure thread safety. Ideally, all public
   /// funciton needs to post job to this io_context.
   instrumented_io_context &io_context_;
@@ -178,53 +188,21 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
 
   /// Debug info.
   enum CountType {
-    GET_RESOURCES_REQUEST = 0,
     GET_ALL_AVAILABLE_RESOURCES_REQUEST = 1,
     REPORT_RESOURCE_USAGE_REQUEST = 2,
     GET_ALL_RESOURCE_USAGE_REQUEST = 3,
-    CountType_MAX = 4,
+    GET_All_TOTAL_RESOURCES_REQUEST = 4,
+    CountType_MAX = 5,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
   ClusterResourceManager &cluster_resource_manager_;
+  GcsNodeManager &gcs_node_manager_;
   NodeID local_node_id_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   /// Num of alive nodes in the cluster.
   size_t num_alive_nodes_ = 0;
-
-  friend GcsMonitorServerTest;
 };
 
 }  // namespace gcs
 }  // namespace ray
-
-namespace std {
-template <>
-struct hash<google::protobuf::Map<std::string, double>> {
-  size_t operator()(google::protobuf::Map<std::string, double> const &k) const {
-    size_t seed = k.size();
-    for (auto &elem : k) {
-      seed ^= std::hash<std::string>()(elem.first);
-      seed ^= std::hash<double>()(elem.second);
-    }
-    return seed;
-  }
-};
-
-template <>
-struct equal_to<google::protobuf::Map<std::string, double>> {
-  bool operator()(const google::protobuf::Map<std::string, double> &left,
-                  const google::protobuf::Map<std::string, double> &right) const {
-    if (left.size() != right.size()) {
-      return false;
-    }
-    for (const auto &entry : left) {
-      auto iter = right.find(entry.first);
-      if (iter == right.end() || iter->second != entry.second) {
-        return false;
-      }
-    }
-    return true;
-  }
-};
-}  // namespace std

@@ -124,9 +124,13 @@ class VTraceLoss:
         self.mean_entropy = self.entropy / torch.sum(valid_mask)
 
         # The summed weighted loss.
-        self.total_loss = (
-            self.pi_loss + self.vf_loss * vf_loss_coeff - self.entropy * entropy_coeff
-        )
+        self.total_loss = self.pi_loss - self.entropy * entropy_coeff
+
+        # Optional vf loss (or in a separate term due to separate
+        # optimizers/networks).
+        self.loss_wo_vf = self.total_loss
+        if not config["_separate_vf_optimizer"]:
+            self.total_loss += self.vf_loss * vf_loss_coeff
 
 
 def make_time_major(policy, seq_lens, tensor):
@@ -172,6 +176,39 @@ class VTraceOptimizer:
     def optimizer(
         self,
     ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
+
+        if self.config["_separate_vf_optimizer"]:
+            # Figure out, which parameters of the model belong to the value
+            # function (and which to the policy net).
+            dummy_batch = self._lazy_tensor_dict(
+                self._get_dummy_batch_from_view_requirements()
+            )
+            # Zero out all gradients (set to None)
+            for param in self.model.parameters():
+                param.grad = None
+            # Perform a dummy forward pass (through the policy net, which should be
+            # separated from the value function in this particular user setup).
+            out = self.model(dummy_batch)
+            # Perform a (dummy) backward pass to be able to see, which params have
+            # gradients and are therefore used for the policy computations (vs vf
+            # computations).
+            torch.sum(out[0]).backward()  # [0] -> Model returns out and state-outs.
+            # Collect policy vs value function params separately.
+            policy_params = []
+            value_params = []
+            for param in self.model.parameters():
+                if param.grad is None:
+                    value_params.append(param)
+                else:
+                    policy_params.append(param)
+            if self.config["opt_type"] == "adam":
+                return (
+                    torch.optim.Adam(params=policy_params, lr=self.cur_lr),
+                    torch.optim.Adam(params=value_params, lr=self.cur_lr2),
+                )
+            else:
+                raise NotImplementedError
+
         if self.config["opt_type"] == "adam":
             return torch.optim.Adam(params=self.model.parameters(), lr=self.cur_lr)
         else:
@@ -194,22 +231,31 @@ class ImpalaTorchPolicy(
     ValueNetworkMixin,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with Impala."""
+    """PyTorch policy class used with IMPALA."""
 
     def __init__(self, observation_space, action_space, config):
         config = dict(
-            ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
+            ray.rllib.algorithms.impala.impala.IMPALAConfig().to_dict(), **config
         )
 
         # If Learner API is used, we don't need any loss-specific mixins.
         # However, we also would like to avoid creating special Policy-subclasses
         # for this as the entire Policy concept will soon not be used anymore with
         # the new Learner- and RLModule APIs.
-        if not config.get("_enable_learner_api"):
+        if not config.get("enable_rl_module_and_learner"):
             VTraceOptimizer.__init__(self)
             # Need to initialize learning rate variable before calling
             # TorchPolicyV2.__init__.
-            LearningRateSchedule.__init__(self, config["lr"], config["lr_schedule"])
+            lr_schedule_additional_args = []
+            if config.get("_separate_vf_optimizer"):
+                lr_schedule_additional_args = (
+                    [config["_lr_vf"][0][1], config["_lr_vf"]]
+                    if isinstance(config["_lr_vf"], (list, tuple))
+                    else [config["_lr_vf"], None]
+                )
+            LearningRateSchedule.__init__(
+                self, config["lr"], config["lr_schedule"], *lr_schedule_additional_args
+            )
             EntropyCoeffSchedule.__init__(
                 self, config["entropy_coeff"], config["entropy_coeff_schedule"]
             )
@@ -323,7 +369,10 @@ class ImpalaTorchPolicy(
             torch.reshape(loss.value_targets, [-1]), torch.reshape(values_batched, [-1])
         )
 
-        return loss.total_loss
+        if self.config.get("_separate_vf_optimizer"):
+            return loss.loss_wo_vf, loss.vf_loss
+        else:
+            return loss.total_loss
 
     @override(TorchPolicyV2)
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:

@@ -22,11 +22,11 @@
 #include "gtest/gtest_prod.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/resource_set.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/process.h"
 
@@ -66,9 +66,6 @@ class WorkerInterface {
   virtual void SetAssignedPort(int port) = 0;
   virtual void AssignTaskId(const TaskID &task_id) = 0;
   virtual const TaskID &GetAssignedTaskId() const = 0;
-  virtual bool AddBlockedTaskId(const TaskID &task_id) = 0;
-  virtual bool RemoveBlockedTaskId(const TaskID &task_id) = 0;
-  virtual const std::unordered_set<TaskID> &GetBlockedTaskIds() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
   virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
@@ -115,6 +112,8 @@ class WorkerInterface {
 
   virtual void SetJobId(const JobID &job_id) = 0;
 
+  virtual const ActorID &GetRootDetachedActorId() const = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -123,6 +122,7 @@ class WorkerInterface {
   FRIEND_TEST(WorkerPoolDriverRegisteredTest,
               TestWorkerCappingLaterNWorkersNotOwningObjects);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker);
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest,
               WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay);
@@ -173,9 +173,6 @@ class Worker : public WorkerInterface {
   void SetAssignedPort(int port);
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
-  bool AddBlockedTaskId(const TaskID &task_id);
-  bool RemoveBlockedTaskId(const TaskID &task_id);
-  const std::unordered_set<TaskID> &GetBlockedTaskIds() const;
   const JobID &GetAssignedJobId() const;
   int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
@@ -211,6 +208,8 @@ class Worker : public WorkerInterface {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
+  const ActorID &GetRootDetachedActorId() const { return root_detached_actor_id_; }
+
   std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
     return lifetime_allocated_instances_;
   };
@@ -222,6 +221,7 @@ class Worker : public WorkerInterface {
   void SetAssignedTask(const RayTask &assigned_task) {
     assigned_task_ = assigned_task;
     task_assign_time_ = absl::Now();
+    root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
   }
 
   absl::Time GetAssignedTaskTime() const { return task_assign_time_; };
@@ -277,6 +277,8 @@ class Worker : public WorkerInterface {
   const int runtime_env_hash_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
+  /// Root detached actor ID for the worker's last assigned task.
+  ActorID root_detached_actor_id_;
   /// The worker's placement group bundle. It is used to detect if the worker is
   /// associated with a placement group bundle.
   BundleID bundle_id_;
@@ -285,7 +287,6 @@ class Worker : public WorkerInterface {
   /// Whether the worker is blocked. Workers become blocked in a `ray.get`, if
   /// they require a data dependency while executing a task.
   bool blocked_;
-  std::unordered_set<TaskID> blocked_task_ids_;
   /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;

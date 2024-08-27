@@ -1,13 +1,12 @@
-from typing import Optional
+from typing import Dict, Optional
 
 import tree  # pip install dm_tree
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import (
     Encoder,
     ActorCriticEncoder,
     StatefulActorCriticEncoder,
-    STATE_IN,
-    STATE_OUT,
     ENCODER_OUT,
     tokenize,
 )
@@ -20,13 +19,11 @@ from ray.rllib.core.models.configs import (
 )
 from ray.rllib.core.models.tf.base import TfModel
 from ray.rllib.core.models.tf.primitives import TfMLP, TfCNN
-from ray.rllib.core.models.specs.specs_base import Spec
+from ray.rllib.core.models.specs.specs_base import Spec, TensorSpec
 from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.core.models.specs.specs_base import TensorSpec
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 
 _, tf, _ = try_import_tf()
 
@@ -71,6 +68,10 @@ class TfCNNEncoder(TfModel, Encoder):
             cnn_activation=config.cnn_activation,
             cnn_use_layernorm=config.cnn_use_layernorm,
             cnn_use_bias=config.cnn_use_bias,
+            cnn_kernel_initializer=config.cnn_kernel_initializer,
+            cnn_kernel_initializer_config=config.cnn_kernel_initializer_config,
+            cnn_bias_initializer=config.cnn_bias_initializer,
+            cnn_bias_initializer_config=config.cnn_bias_initializer_config,
         )
         layers.append(cnn)
 
@@ -85,7 +86,7 @@ class TfCNNEncoder(TfModel, Encoder):
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TensorSpec(
+                Columns.OBS: TensorSpec(
                     "b, w, h, c",
                     w=self.config.input_dims[0],
                     h=self.config.input_dims[1],
@@ -115,7 +116,7 @@ class TfCNNEncoder(TfModel, Encoder):
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
-        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
+        return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
 
 class TfMLPEncoder(Encoder, TfModel):
@@ -130,16 +131,30 @@ class TfMLPEncoder(Encoder, TfModel):
             hidden_layer_activation=config.hidden_layer_activation,
             hidden_layer_use_layernorm=config.hidden_layer_use_layernorm,
             hidden_layer_use_bias=config.hidden_layer_use_bias,
+            hidden_layer_weights_initializer=config.hidden_layer_weights_initializer,
+            hidden_layer_weights_initializer_config=(
+                config.hidden_layer_weights_initializer_config
+            ),
+            hidden_layer_bias_initializer=config.hidden_layer_bias_initializer,
+            hidden_layer_bias_initializer_config=(
+                config.hidden_layer_bias_initializer_config
+            ),
             output_dim=config.output_layer_dim,
             output_activation=config.output_layer_activation,
             output_use_bias=config.output_layer_use_bias,
+            output_weights_initializer=config.output_layer_weights_initializer,
+            output_weights_initializer_config=(
+                config.output_layer_weights_initializer_config
+            ),
+            output_bias_initializer=config.output_layer_bias_initializer,
+            output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
             {
-                SampleBatch.OBS: TensorSpec(
+                Columns.OBS: TensorSpec(
                     "b, d", d=self.config.input_dims[0], framework="tf2"
                 ),
             }
@@ -156,8 +171,8 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
-        return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
+    def _forward(self, inputs: Dict, **kwargs) -> Dict:
+        return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
 
 class TfGRUEncoder(TfModel, Encoder):
@@ -188,13 +203,32 @@ class TfGRUEncoder(TfModel, Encoder):
                 1,
             ) + tuple(config.input_dims)
 
+        gru_weights_initializer = get_initializer_fn(
+            config.hidden_weights_initializer, framework="tf2"
+        )
+        gru_bias_initializer = get_initializer_fn(
+            config.hidden_bias_initializer, framework="tf2"
+        )
+
         # Create the tf GRU layers.
         self.grus = []
         for _ in range(config.num_layers):
             layer = tf.keras.layers.GRU(
                 config.hidden_dim,
                 time_major=not config.batch_major,
+                # Note, if the initializer is `None`, we want TensorFlow
+                # to use its default one. So we pass in `None`.
+                kernel_initializer=(
+                    gru_weights_initializer(**config.hidden_weights_initializer_config)
+                    if config.hidden_weights_initializer_config
+                    else gru_weights_initializer
+                ),
                 use_bias=config.use_bias,
+                bias_initializer=(
+                    gru_bias_initializer(**config.hidden_bias_initializer_config)
+                    if config.hidden_bias_initializer_config
+                    else gru_bias_initializer
+                ),
                 return_sequences=True,
                 return_state=True,
             )
@@ -207,10 +241,10 @@ class TfGRUEncoder(TfModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TensorSpec(
+                Columns.OBS: TensorSpec(
                     "b, t, d", d=self.config.input_dims[0], framework="tf2"
                 ),
-                STATE_IN: {
+                Columns.STATE_IN: {
                     "h": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
@@ -228,7 +262,7 @@ class TfGRUEncoder(TfModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, t, d", d=self.config.output_dims[0], framework="tf2"
                 ),
-                STATE_OUT: {
+                Columns.STATE_OUT: {
                     "h": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
@@ -246,7 +280,7 @@ class TfGRUEncoder(TfModel, Encoder):
         }
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: Dict, **kwargs) -> Dict:
         outputs = {}
 
         if self.tokenizer is not None:
@@ -254,12 +288,12 @@ class TfGRUEncoder(TfModel, Encoder):
             out = tokenize(self.tokenizer, inputs, framework="tf2")
         else:
             # Otherwise, just use the raw observations.
-            out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
+            out = tf.cast(inputs[Columns.OBS], tf.float32)
 
         # States are batch-first when coming in. Make them layers-first.
         states_in = tree.map_structure(
             lambda s: tf.transpose(s, perm=[1, 0] + list(range(2, len(s.shape)))),
-            inputs[STATE_IN],
+            inputs[Columns.STATE_IN],
         )
 
         states_out = []
@@ -269,7 +303,7 @@ class TfGRUEncoder(TfModel, Encoder):
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
-        outputs[STATE_OUT] = {"h": tf.stack(states_out, 1)}
+        outputs[Columns.STATE_OUT] = {"h": tf.stack(states_out, 1)}
         return outputs
 
 
@@ -301,13 +335,32 @@ class TfLSTMEncoder(TfModel, Encoder):
                 1,
             ) + tuple(config.input_dims)
 
+        lstm_weights_initializer = get_initializer_fn(
+            config.hidden_weights_initializer, framework="tf2"
+        )
+        lstm_bias_initializer = get_initializer_fn(
+            config.hidden_bias_initializer, framework="tf2"
+        )
+
         # Create the tf LSTM layers.
         self.lstms = []
         for _ in range(config.num_layers):
             layer = tf.keras.layers.LSTM(
                 config.hidden_dim,
                 time_major=not config.batch_major,
+                # Note, if the initializer is `None`, we want TensorFlow
+                # to use its default one. So we pass in `None`.
+                kernel_initializer=(
+                    lstm_weights_initializer(**config.hidden_weights_initializer_config)
+                    if config.hidden_weights_initializer_config
+                    else lstm_weights_initializer
+                ),
                 use_bias=config.use_bias,
+                bias_initializer=(
+                    lstm_bias_initializer(**config.hidden_bias_initializer_config)
+                    if config.hidden_bias_initializer_config
+                    else "zeros"
+                ),
                 return_sequences=True,
                 return_state=True,
             )
@@ -320,10 +373,10 @@ class TfLSTMEncoder(TfModel, Encoder):
         return SpecDict(
             {
                 # b, t for batch major; t, b for time major.
-                SampleBatch.OBS: TensorSpec(
+                Columns.OBS: TensorSpec(
                     "b, t, d", d=self.config.input_dims[0], framework="tf2"
                 ),
-                STATE_IN: {
+                Columns.STATE_IN: {
                     "h": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
@@ -347,7 +400,7 @@ class TfLSTMEncoder(TfModel, Encoder):
                 ENCODER_OUT: TensorSpec(
                     "b, t, d", d=self.config.output_dims[0], framework="tf2"
                 ),
-                STATE_OUT: {
+                Columns.STATE_OUT: {
                     "h": TensorSpec(
                         "b, l, h",
                         h=self.config.hidden_dim,
@@ -372,7 +425,7 @@ class TfLSTMEncoder(TfModel, Encoder):
         }
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: Dict, **kwargs) -> Dict:
         outputs = {}
 
         if self.tokenizer is not None:
@@ -380,12 +433,12 @@ class TfLSTMEncoder(TfModel, Encoder):
             out = tokenize(self.tokenizer, inputs, framework="tf2")
         else:
             # Otherwise, just use the raw observations.
-            out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
+            out = tf.cast(inputs[Columns.OBS], tf.float32)
 
         # States are batch-first when coming in. Make them layers-first.
         states_in = tree.map_structure(
             lambda s: tf.transpose(s, perm=[1, 0, 2]),
-            inputs[STATE_IN],
+            inputs[Columns.STATE_IN],
         )
 
         states_out_h = []
@@ -397,7 +450,7 @@ class TfLSTMEncoder(TfModel, Encoder):
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
-        outputs[STATE_OUT] = {
+        outputs[Columns.STATE_OUT] = {
             "h": tf.stack(states_out_h, 1),
             "c": tf.stack(states_out_c, 1),
         }

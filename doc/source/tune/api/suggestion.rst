@@ -11,13 +11,13 @@ You can utilize these search algorithms as follows:
 
 .. code-block:: python
 
-    from ray import tune
-    from ray.air import session
+    from ray import train, tune
+    from ray.train import RunConfig
     from ray.tune.search.optuna import OptunaSearch
 
     def train_fn(config):
         # This objective function is just for demonstration purposes
-        session.report({"loss": config["param"]})
+        train.report({"loss": config["param"]})
 
     tuner = tune.Tuner(
         train_fn,
@@ -70,7 +70,7 @@ See ``Result logdir: ...`` in the output logs for this location.
 
 Note that if you have two Tune runs with the same experiment folder,
 the previous state checkpoint will be overwritten. You can
-avoid this by making sure ``air.RunConfig(name=...)`` is set to a unique
+avoid this by making sure ``RunConfig(name=...)`` is set to a unique
 identifier:
 
 .. code-block:: python
@@ -82,7 +82,7 @@ identifier:
             num_samples=5,
             search_alg=search_alg,
         ),
-        run_config=air.RunConfig(
+        run_config=RunConfig(
             name="my-experiment-1",
             storage_path="~/my_results",
         )
@@ -110,6 +110,7 @@ default if no search algorithm is passed to
 .. currentmodule:: ray.tune.search
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     basic_variant.BasicVariantGenerator
@@ -120,6 +121,7 @@ Ax (tune.search.ax.AxSearch)
 ----------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ax.AxSearch
@@ -130,6 +132,7 @@ Bayesian Optimization (tune.search.bayesopt.BayesOptSearch)
 -----------------------------------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     bayesopt.BayesOptSearch
@@ -154,64 +157,10 @@ In order to use this search algorithm, you will need to install ``HpBandSter`` a
 See the `BOHB paper <https://arxiv.org/abs/1807.01774>`_ for more details.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     bohb.TuneBOHB
-
-.. _BlendSearch:
-
-BlendSearch (tune.search.flaml.BlendSearch)
--------------------------------------------
-
-BlendSearch is an economical hyperparameter optimization algorithm that combines combines local search with global search.
-It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
-It allows the users to specify a low-cost initial point as input if such point exists.
-
-In order to use this search algorithm, you will need to install ``flaml``:
-
-.. code-block:: bash
-
-    $ pip install 'flaml[blendsearch]'
-
-See the `BlendSearch paper <https://openreview.net/pdf?id=VbLH04pRA3>`_ and documentation in FLAML `BlendSearch documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
-
-.. autosummary::
-    :toctree: doc/
-
-    flaml.BlendSearch
-
-.. _CFO:
-
-CFO (tune.search.flaml.CFO)
----------------------------
-
-CFO (Cost-Frugal hyperparameter Optimization) is a hyperparameter search algorithm based on randomized local search.
-It is backed by the `FLAML library <https://github.com/microsoft/FLAML>`_.
-It allows the users to specify a low-cost initial point as input if such point exists.
-
-In order to use this search algorithm, you will need to install ``flaml``:
-
-.. code-block:: bash
-
-    $ pip install flaml
-
-See the `CFO paper <https://arxiv.org/pdf/2005.01571.pdf>`_ and documentation in
-FLAML `CFO documentation <https://github.com/microsoft/FLAML/tree/main/flaml/tune>`_ for more details.
-
-.. autosummary::
-    :toctree: doc/
-
-    flaml.CFO
-
-.. _Dragonfly:
-
-Dragonfly (tune.search.dragonfly.DragonflySearch)
--------------------------------------------------
-
-.. autosummary::
-    :toctree: doc/
-
-    dragonfly.DragonflySearch
 
 .. _tune-hebo:
 
@@ -219,6 +168,7 @@ HEBO (tune.search.hebo.HEBOSearch)
 ----------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     hebo.HEBOSearch
@@ -229,6 +179,7 @@ HyperOpt (tune.search.hyperopt.HyperOptSearch)
 ----------------------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     hyperopt.HyperOptSearch
@@ -239,6 +190,7 @@ Nevergrad (tune.search.nevergrad.NevergradSearch)
 -------------------------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     nevergrad.NevergradSearch
@@ -249,32 +201,11 @@ Optuna (tune.search.optuna.OptunaSearch)
 ----------------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     optuna.OptunaSearch
 
-.. _sigopt:
-
-SigOpt (tune.search.sigopt.SigOptSearch)
-----------------------------------------
-
-You will need to use the `SigOpt experiment and space specification <https://docs.sigopt.com/ai-module-api-references/experiments>`__
-to specify your search space.
-
-.. autosummary::
-    :toctree: doc/
-
-    sigopt.SigOptSearch
-
-.. _skopt:
-
-Scikit-Optimize (tune.search.skopt.SkOptSearch)
------------------------------------------------
-
-.. autosummary::
-    :toctree: doc/
-
-    skopt.SkOptSearch
 
 .. _zoopt:
 
@@ -282,6 +213,7 @@ ZOOpt (tune.search.zoopt.ZOOptSearch)
 -------------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     zoopt.ZOOptSearch
@@ -305,6 +237,7 @@ will run ``repeat`` trials of the configuration. It will then average the
     Early termination can negatively affect the average reported metric.
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Repeater
@@ -318,6 +251,7 @@ Use ``ray.tune.search.ConcurrencyLimiter`` to limit the amount of concurrency wh
 This is useful when a given optimization algorithm does not parallelize very well (like a naive Bayesian Optimization).
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ConcurrencyLimiter
@@ -330,11 +264,13 @@ Custom Search Algorithms (tune.search.Searcher)
 If you are interested in implementing or contributing a new Search Algorithm, provide the following interface:
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Searcher
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     Searcher.suggest
@@ -354,6 +290,7 @@ This can be useful if the search algorithm you want to use changes often
 (e.g., specifying the search algorithm via a CLI option or config file).
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     create_searcher

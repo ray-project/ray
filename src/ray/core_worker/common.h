@@ -65,12 +65,16 @@ struct TaskOptions {
               int num_returns,
               std::unordered_map<std::string, double> &resources,
               const std::string &concurrency_group_name = "",
-              const std::string &serialized_runtime_env_info = "{}")
+              int64_t generator_backpressure_num_objects = -1,
+              const std::string &serialized_runtime_env_info = "{}",
+              bool enable_task_events = kDefaultTaskEventEnabled)
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
-        serialized_runtime_env_info(serialized_runtime_env_info) {}
+        serialized_runtime_env_info(serialized_runtime_env_info),
+        generator_backpressure_num_objects(generator_backpressure_num_objects),
+        enable_task_events(enable_task_events) {}
 
   /// The name of this task.
   std::string name;
@@ -84,6 +88,13 @@ struct TaskOptions {
   /// fields which not contained in Runtime Env, such as eager_install.
   /// Propagated to child actors and tasks.
   std::string serialized_runtime_env_info;
+  /// Only applicable when streaming generator is used.
+  /// -1 means either streaming generator is not used or
+  /// it is used but the feature is disabled.
+  int64_t generator_backpressure_num_objects;
+  /// True if task events (worker::TaskEvent) from this task should be reported, default
+  /// to true.
+  bool enable_task_events = kDefaultTaskEventEnabled;
 };
 
 /// Options for actor creation tasks.
@@ -103,12 +114,14 @@ struct ActorCreationOptions {
                        const std::string &serialized_runtime_env_info = "{}",
                        const std::vector<ConcurrencyGroup> &concurrency_groups = {},
                        bool execute_out_of_order = false,
-                       int32_t max_pending_calls = -1)
+                       int32_t max_pending_calls = -1,
+                       bool enable_task_events = kDefaultTaskEventEnabled)
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
         resources(resources),
-        placement_resources(placement_resources),
+        placement_resources(placement_resources.empty() ? resources
+                                                        : placement_resources),
         dynamic_worker_options(dynamic_worker_options),
         is_detached(std::move(is_detached)),
         name(name),
@@ -118,7 +131,15 @@ struct ActorCreationOptions {
         concurrency_groups(concurrency_groups.begin(), concurrency_groups.end()),
         execute_out_of_order(execute_out_of_order),
         max_pending_calls(max_pending_calls),
-        scheduling_strategy(scheduling_strategy){};
+        scheduling_strategy(scheduling_strategy),
+        enable_task_events(enable_task_events) {
+    // Check that resources is a subset of placement resources.
+    for (auto &resource : resources) {
+      auto it = this->placement_resources.find(resource.first);
+      RAY_CHECK(it != this->placement_resources.end());
+      RAY_CHECK_GE(it->second, resource.second);
+    }
+  };
 
   /// Maximum number of times that the actor should be restarted if it dies
   /// unexpectedly. A value of -1 indicates infinite restarts. If it's 0, the
@@ -163,6 +184,9 @@ struct ActorCreationOptions {
   const int max_pending_calls = -1;
   // The strategy about how to schedule this actor.
   rpc::SchedulingStrategy scheduling_strategy;
+  /// True if task events (worker::TaskEvent) from this creation task should be reported
+  /// default to true.
+  const bool enable_task_events = kDefaultTaskEventEnabled;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;
@@ -173,12 +197,17 @@ struct PlacementGroupCreationOptions {
       PlacementStrategy strategy,
       std::vector<std::unordered_map<std::string, double>> bundles,
       bool is_detached,
-      double max_cpu_fraction_per_node)
+      double max_cpu_fraction_per_node,
+      NodeID soft_target_node_id = NodeID::Nil())
       : name(std::move(name)),
         strategy(strategy),
         bundles(std::move(bundles)),
         is_detached(is_detached),
-        max_cpu_fraction_per_node(max_cpu_fraction_per_node) {}
+        max_cpu_fraction_per_node(max_cpu_fraction_per_node),
+        soft_target_node_id(soft_target_node_id) {
+    RAY_CHECK(soft_target_node_id.IsNil() || strategy == PlacementStrategy::STRICT_PACK)
+        << "soft_target_node_id only works with STRICT_PACK now";
+  }
 
   /// The name of the placement group.
   const std::string name;
@@ -190,26 +219,34 @@ struct PlacementGroupCreationOptions {
   const bool is_detached = false;
   /// The maximum fraction of CPU cores this placement group can take up on each node.
   const double max_cpu_fraction_per_node;
+  /// ID of the target node where bundles should be placed
+  /// iff the target node has enough available resources and alive.
+  /// Otherwise, the bundles can be placed elsewhere.
+  /// Nil means there is no target node.
+  /// This only applies to STRICT_PACK pg.
+  const NodeID soft_target_node_id;
 };
 
 class ObjectLocation {
  public:
   ObjectLocation(NodeID primary_node_id,
-                 uint64_t object_size,
+                 int64_t object_size,
                  std::vector<NodeID> node_ids,
                  bool is_spilled,
                  std::string spilled_url,
-                 NodeID spilled_node_id)
+                 NodeID spilled_node_id,
+                 bool did_spill)
       : primary_node_id_(primary_node_id),
         object_size_(object_size),
         node_ids_(std::move(node_ids)),
         is_spilled_(is_spilled),
         spilled_url_(std::move(spilled_url)),
-        spilled_node_id_(spilled_node_id) {}
+        spilled_node_id_(spilled_node_id),
+        did_spill_(did_spill) {}
 
   const NodeID &GetPrimaryNodeID() const { return primary_node_id_; }
 
-  const uint64_t GetObjectSize() const { return object_size_; }
+  const int64_t GetObjectSize() const { return object_size_; }
 
   const std::vector<NodeID> &GetNodeIDs() const { return node_ids_; }
 
@@ -219,12 +256,14 @@ class ObjectLocation {
 
   const NodeID &GetSpilledNodeID() const { return spilled_node_id_; }
 
+  const bool GetDidSpill() const { return did_spill_; }
+
  private:
   /// The ID of the node has the primary copy of the object.
   /// Nil if the object is pending resolution.
   const NodeID primary_node_id_;
-  /// The size of the object in bytes.
-  const uint64_t object_size_;
+  /// The size of the object in bytes. -1 if unknown.
+  const int64_t object_size_;
   /// The IDs of the nodes that this object appeared on or was evicted by.
   const std::vector<NodeID> node_ids_;
   /// Whether this object has been spilled.
@@ -234,7 +273,33 @@ class ObjectLocation {
   /// If spilled, the ID of the node that spilled the object. Nil if the object was
   /// spilled to distributed external storage.
   const NodeID spilled_node_id_;
+  /// Whether or not this object was spilled.
+  const bool did_spill_;
 };
 
 }  // namespace core
+}  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::rpc::LineageReconstructionTask> {
+  size_t operator()(const ray::rpc::LineageReconstructionTask &task) const {
+    size_t hash = std::hash<std::string>()(task.name());
+    for (const auto &resource : task.resources()) {
+      hash ^= std::hash<std::string>()(resource.first);
+      hash ^= std::hash<double>()(resource.second);
+    }
+    hash ^= std::hash<ray::rpc::TaskStatus>()(task.status());
+    return hash;
+  }
+};
+}  // namespace std
+
+namespace ray {
+namespace rpc {
+inline bool operator==(const ray::rpc::LineageReconstructionTask &lhs,
+                       const ray::rpc::LineageReconstructionTask &rhs) {
+  return google::protobuf::util::MessageDifferencer::Equivalent(lhs, rhs);
+}
+}  // namespace rpc
 }  // namespace ray

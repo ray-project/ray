@@ -1,22 +1,43 @@
+import argparse
 import os
 import random
 import shutil
 import tempfile
-from typing import List, Optional, Tuple
+from typing import List, Tuple
 
 from PIL import Image
 
 import ray
-from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
 
 
-def read_images(
-    root: str, size: Optional[Tuple[int, int]] = None, mode: Optional[str] = None
-) -> Dataset:
+def parse_args():
+    parser = argparse.ArgumentParser()
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
+        "--single-node",
+        action="store_true",
+        help="Run single-node read_images benchmark.",
+    )
+    group.add_argument(
+        "--multi-node",
+        action="store_true",
+        help="Run multi-node read_images benchmark.",
+    )
+    return parser.parse_args()
 
-    return ray.data.read_images(paths=root, size=size, mode=mode)
+
+def main(args):
+    ray.init()
+
+    benchmark = Benchmark("read-images")
+    if args.single_node:
+        run_images_benchmark_single_node(benchmark)
+    elif args.multi_node:
+        run_images_benchmark_multi_node(benchmark)
+
+    benchmark.write_result()
 
 
 def generate_images(
@@ -61,7 +82,7 @@ def generate_images(
     return images_dir
 
 
-def run_images_benchmark(benchmark: Benchmark):
+def run_images_benchmark_single_node(benchmark: Benchmark):
     # Set global random seed.
     random.seed(42)
 
@@ -73,16 +94,24 @@ def run_images_benchmark(benchmark: Benchmark):
         ),
     ]
 
-    benchmark.run("images-100-256-rbg-jpg", read_images, root=test_input[0])
-    benchmark.run("images-100-2048-rbg-jpg", read_images, root=test_input[1])
-    benchmark.run(
+    benchmark.run_materialize_ds(
+        "images-100-256-rbg-jpg", ray.data.read_images, test_input[0]
+    )
+    benchmark.run_materialize_ds(
+        "images-100-2048-rbg-jpg", ray.data.read_images, test_input[1]
+    )
+    benchmark.run_materialize_ds(
         "images-100-2048-to-256-rbg-jpg",
-        read_images,
-        root=test_input[1],
+        ray.data.read_images,
+        test_input[1],
         size=(256, 256),
     )
-    benchmark.run(
-        "images-1000-mix", read_images, root=test_input[2], size=(256, 256), mode="RGB"
+    benchmark.run_materialize_ds(
+        "images-1000-mix",
+        ray.data.read_images,
+        test_input[2],
+        size=(256, 256),
+        mode="RGB",
     )
 
     for root in test_input:
@@ -90,18 +119,30 @@ def run_images_benchmark(benchmark: Benchmark):
 
     # TODO(chengsu): run benchmark on 20G and 100G imagenet data in multi-nodes
     # cluster.
-    benchmark.run(
+    benchmark.run_materialize_ds(
         "images-imagenet-1g",
-        read_images,
-        root="s3://air-example-data-2/1G-image-data-synthetic-raw",
+        ray.data.read_images,
+        "s3://air-example-data-2/1G-image-data-synthetic-raw",
     )
 
 
+def run_images_benchmark_multi_node(benchmark: Benchmark):
+    hundred_thousand_image_paths = [
+        f"s3://air-example-data-2/100k-images-data-synthetic-raw/dog_{i}/dog_0.jpg"
+        for i in range(100_000)
+    ]
+    hundred_million_image_paths = []
+    for _ in range(100_000_000 // 100_000):
+        hundred_million_image_paths.extend(hundred_thousand_image_paths)
+
+    def fn():
+        ds = ray.data.read_images(hundred_million_image_paths)
+        for _ in ds.iter_batches(batch_size=None, batch_format="pyarrow"):
+            pass
+
+    benchmark.run_fn("images-100M", fn)
+
+
 if __name__ == "__main__":
-    ray.init()
-
-    benchmark = Benchmark("read-images")
-
-    run_images_benchmark(benchmark)
-
-    benchmark.write_result()
+    args = parse_args()
+    main(args)

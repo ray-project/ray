@@ -2,27 +2,28 @@
 
 # Managed Kubernetes services
 
-The KubeRay operator and Ray can run on any cloud or on-prem Kubernetes cluster.
-The simplest way to provision a remote Kubernetes cluster is to use a cloud-based managed service.
-We collect a few helpful links for users who are getting started with a managed Kubernetes service.
+```{toctree}
+:hidden:
+
+aws-eks-gpu-cluster
+gcp-gke-gpu-cluster
+gcp-gke-tpu-cluster
+```
+
+Most KubeRay documentation examples only require a local Kubernetes cluster such as [Kind](https://kind.sigs.k8s.io/).
+Some KubeRay examples require GPU nodes, which can be provided by a managed Kubernetes service.
+We collect a few helpful links for users who are getting started with a managed Kubernetes service to launch a Kubernetes cluster equipped with GPUs.
 
 (gke-setup)=
-# Setting up a GKE cluster (Google Cloud)
-You can find the landing page for GKE [here](https://cloud.google.com/kubernetes-engine).
-If you have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
-Alternatively, check out the [documentation](https://cloud.google.com/kubernetes-engine/docs/) and
-[quickstart guides](https://cloud.google.com/kubernetes-engine/docs/deploy-app-cluster). To successfully deploy Ray on Kubernetes,
-you will need to configure pools of Kubernetes nodes;
-find guidance [here](https://cloud.google.com/kubernetes-engine/docs/concepts/node-pools).
+# Set up a GKE cluster (Google Cloud)
+
+- {ref}`kuberay-gke-gpu-cluster-setup`
+- {ref}`kuberay-gke-tpu-cluster-setup`
 
 (eks-setup)=
-# Setting up an EKS cluster (AWS)
-You can find the landing page for EKS [here](https://aws.amazon.com/eks/).
-If you have an account set up, you can immediately start experimenting with Kubernetes clusters in the provider's console.
-Alternatively, check out the [documentation](https://docs.aws.amazon.com/eks/latest/userguide/) and
-[quickstart guides](https://docs.aws.amazon.com/eks/latest/userguide/getting-started.html). To successfully deploy Ray on Kubernetes,
-you will need to configure groups of Kubernetes nodes;
-find guidance [here](https://docs.aws.amazon.com/eks/latest/userguide/managed-node-groups.html).
+# Set up an EKS cluster (AWS)
+
+- {ref}`kuberay-eks-gpu-cluster-setup`
 
 (aks-setup)=
 # Setting up an AKS (Microsoft Azure)

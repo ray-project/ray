@@ -55,7 +55,7 @@ def _use_response_cache(func):
 
     @functools.wraps(func)
     def wrapper(self, request, context):
-        metadata = {k: v for k, v in context.invocation_metadata()}
+        metadata = dict(context.invocation_metadata())
         expected_ids = ("client_id", "thread_id", "req_id")
         if any(i not in metadata for i in expected_ids):
             # Missing IDs, skip caching and call underlying stub directly
@@ -455,7 +455,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
             return ray_client_pb2.GetResponse(valid=False, error=cloudpickle.dumps(e))
 
     def GetObject(self, request: ray_client_pb2.GetRequest, context):
-        metadata = {k: v for k, v in context.invocation_metadata()}
+        metadata = dict(context.invocation_metadata())
         client_id = metadata.get("client_id")
         if client_id is None:
             yield ray_client_pb2.GetResponse(
@@ -687,7 +687,8 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
         # Convert empty string back to None.
         actor = ray.get_actor(task.name, task.namespace or None)
         bin_actor_id = actor._actor_id.binary()
-        self.actor_refs[bin_actor_id] = actor
+        if bin_actor_id not in self.actor_refs:
+            self.actor_refs[bin_actor_id] = actor
         self.actor_owners[task.client_id].add(bin_actor_id)
         self.named_actors.add(bin_actor_id)
         return ray_client_pb2.ClientTaskTicket(return_ids=[actor._actor_id.binary()])
@@ -870,11 +871,11 @@ def main():
         help="Password for connecting to Redis",
     )
     parser.add_argument(
-        "--metrics-agent-port",
+        "--runtime-env-agent-address",
         required=False,
-        type=int,
-        default=0,
-        help="The port to use for connecting to the runtime_env agent.",
+        type=str,
+        default=None,
+        help="The port to use for connecting to the runtime_env_agent.",
     )
     args, _ = parser.parse_known_args()
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
@@ -882,13 +883,13 @@ def main():
     ray_connect_handler = create_ray_handler(args.address, args.redis_password)
 
     hostport = "%s:%d" % (args.host, args.port)
-    logger.info(f"Starting Ray Client server on {hostport}")
+    logger.info(f"Starting Ray Client server on {hostport}, args {args}")
     if args.mode == "proxy":
         server = serve_proxier(
             hostport,
             args.address,
             redis_password=args.redis_password,
-            runtime_env_agent_port=args.metrics_agent_port,
+            runtime_env_agent_address=args.runtime_env_agent_address,
         )
     else:
         server = serve(hostport, ray_connect_handler)

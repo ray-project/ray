@@ -1,21 +1,25 @@
-import click
 import os
-import pytest
+import random
 import subprocess
 import sys
 import time
 from unittest import mock
 
+import click
+import pytest
+
+import ray
+import ray.train
+from ray import tune
+from ray.train.tests.util import create_dict_checkpoint
+from ray.tune.cli import commands
+from ray.tune.result import CONFIG_PREFIX
+from ray.tune.utils.mock_trainable import MyTrainableClass
+
 try:
     from cStringIO import StringIO
 except ImportError:
     from io import StringIO
-
-import ray
-from ray import tune
-from ray.rllib import _register_all
-from ray.tune.cli import commands
-from ray.tune.result import CONFIG_PREFIX
 
 
 class Capturing:
@@ -34,32 +38,42 @@ class Capturing:
 @pytest.fixture
 def start_ray():
     ray.init(log_to_driver=False, local_mode=True)
-    _register_all()
     yield
     ray.shutdown()
 
 
-def test_time(start_ray, tmpdir):
+def test_time(start_ray, tmpdir, monkeypatch):
     experiment_name = "test_time"
-    experiment_path = os.path.join(str(tmpdir), experiment_name)
     num_samples = 2
-    tune.run_experiments(
-        {
-            experiment_name: {
-                "run": "__fake",
-                "stop": {"training_iteration": 1},
-                "num_samples": num_samples,
-                "local_dir": str(tmpdir),
-            }
-        }
+
+    def train_fn(config):
+        for i in range(3):
+            with create_dict_checkpoint({"dummy": "data"}) as checkpoint:
+                ray.train.report(
+                    {
+                        "epoch": i,
+                        "a": random.random(),
+                        "b/c": random.random(),
+                        "d": random.random(),
+                    },
+                    checkpoint=checkpoint,
+                )
+
+    tuner = tune.Tuner(
+        train_fn,
+        param_space={f"hp{i}": tune.uniform(0, 1) for i in range(100)},
+        tune_config=tune.TuneConfig(num_samples=num_samples),
+        run_config=ray.train.RunConfig(name=experiment_name),
     )
+    results = tuner.fit()
     times = []
-    for i in range(5):
+    for _ in range(5):
         start = time.time()
-        subprocess.check_call(["tune", "ls", experiment_path])
+        subprocess.check_call(["tune", "ls", results.experiment_path])
         times += [time.time() - start]
 
-    assert sum(times) / len(times) < 7.0, "CLI is taking too long!"
+    print("Average CLI time: ", sum(times) / len(times))
+    assert sum(times) / len(times) < 2, "CLI is taking too long!"
 
 
 @mock.patch(
@@ -72,7 +86,7 @@ def test_ls(mock_print_format_output, start_ray, tmpdir):
     experiment_path = os.path.join(str(tmpdir), experiment_name)
     num_samples = 3
     tune.run(
-        "__fake",
+        MyTrainableClass,
         name=experiment_name,
         stop={"training_iteration": 1},
         num_samples=num_samples,
@@ -119,7 +133,7 @@ def test_ls_with_cfg(mock_print_format_output, start_ray, tmpdir):
     experiment_name = "test_ls_with_cfg"
     experiment_path = os.path.join(str(tmpdir), experiment_name)
     tune.run(
-        "__fake",
+        MyTrainableClass,
         name=experiment_name,
         stop={"training_iteration": 1},
         config={"test_variable": tune.grid_search(list(range(5)))},
@@ -147,7 +161,7 @@ def test_lsx(start_ray, tmpdir):
     for i in range(num_experiments):
         experiment_name = "test_lsx{}".format(i)
         tune.run(
-            "__fake",
+            MyTrainableClass,
             name=experiment_name,
             stop={"training_iteration": 1},
             num_samples=1,

@@ -11,7 +11,7 @@
 # ray.init(address=args.address)
 
 # __quick_start_begin__
-from ray import tune
+from ray import train, tune
 
 
 def objective(config):  # <1>
@@ -42,7 +42,7 @@ def training_function(config):
         # Iterative training function - can be any arbitrary training procedure.
         intermediate_score = objective(step, alpha, beta)
         # Feed the score back back to Tune.
-        tune.report(mean_loss=intermediate_score)
+        train.report({"mean_loss": intermediate_score})
 
 
 tuner = tune.Tuner(

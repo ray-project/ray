@@ -32,7 +32,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
 
 cdef extern from "ray/common/function_descriptor.h" nogil:
     cdef cppclass CFunctionDescriptorInterface \
-            "ray::CFunctionDescriptorInterface":
+            "ray::FunctionDescriptorInterface":
         CFunctionDescriptorType Type()
         c_string ToString()
         c_string Serialize()

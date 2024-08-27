@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, List, Type, Dict, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional, Type
 
 from ray.tune.logger import DEFAULT_LOGGERS
 from ray.tune.logger.json import JsonLogger

@@ -70,7 +70,11 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
     }
 
     // Create GCS client and global state.
-    gcs::GcsClientOptions options("127.0.0.1:6379");
+    gcs::GcsClientOptions options("127.0.0.1",
+                                  6379,
+                                  ClusterID::Nil(),
+                                  /*allow_cluster_id_nil=*/true,
+                                  /*fetch_cluster_id_if_nil=*/false);
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     global_state_ = std::make_unique<gcs::GlobalStateAccessor>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*io_service_));
@@ -172,6 +176,34 @@ TEST_P(GlobalStateAccessorTest, TestNodeTable) {
   }
 }
 
+TEST_P(GlobalStateAccessorTest, TestGetAllTotalResources) {
+  ASSERT_EQ(global_state_->GetAllTotalResources().size(), 0);
+
+  // Register node
+  auto node_table_data = Mocker::GenNodeInfo();
+  node_table_data->mutable_resources_total()->insert({"CPU", 1});
+  node_table_data->mutable_resources_total()->insert({"GPU", 10});
+
+  std::promise<bool> promise;
+  RAY_CHECK_OK(gcs_client_->Nodes().AsyncRegister(
+      *node_table_data, [&promise](Status status) { promise.set_value(status.ok()); }));
+  WaitReady(promise.get_future(), timeout_ms_);
+  ASSERT_EQ(global_state_->GetAllNodeInfo().size(), 1);
+
+  // Assert get total resources right.
+  std::vector<rpc::TotalResources> all_total_resources;
+  for (const auto &string_of_total_resources_by_node_id :
+       global_state_->GetAllTotalResources()) {
+    rpc::TotalResources total_resources_by_node_id;
+    total_resources_by_node_id.ParseFromString(string_of_total_resources_by_node_id);
+    all_total_resources.push_back(total_resources_by_node_id);
+  }
+  ASSERT_EQ(all_total_resources.size(), 1);
+  ASSERT_EQ(all_total_resources[0].resources_total_size(), 2);
+  ASSERT_EQ((*all_total_resources[0].mutable_resources_total())["CPU"], 1.0);
+  ASSERT_EQ((*all_total_resources[0].mutable_resources_total())["GPU"], 10.0);
+}
+
 TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   std::unique_ptr<std::string> resources = global_state_->GetAllResourceUsage();
   rpc::ResourceUsageBatchData resource_usage_batch_data;
@@ -190,11 +222,9 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
 
   // Report resource usage first time.
   std::promise<bool> promise1;
-  auto resources1 = std::make_shared<rpc::ResourcesData>();
-  resources1->set_node_id(node_table_data->node_id());
-  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-      resources1, [&promise1](Status status) { promise1.set_value(status.ok()); }));
-  WaitReady(promise1.get_future(), timeout_ms_);
+  syncer::ResourceViewSyncMessage resources1;
+  gcs_server_->UpdateGcsResourceManagerInTest(
+      NodeID::FromBinary(node_table_data->node_id()), resources1);
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
@@ -202,15 +232,13 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
 
   // Report changed resource usage.
   std::promise<bool> promise2;
-  auto heartbeat2 = std::make_shared<rpc::ResourcesData>();
-  heartbeat2->set_node_id(node_table_data->node_id());
-  (*heartbeat2->mutable_resources_total())["CPU"] = 1;
-  (*heartbeat2->mutable_resources_total())["GPU"] = 10;
-  heartbeat2->set_resources_available_changed(true);
-  (*heartbeat2->mutable_resources_available())["GPU"] = 5;
-  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-      heartbeat2, [&promise2](Status status) { promise2.set_value(status.ok()); }));
-  WaitReady(promise2.get_future(), timeout_ms_);
+  syncer::ResourceViewSyncMessage resources2;
+  (*resources2.mutable_resources_total())["CPU"] = 1;
+  (*resources2.mutable_resources_total())["GPU"] = 10;
+  (*resources2.mutable_resources_available())["CPU"] = 1;
+  (*resources2.mutable_resources_available())["GPU"] = 5;
+  gcs_server_->UpdateGcsResourceManagerInTest(
+      NodeID::FromBinary(node_table_data->node_id()), resources2);
 
   resources = global_state_->GetAllResourceUsage();
   resource_usage_batch_data.ParseFromString(*resources.get());
@@ -219,28 +247,8 @@ TEST_P(GlobalStateAccessorTest, TestGetAllResourceUsage) {
   ASSERT_EQ(resources_data.resources_total_size(), 2);
   ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);
   ASSERT_EQ((*resources_data.mutable_resources_total())["GPU"], 10.0);
-  ASSERT_EQ(resources_data.resources_available_size(), 1);
-  ASSERT_EQ((*resources_data.mutable_resources_available())["GPU"], 5.0);
-
-  // Report unchanged resource usage. (Only works with light resource usage report
-  // enabled)
-  std::promise<bool> promise3;
-  auto heartbeat3 = std::make_shared<rpc::ResourcesData>();
-  heartbeat3->set_node_id(node_table_data->node_id());
-  (*heartbeat3->mutable_resources_available())["CPU"] = 1;
-  (*heartbeat3->mutable_resources_available())["GPU"] = 6;
-  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncReportResourceUsage(
-      heartbeat3, [&promise3](Status status) { promise3.set_value(status.ok()); }));
-  WaitReady(promise3.get_future(), timeout_ms_);
-
-  resources = global_state_->GetAllResourceUsage();
-  resource_usage_batch_data.ParseFromString(*resources.get());
-  ASSERT_EQ(resource_usage_batch_data.batch_size(), 1);
-  resources_data = resource_usage_batch_data.mutable_batch()->at(0);
-  ASSERT_EQ(resources_data.resources_total_size(), 2);
-  ASSERT_EQ((*resources_data.mutable_resources_total())["CPU"], 1.0);
-  ASSERT_EQ((*resources_data.mutable_resources_total())["GPU"], 10.0);
-  ASSERT_EQ(resources_data.resources_available_size(), 1);
+  ASSERT_EQ(resources_data.resources_available_size(), 2);
+  ASSERT_EQ((*resources_data.mutable_resources_available())["CPU"], 1.0);
   ASSERT_EQ((*resources_data.mutable_resources_available())["GPU"], 5.0);
 }
 
@@ -262,6 +270,60 @@ TEST_P(GlobalStateAccessorTest, TestWorkerTable) {
       WorkerID::FromRandom().Binary());
   ASSERT_TRUE(global_state_->AddWorkerInfo(another_worker_data->SerializeAsString()));
   ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 2);
+}
+
+TEST_P(GlobalStateAccessorTest, TestUpdateWorkerDebuggerPort) {
+  ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
+  // Add worker info
+  auto worker_table_data = Mocker::GenWorkerTableData();
+  worker_table_data->mutable_worker_address()->set_worker_id(
+      WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
+
+  // Get worker info
+  auto worker_id = WorkerID::FromBinary(worker_table_data->worker_address().worker_id());
+  ASSERT_TRUE(global_state_->GetWorkerInfo(worker_id));
+
+  // Update the worker debugger port
+  auto debugger_port = 10000;
+  ASSERT_TRUE(global_state_->UpdateWorkerDebuggerPort(worker_id, debugger_port));
+
+  // Verify the debugger port
+  auto another_worker_table_data = Mocker::GenWorkerTableData();
+  auto worker_info = global_state_->GetWorkerInfo(worker_id);
+  ASSERT_TRUE(another_worker_table_data->ParseFromString(*worker_info));
+  ASSERT_EQ(another_worker_table_data->debugger_port(), debugger_port);
+}
+
+TEST_P(GlobalStateAccessorTest, TestUpdateWorkerNumPausedThreads) {
+  ASSERT_EQ(global_state_->GetAllWorkerInfo().size(), 0);
+  // Add worker info
+  auto worker_table_data = Mocker::GenWorkerTableData();
+  worker_table_data->mutable_worker_address()->set_worker_id(
+      WorkerID::FromRandom().Binary());
+  ASSERT_TRUE(global_state_->AddWorkerInfo(worker_table_data->SerializeAsString()));
+
+  // Get worker info
+  auto worker_id = WorkerID::FromBinary(worker_table_data->worker_address().worker_id());
+  ASSERT_TRUE(global_state_->GetWorkerInfo(worker_id));
+
+  // Update the worker num paused threads
+  auto num_paused_threads_delta = 2;
+  ASSERT_TRUE(
+      global_state_->UpdateWorkerNumPausedThreads(worker_id, num_paused_threads_delta));
+
+  // Verify the num paused threads is equal to num_paused_threads_delta
+  auto another_worker_table_data = Mocker::GenWorkerTableData();
+  auto worker_info = global_state_->GetWorkerInfo(worker_id);
+  ASSERT_TRUE(another_worker_table_data->ParseFromString(*worker_info));
+  ASSERT_EQ(another_worker_table_data->num_paused_threads(), num_paused_threads_delta);
+
+  // Update the worker num paused threads again and verify it is equal to 0
+  ASSERT_TRUE(
+      global_state_->UpdateWorkerNumPausedThreads(worker_id, -num_paused_threads_delta));
+  worker_info = global_state_->GetWorkerInfo(worker_id);
+  ASSERT_TRUE(another_worker_table_data->ParseFromString(*worker_info));
+  ASSERT_EQ(another_worker_table_data->num_paused_threads(), 0);
 }
 
 // TODO(sang): Add tests after adding asyncAdd

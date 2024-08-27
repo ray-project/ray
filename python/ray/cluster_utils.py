@@ -5,6 +5,7 @@ import os
 import subprocess
 import tempfile
 import time
+from typing import Dict, Optional
 
 import yaml
 
@@ -13,6 +14,7 @@ import ray._private.services
 from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
 from ray._raylet import GcsClientOptions
+from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -27,7 +29,13 @@ class AutoscalingCluster:
     See test_autoscaler_fake_multinode.py for an end-to-end example.
     """
 
-    def __init__(self, head_resources: dict, worker_node_types: dict, **config_kwargs):
+    def __init__(
+        self,
+        head_resources: dict,
+        worker_node_types: dict,
+        autoscaler_v2: bool = False,
+        **config_kwargs,
+    ):
         """Create the cluster.
 
         Args:
@@ -36,10 +44,16 @@ class AutoscalingCluster:
         """
         self._head_resources = head_resources
         self._config = self._generate_config(
-            head_resources, worker_node_types, **config_kwargs
+            head_resources,
+            worker_node_types,
+            autoscaler_v2=autoscaler_v2,
+            **config_kwargs,
         )
+        self._autoscaler_v2 = autoscaler_v2
 
-    def _generate_config(self, head_resources, worker_node_types, **config_kwargs):
+    def _generate_config(
+        self, head_resources, worker_node_types, autoscaler_v2=False, **config_kwargs
+    ):
         base_config = yaml.safe_load(
             open(
                 os.path.join(
@@ -55,10 +69,15 @@ class AutoscalingCluster:
             "node_config": {},
             "max_workers": 0,
         }
+
+        # Autoscaler v2 specific configs
+        if autoscaler_v2:
+            custom_config["provider"]["launch_multiple"] = True
+            custom_config["provider"]["head_node_id"] = FAKE_HEAD_NODE_ID
         custom_config.update(config_kwargs)
         return custom_config
 
-    def start(self, _system_config=None):
+    def start(self, _system_config=None, override_env: Optional[Dict] = None):
         """Start the cluster.
 
         After this call returns, you can connect to the cluster with
@@ -78,6 +97,12 @@ class AutoscalingCluster:
             cmd.append("--num-cpus={}".format(self._head_resources.pop("CPU")))
         if "GPU" in self._head_resources:
             cmd.append("--num-gpus={}".format(self._head_resources.pop("GPU")))
+        if "object_store_memory" in self._head_resources:
+            cmd.append(
+                "--object-store-memory={}".format(
+                    self._head_resources.pop("object_store_memory")
+                )
+            )
         if self._head_resources:
             cmd.append("--resources='{}'".format(json.dumps(self._head_resources)))
         if _system_config is not None:
@@ -88,6 +113,17 @@ class AutoscalingCluster:
             )
         env = os.environ.copy()
         env.update({"AUTOSCALER_UPDATE_INTERVAL_S": "1", "RAY_FAKE_CLUSTER": "1"})
+        if self._autoscaler_v2:
+            # Set the necessary environment variables for autoscaler v2.
+            env.update(
+                {
+                    "RAY_enable_autoscaler_v2": "1",
+                    "RAY_CLOUD_INSTANCE_ID": FAKE_HEAD_NODE_ID,
+                    "RAY_OVERRIDE_NODE_ID_FOR_TESTING": FAKE_HEAD_NODE_ID,
+                }
+            )
+        if override_env:
+            env.update(override_env)
         subprocess.check_call(cmd, env=env)
 
     def shutdown(self):
@@ -203,7 +239,12 @@ class Cluster:
                 )
                 self.webui_url = self.head_node.webui_url
                 # Init global state accessor when creating head node.
-                gcs_options = GcsClientOptions.from_gcs_address(node.gcs_address)
+                gcs_options = GcsClientOptions.create(
+                    node.gcs_address,
+                    None,
+                    allow_cluster_id_nil=True,
+                    fetch_cluster_id_if_nil=False,
+                )
                 self.global_state._initialize_global_state(gcs_options)
                 # Write the Ray cluster address for convenience in unit
                 # testing. ray.init() and ray.init(address="auto") will connect
@@ -253,6 +294,7 @@ class Cluster:
                     "a node that the Ray client is connected."
                 )
 
+        node.destroy_external_storage()
         if self.head_node == node:
             # We have to wait to prevent the raylet becomes a zombie which will prevent
             # worker from exiting
@@ -310,8 +352,7 @@ class Cluster:
         """
         start_time = time.time()
         while time.time() - start_time < timeout:
-            clients = self.global_state.node_table()
-            live_clients = [client for client in clients if client["Alive"]]
+            live_clients = self.global_state._live_node_ids()
 
             expected = len(self.list_all_nodes())
             if len(live_clients) == expected:

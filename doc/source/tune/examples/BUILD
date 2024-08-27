@@ -3,7 +3,7 @@ load("//bazel:python.bzl", "py_test_run_all_notebooks")
 filegroup(
     name = "tune_examples",
     srcs = glob(["*.ipynb"]),
-    visibility = ["//doc:__subpackages__"]
+    visibility = ["//doc:__subpackages__"],
 )
 
 # --------------------------------------------------------------------
@@ -16,20 +16,30 @@ filegroup(
 py_test_run_all_notebooks(
     size = "medium",
     include = ["*.ipynb"],
+    data = ["//doc/source/tune/examples:tune_examples"],
     exclude = [
         "pbt_ppo_example.ipynb",
         "tune-xgboost.ipynb",
-        "sigopt_example.ipynb", # REGRESSION: no credentials
+        "pbt_transformers.ipynb",  # Transformers uses legacy Tune APIs.
+        "horovod_simple.ipynb",  # CI do not have Horovod
+        "tune-aim.ipynb",  # CI does not have `aim`
+        "bohb_example.ipynb",  # CI does not have bohb requirements
+   ],
+    tags = [
+        "exclusive",
+        "team:ml",
     ],
-    data = ["//doc/source/tune/examples:tune_examples"],
-    tags = ["exclusive", "team:ml"],
 )
 
 # GPU tests
 py_test_run_all_notebooks(
     size = "large",
     include = ["tune-xgboost.ipynb"],
-    exclude = [],
     data = ["//doc/source/tune/examples:tune_examples"],
-    tags = ["exclusive", "team:ml", "gpu"],
+    exclude = [],
+    tags = [
+        "exclusive",
+        "gpu",
+        "team:ml",
+    ],
 )

@@ -6,7 +6,7 @@ already be familiar with.
 import gymnasium as gym
 import tree
 import numpy as np
-from typing import Optional, List, Mapping, Iterable, Dict
+from typing import Dict, Iterable, List, Optional
 import abc
 
 
@@ -76,9 +76,14 @@ class TfCategorical(TfDistribution):
     If `probs` is N-dimensional, the first N-1 dimensions are treated as a batch of
     relative probability vectors.
 
-    Example::
-        >>> m = TfCategorical([ 0.25, 0.25, 0.25, 0.25 ])
-        >>> m.sample(sample_shape=(2,))  # equal probability of 0, 1, 2, 3
+    .. testcode::
+        :skipif: True
+
+        m = TfCategorical([ 0.25, 0.25, 0.25, 0.25 ])
+        m.sample(sample_shape=(2,))  # equal probability of 0, 1, 2, 3
+
+    .. testoutput::
+
         tf.Tensor([2 3], shape=(2,), dtype=int32)
 
     Args:
@@ -96,30 +101,23 @@ class TfCategorical(TfDistribution):
         self,
         probs: "tf.Tensor" = None,
         logits: "tf.Tensor" = None,
-        temperature: float = 1.0,
     ) -> None:
         # We assert this here because to_deterministic makes this assumption.
         assert (probs is None) != (
             logits is None
         ), "Exactly one out of `probs` and `logits` must be set!"
 
-        if logits is not None:
-            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-            logits /= temperature
-            probs = tf.nn.softmax(logits, axis=-1)
-
         self.probs = probs
         self.logits = logits
-        self.temperature = temperature
-        self.one_hot = tfp.distributions.OneHotCategorical(probs=probs)
-        super().__init__(probs=probs)
+        self.one_hot = tfp.distributions.OneHotCategorical(logits=logits, probs=probs)
+        super().__init__(logits=logits, probs=probs)
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
         # This prevents an error in which float values at the boundaries of the range
         # of the distribution are passed to this function.
         return -tf.nn.sparse_softmax_cross_entropy_with_logits(
-            logits=self.logits if self.logits is not None else self.probs,
+            logits=self.logits if self.logits is not None else tf.log(self.probs),
             labels=tf.cast(value, tf.int32),
         )
 
@@ -128,11 +126,7 @@ class TfCategorical(TfDistribution):
         self,
         probs: "tf.Tensor" = None,
         logits: "tf.Tensor" = None,
-        temperature: float = 1.0,
     ) -> "tfp.distributions.Distribution":
-        if logits is not None:
-            assert temperature > 0.0, "Categorical `temperature` must be > 0.0!"
-            logits /= temperature
         return tfp.distributions.Categorical(probs=probs, logits=logits)
 
     @staticmethod
@@ -148,10 +142,8 @@ class TfCategorical(TfDistribution):
 
     @classmethod
     @override(Distribution)
-    def from_logits(
-        cls, logits: TensorType, temperature: float = 1.0, **kwargs
-    ) -> "TfCategorical":
-        return TfCategorical(logits=logits, temperature=temperature, **kwargs)
+    def from_logits(cls, logits: TensorType, **kwargs) -> "TfCategorical":
+        return TfCategorical(logits=logits, **kwargs)
 
     def to_deterministic(self) -> "TfDeterministic":
         if self.probs is not None:
@@ -169,15 +161,25 @@ class TfDiagGaussian(TfDistribution):
     Creates a normal distribution parameterized by :attr:`loc` and :attr:`scale`. In
     case of multi-dimensional distribution, the variance is assumed to be diagonal.
 
-    Example::
+    .. testcode::
+        :skipif: True
 
-        >>> m = TfDiagGaussian(loc=[0.0, 0.0], scale=[1.0, 1.0])
-        >>> m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
+        m = TfDiagGaussian(loc=[0.0, 0.0], scale=[1.0, 1.0])
+        m.sample(sample_shape=(2,))  # 2d normal dist with loc=0 and scale=1
+
+    .. testoutput::
+
         tensor([[ 0.1046, -0.6120], [ 0.234, 0.556]])
 
-        >>> # scale is None
-        >>> m = TfDiagGaussian(loc=[0.0, 1.0])
-        >>> m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
+    .. testcode::
+        :skipif: True
+
+        # scale is None
+        m = TfDiagGaussian(loc=[0.0, 1.0])
+        m.sample(sample_shape=(2,))  # normally distributed with loc=0 and scale=1
+
+    .. testoutput::
+
         tensor([0.1046, 0.6120])
 
 
@@ -244,10 +246,14 @@ class TfDeterministic(Distribution):
 
     Note: entropy is always zero, ang logp and kl are not implemented.
 
-    Example::
+    .. testcode::
+        :skipif: True
 
-        >>> m = TfDeterministic(loc=tf.constant([0.0, 0.0]))
-        >>> m.sample(sample_shape=(2,))
+        m = TfDeterministic(loc=tf.constant([0.0, 0.0]))
+        m.sample(sample_shape=(2,))
+
+    .. testoutput::
+
         Tensor([[ 0.0, 0.0], [ 0.0, 0.0]])
 
     Args:
@@ -280,15 +286,15 @@ class TfDeterministic(Distribution):
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
-        raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
+        return tf.zeros_like(self.loc)
 
     @override(Distribution)
     def entropy(self, **kwargs) -> TensorType:
-        raise tf.zeros_like(self.loc)
+        raise RuntimeError(f"`entropy()` not supported for {self.__class__.__name__}.")
 
     @override(Distribution)
     def kl(self, other: "Distribution", **kwargs) -> TensorType:
-        raise ValueError(f"Cannot return kl for {self.__class__.__name__}.")
+        raise RuntimeError(f"`kl()` not supported for {self.__class__.__name__}.")
 
     @staticmethod
     @override(Distribution)
@@ -320,33 +326,33 @@ class TfMultiCategorical(Distribution):
     @override(Distribution)
     def sample(self) -> TensorType:
         arr = [cat.sample() for cat in self._cats]
-        sample_ = tf.stack(arr, axis=1)
+        sample_ = tf.stack(arr, axis=-1)
         return sample_
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
         arr = [cat.rsample() for cat in self._cats]
-        sample_ = tf.stack(arr, axis=1)
+        sample_ = tf.stack(arr, axis=-1)
         return sample_
 
     @override(Distribution)
     def logp(self, value: tf.Tensor) -> TensorType:
-        actions = tf.unstack(tf.cast(value, tf.int32), axis=1)
+        actions = tf.unstack(tf.cast(value, tf.int32), axis=-1)
         logps = tf.stack([cat.logp(act) for cat, act in zip(self._cats, actions)])
         return tf.reduce_sum(logps, axis=0)
 
     @override(Distribution)
     def entropy(self) -> TensorType:
         return tf.reduce_sum(
-            tf.stack([cat.entropy() for cat in self._cats], axis=1), axis=1
+            tf.stack([cat.entropy() for cat in self._cats], axis=-1), axis=-1
         )
 
     @override(Distribution)
     def kl(self, other: Distribution) -> TensorType:
         kls = tf.stack(
-            [cat.kl(oth_cat) for cat, oth_cat in zip(self._cats, other.cats)], axis=1
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self._cats, other._cats)], axis=-1
         )
-        return tf.reduce_sum(kls, axis=1)
+        return tf.reduce_sum(kls, axis=-1)
 
     @staticmethod
     @override(Distribution)
@@ -360,7 +366,6 @@ class TfMultiCategorical(Distribution):
         cls,
         logits: tf.Tensor,
         input_lens: List[int],
-        temperatures: List[float] = None,
         **kwargs,
     ) -> "TfMultiCategorical":
         """Creates this Distribution from logits (and additional arguments).
@@ -374,19 +379,11 @@ class TfMultiCategorical(Distribution):
                 be instantiated from the given logits.
             input_lens: A list of integers that indicate the length of the logits
                 vectors to be passed into each child distribution.
-            temperatures: A list of floats representing the temperature to use for
-                each Categorical distribution. If not provided, 1.0 is used for all.
             **kwargs: Forward compatibility kwargs.
         """
-        if not temperatures:
-            # If temperatures are not provided, use 1.0 for all actions.
-            temperatures = [1.0] * len(input_lens)
-
         categoricals = [
-            TfCategorical(logits=logits, temperature=temperature)
-            for logits, temperature in zip(
-                tf.split(logits, input_lens, axis=1), temperatures
-            )
+            TfCategorical(logits=logits)
+            for logits in tf.split(logits, input_lens, axis=-1)
         ]
 
         return TfMultiCategorical(categoricals=categoricals)
@@ -437,11 +434,8 @@ class TfMultiDistribution(Distribution):
             for dist in self._flat_child_distributions:
                 if isinstance(dist, TfCategorical):
                     split_indices.append(1)
-                elif (
-                    isinstance(dist, TfMultiCategorical)
-                    and dist.action_space is not None
-                ):
-                    split_indices.append(np.prod(dist.action_space.shape))
+                elif isinstance(dist, TfMultiCategorical):
+                    split_indices.append(len(dist._cats))
                 else:
                     sample = dist.sample()
                     # Cover Box(shape=()) case.
@@ -505,7 +499,7 @@ class TfMultiDistribution(Distribution):
     def from_logits(
         cls,
         logits: tf.Tensor,
-        child_distribution_cls_struct: Union[Mapping, Iterable],
+        child_distribution_cls_struct: Union[Dict, Iterable],
         input_lens: Union[Dict, List[int]],
         space: gym.Space,
         **kwargs,

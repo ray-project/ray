@@ -50,32 +50,33 @@ class NodeFailureTests(unittest.TestCase):
         # We tolerate failing workers and pause training
         config = (
             PPOConfig()
-            .rollouts(
-                num_rollout_workers=6,
-                recreate_failed_workers=True,
-                validate_workers_after_construction=True,
+            .environment("CartPole-v1")
+            .env_runners(
+                num_env_runners=6,
+                validate_env_runners_after_construction=True,
             )
+            .fault_tolerance(recreate_failed_env_runners=True)
             .training(
                 train_batch_size=300,
             )
         )
-        ppo = PPO(config=config, env="CartPole-v1")
+        ppo = PPO(config=config)
 
         # One step with all nodes up, enough to satisfy resource requirements
-        ppo.step()
+        ppo.train()
 
-        self.assertEqual(ppo.workers.num_healthy_remote_workers(), 6)
-        self.assertEqual(ppo.workers.num_remote_workers(), 6)
+        self.assertEqual(ppo.env_runner_group.num_healthy_remote_workers(), 6)
+        self.assertEqual(ppo.env_runner_group.num_remote_workers(), 6)
 
         # Remove the first non-head node.
         node_to_kill = get_other_nodes(self.cluster, exclude_head=True)[0]
         self.cluster.remove_node(node_to_kill)
 
         # step() should continue with 4 rollout workers.
-        ppo.step()
+        ppo.train()
 
-        self.assertEqual(ppo.workers.num_healthy_remote_workers(), 4)
-        self.assertEqual(ppo.workers.num_remote_workers(), 6)
+        self.assertEqual(ppo.env_runner_group.num_healthy_remote_workers(), 4)
+        self.assertEqual(ppo.env_runner_group.num_remote_workers(), 6)
 
         # node comes back immediately.
         self.cluster.add_node(
@@ -103,11 +104,11 @@ class NodeFailureTests(unittest.TestCase):
         # This step should continue with 4 workers, but by the end
         # of weight syncing, the 2 recovered rollout workers should
         # be back.
-        ppo.step()
+        ppo.train()
 
         # Workers should be back up, everything back to normal.
-        self.assertEqual(ppo.workers.num_healthy_remote_workers(), 6)
-        self.assertEqual(ppo.workers.num_remote_workers(), 6)
+        self.assertEqual(ppo.env_runner_group.num_healthy_remote_workers(), 6)
+        self.assertEqual(ppo.env_runner_group.num_remote_workers(), 6)
 
 
 if __name__ == "__main__":

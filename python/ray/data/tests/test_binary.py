@@ -13,11 +13,11 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     Partitioning,
     PartitionStyle,
-    PathPartitionEncoder,
     PathPartitionFilter,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.data.tests.util import Counter, extract_values, gen_bin_files
 from ray.tests.conftest import *  # noqa
 
@@ -41,7 +41,7 @@ def test_read_binary_files_partitioning(ray_start_regular_shared, tmp_path):
 
 def test_read_binary_files(ray_start_regular_shared):
     with gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(paths, parallelism=10)
+        ds = ray.data.read_binary_files(paths, override_num_blocks=10)
         for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
             assert expected == item["bytes"]
@@ -73,21 +73,8 @@ def test_read_binary_files_with_fs(ray_start_regular_shared):
     with gen_bin_files(10) as (tempdir, paths):
         # All the paths are absolute, so we want the root file system.
         fs, _ = pa.fs.FileSystem.from_uri("/")
-        ds = ray.data.read_binary_files(paths, filesystem=fs, parallelism=10)
+        ds = ray.data.read_binary_files(paths, filesystem=fs, override_num_blocks=10)
         for i, item in enumerate(ds.iter_rows()):
-            expected = open(paths[i], "rb").read()
-            assert expected == item["bytes"]
-
-
-def test_read_binary_files_with_paths(ray_start_regular_shared):
-    with gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(
-            paths,
-            include_paths=True,
-            parallelism=10,
-        )
-        for i, item in enumerate(ds.iter_rows()):
-            assert paths[i] == item["path"]
             expected = open(paths[i], "rb").read()
             assert expected == item["bytes"]
 
@@ -206,7 +193,6 @@ def test_read_binary_snappy_partitioned_with_filter(
             count=2,
             num_rows=2,
             schema="{bytes: binary}",
-            num_computed=None,
             sorted_values=[b"1 a\n1 b\n1 c", b"3 e\n3 f\n3 g"],
             ds_take_transform_fn=lambda t: extract_values("bytes", t),
         )

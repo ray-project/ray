@@ -1,9 +1,6 @@
+import asyncio
 import json
 import os
-import subprocess
-import sys
-import tempfile
-from copy import deepcopy
 from unittest.mock import patch
 
 import numpy as np
@@ -12,19 +9,24 @@ from fastapi.encoders import jsonable_encoder
 
 import ray
 from ray import serve
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
-    get_deployment_import_path,
+    get_all_live_placement_group_names,
+    get_current_actor_id,
+    get_head_node_id,
+    is_running_in_asyncio_loop,
     merge_dict,
-    msgpack_serialize,
     msgpack_deserialize,
+    msgpack_serialize,
     override_runtime_envs_except_env_vars,
     serve_encoders,
     snake_to_camel_case,
-    dict_keys_snake_to_camel_case,
-    get_head_node_id,
 )
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_DEPLOY_GROUP_PINNED_URI,
+)
 
 
 def test_serialize():
@@ -85,7 +87,7 @@ def decorated_f(*args):
     return "reached decorated_f"
 
 
-@ray.remote
+@serve.deployment
 class DecoratedActor:
     def __call__(self, *args):
         return "reached decorated_actor"
@@ -105,71 +107,6 @@ def gen_class():
         pass
 
     return A
-
-
-class TestGetDeploymentImportPath:
-    def test_invalid_inline_defined(self):
-        @serve.deployment
-        def inline_f():
-            pass
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(inline_f, enforce_importable=True)
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(gen_func(), enforce_importable=True)
-
-        @serve.deployment
-        class InlineCls:
-            pass
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(InlineCls, enforce_importable=True)
-
-        with pytest.raises(RuntimeError, match="must be importable"):
-            get_deployment_import_path(gen_class(), enforce_importable=True)
-
-    def test_get_import_path_basic(self):
-        d = decorated_f.options()
-
-        # CI may change the parent path, so check only that the suffix matches.
-        assert get_deployment_import_path(d).endswith(
-            "ray.serve.tests.test_util.decorated_f"
-        )
-
-    def test_get_import_path_nested_actor(self):
-        d = serve.deployment(name="actor")(DecoratedActor)
-
-        # CI may change the parent path, so check only that the suffix matches.
-        assert get_deployment_import_path(d).endswith(
-            "ray.serve.tests.test_util.DecoratedActor"
-        )
-
-    @pytest.mark.skipif(
-        sys.platform == "win32", reason="File path incorrect on Windows."
-    )
-    def test_replace_main(self):
-
-        temp_fname = "testcase.py"
-        expected_import_path = "testcase.main_f"
-
-        code = (
-            "from ray import serve\n"
-            "from ray.serve._private.utils import get_deployment_import_path\n"
-            "@serve.deployment\n"
-            "def main_f(*args):\n"
-            "\treturn 'reached main_f'\n"
-            "assert get_deployment_import_path(main_f, replace_main=True) == "
-            f"'{expected_import_path}'"
-        )
-
-        with tempfile.TemporaryDirectory() as dirpath:
-            full_fname = os.path.join(dirpath, temp_fname)
-
-            with open(full_fname, "w+") as f:
-                f.write(code)
-
-            subprocess.check_output(["python", full_fname])
 
 
 class TestOverrideRuntimeEnvsExceptEnvVars:
@@ -293,10 +230,7 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
 
         with ray.init(
             runtime_env={
-                "py_modules": [
-                    "https://github.com/ray-project/test_dag/archive/"
-                    "40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
-                ],
+                "py_modules": [TEST_DAG_PINNED_URI],
                 "env_vars": {"var1": "hello"},
             }
         ):
@@ -312,10 +246,7 @@ class TestOverrideRuntimeEnvsExceptEnvVars:
 
             @ray.remote(
                 runtime_env={
-                    "py_modules": [
-                        "https://github.com/ray-project/test_deploy_group/archive/"
-                        "67971777e225600720f91f618cdfe71fc47f60ee.zip"
-                    ],
+                    "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
                     "env_vars": {"var2": "world"},
                 }
             )
@@ -388,151 +319,6 @@ class TestSnakeToCamelCase:
 
         assert snake_to_camel_case("double__underscore") == "doubleUnderscore"
         assert snake_to_camel_case(f"many{'_' * 30}underscore") == "manyUnderscore"
-
-
-class TestDictKeysSnakeToCamelCase:
-    def test_empty(self):
-        assert dict_keys_snake_to_camel_case({}) == {}
-
-    def test_shallow_dict(self):
-        snake_dict = {
-            "hello_world": 1,
-            "check_this": "check it out",
-            "skateboard_park": "what fun",
-            "this_is_quite_a_long_phrase": 2,
-            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
-        }
-
-        camel_dict = {
-            "helloWorld": 1,
-            "checkThis": "check it out",
-            "skateboardPark": "what fun",
-            "thisIsQuiteALongPhrase": 2,
-            "-this1HAs@lph@num3RiCsInIT": 55,
-        }
-
-        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
-
-    def test_nested_dict(self):
-        snake_dict = {
-            "hello_world": 1,
-            "down_we_go": {
-                "alice_in_wonderland": "mad_hatter",
-                "anotherDrop": {
-                    "here_we_are": "hello",
-                    "what_aW_orld": 33,
-                    "cRAZ333_World_4ever": 1,
-                },
-                "drop_3ncore": {"well_well_well": 5},
-                "emptiness": {},
-            },
-            "another_dict": {"not_much_info": 0},
-            "this_is_quite_a_long_phrase": 2,
-            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
-        }
-
-        camel_dict = {
-            "helloWorld": 1,
-            "downWeGo": {
-                "alice_in_wonderland": "mad_hatter",
-                "anotherDrop": {
-                    "here_we_are": "hello",
-                    "what_aW_orld": 33,
-                    "cRAZ333_World_4ever": 1,
-                },
-                "drop_3ncore": {"well_well_well": 5},
-                "emptiness": {},
-            },
-            "anotherDict": {"not_much_info": 0},
-            "thisIsQuiteALongPhrase": 2,
-            "-this1HAs@lph@num3RiCsInIT": 55,
-        }
-
-        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
-
-    def test_mixed_key_types_flat(self):
-        snake_dict = {
-            "hello_world": 1,
-            3: "check it out",
-            "skateboard_park": "what fun",
-            (1, 2): 2,
-            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
-        }
-        snake_dict_copy = deepcopy(snake_dict)
-
-        camel_dict = {
-            "helloWorld": 1,
-            3: "check it out",
-            "skateboardPark": "what fun",
-            (1, 2): 2,
-            "-this1HAs@lph@num3RiCsInIT": 55,
-        }
-
-        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
-
-        # dict_keys_snake_to_camel_case should not mutate original dict
-        assert snake_dict == snake_dict_copy
-
-    def test_mixed_key_types_nested(self):
-        snake_dict = {
-            (0, 0): 1,
-            "down_we_go": {
-                "alice_in_wonderland": "mad_hatter",
-                "anotherDrop": {
-                    12: "hello",
-                    "what_aW_orld": 33,
-                    "cRAZ333_World_4ever": 1,
-                },
-                "drop_3ncore": {"well_well_well": 5},
-                (0, 0): {},
-            },
-            5: {"not_much_info": 0},
-            "this_is_quite_a_long_phrase": 2,
-            "-this_1_hAs_@lph@num3RiCs_In_IT": 55,
-        }
-        snake_dict_copy = deepcopy(snake_dict)
-
-        camel_dict = {
-            (0, 0): 1,
-            "downWeGo": {
-                "alice_in_wonderland": "mad_hatter",
-                "anotherDrop": {
-                    12: "hello",
-                    "what_aW_orld": 33,
-                    "cRAZ333_World_4ever": 1,
-                },
-                "drop_3ncore": {"well_well_well": 5},
-                (0, 0): {},
-            },
-            5: {"not_much_info": 0},
-            "thisIsQuiteALongPhrase": 2,
-            "-this1HAs@lph@num3RiCsInIT": 55,
-        }
-
-        assert dict_keys_snake_to_camel_case(snake_dict) == camel_dict
-
-        # dict_keys_snake_to_camel_case should not mutate original dict
-        assert snake_dict == snake_dict_copy
-
-    def test_shallow_copy(self):
-        """dict_keys_snake_to_camel_case should make shallow copies only.
-
-        However, nested dictionaries are replaced with new dictionaries.
-        """
-
-        list1 = [1, 2, 3]
-        list2 = [4, 5, "hi"]
-
-        snake_dict = {
-            "list": list1,
-            "nested": {
-                "list2": list2,
-            },
-        }
-
-        camel_dict = dict_keys_snake_to_camel_case(snake_dict)
-        assert camel_dict["list"] is list1
-        assert camel_dict["nested"]["list2"] is list2
 
 
 def test_get_head_node_id():
@@ -616,6 +402,81 @@ def test_calculate_remaining_timeout():
         )
         == 0
     )
+
+
+def test_get_all_live_placement_group_names(ray_instance):
+    """Test the logic to parse the Ray placement group table.
+
+    The test contains three cases:
+    - A named placement group that was created and is still alive ("pg2").
+    - A named placement group that's still being scheduled ("pg3").
+    - An unnamed placement group.
+
+    Only "pg2" and "pg3" should be returned as live placement group names.
+    """
+
+    # Named placement group that's been removed (should not be returned).
+    pg1 = ray.util.placement_group([{"CPU": 0.1}], name="pg1")
+    ray.util.remove_placement_group(pg1)
+
+    # Named, detached placement group that's been removed (should not be returned).
+    pg2 = ray.util.placement_group([{"CPU": 0.1}], name="pg2", lifetime="detached")
+    ray.util.remove_placement_group(pg2)
+
+    # Named placement group that's still alive (should be returned).
+    pg3 = ray.util.placement_group([{"CPU": 0.1}], name="pg3")
+    assert pg3.wait()
+
+    # Named, detached placement group that's still alive (should be returned).
+    pg4 = ray.util.placement_group([{"CPU": 0.1}], name="pg4", lifetime="detached")
+    assert pg4.wait()
+
+    # Named placement group that's being scheduled (should be returned).
+    pg5 = ray.util.placement_group([{"CPU": 1000}], name="pg5")
+    assert not pg5.wait(timeout_seconds=0.001)
+
+    # Named, detached placement group that's being scheduled (should be returned).
+    pg6 = ray.util.placement_group([{"CPU": 1000}], name="pg6", lifetime="detached")
+    assert not pg6.wait(timeout_seconds=0.001)
+
+    # Unnamed placement group (should not be returned).
+    pg7 = ray.util.placement_group([{"CPU": 0.1}])
+    assert pg7.wait()
+
+    # Unnamed, detached placement group (should not be returned).
+    pg8 = ray.util.placement_group([{"CPU": 0.1}], lifetime="detached")
+    assert pg8.wait()
+
+    assert set(get_all_live_placement_group_names()) == {"pg3", "pg4", "pg5", "pg6"}
+
+
+def test_is_running_in_asyncio_loop_false():
+    assert is_running_in_asyncio_loop() is False
+
+
+@pytest.mark.asyncio
+async def test_is_running_in_asyncio_loop_true():
+    assert is_running_in_asyncio_loop() is True
+
+    async def check():
+        return is_running_in_asyncio_loop()
+
+    # Verify that it also works in a task.
+    assert await asyncio.ensure_future(check()) is True
+
+
+def test_get_current_actor_id(ray_instance):
+    @ray.remote
+    class A:
+        def call_get_current_actor_id(self):
+            return get_current_actor_id()
+
+    a = A.remote()
+    actor_id = ray.get(a.call_get_current_actor_id.remote())
+    assert len(actor_id) > 0
+    assert actor_id != "DRIVER"
+
+    assert get_current_actor_id() == "DRIVER"
 
 
 if __name__ == "__main__":

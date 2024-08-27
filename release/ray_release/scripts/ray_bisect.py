@@ -4,31 +4,32 @@ import subprocess
 import os
 import json
 import time
-from typing import Dict, List, Set
+from typing import Dict, List, Set, Tuple
+from pathlib import Path
 
+from ray_release.bazel import bazel_runfile
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
-from ray_release.config import (
-    read_and_validate_release_test_collection,
-    parse_python_version,
-    DEFAULT_WHEEL_WAIT_TIMEOUT,
-)
-from ray_release.test import (
-    Test,
-    DEFAULT_PYTHON_VERSION,
-)
-from ray_release.test_automation.state_machine import TestStateMachine
-from ray_release.wheels import find_and_wait_for_ray_wheels_url
+from ray_release.config import read_and_validate_release_test_collection
+from ray_release.configs.global_config import init_global_config
+from ray_release.test import Test
+from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 
 
 @click.command()
 @click.argument("test_name", required=True, type=str)
 @click.argument("passing_commit", required=True, type=str)
 @click.argument("failing_commit", required=True, type=str)
+@click.option(
+    "--test-collection-file",
+    type=str,
+    multiple=True,
+    help="Test collection file, relative path to ray repo.",
+)
 @click.option(
     "--concurrency",
     default=3,
@@ -54,19 +55,32 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     default=False,
     help=("Use the full, non-smoke version of the test"),
 )
+@click.option(
+    "--global-config",
+    default="oss_config.yaml",
+    type=click.Choice(
+        [x.name for x in (Path(__file__).parent.parent / "configs").glob("*.yaml")]
+    ),
+    help="Global config to use for test execution.",
+)
 def main(
     test_name: str,
     passing_commit: str,
     failing_commit: str,
+    test_collection_file: Tuple[str],
     concurrency: int = 1,
     run_per_commit: int = 1,
     is_full_test: bool = False,
+    global_config: str = "oss_config.yaml",
 ) -> None:
+    init_global_config(
+        bazel_runfile("release/ray_release/configs", global_config),
+    )
     if concurrency <= 0:
         raise ValueError(
             f"Concurrency input need to be a positive number, received: {concurrency}"
         )
-    test = _get_test(test_name)
+    test = _get_test(test_name, test_collection_file)
     pre_sanity_check = _sanity_check(
         test, passing_commit, failing_commit, run_per_commit, is_full_test
     )
@@ -159,20 +173,12 @@ def _run_test(
 def _trigger_test_run(
     test: Test, commit: str, run_per_commit: int, is_full_test: bool
 ) -> None:
-    python_version = DEFAULT_PYTHON_VERSION
-    if "python" in test:
-        python_version = parse_python_version(test["python"])
-    if test.is_byod_cluster():
-        os.environ["COMMIT_TO_TEST"] = commit
-        build_anyscale_base_byod_images([test])
-        build_anyscale_custom_byod_image(test)
-    ray_wheels_url = find_and_wait_for_ray_wheels_url(
-        commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT, python_version=python_version
-    )
+    os.environ["COMMIT_TO_TEST"] = commit
+    build_anyscale_base_byod_images([test])
+    build_anyscale_custom_byod_image(test)
     for run in range(run_per_commit):
         step = get_step(
             copy.deepcopy(test),  # avoid mutating the original test
-            ray_wheels=ray_wheels_url,
             smoke_test=test.get("smoke_test", False) and not is_full_test,
             env={
                 "RAY_COMMIT_OF_WHEEL": commit,
@@ -202,16 +208,20 @@ def _obtain_test_result(
             if commit in outcomes and len(outcomes[commit]) == run_per_commit:
                 continue
             for run in range(run_per_commit):
-                outcome = subprocess.check_output(
-                    [
-                        "buildkite-agent",
-                        "step",
-                        "get",
-                        "outcome",
-                        "--step",
-                        f"{commit}-{run}",
-                    ]
-                ).decode("utf-8")
+                outcome = (
+                    subprocess.check_output(
+                        [
+                            "buildkite-agent",
+                            "step",
+                            "get",
+                            "outcome",
+                            "--step",
+                            f"{commit}-{run}",
+                        ]
+                    )
+                    .decode("utf-8")
+                    .strip()
+                )
                 if not outcome:
                     continue
                 if commit not in outcomes:
@@ -229,9 +239,9 @@ def _obtain_test_result(
     return outcomes
 
 
-def _get_test(test_name: str) -> Test:
+def _get_test(test_name: str, test_collection_file: Tuple[str]) -> Test:
     test_collection = read_and_validate_release_test_collection(
-        os.path.join(os.path.dirname(__file__), "..", "..", "release_tests.yaml")
+        test_collection_file or ["release/release_tests.yaml"],
     )
     return [test for test in test_collection if test["name"] == test_name][0]
 
@@ -255,7 +265,7 @@ def _update_test_state(test: Test, blamed_commit: str) -> None:
     test[Test.KEY_BISECT_BLAMED_COMMIT] = blamed_commit
 
     # Compute and update the next test state, then comment blamed commit on github issue
-    sm = TestStateMachine(test)
+    sm = ReleaseTestStateMachine(test)
     sm.move()
     sm.comment_blamed_commit_on_github_issue()
 

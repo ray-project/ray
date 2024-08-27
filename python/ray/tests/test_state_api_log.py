@@ -4,7 +4,7 @@ import sys
 import asyncio
 from typing import List
 import urllib
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 
 import pytest
 from ray.util.state.state_cli import logs_state_cli_group
@@ -22,10 +22,6 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 
-from ray._private.ray_constants import (
-    LOG_PREFIX_TASK_ATTEMPT_START,
-    LOG_PREFIX_TASK_ATTEMPT_END,
-)
 from ray._raylet import ActorID, NodeID, TaskID, WorkerID
 from ray.core.generated.common_pb2 import Address
 from ray.core.generated.gcs_service_pb2 import GetTaskEventsReply
@@ -51,14 +47,6 @@ from ray.util.state import get_log, list_logs, list_nodes, list_workers
 from ray.util.state.common import GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_manager import StateDataSourceClient
-
-if sys.version_info >= (3, 8, 0):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
-
-
-ASYNCMOCK_MIN_PYTHON_VER = (3, 8)
 
 
 def generate_task_event(
@@ -375,46 +363,54 @@ async def test_log_tails_with_appends(lines_to_tail, total_lines, temp_file):
     ), "Non-matching number of lines tailed after append"
 
 
-@pytest.mark.asyncio
-async def test_log_agent_find_task_log_offsets(temp_file):
-    log_file_content = ""
-    task_id = "taskid1234"
-    attempt_number = 0
-    # Previous data
-    for i in range(3):
-        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
-    # Task's logs
-    log_file_content += f"{LOG_PREFIX_TASK_ATTEMPT_START}{task_id}-{attempt_number}\n"
-    expected_start = len(log_file_content)
-    for i in range(10):
-        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
-    expected_end = len(log_file_content)
-    log_file_content += f"{LOG_PREFIX_TASK_ATTEMPT_END}{task_id}-{attempt_number}\n"
+def test_log_agent_resolve_filename(temp_dir):
+    """
+    Test that LogAgentV1Grpc.resolve_filename(root, filename) works:
+    1. Not possible to resolve a file that doesn't exist.
+    2. Not able to resolve files outside of the temp dir root.
+        - with a absolute path.
+        - with a relative path recursive up.
+    3. Permits a file in a directory that's symlinked into the root dir.
+    """
+    root = Path(temp_dir)
+    # Create a file in the temp dir.
+    file = root / "valid_file"
+    file.touch()
+    subdir = root / "subdir"
+    subdir.mkdir()
 
-    # Next data
-    for i in range(3):
-        log_file_content += TEST_LINE_TEMPLATE.format(i) + "\n"
+    # Create a directory in the root that contains a valid file and
+    # is symlinked to by a path in the subdir.
+    symlinked_dir = root / "symlinked"
+    symlinked_dir.mkdir()
+    symlinked_file = symlinked_dir / "valid_file"
+    symlinked_file.touch()
+    symlinked_path_in_subdir = subdir / "symlink_to_outside_dir"
+    symlinked_path_in_subdir.symlink_to(symlinked_dir)
 
-    # Write to files
-    temp_file.write(log_file_content.encode("utf-8"))
+    # Test file doesn't exist
+    with pytest.raises(FileNotFoundError):
+        LogAgentV1Grpc._resolve_filename(root, "non-exist-file")
 
-    # Test all task logs
-    start_offset, end_offset = await LogAgentV1Grpc._find_task_log_offsets(
-        task_id, attempt_number, -1, temp_file
+    # Test absolute path outside of root is not allowed
+    with pytest.raises(FileNotFoundError):
+        LogAgentV1Grpc._resolve_filename(subdir, root.resolve() / "valid_file")
+
+    # Test relative path recursive up is not allowed
+    with pytest.raises(FileNotFoundError):
+        LogAgentV1Grpc._resolve_filename(subdir, "../valid_file")
+
+    # Test relative path a valid file is allowed
+    assert (
+        LogAgentV1Grpc._resolve_filename(root, "valid_file")
+        == (root / "valid_file").resolve()
     )
-    assert start_offset == expected_start
-    assert end_offset == expected_end
 
-    # Test tailing last X lines
-    num_tail = 3
-    start_offset, end_offset = await LogAgentV1Grpc._find_task_log_offsets(
-        task_id, attempt_number, num_tail, temp_file
+    # Test relative path to a valid file following a symlink is allowed
+    assert (
+        LogAgentV1Grpc._resolve_filename(subdir, "symlink_to_outside_dir/valid_file")
+        == (root / "symlinked" / "valid_file").resolve()
     )
-    assert end_offset == expected_end
-    exclude_tail_content = ""
-    for i in range(10 - num_tail):
-        exclude_tail_content += TEST_LINE_TEMPLATE.format(i) + "\n"
-    assert start_offset == expected_start + len(exclude_tail_content)
 
 
 # Unit Tests (LogsManager)
@@ -422,10 +418,6 @@ async def test_log_agent_find_task_log_offsets(temp_file):
 
 @pytest.fixture
 def logs_manager():
-    if sys.version_info < ASYNCMOCK_MIN_PYTHON_VER:
-        raise Exception(f"Unsupported for this version of python {sys.version_info}")
-    from unittest.mock import AsyncMock
-
     client = AsyncMock(StateDataSourceClient)
     manager = LogsManager(client)
     yield manager
@@ -445,17 +437,12 @@ async def generate_logs_stream(num_chunks: int):
         yield StreamLogReply(data=data.encode())
 
 
-@pytest.mark.skipif(
-    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
-    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
-    " or higher",
-)
 @pytest.mark.asyncio
 async def test_logs_manager_list_logs(logs_manager):
     logs_client = logs_manager.data_source_client
 
-    logs_client.get_all_registered_agent_ids = MagicMock()
-    logs_client.get_all_registered_agent_ids.return_value = ["1", "2"]
+    logs_client.get_all_registered_log_agent_ids = MagicMock()
+    logs_client.get_all_registered_log_agent_ids.return_value = ["1", "2"]
 
     logs_client.list_logs.side_effect = [
         generate_list_logs(["gcs_server.out"]),
@@ -472,7 +459,7 @@ async def test_logs_manager_list_logs(logs_manager):
     assert len(result) == 1
     assert result["gcs_server"] == ["gcs_server.out"]
     assert result["raylet"] == []
-    logs_client.get_all_registered_agent_ids.assert_called()
+    logs_client.get_all_registered_log_agent_ids.assert_called()
     logs_client.list_logs.assert_awaited_with("2", "*gcs*", timeout=30)
 
     # The second call raises DataSourceUnavailable, which will
@@ -483,11 +470,6 @@ async def test_logs_manager_list_logs(logs_manager):
         )
 
 
-@pytest.mark.skipif(
-    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
-    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
-    " or higher",
-)
 @pytest.mark.asyncio
 async def test_logs_manager_resolve_file(logs_manager):
     node_id = NodeID(b"1" * 28)
@@ -495,8 +477,8 @@ async def test_logs_manager_resolve_file(logs_manager):
     Test filename is given.
     """
     logs_client = logs_manager.data_source_client
-    logs_client.get_all_registered_agent_ids = MagicMock()
-    logs_client.get_all_registered_agent_ids.return_value = [node_id.hex()]
+    logs_client.get_all_registered_log_agent_ids = MagicMock()
+    logs_client.get_all_registered_log_agent_ids.return_value = [node_id.hex()]
     expected_filename = "filename"
     res = await logs_manager.resolve_filename(
         node_id=node_id.hex(),
@@ -708,18 +690,13 @@ async def test_logs_manager_resolve_file(logs_manager):
     assert log_file_name == f"worker-123-123-{pid}.err"
 
 
-@pytest.mark.skipif(
-    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
-    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
-    " or higher",
-)
 @pytest.mark.asyncio
 async def test_logs_manager_stream_log(logs_manager):
     NUM_LOG_CHUNKS = 10
     logs_client = logs_manager.data_source_client
 
-    logs_client.get_all_registered_agent_ids = MagicMock()
-    logs_client.get_all_registered_agent_ids.return_value = ["1", "2"]
+    logs_client.get_all_registered_log_agent_ids = MagicMock()
+    logs_client.get_all_registered_log_agent_ids.return_value = ["1", "2"]
     logs_client.ip_to_node_id = MagicMock()
     logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
 
@@ -777,11 +754,6 @@ async def test_logs_manager_stream_log(logs_manager):
     # It will be tested by the integration test.
 
 
-@pytest.mark.skipif(
-    sys.version_info < ASYNCMOCK_MIN_PYTHON_VER,
-    reason=f"unittest.mock.AsyncMock requires python {ASYNCMOCK_MIN_PYTHON_VER}"
-    " or higher",
-)
 @pytest.mark.asyncio
 async def test_logs_manager_keepalive_no_timeout(logs_manager):
     """Test when --follow is specified, there's no timeout.
@@ -791,8 +763,8 @@ async def test_logs_manager_keepalive_no_timeout(logs_manager):
     NUM_LOG_CHUNKS = 10
     logs_client = logs_manager.data_source_client
 
-    logs_client.get_all_registered_agent_ids = MagicMock()
-    logs_client.get_all_registered_agent_ids.return_value = ["1", "2"]
+    logs_client.get_all_registered_log_agent_ids = MagicMock()
+    logs_client.get_all_registered_log_agent_ids.return_value = ["1", "2"]
     logs_client.ip_to_node_id = MagicMock()
     logs_client.stream_log.return_value = generate_logs_stream(NUM_LOG_CHUNKS)
 
@@ -1059,8 +1031,43 @@ def test_log_job(ray_start_with_dashboard):
 
     def verify():
         logs = "".join(get_log(submission_id=job_id, node_id=node_id))
-        assert JOB_LOG + "\n" == logs
+        assert JOB_LOG + "\n" in logs
 
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_log_get_invalid_filenames(ray_start_with_dashboard, temp_file):
+    assert (
+        wait_until_server_available(ray_start_with_dashboard.address_info["webui_url"])
+        is True
+    )
+    webui_url = ray_start_with_dashboard.address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+    node_id = list_nodes()[0]["node_id"]
+
+    # log_dir = ray._private.worker.global_worker.node.get_logs_dir_path()
+
+    def verify():
+        # Kind of hack that we know the file node_ip_address.json exists in ray.
+        with pytest.raises(RayStateApiException) as e:
+            logs = "".join(get_log(node_id=node_id, filename="../node_ip_address.json"))
+            print(logs)
+            assert "does not start with " in str(e.value)
+        return True
+
+    wait_for_condition(verify)
+
+    # Verify that reading file outside of the log directory is not allowed
+    # with absolute path.
+    def verify():
+        # Kind of hack that we know the file node_ip_address.json exists in ray.
+        temp_file_abs_path = str(Path(temp_file.name).resolve())
+        with pytest.raises(RayStateApiException) as e:
+            logs = "".join(get_log(node_id=node_id, filename=temp_file_abs_path))
+            print(logs)
+            assert "does not start with " in str(e.value)
         return True
 
     wait_for_condition(verify)

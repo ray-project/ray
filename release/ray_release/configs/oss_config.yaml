@@ -1,5 +1,1 @@
-byod:
-  ray_ecr: rayproject
-  byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
-state_machine:
-  aws_bucket: ray-ci-results
+../../../ci/ray_ci/oss_config.yaml

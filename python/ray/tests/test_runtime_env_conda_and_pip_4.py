@@ -32,6 +32,49 @@ def test_in_virtualenv(start_cluster):
     assert ray.get(f.remote())
 
 
+def test_multiple_pip_installs(start_cluster, monkeypatch):
+    """Test that multiple pip installs don't interfere with each other."""
+    monkeypatch.setenv("RUNTIME_ENV_RETRY_TIMES", "0")
+    cluster, address = start_cluster
+
+    if sys.platform == "win32" and "ray" not in address:
+        pytest.skip(
+            "Failing on windows, as python.exe is in use during deletion attempt."
+        )
+
+    ray.init(
+        address,
+        runtime_env={
+            "pip": ["pip-install-test"],
+            "env_vars": {"TEST_VAR_1": "test_1"},
+        },
+    )
+
+    @ray.remote
+    def f():
+        return True
+
+    @ray.remote(
+        runtime_env={
+            "pip": ["pip-install-test"],
+            "env_vars": {"TEST_VAR_2": "test_2"},
+        }
+    )
+    def f2():
+        return True
+
+    @ray.remote(
+        runtime_env={
+            "pip": ["pip-install-test"],
+            "env_vars": {"TEST_VAR_3": "test_3"},
+        }
+    )
+    def f3():
+        return True
+
+    assert all(ray.get([f.remote(), f2.remote(), f3.remote()]))
+
+
 class TestGC:
     @pytest.mark.skipif(
         os.environ.get("CI") and sys.platform != "linux",
@@ -87,8 +130,12 @@ class TestGC:
         ray.shutdown()
 
 
+# pytest-virtualenv doesn't support Python 3.12 as of now, see more details here:
+# https://github.com/man-group/pytest-plugins/issues/220
 @pytest.mark.skipif(
-    "IN_VIRTUALENV" in os.environ or sys.platform != "linux",
+    "IN_VIRTUALENV" in os.environ
+    or sys.platform != "linux"
+    or (sys.version_info.major == 3 and sys.version_info.minor >= 12),
     reason="Requires PR wheels built in CI, so only run on linux CI machines.",
 )
 def test_run_in_virtualenv(cloned_virtualenv):
@@ -114,7 +161,7 @@ def test_run_in_virtualenv(cloned_virtualenv):
 def test_runtime_env_with_pip_config(start_cluster):
     @ray.remote(
         runtime_env={
-            "pip": {"packages": ["pip-install-test==0.5"], "pip_version": "==20.2.3"}
+            "pip": {"packages": ["pip-install-test==0.5"], "pip_version": "==24.1.2"}
         }
     )
     def f():
@@ -122,7 +169,7 @@ def test_runtime_env_with_pip_config(start_cluster):
 
         return pip.__version__
 
-    assert ray.get(f.remote()) == "20.2.3"
+    assert ray.get(f.remote()) == "24.1.2"
 
 
 if __name__ == "__main__":

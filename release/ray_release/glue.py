@@ -21,7 +21,7 @@ from ray_release.config import (
     RELEASE_PACKAGE_DIR,
     DEFAULT_AUTOSUSPEND_MINS,
 )
-from ray_release.template import load_test_cluster_env, load_test_cluster_compute
+from ray_release.template import load_test_cluster_compute
 from ray_release.exception import (
     ReleaseTestConfigError,
     ReleaseTestSetupError,
@@ -72,14 +72,13 @@ def _load_test_configuration(
     test: Test,
     anyscale_project: str,
     result: Result,
-    ray_wheels_url: str,
     smoke_test: bool = False,
     no_terminate: bool = False,
+    test_definition_root: Optional[str] = None,
 ) -> Tuple[ClusterManager, CommandRunner, str]:
     logger.info(f"Test config: {test}")
 
     # Populate result paramaters
-    result.wheels_url = ray_wheels_url
     result.stable = test.get("stable", True)
     result.smoke_test = smoke_test
     buildkite_url = os.getenv("BUILDKITE_BUILD_URL", "")
@@ -91,7 +90,7 @@ def _load_test_configuration(
 
     # Setting up working directory
     working_dir = test["working_dir"]
-    new_wd = os.path.join(RELEASE_PACKAGE_DIR, working_dir)
+    new_wd = os.path.join(test_definition_root or RELEASE_PACKAGE_DIR, working_dir)
     os.chdir(new_wd)
 
     run_type = test["run"].get("type", DEFAULT_RUN_TYPE)
@@ -147,13 +146,12 @@ def _setup_cluster_environment(
     test: Test,
     result: Result,
     cluster_manager: ClusterManager,
-    ray_wheels_url: str,
     cluster_env_id: Optional[str],
+    test_definition_root: Optional[str] = None,
 ) -> Tuple[str, int, int, int, int]:
     setup_signal_handling()
     # Load configs
-    cluster_env = load_test_cluster_env(test, ray_wheels_url=ray_wheels_url)
-    cluster_compute = load_test_cluster_compute(test)
+    cluster_compute = load_test_cluster_compute(test, test_definition_root)
 
     if cluster_env_id:
         try:
@@ -171,7 +169,7 @@ def _setup_cluster_environment(
                 f"{cluster_env_id}: {e}"
             ) from e
     else:
-        cluster_manager.set_cluster_env(cluster_env)
+        cluster_manager.set_cluster_env()
 
     # Load some timeouts
     build_timeout = int(test["run"].get("build_timeout", DEFAULT_BUILD_TIMEOUT))
@@ -386,12 +384,12 @@ def run_release_test(
     test: Test,
     anyscale_project: str,
     result: Result,
-    ray_wheels_url: str,
     reporters: Optional[List[Reporter]] = None,
     smoke_test: bool = False,
     cluster_id: Optional[str] = None,
     cluster_env_id: Optional[str] = None,
     no_terminate: bool = False,
+    test_definition_root: Optional[str] = None,
 ) -> Result:
     old_wd = os.getcwd()
     start_time = time.monotonic()
@@ -406,9 +404,9 @@ def run_release_test(
             test,
             anyscale_project,
             result,
-            ray_wheels_url,
             smoke_test,
             no_terminate,
+            test_definition_root,
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
         (
@@ -421,8 +419,8 @@ def run_release_test(
             test,
             result,
             cluster_manager,
-            ray_wheels_url,
             cluster_env_id,
+            test_definition_root,
         )
 
         buildkite_group(":bulb: Local environment information")

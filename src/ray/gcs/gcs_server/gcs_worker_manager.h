@@ -14,10 +14,9 @@
 
 #pragma once
 
-#include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
@@ -47,6 +46,16 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
                            rpc::AddWorkerInfoReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleUpdateWorkerDebuggerPort(
+      rpc::UpdateWorkerDebuggerPortRequest request,
+      rpc::UpdateWorkerDebuggerPortReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleUpdateWorkerNumPausedThreads(
+      rpc::UpdateWorkerNumPausedThreadsRequest request,
+      rpc::UpdateWorkerNumPausedThreadsReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
+
   void AddWorkerDeadListener(
       std::function<void(std::shared_ptr<WorkerTableData>)> listener);
 
@@ -57,7 +66,7 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
  private:
   void GetWorkerInfo(
       const WorkerID &worker_id,
-      std::function<void(const boost::optional<WorkerTableData> &)> callback) const;
+      std::function<void(const std::optional<WorkerTableData> &)> callback) const;
 
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsPublisher> gcs_publisher_;

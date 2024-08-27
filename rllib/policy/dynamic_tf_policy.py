@@ -14,12 +14,11 @@ from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import (
     deprecation_warning,
     DEPRECATED_VALUE,
-    Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
@@ -43,7 +42,7 @@ logger = logging.getLogger(__name__)
 TOWER_SCOPE_NAME = "tower"
 
 
-@Deprecated(error=False)
+@OldAPIStack
 class DynamicTFPolicy(TFPolicy):
     """A TFPolicy that auto-defines placeholders dynamically at runtime.
 
@@ -52,7 +51,6 @@ class DynamicTFPolicy(TFPolicy):
     to generate your custom tf (graph-mode or eager) Policy classes.
     """
 
-    @DeveloperAPI
     def __init__(
         self,
         obs_space: gym.spaces.Space,
@@ -333,7 +331,6 @@ class DynamicTFPolicy(TFPolicy):
             # Distribution generation is customized, e.g., DQN, DDPG.
             else:
                 if action_distribution_fn:
-
                     # Try new action_distribution_fn signature, supporting
                     # state_batches and seq_lens.
                     in_dict = self._input_dict
@@ -482,7 +479,6 @@ class DynamicTFPolicy(TFPolicy):
             self.get_session().run(tf1.global_variables_initializer())
 
     @override(TFPolicy)
-    @DeveloperAPI
     def copy(self, existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> TFPolicy:
         """Creates a copy of self using existing input placeholders."""
 
@@ -556,7 +552,6 @@ class DynamicTFPolicy(TFPolicy):
         return instance
 
     @override(Policy)
-    @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
         if self.model:
             return self.model.get_initial_state()
@@ -564,7 +559,6 @@ class DynamicTFPolicy(TFPolicy):
             return []
 
     @override(Policy)
-    @DeveloperAPI
     def load_batch_into_buffer(
         self,
         batch: SampleBatch,
@@ -597,7 +591,6 @@ class DynamicTFPolicy(TFPolicy):
         )
 
     @override(Policy)
-    @DeveloperAPI
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_single_cpu_batch`.
@@ -612,7 +605,6 @@ class DynamicTFPolicy(TFPolicy):
         return self.multi_gpu_tower_stacks[buffer_index].num_tuples_loaded
 
     @override(Policy)
-    @DeveloperAPI
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
         # Shortcut for 1 CPU only: Batch should already be stored in
         # `self._loaded_single_cpu_batch`.
@@ -718,7 +710,6 @@ class DynamicTFPolicy(TFPolicy):
     def _initialize_loss_from_dummy_batch(
         self, auto_remove_unneeded_view_reqs: bool = True, stats_fn=None
     ) -> None:
-
         # Create the optimizer/exploration optimizer here. Some initialization
         # steps (e.g. exploration postprocessing) may need this.
         if not self._optimizers:
@@ -923,7 +914,7 @@ class DynamicTFPolicy(TFPolicy):
         return losses
 
 
-@Deprecated(error=False)
+@OldAPIStack
 class TFMultiGPUTowerStack:
     """Optimizer that runs in parallel across multiple local devices.
 
@@ -1336,7 +1327,6 @@ def _average_gradients(tower_grads):
 
     average_grads = []
     for grad_and_vars in zip(*tower_grads):
-
         # Note that each grad_and_vars looks like the following:
         #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
         grads = []

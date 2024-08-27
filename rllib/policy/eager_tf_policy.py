@@ -17,11 +17,10 @@ from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
-    Deprecated,
 )
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
@@ -145,7 +144,7 @@ def _check_too_many_retraces(obj):
     return _func
 
 
-@Deprecated(error=False)
+@OldAPIStack
 class EagerTFPolicy(Policy):
     """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
 
@@ -181,7 +180,7 @@ def _traced_eager_policy(eager_policy_cls):
 
             # Create a traced version of `self._compute_actions_helper`.
             if self._traced_compute_actions_helper is False and not self._no_tracing:
-                if self.config.get("_enable_rl_module_api"):
+                if self.config.get("enable_rl_module_and_learner"):
                     self._compute_actions_helper_rl_module_explore = (
                         _convert_eager_inputs(
                             tf.function(
@@ -302,7 +301,7 @@ class _OptimizerWrapper:
         return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
-@Deprecated(error=False)
+@OldAPIStack
 def _build_eager_tf_policy(
     name,
     loss_fn,
@@ -343,17 +342,15 @@ def _build_eager_tf_policy(
     base = add_mixins(EagerTFPolicy, mixins)
 
     if obs_include_prev_action_reward != DEPRECATED_VALUE:
-        deprecation_warning(old="obs_include_prev_action_reward", error=False)
+        deprecation_warning(old="obs_include_prev_action_reward", error=True)
 
     if extra_action_fetches_fn is not None:
         deprecation_warning(
-            old="extra_action_fetches_fn", new="extra_action_out_fn", error=False
+            old="extra_action_fetches_fn", new="extra_action_out_fn", error=True
         )
-        extra_action_out_fn = extra_action_fetches_fn
 
     if gradients_fn is not None:
-        deprecation_warning(old="gradients_fn", new="compute_gradients_fn", error=False)
-        compute_gradients_fn = gradients_fn
+        deprecation_warning(old="gradients_fn", new="compute_gradients_fn", error=True)
 
     class eager_policy_cls(base):
         def __init__(self, observation_space, action_space, config):
@@ -445,7 +442,7 @@ def _build_eager_tf_policy(
             # action).
             self._lock = threading.RLock()
 
-            if self.config.get("_enable_rl_module_api", False):
+            if self.config.get("enable_rl_module_and_learner", False):
                 # Maybe update view_requirements, e.g. for recurrent case.
                 self.view_requirements = self.model.update_default_view_requirements(
                     self.view_requirements
@@ -498,7 +495,6 @@ def _build_eager_tf_policy(
             episodes: Optional[List[Episode]] = None,
             **kwargs,
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
-
             if not self.config.get("eager_tracing") and not tf1.executing_eagerly():
                 tf1.enable_eager_execution()
 
@@ -687,7 +683,6 @@ def _build_eager_tf_policy(
         def compute_gradients(
             self, postprocessed_batch: SampleBatch
         ) -> Tuple[ModelGradients, Dict[str, TensorType]]:
-
             pad_batch_to_sequences_of_same_size(
                 postprocessed_batch,
                 shuffle=False,
@@ -759,7 +754,10 @@ def _build_eager_tf_policy(
             if self._optimizer and len(self._optimizer.variables()) > 0:
                 state["_optimizer_variables"] = self._optimizer.variables()
             # Add exploration state.
-            if not self.config.get("_enable_rl_module_api", False) and self.exploration:
+            if (
+                not self.config.get("enable_rl_module_and_learner", False)
+                and self.exploration
+            ):
                 # This is not compatible with RLModules, which have a method
                 # `forward_exploration` to specify custom exploration behavior.
                 state["_exploration_state"] = self.exploration.get_state()
@@ -883,7 +881,6 @@ def _build_eager_tf_policy(
                         actions, logp = action_sampler_outputs
                 else:
                     if action_distribution_fn:
-
                         # Try new action_distribution_fn signature, supporting
                         # state_batches and seq_lens.
                         try:
@@ -1060,21 +1057,16 @@ def _build_eager_tf_policy(
                     )
 
         def _stats(self, outputs, samples, grads):
-
             fetches = {}
             if stats_fn:
-                fetches[LEARNER_STATS_KEY] = {
-                    k: v for k, v in stats_fn(outputs, samples).items()
-                }
+                fetches[LEARNER_STATS_KEY] = dict(stats_fn(outputs, samples))
             else:
                 fetches[LEARNER_STATS_KEY] = {}
 
             if extra_learn_fetches_fn:
-                fetches.update({k: v for k, v in extra_learn_fetches_fn(self).items()})
+                fetches.update(dict(extra_learn_fetches_fn(self)))
             if grad_stats_fn:
-                fetches.update(
-                    {k: v for k, v in grad_stats_fn(self, samples, grads).items()}
-                )
+                fetches.update(dict(grad_stats_fn(self, samples, grads)))
             return fetches
 
         def _lazy_tensor_dict(self, postprocessed_batch: SampleBatch):

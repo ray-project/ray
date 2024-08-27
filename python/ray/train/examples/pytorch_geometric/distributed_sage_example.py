@@ -1,22 +1,20 @@
 # Adapted from https://github.com/pyg-team/pytorch_geometric/blob/2.1.0
 # /examples/multi_gpu/distributed_sampling.py
 
-import os
 import argparse
-from filelock import FileLock
-from ray.air import session
+import os
 
 import torch
 import torch.nn.functional as F
-
-from torch_geometric.datasets import Reddit, FakeDataset
+from filelock import FileLock
+from torch_geometric.datasets import FakeDataset, Reddit
 from torch_geometric.loader import NeighborSampler
 from torch_geometric.nn import SAGEConv
+from torch_geometric.transforms import RandomNodeSplit
 
 from ray import train
+from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.air.config import ScalingConfig
-from torch_geometric.transforms import RandomNodeSplit
 
 
 class SAGE(torch.nn.Module):
@@ -44,7 +42,6 @@ class SAGE(torch.nn.Module):
         for i in range(self.num_layers):
             xs = []
             for batch_size, n_id, adj in subgraph_loader:
-
                 edge_index, _, size = adj
                 x = x_all[n_id.to(x_all.device)].to(train.torch.get_device())
                 x_target = x[: size[1]]
@@ -65,9 +62,9 @@ def train_loop_per_worker(train_loop_config):
 
     data = dataset[0]
     train_idx = data.train_mask.nonzero(as_tuple=False).view(-1)
-    train_idx = train_idx.split(train_idx.size(0) // session.get_world_size())[
-        session.get_world_rank()
-    ]
+    train_idx = train_idx.split(
+        train_idx.size(0) // train.get_context().get_world_size()
+    )[train.get_context().get_world_rank()]
 
     train_loader = NeighborSampler(
         data.edge_index,
@@ -81,7 +78,7 @@ def train_loop_per_worker(train_loop_config):
     train_loader = train.torch.prepare_data_loader(train_loader, add_dist_sampler=False)
 
     # Do validation on rank 0 worker only.
-    if session.get_world_rank() == 0:
+    if train.get_context().get_world_rank() == 0:
         subgraph_loader = NeighborSampler(
             data.edge_index, node_idx=None, sizes=[-1], batch_size=2048, shuffle=False
         )
@@ -114,13 +111,13 @@ def train_loop_per_worker(train_loop_config):
             loss.backward()
             optimizer.step()
 
-        if session.get_world_rank() == 0:
+        if train.get_context().get_world_rank() == 0:
             print(f"Epoch: {epoch:03d}, Loss: {loss:.4f}")
 
         train_accuracy = validation_accuracy = test_accuracy = None
 
         # Do validation on rank 0 worker only.
-        if session.get_world_rank() == 0:
+        if train.get_context().get_world_rank() == 0:
             model.eval()
             with torch.no_grad():
                 out = model.module.test(x, subgraph_loader)
@@ -133,7 +130,7 @@ def train_loop_per_worker(train_loop_config):
             )
             test_accuracy = int(res[data.test_mask].sum()) / int(data.test_mask.sum())
 
-        session.report(
+        train.report(
             dict(
                 train_accuracy=train_accuracy,
                 validation_accuracy=validation_accuracy,
@@ -169,7 +166,6 @@ def gen_reddit_dataset():
 def train_gnn(
     num_workers=2, use_gpu=False, epochs=3, global_batch_size=32, dataset="reddit"
 ):
-
     per_worker_batch_size = global_batch_size // num_workers
 
     trainer = TorchTrainer(

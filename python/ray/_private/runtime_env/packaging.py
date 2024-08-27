@@ -18,6 +18,7 @@ from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR,
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
+from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
 from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
     _internal_kv_exists,
@@ -93,7 +94,7 @@ class Protocol(Enum):
     @classmethod
     def remote_protocols(cls):
         # Returns a list of protocols that support remote storage
-        # These protocols should only be used with paths that end in ".zip"
+        # These protocols should only be used with paths that end in ".zip" or ".whl"
         return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
 
 
@@ -148,8 +149,8 @@ def _hash_directory(
     BUF_SIZE = 4096 * 1024
 
     def handler(path: Path):
-        md5 = hashlib.md5()
-        md5.update(str(path.relative_to(relative_path)).encode())
+        sha1 = hashlib.sha1()
+        sha1.update(str(path.relative_to(relative_path)).encode())
         if not path.is_dir():
             try:
                 f = path.open("rb")
@@ -162,13 +163,13 @@ def _hash_directory(
                 try:
                     data = f.read(BUF_SIZE)
                     while len(data) != 0:
-                        md5.update(data)
+                        sha1.update(data)
                         data = f.read(BUF_SIZE)
                 finally:
                     f.close()
 
         nonlocal hash_val
-        hash_val = _xor_bytes(hash_val, md5.digest())
+        hash_val = _xor_bytes(hash_val, sha1.digest())
 
     excludes = [] if excludes is None else [excludes]
     _dir_travel(root, excludes, handler, logger=logger)
@@ -183,6 +184,10 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
 
     >>> parse_uri("https://test.com/file.zip")
     (<Protocol.HTTPS: 'https'>, 'https_test_com_file.zip')
+
+    >>> parse_uri("https://test.com/file.whl")
+    (<Protocol.HTTPS: 'https'>, 'file.whl')
+
     """
     uri = urlparse(pkg_uri)
     try:
@@ -194,14 +199,21 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         )
 
     if protocol in Protocol.remote_protocols():
-        package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
+        if pkg_uri.endswith(".whl"):
+            # Don't modify the .whl filename. See
+            # https://peps.python.org/pep-0427/#file-name-convention
+            # for more information.
+            package_name = pkg_uri.split("/")[-1]
+        else:
+            package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
 
-        disallowed_chars = ["/", ":", "@", "+"]
-        for disallowed_char in disallowed_chars:
-            package_name = package_name.replace(disallowed_char, "_")
+            disallowed_chars = ["/", ":", "@", "+"]
+            for disallowed_char in disallowed_chars:
+                package_name = package_name.replace(disallowed_char, "_")
 
-        # Remove all periods except the last, which is part of the file extension
-        package_name = package_name.replace(".", "_", package_name.count(".") - 1)
+            # Remove all periods except the last, which is part of the
+            # file extension
+            package_name = package_name.replace(".", "_", package_name.count(".") - 1)
     else:
         package_name = uri.netloc
 
@@ -381,7 +393,7 @@ def _zip_directory(
         directory inside the zip file.
     """
     pkg_file = Path(output_path).absolute()
-    with ZipFile(pkg_file, "w") as zip_handler:
+    with ZipFile(pkg_file, "w", strict_timestamps=False) as zip_handler:
         # Put all files in the directory into the zip file.
         dir_path = Path(directory).absolute()
 
@@ -432,7 +444,7 @@ def get_uri_for_package(package: Path) -> str:
             protocol=Protocol.GCS.value, whl_filename=package.name
         )
     else:
-        hash_val = hashlib.md5(package.read_bytes()).hexdigest()
+        hash_val = hashlib.sha1(package.read_bytes()).hexdigest()
         return "{protocol}://{pkg_name}.zip".format(
             protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
         )
@@ -727,13 +739,21 @@ async def download_and_unpack_package(
                     with open_file(pkg_file, "wb") as fin:
                         fin.write(package_zip.read())
 
-                unzip_package(
-                    package_path=pkg_file,
-                    target_dir=local_dir,
-                    remove_top_level_directory=True,
-                    unlink_zip=True,
-                    logger=logger,
-                )
+                if pkg_file.suffix in [".zip", ".jar"]:
+                    unzip_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=True,
+                        unlink_zip=True,
+                        logger=logger,
+                    )
+                elif pkg_file.suffix == ".whl":
+                    return str(pkg_file)
+                else:
+                    raise NotImplementedError(
+                        f"Package format {pkg_file.suffix} is ",
+                        "not supported for remote protocols",
+                    )
             else:
                 raise NotImplementedError(f"Protocol {protocol} is not supported")
 
@@ -883,3 +903,34 @@ def delete_package(pkg_uri: str, base_directory: str) -> Tuple[bool, int]:
             deleted = True
 
     return deleted
+
+
+async def install_wheel_package(
+    wheel_uri: str,
+    target_dir: str,
+    logger: Optional[logging.Logger] = default_logger,
+) -> None:
+    """Install packages in the wheel URI, and then delete the local wheel file."""
+
+    pip_install_cmd = [
+        "pip",
+        "install",
+        wheel_uri,
+        f"--target={target_dir}",
+    ]
+
+    logger.info("Running py_modules wheel install command: %s", str(pip_install_cmd))
+    try:
+        # TODO(architkulkarni): Use `await check_output_cmd` or similar.
+        exit_code, output = exec_cmd_stream_to_logger(pip_install_cmd, logger)
+    finally:
+        if Path(wheel_uri).exists():
+            Path(wheel_uri).unlink()
+
+        if exit_code != 0:
+            if Path(target_dir).exists():
+                Path(target_dir).unlink()
+            raise RuntimeError(
+                f"Failed to install py_modules wheel {wheel_uri}"
+                f"to {target_dir}:\n{output}"
+            )

@@ -48,6 +48,11 @@ class GcsTaskManagerTest : public ::testing::Test {
     return task_ids;
   }
 
+  TaskID GenTaskIDForJob(int job_id) {
+    auto random_parent = RandomTaskId();
+    return TaskID::ForNormalTask(JobID::FromInt(job_id), random_parent, 0);
+  }
+
   std::vector<WorkerID> GenWorkerIDs(size_t num_workers) {
     std::vector<WorkerID> worker_ids;
     for (size_t i = 0; i < num_workers; ++i) {
@@ -75,14 +80,19 @@ class GcsTaskManagerTest : public ::testing::Test {
       const std::vector<std::pair<rpc::TaskStatus, int64_t>> &status_timestamps,
       const TaskID &parent_task_id = TaskID::Nil(),
       int job_id = 0,
-      absl::optional<rpc::RayErrorInfo> error_info = absl::nullopt) {
-    auto events = GenTaskEvents(tasks,
-                                /* attempt_number */ 0,
-                                /* job_id */ job_id,
-                                /* profile event */ absl::nullopt,
-                                GenStateUpdate(status_timestamps),
-                                GenTaskInfo(JobID::FromInt(job_id), parent_task_id),
-                                error_info);
+      absl::optional<rpc::RayErrorInfo> error_info = absl::nullopt,
+      ActorID actor_id = ActorID::Nil()) {
+    auto events = GenTaskEvents(
+        tasks,
+        /* attempt_number */ 0,
+        /* job_id */ job_id,
+        /* profile event */ absl::nullopt,
+        GenStateUpdate(status_timestamps),
+        GenTaskInfo(JobID::FromInt(job_id),
+                    parent_task_id,
+                    actor_id.IsNil() ? TaskType::NORMAL_TASK : TaskType::ACTOR_TASK,
+                    actor_id),
+        error_info);
     auto events_data = Mocker::GenTaskEventsData(events);
     SyncAddTaskEventData(events_data);
   }
@@ -117,7 +127,8 @@ class GcsTaskManagerTest : public ::testing::Test {
                                             int64_t limit = -1,
                                             bool exclude_driver = true,
                                             const std::string &name = "",
-                                            const ActorID &actor_id = ActorID::Nil()) {
+                                            const ActorID &actor_id = ActorID::Nil(),
+                                            const std::string &state = "") {
     rpc::GetTaskEventsRequest request;
     rpc::GetTaskEventsReply reply;
     std::promise<bool> promise;
@@ -130,6 +141,10 @@ class GcsTaskManagerTest : public ::testing::Test {
 
     if (!name.empty()) {
       request.mutable_filters()->set_name(name);
+    }
+
+    if (!state.empty()) {
+      request.mutable_filters()->set_state(state);
     }
 
     if (!actor_id.IsNil()) {
@@ -145,6 +160,7 @@ class GcsTaskManagerTest : public ::testing::Test {
     }
 
     request.mutable_filters()->set_exclude_driver(exclude_driver);
+
     task_manager->GetIoContext().dispatch(
         [this, &promise, &request, &reply]() {
           task_manager->HandleGetTaskEvents(
@@ -267,7 +283,33 @@ class GcsTaskManagerMemoryLimitedTest : public GcsTaskManagerTest {
     RayConfig::instance().initialize(
         R"(
 {
-  "task_events_max_num_task_in_gcs": 100
+  "task_events_max_num_task_in_gcs": 10
+}
+  )");
+  }
+};
+
+class GcsTaskManagerProfileEventsLimitTest : public GcsTaskManagerTest {
+ public:
+  GcsTaskManagerProfileEventsLimitTest() : GcsTaskManagerTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_max_num_profile_events_per_task": 10
+}
+  )");
+  }
+};
+
+class GcsTaskManagerDroppedTaskAttemptsLimit : public GcsTaskManagerTest {
+ public:
+  GcsTaskManagerDroppedTaskAttemptsLimit() : GcsTaskManagerTest() {
+    RayConfig::instance().initialize(
+        R"(
+{
+  "task_events_max_num_task_in_gcs": 10,
+  "task_events_max_dropped_task_attempts_tracked_per_job_in_gcs": 5,
+  "task_events_dropped_task_attempts_gc_threshold_s": 3
 }
   )");
   }
@@ -289,12 +331,11 @@ TEST_F(GcsTaskManagerTest, TestHandleAddTaskEventBasic) {
 
   // Assert on actual data.
   {
-    EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), num_task_events);
+    EXPECT_EQ(task_manager->task_event_storage_->GetTaskEvents().size(), num_task_events);
     EXPECT_EQ(task_manager->GetTotalNumTaskEventsReported(), num_task_events);
     EXPECT_EQ(task_manager->GetTotalNumProfileTaskEventsDropped(),
               num_profile_events_dropped);
-    EXPECT_EQ(task_manager->GetTotalNumStatusTaskEventsDropped(),
-              num_status_events_dropped);
+    EXPECT_EQ(task_manager->GetTotalNumTaskAttemptsDropped(), num_status_events_dropped);
   }
 }
 
@@ -314,9 +355,9 @@ TEST_F(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt) {
 
   // Assert on actual data
   {
-    EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), 1);
+    EXPECT_EQ(task_manager->task_event_storage_->GetTaskEvents().size(), 1);
     // Assert on events
-    auto task_events = task_manager->task_event_storage_->task_events_[0];
+    auto task_events = task_manager->task_event_storage_->GetTaskEvents()[0];
     // Sort and assert profile events merged matched
     std::sort(task_events.mutable_profile_events()->mutable_events()->begin(),
               task_events.mutable_profile_events()->mutable_events()->end(),
@@ -540,6 +581,24 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
     SyncAddTaskEventData(data);
   }
 
+  // A task event with state transitions.
+  {
+    auto task_ids = GenTaskIDs(1);
+    auto task_info = GenTaskInfo(JobID::FromInt(1), TaskID::Nil(), rpc::NORMAL_TASK);
+    auto events =
+        GenTaskEvents(task_ids,
+                      /* attempt_number */
+                      0,
+                      /* job_id */ 1,
+                      absl::nullopt,
+                      GenStateUpdate({{rpc::TaskStatus::PENDING_NODE_ASSIGNMENT, 1},
+                                      {rpc::TaskStatus::RUNNING, 5}},
+                                     WorkerID::Nil()),
+                      task_info);
+    auto data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(data);
+  }
+
   auto reply_name = SyncGetTaskEvents({},
                                       /* job_id */ absl::nullopt,
                                       /* limit */ -1,
@@ -562,6 +621,33 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                                           "task_name",
                                           actor_id);
   EXPECT_EQ(reply_both_and.events_by_task_size(), 0);
+
+  auto reply_state = SyncGetTaskEvents({},
+                                       /* job_id */ absl::nullopt,
+                                       /* limit */ -1,
+                                       /* exclude_driver */ false,
+                                       /* name */ "",
+                                       ActorID::Nil(),
+                                       "RUnnING");
+  EXPECT_EQ(reply_state.events_by_task_size(), 1);
+
+  reply_state = SyncGetTaskEvents({},
+                                  /* job_id */ absl::nullopt,
+                                  /* limit */ -1,
+                                  /* exclude_driver */ false,
+                                  /* name */ "",
+                                  ActorID::Nil(),
+                                  "NIL");
+  EXPECT_EQ(reply_state.events_by_task_size(), 2);
+
+  reply_state = SyncGetTaskEvents({},
+                                  /* job_id */ absl::nullopt,
+                                  /* limit */ -1,
+                                  /* exclude_driver */ false,
+                                  /* name */ "",
+                                  ActorID::Nil(),
+                                  "PENDING_NODE_ASSIGNMENT");
+  EXPECT_EQ(reply_state.events_by_task_size(), 0);
 }
 
 TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
@@ -576,8 +662,9 @@ TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
 
   // Mark task attempt failed if needed for each task.
   for (auto &task : tasks) {
+    auto loc = task_manager->task_event_storage_->GetTaskEventLocator({task, 0});
     task_manager->task_event_storage_->MarkTaskAttemptFailedIfNeeded(
-        {task, 0},
+        loc,
         /* failed time stamp ms*/ 4,
         rpc::RayErrorInfo());
   }
@@ -586,23 +673,41 @@ TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
   {
     auto reply = SyncGetTaskEvents({tasks_running});
     auto task_event = *(reply.events_by_task().begin());
-    EXPECT_EQ(task_event.state_updates().failed_ts(), 4);
+    EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED), 4);
   }
 
   // Check task attempt failed event is not overriding failed tasks.
   {
     auto reply = SyncGetTaskEvents({tasks_failed});
     auto task_event = *(reply.events_by_task().begin());
-    EXPECT_EQ(task_event.state_updates().failed_ts(), 3);
+    EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED), 3);
   }
 
   // Check task attempt failed event is not overriding finished tasks.
   {
     auto reply = SyncGetTaskEvents({tasks_finished});
     auto task_event = *(reply.events_by_task().begin());
-    EXPECT_FALSE(task_event.state_updates().has_failed_ts());
-    EXPECT_EQ(task_event.state_updates().finished_ts(), 2);
+    EXPECT_FALSE(
+        task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
+    EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FINISHED), 2);
   }
+}
+
+TEST_F(GcsTaskManagerTest, TestJobFinishesWithoutTaskEvents) {
+  // Test that if a job is finished, but no task events have been reported.
+  // This should not crash.
+
+  task_manager->OnJobFinished(JobID::FromInt(1), 5);  // in ms
+
+  boost::asio::io_service io;
+  boost::asio::deadline_timer timer(
+      io,
+      boost::posix_time::milliseconds(
+          2 * RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
+  timer.wait();
+
+  auto reply = SyncGetTaskEvents({});
+  EXPECT_EQ(reply.events_by_task_size(), 0);
 }
 
 TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
@@ -636,7 +741,8 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     auto reply = SyncGetTaskEvents(tasks);
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().failed_ts(), /* 5 ms to ns */ 5 * 1000 * 1000);
+      EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED),
+                /* 5 ms to ns */ 5 * 1000 * 1000);
       EXPECT_TRUE(task_event.state_updates().has_error_info());
       EXPECT_TRUE(task_event.state_updates().error_info().error_type() ==
                   rpc::ErrorType::WORKER_DIED);
@@ -652,8 +758,10 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     auto reply = SyncGetTaskEvents(tasks);
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().finished_ts(), 2);
-      EXPECT_FALSE(task_event.state_updates().has_failed_ts());
+      EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FINISHED),
+                2);
+      EXPECT_FALSE(
+          task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
     }
   }
 
@@ -663,7 +771,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     auto reply = SyncGetTaskEvents(tasks);
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().failed_ts(), 3);
+      EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED), 3);
     }
   }
 
@@ -674,33 +782,32 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     auto reply = SyncGetTaskEvents(tasks);
     EXPECT_EQ(reply.events_by_task_size(), 5);
     for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_FALSE(task_event.state_updates().has_failed_ts());
-      EXPECT_FALSE(task_event.state_updates().has_finished_ts());
+      EXPECT_FALSE(
+          task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
+      EXPECT_FALSE(
+          task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FINISHED));
     }
   }
 }
 
 TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
-  size_t num_limit = 100;  // synced with test config
-  size_t num_total = 1000;
+  size_t num_limit = 10;  // synced with test config
+  size_t num_total = 50;
 
-  std::vector<TaskID> task_ids = GenTaskIDs(200);
-  std::vector<int64_t> attempt_numbers{0, 1, 2, 3, 4};
-  std::vector<int> job_ids{1, 2, 3};
+  std::vector<TaskID> task_ids = GenTaskIDs(num_total);
   std::vector<WorkerID> worker_ids = GenWorkerIDs(10);
 
   // Add task attempts from different jobs, different task id, with different worker ids.
   for (size_t i = 0; i < num_total; i++) {
     auto task_id = task_ids[i % task_ids.size()];
-    auto job_id = job_ids[i % job_ids.size()];
-    auto attempt_number = attempt_numbers[i % attempt_numbers.size()];
+    auto job_id = task_id.JobId();
     auto worker_id = worker_ids[i % worker_ids.size()];
     auto events = GenTaskEvents({task_id},
-                                /* attempt_number */ attempt_number,
-                                job_id,
+                                /* attempt_number */ 0,
+                                job_id.ToInt(),
                                 GenProfileEvents("event", 1, 1),
                                 GenStateUpdate({}, worker_id),
-                                GenTaskInfo(JobID::FromInt(job_id)));
+                                GenTaskInfo(job_id));
     auto events_data = Mocker::GenTaskEventsData(events);
     SyncAddTaskEventData(events_data);
   }
@@ -728,29 +835,28 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestIndexNoLeak) {
   }
   // Assert on the indexes and the storage
   {
-    EXPECT_EQ(task_manager->task_event_storage_->task_events_.size(), num_limit);
+    EXPECT_EQ(task_manager->task_event_storage_->GetTaskEvents().size(), num_limit);
     EXPECT_EQ(task_manager->task_event_storage_->stats_counter_.Get(kTotalNumNormalTask),
               task_ids.size() + num_limit);
 
     // Only in memory entries.
-    EXPECT_EQ(task_manager->task_event_storage_->task_to_task_attempt_index_.size(),
-              num_limit);
-    EXPECT_EQ(task_manager->task_event_storage_->job_to_task_attempt_index_.size(), 1);
-    EXPECT_EQ(task_manager->task_event_storage_->task_attempt_index_.size(), num_limit);
-    EXPECT_EQ(task_manager->task_event_storage_->worker_to_task_attempt_index_.size(), 0);
+    EXPECT_EQ(task_manager->task_event_storage_->task_index_.size(), num_limit);
+    EXPECT_EQ(task_manager->task_event_storage_->job_index_.size(), 1);
+    EXPECT_EQ(task_manager->task_event_storage_->primary_index_.size(), num_limit);
+    EXPECT_EQ(task_manager->task_event_storage_->worker_index_.size(), 0);
   }
 }
 
 TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
-  size_t num_limit = 100;  // synced with test config
+  size_t num_limit = 10;  // synced with test config
 
-  size_t num_profile_events_to_drop = 70;
-  size_t num_status_events_to_drop = 30;
+  size_t num_profile_events_to_drop = 7;
+  size_t num_status_events_to_drop = 3;
   size_t num_batch1 = num_profile_events_to_drop + num_status_events_to_drop;
-  size_t num_batch2 = 100;
+  size_t num_batch2 = 10;
 
-  size_t num_profile_events_dropped_on_worker = 88;
-  size_t num_status_events_dropped_on_worker = 22;
+  size_t num_profile_events_dropped_on_worker = 8;
+  size_t num_status_events_dropped_on_worker = 2;
   {
     // Add profile event.
     auto events = GenTaskEvents(GenTaskIDs(num_profile_events_to_drop),
@@ -789,7 +895,7 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
     EXPECT_EQ(task_manager->GetTotalNumTaskEventsReported(), num_batch1 + num_batch2);
 
     std::sort(expected_events.begin(), expected_events.end(), SortByTaskAttempt);
-    auto actual_events = task_manager->task_event_storage_->task_events_;
+    auto actual_events = task_manager->task_event_storage_->GetTaskEvents();
     std::sort(actual_events.begin(), actual_events.end(), SortByTaskAttempt);
     EXPECT_EQ(actual_events.size(), expected_events.size());
     for (size_t i = 0; i < actual_events.size(); ++i) {
@@ -798,8 +904,8 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
     }
 
     // Assert on drop counts.
-    EXPECT_EQ(task_manager->GetTotalNumStatusTaskEventsDropped(),
-              num_status_events_to_drop + num_status_events_dropped_on_worker);
+    EXPECT_EQ(task_manager->GetTotalNumTaskAttemptsDropped(),
+              num_batch1 + num_status_events_dropped_on_worker);
     EXPECT_EQ(task_manager->GetTotalNumProfileTaskEventsDropped(),
               num_profile_events_to_drop + num_profile_events_dropped_on_worker);
   }
@@ -845,8 +951,8 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsWithDriver) {
 TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitReturnRecentTasksWhenGetAll) {
   // Keep adding tasks and make sure even with eviction, the returned tasks are
   // the mo
-  size_t num_to_insert = 200;
-  size_t num_query = 10;
+  size_t num_to_insert = 20;
+  size_t num_query = 5;
   size_t inserted = 0;
 
   auto task_ids = GenTaskIDs(num_to_insert);
@@ -880,6 +986,209 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitReturnRecentTasksWhenGetAll) {
             << TaskID::FromBinary(task_event.task_id()).Hex() << "not there, at " << i;
       }
     }
+  }
+}
+
+TEST_F(GcsTaskManagerTest, TestTaskDataLossWorker) {
+  // Test that if a task is reported as data loss from the worker, GCS
+  // should drop the entire task attempt.
+  auto task_id = GenTaskIDForJob(0);
+
+  // Add a task event.
+  SyncAddTaskEvent({task_id}, {{rpc::TaskStatus::RUNNING, 1}});
+  auto reply = SyncGetTaskEvents({});
+  EXPECT_EQ(reply.events_by_task_size(), 1);
+
+  // Report it as data loss.
+  auto data = Mocker::GenTaskEventsDataLoss({{task_id, 0}});
+  SyncAddTaskEventData(data);
+
+  // The task attempt should be dropped.
+  reply = SyncGetTaskEvents({});
+  EXPECT_EQ(reply.events_by_task_size(), 0);
+  EXPECT_EQ(reply.num_status_task_events_dropped(), 1);
+
+  // Adding any new task attempt should also be dropped.
+  SyncAddTaskEvent({task_id}, {{rpc::TaskStatus::RUNNING, 2}});
+  reply = SyncGetTaskEvents({});
+  EXPECT_EQ(reply.events_by_task_size(), 0);
+  EXPECT_EQ(reply.num_status_task_events_dropped(), 1);
+}
+
+TEST_F(GcsTaskManagerTest, TestMultipleJobsDataLoss) {
+  auto job_task0 = GenTaskIDForJob(0);
+  auto job_task1 = GenTaskIDForJob(1);
+
+  SyncAddTaskEvent({job_task0}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 0);
+  SyncAddTaskEvent({job_task1}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 1);
+
+  // Make data loss happens on job 0.
+  auto data = Mocker::GenTaskEventsDataLoss({{job_task0, 0}}, 0);
+  SyncAddTaskEventData(data);
+
+  // Job 0 has data loss
+  {
+    auto reply = SyncGetTaskEvents({}, /* job_id */ JobID::FromInt(0));
+    EXPECT_EQ(reply.events_by_task_size(), 0);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 1);
+  }
+
+  // Job 1 no data loss
+  {
+    auto reply = SyncGetTaskEvents({}, /* job_id */ JobID::FromInt(1));
+    EXPECT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 0);
+  }
+
+  {
+    auto reply = SyncGetTaskEvents({});
+    EXPECT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 1);
+  }
+
+  {
+    // Finish the job should keep the data.
+    task_manager->OnJobFinished(JobID::FromInt(0), 3);
+
+    // Wait for longer than the default timer
+    boost::asio::io_service io;
+    boost::asio::deadline_timer timer(
+        io,
+        boost::posix_time::milliseconds(
+            2 * RayConfig::instance().gcs_mark_task_failed_on_job_done_delay_ms()));
+    timer.wait();
+
+    auto reply = SyncGetTaskEvents({}, /* job_id */ JobID::FromInt(0));
+    EXPECT_EQ(reply.events_by_task_size(), 0);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 1);
+
+    // Verify no leak from the dropped task attempts tracking.
+    auto job_summary =
+        task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
+    EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 0);
+  }
+}
+
+TEST_F(GcsTaskManagerDroppedTaskAttemptsLimit, TestDroppedTaskAttemptsLimit) {
+  // Test that when the number of dropped task attempts exceeds the limit,
+  // we should be them to prevent OOM.
+
+  // Generate 20 task attempts, 10 should be dropped.
+  {
+    for (int i = 0; i < 20; i++) {
+      auto t = GenTaskIDForJob(0);
+      SyncAddTaskEvent({t}, {{rpc::TaskStatus::RUNNING, 1}}, TaskID::Nil(), 0);
+    }
+  }
+
+  // Before GC we should have 10 dropped task attempts tracked.
+  auto job_summary =
+      task_manager->task_event_storage_->GetJobTaskSummary(JobID::FromInt(0));
+  EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 10);
+
+  // After GC, there should only be 5 tracked.
+  job_summary.GcOldDroppedTaskAttempts(JobID::FromInt(0));
+  EXPECT_EQ(job_summary.dropped_task_attempts_.size(), 5);
+  EXPECT_EQ(job_summary.num_dropped_task_attempts_evicted_, 5);
+  EXPECT_EQ(job_summary.NumTaskAttemptsDropped(), 10);
+}
+
+TEST_F(GcsTaskManagerProfileEventsLimitTest, TestProfileEventsNoLeak) {
+  auto task = GenTaskIDs(1)[0];
+
+  // Keep generating profile events and make sure the number of profile events
+  // is bounded.
+  for (int i = 0; i < 100; i++) {
+    auto events = GenTaskEvents({task},
+                                /* attempt_number */ 0,
+                                /* job_id */ 0,
+                                GenProfileEvents("event", 1, 1));
+    auto events_data = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(events_data);
+  }
+
+  // Assert on the profile events in the buffer.
+  {
+    auto reply = SyncGetTaskEvents({});
+    EXPECT_EQ(reply.events_by_task_size(), 1);
+    EXPECT_EQ(reply.events_by_task().begin()->profile_events().events().size(),
+              RayConfig::instance().task_events_max_num_profile_events_per_task());
+
+    // assert on the profile events dropped counter.
+    EXPECT_EQ(reply.num_profile_task_events_dropped(),
+              100 - RayConfig::instance().task_events_max_num_profile_events_per_task());
+    EXPECT_EQ(task_manager->GetTotalNumProfileTaskEventsDropped(),
+              100 - RayConfig::instance().task_events_max_num_profile_events_per_task());
+  }
+}
+
+TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitGcPriorityBased) {
+  size_t num_limit = 10;  // sync with class config
+  // For the default gc policy, we evict tasks based (first to last):
+  // 1. finished tasks
+  // 2. non finished actor tasks
+  // 3. other tasks.
+  auto tasks = GenTaskIDs(10);
+  auto task_running = tasks[0];
+  auto task_failed = tasks[1];
+  auto task_actor = tasks[2];
+  auto task_finished = tasks[3];
+
+  // Add all tasks running task
+  SyncAddTaskEvent({task_running, task_finished, task_failed},
+                   {{rpc::TaskStatus::RUNNING, 1}});
+
+  // Add a failed task
+  SyncAddTaskEvent({task_failed}, {{rpc::TaskStatus::FAILED, 1}});
+
+  // Add a non finished actor task
+  auto actor_id = ActorID::Of(JobID::FromInt(0), task_running, 0);
+  SyncAddTaskEvent({task_actor},
+                   {{rpc::TaskStatus::RUNNING, 1}},
+                   TaskID::Nil(),
+                   0,
+                   absl::nullopt,
+                   actor_id);
+
+  // Add a finished task that's running and then finished
+  SyncAddTaskEvent({task_finished}, {{rpc::TaskStatus::FINISHED, 2}});
+
+  // Fill until buffer full
+  for (size_t i = 4; i < num_limit; ++i) {
+    SyncAddTaskEvent({tasks[i]}, {{rpc::TaskStatus::RUNNING, 1}});
+  }
+
+  // task_finished should be evicted.
+  {
+    SyncAddTaskEvent({GenTaskIDs(1)}, {{rpc::TaskStatus::RUNNING, 1}});
+
+    auto reply = SyncGetTaskEvents({task_finished});
+    EXPECT_EQ(reply.events_by_task_size(), 0);
+    reply = SyncGetTaskEvents({});
+    EXPECT_EQ(reply.events_by_task_size(), num_limit);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 1);
+  }
+
+  // non finished actor task should be evicted.
+  {
+    SyncAddTaskEvent({GenTaskIDs(1)}, {{rpc::TaskStatus::RUNNING, 1}});
+
+    auto reply = SyncGetTaskEvents({task_actor});
+    EXPECT_EQ(reply.events_by_task_size(), 0);
+    reply = SyncGetTaskEvents({});
+    EXPECT_EQ(reply.events_by_task_size(), num_limit);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 2);
+  }
+
+  // first added running task should be evicted.
+  {
+    SyncAddTaskEvent({GenTaskIDs(1)}, {{rpc::TaskStatus::RUNNING, 1}});
+
+    auto reply = SyncGetTaskEvents({task_running});
+    EXPECT_EQ(reply.events_by_task_size(), 0);
+    reply = SyncGetTaskEvents({});
+    EXPECT_EQ(reply.events_by_task_size(), num_limit);
+    EXPECT_EQ(reply.num_status_task_events_dropped(), 3);
   }
 }
 

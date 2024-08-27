@@ -1,9 +1,10 @@
 from typing import List, Optional, Tuple, Union
 
+from ray.data._internal.aggregate import Count, _AggregateOnKeyBase
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.table_block import TableBlockAccessor
-from ray.data.aggregate import AggregateFn, Count
-from ray.data.aggregate._aggregate import _AggregateOnKeyBase
+from ray.data.aggregate import AggregateFn
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata, KeyType
 
 
@@ -40,25 +41,21 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         block: Block,
         output_num_blocks: int,
         boundaries: List[KeyType],
-        key: Optional[str],
+        key: Union[str, List[str], None],
         aggs: List[AggregateFn],
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
 
         block = SortAggregateTaskSpec._prune_unused_columns(block, key, aggs)
-
         if key is None:
             partitions = [block]
         else:
             partitions = BlockAccessor.for_block(block).sort_and_partition(
                 boundaries,
-                [(key, "ascending")] if isinstance(key, str) else key,
-                descending=False,
+                SortKey(key),
             )
         parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
-        meta = BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        )
+        meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
         return parts + [meta]
 
     @staticmethod
@@ -75,7 +72,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
     @staticmethod
     def _prune_unused_columns(
         block: Block,
-        key: str,
+        key: Union[str, List[str]],
         aggs: Tuple[AggregateFn],
     ) -> Block:
         """Prune unused columns from block before aggregate."""
@@ -84,6 +81,8 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
 
         if isinstance(key, str):
             columns.add(key)
+        elif isinstance(key, list):
+            columns.update(key)
         elif callable(key):
             prune_columns = False
 

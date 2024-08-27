@@ -2,13 +2,17 @@ from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 import unittest
 
 import ray
-from ray import air
-from ray import tune
-from ray.rllib.examples.env.random_env import RandomEnv
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
+from ray.rllib.examples.envs.classes.random_env import RandomEnv
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.tf.attention_net import GTrXLNet
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 
 
 class TestAttentionNets(unittest.TestCase):
@@ -16,13 +20,13 @@ class TestAttentionNets(unittest.TestCase):
     config = {
         "env": StatelessCartPole,
         "gamma": 0.99,
-        "num_envs_per_worker": 20,
+        "num_envs_per_env_runner": 20,
         "framework": "tf",
     }
 
     stop = {
-        "episode_reward_mean": 150.0,
-        "timesteps_total": 5000000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0,
+        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 5000000,
     }
 
     @classmethod
@@ -68,21 +72,20 @@ class TestAttentionNets(unittest.TestCase):
             "train_batch_size": 200,
             "sgd_minibatch_size": 50,
             "rollout_fragment_length": 100,
-            "num_workers": 1,
+            "num_env_runners": 1,
         }
-        for _ in framework_iterator(config):
-            tune.Tuner(
-                "PPO",
-                param_space=config,
-                run_config=air.RunConfig(stop={"training_iteration": 1}, verbose=1),
-            ).fit()
+        tune.Tuner(
+            "PPO",
+            param_space=config,
+            run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
+        ).fit()
 
     def test_ppo_attention_net_learning(self):
         ModelCatalog.register_custom_model("attention_net", GTrXLNet)
         config = dict(
             self.config,
             **{
-                "num_workers": 0,
+                "num_env_runners": 0,
                 "entropy_coeff": 0.001,
                 "vf_loss_coeff": 1e-5,
                 "num_sgd_iter": 5,
@@ -99,7 +102,7 @@ class TestAttentionNets(unittest.TestCase):
                         "position_wise_mlp_dim": 32,
                     },
                 },
-            }
+            },
         )
         tune.Tuner(
             "PPO",
@@ -114,7 +117,7 @@ class TestAttentionNets(unittest.TestCase):
         # ModelCatalog.register_custom_model("attention_net", GTrXLNet)
         # config = dict(
         #    self.config, **{
-        #        "num_workers": 4,
+        #        "num_env_runners": 4,
         #        "num_gpus": 0,
         #        "entropy_coeff": 0.01,
         #        "vf_loss_coeff": 0.001,

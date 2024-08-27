@@ -1,8 +1,7 @@
 import unittest
 
 import ray
-from ray.rllib.algorithms.pg import PGConfig
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.algorithms.ppo import PPOConfig
 
 
 class LocalModeTest(unittest.TestCase):
@@ -14,16 +13,15 @@ class LocalModeTest(unittest.TestCase):
 
     def test_local(self):
         config = (
-            PGConfig()
+            PPOConfig()
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=2)
+            .env_runners(num_env_runners=2)
             .training(model={"fcnet_hiddens": [10]})
         )
 
-        for _ in framework_iterator(config):
-            algo = config.build()
-            print(algo.train())
-            algo.stop()
+        algo = config.build()
+        print(algo.train())
+        algo.stop()
 
 
 if __name__ == "__main__":

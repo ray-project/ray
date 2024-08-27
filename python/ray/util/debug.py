@@ -64,10 +64,15 @@ def enable_periodic_logging():
 
 
 @DeveloperAPI
-def reset_log_once(key):
-    """Resets log_once for the provided key."""
+def reset_log_once(key: Optional[str] = None):
+    """Resets log_once for the provided key.
 
-    _logged.discard(key)
+    If you don't provide a key, resets log_once for all keys.
+    """
+    if key is None:
+        _logged.clear()
+    else:
+        _logged.discard(key)
 
 
 # A suspicious memory-allocating stack-trace that we should re-test

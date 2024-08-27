@@ -2,10 +2,11 @@ import time
 import json
 import pytest
 import ray
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, AsyncMock
 import random
 import sys
 from dataclasses import asdict
+from concurrent.futures import ThreadPoolExecutor
 
 from ray.util.state import (
     summarize_tasks,
@@ -14,11 +15,6 @@ from ray.util.state import (
 )
 from ray._private.test_utils import wait_for_condition
 from ray._raylet import ActorID, TaskID, ObjectID
-
-if sys.version_info >= (3, 8, 0):
-    from unittest.mock import AsyncMock
-else:
-    from asyncmock import AsyncMock
 
 from ray.core.generated.common_pb2 import TaskStatus, TaskType, WorkerType
 from ray.core.generated.node_manager_pb2 import GetObjectsInfoReply
@@ -47,7 +43,9 @@ from ray.util.state.state_manager import StateDataSourceClient
 @pytest.fixture
 def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
-    manager = StateAPIManager(data_source_client)
+    manager = StateAPIManager(
+        data_source_client, thread_pool_executor=ThreadPoolExecutor()
+    )
     yield manager
 
 
@@ -57,10 +55,6 @@ def create_summary_options(
     return SummaryApiOptions(timeout=timeout)
 
 
-@pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_summary_tasks(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -137,10 +131,6 @@ async def test_api_manager_summary_tasks(state_api_manager):
     assert json.loads(json.dumps(result_in_dict)) == result_in_dict
 
 
-@pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_summary_actors(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -204,10 +194,6 @@ async def test_api_manager_summary_actors(state_api_manager):
     assert json.loads(json.dumps(result_in_dict)) == result_in_dict
 
 
-@pytest.mark.skipif(
-    sys.version_info <= (3, 7, 0),
-    reason=("Not passing in CI although it works locally. Will handle it later."),
-)
 @pytest.mark.asyncio
 async def test_api_manager_summary_objects(state_api_manager):
     data_source_client = state_api_manager.data_source_client
@@ -484,40 +470,6 @@ def test_summarize_by_lineage():
     """
     expected_summary = [
         NestedTaskSummary(
-            name="preprocess",
-            key="preprocess",
-            type="GROUP",
-            timestamp=100,
-            state_counts={
-                "FINISHED": 20,
-            },
-            children=[
-                NestedTaskSummary(
-                    name="preprocess",
-                    key=f"preprocess-{i}",
-                    type="NORMAL_TASK",
-                    timestamp=100 + i,
-                    state_counts={
-                        "FINISHED": 2,
-                    },
-                    link=Link("task", f"preprocess-{i}"),
-                    children=[
-                        NestedTaskSummary(
-                            name="preprocess_sub_task",
-                            key=f"preprocess-{i}-0",
-                            type="NORMAL_TASK",
-                            timestamp=200,
-                            state_counts={
-                                "FINISHED": 1,
-                            },
-                            link=Link("task", f"preprocess-{i}-0"),
-                        )
-                    ],
-                )
-                for i in range(10)
-            ],
-        ),
-        NestedTaskSummary(
             name="TuneActor",
             key="actor:tune-actor-0",
             type="ACTOR",
@@ -561,6 +513,19 @@ def test_summarize_by_lineage():
                                     link=Link("actor", f"train-actor-{i}"),
                                     children=[
                                         NestedTaskSummary(
+                                            name="TrainActor.train_step_reduce",
+                                            key=f"train-actor-train-step-reduce-{i}",
+                                            type="ACTOR_TASK",
+                                            timestamp=2200,
+                                            state_counts={
+                                                "RUNNING": 1,
+                                            },
+                                            link=Link(
+                                                "task",
+                                                f"train-actor-train-step-reduce-{i}",
+                                            ),
+                                        ),
+                                        NestedTaskSummary(
                                             name="TrainActor.__init__",
                                             key=f"train-actor-init-{i}",
                                             type="ACTOR_CREATION_TASK",
@@ -599,19 +564,6 @@ def test_summarize_by_lineage():
                                                 for j in range(10)
                                             ],
                                         ),
-                                        NestedTaskSummary(
-                                            name="TrainActor.train_step_reduce",
-                                            key=f"train-actor-train-step-reduce-{i}",
-                                            type="ACTOR_TASK",
-                                            timestamp=2200,
-                                            state_counts={
-                                                "RUNNING": 1,
-                                            },
-                                            link=Link(
-                                                "task",
-                                                f"train-actor-train-step-reduce-{i}",
-                                            ),
-                                        ),
                                     ],
                                 )
                                 for i in range(10)
@@ -619,6 +571,40 @@ def test_summarize_by_lineage():
                         )
                     ],
                 )
+            ],
+        ),
+        NestedTaskSummary(
+            name="preprocess",
+            key="preprocess",
+            type="GROUP",
+            timestamp=100,
+            state_counts={
+                "FINISHED": 20,
+            },
+            children=[
+                NestedTaskSummary(
+                    name="preprocess",
+                    key=f"preprocess-{i}",
+                    type="NORMAL_TASK",
+                    timestamp=100 + i,
+                    state_counts={
+                        "FINISHED": 2,
+                    },
+                    link=Link("task", f"preprocess-{i}"),
+                    children=[
+                        NestedTaskSummary(
+                            name="preprocess_sub_task",
+                            key=f"preprocess-{i}-0",
+                            type="NORMAL_TASK",
+                            timestamp=200,
+                            state_counts={
+                                "FINISHED": 1,
+                            },
+                            link=Link("task", f"preprocess-{i}-0"),
+                        )
+                    ],
+                )
+                for i in range(10)
             ],
         ),
     ]
@@ -677,6 +663,4 @@ def test_summarize_by_lineage():
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

@@ -73,7 +73,7 @@ class InMemoryStoreClient : public StoreClient {
     /// Mutex to protect the records_ field and the index_keys_ field.
     absl::Mutex mutex_;
     // Mapping from key to data.
-    absl::flat_hash_map<std::string, std::string> records_ GUARDED_BY(mutex_);
+    absl::flat_hash_map<std::string, std::string> records_ ABSL_GUARDED_BY(mutex_);
   };
 
   std::shared_ptr<InMemoryStoreClient::InMemoryTable> GetOrCreateTable(
@@ -82,7 +82,7 @@ class InMemoryStoreClient : public StoreClient {
   /// Mutex to protect the tables_ field.
   absl::Mutex mutex_;
   absl::flat_hash_map<std::string, std::shared_ptr<InMemoryTable>> tables_
-      GUARDED_BY(mutex_);
+      ABSL_GUARDED_BY(mutex_);
 
   /// Async API Callback needs to post to main_io_service_ to ensure the orderly execution
   /// of the callback.

@@ -18,7 +18,9 @@ def setup(tmpdir):
     os.environ["NO_INSTALL"] = "1"
     os.environ["NO_CLONE"] = "1"
     os.environ["NO_ARTIFACTS"] = "1"
-    os.environ["RAY_TEST_SCRIPT"] = "ray_release/tests/_test_run_release_test_sh.py"
+    os.environ[
+        "RAY_TEST_SCRIPT"
+    ] = "python ray_release/tests/_test_run_release_test_sh.py"
     os.environ["OVERRIDE_SLEEP_TIME"] = "0"
     os.environ["MAX_RETRIES"] = "3"
 
@@ -106,7 +108,7 @@ def test_repeat(setup):
             ExitCode.COMMAND_ALERT,
             ExitCode.SUCCESS,
         )
-        == ExitCode.COMMAND_ALERT.value
+        == 79  # BUILDKITE_RETRY_CODE
     )
     assert _read_state(state_file) == 2
 
@@ -114,18 +116,18 @@ def test_repeat(setup):
 def test_parameters(setup):
     state_file, test_script = setup
 
-    os.environ["RAY_TEST_SCRIPT"] = "ray_release/tests/_test_catch_args.py"
-    argv_file = tempfile.mktemp()
+    os.environ["RAY_TEST_SCRIPT"] = "python ray_release/tests/_test_catch_args.py"
 
-    subprocess.check_call(
-        f"{test_script} " f"{argv_file} " f"--smoke-test",
-        shell=True,
-    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        argv_file = os.path.join(tmpdir, "argv.json")
 
-    with open(argv_file, "rt") as fp:
-        data = json.load(fp)
+        subprocess.check_call(
+            f"{test_script} " f"{argv_file} " f"--smoke-test",
+            shell=True,
+        )
 
-    os.unlink(argv_file)
+        with open(argv_file, "rt") as fp:
+            data = json.load(fp)
 
     assert "--smoke-test" in data
 

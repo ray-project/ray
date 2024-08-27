@@ -1,10 +1,10 @@
 import math
+import time
 from collections import deque
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
-    ExecutionResources,
     NodeIdStr,
     PhysicalOperator,
     RefBundle,
@@ -38,7 +38,9 @@ class OutputSplitter(PhysicalOperator):
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]] = None,
     ):
-        super().__init__(f"split({n}, equal={equal})", [input_op])
+        super().__init__(
+            f"split({n}, equal={equal})", [input_op], target_max_block_size=None
+        )
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
         self._buffer: List[RefBundle] = []
@@ -46,6 +48,8 @@ class OutputSplitter(PhysicalOperator):
         self._output_queue: deque[RefBundle] = deque()
         # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
+        # The time of the overhead for the output splitter (operator level)
+        self._output_splitter_overhead_time = 0
 
         if locality_hints is not None:
             if n != len(locality_hints):
@@ -64,6 +68,15 @@ class OutputSplitter(PhysicalOperator):
             self._min_buffer_size = 0
         self._locality_hits = 0
         self._locality_misses = 0
+
+    def num_outputs_total(self) -> Optional[int]:
+        # OutputSplitter does not change the number of blocks,
+        # so we can return the number of blocks from the input op.
+        return self.input_dependencies[0].num_outputs_total()
+
+    def num_output_rows_total(self) -> Optional[int]:
+        # The total number of rows is the same as the number of input rows.
+        return self.input_dependencies[0].num_output_rows_total()
 
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)
@@ -84,22 +97,26 @@ class OutputSplitter(PhysicalOperator):
     def has_next(self) -> bool:
         return len(self._output_queue) > 0
 
-    def get_next(self) -> RefBundle:
-        return self._output_queue.popleft()
+    def _get_next_inner(self) -> RefBundle:
+        output = self._output_queue.popleft()
+        self._metrics.on_output_dequeued(output)
+        return output
 
     def get_stats(self) -> StatsDict:
         return {"split": []}  # TODO(ekl) add split metrics?
 
-    def get_metrics(self) -> Dict[str, int]:
+    def _extra_metrics(self) -> Dict[str, Any]:
         stats = {}
         for i, num in enumerate(self._num_output):
             stats[f"num_output_{i}"] = num
+        stats["output_splitter_overhead_time"] = self._output_splitter_overhead_time
         return stats
 
-    def add_input(self, bundle, input_index) -> None:
+    def _add_input_inner(self, bundle, input_index) -> None:
         if bundle.num_rows() is None:
             raise ValueError("OutputSplitter requires bundles with known row count")
         self._buffer.append(bundle)
+        self._metrics.on_input_queued(bundle)
         self._dispatch_bundles()
 
     def all_inputs_done(self) -> None:
@@ -130,16 +147,11 @@ class OutputSplitter(PhysicalOperator):
             for b in bundles:
                 b.output_split_idx = i
                 self._output_queue.append(b)
+                self._metrics.on_output_queued(b)
         self._buffer = []
 
     def internal_queue_size(self) -> int:
         return len(self._buffer)
-
-    def current_resource_usage(self) -> ExecutionResources:
-        return ExecutionResources(
-            object_store_memory=sum(b.size_bytes() for b in self._buffer)
-            + sum(b.size_bytes() for b in self._output_queue)
-        )
 
     def progress_str(self) -> str:
         if self._locality_hints:
@@ -148,6 +160,7 @@ class OutputSplitter(PhysicalOperator):
             return "[locality disabled]"
 
     def _dispatch_bundles(self, dispatch_all: bool = False) -> None:
+        start_time = time.perf_counter()
         # Dispatch all dispatchable bundles from the internal buffer.
         # This may not dispatch all bundles when equal=True.
         while self._buffer and (
@@ -159,6 +172,7 @@ class OutputSplitter(PhysicalOperator):
                 target_bundle.output_split_idx = target_index
                 self._num_output[target_index] += target_bundle.num_rows()
                 self._output_queue.append(target_bundle)
+                self._metrics.on_output_queued(target_bundle)
                 if self._locality_hints:
                     preferred_loc = self._locality_hints[target_index]
                     if self._get_location(target_bundle) == preferred_loc:
@@ -168,7 +182,9 @@ class OutputSplitter(PhysicalOperator):
             else:
                 # Put it back and abort.
                 self._buffer.insert(0, target_bundle)
+                self._metrics.on_input_queued(target_bundle)
                 break
+        self._output_splitter_overhead_time += time.perf_counter() - start_time
 
     def _select_output_index(self) -> int:
         # Greedily dispatch to the consumer with the least data so far.
@@ -181,8 +197,12 @@ class OutputSplitter(PhysicalOperator):
             for bundle in self._buffer:
                 if self._get_location(bundle) == preferred_loc:
                     self._buffer.remove(bundle)
+                    self._metrics.on_input_dequeued(bundle)
                     return bundle
-        return self._buffer.pop(0)
+
+        bundle = self._buffer.pop(0)
+        self._metrics.on_input_dequeued(bundle)
+        return bundle
 
     def _can_safely_dispatch(self, target_index: int, nrow: int) -> bool:
         if not self._equal:
@@ -205,6 +225,7 @@ class OutputSplitter(PhysicalOperator):
         acc = 0
         while acc < nrow:
             b = self._buffer.pop()
+            self._metrics.on_input_dequeued(b)
             if acc + b.num_rows() <= nrow:
                 output.append(b)
                 acc += b.num_rows()
@@ -213,6 +234,7 @@ class OutputSplitter(PhysicalOperator):
                 output.append(left)
                 acc += left.num_rows()
                 self._buffer.append(right)
+                self._metrics.on_input_queued(right)
                 assert acc == nrow, (acc, nrow)
 
         assert sum(b.num_rows() for b in output) == nrow, (acc, nrow)
@@ -228,8 +250,11 @@ class OutputSplitter(PhysicalOperator):
         """
         return bundle.get_cached_location()
 
+    def implements_accurate_memory_accounting(self) -> bool:
+        return True
 
-def _split(bundle: RefBundle, left_size: int) -> (RefBundle, RefBundle):
+
+def _split(bundle: RefBundle, left_size: int) -> Tuple[RefBundle, RefBundle]:
     left_blocks, left_meta = [], []
     right_blocks, right_meta = [], []
     acc = 0
@@ -260,7 +285,9 @@ def _split(bundle: RefBundle, left_size: int) -> (RefBundle, RefBundle):
     return left, right
 
 
-def _split_meta(m: BlockMetadata, left_size: int) -> (BlockMetadata, BlockMetadata):
+def _split_meta(
+    m: BlockMetadata, left_size: int
+) -> Tuple[BlockMetadata, BlockMetadata]:
     left_bytes = int(math.floor(m.size_bytes * (left_size / m.num_rows)))
     left = BlockMetadata(
         num_rows=left_size,
@@ -281,13 +308,15 @@ def _split_meta(m: BlockMetadata, left_size: int) -> (BlockMetadata, BlockMetada
 
 def _split_block(
     b: ObjectRef[Block], left_size: int
-) -> (ObjectRef[Block], ObjectRef[Block]):
+) -> Tuple[ObjectRef[Block], ObjectRef[Block]]:
     split_single_block = cached_remote_fn(_split_single_block)
-    left, right = split_single_block.options(num_returns=2).remote(b, left_size)
+    left, right = split_single_block.options(num_cpus=0, num_returns=2).remote(
+        b, left_size
+    )
     return left, right
 
 
-def _split_single_block(b: Block, left_size: int) -> (Block, Block):
+def _split_single_block(b: Block, left_size: int) -> Tuple[Block, Block]:
     acc = BlockAccessor.for_block(b)
     left = acc.slice(0, left_size)
     right = acc.slice(left_size, acc.num_rows())

@@ -6,9 +6,14 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 from typing import Optional
 
 import gymnasium as gym
+import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.utils import get_gru_units
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_gru_units,
+    get_num_z_classes,
+    get_num_z_categoricals,
+)
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
@@ -48,35 +53,60 @@ class SequenceModel(tf.keras.Model):
         Args:
             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the number of GRU units used.
-            action_space: The action space the our environment used.
+            action_space: The action space of the environment used.
             num_gru_units: Overrides the number of GRU units (dimension of the h-state).
                 If None, use the value given through `model_size`
                 (see [1] Appendix B).
         """
         super().__init__(name="sequence_model")
 
-        num_gru_units = get_gru_units(model_size, override=num_gru_units)
+        self.model_size = model_size
         self.action_space = action_space
+        num_gru_units = get_gru_units(self.model_size, override=num_gru_units)
 
         # In Danijar's code, there is an additional layer (units=[model_size])
         # prior to the GRU (but always only with 1 layer), which is not mentioned in
         # the paper.
         self.pre_gru_layer = MLP(
             num_dense_layers=1,
-            model_size=model_size,
+            model_size=self.model_size,
             output_layer_size=None,
         )
         self.gru_unit = tf.keras.layers.GRU(
             num_gru_units,
             return_sequences=False,
             return_state=False,
-            time_major=True,
             # Note: Changing these activations is most likely a bad idea!
             # In experiments, setting one of both of them to silu deteriorated
             # performance significantly.
             # activation=tf.nn.silu,
             # recurrent_activation=tf.nn.silu,
         )
+
+        # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(
+                    shape=[None]
+                    + (
+                        [action_space.n]
+                        if isinstance(action_space, gym.spaces.Discrete)
+                        else list(action_space.shape)
+                    ),
+                    dtype=dl_type,
+                ),
+                tf.TensorSpec(shape=[None, num_gru_units], dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[
+                        None,
+                        get_num_z_categoricals(self.model_size),
+                        get_num_z_classes(self.model_size),
+                    ],
+                    dtype=dl_type,
+                ),
+            ]
+        )(self.call)
 
     def call(self, a, h, z):
         """
@@ -90,11 +120,25 @@ class SequenceModel(tf.keras.Model):
         """
         # Flatten last two dims of z.
         z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z = tf.reshape(z, shape=(z_shape[0], -1))
         out = tf.concat([z, a], axis=-1)
+        out.set_shape(
+            [
+                None,
+                (
+                    get_num_z_categoricals(self.model_size)
+                    * get_num_z_classes(self.model_size)
+                    + (
+                        self.action_space.n
+                        if isinstance(self.action_space, gym.spaces.Discrete)
+                        else int(np.prod(self.action_space.shape))
+                    )
+                ),
+            ]
+        )
         # Pass through pre-GRU layer.
         out = self.pre_gru_layer(out)
-        # Pass through (time-major) GRU.
-        h_next = self.gru_unit(tf.expand_dims(out, axis=0), initial_state=h)
+        # Pass through (batch-major) GRU (expand axis=1 as the time axis).
+        h_next = self.gru_unit(tf.expand_dims(out, axis=1), initial_state=h)
         # Return the GRU's output (the next h-state).
         return h_next

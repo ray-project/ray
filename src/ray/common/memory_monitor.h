@@ -91,10 +91,13 @@ class MemoryMonitor {
   static constexpr char kCgroupsV1MemoryUsagePath[] =
       "/sys/fs/cgroup/memory/memory.usage_in_bytes";
   static constexpr char kCgroupsV1MemoryStatPath[] = "/sys/fs/cgroup/memory/memory.stat";
+  static constexpr char kCgroupsV1MemoryStatInactiveFileKey[] = "total_inactive_file";
+  static constexpr char kCgroupsV1MemoryStatActiveFileKey[] = "total_active_file";
   static constexpr char kCgroupsV2MemoryMaxPath[] = "/sys/fs/cgroup/memory.max";
   static constexpr char kCgroupsV2MemoryUsagePath[] = "/sys/fs/cgroup/memory.current";
   static constexpr char kCgroupsV2MemoryStatPath[] = "/sys/fs/cgroup/memory.stat";
-  static constexpr char kCgroupsV2MemoryStatInactiveKey[] = "inactive_file";
+  static constexpr char kCgroupsV2MemoryStatInactiveFileKey[] = "inactive_file";
+  static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
   static constexpr char kProcDirectory[] = "/proc";
   static constexpr char kCommandlinePath[] = "cmdline";
   /// The logging frequency. Decoupled from how often the monitor runs.
@@ -113,17 +116,16 @@ class MemoryMonitor {
   /// \return the used and total memory in bytes from Cgroup.
   std::tuple<int64_t, int64_t> GetCGroupMemoryBytes();
 
-  /// \param path file path to the memory stat file.
-  ///
-  /// \return the used memory for cgroup v1.
-  static int64_t GetCGroupV1MemoryUsedBytes(const char *path);
-
   /// \param stat_path file path to the memory.stat file.
   /// \param usage_path file path to the memory.current file
-  /// \return the used memory for cgroup v2. May return negative value, which should be
+  /// \param inactive_file_key inactive_file key name in memory.stat file
+  /// \param active_file_key active_file key name in memory.stat file
+  /// \return the used memory for cgroup. May return negative value, which should be
   /// discarded.
-  static int64_t GetCGroupV2MemoryUsedBytes(const char *stat_path,
-                                            const char *usage_path);
+  static int64_t GetCGroupMemoryUsedBytes(const char *stat_path,
+                                          const char *usage_path,
+                                          const char *inactive_file_key,
+                                          const char *active_file_key);
 
   /// \return the used and total memory in bytes for linux OS.
   std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
@@ -196,15 +198,12 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestUsageAtThresholdReportsFalse);
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeAvailableMemoryAlwaysPositive);
   FRIEND_TEST(MemoryMonitorTest, TestGetNodeTotalMemoryEqualsFreeOrCGroup);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupV1MemFileValidReturnsWorkingSet);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupV1MemFileMissingFieldReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupV1NonexistentMemFileReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidReturnsWorkingSet);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidKeyLastReturnsWorkingSet);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidNegativeWorkingSet);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2FilesValidMissingFieldReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2NonexistentStatFileReturnskNull);
-  FRIEND_TEST(MemoryMonitorTest, TestCgroupV2NonexistentUsageFileReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidReturnsWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidKeyLastReturnsWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidNegativeWorkingSet);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupFilesValidMissingFieldReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupNonexistentStatFileReturnskNull);
+  FRIEND_TEST(MemoryMonitorTest, TestCgroupNonexistentUsageFileReturnskNull);
   FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted);
   FRIEND_TEST(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted);
   FRIEND_TEST(MemoryMonitorTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues);

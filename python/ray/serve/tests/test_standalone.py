@@ -8,7 +8,6 @@ import socket
 import sys
 import time
 
-import pydantic
 import pytest
 import requests
 
@@ -21,31 +20,27 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
+from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
-from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
+    SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
     SERVE_ROOT_URL_ENV_KEY,
 )
-from ray._raylet import GcsClient
-from ray.serve.context import get_global_client
-from ray.serve.exceptions import RayServeException
-from ray.serve.generated.serve_pb2 import ActorNameList
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
-from ray.serve._private.utils import (
-    block_until_http_ready,
-    format_actor_name,
-    get_all_node_ids,
-)
-from ray.serve.schema import ServeApplicationSchema
-
-from ray.util.state import list_actors
+from ray.serve._private.utils import block_until_http_ready, format_actor_name
+from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
+from ray.serve.context import _get_global_client
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 # Explicitly importing it here because it is a ray core tests utility (
 # not in the tree)
 from ray.tests.conftest import maybe_external_redis  # noqa: F401
 from ray.tests.conftest import ray_start_with_dashboard  # noqa: F401
+from ray.util.state import list_actors
 
 
 @pytest.fixture
@@ -70,7 +65,8 @@ def lower_slow_startup_threshold_and_reset():
     os.environ["SERVE_SLOW_STARTUP_WARNING_PERIOD_S"] = "1"
 
     ray.init(num_cpus=2)
-    client = serve.start(detached=True)
+    serve.start()
+    client = _get_global_client()
 
     yield client
 
@@ -91,6 +87,8 @@ def test_shutdown(ray_shutdown):
     ray.init(num_cpus=16)
     serve.start(http_options=dict(port=8003))
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
+    cluster_node_info_cache.update()
 
     @serve.deployment
     def f():
@@ -98,13 +96,11 @@ def test_shutdown(ray_shutdown):
 
     serve.run(f.bind())
 
-    serve_controller_name = serve.context._global_client._controller_name
     actor_names = [
-        serve_controller_name,
+        SERVE_CONTROLLER_NAME,
         format_actor_name(
             SERVE_PROXY_NAME,
-            serve.context._global_client._controller_name,
-            get_all_node_ids(gcs_client)[0][0],
+            cluster_node_info_cache.get_alive_nodes()[0][0],
         ),
     ]
 
@@ -120,8 +116,6 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_alive)
 
     serve.shutdown()
-    with pytest.raises(RayServeException):
-        serve.list_deployments()
 
     def check_dead():
         for actor_name in actor_names:
@@ -135,44 +129,6 @@ def test_shutdown(ray_shutdown):
     wait_for_condition(check_dead)
 
 
-def test_v1_shutdown_actors(ray_shutdown):
-    """Tests serve.shutdown() works correctly in 1.x case.
-
-    Ensures that after deploying deployments using 1.x API, serve.shutdown()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    ray.init(num_cpus=16)
-    serve.start(http_options=dict(port=8003), detached=True)
-
-    @serve.deployment
-    def f():
-        pass
-
-    f.deploy()
-
-    actor_names = {
-        "ServeController",
-        "HTTPProxyActor",
-        "ServeReplica:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    serve.shutdown()
-    wait_for_condition(check_dead)
-
-
 def test_single_app_shutdown_actors(ray_shutdown):
     """Tests serve.shutdown() works correctly in single-app case
 
@@ -180,7 +136,7 @@ def test_single_app_shutdown_actors(ray_shutdown):
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
     ray.init(num_cpus=16)
-    serve.start(http_options=dict(port=8003), detached=True)
+    serve.start(http_options=dict(port=8003))
 
     @serve.deployment
     def f():
@@ -190,8 +146,8 @@ def test_single_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HTTPProxyActor",
-        "ServeReplica:app_f",
+        "ProxyActor",
+        "ServeReplica:app:f",
     }
 
     def check_alive():
@@ -218,7 +174,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
     """
     ray.init(num_cpus=16)
-    serve.start(http_options=dict(port=8003), detached=True)
+    serve.start(http_options=dict(port=8003))
 
     @serve.deployment
     def f():
@@ -229,9 +185,9 @@ def test_multi_app_shutdown_actors(ray_shutdown):
 
     actor_names = {
         "ServeController",
-        "HTTPProxyActor",
-        "ServeReplica:app1_f",
-        "ServeReplica:app2_f",
+        "ProxyActor",
+        "ServeReplica:app1:f",
+        "ServeReplica:app2:f",
     }
 
     def check_alive():
@@ -251,7 +207,7 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     wait_for_condition(check_dead)
 
 
-def test_detached_deployment(ray_cluster):
+def test_deployment(ray_cluster):
     # https://github.com/ray-project/ray/issues/11437
 
     cluster = ray_cluster
@@ -260,14 +216,14 @@ def test_detached_deployment(ray_cluster):
     # Create first job, check we can run a simple serve endpoint
     ray.init(head_node.address, namespace=SERVE_NAMESPACE)
     first_job_id = ray.get_runtime_context().get_job_id()
-    serve.start(detached=True)
+    serve.start()
 
-    @serve.deployment(route_prefix="/say_hi_f")
+    @serve.deployment
     def f(*args):
         return "from_f"
 
-    f.deploy()
-    assert ray.get(f.get_handle().remote()) == "from_f"
+    handle = serve.run(f.bind(), name="f", route_prefix="/say_hi_f")
+    assert handle.remote().result() == "from_f"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
     serve.context._global_client = None
@@ -277,51 +233,32 @@ def test_detached_deployment(ray_cluster):
     ray.init(head_node.address, namespace="serve")
     assert ray.get_runtime_context().get_job_id() != first_job_id
 
-    @serve.deployment(route_prefix="/say_hi_g")
+    @serve.deployment
     def g(*args):
         return "from_g"
 
-    g.deploy()
-    assert ray.get(g.get_handle().remote()) == "from_g"
+    handle = serve.run(g.bind(), name="g", route_prefix="/say_hi_g")
+    assert handle.remote().result() == "from_g"
     assert requests.get("http://localhost:8000/say_hi_g").text == "from_g"
     assert requests.get("http://localhost:8000/say_hi_f").text == "from_f"
 
 
-@pytest.mark.parametrize("detached", [True, False])
-def test_connect(detached, ray_shutdown):
-    # Check that you can make API calls from within a deployment for both
-    # detached and non-detached instances.
+def test_connect(ray_shutdown):
+    # Check that you can make API calls from within a deployment.
     ray.init(num_cpus=16, namespace="serve")
-    serve.start(detached=detached)
+    serve.start()
 
     @serve.deployment
     def connect_in_deployment(*args):
-        connect_in_deployment.options(name="deployment-ception").deploy()
+        serve.run(
+            connect_in_deployment.options(name="deployment-ception").bind(),
+            name="app2",
+            route_prefix="/app2",
+        )
 
     handle = serve.run(connect_in_deployment.bind())
-    ray.get(handle.remote())
-    assert "deployment-ception" in serve.list_deployments()
-
-
-@pytest.mark.parametrize("controller_cpu", [True, False])
-@pytest.mark.parametrize("num_proxy_cpus", [0, 1, 2])
-def test_dedicated_cpu(controller_cpu, num_proxy_cpus, ray_cluster):
-    cluster = ray_cluster
-    num_cluster_cpus = 8
-    head_node = cluster.add_node(num_cpus=num_cluster_cpus)
-
-    ray.init(head_node.address)
-    wait_for_condition(lambda: ray.cluster_resources().get("CPU") == num_cluster_cpus)
-
-    num_cpus_used = int(controller_cpu) + num_proxy_cpus
-
-    serve.start(
-        dedicated_cpu=controller_cpu, http_options=HTTPOptions(num_cpus=num_proxy_cpus)
-    )
-    available_cpus = num_cluster_cpus - num_cpus_used
-    wait_for_condition(lambda: (ray.available_resources().get("CPU") == available_cpus))
-    serve.shutdown()
-    ray.shutdown()
+    handle.remote().result()
+    assert "deployment-ception" in serve.status().applications["app2"].deployments
 
 
 def test_set_socket_reuse_port():
@@ -359,15 +296,27 @@ def test_multiple_routers(ray_cluster):
     node_ids = ray._private.state.node_ids()
     assert len(node_ids) == 2
     serve.start(http_options=dict(port=8005, location="EveryNode"))
+
+    @serve.deployment(
+        num_replicas=2,
+        ray_actor_options={"num_cpus": 3},
+    )
+    class A:
+        def __call__(self, *args):
+            return "hi"
+
+    serve.run(A.bind())
+
     gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
+    cluster_node_info_cache.update()
 
     def get_proxy_names():
         proxy_names = []
-        for node_id, _ in get_all_node_ids(gcs_client):
+        for node_id in cluster_node_info_cache.get_alive_node_ids():
             proxy_names.append(
                 format_actor_name(
                     SERVE_PROXY_NAME,
-                    serve.context._global_client._controller_name,
                     node_id,
                 )
             )
@@ -398,10 +347,13 @@ def test_multiple_routers(ray_cluster):
 
     # Add a new node to the cluster. This should trigger a new router to get
     # started.
-    new_node = cluster.add_node()
+    new_node = cluster.add_node(num_cpus=4)
+    cluster_node_info_cache.update()
 
     wait_for_condition(lambda: len(get_proxy_names()) == 3)
     (third_proxy,) = set(get_proxy_names()) - set(original_proxy_names)
+
+    serve.run(A.options(num_replicas=3).bind())
 
     def get_third_actor():
         try:
@@ -416,6 +368,7 @@ def test_multiple_routers(ray_cluster):
     # Remove the newly-added node from the cluster. The corresponding actor
     # should be removed as well.
     cluster.remove_node(new_node)
+    cluster_node_info_cache.update()
 
     def third_actor_removed():
         try:
@@ -442,6 +395,12 @@ def test_middleware(ray_shutdown):
             ],
         )
     )
+
+    @serve.deployment
+    class Dummy:
+        pass
+
+    serve.run(Dummy.bind())
     ray.get(block_until_http_ready.remote(f"http://127.0.0.1:{port}/-/routes"))
 
     # Snatched several test cases from Starlette
@@ -502,7 +461,7 @@ def test_http_root_path(ray_shutdown):
     port = new_port()
     root_path = "/serve"
     serve.start(http_options=dict(root_path=root_path, port=port))
-    hello.deploy()
+    serve.run(hello.bind(), route_prefix="/hello")
 
     # check whether url is prefixed correctly
     assert hello.url == f"http://127.0.0.1:{port}{root_path}/hello"
@@ -515,7 +474,7 @@ def test_http_root_path(ray_shutdown):
     # check advertized routes are prefixed correctly
     resp = requests.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
     assert resp.status_code == 200
-    assert resp.json() == {"/hello": "hello"}
+    assert resp.json() == {"/hello": "default"}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
@@ -546,7 +505,7 @@ def test_no_http(ray_shutdown):
         ]
         assert len(live_actors) == 1
         controller = serve.context._global_client._controller
-        assert len(ray.get(controller.get_http_proxies.remote())) == 0
+        assert len(ray.get(controller.get_proxies.remote())) == 0
 
         # Test that the handle still works.
         @serve.deployment
@@ -555,7 +514,7 @@ def test_no_http(ray_shutdown):
 
         handle = serve.run(hello.bind())
 
-        assert ray.get(handle.remote()) == "hello"
+        assert handle.remote().result() == "hello"
         serve.shutdown()
 
 
@@ -575,64 +534,14 @@ def test_http_head_only(ray_cluster):
 
     # They should all be placed on the head node
     cpu_per_nodes = {
-        r["CPU"]
-        for r in ray._private.state.state._available_resources_per_node().values()
+        r["CPU"] for r in ray._private.state.available_resources_per_node().values()
     }
     assert cpu_per_nodes == {4, 4}
 
 
-@pytest.mark.skipif(
-    not hasattr(socket, "SO_REUSEPORT"),
-    reason=(
-        "Port sharing only works on newer verion of Linux. "
-        "This test can only be ran when port sharing is supported."
-    ),
-)
-def test_fixed_number_proxies(ray_cluster):
-    cluster = ray_cluster
-    head_node = cluster.add_node(num_cpus=4)
-    cluster.add_node(num_cpus=4)
-    cluster.add_node(num_cpus=4)
-
-    ray.init(head_node.address)
-    node_ids = ray._private.state.node_ids()
-    assert len(node_ids) == 3
-
-    with pytest.raises(
-        pydantic.ValidationError,
-        match="you must specify the `fixed_number_replicas` parameter.",
-    ):
-        serve.start(
-            http_options={
-                "location": "FixedNumber",
-            }
-        )
-
-    serve.start(
-        http_options={
-            "port": new_port(),
-            "location": "FixedNumber",
-            "fixed_number_replicas": 2,
-        }
-    )
-
-    # Only the controller and two http proxy should be started.
-    controller_handle = get_global_client()._controller
-    node_to_http_actors = ray.get(controller_handle.get_http_proxies.remote())
-    assert len(node_to_http_actors) == 2
-
-    proxy_names_bytes = ray.get(controller_handle.get_http_proxy_names.remote())
-    proxy_names = ActorNameList.FromString(proxy_names_bytes)
-    assert len(proxy_names.names) == 2
-
-    serve.shutdown()
-    ray.shutdown()
-    cluster.shutdown()
-
-
 def test_serve_shutdown(ray_shutdown):
     ray.init(namespace="serve")
-    serve.start(detached=True)
+    serve.start()
 
     @serve.deployment
     class A:
@@ -641,27 +550,22 @@ def test_serve_shutdown(ray_shutdown):
 
     serve.run(A.bind())
 
-    assert len(serve.list_deployments()) == 1
+    assert len(serve.status().applications) == 1
 
     serve.shutdown()
-    serve.start(detached=True)
+    serve.start()
 
-    assert len(serve.list_deployments()) == 0
+    assert len(serve.status().applications) == 0
 
     serve.run(A.bind())
 
-    assert len(serve.list_deployments()) == 1
+    assert len(serve.status().applications) == 1
 
 
-def test_detached_namespace_default_ray_init(ray_shutdown):
-    # Can start detached instance when ray is not initialized.
-    serve.start(detached=True)
-
-
-def test_detached_instance_in_non_anonymous_namespace(ray_shutdown):
-    # Can start detached instance in non-anonymous namespace.
+def test_instance_in_non_anonymous_namespace(ray_shutdown):
+    # Can start instance in non-anonymous namespace.
     ray.init(namespace="foo")
-    serve.start(detached=True)
+    serve.start()
 
 
 def test_checkpoint_isolation_namespace(ray_shutdown):
@@ -675,7 +579,7 @@ from ray import serve
 
 ray.init(address="{address}", namespace="{namespace}")
 
-serve.start(detached=True, http_options={{"port": {port}}})
+serve.start(http_options={{"port": {port}}})
 
 @serve.deployment
 class A:
@@ -691,50 +595,6 @@ serve.run(A.bind())"""
     )
 
 
-@pytest.mark.parametrize("ray_start_with_dashboard", [{"num_cpus": 4}], indirect=True)
-def test_snapshot_always_written_to_internal_kv(
-    ray_start_with_dashboard, ray_shutdown  # noqa: F811
-):
-    # https://github.com/ray-project/ray/issues/19752
-
-    @serve.deployment()
-    def hello(_):
-        return "hello"
-
-    def check():
-        try:
-            resp = requests.get("http://localhost:8000/hello")
-            assert resp.text == "hello"
-            return True
-        except Exception:
-            return False
-
-    serve.start(detached=True)
-    serve.run(hello.bind(), name="app")
-    check()
-
-    webui_url = ray_start_with_dashboard["webui_url"]
-
-    def get_deployment_snapshot():
-        snapshot = requests.get(f"http://{webui_url}/api/snapshot").json()["data"][
-            "snapshot"
-        ]
-        return snapshot["deployments"]
-
-    # Make sure /api/snapshot return non-empty deployment status.
-    def verify_snapshot():
-        return get_deployment_snapshot() != {}
-
-    wait_for_condition(verify_snapshot)
-
-    # Sanity check the snapshot is correct
-    snapshot = get_deployment_snapshot()
-    assert len(snapshot) == 1
-    hello_deployment = list(snapshot.values())[0]
-    assert hello_deployment["name"] == "app_hello"
-    assert hello_deployment["status"] == "RUNNING"
-
-
 def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, caplog):
     logger = logging.getLogger("ray.serve")
     caplog.set_level(logging.WARNING, logger="ray.serve")
@@ -748,12 +608,12 @@ def test_serve_start_different_http_checkpoint_options_warning(propagate_logs, c
     logger.addHandler(WarningHandler())
 
     ray.init(namespace="serve-test")
-    serve.start(detached=True)
+    serve.start()
 
     # create a different config
     test_http = dict(host="127.1.1.8", port=new_port())
 
-    serve.start(detached=True, http_options=test_http)
+    serve.start(http_options=test_http)
 
     for test_config, msg in zip([["host", "port"]], warning_msg):
         for test_msg in test_config:
@@ -769,7 +629,8 @@ def test_recovering_controller_no_redeploy():
     """Ensure controller doesn't redeploy running deployments when recovering."""
     ray_context = ray.init(namespace="x")
     address = ray_context.address_info["address"]
-    client = serve.start(detached=True)
+    serve.start()
+    client = _get_global_client()
 
     @serve.deployment
     def f():
@@ -801,8 +662,6 @@ def test_recovering_controller_no_redeploy():
 def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     """Check if status message says if a serve deployment has taken a long time"""
 
-    client = lower_slow_startup_threshold_and_reset
-
     @serve.deployment(
         num_replicas=5,
         ray_actor_options={"num_cpus": 1},
@@ -810,10 +669,12 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     def f(*args):
         pass
 
-    serve.run(f.bind(), _blocking=False)
+    serve._run(f.bind(), _blocking=False)
 
     def updating_message():
-        deployment_status = client.get_serve_status().deployment_statuses[0]
+        deployment_status = (
+            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["f"]
+        )
         message_substring = "more than 1s to be scheduled."
         return (deployment_status.status == "UPDATING") and (
             message_substring in deployment_status.message
@@ -829,8 +690,6 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
     be unhealthy should be prioritized over this resource availability issue.
     """
 
-    client = lower_slow_startup_threshold_and_reset
-
     @serve.deployment
     class f:
         def __init__(self):
@@ -839,22 +698,29 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         def __call__(self, request):
             pass
 
-    serve.run(f.bind(), _blocking=False)
+    serve._run(f.bind(), _blocking=False)
 
     wait_for_condition(
-        lambda: client.get_serve_status().deployment_statuses[0].status == "UNHEALTHY",
+        lambda: serve.status()
+        .applications[SERVE_DEFAULT_APP_NAME]
+        .deployments["f"]
+        .status
+        == "UNHEALTHY",
         timeout=20,
     )
 
     with pytest.raises(RuntimeError):
         wait_for_condition(
-            lambda: client.get_serve_status().deployment_statuses[0].status
+            lambda: serve.status()
+            .applications[SERVE_DEFAULT_APP_NAME]
+            .deployments["f"]
+            .status
             == "UPDATING",
             timeout=10,
         )
 
 
-@serve.deployment(ray_actor_options={"num_cpus": 0.1})
+@serve.deployment(ray_actor_options={"num_cpus": 0})
 class Waiter:
     def __init__(self):
         time.sleep(5)
@@ -866,26 +732,87 @@ class Waiter:
 WaiterNode = Waiter.bind()
 
 
-def test_run_graph_task_uses_zero_cpus():
-    """Check that the run_graph() task uses zero CPUs."""
+def test_build_app_task_uses_zero_cpus(ray_shutdown):
+    """Check that the task to build an app uses zero CPUs."""
+    ray.init(num_cpus=0)
+    serve.start()
 
-    ray.init(num_cpus=2)
-    client = serve.start(detached=True)
+    _get_global_client().deploy_apps(
+        ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="default",
+                    route_prefix="/",
+                    import_path="ray.serve.tests.test_standalone.WaiterNode",
+                )
+            ],
+        )
+    )
 
-    config = {"import_path": "ray.serve.tests.test_standalone.WaiterNode"}
-    config = ServeApplicationSchema.parse_obj(config)
-    client.deploy_apps(config)
-
-    with pytest.raises(RuntimeError):
-        wait_for_condition(lambda: ray.available_resources()["CPU"] < 1.9, timeout=5)
-
+    # If the task required any resources, this would fail.
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/Waiter").text
-        == "May I take your order?"
+        lambda: requests.get("http://localhost:8000/").text == "May I take your order?"
     )
 
     serve.shutdown()
     ray.shutdown()
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {
+            "proxy_location": None,
+            "http_options": None,
+            "expected": HTTPOptions(location=DeploymentMode.EveryNode),
+        },
+        {
+            "proxy_location": None,
+            "http_options": HTTPOptions(location="NoServer"),
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": None,
+            "http_options": {"location": "NoServer"},
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": "Disabled",
+            "http_options": None,
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": "Disabled",
+            "http_options": {},
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": "Disabled",
+            "http_options": HTTPOptions(host="foobar"),
+            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+        },
+        {
+            "proxy_location": "Disabled",
+            "http_options": {"host": "foobar"},
+            "expected": HTTPOptions(location=DeploymentMode.NoServer, host="foobar"),
+        },
+        {
+            "proxy_location": "Disabled",
+            "http_options": {"location": "HeadOnly"},
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+        {
+            "proxy_location": ProxyLocation.Disabled,
+            "http_options": HTTPOptions(location=DeploymentMode.HeadOnly),
+            "expected": HTTPOptions(location=DeploymentMode.NoServer),
+        },
+    ],
+)
+def test_serve_start_proxy_location(ray_shutdown, options):
+    expected_options = options.pop("expected")
+    serve.start(**options)
+    client = _get_global_client()
+    assert ray.get(client._controller.get_http_config.remote()) == expected_options
 
 
 if __name__ == "__main__":

@@ -1,3 +1,8 @@
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+
 .. _model-reference-docs:
 
 Model APIs
@@ -9,6 +14,7 @@ Base Model classes
 -------------------
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~modelv2.ModelV2
@@ -18,6 +24,7 @@ Base Model classes
 Feed Forward methods
 ---------------------
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~modelv2.ModelV2.forward
@@ -27,6 +34,7 @@ Feed Forward methods
 Recurrent Models API
 ---------------------
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~modelv2.ModelV2.get_initial_state
@@ -35,14 +43,17 @@ Recurrent Models API
 Acessing variables
 ---------------------
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~modelv2.ModelV2.variables
     ~modelv2.ModelV2.trainable_variables
+    ~distributions.Distribution
 
 Customization
 --------------
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~modelv2.ModelV2.custom_loss

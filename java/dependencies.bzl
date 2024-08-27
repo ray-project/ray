@@ -4,12 +4,12 @@ load("@rules_jvm_external//:specs.bzl", "maven")
 def gen_java_deps():
     maven_install(
         artifacts = [
-            "com.fasterxml.jackson.core:jackson-databind:2.13.3",
+            "com.fasterxml.jackson.core:jackson-databind:2.16.1",
             "com.github.java-json-tools:json-schema-validator:2.2.14",
             "com.google.code.gson:gson:2.9.1",
-            "com.google.guava:guava:30.0-jre",
-            "com.google.protobuf:protobuf-java:3.19.4",
-            "com.google.protobuf:protobuf-java-util:3.19.4",
+            "com.google.guava:guava:32.0.1-jre",
+            "com.google.protobuf:protobuf-java:3.23.4",
+            "com.google.protobuf:protobuf-java-util:3.23.4",
             "com.puppycrawl.tools:checkstyle:8.15",
             "com.sun.xml.bind:jaxb-core:2.3.0",
             "com.sun.xml.bind:jaxb-impl:2.3.0",
@@ -18,7 +18,7 @@ def gen_java_deps():
             "de.ruedigermoeller:fst:2.57",
             "javax.xml.bind:jaxb-api:2.3.0",
             "javax.activation:activation:1.1.1",
-            "org.apache.commons:commons-lang3:3.4",
+            "org.apache.commons:commons-lang3:3.13.0",
             "org.msgpack:msgpack-core:0.8.20",
             "org.ow2.asm:asm:6.0",
             "org.apache.logging.log4j:log4j-api:2.17.1",

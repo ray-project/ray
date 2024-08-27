@@ -9,25 +9,28 @@ import time
 _logger = logging.getLogger(__name__)
 
 
-class _NoDbutilsError(Exception):
-    pass
+def get_databricks_function(func_name):
+    import IPython
+
+    ip_shell = IPython.get_ipython()
+    if ip_shell is None:
+        raise RuntimeError("No IPython environment.")
+    return ip_shell.ns_table["user_global"][func_name]
 
 
-def get_dbutils():
+def get_databricks_display_html_function():
+    return get_databricks_function("displayHTML")
+
+
+def get_db_entry_point():
     """
-    Get databricks runtime dbutils module.
+    Return databricks entry_point instance, it is for calling some
+    internal API in databricks runtime
     """
-    try:
-        import IPython
+    from dbruntime import UserNamespaceInitializer
 
-        ip_shell = IPython.get_ipython()
-        if ip_shell is None:
-            raise _NoDbutilsError
-        return ip_shell.ns_table["user_global"]["dbutils"]
-    except ImportError:
-        raise _NoDbutilsError
-    except KeyError:
-        raise _NoDbutilsError
+    user_namespace_initializer = UserNamespaceInitializer.getOrCreate()
+    return user_namespace_initializer.get_spark_entry_point()
 
 
 def display_databricks_driver_proxy_url(spark_context, port, title):
@@ -37,8 +40,6 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
     service binding on driver machine port, but user can visit it by a proxy URL with
     following format: "/driver-proxy/o/{orgId}/{clusterId}/{port}/".
     """
-    from dbruntime.display import displayHTML
-
     driverLocal = spark_context._jvm.com.databricks.backend.daemon.driver.DriverLocal
     commandContextTags = driverLocal.commandContext().get().toStringMap().apply("tags")
     orgId = commandContextTags.apply("orgId")
@@ -50,7 +51,7 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
     print("To monitor and debug Ray from Databricks, view the dashboard at ")
     print(f" {proxy_url}")
 
-    displayHTML(
+    get_databricks_display_html_function()(
         f"""
       <div style="margin-bottom: 16px">
           <a href="{proxy_link}">
@@ -67,19 +68,12 @@ DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES = (
 )
 
 
-def _get_db_api_entry():
-    """
-    Get databricks API entry point.
-    """
-    return get_dbutils().entry_point
-
-
-_DATABRICKS_DEFAULT_TMP_DIR = "/local_disk0/tmp"
+_DATABRICKS_DEFAULT_TMP_ROOT_DIR = "/local_disk0/tmp"
 
 
 class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
-    def get_default_temp_dir(self):
-        return _DATABRICKS_DEFAULT_TMP_DIR
+    def get_default_temp_root_dir(self):
+        return _DATABRICKS_DEFAULT_TMP_ROOT_DIR
 
     def on_ray_dashboard_created(self, port):
         display_databricks_driver_proxy_url(
@@ -87,21 +81,24 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         )
 
     def on_cluster_created(self, ray_cluster_handler):
-        db_api_entry = _get_db_api_entry()
-        try:
-            db_api_entry.registerBackgroundSparkJobGroup(
-                ray_cluster_handler.spark_job_group_id
-            )
-        except Exception:
-            _logger.warning(
-                "Registering Ray cluster spark job as background job failed. "
-                "You need to manually call `ray.util.spark.shutdown_ray_cluster()` "
-                "before detaching your Databricks notebook."
-            )
+        db_api_entry = get_db_entry_point()
 
-        auto_shutdown_minutes = float(
-            os.environ.get(DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES, "30")
-        )
+        if ray_cluster_handler.autoscale or self.is_global:
+            # Disable auto shutdown if
+            # 1) autoscaling enabled
+            #  because in autoscaling mode, background spark job will be killed
+            #  automatically when ray cluster is idle.
+            # 2) global mode cluster
+            #  Because global mode cluster is designed to keep running until
+            #  user request to shut down it, and global mode cluster is shared
+            #  by other users, the code here cannot track usage from other users
+            #  so that we don't know whether it is safe to shut down the global
+            #  cluster automatically.
+            auto_shutdown_minutes = 0
+        else:
+            auto_shutdown_minutes = float(
+                os.environ.get(DATABRICKS_RAY_ON_SPARK_AUTOSHUTDOWN_MINUTES, "30")
+            )
         if auto_shutdown_minutes == 0:
             _logger.info(
                 "The Ray cluster will keep running until you manually detach the "
@@ -160,3 +157,22 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 time.sleep(DATABRICKS_AUTO_SHUTDOWN_POLL_INTERVAL_SECONDS)
 
         threading.Thread(target=auto_shutdown_watcher, daemon=True).start()
+
+    def on_spark_job_created(self, job_group_id):
+        db_api_entry = get_db_entry_point()
+        db_api_entry.registerBackgroundSparkJobGroup(job_group_id)
+
+    def custom_environment_variables(self):
+        """Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
+
+        Torch on DBR does not reliably detect the correct interface to use,
+        and ends up selecting the loopback interface, breaking cross-node
+        commnication."""
+        return {
+            **super().custom_environment_variables(),
+            "GLOO_SOCKET_IFNAME": "eth0",
+            # Ray nodes runs as subprocess of spark UDF or spark driver,
+            # in databricks, it doens't have MLflow service credentials
+            # so it can't use MLflow.
+            "DISABLE_MLFLOW_INTEGRATION": "TRUE",
+        }

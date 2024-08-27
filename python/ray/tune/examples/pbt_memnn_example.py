@@ -5,23 +5,37 @@ References Keras and is based off of https://keras.io/examples/babi_memnn/.
 
 from __future__ import print_function
 
-from tensorflow.keras.models import Sequential, Model, load_model
-from tensorflow.keras.layers import Embedding
-from tensorflow.keras.layers import Input, Activation, Dense, Permute, Dropout
-from tensorflow.keras.layers import add, dot, concatenate
-from tensorflow.keras.layers import LSTM
-from tensorflow.keras.optimizers import RMSprop
-from tensorflow.keras.utils import get_file
-from tensorflow.keras.preprocessing.sequence import pad_sequences
-
-from filelock import FileLock
-import os
 import argparse
-import tarfile
-import numpy as np
+import os
 import re
+import sys
+import tarfile
 
-from ray import air, tune
+import numpy as np
+from filelock import FileLock
+
+from ray import train, tune
+
+if sys.version_info >= (3, 12):
+    # Skip this test in Python 3.12+ because TensorFlow is not supported.
+    sys.exit(0)
+else:
+    from tensorflow.keras.layers import (
+        LSTM,
+        Activation,
+        Dense,
+        Dropout,
+        Embedding,
+        Input,
+        Permute,
+        add,
+        concatenate,
+        dot,
+    )
+    from tensorflow.keras.models import Model, Sequential, load_model
+    from tensorflow.keras.optimizers import RMSprop
+    from tensorflow.keras.preprocessing.sequence import pad_sequences
+    from tensorflow.keras.utils import get_file
 
 
 def tokenize(sent):
@@ -250,12 +264,12 @@ class MemNNModel(tune.Trainable):
     def save_checkpoint(self, checkpoint_dir):
         file_path = checkpoint_dir + "/model"
         self.model.save(file_path)
-        return file_path
 
-    def load_checkpoint(self, path):
+    def load_checkpoint(self, checkpoint_dir):
         # See https://stackoverflow.com/a/42763323
         del self.model
-        self.model = load_model(path)
+        file_path = checkpoint_dir + "/model"
+        self.model = load_model(file_path)
 
 
 if __name__ == "__main__":
@@ -283,10 +297,10 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         MemNNModel,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_babi_memnn",
             stop={"training_iteration": 4 if args.smoke_test else 100},
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=perturbation_interval,
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=2,
@@ -297,6 +311,7 @@ if __name__ == "__main__":
             metric="mean_accuracy",
             mode="max",
             num_samples=2,
+            reuse_actors=True,
         ),
         param_space={
             "finish_fast": args.smoke_test,

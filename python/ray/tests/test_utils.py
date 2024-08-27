@@ -7,8 +7,13 @@ This currently expects to work for minimal installs.
 
 import pytest
 import logging
-from ray._private.utils import get_or_create_event_loop, try_import_each_module
-from unittest.mock import patch
+from ray._private.utils import (
+    get_or_create_event_loop,
+    parse_pg_formatted_resources_to_original,
+    try_import_each_module,
+    get_current_node_cpu_model_name,
+)
+from unittest.mock import patch, mock_open
 import sys
 
 logger = logging.getLogger(__name__)
@@ -74,6 +79,33 @@ def test_try_import_each_module():
                 "Did not find print call with import "
                 f"error {mocked_log_exception.call_args_list}"
             )
+
+
+def test_parse_pg_formatted_resources():
+    out = parse_pg_formatted_resources_to_original(
+        {"CPU_group_e765be422c439de2cd263c5d9d1701000000": 1, "memory": 100}
+    )
+    assert out == {"CPU": 1, "memory": 100}
+
+    out = parse_pg_formatted_resources_to_original(
+        {
+            "memory_group_4da1c24ac25bec85bc817b258b5201000000": 100.0,
+            "memory_group_0_4da1c24ac25bec85bc817b258b5201000000": 100.0,
+            "CPU_group_0_4da1c24ac25bec85bc817b258b5201000000": 1.0,
+            "CPU_group_4da1c24ac25bec85bc817b258b5201000000": 1.0,
+        }
+    )
+    assert out == {"CPU": 1, "memory": 100}
+
+
+@pytest.mark.skipif(
+    not sys.platform.startswith("linux"), reason="Doesn't support non-linux"
+)
+def test_get_current_node_cpu_model_name():
+    with patch(
+        "builtins.open", mock_open(read_data="processor: 0\nmodel name: Intel Xeon")
+    ):
+        assert get_current_node_cpu_model_name() == "Intel Xeon"
 
 
 if __name__ == "__main__":

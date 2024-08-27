@@ -21,11 +21,11 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
@@ -82,7 +82,7 @@ class GcsActorSchedulerInterface {
   /// Notify raylets to release unused workers.
   ///
   /// \param node_to_workers Workers used by each node.
-  virtual void ReleaseUnusedWorkers(
+  virtual void ReleaseUnusedActorWorkers(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) = 0;
 
   /// Handle the destruction of an actor.
@@ -178,7 +178,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Notify raylets to release unused workers.
   ///
   /// \param node_to_workers Workers used by each node.
-  void ReleaseUnusedWorkers(
+  void ReleaseUnusedActorWorkers(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
 
   /// Handle the destruction of an actor.
@@ -265,10 +265,10 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param node The selected node at which a worker is to be leased.
   /// \param status Status of the reply of `RequestWorkerLeaseRequest`.
   /// \param reply The reply of `RequestWorkerLeaseRequest`.
-  void HandleWorkerLeaseReply(std::shared_ptr<GcsActor> actor,
-                              std::shared_ptr<rpc::GcsNodeInfo> node,
-                              const Status &status,
-                              const rpc::RequestWorkerLeaseReply &reply);
+  virtual void HandleWorkerLeaseReply(std::shared_ptr<GcsActor> actor,
+                                      std::shared_ptr<rpc::GcsNodeInfo> node,
+                                      const Status &status,
+                                      const rpc::RequestWorkerLeaseReply &reply);
 
   /// Retry leasing a worker from the specified node for the specified actor.
   /// Make it a virtual method so that the io_context_ could be mocked out.
@@ -418,7 +418,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   FRIEND_TEST(GcsActorSchedulerTest, TestWorkerFailedWhenCreating);
   FRIEND_TEST(GcsActorSchedulerTest, TestSpillback);
   FRIEND_TEST(GcsActorSchedulerTest, TestReschedule);
-  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedWorkers);
+  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers);
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNodeByGcs);
   FRIEND_TEST(GcsActorSchedulerTest, TestNotEnoughClusterResources);
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleAndDestroyOneActor);
@@ -431,7 +431,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   FRIEND_TEST(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs);
   FRIEND_TEST(GcsActorSchedulerTest, TestWorkerFailedWhenCreatingByGcs);
   FRIEND_TEST(GcsActorSchedulerTest, TestRescheduleByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedWorkersByGcs);
+  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedActorWorkersByGcs);
 
   friend class GcsActorSchedulerMockTest;
   FRIEND_TEST(GcsActorSchedulerMockTest, KillWorkerLeak1);

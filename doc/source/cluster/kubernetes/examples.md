@@ -2,17 +2,35 @@
 
 # Examples
 
-:::{note}
-To learn the basics of Ray on Kubernetes, we recommend taking a look
-at the {ref}`introductory guide <kuberay-quickstart>` first.
+```{toctree}
+:hidden:
 
-If you are new to your cloud provider's Kubernetes service, we recommend
-taking a look at the documentation links collected {ref}`here <kuberay-k8s-setup>`
-:::
+examples/ml-example
+examples/gpu-training-example
+examples/mnist-training-example
+examples/stable-diffusion-rayservice
+examples/tpu-serve-stable-diffusion
+examples/mobilenet-rayservice
+examples/text-summarizer-rayservice
+examples/rayjob-batch-inference-example
+examples/rayjob-kueue-priority-scheduling
+examples/rayjob-kueue-gang-scheduling
+examples/distributed-checkpointing-with-gcsfuse
+examples/modin-example
+```
+
 
 This section presents example Ray workloads to try out on your Kubernetes cluster.
 
-More examples will be added in the future. Running the distributed XGBoost example below is a
-great way to start experimenting with production Ray workloads on Kubernetes.
-- {ref}`kuberay-ml-example`
+- {ref}`kuberay-ml-example` (CPU-only)
 - {ref}`kuberay-gpu-training-example`
+- {ref}`kuberay-mnist-training-example` (CPU-only)
+- {ref}`kuberay-mobilenet-rayservice-example` (CPU-only)
+- {ref}`kuberay-stable-diffusion-rayservice-example`
+- {ref}`kuberay-tpu-stable-diffusion-example`
+- {ref}`kuberay-text-summarizer-rayservice-example`
+- {ref}`kuberay-batch-inference-example`
+- {ref}`kuberay-kueue-priority-scheduling-example`
+- {ref}`kuberay-kueue-gang-scheduling-example`
+- {ref}`kuberay-distributed-checkpointing-gcsefuse`
+- {ref}`kuberay-modin-example`

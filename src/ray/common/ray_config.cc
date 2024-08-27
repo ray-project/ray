@@ -26,6 +26,8 @@ RayConfig &RayConfig::instance() {
   return config;
 }
 
+RayConfig::RayConfig() { initialize(""); }
+
 void RayConfig::initialize(const std::string &config_list) {
 #define RAY_CONFIG(type, name, default_value) \
   name##_ = ReadEnv<type>("RAY_" #name, #type, default_value);

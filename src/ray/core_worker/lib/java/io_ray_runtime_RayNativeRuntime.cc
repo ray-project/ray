@@ -41,7 +41,11 @@ inline gcs::GcsClientOptions ToGcsClientOptions(JNIEnv *env, jobject gcs_client_
       env,
       (jstring)env->GetObjectField(gcs_client_options, java_gcs_client_options_password));
 
-  return gcs::GcsClientOptions(ip + ":" + std::to_string(port));
+  return gcs::GcsClientOptions(ip,
+                               port,
+                               ray::ClusterID::Nil(),
+                               /*allow_cluster_id_nil=*/true,
+                               /*fetch_cluster_id_if_nil=*/false);
 }
 
 jobject ToJavaArgs(JNIEnv *env,
@@ -126,7 +130,9 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
          const std::vector<ConcurrencyGroup> &defined_concurrency_groups,
          const std::string name_of_concurrency_group_to_execute,
          bool is_reattempt,
-         bool is_streaming_generator) {
+         bool is_streaming_generator,
+         bool should_retry_exceptions,
+         int64_t generator_backpressure_num_objects) {
         // These 2 parameters are used for Python only, and Java worker
         // will not use them.
         RAY_UNUSED(defined_concurrency_groups);
@@ -216,6 +222,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
                 data_size,
                 metadata,
                 contained_object_ids,
+                caller_address,
                 &task_output_inlined_bytes,
                 result_ptr));
 
@@ -230,7 +237,7 @@ Java_io_ray_runtime_RayNativeRuntime_nativeInitialize(JNIEnv *env,
             }
 
             RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().SealReturnObject(
-                result_id, result, ObjectID::Nil()));
+                result_id, result, ObjectID::Nil(), caller_address));
           }
         }
 

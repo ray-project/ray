@@ -334,7 +334,7 @@ class _LocalInferenceThread(threading.Thread):
                     }
                 )
         except Exception as e:
-            logger.info("Error: inference worker thread died!", e)
+            logger.error("Error: inference worker thread died!", e)
 
 
 def _auto_wrap_external(real_env_creator):
@@ -397,7 +397,10 @@ def _create_embedded_rollout_worker(kwargs, send_fn):
     # Generate a dummy ExternalEnv here using RandomEnv and the
     # given observation/action spaces.
     if config.env is None:
-        from ray.rllib.examples.env.random_env import RandomEnv, RandomMultiAgentEnv
+        from ray.rllib.examples.envs.classes.random_env import (
+            RandomEnv,
+            RandomMultiAgentEnv,
+        )
 
         env_config = {
             "action_space": config.action_space,

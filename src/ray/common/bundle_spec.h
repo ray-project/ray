@@ -23,7 +23,7 @@
 #include "ray/common/function_descriptor.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/task/task_common.h"
 
 namespace ray {
@@ -103,10 +103,6 @@ struct PgFormattedResourceData {
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
                                          const PlacementGroupID &group_id,
                                          int64_t bundle_index = -1);
-
-/// Format a placement group resource, e.g., CPU -> CPU_group_YYY_i
-std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         const BundleSpecification &bundle_spec);
 
 /// Return the original resource name of the placement group resource.
 std::string GetOriginalResourceName(const std::string &resource);

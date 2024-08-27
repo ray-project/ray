@@ -8,17 +8,16 @@ from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.utils import get_filter_config
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.tf_utils import one_hot
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
 
 # __sphinx_doc_begin__
+@OldAPIStack
 class ComplexInputNetwork(TFModelV2):
     """TFModelV2 concat'ing CNN outputs to flat input(s), followed by FC(s).
 
@@ -34,8 +33,6 @@ class ComplexInputNetwork(TFModelV2):
     """
 
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
-        if log_once("rllib_tf_complex_input_net_deprecation"):
-            deprecation_warning(old="rllib.models.tf.ComplexInputNetwork")
 
         self.original_space = (
             obs_space.original_space
@@ -101,7 +98,7 @@ class ComplexInputNetwork(TFModelV2):
                 concat_size += int(self.one_hot[i].num_outputs)
             # Everything else (1D Box).
             else:
-                size = int(np.product(component.shape))
+                size = int(np.prod(component.shape))
                 config = {
                     "fcnet_hiddens": model_config["fcnet_hiddens"],
                     "fcnet_activation": model_config.get("fcnet_activation"),

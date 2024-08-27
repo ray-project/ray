@@ -2,17 +2,15 @@ import abc
 from typing import List, Optional, Tuple, Union
 
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.specs.specs_base import Spec
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.rnn_sequencing import get_fold_unfold_fns
-from ray.rllib.utils.annotations import ExperimentalAPI, DeveloperAPI
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.typing import TensorType
+from ray.util.annotations import DeveloperAPI
 
 # Top level keys that unify model i/o.
-STATE_IN: str = "state_in"
-STATE_OUT: str = "state_out"
 ENCODER_OUT: str = "encoder_out"
 # For Actor-Critic algorithms, these signify data related to the actor and critic
 ACTOR: str = "actor"
@@ -72,7 +70,7 @@ class Model(abc.ABC):
         def init_decorator(previous_init):
             def new_init(self, *args, **kwargs):
                 previous_init(self, *args, **kwargs)
-                if type(self) == cls:
+                if type(self) is cls:
                     self.__post_init__()
 
             return new_init
@@ -222,7 +220,8 @@ class Encoder(Model, abc.ABC):
         from dataclasses import dataclass
         import numpy as np
 
-        from ray.rllib.core.models.base import Encoder, ENCODER_OUT, STATE_IN, STATE_OUT
+        from ray.rllib.core.columns import Columns
+        from ray.rllib.core.models.base import Encoder, ENCODER_OUT
         from ray.rllib.core.models.configs import ModelConfig
         from ray.rllib.policy.sample_batch import SampleBatch
 
@@ -238,10 +237,13 @@ class Encoder(Model, abc.ABC):
                 return self._forward(*args, **kwargs)
 
             def _forward(self, input_dict, **kwargs):
-                obs = input_dict[SampleBatch.OBS]
+                obs = input_dict[Columns.OBS]
                 return {
                     ENCODER_OUT: np.array(obs) * self.factor,
-                    STATE_OUT: np.array(input_dict[STATE_IN]) * self.factor,
+                    Columns.STATE_OUT: (
+                        np.array(input_dict[Columns.STATE_IN])
+                        * self.factor
+                    ),
                 }
 
         @dataclass
@@ -253,7 +255,7 @@ class Encoder(Model, abc.ABC):
 
         config = NumpyEncoderConfig(factor=2)
         encoder = NumpyEncoder(config)
-        print(encoder({SampleBatch.OBS: 1, STATE_IN: 2}))
+        print(encoder({Columns.OBS: 1, Columns.STATE_IN: 2}))
 
     .. testoutput::
 
@@ -263,7 +265,7 @@ class Encoder(Model, abc.ABC):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return [SampleBatch.OBS]
+        return [Columns.OBS]
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
@@ -281,12 +283,12 @@ class Encoder(Model, abc.ABC):
         The output dict contains at minimum the latent and the state of the encoder
         (None for stateless encoders).
         To establish an agreement between the encoder and RLModules, these values
-        have the fixed keys `SampleBatch.OBS` for the `input_dict`,
+        have the fixed keys `Columns.OBS` for the `input_dict`,
         and `ACTOR` and `CRITIC` for the returned dict.
 
         Args:
             input_dict: The input tensors. Must contain at a minimum the keys
-                SampleBatch.OBS and STATE_IN (which might be None for stateless
+                Columns.OBS and Columns.STATE_IN (which might be None for stateless
                 encoders).
             **kwargs: Forward compatibility kwargs.
 
@@ -316,17 +318,23 @@ class ActorCriticEncoder(Encoder):
             self.actor_encoder = config.base_encoder_config.build(
                 framework=self.framework
             )
-            self.critic_encoder = config.base_encoder_config.build(
-                framework=self.framework
-            )
+            self.critic_encoder = None
+            if not config.inference_only:
+                self.critic_encoder = config.base_encoder_config.build(
+                    framework=self.framework
+                )
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return [SampleBatch.OBS]
+        return [Columns.OBS]
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return [(ENCODER_OUT, ACTOR), (ENCODER_OUT, CRITIC)]
+        return [(ENCODER_OUT, ACTOR)] + (
+            [(ENCODER_OUT, CRITIC)]
+            if not self.config.shared and self.critic_encoder
+            else []
+        )
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
@@ -335,18 +343,27 @@ class ActorCriticEncoder(Encoder):
             return {
                 ENCODER_OUT: {
                     ACTOR: encoder_outs[ENCODER_OUT],
-                    CRITIC: encoder_outs[ENCODER_OUT],
+                    **(
+                        {}
+                        if self.config.inference_only
+                        else {CRITIC: encoder_outs[ENCODER_OUT]}
+                    ),
                 }
             }
         else:
             # Encoders should not modify inputs, so we can pass the same inputs
             actor_out = self.actor_encoder(inputs, **kwargs)
-            critic_out = self.critic_encoder(inputs, **kwargs)
+            if self.critic_encoder:
+                critic_out = self.critic_encoder(inputs, **kwargs)
 
             return {
                 ENCODER_OUT: {
                     ACTOR: actor_out[ENCODER_OUT],
-                    CRITIC: critic_out[ENCODER_OUT],
+                    **(
+                        {}
+                        if self.config.inference_only
+                        else {CRITIC: critic_out[ENCODER_OUT]}
+                    ),
                 }
             }
 
@@ -384,11 +401,11 @@ class StatefulActorCriticEncoder(Encoder):
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
-        return [SampleBatch.OBS, STATE_IN]
+        return [Columns.OBS, Columns.STATE_IN]
 
     @override(Model)
     def get_output_specs(self) -> Optional[Spec]:
-        return [(ENCODER_OUT, ACTOR), (ENCODER_OUT, CRITIC), (STATE_OUT,)]
+        return [(ENCODER_OUT, ACTOR), (ENCODER_OUT, CRITIC), (Columns.STATE_OUT,)]
 
     @override(Model)
     def get_initial_state(self):
@@ -408,14 +425,14 @@ class StatefulActorCriticEncoder(Encoder):
             outs = self.encoder(inputs, **kwargs)
             encoder_out = outs.pop(ENCODER_OUT)
             outputs[ENCODER_OUT] = {ACTOR: encoder_out, CRITIC: encoder_out}
-            outputs[STATE_OUT] = outs[STATE_OUT]
+            outputs[Columns.STATE_OUT] = outs[Columns.STATE_OUT]
         else:
             # Shallow copy inputs so that we can add states without modifying
             # original dict.
             actor_inputs = inputs.copy()
             critic_inputs = inputs.copy()
-            actor_inputs[STATE_IN] = inputs[STATE_IN][ACTOR]
-            critic_inputs[STATE_IN] = inputs[STATE_IN][CRITIC]
+            actor_inputs[Columns.STATE_IN] = inputs[Columns.STATE_IN][ACTOR]
+            critic_inputs[Columns.STATE_IN] = inputs[Columns.STATE_IN][CRITIC]
 
             actor_out = self.actor_encoder(actor_inputs, **kwargs)
             critic_out = self.critic_encoder(critic_inputs, **kwargs)
@@ -425,9 +442,9 @@ class StatefulActorCriticEncoder(Encoder):
                 CRITIC: critic_out[ENCODER_OUT],
             }
 
-            outputs[STATE_OUT] = {
-                ACTOR: actor_out[STATE_OUT],
-                CRITIC: critic_out[STATE_OUT],
+            outputs[Columns.STATE_OUT] = {
+                ACTOR: actor_out[Columns.STATE_OUT],
+                CRITIC: critic_out[Columns.STATE_OUT],
             }
 
         return outputs
@@ -445,8 +462,8 @@ def tokenize(tokenizer: Encoder, inputs: dict, framework: str) -> dict:
         The output dict.
     """
     # Tokenizer may depend solely on observations.
-    obs = inputs[SampleBatch.OBS]
-    tokenizer_inputs = {SampleBatch.OBS: obs}
+    obs = inputs[Columns.OBS]
+    tokenizer_inputs = {Columns.OBS: obs}
     size = list(obs.size() if framework == "torch" else obs.shape)
     b_dim, t_dim = size[:2]
     fold, unfold = get_fold_unfold_fns(b_dim, t_dim, framework=framework)

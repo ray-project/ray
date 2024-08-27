@@ -5,6 +5,7 @@ import logging
 import os
 import sys
 import threading
+import time
 import uuid
 from typing import Any, Dict, Iterable, Optional
 
@@ -60,12 +61,16 @@ class tqdm:
     Supports a limited subset of tqdm args.
     """
 
+    DEFAULT_FLUSH_INTERVAL_SECONDS = 1.0
+
     def __init__(
         self,
         iterable: Optional[Iterable] = None,
         desc: Optional[str] = None,
         total: Optional[int] = None,
+        unit: Optional[str] = None,
         position: Optional[int] = None,
+        flush_interval_s: Optional[float] = None,
     ):
         import ray._private.services as services
 
@@ -78,12 +83,19 @@ class tqdm:
         self._iterable = iterable
         self._desc = desc or ""
         self._total = total
+        self._unit = unit or "it"
         self._ip = services.get_node_ip_address()
         self._pid = os.getpid()
         self._pos = position or 0
         self._uuid = uuid.uuid4().hex
         self._x = 0
         self._closed = False
+        self._flush_interval_s = (
+            flush_interval_s
+            if flush_interval_s is not None
+            else self.DEFAULT_FLUSH_INTERVAL_SECONDS
+        )
+        self._last_flush_time = 0.0
 
     def set_description(self, desc):
         """Implements tqdm.tqdm.set_description."""
@@ -100,7 +112,7 @@ class tqdm:
         self._closed = True
         # Don't bother if ray is shutdown (in __del__ hook).
         if ray is not None:
-            self._dump_state()
+            self._dump_state(force_flush=True)
 
     def refresh(self):
         """Implements tqdm.tqdm.refresh."""
@@ -114,7 +126,11 @@ class tqdm:
     def total(self, total: int):
         self._total = total
 
-    def _dump_state(self) -> None:
+    def _dump_state(self, force_flush=False) -> None:
+        now = time.time()
+        if not force_flush and now - self._last_flush_time < self._flush_interval_s:
+            return
+        self._last_flush_time = now
         if ray._private.worker.global_worker.mode == ray.WORKER_MODE:
             # Include newline in payload to avoid split prints.
             # TODO(ekl) we should move this to events.json to avoid log corruption.
@@ -129,6 +145,7 @@ class tqdm:
             "pos": self._pos,
             "desc": self._desc,
             "total": self._total,
+            "unit": self._unit,
             "ip": self._ip,
             "pid": self._pid,
             "uuid": self._uuid,
@@ -162,8 +179,10 @@ class _Bar:
         self.bar = real_tqdm.tqdm(
             desc=state["desc"] + " " + str(state["pos"]),
             total=state["total"],
+            unit=state["unit"],
             position=pos_offset + state["pos"],
-            leave=False,
+            dynamic_ncols=True,
+            unit_scale=True,
         )
         if state["x"]:
             self.bar.update(state["x"])
@@ -178,6 +197,7 @@ class _Bar:
         delta = state["x"] - self.state["x"]
         if delta:
             self.bar.update(delta)
+        self.bar.refresh()
         self.state = state
 
     def close(self):
@@ -222,8 +242,12 @@ class _BarGroup:
     def close_bar(self, state: ProgressBarState) -> None:
         """Remove a bar from this group."""
         bar = self.bars_by_uuid[state["uuid"]]
+        # Note: Hide and then unhide bars to prevent flashing of the
+        # last bar when we are closing multiple bars sequentially.
+        instance().hide_bars()
         bar.close()
         del self.bars_by_uuid[state["uuid"]]
+        instance().unhide_bars()
 
     def slots_required(self):
         """Return the number of pos slots we need to accomodate bars in this group."""
@@ -312,11 +336,15 @@ class _BarManager:
         state["desc"] = prefix + state["desc"]
         process = self._get_or_allocate_bar_group(state)
         if process.has_bar(state["uuid"]):
+            # Always call `update_bar` to sync any last remaining updates
+            # prior to closing. Otherwise, the displayed progress bars
+            # can be left incomplete, even after execution finishes.
+            # Fixes https://github.com/ray-project/ray/issues/44983
+            process.update_bar(state)
+
             if state["closed"]:
                 process.close_bar(state)
                 self._update_offsets()
-            else:
-                process.update_bar(state)
         else:
             process.allocate_bar(state)
             self._update_offsets()
@@ -365,7 +393,6 @@ def instance() -> _BarManager:
 
 
 if __name__ == "__main__":
-    import time
 
     @ray.remote
     def processing(delay):
@@ -374,7 +401,7 @@ if __name__ == "__main__":
             time.sleep(delay)
             return x
 
-        ray.data.range(1000, parallelism=100).map(
+        ray.data.range(1000, override_num_blocks=100).map(
             sleep, compute=ray.data.ActorPoolStrategy(size=1)
         ).count()
 

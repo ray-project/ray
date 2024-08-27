@@ -12,9 +12,6 @@ def test_strict_read_schemas(ray_start_regular_shared):
     ds = ray.data.range(1)
     assert ds.take()[0] == {"id": 0}
 
-    with pytest.raises(DeprecationWarning):
-        ds = ray.data.range_table(1)
-
     ds = ray.data.range_tensor(1)
     assert ds.take()[0] == {"data": np.array([0])}
 
@@ -134,7 +131,7 @@ def test_strict_default_batch_format(ray_start_regular_shared):
 
     q = Queue.remote()
 
-    assert isinstance(next(ds.iter_batches())["id"], np.ndarray)
+    assert isinstance(next(iter(ds.iter_batches()))["id"], np.ndarray)
     assert isinstance(ds.take_batch()["id"], np.ndarray)
 
     def f(x):
@@ -175,10 +172,6 @@ def test_strict_compute(ray_start_regular_shared):
     with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute="actors").show()
     with pytest.raises(ValueError):
-        ray.data.range(10).map(
-            lambda x: x, compute=ray.data.ActorPoolStrategy(1, 1)
-        ).show()
-    with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute="tasks").show()
 
 
@@ -186,6 +179,10 @@ def test_strict_schema(ray_start_regular_shared):
     import pyarrow as pa
 
     from ray.data._internal.pandas_block import PandasBlockSchema
+    from ray.data.extensions.object_extension import (
+        ArrowPythonObjectType,
+        object_extension_type_allowed,
+    )
     from ray.data.extensions.tensor_extension import ArrowTensorType
 
     ds = ray.data.from_items([{"x": 2}])
@@ -202,12 +199,21 @@ def test_strict_schema(ray_start_regular_shared):
 
     ds = ray.data.from_items([{"x": 2, "y": object(), "z": [1, 2]}])
     schema = ds.schema()
-    assert schema.names == ["x", "y", "z"]
-    assert schema.types == [
-        pa.int64(),
-        object,
-        object,
-    ]
+    if object_extension_type_allowed():
+        assert isinstance(schema.base_schema, pa.lib.Schema)
+        assert schema.names == ["x", "y", "z"]
+        assert schema.types == [
+            pa.int64(),
+            ArrowPythonObjectType(),
+            pa.list_(pa.int64()),
+        ]
+    else:
+        assert schema.names == ["x", "y", "z"]
+        assert schema.types == [
+            pa.int64(),
+            object,
+            object,
+        ]
 
     ds = ray.data.from_numpy(np.ones((100, 10)))
     schema = ds.schema()
@@ -238,6 +244,8 @@ def test_strict_require_batch_size_for_gpu():
     ds = ray.data.range(1)
     with pytest.raises(ValueError):
         ds.map_batches(lambda x: x, num_gpus=1)
+
+    ds.map_batches(lambda x: x, num_gpus=0)
 
 
 if __name__ == "__main__":

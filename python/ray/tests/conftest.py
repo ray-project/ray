@@ -20,13 +20,12 @@ import pytest
 
 import ray
 import ray._private.ray_constants as ray_constants
-import ray.util.client.server.server as ray_client_server
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
 from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 
 from ray._private.test_utils import (
-    get_and_run_node_killer,
+    get_and_run_resource_killer,
     init_error_pubsub,
     init_log_pubsub,
     setup_tls,
@@ -37,6 +36,8 @@ from ray._private.test_utils import (
     start_redis_instance,
     find_available_port,
     wait_for_condition,
+    find_free_port,
+    RayletKiller,
 )
 from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
 
@@ -133,6 +134,7 @@ def get_default_fixure_system_config():
         "health_check_initial_delay_ms": 0,
         "health_check_failure_threshold": 10,
         "object_store_full_delay_ms": 100,
+        "local_gc_min_interval_s": 1,
     }
     return system_config
 
@@ -272,12 +274,18 @@ def kill_all_redis_server():
     # Find Redis server processes
     redis_procs = []
     for proc in psutil.process_iter(["name", "cmdline"]):
-        if proc.name() == "redis-server":
-            redis_procs.append(proc)
+        try:
+            if proc.name() == "redis-server":
+                redis_procs.append(proc)
+        except psutil.NoSuchProcess:
+            pass
 
     # Kill Redis server processes
     for proc in redis_procs:
-        proc.kill()
+        try:
+            proc.kill()
+        except psutil.NoSuchProcess:
+            pass
 
 
 @contextmanager
@@ -336,12 +344,13 @@ def shutdown_only(maybe_external_redis):
 @pytest.fixture
 def propagate_logs():
     # Ensure that logs are propagated to ancestor handles. This is required if using the
-    # caplog fixture with Ray's logging.
+    # caplog or capsys fixtures with Ray's logging.
     # NOTE: This only enables log propagation in the driver process, not the workers!
-    logger = logging.getLogger("ray")
-    logger.propagate = True
+    logging.getLogger("ray").propagate = True
+    logging.getLogger("ray.data").propagate = True
     yield
-    logger.propagate = False
+    logging.getLogger("ray").propagate = False
+    logging.getLogger("ray.data").propagate = False
 
 
 # Provide a shared Ray instance for a test class
@@ -589,11 +598,16 @@ def call_ray_start_context(request):
     except Exception as e:
         print(type(e), e)
         raise
+
     # Get the redis address from the output.
     redis_substring_prefix = "--address='"
-    address_location = out.find(redis_substring_prefix) + len(redis_substring_prefix)
-    address = out[address_location:]
-    address = address.split("'")[0]
+    idx = out.find(redis_substring_prefix)
+    if idx >= 0:
+        address_location = idx + len(redis_substring_prefix)
+        address = out[address_location:]
+        address = address.split("'")[0]
+    else:
+        address = None
 
     yield address
 
@@ -628,6 +642,8 @@ def call_ray_start_with_external_redis(request):
 
 @pytest.fixture
 def init_and_serve():
+    import ray.util.client.server.server as ray_client_server
+
     server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
     yield server_handle
     ray_client_server.shutdown_with_server(server_handle.grpc_server)
@@ -648,8 +664,11 @@ def call_ray_stop_only():
 def start_cluster(ray_start_cluster_enabled, request):
     assert request.param in {"ray_client", "no_ray_client"}
     use_ray_client: bool = request.param == "ray_client"
+    if os.environ.get("RAY_MINIMAL") == "1" and use_ray_client:
+        pytest.skip("Skipping due to we don't have ray client in minimal.")
+
     cluster = ray_start_cluster_enabled
-    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4, dashboard_agent_listen_port=find_free_port())
     if use_ray_client:
         cluster.head_node._ray_params.ray_client_server_port = "10004"
         cluster.head_node.start_ray_client_server()
@@ -692,12 +711,15 @@ def enable_pickle_debug():
 
 
 @pytest.fixture
-def set_enable_auto_connect(enable_auto_connect: str = "0"):
+def set_enable_auto_connect(enable_auto_connect: bool = False):
+    from ray._private import auto_init_hook
+
     try:
-        os.environ["RAY_ENABLE_AUTO_CONNECT"] = enable_auto_connect
+        old_value = auto_init_hook.enable_auto_connect
+        auto_init_hook.enable_auto_connect = enable_auto_connect
         yield enable_auto_connect
     finally:
-        del os.environ["RAY_ENABLE_AUTO_CONNECT"]
+        auto_init_hook.enable_auto_connect = old_value
 
 
 @pytest.fixture
@@ -899,13 +921,13 @@ def _ray_start_chaos_cluster(request):
     assert len(nodes) == 1
 
     if kill_interval is not None:
-        node_killer = get_and_run_node_killer(kill_interval)
+        node_killer = get_and_run_resource_killer(RayletKiller, kill_interval)
 
     yield cluster
 
     if kill_interval is not None:
         ray.get(node_killer.stop_run.remote())
-        killed = ray.get(node_killer.get_total_killed_nodes.remote())
+        killed = ray.get(node_killer.get_total_killed.remote())
         assert len(killed) > 0
         died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
         assert died.issubset(
@@ -985,7 +1007,19 @@ def listen_port(request):
         sock = socket.socket()
         if hasattr(socket, "SO_REUSEPORT"):
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 0)
-        sock.bind(("127.0.0.1", port))
+
+        # Try up to 10 times.
+        MAX_RETRY = 10
+        for i in range(MAX_RETRY):
+            try:
+                sock.bind(("127.0.0.1", port))
+                break
+            except OSError as e:
+                if i == MAX_RETRY - 1:
+                    raise e
+                else:
+                    print(f"failed to bind on a port {port}. {e}")
+                    time.sleep(1)
         yield port
     finally:
         sock.close()
@@ -1022,7 +1056,7 @@ def append_short_test_summary(rep):
 
     summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR")
 
-    if platform.system() != "Linux":
+    if platform.system() == "Darwin":
         summary_dir = os.environ.get("RAY_TEST_SUMMARY_DIR_HOST")
 
     if not summary_dir:
@@ -1033,9 +1067,9 @@ def append_short_test_summary(rep):
 
     test_name = rep.nodeid.replace(os.sep, "::")
 
-    if os.name == "nt":
+    if platform.system() == "Windows":
         # ":" is not legal in filenames in windows
-        test_name.replace(":", "$")
+        test_name = test_name.replace(":", "$")
 
     header_file = os.path.join(summary_dir, "000_header.txt")
     summary_file = os.path.join(summary_dir, test_name + ".txt")
@@ -1147,7 +1181,7 @@ def _get_repo_github_path_and_link(file: str, lineno: int) -> Tuple[str, str]:
     if not commit:
         return file, ""
 
-    path = os.path.relpath(file, "/ray")
+    path = file.split("com_github_ray_project_ray/")[-1]
 
     return path, base_url.format(commit=commit, path=path, lineno=lineno)
 
@@ -1157,7 +1191,7 @@ def create_ray_logs_for_failed_test(rep):
 
     # We temporarily restrict to Linux until we have artifact dirs
     # for Windows and Mac
-    if platform.system() != "Linux":
+    if platform.system() != "Linux" and platform.system() != "Windows":
         return
 
     # Only archive failed tests after the "call" phase of the test
@@ -1182,6 +1216,9 @@ def create_ray_logs_for_failed_test(rep):
 
     # Write zipped logs to logs archive dir
     test_name = rep.nodeid.replace(os.sep, "::")
+    if platform.system() == "Windows":
+        # ":" is not legal in filenames in windows
+        test_name = test_name.replace(":", "$")
     output_file = os.path.join(archive_dir, f"{test_name}_{time.time():.4f}")
     shutil.make_archive(output_file, "zip", logs_dir)
 
@@ -1232,20 +1269,16 @@ def set_runtime_env_plugin_schemas(request):
         del os.environ["RAY_RUNTIME_ENV_PLUGIN_SCHEMAS"]
 
 
-@pytest.fixture(params=[True, False])
-def enable_syncer_test(request, monkeypatch):
-    with_syncer = request.param
-    monkeypatch.setenv("RAY_use_ray_syncer", "true" if with_syncer else "false")
-    ray._raylet.Config.initialize("")
-    yield
-    monkeypatch.delenv("RAY_use_ray_syncer")
-    ray._raylet.Config.initialize("")
-
-
 @pytest.fixture(scope="function")
 def temp_file(request):
     with tempfile.NamedTemporaryFile("r+b") as fp:
         yield fp
+
+
+@pytest.fixture(scope="function")
+def temp_dir(request):
+    with tempfile.TemporaryDirectory("r+b") as d:
+        yield d
 
 
 @pytest.fixture(scope="module")

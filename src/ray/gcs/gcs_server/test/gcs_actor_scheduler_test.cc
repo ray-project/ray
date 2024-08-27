@@ -67,6 +67,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     auto gcs_resource_manager = std::make_shared<gcs::GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler->GetClusterResourceManager(),
+        *gcs_node_manager_,
         local_node_id_);
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
         io_service_,
@@ -333,7 +334,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasing) {
 
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
-  gcs_node_manager_->RemoveNode(node_id);
+  rpc::NodeDeathInfo death_info;
+  gcs_node_manager_->RemoveNode(node_id, death_info);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
@@ -421,7 +423,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreating) {
 
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
-  gcs_node_manager_->RemoveNode(node_id);
+  rpc::NodeDeathInfo death_info;
+  gcs_node_manager_->RemoveNode(node_id, death_info);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
@@ -598,9 +601,9 @@ TEST_F(GcsActorSchedulerTest, TestReschedule) {
   ASSERT_EQ(2, success_actors_.size());
 }
 
-TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
+TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers) {
   // Test the case that GCS won't send `RequestWorkerLease` request to the raylet,
-  // if there is still a pending `ReleaseUnusedWorkers` request.
+  // if there is still a pending `ReleaseUnusedActorWorkers` request.
 
   // Add a node to the cluster.
   auto node = Mocker::GenNodeInfo();
@@ -608,18 +611,18 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
   gcs_node_manager_->AddNode(node);
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
-  // Send a `ReleaseUnusedWorkers` request to the node.
+  // Send a `ReleaseUnusedActorWorkers` request to the node.
   absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
   node_to_workers[node_id].push_back({WorkerID::FromRandom()});
-  gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
+  gcs_actor_scheduler_->ReleaseUnusedActorWorkers(node_to_workers);
   ASSERT_EQ(1, raylet_client_->num_release_unused_workers);
   ASSERT_EQ(1, raylet_client_->release_callbacks.size());
 
   // Schedule an actor which is not tied to a worker, this should invoke the
   // `LeaseWorkerFromNode` method.
-  // But since the `ReleaseUnusedWorkers` request hasn't finished, `GcsActorScheduler`
-  // won't send `RequestWorkerLease` request to node immediately. But instead, it will
-  // invoke the `RetryLeasingWorkerFromNode` to retry later.
+  // But since the `ReleaseUnusedActorWorkers` request hasn't finished,
+  // `GcsActorScheduler` won't send `RequestWorkerLease` request to node immediately. But
+  // instead, it will invoke the `RetryLeasingWorkerFromNode` to retry later.
   auto job_id = JobID::FromInt(1);
   auto request = Mocker::GenCreateActorRequest(job_id);
   auto actor = std::make_shared<gcs::GcsActor>(request.task_spec(), "", counter);
@@ -627,9 +630,9 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkers) {
   ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
   ASSERT_EQ(raylet_client_->num_workers_requested, 0);
 
-  // When `GcsActorScheduler` receives the `ReleaseUnusedWorkers` reply, it will send
+  // When `GcsActorScheduler` receives the `ReleaseUnusedActorWorkers` reply, it will send
   // out the `RequestWorkerLease` request.
-  ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedWorkers());
+  ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedActorWorkers());
   gcs_actor_scheduler_->TryLeaseWorkerFromNodeAgain(actor, node);
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
 }
@@ -933,7 +936,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenLeasingByGcs) {
 
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
-  gcs_node_manager_->RemoveNode(node_id);
+  rpc::NodeDeathInfo death_info;
+  gcs_node_manager_->RemoveNode(node_id, death_info);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
@@ -1027,7 +1031,8 @@ TEST_F(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs) {
 
   // Remove the node and cancel the scheduling on this node, the scheduling should be
   // interrupted.
-  gcs_node_manager_->RemoveNode(node_id);
+  rpc::NodeDeathInfo death_info;
+  gcs_node_manager_->RemoveNode(node_id, death_info);
   ASSERT_EQ(0, gcs_node_manager_->GetAllAliveNodes().size());
   auto actor_ids = gcs_actor_scheduler_->CancelOnNode(node_id);
   ASSERT_EQ(1, actor_ids.size());
@@ -1145,9 +1150,9 @@ TEST_F(GcsActorSchedulerTest, TestRescheduleByGcs) {
   ASSERT_EQ(2, success_actors_.size());
 }
 
-TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkersByGcs) {
+TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkersByGcs) {
   // Test the case that GCS won't send `RequestWorkerLease` request to the raylet,
-  // if there is still a pending `ReleaseUnusedWorkers` request.
+  // if there is still a pending `ReleaseUnusedActorWorkers` request.
 
   // Add a node to the cluster.
   // Add a node with 64 memory units and 8 CPU.
@@ -1157,19 +1162,19 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkersByGcs) {
   auto node_id = NodeID::FromBinary(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
 
-  // Send a `ReleaseUnusedWorkers` request to the node.
+  // Send a `ReleaseUnusedActorWorkers` request to the node.
   absl::flat_hash_map<NodeID, std::vector<WorkerID>> node_to_workers;
   node_to_workers[node_id].push_back({WorkerID::FromRandom()});
-  gcs_actor_scheduler_->ReleaseUnusedWorkers(node_to_workers);
+  gcs_actor_scheduler_->ReleaseUnusedActorWorkers(node_to_workers);
   ASSERT_EQ(1, raylet_client_->num_release_unused_workers);
   ASSERT_EQ(1, raylet_client_->release_callbacks.size());
 
   // Schedule an actor which is not tied to a worker, this should invoke the
   // `LeaseWorkerFromNode` method.
-  // But since the `ReleaseUnusedWorkers` request hasn't finished, `GcsActorScheduler`
-  // won't send `RequestWorkerLease` request to node immediately. But instead, it will
-  // invoke the `RetryLeasingWorkerFromNode` to retry later.
-  // Schedule a actor (requiring 32 memory units and 4 CPU).
+  // But since the `ReleaseUnusedActorWorkers` request hasn't finished,
+  // `GcsActorScheduler` won't send `RequestWorkerLease` request to node immediately. But
+  // instead, it will invoke the `RetryLeasingWorkerFromNode` to retry later. Schedule a
+  // actor (requiring 32 memory units and 4 CPU).
   std::unordered_map<std::string, double> required_placement_resources = {
       {kMemory_ResourceLabel, 32}, {kCPU_ResourceLabel, 4}};
   auto actor = NewGcsActor(required_placement_resources);
@@ -1177,9 +1182,9 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedWorkersByGcs) {
   ASSERT_EQ(2, gcs_actor_scheduler_->num_retry_leasing_count_);
   ASSERT_EQ(raylet_client_->num_workers_requested, 0);
 
-  // When `GcsActorScheduler` receives the `ReleaseUnusedWorkers` reply, it will send
+  // When `GcsActorScheduler` receives the `ReleaseUnusedActorWorkers` reply, it will send
   // out the `RequestWorkerLease` request.
-  ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedWorkers());
+  ASSERT_TRUE(raylet_client_->ReplyReleaseUnusedActorWorkers());
   gcs_actor_scheduler_->TryLeaseWorkerFromNodeAgain(actor, node);
   ASSERT_EQ(raylet_client_->num_workers_requested, 1);
 }

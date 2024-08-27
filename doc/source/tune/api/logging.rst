@@ -22,11 +22,13 @@ LoggerCallback Interface (tune.logger.LoggerCallback)
 -----------------------------------------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~tune.logger.LoggerCallback
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~tune.logger.LoggerCallback.log_trial_start
@@ -40,6 +42,7 @@ Tune Built-in Loggers
 ---------------------
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     tune.logger.JsonLoggerCallback
@@ -55,8 +58,11 @@ You can install MLflow via ``pip install mlflow``.
 See the :doc:`tutorial here </tune/examples/tune-mlflow>`.
 
 .. autosummary::
+    :nosignatures:
+    :toctree: doc/
 
-    air.integrations.mlflow.MLflowLoggerCallback
+    ~air.integrations.mlflow.MLflowLoggerCallback
+    ~air.integrations.mlflow.setup_mlflow
 
 Wandb Integration
 -----------------
@@ -66,8 +72,25 @@ You can install Wandb via ``pip install wandb``.
 See the :doc:`tutorial here </tune/examples/tune-wandb>`.
 
 .. autosummary::
+    :nosignatures:
+    :toctree: doc/
 
-    air.integrations.wandb.WandbLoggerCallback
+    ~air.integrations.wandb.WandbLoggerCallback
+    ~air.integrations.wandb.setup_wandb
+
+
+Comet Integration
+------------------------------
+
+Tune also provides a logger for `Comet <https://www.comet.com/>`_.
+You can install Comet via ``pip install comet-ml``.
+See the :doc:`tutorial here </tune/examples/tune-comet>`.
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~air.integrations.comet.CometLoggerCallback
 
 Aim Integration
 ---------------
@@ -77,6 +100,7 @@ You can install Aim via ``pip install aim``.
 See the :doc:`tutorial here </tune/examples/tune-aim>`
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~tune.logger.aim.AimLoggerCallback
@@ -100,4 +124,3 @@ The non-relevant metrics (like timing stats) can be disabled on the left to show
 relevant ones (like accuracy, loss, etc.).
 
 .. image:: ../images/ray-tune-viskit.png
-

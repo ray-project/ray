@@ -5,8 +5,7 @@ from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.typing import LocalOptimizer, AlgorithmConfigDict
 
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
 _, nn = try_import_torch()
 
 
-@Deprecated(error=False)
+@OldAPIStack
 class Exploration:
     """Implements an exploration strategy for Policies.
 
@@ -61,7 +60,6 @@ class Exploration:
             if params:
                 self.device = params[0].device
 
-    @DeveloperAPI
     def before_compute_actions(
         self,
         *,
@@ -83,7 +81,6 @@ class Exploration:
     # fmt: off
     # __sphinx_doc_begin_get_exploration_action__
 
-    @DeveloperAPI
     def get_exploration_action(self,
                                *,
                                action_distribution: ActionDistribution,
@@ -114,7 +111,6 @@ class Exploration:
     # __sphinx_doc_end_get_exploration_action__
     # fmt: on
 
-    @DeveloperAPI
     def on_episode_start(
         self,
         policy: "Policy",
@@ -133,7 +129,6 @@ class Exploration:
         """
         pass
 
-    @DeveloperAPI
     def on_episode_end(
         self,
         policy: "Policy",
@@ -152,7 +147,6 @@ class Exploration:
         """
         pass
 
-    @DeveloperAPI
     def postprocess_trajectory(
         self,
         policy: "Policy",
@@ -171,7 +165,6 @@ class Exploration:
         """
         return sample_batch
 
-    @DeveloperAPI
     def get_exploration_optimizer(
         self, optimizers: List[LocalOptimizer]
     ) -> List[LocalOptimizer]:
@@ -190,7 +183,6 @@ class Exploration:
         """
         return optimizers
 
-    @DeveloperAPI
     def get_state(self, sess: Optional["tf.Session"] = None) -> Dict[str, TensorType]:
         """Returns the current exploration state.
 
@@ -202,7 +194,6 @@ class Exploration:
         """
         return {}
 
-    @DeveloperAPI
     def set_state(self, state: object, sess: Optional["tf.Session"] = None) -> None:
         """Sets the Exploration object's state to the given values.
 
@@ -215,8 +206,4 @@ class Exploration:
             state: The state to set this Exploration to.
             sess: An optional tf Session object to use.
         """
-        pass
-
-    @Deprecated(new="get_state", error=True)
-    def get_info(self, sess: Optional["tf.Session"] = None):
         pass

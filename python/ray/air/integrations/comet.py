@@ -1,8 +1,11 @@
 import os
+from pathlib import Path
 from typing import Dict, List
 
-from ray.tune.logger import LoggerCallback
+import pyarrow.fs
+
 from ray.tune.experiment import Trial
+from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
 
 
@@ -223,19 +226,27 @@ class CometLoggerCallback(LoggerCallback):
                 name=f"checkpoint_{(str(trial))}", artifact_type="model"
             )
 
+            checkpoint_root = None
+
+            if isinstance(trial.checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+                checkpoint_root = trial.checkpoint.path
+                # Todo: For other filesystems, we may want to use
+                # artifact.add_remote() instead. However, this requires a full
+                # URI. We can add this once we have a way to retrieve it.
+
             # Walk through checkpoint directory and add all files to artifact
-            checkpoint_root = trial.checkpoint.dir_or_data
-            for root, dirs, files in os.walk(checkpoint_root):
-                rel_root = os.path.relpath(root, checkpoint_root)
-                for file in files:
-                    local_file = os.path.join(checkpoint_root, rel_root, file)
-                    logical_path = os.path.join(rel_root, file)
+            if checkpoint_root:
+                for root, dirs, files in os.walk(checkpoint_root):
+                    rel_root = os.path.relpath(root, checkpoint_root)
+                    for file in files:
+                        local_file = Path(checkpoint_root, rel_root, file).as_posix()
+                        logical_path = Path(rel_root, file).as_posix()
 
-                    # Strip leading `./`
-                    if logical_path.startswith("./"):
-                        logical_path = logical_path[2:]
+                        # Strip leading `./`
+                        if logical_path.startswith("./"):
+                            logical_path = logical_path[2:]
 
-                    artifact.add(local_file, logical_path=logical_path)
+                        artifact.add(local_file, logical_path=logical_path)
 
             experiment.log_artifact(artifact)
 

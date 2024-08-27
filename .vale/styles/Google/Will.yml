@@ -1,0 +1,8 @@
+extends: existence
+message: "Avoid using '%s'."
+link: 'https://developers.google.com/style/tense'
+ignorecase: true
+level: error
+tokens:
+  - will
+  - "'ll"

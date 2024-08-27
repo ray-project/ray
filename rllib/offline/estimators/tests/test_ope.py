@@ -14,8 +14,10 @@ import ray
 from ray.data import read_json
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.examples.env.cliff_walking_wall_env import CliffWalkingWallEnv
-from ray.rllib.examples.policy.cliff_walking_wall_policy import CliffWalkingWallPolicy
+from ray.rllib.examples.envs.classes.cliff_walking_wall_env import CliffWalkingWallEnv
+from ray.rllib.examples._old_api_stack.policy.cliff_walking_wall_policy import (
+    CliffWalkingWallPolicy,
+)
 from ray.rllib.offline.dataset_reader import DatasetReader
 from ray.rllib.offline.estimators import (
     DirectMethod,
@@ -26,6 +28,7 @@ from ray.rllib.offline.estimators import (
 from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import EVALUATION_RESULTS
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check
 
@@ -122,7 +125,7 @@ class TestOPE(unittest.TestCase):
             DQNConfig()
             .environment(env=env_name)
             .framework("torch")
-            .rollouts(batch_mode="complete_episodes")
+            .env_runners(batch_mode="complete_episodes")
             .offline_data(
                 input_="dataset",
                 input_config={"format": "json", "paths": train_data},
@@ -130,7 +133,7 @@ class TestOPE(unittest.TestCase):
             .evaluation(
                 evaluation_interval=1,
                 evaluation_duration=n_episodes,
-                evaluation_num_workers=1,
+                evaluation_num_env_runners=1,
                 evaluation_duration_unit="episodes",
                 off_policy_estimation_methods={
                     "is": {"type": ImportanceSampling, "epsilon_greedy": 0.1},
@@ -142,8 +145,8 @@ class TestOPE(unittest.TestCase):
             .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", 0)))
         )
 
-        num_rollout_workers = 4
-        dsize = num_rollout_workers * 1024
+        num_env_runners = 4
+        dsize = num_env_runners * 1024
         feature_dim = 64
         action_dim = 8
 
@@ -156,7 +159,7 @@ class TestOPE(unittest.TestCase):
         cls.train_df = pd.DataFrame({k: list(v) for k, v in data.items()})
         cls.train_df["type"] = "SampleBatch"
 
-        train_ds = ray.data.from_pandas(cls.train_df).repartition(num_rollout_workers)
+        train_ds = ray.data.from_pandas(cls.train_df).repartition(num_env_runners)
 
         cls.dqn_on_fake_ds = (
             DQNConfig()
@@ -164,15 +167,15 @@ class TestOPE(unittest.TestCase):
                 observation_space=gym.spaces.Box(-1, 1, (feature_dim,)),
                 action_space=gym.spaces.Discrete(action_dim),
             )
-            .rollouts(num_rollout_workers=num_rollout_workers)
+            .env_runners(num_env_runners=num_env_runners)
             .framework("torch")
-            # .rollouts(num_rollout_workers=num_rollout_workers)
+            # .env_runners(num_env_runners=num_env_runners)
             .offline_data(
                 input_="dataset",
                 input_config={"loader_fn": lambda: train_ds},
             )
             .evaluation(
-                evaluation_num_workers=num_rollout_workers,
+                evaluation_num_env_runners=num_env_runners,
                 ope_split_batch_by_episode=False,
             )
             # make the policy deterministic
@@ -230,13 +233,13 @@ class TestOPE(unittest.TestCase):
         # Test OPE in DQN, during training as well as by calling evaluate()
         algo = self.config_dqn_on_cartpole.build()
         results = algo.train()
-        ope_results = results["evaluation"]["off_policy_estimator"]
+        ope_results = results[EVALUATION_RESULTS]["off_policy_estimator"]
         # Check that key exists AND is not {}
         self.assertEqual(set(ope_results.keys()), {"is", "wis", "dm_fqe", "dr_fqe"})
 
         # Check algo.evaluate() manually as well
         results = algo.evaluate()
-        ope_results = results["evaluation"]["off_policy_estimator"]
+        ope_results = results["off_policy_estimator"]
         self.assertEqual(set(ope_results.keys()), {"is", "wis", "dm_fqe", "dr_fqe"})
 
     def test_is_wis_on_estimate_on_dataset(self):
@@ -256,8 +259,8 @@ class TestOPE(unittest.TestCase):
         num_actions = config.action_space.n
         algo = config.build()
 
-        evaluated_results = algo._run_one_evaluation()
-        ope_results = evaluated_results["evaluation"]["off_policy_estimator"]
+        evaluated_results = algo.evaluate()
+        ope_results = evaluated_results["off_policy_estimator"]
         policy = algo.get_policy()
 
         wis_gain, wis_ste = compute_expected_is_or_wis_estimator(
@@ -280,8 +283,8 @@ class TestOPE(unittest.TestCase):
     def test_algo_with_ope_from_checkpoint(self):
         algo = self.config_dqn_on_cartpole.build()
         tmpdir = tempfile.mkdtemp()
-        checkpoint = algo.save_checkpoint(tmpdir)
-        algo = Algorithm.from_checkpoint(checkpoint)
+        algo.save_checkpoint(tmpdir)
+        algo = Algorithm.from_checkpoint(tmpdir)
         shutil.rmtree(tmpdir)
 
 

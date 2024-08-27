@@ -14,7 +14,6 @@ Theoretical minimum time: 86,400 seconds
 """
 import argparse
 import ray
-from ray import tune
 
 from ray.tune.utils.release_test_util import timed_tune_run, ProgressCallback
 
@@ -40,8 +39,8 @@ def main(smoke_test: bool = False):
         checkpoint_size_b=int(0.75 * 1000**3),
         keep_checkpoints_num=2,  # 2 * 16 * 4 = 128 GB
         resources_per_trial={"cpu": 1},
-        sync_config=tune.SyncConfig(syncer="auto"),
         callbacks=[callback],
+        storage_path="/mnt/cluster_storage",
     )
 
 

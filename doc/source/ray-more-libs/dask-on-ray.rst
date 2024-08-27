@@ -31,7 +31,9 @@ workload. Using the Dask-on-Ray scheduler, the entire Dask ecosystem can be exec
 
      * - Ray Version
        - Dask Version
-     * - ``2.5.0``
+     * - ``2.8.0`` or above
+       - ``2022.10.1``
+     * - ``2.5.0`` to ``2.7.x``
        - | ``2022.2.0 (Python version < 3.8)``
          | ``2022.10.1 (Python version >= 3.8)``
      * - ``2.4.0``
@@ -81,7 +83,7 @@ any Dask `.compute() <https://docs.dask.org/en/latest/api.html#dask.compute>`__
 call.
 Here's an example:
 
-.. literalinclude:: ../data/doc_code/dask_on_ray_scheduler_example.py
+.. literalinclude:: doc_code/dask_on_ray_scheduler_example.py
     :language: python
 
 .. note::
@@ -146,7 +148,7 @@ aggregations): those downstream computations will be faster since that base coll
 computation was kicked off early and referenced by all downstream computations, often
 via shared memory.
 
-.. literalinclude:: ../data/doc_code/dask_on_ray_persist_example.py
+.. literalinclude:: doc_code/dask_on_ray_persist_example.py
     :language: python
 
 
@@ -165,7 +167,7 @@ globally via the ``.compute(ray_remote_args={...})`` API, which will
 serve as a default for all Ray tasks launched via the Dask workload. Annotations on
 individual Dask operations will override this global default.
 
-.. literalinclude:: ../data/doc_code/dask_on_ray_annotate_example.py
+.. literalinclude:: doc_code/dask_on_ray_annotate_example.py
     :language: python
 
 Note that you may need to disable graph optimizations since it can break annotations,
@@ -180,7 +182,7 @@ Dask-on-Ray provides a Dask DataFrame optimizer that leverages Ray's ability to
 execute multiple-return tasks in order to speed up shuffling by as much as 4x on Ray.
 Simply set the `dataframe_optimize` configuration option to our optimizer function, similar to how you specify the Dask-on-Ray scheduler:
 
-.. literalinclude:: ../data/doc_code/dask_on_ray_shuffle_optimization.py
+.. literalinclude:: doc_code/dask_on_ray_shuffle_optimization.py
     :language: python
 
 Callbacks
@@ -197,7 +199,7 @@ such as progress reporting, diagnostics, caching, etc., is simple.
 Here's an example that measures and logs the execution time of each task using
 the ``ray_pretask`` and ``ray_posttask`` hooks:
 
-.. literalinclude:: ../data/doc_code/dask_on_ray_callbacks.py
+.. literalinclude:: doc_code/dask_on_ray_callbacks.py
     :language: python
     :start-after: __timer_callback_begin__
     :end-before: __timer_callback_end__
@@ -222,8 +224,7 @@ The following Ray-specific callbacks are provided:
    6. :code:`ray_finish(result)`: Run after all Ray tasks have finished
       executing and the final result has been returned.
 
-See the docstring for
-:meth:`RayDaskCallback.__init__() <ray.util.dask.callbacks.RayDaskCallback>.__init__`
+See the docstring for :class:`~ray.util.dask.RayDaskCallback`
 for further details about these callbacks, their arguments, and their return
 values.
 
@@ -231,21 +232,21 @@ When creating your own callbacks, you can use
 :class:`RayDaskCallback <ray.util.dask.callbacks.RayDaskCallback>`
 directly, passing the callback functions as constructor arguments:
 
-.. literalinclude:: ../data/doc_code/dask_on_ray_callbacks.py
+.. literalinclude:: doc_code/dask_on_ray_callbacks.py
     :language: python
     :start-after: __ray_dask_callback_direct_begin__
     :end-before: __ray_dask_callback_direct_end__
 
 or you can subclass it, implementing the callback methods that you need:
 
-.. literalinclude:: ../data/doc_code/dask_on_ray_callbacks.py
+.. literalinclude:: doc_code/dask_on_ray_callbacks.py
     :language: python
     :start-after: __ray_dask_callback_subclass_begin__
     :end-before: __ray_dask_callback_subclass_end__
 
 You can also specify multiple callbacks:
 
-.. literalinclude:: ../data/doc_code/dask_on_ray_callbacks.py
+.. literalinclude:: doc_code/dask_on_ray_callbacks.py
     :language: python
     :start-after: __multiple_callbacks_begin__
     :end-before: __multiple_callbacks_end__
@@ -255,7 +256,7 @@ aggregation, such as capturing task execution statistics and caching results.
 Here is an example that does both, caching the result of a task if its
 execution time exceeds some user-defined threshold:
 
-.. literalinclude:: ../data/doc_code/dask_on_ray_callbacks.py
+.. literalinclude:: doc_code/dask_on_ray_callbacks.py
     :language: python
     :start-after: __caching_actor_begin__
     :end-before: __caching_actor_end__
@@ -269,3 +270,18 @@ execution time exceeds some user-defined threshold:
   *submitted*, not executed.
 
 This callback API is currently unstable and subject to change.
+
+API
+---
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~ray.util.dask.RayDaskCallback
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_presubmit
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_postsubmit
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_pretask
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_posttask
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_postsubmit_all
+    ~ray.util.dask.callbacks.RayDaskCallback._ray_finish

@@ -1,9 +1,11 @@
 import json
+import os
 
+from ray_release.configs.global_config import get_global_config
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus
 from ray_release.test import Test
-from ray_release.test_automation.state_machine import TestStateMachine
+from ray_release.test_automation.release_state_machine import ReleaseTestStateMachine
 from ray_release.logger import logger
 
 
@@ -17,6 +19,15 @@ class RayTestDBReporter(Reporter):
     """
 
     def report_result(self, test: Test, result: Result) -> None:
+        if os.environ.get("BUILDKITE_BRANCH") != "master":
+            logger.info("Skip upload test results. We only upload on master branch.")
+            return
+        if (
+            os.environ.get("BUILDKITE_PIPELINE_ID")
+            not in get_global_config()["ci_pipeline_postmerge"]
+        ):
+            logger.info("Skip upload test results. We only upload on branch pipeline.")
+            return
         if result.status == ResultStatus.TRANSIENT_INFRA_ERROR.value:
             logger.info(
                 f"Skip recording result for test {test.get_name()} due to transient "
@@ -37,7 +48,7 @@ class RayTestDBReporter(Reporter):
         )
 
         # Compute and update the next test state
-        TestStateMachine(test).move()
+        ReleaseTestStateMachine(test).move()
 
         # Persist the updated test object to S3
         test.persist_to_s3()

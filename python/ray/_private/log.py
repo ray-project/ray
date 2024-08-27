@@ -1,50 +1,30 @@
 import logging
-import re
 from logging.config import dictConfig
 import threading
+from typing import Union
 
 
-class ContextFilter(logging.Filter):
-    """A filter that adds ray context info to log records.
+def _print_loggers():
+    """Print a formatted list of loggers and their handlers for debugging."""
+    loggers = {logging.root.name: logging.root}
+    loggers.update(dict(sorted(logging.root.manager.loggerDict.items())))
+    for name, logger in loggers.items():
+        if isinstance(logger, logging.Logger):
+            print(f"  {name}: disabled={logger.disabled}, propagate={logger.propagate}")
+            for handler in logger.handlers:
+                print(f"    {handler}")
 
-    This filter adds a package name to append to the message as well as information
-    about what worker emitted the message, if applicable.
+
+def clear_logger(logger: Union[str, logging.Logger]):
+    """Reset a logger, clearing its handlers and enabling propagation.
+
+    Args:
+        logger: Logger to be cleared
     """
-
-    logger_regex = re.compile(r"ray(\.(?P<subpackage>\w+))?(\..*)?")
-    package_message_names = {
-        "air": "AIR",
-        "data": "Data",
-        "rllib": "RLlib",
-        "serve": "Serve",
-        "train": "Train",
-        "tune": "Tune",
-        "workflow": "Workflow",
-    }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        """Add context information to the log record.
-
-        This filter adds a package name from where the message was generated as
-        well as the worker IP address, if applicable.
-
-        Args:
-            record: Record to be filtered
-
-        Returns:
-            True if the record is to be logged, False otherwise. (This filter only
-            adds context, so records are always logged.)
-        """
-        match = self.logger_regex.search(record.name)
-        if match and match["subpackage"] in self.package_message_names:
-            record.package = f"[Ray {self.package_message_names[match['subpackage']]}]"
-        else:
-            record.package = ""
-
-        return True
+    if isinstance(logger, str):
+        logger = logging.getLogger(logger)
+    logger.propagate = True
+    logger.handlers.clear()
 
 
 class PlainRayHandler(logging.StreamHandler):
@@ -101,12 +81,11 @@ def generate_logging_config():
                 ),
             },
         }
-        filters = {"context_filter": {"()": ContextFilter}}
+
         handlers = {
             "default": {
                 "()": PlainRayHandler,
                 "formatter": "plain",
-                "filters": ["context_filter"],
             }
         }
 
@@ -131,8 +110,8 @@ def generate_logging_config():
             {
                 "version": 1,
                 "formatters": formatters,
-                "filters": filters,
                 "handlers": handlers,
                 "loggers": loggers,
+                "disable_existing_loggers": False,
             }
         )

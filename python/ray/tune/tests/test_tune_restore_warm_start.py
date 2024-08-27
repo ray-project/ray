@@ -1,39 +1,36 @@
 # coding: utf-8
 import os
-import pytest
 import shutil
+import sys
 import tempfile
 import unittest
 
-import skopt
 import numpy as np
+import pandas
+import pytest
 from hyperopt import hp
 from nevergrad.optimization import optimizerlib
+from packaging.version import Version
 from zoopt import ValueType
-from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
 import ray
-from ray import tune
+from ray import train, tune
 from ray.rllib import _register_all
+from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.search import ConcurrencyLimiter
-from ray.tune.search.hyperopt import HyperOptSearch
-from ray.tune.search.dragonfly import DragonflySearch
+from ray.tune.search.ax import AxSearch
 from ray.tune.search.bayesopt import BayesOptSearch
-from ray.tune.search.flaml import CFO, BlendSearch
-from ray.tune.search.skopt import SkOptSearch
+from ray.tune.search.bohb import TuneBOHB
+from ray.tune.search.hebo import HEBOSearch
+from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.nevergrad import NevergradSearch
 from ray.tune.search.optuna import OptunaSearch
-from ray.tune.search.sigopt import SigOptSearch, load_sigopt_key
 from ray.tune.search.zoopt import ZOOptSearch
-from ray.tune.search.hebo import HEBOSearch
-from ray.tune.search.ax import AxSearch
-from ray.tune.search.bohb import TuneBOHB
-from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 
 
 class AbstractWarmStartTest:
     def setUp(self):
-        ray.init(num_cpus=1, local_mode=True)
+        ray.init(num_cpus=1)
         self.tmpdir = tempfile.mkdtemp()
         self.experiment_name = "results"
 
@@ -156,9 +153,9 @@ class HyperoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             "z": hp.uniform("z", -10, 0),
         }
 
-        def cost(space, reporter):
+        def cost(space):
             loss = space["x"] ** 2 + space["y"] ** 2 + space["z"] ** 2
-            reporter(loss=loss)
+            train.report(dict(loss=loss))
 
         search_alg = HyperOptSearch(
             space,
@@ -174,8 +171,10 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self, analysis=None):
         space = {"width": (0, 20), "height": (-100, 100)}
 
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+        def cost(space):
+            train.report(
+                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+            )
 
         search_alg = BayesOptSearch(space, metric="loss", mode="min", analysis=analysis)
         return search_alg, cost
@@ -190,78 +189,16 @@ class BayesoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         )
 
 
-class CFOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space = {
-            "height": tune.uniform(-100, 100),
-            "width": tune.randint(0, 100),
-        }
-
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
-
-        search_alg = CFO(
-            space=space,
-            metric="loss",
-            mode="min",
-            seed=20,
-        )
-
-        return search_alg, cost
-
-
-class BlendSearchWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        space = {
-            "height": tune.uniform(-100, 100),
-            "width": tune.randint(0, 100),
-            "time_budget_s": 10,
-        }
-
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3), cost=1)
-
-        search_alg = BlendSearch(
-            space=space,
-            metric="loss",
-            mode="min",
-            seed=20,
-            # Mocked to be a constant to ensure reproductibility,
-            # as runtime (default) can fluctuate
-            cost_attr="cost",
-        )
-
-        return search_alg, cost
-
-
-class SkoptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        optimizer = skopt.Optimizer([(0, 20), (-100, 100)])
-        previously_run_params = [[10, 0], [15, -20]]
-        known_rewards = [-189, -1144]
-
-        def cost(space, reporter):
-            reporter(loss=(space["height"] ** 2 + space["width"] ** 2))
-
-        search_alg = SkOptSearch(
-            optimizer,
-            ["width", "height"],
-            metric="loss",
-            mode="min",
-            points_to_evaluate=previously_run_params,
-            evaluated_rewards=known_rewards,
-        )
-        return search_alg, cost
-
-
 class NevergradWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         instrumentation = 2
         parameter_names = ["height", "width"]
         optimizer = optimizerlib.OnePlusOne(instrumentation)
 
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+        def cost(space):
+            train.report(
+                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+            )
 
         search_alg = NevergradSearch(
             optimizer,
@@ -280,105 +217,15 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
         )
 
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+        def cost(space):
+            train.report(
+                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+            )
 
         search_alg = OptunaSearch(
             space, sampler=TPESampler(seed=10), metric="loss", mode="min"
         )
         return search_alg, cost
-
-
-class DragonflyWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def set_basic_conf(self):
-        from dragonfly.opt.gp_bandit import EuclideanGPBandit
-        from dragonfly.exd.experiment_caller import EuclideanFunctionCaller
-        from dragonfly import load_config
-
-        def cost(space, reporter):
-            height, width = space["point"]
-            reporter(loss=(height - 14) ** 2 - abs(width - 3))
-
-        domain_vars = [
-            {"name": "height", "type": "float", "min": -10, "max": 10},
-            {"name": "width", "type": "float", "min": 0, "max": 20},
-        ]
-
-        domain_config = load_config({"domain": domain_vars})
-
-        func_caller = EuclideanFunctionCaller(
-            None, domain_config.domain.list_of_domains[0]
-        )
-        optimizer = EuclideanGPBandit(func_caller, ask_tell_mode=True)
-        search_alg = DragonflySearch(
-            optimizer, metric="loss", mode="min", random_state_seed=162
-        )
-        return search_alg, cost
-
-    def treat_trial_config(self, trial_config):
-        return [list(x["point"]) for x in trial_config]
-
-
-class SigOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
-    def setUp(self):
-        AbstractWarmStartTest.setUp(self)
-        load_sigopt_key()
-
-    def set_basic_conf(self):
-        space = [
-            {
-                "name": "width",
-                "type": "int",
-                "bounds": {"min": 0, "max": 20},
-            },
-            {
-                "name": "height",
-                "type": "int",
-                "bounds": {"min": -100, "max": 100},
-            },
-        ]
-
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
-
-        # Unfortunately, SigOpt doesn't allow setting of random state. Thus,
-        # we always end up with different suggestions, which is unsuitable
-        # for the warm start test. Here we make do with points_to_evaluate,
-        # and ensure that state is preserved over checkpoints and restarts.
-        points = [
-            {"width": 5, "height": 20},
-            {"width": 10, "height": -20},
-            {"width": 15, "height": 30},
-            {"width": 5, "height": -30},
-            {"width": 10, "height": 40},
-            {"width": 15, "height": -40},
-            {"width": 5, "height": 50},
-            {"width": 10, "height": -50},
-            {"width": 15, "height": 60},
-            {"width": 12, "height": -60},
-        ]
-
-        search_alg = SigOptSearch(
-            space,
-            name="SigOpt Example Experiment",
-            metric="loss",
-            mode="min",
-            points_to_evaluate=points,
-        )
-        return search_alg, cost
-
-    def testWarmStart(self):
-        if "SIGOPT_KEY" not in os.environ:
-            self.skipTest("No SigOpt API key found in environment.")
-            return
-
-        super().testWarmStart()
-
-    def testRestore(self):
-        if "SIGOPT_KEY" not in os.environ:
-            self.skipTest("No SigOpt API key found in environment.")
-            return
-        super().testRestore()
 
 
 class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
@@ -388,8 +235,10 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
             "width": (ValueType.DISCRETE, [0, 20], False),
         }
 
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+        def cost(param):
+            train.report(
+                dict(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+            )
 
         search_alg = ZOOptSearch(
             algo="Asracos",  # only support ASRacos currently
@@ -402,16 +251,24 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="HEBO doesn't support py312")
 class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
+        if Version(pandas.__version__) >= Version("2.0.0"):
+            pytest.skip("HEBO does not support pandas>=2.0.0")
+
+        from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
+
         space_config = [
             {"name": "width", "type": "num", "lb": 0, "ub": 20},
             {"name": "height", "type": "num", "lb": -100, "ub": 100},
         ]
         space = HEBODesignSpace().parse(space_config)
 
-        def cost(param, reporter):
-            reporter(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+        def cost(param):
+            train.report(
+                dict(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
+            )
 
         search_alg = HEBOSearch(
             space=space, metric="loss", mode="min", random_state_seed=5
@@ -463,30 +320,33 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         client = AxClient(random_seed=4321, generation_strategy=gs)
         client.create_experiment(parameters=space, objective_name="loss", minimize=True)
 
-        def cost(space, reporter):
-            reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+        def cost(space):
+            train.report(
+                dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3))
+            )
 
         search_alg = AxSearch(ax_client=client)
         return search_alg, cost
 
 
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="BOHB doesn't support py312")
 class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
 
-        def cost(space, reporter):
+        def cost(space):
             for i in range(10):
-                reporter(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3 - i))
+                train.report(
+                    dict(loss=(space["height"] - 14) ** 2 - abs(space["width"] - 3 - i))
+                )
 
         search_alg = TuneBOHB(space=space, metric="loss", mode="min", seed=1)
 
         return search_alg, cost
 
     def get_scheduler(self):
-        return HyperBandForBOHB(max_t=10, metric="loss", mode="min")
+        return HyperBandForBOHB(max_t=100, metric="loss", mode="min")
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

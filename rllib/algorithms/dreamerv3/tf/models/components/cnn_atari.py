@@ -23,7 +23,7 @@ class CNNAtari(tf.keras.Model):
         """Initializes a CNNAtari instance.
 
         Args:
-            model_size: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendix B.
                 Use None for manually setting the `cnn_multiplier`.
             cnn_multiplier: Optional override for the additional factor used to multiply
                 the number of filters with each CNN layer. Starting with
@@ -87,6 +87,15 @@ class CNNAtari(tf.keras.Model):
         # -> 4 x 4 x num_filters -> now flatten.
         self.flatten_layer = tf.keras.layers.Flatten(data_format="channels_last")
 
+    @tf.function(
+        input_signature=[
+            tf.TensorSpec(
+                shape=[None, 64, 64, 3],
+                dtype=tf.keras.mixed_precision.global_policy().compute_dtype
+                or tf.float32,
+            )
+        ]
+    )
     def call(self, inputs):
         """Performs a forward pass through the CNN Atari encoder.
 

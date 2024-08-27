@@ -1,0 +1,15 @@
+name: "data6build"
+froms: ["cr.ray.io/rayproject/oss-ci-base_ml"]
+dockerfile: ci/docker/data.build.Dockerfile
+srcs:
+  - ci/env/install-dependencies.sh
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+  - python/requirements/ml/dl-cpu-requirements.txt
+  - python/requirements/ml/data-requirements.txt
+  - python/requirements/ml/data-test-requirements.txt
+build_args:
+  - ARROW_VERSION=6.*
+tags:
+  - cr.ray.io/rayproject/data6build

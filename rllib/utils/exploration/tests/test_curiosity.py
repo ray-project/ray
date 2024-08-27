@@ -7,9 +7,15 @@ import unittest
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 import ray.rllib.algorithms.ppo as ppo
-from ray.rllib.utils.test_utils import check_learning_achieved, framework_iterator
+from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MAX,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.numpy import one_hot
 from ray.tune import register_env
 
@@ -29,7 +35,7 @@ class MyCallBack(DefaultCallbacks):
         policies,
         postprocessed_batch,
         original_batches,
-        **kwargs
+        **kwargs,
     ):
         pos = np.argmax(postprocessed_batch["obs"], -1)
         x, y = pos % 8, pos // 8
@@ -166,11 +172,8 @@ class TestCuriosity(unittest.TestCase):
             .callbacks(MyCallBack)
             # Limit horizon to make it really hard for non-curious agent to reach
             # the goal state.
-            .rollouts(num_rollout_workers=0)
-            # TODO (Kourosh): We need to provide examples on how we do curiosity with
-            # RLModule API
-            .training(lr=0.001, _enable_learner_api=False)
-            .exploration(
+            .env_runners(
+                num_env_runners=0,
                 exploration_config={
                     "type": "Curiosity",
                     "eta": 0.2,
@@ -183,42 +186,43 @@ class TestCuriosity(unittest.TestCase):
                     "sub_exploration": {
                         "type": "StochasticSampling",
                     },
-                }
+                },
             )
-            .rl_module(_enable_rl_module_api=False)
+            # TODO (Kourosh): We need to provide examples on how we do curiosity with
+            # RLModule API
+            .training(lr=0.001)
         )
 
         num_iterations = 10
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            # W/ Curiosity. Expect to learn something.
-            algo = config.build()
-            learnt = False
-            for i in range(num_iterations):
-                result = algo.train()
-                print(result)
-                if result["episode_reward_max"] > 0.0:
-                    print("Reached goal after {} iters!".format(i))
-                    learnt = True
-                    break
-            algo.stop()
-            self.assertTrue(learnt)
+        # W/ Curiosity. Expect to learn something.
+        algo = config.build()
+        learnt = False
+        for i in range(num_iterations):
+            result = algo.train()
+            print(result)
+            if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MAX] > 0.0:
+                print("Reached goal after {} iters!".format(i))
+                learnt = True
+                break
+        algo.stop()
+        self.assertTrue(learnt)
 
-            # Disable this check for now. Add too much flakyness to test.
-            # if fw == "tf":
-            #    # W/o Curiosity. Expect to learn nothing.
-            #    print("Trying w/o curiosity (not expected to learn).")
-            #    config["exploration_config"] = {
-            #        "type": "StochasticSampling",
-            #    }
-            #    algo = ppo.PPO(config=config)
-            #    rewards_wo = 0.0
-            #    for _ in range(num_iterations):
-            #        result = algo.train()
-            #        rewards_wo += result["episode_reward_mean"]
-            #        print(result)
-            #    algo.stop()
-            #    self.assertTrue(rewards_wo == 0.0)
-            #    print("Did not reach goal w/o curiosity!")
+        # Disable this check for now. Add too much flakyness to test.
+        # if fw == "tf":
+        #    # W/o Curiosity. Expect to learn nothing.
+        #    print("Trying w/o curiosity (not expected to learn).")
+        #    config["exploration_config"] = {
+        #        "type": "StochasticSampling",
+        #    }
+        #    algo = ppo.PPO(config=config)
+        #    rewards_wo = 0.0
+        #    for _ in range(num_iterations):
+        #        result = algo.train()
+        #        rewards_wo += result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+        #        print(result)
+        #    algo.stop()
+        #    self.assertTrue(rewards_wo == 0.0)
+        #    print("Did not reach goal w/o curiosity!")
 
     def test_curiosity_on_partially_observable_domain(self):
         config = (
@@ -233,18 +237,9 @@ class TestCuriosity(unittest.TestCase):
                     "framestack": 1,  # seems to work even w/o framestacking
                 },
             )
-            .rollouts(num_envs_per_worker=4, num_rollout_workers=0)
-            .training(
-                model={
-                    "fcnet_hiddens": [256, 256],
-                    "fcnet_activation": "relu",
-                },
-                num_sgd_iter=8,
-                # TODO (Kourosh): We need to provide examples on how we do curiosity
-                # with RLModule API
-                _enable_learner_api=False,
-            )
-            .exploration(
+            .env_runners(
+                num_envs_per_env_runner=4,
+                num_env_runners=0,
                 exploration_config={
                     "type": "Curiosity",
                     # For the feature NN, use a non-LSTM fcnet (same as the one
@@ -261,51 +256,56 @@ class TestCuriosity(unittest.TestCase):
                     "sub_exploration": {
                         "type": "StochasticSampling",
                     },
-                }
+                },
             )
-            .rl_module(_enable_rl_module_api=False)
+            .training(
+                model={
+                    "fcnet_hiddens": [256, 256],
+                    "fcnet_activation": "relu",
+                },
+                num_sgd_iter=8,
+            )
         )
 
         min_reward = 0.001
         stop = {
-            "training_iteration": 25,
-            "episode_reward_mean": min_reward,
+            TRAINING_ITERATION: 25,
+            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": min_reward,
         }
-        for _ in framework_iterator(config, frameworks="torch"):
-            # To replay:
-            # algo = ppo.PPO(config=config)
-            # algo.restore("[checkpoint file]")
-            # env = env_maker(config["env_config"])
-            # obs, info = env.reset()
-            # for _ in range(10000):
-            #     obs, reward, done, truncated, info = env.step(
-            #         algo.compute_single_action(s)
-            #     )
-            #     if done:
-            #         obs, info = env.reset()
-            #     env.render()
+        # To replay:
+        # algo = ppo.PPO(config=config)
+        # algo.restore("[checkpoint file]")
+        # env = env_maker(config["env_config"])
+        # obs, info = env.reset()
+        # for _ in range(10000):
+        #     obs, reward, done, truncated, info = env.step(
+        #         algo.compute_single_action(s)
+        #     )
+        #     if done:
+        #         obs, info = env.reset()
+        #     env.render()
 
-            results = tune.Tuner(
-                "PPO",
-                param_space=config,
-                run_config=air.RunConfig(stop=stop, verbose=1),
-            ).fit()
-            check_learning_achieved(results, min_reward)
-            iters = results.get_best_result().metrics["training_iteration"]
-            print("Reached in {} iterations.".format(iters))
+        results = tune.Tuner(
+            "PPO",
+            param_space=config,
+            run_config=air.RunConfig(stop=stop, verbose=1),
+        ).fit()
+        check_learning_achieved(results, min_reward)
+        iters = results.get_best_result().metrics[TRAINING_ITERATION]
+        print("Reached in {} iterations.".format(iters))
 
-            # config_wo = config.copy()
-            # config_wo["exploration_config"] = {"type": "StochasticSampling"}
-            # stop_wo = stop.copy()
-            # stop_wo["training_iteration"] = iters
-            # results = tune.Tuner(
-            #     "PPO", param_space=config_wo, stop=stop_wo, verbose=1).fit()
-            # try:
-            #     check_learning_achieved(results, min_reward)
-            # except ValueError:
-            #     print("Did not learn w/o curiosity (expected).")
-            # else:
-            #     raise ValueError("Learnt w/o curiosity (not expected)!")
+        # config_wo = config.copy()
+        # config_wo["exploration_config"] = {"type": "StochasticSampling"}
+        # stop_wo = stop.copy()
+        # stop_wo[TRAINING_ITERATION] = iters
+        # results = tune.Tuner(
+        #     "PPO", param_space=config_wo, stop=stop_wo, verbose=1).fit()
+        # try:
+        #     check_learning_achieved(results, min_reward)
+        # except ValueError:
+        #     print("Did not learn w/o curiosity (expected).")
+        # else:
+        #     raise ValueError("Learnt w/o curiosity (not expected)!")
 
 
 if __name__ == "__main__":

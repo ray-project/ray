@@ -1,35 +1,24 @@
 import json
 import os
 import shutil
-import subprocess
 import sys
-import tempfile
-from typing import Optional
+from typing import Tuple
 from pathlib import Path
 
 import click
 
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
-from ray_release.buildkite.step import get_step
+from ray_release.buildkite.step import get_step_for_test_group
 from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
-from ray_release.config import (
-    read_and_validate_release_test_collection,
-    DEFAULT_WHEEL_WAIT_TIMEOUT,
-    parse_python_version,
-)
+from ray_release.config import read_and_validate_release_test_collection
 from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
-from ray_release.wheels import (
-    find_and_wait_for_ray_wheels_url,
-    find_ray_wheels_url,
-    get_buildkite_repo_branch,
-    parse_commit_from_wheel_url,
-)
+from ray_release.wheels import get_buildkite_repo_branch
 
 PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 
@@ -37,19 +26,9 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 @click.command()
 @click.option(
     "--test-collection-file",
-    default=None,
     type=str,
-    help="File containing test configurations",
-)
-@click.option(
-    "--no-clone-repo",
-    is_flag=True,
-    show_default=True,
-    default=False,
-    help=(
-        "Will not clone the test repository even if specified in configuration "
-        "(for internal use)."
-    ),
+    multiple=True,
+    help="Test collection file, relative path to ray repo.",
 )
 @click.option(
     "--run-jailed-tests",
@@ -73,12 +52,18 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     ),
     help="Global config to use for test execution.",
 )
+@click.option(
+    "--run-per-test",
+    default=1,
+    type=int,
+    help=("The number of time we run test on the same commit"),
+)
 def main(
-    test_collection_file: Optional[str] = None,
-    no_clone_repo: bool = False,
+    test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
     global_config: str = "oss_config.yaml",
+    run_per_test: int = 1,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -86,59 +71,12 @@ def main(
     init_global_config(global_config_file)
     settings = get_pipeline_settings()
 
-    repo = settings["ray_test_repo"]
-    branch = settings["ray_test_branch"]
     tmpdir = None
 
     env = {}
-    if repo and not no_clone_repo:
-        # If the Ray test repo is set, we clone that repo to fetch
-        # the test configuration file. Otherwise, we might be missing newly
-        # added test.
-
-        tmpdir = tempfile.mktemp()
-
-        current_release_dir = os.path.abspath(
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-        )
-        clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {tmpdir}"
-        logger.info(f"Cloning test repository: {clone_cmd}")
-        try:
-            subprocess.check_output(clone_cmd, shell=True)
-        except Exception as e:
-            raise ReleaseTestCLIError(
-                f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
-            ) from e
-        subprocess.check_output(
-            ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
-        )
-
-        # We run the script again in a subprocess without entering this if again.
-        # This is necessary as we update the ray_release files. This way,
-        # the modules are reloaded and use the newest files, instead of
-        # old ones, which may not have the changes introduced on the
-        # checked out branch.
-        cmd = _get_rerun_cmd(
-            global_config,
-            test_collection_file,
-            run_jailed_tests,
-            run_unstable_tests,
-        )
-        subprocess.run(cmd, capture_output=False, check=True)
-        return
-    elif repo:
-        env = {
-            "RAY_TEST_REPO": repo,
-            "RAY_TEST_BRANCH": branch,
-        }
-    test_collection_file = test_collection_file or os.path.join(
-        os.path.dirname(__file__), "..", "..", "release_tests.yaml"
-    )
-
     frequency = settings["frequency"]
     prefer_smoke_tests = settings["prefer_smoke_tests"]
     test_attr_regex_filters = settings["test_attr_regex_filters"]
-    ray_wheels = settings["ray_wheels"]
     priority = settings["priority"]
 
     logger.info(
@@ -146,7 +84,6 @@ def main(
         f"  frequency =               {settings['frequency']}\n"
         f"  prefer_smoke_tests =      {settings['prefer_smoke_tests']}\n"
         f"  test_attr_regex_filters = {settings['test_attr_regex_filters']}\n"
-        f"  ray_wheels =              {settings['ray_wheels']}\n"
         f"  ray_test_repo =           {settings['ray_test_repo']}\n"
         f"  ray_test_branch =         {settings['ray_test_branch']}\n"
         f"  priority =                {settings['priority']}\n"
@@ -155,7 +92,7 @@ def main(
 
     try:
         test_collection = read_and_validate_release_test_collection(
-            test_collection_file
+            test_collection_file or ["release/release_tests.yaml"]
         )
     except ReleaseTestConfigError as e:
         raise ReleaseTestConfigError(
@@ -201,62 +138,23 @@ def main(
 
     logger.info(f"Tests to run:\n{group_str}")
 
-    # Wait for wheels here so we have them ready before we kick off
-    # the other workers
-    ray_wheels_url = find_and_wait_for_ray_wheels_url(
-        ray_wheels, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT
-    )
-    logger.info(f"Starting pipeline for Ray wheel: {ray_wheels_url}")
-
     no_concurrency_limit = settings["no_concurrency_limit"]
     if no_concurrency_limit:
         logger.warning("Concurrency is not limited for this run!")
 
-    # Report if REPORT=1 or BUILDKITE_SOURCE=schedule or it's a release branch (i.e.
-    # both the buildkite wheel branch and the test branch started with 'releases/')
     _, buildkite_branch = get_buildkite_repo_branch()
-    report = (
-        bool(int(os.environ.get("REPORT", "0")))
-        or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
-        or (branch.startswith("releases/") and buildkite_branch.startswith("releases/"))
-    )
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         env["REPORT_TO_RAY_TEST_DB"] = "1"
 
-    steps = []
-    for group in sorted(grouped_tests):
-        tests = grouped_tests[group]
-        group_steps = []
-        for test, smoke_test in tests:
-            # If the python version is defined, we need a different Ray wheels URL
-            if "python" in test:
-                python_version = parse_python_version(test["python"])
-                this_ray_wheels_url = find_ray_wheels_url(
-                    ray_wheels, python_version=python_version
-                )
-            else:
-                this_ray_wheels_url = ray_wheels_url
-
-            ray_commit = parse_commit_from_wheel_url(this_ray_wheels_url)
-            if ray_commit:
-                env.update({"RAY_COMMIT_OF_WHEEL": ray_commit})
-            step = get_step(
-                test,
-                report=report,
-                smoke_test=smoke_test,
-                ray_wheels=this_ray_wheels_url,
-                env=env,
-                priority_val=priority.value,
-            )
-
-            if no_concurrency_limit:
-                step.pop("concurrency", None)
-                step.pop("concurrency_group", None)
-
-            group_steps.append(step)
-
-        group_step = {"group": group, "steps": group_steps}
-        steps.append(group_step)
+    steps = get_step_for_test_group(
+        grouped_tests,
+        minimum_run_per_test=run_per_test,
+        test_collection_file=test_collection_file,
+        env=env,
+        priority=priority.value,
+        global_config=global_config,
+        is_concurrency_limit=not no_concurrency_limit,
+    )
 
     if "BUILDKITE" in os.environ:
         if os.path.exists(PIPELINE_ARTIFACT_PATH):
@@ -274,23 +172,6 @@ def main(
 
     steps_str = json.dumps(steps)
     print(steps_str)
-
-
-def _get_rerun_cmd(
-    global_config: str,
-    test_collection_file: Optional[str] = None,
-    run_jailed_tests: bool = False,
-    run_unstable_tests: bool = False,
-):
-    cmd = [sys.executable, __file__, "--no-clone-repo"]
-    if test_collection_file:
-        cmd += ["--test-collection-file", test_collection_file]
-    if run_jailed_tests:
-        cmd += ["--run-jailed-tests"]
-    if run_unstable_tests:
-        cmd += ["--run-unstable-tests"]
-    cmd += ["--global-config", global_config]
-    return cmd
 
 
 if __name__ == "__main__":

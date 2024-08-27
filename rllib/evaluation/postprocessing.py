@@ -5,8 +5,7 @@ from typing import Dict, Optional
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.annotations import DeveloperAPI, OldAPIStack
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import AgentID
@@ -21,7 +20,7 @@ class Postprocessing:
     VALUE_TARGETS = "value_targets"
 
 
-@DeveloperAPI
+@OldAPIStack
 def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
     """Rewrites `batch` to encode n-step rewards, terminateds, truncateds, and next-obs.
 
@@ -85,7 +84,7 @@ def adjust_nstep(n_step: int, gamma: float, batch: SampleBatch) -> None:
                 )
 
 
-@DeveloperAPI
+@OldAPIStack
 def compute_advantages(
     rollout: SampleBatch,
     last_r: float,
@@ -154,7 +153,7 @@ def compute_advantages(
     return rollout
 
 
-@DeveloperAPI
+@OldAPIStack
 def compute_gae_for_sample_batch(
     policy: Policy,
     sample_batch: SampleBatch,
@@ -222,7 +221,7 @@ def compute_gae_for_sample_batch(
     return batch
 
 
-@DeveloperAPI
+@OldAPIStack
 def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> SampleBatch:
     """Performs a value function computation at the end of a trajectory.
 
@@ -270,7 +269,7 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
         input_dict = sample_batch.get_single_step_input_dict(
             policy.view_requirements, index="last"
         )
-        if policy.config.get("_enable_rl_module_api"):
+        if policy.config.get("enable_rl_module_and_learner"):
             # Note: During sampling you are using the parameters at the beginning of
             # the sampling process. If I'll be using this advantages during training
             # should it not be the latest parameters during training for this to be
@@ -291,7 +290,6 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
             input_dict = policy.maybe_add_time_dimension(
                 input_dict, seq_lens=input_dict[SampleBatch.SEQ_LENS]
             )
-            input_dict = NestedDict(input_dict)
             fwd_out = policy.model.forward_exploration(input_dict)
             # For recurrent models, we need to remove the time dimension.
             fwd_out = policy.maybe_remove_time_dimension(fwd_out)
@@ -327,7 +325,7 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
     return sample_batch
 
 
-@DeveloperAPI
+@OldAPIStack
 def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
     """Calculates the discounted cumulative sum over a reward sequence `x`.
 
@@ -341,13 +339,18 @@ def discount_cumsum(x: np.ndarray, gamma: float) -> np.ndarray:
         The sequence containing the discounted cumulative sums
         for each individual reward in `x` till the end of the trajectory.
 
-    Examples:
-        >>> x = np.array([0.0, 1.0, 2.0, 3.0])
-        >>> gamma = 0.9
-        >>> discount_cumsum(x, gamma)
-        ... array([0.0 + 0.9*1.0 + 0.9^2*2.0 + 0.9^3*3.0,
-        ...        1.0 + 0.9*2.0 + 0.9^2*3.0,
-        ...        2.0 + 0.9*3.0,
-        ...        3.0])
+     .. testcode::
+        :skipif: True
+
+        x = np.array([0.0, 1.0, 2.0, 3.0])
+        gamma = 0.9
+        discount_cumsum(x, gamma)
+
+    .. testoutput::
+
+        array([0.0 + 0.9*1.0 + 0.9^2*2.0 + 0.9^3*3.0,
+               1.0 + 0.9*2.0 + 0.9^2*3.0,
+               2.0 + 0.9*3.0,
+               3.0])
     """
     return scipy.signal.lfilter([1], [1, float(-gamma)], x[::-1], axis=0)[::-1]

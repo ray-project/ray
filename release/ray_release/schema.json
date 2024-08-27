@@ -15,6 +15,9 @@
 				"working_dir": {
 					"type": "string"
 				},
+				"repeated_run": {
+					"type": "integer"
+				},
 				"env": {
 					"type": "string"
 				},
@@ -24,9 +27,9 @@
 				"python": {
 					"type": "string",
 					"enum": [
-						"3.7",
-						"3.8",
-						"3.9"
+						"3.9",
+						"3.11",
+						"3.12"
 					]
 				},
 				"frequency": {
@@ -69,9 +72,6 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"cluster_env": {
-					"type": "string"
-				},
 				"cluster_compute": {
 					"type": "string"
 				},
@@ -90,8 +90,8 @@
 				}
 			},
 			"required": [
-				"cluster_compute",
-				"cluster_env"
+				"byod",
+				"cluster_compute"
 			],
 			"title": "Cluster"
 		},
@@ -99,13 +99,8 @@
 			"type": "object",
 			"additionalProperties": false,
 			"properties": {
-				"type": {
-					"type": "string",
-					"enum": [
-						"cpu",
-						"gpu",
-						"cu118"
-					]
+				"type":{
+					"type": "string"
 				},
 				"post_build_script":{
 					"type": "string"

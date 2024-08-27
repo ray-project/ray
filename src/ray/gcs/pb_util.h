@@ -20,7 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
-#include "src/ray/protobuf/experimental/autoscaler.pb.h"
+#include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -52,6 +52,7 @@ inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
   *job_info_ptr->mutable_driver_address() = driver_address;
+  job_info_ptr->set_driver_ip_address(driver_address.ip_address());
   job_info_ptr->set_driver_pid(driver_pid);
   job_info_ptr->set_entrypoint(entrypoint);
   *job_info_ptr->mutable_config() = job_config;
@@ -81,36 +82,11 @@ inline std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
   return error_info_ptr;
 }
 
-/// Helper function to produce actor table data.
-inline std::shared_ptr<ray::rpc::ActorTableData> CreateActorTableData(
-    const TaskSpecification &task_spec,
-    const ray::rpc::Address &address,
-    ray::rpc::ActorTableData::ActorState state,
-    uint64_t num_restarts) {
-  RAY_CHECK(task_spec.IsActorCreationTask());
-  auto actor_id = task_spec.ActorCreationId();
-  auto actor_info_ptr = std::make_shared<ray::rpc::ActorTableData>();
-  // Set all of the static fields for the actor. These fields will not change
-  // even if the actor fails or is reconstructed.
-  actor_info_ptr->set_actor_id(actor_id.Binary());
-  actor_info_ptr->set_parent_id(task_spec.CallerId().Binary());
-  actor_info_ptr->set_actor_creation_dummy_object_id(
-      task_spec.ActorDummyObject().Binary());
-  actor_info_ptr->set_job_id(task_spec.JobId().Binary());
-  actor_info_ptr->set_max_restarts(task_spec.MaxActorRestarts());
-  actor_info_ptr->set_is_detached(task_spec.IsDetachedActor());
-  // Set the fields that change when the actor is restarted.
-  actor_info_ptr->set_num_restarts(num_restarts);
-  actor_info_ptr->mutable_address()->CopyFrom(address);
-  actor_info_ptr->mutable_owner_address()->CopyFrom(
-      task_spec.GetMessage().caller_address());
-  actor_info_ptr->set_state(state);
-  return actor_info_ptr;
-}
-
 /// Helper function to produce worker failure data.
 inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
     const WorkerID &worker_id,
+    const NodeID &node_id,
+    const std::string &ip_address,
     int64_t timestamp,
     rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
@@ -120,6 +96,8 @@ inline std::shared_ptr<ray::rpc::WorkerTableData> CreateWorkerFailureData(
   // Only report the worker id + delta (new data upon worker failures).
   // GCS will merge the data with original worker data.
   worker_failure_info_ptr->mutable_worker_address()->set_worker_id(worker_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_raylet_id(node_id.Binary());
+  worker_failure_info_ptr->mutable_worker_address()->set_ip_address(ip_address);
   worker_failure_info_ptr->set_timestamp(timestamp);
   worker_failure_info_ptr->set_exit_type(disconnect_type);
   worker_failure_info_ptr->set_exit_detail(disconnect_detail);
@@ -165,20 +143,25 @@ inline const std::string &GetActorDeathCauseString(
 inline rpc::RayErrorInfo GetErrorInfoFromActorDeathCause(
     const rpc::ActorDeathCause &death_cause) {
   rpc::RayErrorInfo error_info;
-  if (death_cause.context_case() == ContextCase::kActorDiedErrorContext ||
-      death_cause.context_case() == ContextCase::kCreationTaskFailureContext) {
+  switch (death_cause.context_case()) {
+  case ContextCase::kActorDiedErrorContext:
+  case ContextCase::kCreationTaskFailureContext:
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
     error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
-  } else if (death_cause.context_case() == ContextCase::kRuntimeEnvFailedContext) {
+    break;
+  case ContextCase::kRuntimeEnvFailedContext:
     error_info.mutable_runtime_env_setup_failed_error()->CopyFrom(
         death_cause.runtime_env_failed_context());
     error_info.set_error_type(rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED);
-  } else if (death_cause.context_case() == ContextCase::kActorUnschedulableContext) {
+    break;
+  case ContextCase::kActorUnschedulableContext:
     error_info.set_error_type(rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR);
-  } else if (death_cause.context_case() == ContextCase::kOomContext) {
+    break;
+  case ContextCase::kOomContext:
     error_info.mutable_actor_died_error()->CopyFrom(death_cause);
     error_info.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-  } else {
+    break;
+  default:
     RAY_CHECK(death_cause.context_case() == ContextCase::CONTEXT_NOT_SET);
     error_info.set_error_type(rpc::ErrorType::ACTOR_DIED);
   }
@@ -294,7 +277,39 @@ inline bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
   }
 
   const auto &state_updates = task_event.state_updates();
-  return state_updates.has_finished_ts() || state_updates.has_failed_ts();
+  return state_updates.state_ts_ns().contains(rpc::TaskStatus::FINISHED) ||
+         state_updates.state_ts_ns().contains(rpc::TaskStatus::FAILED);
+}
+
+inline size_t NumProfileEvents(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_profile_events()) {
+    return 0;
+  }
+  return static_cast<size_t>(task_event.profile_events().events_size());
+}
+
+inline TaskAttempt GetTaskAttempt(const rpc::TaskEvents &task_event) {
+  return std::make_pair<>(TaskID::FromBinary(task_event.task_id()),
+                          task_event.attempt_number());
+}
+
+inline bool IsActorTask(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_task_info()) {
+    return false;
+  }
+
+  const auto &task_info = task_event.task_info();
+  return task_info.type() == rpc::TaskType::ACTOR_TASK ||
+         task_info.type() == rpc::TaskType::ACTOR_CREATION_TASK;
+}
+
+inline bool IsTaskFinished(const rpc::TaskEvents &task_event) {
+  if (!task_event.has_state_updates()) {
+    return false;
+  }
+
+  const auto &state_updates = task_event.state_updates();
+  return state_updates.state_ts_ns().contains(rpc::TaskStatus::FINISHED);
 }
 
 /// Fill the rpc::TaskStateUpdate with the timestamps according to the status change.
@@ -305,43 +320,28 @@ inline bool IsTaskTerminated(const rpc::TaskEvents &task_event) {
 inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
                                      int64_t timestamp,
                                      ray::rpc::TaskStateUpdate *state_updates) {
-  switch (task_status) {
-  case rpc::TaskStatus::PENDING_ARGS_AVAIL: {
-    state_updates->set_pending_args_avail_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::SUBMITTED_TO_WORKER: {
-    state_updates->set_submitted_to_worker_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::PENDING_NODE_ASSIGNMENT: {
-    state_updates->set_pending_node_assignment_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::FINISHED: {
-    state_updates->set_finished_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::FAILED: {
-    state_updates->set_failed_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::RUNNING: {
-    state_updates->set_running_ts(timestamp);
-    break;
-  }
-  case rpc::TaskStatus::NIL: {
+  if (task_status == rpc::TaskStatus::NIL) {
     // Not status change.
-    break;
+    return;
   }
-  default: {
-    UNREACHABLE;
-  }
-  }
+  (*state_updates->mutable_state_ts_ns())[task_status] = timestamp;
 }
 
 inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {
   return kPlacementGroupConstraintKeyPrefix + pg_id;
+}
+
+/// \brief Format placement group details.
+///     Format:
+///        <pg_id>:<strategy>:<state>
+///
+/// \param pg_data
+/// \return
+inline std::string FormatPlacementGroupDetails(
+    const rpc::PlacementGroupTableData &pg_data) {
+  return PlacementGroupID::FromBinary(pg_data.placement_group_id()).Hex() + ":" +
+         rpc::PlacementStrategy_Name(pg_data.strategy()) + "|" +
+         rpc::PlacementGroupTableData::PlacementGroupState_Name(pg_data.state());
 }
 
 /// Generate a placement constraint for placement group.

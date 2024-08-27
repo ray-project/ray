@@ -1,19 +1,17 @@
 import io
-import tarfile
 import os
-
-import pytest
 import shutil
+import tarfile
 import tempfile
 
-from ray.exceptions import RayTaskError
+import pytest
 
+import ray.util
+from ray.exceptions import RayTaskError
 from ray.tune.utils.file_transfer import (
     _sync_dir_between_different_nodes,
-    delete_on_node,
     _sync_dir_on_same_node,
 )
-import ray.util
 
 
 @pytest.fixture
@@ -178,26 +176,6 @@ def test_sync_nodes_exclude_same_node(ray_start_2_cpus, temp_data_dirs, exclude)
 
     assert_file(True, tmp_target, "level0.txt")
     assert_file(False, tmp_target, "subdir/level1.txt")
-
-
-def test_delete_on_node(ray_start_2_cpus, temp_data_dirs):
-    """Check that delete on node works."""
-    tmp_source, tmp_target = temp_data_dirs
-
-    assert_file(True, tmp_source, "level0.txt")
-    assert_file(True, tmp_source, "subdir/level1.txt")
-
-    node_ip = ray.util.get_node_ip_address()
-    delete_on_node(
-        node_ip=node_ip,
-        path=tmp_source,
-    )
-
-    assert_file(False, tmp_source, "level0.txt")
-    assert_file(False, tmp_source, "subdir/level1.txt")
-
-    # Re-create dir for teardown
-    os.makedirs(tmp_source, exist_ok=True)
 
 
 @pytest.mark.parametrize("num_workers", [1, 8])

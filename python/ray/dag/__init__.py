@@ -6,12 +6,14 @@ from ray.dag.input_node import (
     InputAttributeNode,
     DAGInputData,
 )
+from ray.dag.output_node import MultiOutputNode
 from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
     PREV_CLASS_METHOD_CALL_KEY,
     DAGNODE_TYPE_KEY,
 )
 from ray.dag.vis_utils import plot
+from ray.dag.context import DAGContext
 
 __all__ = [
     "ClassNode",
@@ -25,4 +27,6 @@ __all__ = [
     "PREV_CLASS_METHOD_CALL_KEY",
     "DAGNODE_TYPE_KEY",
     "plot",
+    "MultiOutputNode",
+    "DAGContext",
 ]

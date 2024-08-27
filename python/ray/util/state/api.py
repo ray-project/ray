@@ -8,6 +8,7 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Union
 
 import requests
 
+import ray
 from ray.dashboard.modules.dashboard_sdk import SubmissionClient
 from ray.dashboard.utils import (
     get_address_for_submission_client,
@@ -433,8 +434,8 @@ class StateApiClient(SubmissionClient):
 
         if total != num_after_truncation:
             raise RayStateApiException(
-                f"Failed to retrieve all {resource.value} from the cluster because "
-                "they are not reachable due to data truncation. It happens "
+                f"Failed to retrieve all {total} {resource.value} from the cluster "
+                "because they are not reachable due to data truncation. It happens "
                 "when the returned data is too large "
                 # When the data is truncated, the truncation
                 # threshold == num_after_truncation. We cannot set this to env
@@ -568,8 +569,7 @@ def get_actor(
         :class:`ActorState <ray.util.state.common.ActorState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.ACTORS, id, GetApiOptions(timeout=timeout), _explain=_explain
@@ -598,8 +598,7 @@ def get_job(
         :class:`JobState <ray.util.state.common.JobState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.JOBS,
@@ -631,8 +630,7 @@ def get_placement_group(
         :class:`~ray.util.state.common.PlacementGroupState`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.PLACEMENT_GROUPS,
@@ -664,8 +662,7 @@ def get_node(
         :class:`NodeState <ray.util.state.common.NodeState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
-            if the CLI is failed to query the data.
+        RayStateApiException: if the CLI is failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.NODES,
@@ -697,8 +694,7 @@ def get_worker(
         :class:`WorkerState <ray.util.state.common.WorkerState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.WORKERS,
@@ -710,7 +706,7 @@ def get_worker(
 
 @DeveloperAPI
 def get_task(
-    id: str,
+    id: Union[str, "ray.ObjectRef"],
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
@@ -718,7 +714,7 @@ def get_task(
     """Get task attempts of a task by id.
 
     Args:
-        id: Id of the task
+        id: String id of the task or ObjectRef that corresponds to task
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         timeout: Max timeout value for the state APIs requests made.
@@ -731,12 +727,16 @@ def get_task(
         from the task attempts.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
+    str_id: str
+    if isinstance(id, str):
+        str_id = id
+    else:
+        str_id = id.task_id().hex()
     return StateApiClient(address=address).get(
         StateResource.TASKS,
-        id,
+        str_id,
         GetApiOptions(timeout=timeout),
         _explain=_explain,
     )
@@ -767,8 +767,7 @@ def get_objects(
         :class:`~ray.util.state.common.ObjectState`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`  if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).get(
         StateResource.OBJECTS,
@@ -795,6 +794,7 @@ def list_actors(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("id", "=", "abcd")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `ActorState`)
@@ -810,8 +810,7 @@ def list_actors(
         :class:`ActorState <ray.util.state.common.ActorState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.ACTORS,
@@ -843,6 +842,7 @@ def list_placement_groups(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("state", "=", "abcd")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `PlacementGroupState`)
@@ -857,8 +857,7 @@ def list_placement_groups(
         List of :class:`~ray.util.state.common.PlacementGroupState`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.PLACEMENT_GROUPS,
@@ -887,6 +886,7 @@ def list_nodes(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("node_name", "=", "abcd")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `NodeState`)
@@ -902,8 +902,7 @@ def list_nodes(
         :class:`NodeState <ray.util.state.common.NodeState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
-            if the CLI failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.NODES,
@@ -925,13 +924,14 @@ def list_jobs(
     raise_on_missing_output: bool = True,
     _explain: bool = False,
 ) -> List[JobState]:
-    """List jobs submitted to the cluster by :ref: `ray job submission <jobs-overview>`.
+    """List jobs submitted to the cluster by :ref:`ray job submission <jobs-overview>`.
 
     Args:
         address: Ray bootstrap address, could be `auto`, `localhost:6379`.
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("status", "=", "abcd")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `JobState`)
@@ -947,8 +947,7 @@ def list_jobs(
         :class:`JobState <ray.util.state.common.JobState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.JOBS,
@@ -977,6 +976,7 @@ def list_workers(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("is_alive", "=", "True")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `WorkerState`)
@@ -992,8 +992,7 @@ def list_workers(
         :class:`WorkerState <ray.util.state.common.WorkerState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.WORKERS,
@@ -1022,11 +1021,12 @@ def list_tasks(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("is_alive", "=", "True")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
-        detail: When True, more details info (specified in `WorkerState`)
+        detail: When True, more details info (specified in `TaskState`)
             will be queried and returned. See
-            :class:`WorkerState <ray.util.state.common.WorkerState>`.
+            :class:`TaskState <ray.util.state.common.TaskState>`.
         raise_on_missing_output: When True, exceptions will be raised if
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
@@ -1037,8 +1037,7 @@ def list_tasks(
         :class:`TaskState <ray.util.state.common.TaskState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.TASKS,
@@ -1067,6 +1066,7 @@ def list_objects(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("ip", "=", "0.0.0.0")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `ObjectState`)
@@ -1082,8 +1082,7 @@ def list_objects(
         :class:`ObjectState <ray.util.state.common.ObjectState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.OBJECTS,
@@ -1112,6 +1111,7 @@ def list_runtime_envs(
             If None, it will be resolved automatically from an initialized ray.
         filters: List of tuples of filter key, predicate (=, or !=), and
             the filter value. E.g., `("node_id", "=", "abcdef")`
+            String filter values are case-insensitive.
         limit: Max number of entries returned by the state backend.
         timeout: Max timeout value for the state APIs requests made.
         detail: When True, more details info (specified in `RuntimeEnvState`)
@@ -1127,8 +1127,7 @@ def list_runtime_envs(
         :class:`RuntimeEnvState <ray.util.state.common.RuntimeEnvState>`.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
-            if the CLI failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).list(
         StateResource.RUNTIME_ENVS,
@@ -1246,8 +1245,7 @@ def get_log(
         A Generator of log line, None for SendType and ReturnType.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
 
     api_server_url = ray_address_to_api_server_url(address)
@@ -1268,7 +1266,7 @@ def get_log(
         submission_id=submission_id,
         attempt_number=attempt_number,
     )
-    options_dict = {}
+    options_dict = {"format": "leading_1"}
     for field in fields(options):
         option_val = getattr(options, field.name)
         if option_val is not None:
@@ -1322,9 +1320,8 @@ def list_logs(
         values are list of log filenames.
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data, or ConnectionError if failed to resolve the
-            ray address.
+        RayStateApiException: if the CLI failed to query the data, or ConnectionError if
+            failed to resolve the ray address.
     """  # noqa: E501
     assert (
         node_ip is not None or node_id is not None
@@ -1347,6 +1344,7 @@ def list_logs(
     r = requests.get(
         f"{api_server_url}/api/v0/logs?{urllib.parse.urlencode(options_dict)}"
     )
+    # TODO(rickyx): we could do better at error handling here.
     r.raise_for_status()
 
     response = r.json()
@@ -1386,8 +1384,7 @@ def summarize_tasks(
         :class:`~ray.util.state.common.TaskSummaries`
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
-            if the CLI is failed to query the data.
+        RayStateApiException: if the CLI is failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).summary(
         SummaryResource.TASKS,
@@ -1420,8 +1417,7 @@ def summarize_actors(
         :class:`~ray.util.state.common.ActorSummaries`
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).summary(
         SummaryResource.ACTORS,
@@ -1453,8 +1449,7 @@ def summarize_objects(
         Dictionarified :class:`~ray.util.state.common.ObjectSummaries`
 
     Raises:
-        Exceptions: :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
-            failed to query the data.
+        RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
     return StateApiClient(address=address).summary(
         SummaryResource.OBJECTS,

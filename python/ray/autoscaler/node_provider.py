@@ -133,14 +133,15 @@ class NodeProvider:
         """
         raise NotImplementedError
 
-    def create_node_with_resources(
+    def create_node_with_resources_and_labels(
         self,
         node_config: Dict[str, Any],
         tags: Dict[str, str],
         count: int,
         resources: Dict[str, float],
+        labels: Dict[str, str],
     ) -> Optional[Dict[str, Any]]:
-        """Create nodes with a given resource config.
+        """Create nodes with a given resource and label config.
 
         This is the method actually called by the autoscaler. Prefer to
         implement this when possible directly, otherwise it delegates to the

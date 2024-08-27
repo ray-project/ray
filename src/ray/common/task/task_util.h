@@ -127,13 +127,15 @@ class TaskSpecBuilder {
       uint64_t num_returns,
       bool returns_dynamic,
       bool is_streaming_generator,
+      int64_t generator_backpressure_num_objects,
       const std::unordered_map<std::string, double> &required_resources,
       const std::unordered_map<std::string, double> &required_placement_resources,
       const std::string &debugger_breakpoint,
       int64_t depth,
       const TaskID &submitter_task_id,
       const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
-      const std::string &concurrency_group_name = "") {
+      const std::string &concurrency_group_name = "",
+      bool enable_task_events = true) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -151,6 +153,7 @@ class TaskSpecBuilder {
     message_->set_num_returns(num_returns);
     message_->set_returns_dynamic(returns_dynamic);
     message_->set_streaming_generator(is_streaming_generator);
+    message_->set_generator_backpressure_num_objects(generator_backpressure_num_objects);
     message_->mutable_required_resources()->insert(required_resources.begin(),
                                                    required_resources.end());
     message_->mutable_required_placement_resources()->insert(
@@ -161,6 +164,7 @@ class TaskSpecBuilder {
       message_->mutable_runtime_env_info()->CopyFrom(*runtime_env_info);
     }
     message_->set_concurrency_group_name(concurrency_group_name);
+    message_->set_enable_task_events(enable_task_events);
     return *this;
   }
 
@@ -168,12 +172,16 @@ class TaskSpecBuilder {
       int max_retries,
       bool retry_exceptions,
       const std::string &serialized_retry_exception_allowlist,
-      const rpc::SchedulingStrategy &scheduling_strategy) {
+      const rpc::SchedulingStrategy &scheduling_strategy,
+      const ActorID root_detached_actor_id) {
     message_->set_max_retries(max_retries);
     message_->set_retry_exceptions(retry_exceptions);
     message_->set_serialized_retry_exception_allowlist(
         serialized_retry_exception_allowlist);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
+    if (!root_detached_actor_id.IsNil()) {
+      message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
+    }
     return *this;
   }
 
@@ -226,7 +234,8 @@ class TaskSpecBuilder {
       bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
       const std::string &extension_data = "",
-      bool execute_out_of_order = false) {
+      bool execute_out_of_order = false,
+      ActorID root_detached_actor_id = ActorID::Nil()) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
     auto actor_creation_spec = message_->mutable_actor_creation_task_spec();
     actor_creation_spec->set_actor_id(actor_id.Binary());
@@ -254,6 +263,9 @@ class TaskSpecBuilder {
     }
     actor_creation_spec->set_execute_out_of_order(execute_out_of_order);
     message_->mutable_scheduling_strategy()->CopyFrom(scheduling_strategy);
+    if (!root_detached_actor_id.IsNil()) {
+      message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
+    }
     return *this;
   }
 
@@ -261,10 +273,18 @@ class TaskSpecBuilder {
   /// See `common.proto` for meaning of the arguments.
   ///
   /// \return Reference to the builder object itself.
-  TaskSpecBuilder &SetActorTaskSpec(const ActorID &actor_id,
-                                    const ObjectID &actor_creation_dummy_object_id,
-                                    uint64_t actor_counter) {
+  TaskSpecBuilder &SetActorTaskSpec(
+      const ActorID &actor_id,
+      const ObjectID &actor_creation_dummy_object_id,
+      int max_retries,
+      bool retry_exceptions,
+      const std::string &serialized_retry_exception_allowlist,
+      uint64_t actor_counter) {
     message_->set_type(TaskType::ACTOR_TASK);
+    message_->set_max_retries(max_retries);
+    message_->set_retry_exceptions(retry_exceptions);
+    message_->set_serialized_retry_exception_allowlist(
+        serialized_retry_exception_allowlist);
     auto actor_spec = message_->mutable_actor_task_spec();
     actor_spec->set_actor_id(actor_id.Binary());
     actor_spec->set_actor_creation_dummy_object_id(

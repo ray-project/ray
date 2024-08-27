@@ -1,20 +1,29 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 
 region: us-west-2
+
+# NFS needs to be disabled for this test, since the test spawns too many nodes
+# and may hit the limit on the # of clients.
 aws:
-    BlockDeviceMappings:
-        - DeviceName: /dev/sda1
-          Ebs:
-            DeleteOnTermination: true
-            VolumeSize: 30
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: as-feature-disable-nfs-mount
+          Value: "true"
+
+  BlockDeviceMappings:
+    - DeviceName: /dev/sda1
+      Ebs:
+        DeleteOnTermination: true
+        VolumeSize: 30
 
 head_node_type:
-    name: head_node
-    instance_type: m5.16xlarge
+  name: head_node
+  instance_type: m5.16xlarge
 
 worker_node_types:
-   - name: worker_node
-     instance_type: m5.large
-     min_workers: 500
-     max_workers: 2000
-     use_spot: false
+  - name: worker_node
+    instance_type: m5.large
+    min_workers: 500
+    max_workers: 2000
+    use_spot: false

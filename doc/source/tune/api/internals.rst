@@ -10,20 +10,6 @@ TunerInternal
     :members:
 
 
-RayTrialExecutor
-----------------
-
-.. autoclass:: ray.tune.execution.ray_trial_executor.RayTrialExecutor
-    :members:
-
-.. _trialrunner-docstring:
-
-TrialRunner
------------
-
-.. autoclass:: ray.tune.execution.trial_runner.TrialRunner
-    :members:
-
 .. _trial-docstring:
 
 Trial
@@ -46,3 +32,12 @@ Registry
 .. autofunction:: ray.tune.register_trainable
 
 .. autofunction:: ray.tune.register_env
+
+
+Output
+------
+
+.. autoclass:: ray.tune.experimental.output.ProgressReporter
+.. autoclass:: ray.tune.experimental.output.TrainReporter
+.. autoclass:: ray.tune.experimental.output.TuneReporterBase
+.. autoclass:: ray.tune.experimental.output.TuneTerminalReporter

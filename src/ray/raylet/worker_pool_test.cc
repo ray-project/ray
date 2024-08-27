@@ -21,7 +21,9 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
+#include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/util/process.h"
+#include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 using json = nlohmann::json;
 namespace ray {
@@ -58,7 +60,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     const auto &callback = callbacks_.front();
     rpc::ExitReply exit_reply;
     exit_reply.set_success(true);
-    callback(Status::OK(), exit_reply);
+    callback(Status::OK(), std::move(exit_reply));
     callbacks_.pop_front();
     return true;
   }
@@ -70,7 +72,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     const auto &callback = callbacks_.front();
     rpc::ExitReply exit_reply;
     exit_reply.set_success(false);
-    callback(Status::OK(), exit_reply);
+    callback(Status::OK(), std::move(exit_reply));
     callbacks_.pop_front();
     return true;
   }
@@ -87,39 +89,33 @@ static int GetReferenceCount(const std::string serialized_runtime_env) {
   return it == runtime_env_reference.end() ? 0 : it->second;
 }
 
-class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
+class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
-  void GetOrCreateRuntimeEnv(
-      const rpc::GetOrCreateRuntimeEnvRequest &request,
-      const rpc::ClientCallback<rpc::GetOrCreateRuntimeEnvReply> &callback) {
-    rpc::GetOrCreateRuntimeEnvReply reply;
-    if (request.serialized_runtime_env() == BAD_RUNTIME_ENV) {
-      reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
-      reply.set_error_message(BAD_RUNTIME_ENV_ERROR_MSG);
+  void GetOrCreateRuntimeEnv(const JobID &job_id,
+                             const std::string &serialized_runtime_env,
+                             const rpc::RuntimeEnvConfig &runtime_env_config,
+                             GetOrCreateRuntimeEnvCallback callback) override {
+    if (serialized_runtime_env == BAD_RUNTIME_ENV) {
+      callback(false, "", BAD_RUNTIME_ENV_ERROR_MSG);
     } else {
-      auto it = runtime_env_reference.find(request.serialized_runtime_env());
+      rpc::GetOrCreateRuntimeEnvReply reply;
+      auto it = runtime_env_reference.find(serialized_runtime_env);
       if (it == runtime_env_reference.end()) {
-        runtime_env_reference[request.serialized_runtime_env()] = 1;
+        runtime_env_reference[serialized_runtime_env] = 1;
       } else {
-        runtime_env_reference[request.serialized_runtime_env()] += 1;
+        runtime_env_reference[serialized_runtime_env] += 1;
       }
-
-      reply.set_status(rpc::AGENT_RPC_STATUS_OK);
-      reply.set_serialized_runtime_env_context("{\"dummy\":\"dummy\"}");
+      callback(true, "{\"dummy\":\"dummy\"}", "");
     }
-    callback(Status::OK(), reply);
   };
 
-  void DeleteRuntimeEnvIfPossible(
-      const rpc::DeleteRuntimeEnvIfPossibleRequest &request,
-      const rpc::ClientCallback<rpc::DeleteRuntimeEnvIfPossibleReply> &callback) {
-    auto it = runtime_env_reference.find(request.serialized_runtime_env());
+  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                  DeleteRuntimeEnvIfPossibleCallback callback) override {
+    auto it = runtime_env_reference.find(serialized_runtime_env);
     RAY_CHECK(it != runtime_env_reference.end());
-    runtime_env_reference[request.serialized_runtime_env()] -= 1;
-    RAY_CHECK(runtime_env_reference[request.serialized_runtime_env()] >= 0);
-    rpc::DeleteRuntimeEnvIfPossibleReply reply;
-    reply.set_status(rpc::AGENT_RPC_STATUS_OK);
-    callback(Status::OK(), reply);
+    runtime_env_reference[serialized_runtime_env] -= 1;
+    RAY_CHECK(runtime_env_reference[serialized_runtime_env] >= 0);
+    callback(true);
   };
 };
 
@@ -163,10 +159,11 @@ class WorkerPoolMock : public WorkerPool {
   using WorkerPool::PopWorkerCallbackInternal;
 
   // Mock `PopWorkerCallbackAsync` to synchronized function.
-  void PopWorkerCallbackAsync(const PopWorkerCallback &callback,
+  void PopWorkerCallbackAsync(const TaskSpecification &task_spec,
+                              const PopWorkerCallback &callback,
                               std::shared_ptr<WorkerInterface> worker,
                               PopWorkerStatus status = PopWorkerStatus::OK) override {
-    PopWorkerCallbackInternal(callback, worker, status);
+    PopWorkerCallbackInternal(task_spec, callback, worker, status);
   }
 
   Process StartProcess(const std::vector<std::string> &worker_command_args,
@@ -421,7 +418,7 @@ class WorkerPoolTest : public ::testing::Test {
       io_service_.run();
     }));
     promise.get_future().get();
-    StartMockAgent();
+    worker_pool_->SetRuntimeEnvAgentClient(std::make_shared<MockRuntimeEnvAgentClient>());
   }
 
   void TearDown() override {
@@ -480,32 +477,6 @@ class WorkerPoolTest : public ::testing::Test {
     }
     // Check number of starting workers
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), expected_worker_process_count);
-  }
-
-  void StartMockAgent() {
-    std::vector<std::string> agent_commands = {};
-    const NodeID node_id = NodeID::FromRandom();
-    auto options = AgentManager::Options({node_id, agent_commands});
-    auto agent_manager = std::make_shared<AgentManager>(
-        std::move(options),
-        /*delay_executor=*/
-        [this](std::function<void()> task, uint32_t delay_ms) {
-          return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-        },
-        /*runtime_env_agent_factory=*/
-        [](const std::string &ip_address, int port) {
-          return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
-              new MockRuntimeEnvAgentClient());
-        },
-        false);
-    rpc::RegisterAgentRequest request;
-    // Set agent port to a nonzero value to avoid invalid agent client.
-    request.set_agent_port(12345);
-    rpc::RegisterAgentReply reply;
-    auto send_reply_callback =
-        [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
-    agent_manager->HandleRegisterAgent(request, &reply, send_reply_callback);
-    worker_pool_->SetAgentManager(agent_manager);
   }
 
   absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
@@ -714,6 +685,28 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerSyncsOfMultipleLanguages) {
   worker_pool_->PushWorker(java_worker);
   // Check that the Java worker will be popped now for Java task
   ASSERT_EQ(worker_pool_->PopWorkerSync(java_task_spec), java_worker);
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithNodeIdArg) {
+  auto task_id = TaskID::FromRandom(JOB_ID);
+  TaskSpecification task_spec = ExampleTaskSpec(
+      ActorID::Nil(), Language::PYTHON, JOB_ID, ActorID::Nil(), {}, task_id);
+  ASSERT_NE(worker_pool_->PopWorkerSync(task_spec), nullptr);
+  const auto real_command =
+      worker_pool_->GetWorkerCommand(worker_pool_->LastStartedWorkerProcess());
+
+  std::ostringstream stringStream;
+  stringStream << "--node-id=" << worker_pool_->GetNodeID();
+  std::string expected_node_id_arg = stringStream.str();
+
+  bool node_id_arg_found = false;
+  for (const auto &arg : real_command) {
+    if (arg.find(expected_node_id_arg) != std::string::npos) {
+      node_id_arg_found = true;
+      break;
+    }
+  }
+  ASSERT_TRUE(node_id_arg_found);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
@@ -1382,6 +1375,86 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {
   }
 
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
+  // Test to make sure that if job finishes,
+  // PopWorker should fail with PopWorkerStatus::JobFinished
+
+  auto job_id = JOB_ID;
+
+  /// Add worker to the pool.
+  PopWorkerStatus status;
+  auto [proc, token] = worker_pool_->StartWorkerProcess(
+      Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
+  auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
+  worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(
+      worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
+  worker_pool_->OnWorkerStarted(worker);
+  worker_pool_->PushWorker(worker);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+  auto mock_rpc_client = mock_rpc_client_it->second;
+
+  // Finish the job.
+  worker_pool_->HandleJobFinished(job_id);
+
+  auto task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
+  PopWorkerStatus pop_worker_status;
+  // This PopWorker should fail since the job finished.
+  worker = worker_pool_->PopWorkerSync(task_spec, false, &pop_worker_status);
+  ASSERT_EQ(pop_worker_status, PopWorkerStatus::JobFinished);
+  ASSERT_FALSE(worker);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(mock_rpc_client->exit_count, 1);
+  ASSERT_EQ(mock_rpc_client->last_exit_forced, true);
+  mock_rpc_client->ExitReplySucceed();
+
+  job_id = JOB_ID2;
+  rpc::JobConfig job_config;
+  RegisterDriver(Language::PYTHON, job_id, job_config);
+  task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
+  pop_worker_status = PopWorkerStatus::OK;
+  // This will start a new worker.
+  worker_pool_->PopWorker(
+      task_spec,
+      [&](const std::shared_ptr<WorkerInterface> worker,
+          PopWorkerStatus status,
+          const std::string &runtime_env_setup_error_message) -> bool {
+        pop_worker_status = status;
+        return false;
+      });
+  auto process = worker_pool_->LastStartedWorkerProcess();
+  RAY_CHECK(process.IsValid());
+  ASSERT_EQ(1, worker_pool_->NumWorkersStarting());
+
+  worker = worker_pool_->CreateWorker(Process());
+  worker->SetStartupToken(worker_pool_->GetStartupToken(process));
+  RAY_CHECK_OK(worker_pool_->RegisterWorker(
+      worker, process.GetId(), worker_pool_->GetStartupToken(process), [](Status, int) {
+      }));
+  // Call `OnWorkerStarted` to emulate worker port announcement.
+  worker_pool_->OnWorkerStarted(worker);
+
+  mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
+  mock_rpc_client = mock_rpc_client_it->second;
+
+  // Finish the job.
+  worker_pool_->HandleJobFinished(job_id);
+
+  // This will trigger the PopWorker callback.
+  worker_pool_->PushWorker(worker);
+  ASSERT_EQ(pop_worker_status, PopWorkerStatus::JobFinished);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
+
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(mock_rpc_client->exit_count, 1);
+  ASSERT_EQ(mock_rpc_client->last_exit_forced, true);
+  mock_rpc_client->ExitReplySucceed();
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {

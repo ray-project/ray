@@ -1,12 +1,12 @@
 from gymnasium.spaces import Space
 from typing import Optional
 
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
 from ray.rllib.utils.schedules import ConstantSchedule
 
 
-@Deprecated(error=False)
+@OldAPIStack
 class PerWorkerGaussianNoise(GaussianNoise):
     """A per-worker Gaussian noise class for distributed algorithms.
 

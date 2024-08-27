@@ -2,27 +2,12 @@ import threading
 import unittest
 
 import ray
-from ray.air import CheckpointConfig
+import ray.train
+from ray.train import CheckpointConfig
 from ray.tune import register_trainable
-from ray.tune.experiment import Experiment, Trial, _convert_to_experiment_list
 from ray.tune.error import TuneError
+from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.utils import diagnose_serialization
-
-
-def test_remote_checkpoint_dir_with_query_string(tmp_path):
-    experiment = Experiment(
-        name="spam", run=lambda config: config, storage_path="s3://bucket?scheme=http"
-    )
-    assert experiment.remote_checkpoint_dir == "s3://bucket/spam?scheme=http"
-
-    trial = Trial(
-        "mock",
-        stub=True,
-        experiment_path="s3://bucket/spam?scheme=http",
-        experiment_dir_name="spam",
-    )
-    trial.relative_logdir = "trial_dirname"
-    assert trial.remote_checkpoint_dir == "s3://bucket/spam/trial_dirname?scheme=http"
 
 
 class ExperimentTest(unittest.TestCase):
@@ -30,11 +15,11 @@ class ExperimentTest(unittest.TestCase):
         ray.shutdown()
 
     def setUp(self):
-        def train(config, reporter):
+        def train_fn(config):
             for i in range(100):
-                reporter(timesteps_total=i)
+                ray.train.report(dict(timesteps_total=i))
 
-        register_trainable("f1", train)
+        register_trainable("f1", train_fn)
 
     def testConvertExperimentFromExperiment(self):
         exp1 = Experiment(
@@ -91,10 +76,22 @@ class ExperimentTest(unittest.TestCase):
                 checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
             )
 
+    def testInvalidExperimentConfig(self):
+        with self.assertRaises(ValueError):
+            Experiment(name="foo", run="f1", config="invalid")
+
+        class InvalidClass:
+            def to_dict(self):
+                return {"valid": 1}
+
+        with self.assertRaises(ValueError):
+            Experiment(name="foo", run="f1", config=InvalidClass())
+
+        Experiment(name="foo", run="f1", config=InvalidClass().to_dict())
+
 
 class ValidateUtilTest(unittest.TestCase):
     def testDiagnoseSerialization(self):
-
         # this is not serializable
         e = threading.Event()
 
@@ -115,7 +112,8 @@ class ValidateUtilTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

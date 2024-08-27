@@ -23,10 +23,12 @@ namespace gcs {
 GcsResourceManager::GcsResourceManager(
     instrumented_io_context &io_context,
     ClusterResourceManager &cluster_resource_manager,
+    GcsNodeManager &gcs_node_manager,
     NodeID local_node_id,
     std::shared_ptr<ClusterTaskManager> cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
+      gcs_node_manager_(gcs_node_manager),
       local_node_id_(std::move(local_node_id)),
       cluster_task_manager_(std::move(cluster_task_manager)) {}
 
@@ -40,33 +42,42 @@ void GcsResourceManager::ConsumeSyncMessage(
   // io context for thread safety.
   io_context_.dispatch(
       [this, message]() {
-        rpc::ResourcesData resources;
-        resources.ParseFromString(message->sync_message());
-        resources.set_node_id(message->node_id());
-        UpdateFromResourceReport(resources);
+        if (message->message_type() == syncer::MessageType::COMMANDS) {
+          syncer::CommandsSyncMessage commands_sync_message;
+          commands_sync_message.ParseFromString(message->sync_message());
+          UpdateClusterFullOfActorsDetected(
+              NodeID::FromBinary(message->node_id()),
+              commands_sync_message.cluster_full_of_actors_detected());
+        } else if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
+          syncer::ResourceViewSyncMessage resource_view_sync_message;
+          resource_view_sync_message.ParseFromString(message->sync_message());
+          UpdateFromResourceView(NodeID::FromBinary(message->node_id()),
+                                 resource_view_sync_message);
+        } else {
+          RAY_LOG(FATAL) << "Unsupported message type: " << message->message_type();
+        }
       },
       "GcsResourceManager::Update");
 }
 
-void GcsResourceManager::HandleGetResources(rpc::GetResourcesRequest request,
-                                            rpc::GetResourcesReply *reply,
-                                            rpc::SendReplyCallback send_reply_callback) {
-  scheduling::NodeID node_id(request.node_id());
-  const auto &resource_view = cluster_resource_manager_.GetResourceView();
-  auto iter = resource_view.find(node_id);
-  if (iter != resource_view.end()) {
-    rpc::ResourceTableData resource_table_data;
-    const auto &node_resources = iter->second.GetLocalView();
-
-    for (const auto &resource_id : node_resources.total.ResourceIds()) {
-      const auto &resource_value = node_resources.total.Get(resource_id);
-      const auto &resource_name = resource_id.Binary();
-      resource_table_data.set_resource_capacity(resource_value.Double());
-      (*reply->mutable_resources()).insert({resource_name, resource_table_data});
+void GcsResourceManager::HandleGetDrainingNodes(
+    rpc::GetDrainingNodesRequest request,
+    rpc::GetDrainingNodesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
+  for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
+    if (node_resources_entry.first == local_scheduling_node_id) {
+      continue;
+    }
+    const auto &node_resources = node_resources_entry.second.GetLocalView();
+    if (node_resources.is_draining) {
+      auto draining_node = reply->add_draining_nodes();
+      draining_node->set_node_id(node_resources_entry.first.Binary());
+      draining_node->set_draining_deadline_timestamp_ms(
+          node_resources.draining_deadline_timestamp_ms);
     }
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::GET_RESOURCES_REQUEST];
 }
 
 void GcsResourceManager::HandleGetAllAvailableResources(
@@ -84,7 +95,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
     const auto node_id = NodeID::FromBinary(node_resources_entry.first.Binary());
     bool using_resource_reports = RayConfig::instance().gcs_actor_scheduling_enabled() &&
                                   node_resource_usages_.contains(node_id);
-    for (const auto &resource_id : node_resources.available.ResourceIds()) {
+    for (const auto &resource_id : node_resources.available.ExplicitResourceIds()) {
       const auto &resource_name = resource_id.Binary();
       // Because gcs scheduler does not directly update the available resources of
       // `cluster_resource_manager_`, use the record from resource reports (stored in
@@ -108,25 +119,51 @@ void GcsResourceManager::HandleGetAllAvailableResources(
   ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
 }
 
-void GcsResourceManager::UpdateFromResourceReport(const rpc::ResourcesData &data) {
-  NodeID node_id = NodeID::FromBinary(data.node_id());
+void GcsResourceManager::HandleGetAllTotalResources(
+    rpc::GetAllTotalResourcesRequest request,
+    rpc::GetAllTotalResourcesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
+  for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
+    if (node_resources_entry.first == local_scheduling_node_id) {
+      continue;
+    }
+    rpc::TotalResources resource;
+    resource.set_node_id(node_resources_entry.first.Binary());
+    const auto &node_resources = node_resources_entry.second.GetLocalView();
+    for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
+      const auto &resource_name = resource_id.Binary();
+      const auto &resource_value = node_resources.total.Get(resource_id);
+      resource.mutable_resources_total()->insert(
+          {resource_name, resource_value.Double()});
+    }
+    reply->add_resources_list()->CopyFrom(resource);
+  }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_All_TOTAL_RESOURCES_REQUEST];
+}
+
+void GcsResourceManager::UpdateFromResourceView(
+    const NodeID &node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   // When gcs detects task pending, we may receive an local update. But it can be ignored
   // here because gcs' syncer has already broadcast it.
   if (node_id == local_node_id_) {
     return;
   }
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-    UpdateNodeNormalTaskResources(node_id, data);
+    // TODO (jjyao) This is currently an no-op and is broken.
+    // UpdateNodeNormalTaskResources(node_id, data);
   } else {
-    if (!cluster_resource_manager_.UpdateNodeAvailableResourcesIfExist(
-            scheduling::NodeID(node_id.Binary()), data)) {
+    // We will only update the node's resources if it's from resource view reports.
+    if (!cluster_resource_manager_.UpdateNode(scheduling::NodeID(node_id.Binary()),
+                                              resource_view_sync_message)) {
       RAY_LOG(INFO)
-          << "[UpdateFromResourceReport]: received resource usage from unknown node id "
+          << "[UpdateFromResourceView]: received resource usage from unknown node id "
           << node_id;
     }
   }
-
-  UpdateNodeResourceUsage(node_id, data);
+  UpdateNodeResourceUsage(node_id, resource_view_sync_message);
 }
 
 void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
@@ -136,59 +173,13 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
     // It will happen when the node has been deleted or hasn't been added.
     return;
   }
-  if (data.resource_load_changed()) {
-    (*iter->second.mutable_resource_load()) = data.resource_load();
-    (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
-  }
+  (*iter->second.mutable_resource_load()) = data.resource_load();
+  (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
 }
 
 const absl::flat_hash_map<NodeID, rpc::ResourcesData>
     &GcsResourceManager::NodeResourceReportView() const {
   return node_resource_usages_;
-}
-
-void GcsResourceManager::HandleReportResourceUsage(
-    rpc::ReportResourceUsageRequest request,
-    rpc::ReportResourceUsageReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  UpdateFromResourceReport(request.resources());
-
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  ++counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST];
-}
-
-// TODO(rickyx): We could update the cluster resource manager when we update the load
-// so that we will no longer need node_resource_usages_.
-std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-GcsResourceManager::GetAggregatedResourceLoad() const {
-  std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-      aggregate_load;
-  if (node_resource_usages_.empty()) {
-    return aggregate_load;
-  }
-  for (const auto &usage : node_resource_usages_) {
-    // Aggregate the load reported by each raylet.
-    FillAggregateLoad(usage.second, &aggregate_load);
-  }
-  return aggregate_load;
-}
-
-void GcsResourceManager::FillAggregateLoad(
-    const rpc::ResourcesData &resources_data,
-    std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
-        *aggregate_load) const {
-  auto load = resources_data.resource_load_by_shape();
-  for (const auto &demand : load.resource_demands()) {
-    auto &aggregate_demand = (*aggregate_load)[demand.shape()];
-    aggregate_demand.set_num_ready_requests_queued(
-        aggregate_demand.num_ready_requests_queued() +
-        demand.num_ready_requests_queued());
-    aggregate_demand.set_num_infeasible_requests_queued(
-        aggregate_demand.num_infeasible_requests_queued() +
-        demand.num_infeasible_requests_queued());
-    aggregate_demand.set_backlog_size(aggregate_demand.backlog_size() +
-                                      demand.backlog_size());
-  }
 }
 
 void GcsResourceManager::HandleGetAllResourceUsage(
@@ -239,48 +230,68 @@ void GcsResourceManager::HandleGetAllResourceUsage(
   }
 
   RAY_DCHECK(static_cast<size_t>(reply->resource_usage_data().batch().size()) ==
-             num_alive_nodes_);
+             num_alive_nodes_)
+      << "Number of alive nodes " << num_alive_nodes_
+      << " is not equal to number of usage reports "
+      << reply->resource_usage_data().batch().size() << " in the autoscaler report.";
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
 }
 
-void GcsResourceManager::UpdateNodeResourceUsage(const NodeID &node_id,
-                                                 const rpc::ResourcesData &resources) {
+void GcsResourceManager::UpdateClusterFullOfActorsDetected(
+    const NodeID &node_id, bool cluster_full_of_actors_detected) {
+  auto iter = node_resource_usages_.find(node_id);
+  if (iter == node_resource_usages_.end()) {
+    return;
+  }
+
+  // TODO(rickyx): We should change this to be part of RESOURCE_VIEW.
+  // This is being populated from NodeManager as part of COMMANDS
+  iter->second.set_cluster_full_of_actors_detected(cluster_full_of_actors_detected);
+}
+
+void GcsResourceManager::UpdateNodeResourceUsage(
+    const NodeID &node_id,
+    const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
+  // Note: This may be inconsistent with autoscaler state, which is
+  // not reported as often as a Ray Syncer message.
+  if (auto maybe_node_info = gcs_node_manager_.GetAliveNode(node_id);
+      maybe_node_info != absl::nullopt) {
+    auto snapshot = maybe_node_info.value()->mutable_state_snapshot();
+
+    if (resource_view_sync_message.idle_duration_ms() > 0) {
+      snapshot->set_state(rpc::NodeSnapshot::IDLE);
+      snapshot->set_idle_duration_ms(resource_view_sync_message.idle_duration_ms());
+    } else {
+      snapshot->set_state(rpc::NodeSnapshot::ACTIVE);
+      snapshot->mutable_node_activity()->CopyFrom(
+          resource_view_sync_message.node_activity());
+    }
+    if (resource_view_sync_message.is_draining()) {
+      snapshot->set_state(rpc::NodeSnapshot::DRAINING);
+    }
+  }
+
   auto iter = node_resource_usages_.find(node_id);
   if (iter == node_resource_usages_.end()) {
     // It will only happen when the node has been deleted.
     // If the node is not registered to GCS,
     // we are guaranteed that no resource usage will be reported.
     return;
-  } else {
-    if (resources.resources_total_size() > 0) {
-      (*iter->second.mutable_resources_total()) = resources.resources_total();
-    }
-    if (resources.resources_available_changed()) {
-      (*iter->second.mutable_resources_available()) = resources.resources_available();
-    }
-    if (resources.resources_normal_task_changed()) {
-      (*iter->second.mutable_resources_normal_task()) = resources.resources_normal_task();
-    }
-    iter->second.set_cluster_full_of_actors_detected(
-        resources.cluster_full_of_actors_detected());
   }
+  if (resource_view_sync_message.resources_total_size() > 0) {
+    (*iter->second.mutable_resources_total()) =
+        resource_view_sync_message.resources_total();
+  }
+
+  (*iter->second.mutable_resources_available()) =
+      resource_view_sync_message.resources_available();
 }
 
 void GcsResourceManager::Initialize(const GcsInitData &gcs_init_data) {
   for (const auto &entry : gcs_init_data.Nodes()) {
     if (entry.second.state() == rpc::GcsNodeInfo::ALIVE) {
       OnNodeAdd(entry.second);
-    }
-  }
-
-  for (const auto &entry : gcs_init_data.ClusterResources()) {
-    scheduling::NodeID node_id(entry.first.Binary());
-    for (const auto &resource : entry.second.items()) {
-      cluster_resource_manager_.UpdateResourceCapacity(
-          node_id,
-          scheduling::ResourceID(resource.first),
-          resource.second.resource_capacity());
     }
   }
 }
@@ -317,24 +328,23 @@ void GcsResourceManager::OnNodeDead(const NodeID &node_id) {
 
 void GcsResourceManager::UpdatePlacementGroupLoad(
     const std::shared_ptr<rpc::PlacementGroupLoad> placement_group_load) {
+  RAY_CHECK(placement_group_load != nullptr);
   placement_group_load_ = absl::make_optional(placement_group_load);
 }
 
 std::string GcsResourceManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsResourceManager: "
-         << "\n- GetResources request count: "
-         << counts_[CountType::GET_RESOURCES_REQUEST]
-         << "\n- GetAllAvailableResources request count"
+         << "\n- GetAllAvailableResources request count: "
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
-         << "\n- ReportResourceUsage request count: "
-         << counts_[CountType::REPORT_RESOURCE_USAGE_REQUEST]
+         << "\n- GetAllTotalResources request count: "
+         << counts_[CountType::GET_All_TOTAL_RESOURCES_REQUEST]
          << "\n- GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
   return stream.str();
 }
 
-void GcsResourceManager::AddResourcesChangedListener(std::function<void()> listener) {
+void GcsResourceManager::AddResourcesChangedListener(std::function<void()> &&listener) {
   RAY_CHECK(listener != nullptr);
   resources_changed_listeners_.emplace_back(std::move(listener));
 }

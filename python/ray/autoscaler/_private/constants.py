@@ -5,6 +5,7 @@ from ray._private.ray_constants import (  # noqa F401
     AUTOSCALER_RESOURCE_REQUEST_CHANNEL,
     DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
     DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
+    LABELS_ENVIRONMENT_VARIABLE,
     LOGGER_FORMAT,
     RESOURCES_ENVIRONMENT_VARIABLE,
 )
@@ -29,8 +30,9 @@ AUTOSCALER_UTILIZATION_SCORER_KEY = "RAY_AUTOSCALER_UTILIZATION_SCORER"
 # Whether to avoid launching GPU nodes for CPU only tasks.
 AUTOSCALER_CONSERVE_GPU_NODES = env_integer("AUTOSCALER_CONSERVE_GPU_NODES", 1)
 
-# How long to wait for a node to start, in seconds.
+# How long to wait for a node to start and terminate, in seconds.
 AUTOSCALER_NODE_START_WAIT_S = env_integer("AUTOSCALER_NODE_START_WAIT_S", 900)
+AUTOSCALER_NODE_TERMINATE_WAIT_S = env_integer("AUTOSCALER_NODE_TERMINATE_WAIT_S", 900)
 
 # Interval at which to check if node SSH became available.
 AUTOSCALER_NODE_SSH_INTERVAL_S = env_integer("AUTOSCALER_NODE_SSH_INTERVAL_S", 5)
@@ -48,6 +50,14 @@ AUTOSCALER_MAX_LAUNCH_BATCH = env_integer("AUTOSCALER_MAX_LAUNCH_BATCH", 5)
 AUTOSCALER_MAX_CONCURRENT_LAUNCHES = env_integer(
     "AUTOSCALER_MAX_CONCURRENT_LAUNCHES", 10
 )
+
+# Default upscaling speed for the autoscaler. This specifies how many nodes
+# to request at a time, where the desired number to upscale is
+#   min(1, upscaling_speed * current_num_nodes)
+# e.g. 1.0 means to request enough nodes to double
+# the cluster size in each round of requests.
+# When the upscaling speed is 0.0, the autoscaler will request 1 node.
+DEFAULT_UPSCALING_SPEED = 0.0
 
 # Interval at which to perform autoscaling updates.
 AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)
@@ -85,6 +95,11 @@ BOTO_CREATE_MAX_RETRIES = env_integer("BOTO_CREATE_MAX_RETRIES", 5)
 # ray home path in the container image
 RAY_HOME = "/home/ray"
 
+# The order of this list matters! `scripts.py` kills the ray processes in order of this
+# list. Think twice when you add to this list.
+# Invariants:
+# RAYLET must be the first in the list.
+# GCS SERVER must be the last in the list.
 RAY_PROCESSES = [
     # The first element is the substring to filter.
     # The second element, if True, is to filter ps results by command name
@@ -95,7 +110,6 @@ RAY_PROCESSES = [
     # about comm and args. This can help avoid killing non-ray processes.
     # Format:
     # Keyword to filter, filter by command (True)/filter by args (False)
-    ["gcs_server", True],
     ["raylet", True],
     ["plasma_store", True],
     ["monitor.py", False],
@@ -113,7 +127,9 @@ RAY_PROCESSES = [
     ["reporter.py", False],
     [os.path.join("dashboard", "agent.py"), False],
     [os.path.join("dashboard", "dashboard.py"), False],
+    [os.path.join("runtime_env", "agent", "main.py"), False],
     ["ray_process_reaper.py", False],
+    ["gcs_server", True],
 ]
 
 # Max Concurrent SSH Calls to stop Docker

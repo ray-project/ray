@@ -1,9 +1,10 @@
-import concurrent.futures
+import copy
 import logging
 import time
 from functools import wraps
 from threading import RLock
-from typing import Dict, List, Tuple
+from types import ModuleType
+from typing import Any, Dict, List, Optional, Tuple
 
 import googleapiclient
 
@@ -11,6 +12,7 @@ from ray.autoscaler._private.gcp.config import (
     bootstrap_gcp,
     construct_clients_from_provider_config,
     get_node_type,
+    tpu_accelerator_config_to_type,
 )
 
 # The logic has been abstracted away here to allow for different GCP resources
@@ -23,6 +25,8 @@ from ray.autoscaler._private.gcp.node import (
     GCPNodeType,
     GCPResource,
 )
+from ray.autoscaler._private.gcp.tpu_command_runner import TPUCommandRunner
+from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler.node_provider import NodeProvider
 
 logger = logging.getLogger(__name__)
@@ -61,6 +65,7 @@ class GCPNodeProvider(NodeProvider):
         NodeProvider.__init__(self, provider_config, cluster_name)
         self.lock = RLock()
         self._construct_clients()
+        self.cache_stopped_nodes = provider_config.get("cache_stopped_nodes", False)
 
         # Cache of node objects from the last nodes() call. This avoids
         # excessive DescribeInstances requests.
@@ -175,10 +180,33 @@ class GCPNodeProvider(NodeProvider):
             node_type = get_node_type(base_config)
             resource = self.resources[node_type]
 
-            results = resource.create_instances(
-                base_config, labels, count
-            )  # type: List[Tuple[dict, str]]
-            return {instance_id: result for result, instance_id in results}
+            all_nodes = {}
+            if self.cache_stopped_nodes:
+                filters = {
+                    "ray-node-name": labels["ray-node-name"],
+                    "ray-node-type": labels["ray-node-type"],
+                    "ray-user-node-type": labels["ray-user-node-type"],
+                }
+                reuse_nodes = resource.list_instances(filters, True)[:count]
+                if reuse_nodes:
+                    reused_nodes_dict = {
+                        n["name"]: resource.start_instance(n["name"])
+                        for n in reuse_nodes
+                    }
+                    all_nodes.update(reused_nodes_dict)
+                    count -= len(reuse_nodes)
+
+            if count > 0:
+                results: List[Tuple[dict, str]] = resource.create_instances(
+                    base_config, labels, count
+                )
+
+                created_nodes_dict = {
+                    instance_id: result for result, instance_id in results
+                }
+                all_nodes.update(created_nodes_dict)
+
+        return all_nodes
 
     def _thread_unsafe_terminate_node(self, node_id: str):
         # Assumes the global lock is held for the duration of this operation.
@@ -195,6 +223,7 @@ class GCPNodeProvider(NodeProvider):
                     f"Tried to delete the node with id {node_id} "
                     "but it was already gone."
                 )
+                result = None
             else:
                 raise http_error from None
         return result
@@ -202,16 +231,27 @@ class GCPNodeProvider(NodeProvider):
     @_retry
     def terminate_node(self, node_id: str):
         with self.lock:
-            self._thread_unsafe_terminate_node(node_id)
-
-    def terminate_nodes(self, node_ids: List[str]):
-        if not node_ids:
-            return None
-
-        with self.lock, concurrent.futures.ThreadPoolExecutor() as executor:
-            result = executor.map(self._thread_unsafe_terminate_node, node_ids)
-
-        return list(result)
+            resource = self._get_resource_depending_on_node_name(node_id)
+            try:
+                if self.cache_stopped_nodes:
+                    node = self._get_cached_node(node_id)
+                    if node.is_running():
+                        result = resource.stop_instance(node_id=node_id)
+                    else:
+                        result = None
+                else:
+                    result = resource.delete_instance(
+                        node_id=node_id,
+                    )
+            except googleapiclient.errors.HttpError as http_error:
+                if http_error.resp.status == 404:
+                    logger.warning(
+                        f"Tried to delete the node with id {node_id} "
+                        "but it was already gone."
+                    )
+                else:
+                    raise http_error from None
+            return result
 
     @_retry
     def _get_node(self, node_id: str) -> GCPNode:
@@ -235,3 +275,76 @@ class GCPNodeProvider(NodeProvider):
     @staticmethod
     def bootstrap_config(cluster_config):
         return bootstrap_gcp(cluster_config)
+
+    @staticmethod
+    def fillout_available_node_types_resources(
+        cluster_config: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Fill out TPU resources to the cluster config.
+
+        To enable TPU pod autoscaling, we provide the TPU accelerator
+        type as a resource that only exists on worker 0 of the pod slice.
+        For instance, a v4-16 should have the resource labels:
+            worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 1}
+            worker 1: resources = {"TPU": 4}
+
+        For the autoscaler to correctly process the demands of
+        creating a new TPU pod, then the autoscaler must know what
+        a TPU pod is in the form of the TPU accelerator resource.
+
+        Therefore we fill out TPU pods appropriately by providing the
+        expected resource which we can deduce from the cluster config.
+
+        """
+        if "available_node_types" not in cluster_config:
+            return cluster_config
+        cluster_config = copy.deepcopy(cluster_config)
+        available_node_types = cluster_config["available_node_types"]
+        for node_type in available_node_types:
+            node_config = available_node_types[node_type]["node_config"]
+            if get_node_type(node_config) == GCPNodeType.TPU:
+                autodetected_resources = {}
+                accelerator_type = ""
+                if "acceleratorType" in node_config:
+                    accelerator_type = node_config["acceleratorType"]
+                elif "acceleratorConfig" in node_config:
+                    accelerator_type = tpu_accelerator_config_to_type(
+                        node_config["acceleratorConfig"]
+                    )
+                if not accelerator_type:
+                    continue
+                autodetected_resources[f"TPU-{accelerator_type}-head"] = 1
+                available_node_types[node_type]["resources"].update(
+                    autodetected_resources
+                )
+        return cluster_config
+
+    def get_command_runner(
+        self,
+        log_prefix: str,
+        node_id: str,
+        auth_config: Dict[str, Any],
+        cluster_name: str,
+        process_runner: ModuleType,
+        use_internal_ip: bool,
+        docker_config: Optional[Dict[str, Any]] = None,
+    ) -> CommandRunnerInterface:
+        """Returns a TPU command runner as applicable."""
+        resource = self._get_resource_depending_on_node_name(node_id)
+        instance = resource.get_instance(node_id)
+        common_args = {
+            "docker_config": docker_config,
+            "log_prefix": log_prefix,
+            "node_id": node_id,
+            "auth_config": auth_config,
+            "cluster_name": cluster_name,
+            "process_runner": process_runner,
+            "use_internal_ip": use_internal_ip,
+        }
+        if (
+            GCPNodeType.TPU in self.resources
+            and resource == self.resources[GCPNodeType.TPU]
+        ):
+            return TPUCommandRunner(instance=instance, provider=self, **common_args)
+        else:
+            return super().get_command_runner(**common_args)

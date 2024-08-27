@@ -1,13 +1,20 @@
 import argparse
 import os
+import sys
 
 from filelock import FileLock
-from tensorflow.keras.datasets import mnist
 
 import ray
-from ray import air, tune
+from ray import train, tune
 from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.integration.keras import TuneReportCallback
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    from tensorflow.keras.datasets import mnist
+
+    from ray.air.integrations.keras import ReportCheckpointCallback
 
 
 def train_mnist(config):
@@ -43,7 +50,11 @@ def train_mnist(config):
         epochs=epochs,
         verbose=0,
         validation_data=(x_test, y_test),
-        callbacks=[TuneReportCallback({"mean_accuracy": "accuracy"})],
+        callbacks=[
+            ReportCheckpointCallback(
+                checkpoint_on=[], metrics={"mean_accuracy": "accuracy"}
+            )
+        ],
     )
 
 
@@ -54,7 +65,7 @@ def tune_mnist(num_training_iterations):
 
     tuner = tune.Tuner(
         tune.with_resources(train_mnist, resources={"cpu": 2, "gpu": 0}),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="exp",
             stop={"mean_accuracy": 0.99, "training_iteration": num_training_iterations},
         ),

@@ -1,15 +1,13 @@
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.data import Dataset, DatasetPipeline
+from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.air.data_batch_type import DataBatchType
 
 
-@PublicAPI(stability="alpha")
 class Chain(Preprocessor):
     """Combine multiple preprocessors into a single :py:class:`Preprocessor`.
 
@@ -81,14 +79,9 @@ class Chain(Preprocessor):
             ds = preprocessor.fit_transform(ds)
         return ds
 
-    def _transform(
-        self, ds: Union[Dataset, DatasetPipeline]
-    ) -> Union[Dataset, DatasetPipeline]:
+    def _transform(self, ds: Dataset) -> Dataset:
         for preprocessor in self.preprocessors:
-            if isinstance(ds, Dataset):
-                ds = preprocessor.transform(ds)
-            elif isinstance(ds, DatasetPipeline):
-                ds = preprocessor._transform_pipeline(ds)
+            ds = preprocessor.transform(ds)
         return ds
 
     def _transform_batch(self, df: "DataBatchType") -> "DataBatchType":

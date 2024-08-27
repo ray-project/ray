@@ -204,7 +204,9 @@ if __name__ == "__main__":
     # The following should be removed after
     # https://github.com/ray-project/ray/issues/20355
     # is fixed.
-    os.environ["RAY_ENABLE_AUTO_CONNECT"] = "0"
+    from ray._private import auto_init_hook
+
+    auto_init_hook.enable_auto_connect = False
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

@@ -1,13 +1,19 @@
+
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
+
 .. _evaluation-reference-docs:
 
 Sampling the Environment or offline data
 ========================================
 
 Data ingest via either environment rollouts or other data-generating methods
-(e.g. reading from offline files) is done in RLlib by :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` instances,
-which sit inside a :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet`
-(together with other parallel ``RolloutWorkers``) in the RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-(under the ``self.workers`` property):
+(e.g. reading from offline files) is done in RLlib by :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances,
+which sit inside a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
+(together with other parallel ``EnvRunners``) in the RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+(under the ``self.env_runner_group`` property):
 
 
 .. https://docs.google.com/drawings/d/1OewMLAu6KZNon7zpDfZnTh9qiT6m-3M9wnkqWkQQMRc/edit
@@ -15,15 +21,15 @@ which sit inside a :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet`
     :width: 600
     :align: left
 
-    **A typical RLlib WorkerSet setup inside an RLlib Algorithm:** Each :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet` contains
-    exactly one local :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` object and N ray remote
-    :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` (ray actors).
+    **A typical RLlib EnvRunnerGroup setup inside an RLlib Algorithm:** Each :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` contains
+    exactly one local :py:class:`~ray.rllib.env.env_runner.EnvRunner` object and N ray remote
+    :py:class:`~ray.rllib.env.env_runner.EnvRunner` (Ray actors).
     The workers contain a policy map (with one or more policies), and - in case a simulator
     (env) is available - a vectorized :py:class:`~ray.rllib.env.base_env.BaseEnv`
     (containing M sub-environments) and a :py:class:`~ray.rllib.evaluation.sampler.SamplerInput` (either synchronous or asynchronous) which controls
     the environment data collection loop.
     In the online case (i.e. environment is available) as well as the offline case (i.e. no environment),
-    :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` uses the :py:meth:`~ray.rllib.evaluation.rollout_worker.RolloutWorker.sample` method to
+    :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` uses the :py:meth:`~ray.rllib.env.env_runner.EnvRunner.sample` method to
     get :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` objects for training.
 
 
@@ -39,6 +45,7 @@ Constructor
 
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
    RolloutWorker
@@ -47,6 +54,7 @@ Multi agent
 ~~~~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~RolloutWorker.add_policy
@@ -62,6 +70,7 @@ Setter and getter methods
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~RolloutWorker.get_filters
@@ -78,6 +87,7 @@ Setter and getter methods
 Threading
 ~~~~~~~~~
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~RolloutWorker.lock
@@ -87,6 +97,7 @@ Sampling API
 ~~~~~~~~~~~~
 
 .. autosummary::
+   :nosignatures:
    :toctree: doc/
 
     ~RolloutWorker.sample
@@ -97,6 +108,7 @@ Training API
 ~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~RolloutWorker.learn_on_batch
@@ -107,7 +119,9 @@ Training API
 Environment API
 ~~~~~~~~~~~~~~~
 
+
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~RolloutWorker.foreach_env
@@ -118,6 +132,7 @@ Miscellaneous
 ~~~~~~~~~~~~~
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     ~RolloutWorker.stop
@@ -130,52 +145,66 @@ Miscellaneous
 
 .. _workerset-reference-docs:
 
-WorkerSet API
+EnvRunner API
 -------------
 
-.. currentmodule:: ray.rllib.evaluation.worker_set
+.. currentmodule:: ray.rllib.env.env_runner
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   EnvRunner
+
+EnvRunnerGroup API
+------------------
+
+.. currentmodule:: ray.rllib.env.env_runner_group
 
 Constructor
 ~~~~~~~~~~~
 
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    WorkerSet
-    WorkerSet.stop
-    WorkerSet.reset
+    EnvRunnerGroup
+    EnvRunnerGroup.stop
+    EnvRunnerGroup.reset
 
 
 Worker Orchestration
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    ~WorkerSet.add_workers
-    ~WorkerSet.foreach_worker
-    ~WorkerSet.foreach_worker_with_id
-    ~WorkerSet.foreach_worker_async
-    ~WorkerSet.fetch_ready_async_reqs
-    ~WorkerSet.num_in_flight_async_reqs
-    ~WorkerSet.local_worker
-    ~WorkerSet.remote_workers
-    ~WorkerSet.num_healthy_remote_workers
-    ~WorkerSet.num_healthy_workers
-    ~WorkerSet.num_remote_worker_restarts
-    ~WorkerSet.probe_unhealthy_workers
+    ~EnvRunnerGroup.add_workers
+    ~EnvRunnerGroup.foreach_worker
+    ~EnvRunnerGroup.foreach_worker_with_id
+    ~EnvRunnerGroup.foreach_worker_async
+    ~EnvRunnerGroup.fetch_ready_async_reqs
+    ~EnvRunnerGroup.num_in_flight_async_reqs
+    ~EnvRunnerGroup.local_worker
+    ~EnvRunnerGroup.remote_workers
+    ~EnvRunnerGroup.num_healthy_remote_workers
+    ~EnvRunnerGroup.num_healthy_workers
+    ~EnvRunnerGroup.num_remote_worker_restarts
+    ~EnvRunnerGroup.probe_unhealthy_workers
 
 Pass-through methods
 ~~~~~~~~~~~~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
-    ~WorkerSet.add_policy
-    ~WorkerSet.foreach_env
-    ~WorkerSet.foreach_env_with_context
-    ~WorkerSet.foreach_policy
-    ~WorkerSet.foreach_policy_to_train
-    ~WorkerSet.sync_weights
+    ~EnvRunnerGroup.add_policy
+    ~EnvRunnerGroup.foreach_env
+    ~EnvRunnerGroup.foreach_env_with_context
+    ~EnvRunnerGroup.foreach_policy
+    ~EnvRunnerGroup.foreach_policy_to_train
+    ~EnvRunnerGroup.sync_weights
 
 
 
@@ -194,6 +223,7 @@ Input Reader API
 .. currentmodule:: ray.rllib.offline.input_reader
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     InputReader
@@ -206,6 +236,7 @@ Input Sampler API
 .. currentmodule:: ray.rllib.evaluation.sampler
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     SamplerInput
@@ -219,20 +250,11 @@ Synchronous Sampler API
 .. currentmodule:: ray.rllib.evaluation.sampler
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     SyncSampler
 
-
-Asynchronous Sampler API
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. currentmodule:: ray.rllib.evaluation.sampler
-
-.. autosummary::
-    :toctree: doc/
-
-    AsyncSampler
 
 
 .. _offline-reference-docs:
@@ -252,6 +274,7 @@ JSON reader API
 .. currentmodule:: ray.rllib.offline.json_reader
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     JsonReader
@@ -262,6 +285,7 @@ JSON reader API
 Mixed input reader
 ++++++++++++++++++
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     MixedInput
@@ -271,6 +295,7 @@ Mixed input reader
 D4RL reader
 +++++++++++
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     D4RLReader
@@ -280,6 +305,7 @@ D4RL reader
 IOContext
 ~~~~~~~~~
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     IOContext
@@ -293,6 +319,7 @@ Policy Map API
 .. currentmodule:: ray.rllib.policy.policy_map
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     PolicyMap
@@ -306,6 +333,7 @@ Sample batch API
 .. currentmodule:: ray.rllib.policy.sample_batch
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     SampleBatch
@@ -334,10 +362,9 @@ MultiAgent batch API
 .. currentmodule:: ray.rllib.policy.sample_batch
 
 .. autosummary::
+    :nosignatures:
     :toctree: doc/
 
     MultiAgentBatch
     MultiAgentBatch.env_steps
     MultiAgentBatch.agent_steps
-
-

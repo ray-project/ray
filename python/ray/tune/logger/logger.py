@@ -1,10 +1,12 @@
 import abc
 import json
 import logging
-
+from pathlib import Path
 from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Type
 
+import pyarrow
 import yaml
+
 from ray.air._internal.json import SafeFallbackEncoder
 from ray.tune.callback import Callback
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
@@ -163,6 +165,27 @@ class LoggerCallback(Callback):
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
         self.log_trial_end(trial, failed=True)
+
+    def _restore_from_remote(self, file_name: str, trial: "Trial") -> None:
+        if not trial.checkpoint:
+            # If there's no checkpoint, there's no logging artifacts to restore
+            # since we're starting from scratch.
+            return
+
+        local_file = Path(trial.local_path, file_name).as_posix()
+        remote_file = Path(trial.storage.trial_fs_path, file_name).as_posix()
+
+        try:
+            pyarrow.fs.copy_files(
+                remote_file,
+                local_file,
+                source_filesystem=trial.storage.storage_filesystem,
+            )
+            logger.debug(f"Copied {remote_file} to {local_file}")
+        except FileNotFoundError:
+            logger.warning(f"Remote file not found: {remote_file}")
+        except Exception:
+            logger.exception(f"Error downloading {remote_file}")
 
 
 @DeveloperAPI

@@ -14,17 +14,17 @@ if __name__ == "__main__":
     # signatures/typehints.
     _register_all()
 
-    from ray.rllib.algorithms.a2c import A2CConfig
+    from ray.rllib.algorithms.ppo import PPOConfig
 
     assert (
         "tensorflow" not in sys.modules
     ), "`tensorflow` initially present, when it shouldn't!"
 
     config = (
-        A2CConfig()
+        PPOConfig()
         .environment("CartPole-v1")
         .framework("torch")
-        .rollouts(num_rollout_workers=0)
+        .env_runners(num_env_runners=0)
     )
     # Note: No ray.init(), to test it works without Ray
     algo = config.build()

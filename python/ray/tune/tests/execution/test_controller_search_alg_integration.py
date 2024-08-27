@@ -1,19 +1,33 @@
 import os
 import pickle
+import sys
 from collections import Counter
 
 import pytest
-import sys
 
 import ray
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.train.tests.util import mock_storage_context
 from ray.tune import Experiment, PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
-from ray.tune.search import Searcher, ConcurrencyLimiter, Repeater, SearchGenerator
+from ray.tune.search import ConcurrencyLimiter, Repeater, Searcher, SearchGenerator
 from ray.tune.search._mock import _MockSuggestionAlgorithm
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
+
+
+class TestTuneController(TuneController):
+    def __init__(self, *args, **kwargs):
+        kwargs.update(dict(storage=mock_storage_context()))
+        super().__init__(*args, **kwargs)
+
+
+@pytest.fixture(autouse=True)
+def register_test_trainable():
+    register_mock_trainable()
+    yield
 
 
 @pytest.fixture(scope="function")
@@ -43,13 +57,13 @@ def test_search_alg_notification(ray_start_4_cpus_2_gpus_extra, resource_manager
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testSearchAlgFinished
     """
 
-    experiment_spec = {"run": "__fake", "stop": {"training_iteration": 2}}
+    experiment_spec = {"run": MOCK_TRAINABLE_NAME, "stop": {"training_iteration": 2}}
     experiments = [Experiment.from_json("test", experiment_spec)]
     search_alg = _MockSuggestionAlgorithm()
     searcher = search_alg.searcher
     search_alg.add_configurations(experiments)
 
-    runner = TuneController(
+    runner = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(), search_alg=search_alg
     )
 
@@ -92,13 +106,13 @@ def test_search_alg_scheduler_stop(ray_start_4_cpus_2_gpus_extra, resource_manag
         def on_trial_result(self, *args, **kwargs):
             return TrialScheduler.STOP
 
-    experiment_spec = {"run": "__fake", "stop": {"training_iteration": 5}}
+    experiment_spec = {"run": MOCK_TRAINABLE_NAME, "stop": {"training_iteration": 5}}
     experiments = [Experiment.from_json("test", experiment_spec)]
     search_alg = _MockSuggestionAlgorithm()
     searcher = search_alg.searcher
     search_alg.add_configurations(experiments)
 
-    runner = TuneController(
+    runner = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         search_alg=search_alg,
         scheduler=_MockScheduler(),
@@ -135,7 +149,7 @@ def test_search_alg_stalled(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
     Legacy test: test_trial_runner_3.py::TrialRunnerTest::testSearchAlgStalled
     """
     experiment_spec = {
-        "run": "__fake",
+        "run": MOCK_TRAINABLE_NAME,
         "num_samples": 3,
         "stop": {"training_iteration": 1},
     }
@@ -143,7 +157,7 @@ def test_search_alg_stalled(ray_start_4_cpus_2_gpus_extra, resource_manager_cls)
     search_alg = _MockSuggestionAlgorithm(max_concurrent=1)
     search_alg.add_configurations(experiments)
     searcher = search_alg.searcher
-    runner = TuneController(
+    runner = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         search_alg=search_alg,
     )
@@ -218,7 +232,11 @@ def test_search_alg_finishes(ray_start_4_cpus_2_gpus_extra, resource_manager_cls
             spec = self._experiment.spec
             trial = None
             if self._index < spec["num_samples"]:
-                trial = Trial(spec.get("run"), stopping_criterion=spec.get("stop"))
+                trial = Trial(
+                    spec.get("run"),
+                    stopping_criterion=spec.get("stop"),
+                    storage=spec.get("storage"),
+                )
             self._index += 1
 
             if self._index > 4:
@@ -230,7 +248,7 @@ def test_search_alg_finishes(ray_start_4_cpus_2_gpus_extra, resource_manager_cls
             return {}
 
     experiment_spec = {
-        "run": "__fake",
+        "run": MOCK_TRAINABLE_NAME,
         "num_samples": 2,
         "stop": {"training_iteration": 1},
     }
@@ -238,7 +256,7 @@ def test_search_alg_finishes(ray_start_4_cpus_2_gpus_extra, resource_manager_cls
     experiments = [Experiment.from_json("test", experiment_spec)]
     searcher.add_configurations(experiments)
 
-    runner = TuneController(
+    runner = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         search_alg=searcher,
     )
@@ -299,7 +317,7 @@ def test_searcher_save_restore(ray_start_8_cpus, resource_manager_cls, tmpdir):
         searcher = Repeater(searcher, repeat=3, set_index=False)
         search_alg = SearchGenerator(searcher)
         experiment_spec = {
-            "run": "__fake",
+            "run": MOCK_TRAINABLE_NAME,
             "num_samples": 20,
             "config": {"sleep": 10},
             "stop": {"training_iteration": 2},
@@ -311,7 +329,7 @@ def test_searcher_save_restore(ray_start_8_cpus, resource_manager_cls, tmpdir):
 
     searcher = create_searcher()
 
-    runner = TuneController(
+    runner = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         search_alg=searcher,
         checkpoint_period=-1,
@@ -332,7 +350,7 @@ def test_searcher_save_restore(ray_start_8_cpus, resource_manager_cls, tmpdir):
 
     searcher = create_searcher()
 
-    runner2 = TuneController(
+    runner2 = TestTuneController(
         resource_manager_factory=lambda: resource_manager_cls(),
         search_alg=searcher,
         experiment_path=str(tmpdir),

@@ -1,10 +1,10 @@
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu20.04
 
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
 ARG BUILDKITE_PULL_REQUEST_BASE_BRANCH
-ARG PYTHON=3.8
+ARG PYTHON=3.9
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
@@ -35,9 +35,6 @@ RUN apt-get install -y -qq \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
     clang-format-12 jq \
     clang-tidy-12 clang-12
-# Make using GCC 9 explicit.
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
-    --slave /usr/bin/gcov gcov /usr/bin/gcov-9
 RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
     ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
     ln -s /usr/bin/clang-12 /usr/bin/clang
@@ -62,5 +59,8 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 
-RUN ./ci/env/install-dependencies.sh init
-RUN RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/env/install-dependencies.sh
+RUN bash --login -ie -c '\
+    BUILD=1 ./ci/env/install-dependencies.sh \
+    RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh \
+    pip uninstall -y ray \
+'

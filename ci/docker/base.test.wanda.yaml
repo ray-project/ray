@@ -1,0 +1,13 @@
+name: "oss-ci-base_test-py$PYTHON"
+froms: ["ubuntu:focal"]
+dockerfile: ci/docker/base.test.Dockerfile
+srcs:
+  - ci/env/install-bazel.sh
+  - ci/env/install-miniconda.sh
+  - ci/suppress_output
+  - .bazelversion
+build_args:
+  - BUILDKITE_BAZEL_CACHE_URL
+  - PYTHON
+tags:
+  - cr.ray.io/rayproject/oss-ci-base_test-py$PYTHON

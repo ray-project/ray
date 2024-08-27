@@ -30,12 +30,11 @@ cdef class Metric:
     """
     cdef:
         unique_ptr[CMetric] metric
-        c_vector[CTagKey] c_tag_keys
+        c_vector[c_string] c_tag_keys
 
     def __init__(self, tag_keys):
         for tag_key in tag_keys:
-            self.c_tag_keys.push_back(
-                CTagKey.Register(tag_key.encode("ascii")))
+            self.c_tag_keys.push_back(tag_key.encode("ascii"))
 
     def record(self, value, tags=None):
         """Record a measurement of metric.

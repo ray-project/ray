@@ -3,7 +3,7 @@
 Building Ray from Source
 =========================
 
-For a majority of Ray users, installing Ray via the latest wheels or pip package is usually enough. However, you may want to build the latest master branch.
+To contribute to the Ray repository, follow the instructions below to build from the latest master branch.
 
 .. tip::
 
@@ -14,95 +14,50 @@ For a majority of Ray users, installing Ray via the latest wheels or pip package
 .. contents::
   :local:
 
-Clone the repository
---------------------
+Fork the Ray repository
+-----------------------
 
-To build Ray locally you will need to have the Git repository, so first, fork it on GitHub. Then you can clone it to your machine:
+Forking an open source repository is a best practice when looking to contribute, as it allows you to make and test changes without affecting the original project, ensuring a clean and organized collaboration process.
+You can propose changes to the main project by submitting a pull request to the main project's repository.
 
-.. tab-set::
+1. Navigate to the `Ray GitHub repository <https://github.com/ray-project/ray>`_.
+2. Follow these `GitHub instructions <https://docs.github.com/en/get-started/quickstart/fork-a-repo>`_, and do the following:
 
-    .. tab-item:: Git SSH
+    a. `Fork the repo <https://docs.github.com/en/get-started/quickstart/fork-a-repo#forking-a-repository>`_ using your preferred method.
+    b. `Clone <https://docs.github.com/en/get-started/quickstart/fork-a-repo#cloning-your-forked-repository>`_ to your local machine.
+    c. `Connect your repo <https://docs.github.com/en/get-started/quickstart/fork-a-repo#configuring-git-to-sync-your-fork-with-the-upstream-repository>`_ to the upstream (main project) Ray repo to sync changes.
 
-        To clone the repository using Git with SSH (the default) run:
+Prepare a Python virtual environment
+------------------------------------
 
-        .. code-block:: shell
-
-            git clone git@github.com:[your username]/ray.git
-
-    .. tab-item:: Git HTTPS
-
-        To clone the repository using Git with HTTPS run:
-
-        .. code-block:: shell
-
-            git clone https://github.com/[your username]/ray.git
-
-Then you can enter into the Ray git repository directory:
-
-.. code-block:: shell
-
-    cd ray
-
-Next make sure you connect your repository to the upstream (main project) Ray repository. This will allow you to push your code to your repository when proposing changes (in pull requests) while also pulling updates from the main project.
-
-.. tab-set::
-
-    .. tab-item:: Git SSH
-
-        To connect your repository using SSH (the default) run the command:
-
-        .. code-block:: shell
-
-            git remote add upstream git@github.com:ray-project/ray.git
-
-    .. tab-item:: Git HTTPS
-
-        To connect your repository using HTTPS run the command:
-
-        .. code-block:: shell
-
-            git remote add upstream https://github.com/ray-project/ray.git
-
-Every time you want to update your local version you can pull the changes from the main repository:
-
-.. code-block:: shell
-
-    # Checkout the local master branch
-    git checkout master
-    # Pull the latest changes from the main repository
-    git pull upstream master
-
-Prepare the Python environment
-------------------------------
-
-You probably want some type of Python virtual environment. For example, you can use Anaconda's ``conda``.
+Create a virtual environment to prevent version conflicts and to develop with an isolated, project-specific Python setup.
 
 .. tab-set::
 
     .. tab-item:: conda
 
-        Set up a ``conda`` environment named ``ray``:
+        Set up a ``conda`` environment named ``myenv``:
 
         .. code-block:: shell
 
-            conda create -c conda-forge python=3.9 -n ray
+            conda create -c conda-forge python=3.9 -n myenv
 
 
         Activate your virtual environment to tell the shell/terminal to use this particular Python:
 
         .. code-block:: shell
 
-            conda activate ray
+            conda activate myenv
 
         You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
     .. tab-item:: venv
 
-        Use Python's integrated ``venv`` module to create a virtual environment called ``venv`` in the current directory:
+        Use Python's integrated ``venv`` module to create a virtual environment called ``myenv`` in the current directory:
 
         .. code-block:: shell
 
-            python -m venv venv
+            python -m venv myenv
 
         This contains a directory with all the packages used by the local Python of your project. You only need to do this step once.
 
@@ -110,7 +65,7 @@ You probably want some type of Python virtual environment. For example, you can 
 
         .. code-block:: shell
 
-            source venv/bin/activate
+            source myenv/bin/activate
 
         You need to activate the virtual environment every time you start a new shell/terminal to work on Ray.
 
@@ -172,15 +127,10 @@ To build Ray on Ubuntu, run the following commands:
 
 .. code-block:: bash
 
-  # Add a PPA containing gcc-9 for older versions of Ubuntu.
-  sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
   sudo apt-get update
-  sudo apt-get install -y build-essential curl gcc-9 g++-9 pkg-config psmisc unzip
-  sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 \
-                --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
-                --slave /usr/bin/gcov gcov /usr/bin/gcov-9
+  sudo apt-get install -y build-essential curl clang-12 pkg-config psmisc unzip
 
-  # Install Bazel.
+  # Install Bazelisk.
   ci/env/install-bazel.sh
 
   # Install node version manager and node 14
@@ -188,6 +138,9 @@ To build Ray on Ubuntu, run the following commands:
   nvm install 14
   nvm use 14
 
+.. note::
+  The `install-bazel.sh` script installs `bazelisk` for building Ray. 
+  If you prefer to use `bazel`, only version `6.5.0` is currently supported.
 
 For RHELv8 (Redhat EL 8.0-64 Minimal), run the following commands:
 
@@ -211,7 +164,7 @@ To build Ray on MacOS, first install these dependencies:
   brew install wget
 
   # Install Bazel.
-  ray/ci/env/install-bazel.sh
+  ci/env/install-bazel.sh
 
 Building Ray on Linux & MacOS (full)
 ------------------------------------
@@ -222,13 +175,13 @@ Enter into the project directory, for example:
 
 .. code-block:: shell
 
-    cd ray
+  cd ray
 
 Now you can build the dashboard. From inside of your local Ray project directory enter into the dashboard client directory:
 
 .. code-block:: bash
 
-  cd dashboard/client
+  cd python/ray/dashboard/client
 
 Then you can install the dependencies and build the dashboard:
 
@@ -252,7 +205,9 @@ Enter into the ``python/`` directory inside of the Ray project directory and ins
 
   # Install Ray.
   cd python/
-  # You may need to set the following two env vars if your platform is MacOS ARM64(M1).
+  # Install required dependencies.
+  pip install -r requirements.txt
+  # You may need to set the following two env vars if you have a macOS ARM64(M1) platform.
   # See https://github.com/grpc/grpc/issues/25082 for more details.
   # export GRPC_PYTHON_BUILD_SYSTEM_OPENSSL=1
   # export GRPC_PYTHON_BUILD_SYSTEM_ZLIB=1
@@ -271,6 +226,9 @@ directory will take effect without reinstalling the package.
 
   The ``build --disk_cache=~/bazel-cache`` option can be useful to speed up repeated builds too.
 
+.. note::
+  Warning: If you run into an error building protobuf, switching from miniconda to anaconda might help.
+
 .. _NodeJS: https://nodejs.org
 
 Building Ray on Windows (full)
@@ -280,7 +238,7 @@ Building Ray on Windows (full)
 
 The following links were correct during the writing of this section. In case the URLs changed, search at the organizations' sites.
 
-- Bazel 4.2 (https://github.com/bazelbuild/bazel/releases/tag/4.2.1)
+- Bazel 6.5.0 (https://github.com/bazelbuild/bazel/releases/tag/6.5.0)
 - Microsoft Visual Studio 2019 (or Microsoft Build Tools 2019 - https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2019)
 - JDK 15 (https://www.oracle.com/java/technologies/javase-jdk15-downloads.html)
 - Miniconda 3 (https://docs.conda.io/en/latest/miniconda.html)
@@ -312,7 +270,7 @@ You can also use the included script to install Bazel:
 
 3. Define an environment variable ``BAZEL_SH`` to point to ``bash.exe``. If git for Windows was installed for all users, bash's path should be ``C:\Program Files\Git\bin\bash.exe``. If git was installed for a single user, adjust the path accordingly.
 
-4. Bazel 4.2 installation. Go to Bazel 4.2 release web page and download
+4. Bazel 6.5.0 installation. Go to Bazel 6.5.0 release web page and download
 bazel-4.2.1-windows-x86_64.exe. Copy the exe into the directory of your choice.
 Define an environment variable BAZEL_PATH to full exe path (example:
 ``set BAZEL_PATH=C:\bazel\bazel.exe``). Also add the Bazel directory to the
@@ -360,15 +318,41 @@ Dependencies for the linter (``scripts/format.sh``) can be installed with:
 
 .. code-block:: shell
 
- pip install -r python/requirements/lint-requirements.txt
+ pip install -c python/requirements_compiled.txt -r python/requirements/lint-requirements.txt
 
 Dependencies for running Ray unit tests under ``python/ray/tests`` can be installed with:
 
 .. code-block:: shell
 
- pip install -c python/requirements.txt -r python/requirements/test-requirements.txt
+ pip install -c python/requirements_compiled.txt -r python/requirements/test-requirements.txt
 
 Requirement files for running Ray Data / ML library tests are under ``python/requirements/``.
+
+Pre-commit Hooks
+----------------
+
+Ray is planning to replace the pre-push hooks that are invoked from ``scripts/format.sh`` with
+pre-commit hooks using `the pre-commit python package <https://pre-commit.com/>`_ in the future. At
+the moment, we have configured a ``.pre-commit-config.yaml`` which runs all the same checks done by
+``scripts/format.sh`` along with a few additional ones too. Currently this developer tooling is
+opt-in, with any formatting changes made by ``scripts/format.sh`` expected to be caught by
+``pre-commit`` as well. To start using ``pre-commit``:
+
+.. code-block:: shell
+
+   pip install pre-commit
+   pre-commit install
+
+This will install pre-commit into the current environment, and enable pre-commit checks every time
+you commit new code changes with git. To temporarily skip pre-commit checks, use the ``-n`` or
+``--no-verify`` flag when committing:
+
+.. code-block:: shell
+
+   git commit -n
+
+If you find that ``scripts/format.sh`` makes a change that is different from what ``pre-commit``
+does, please report an issue on the Ray github page.
 
 Fast, Debug, and Optimized Builds
 ---------------------------------

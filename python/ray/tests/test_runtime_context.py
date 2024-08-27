@@ -6,8 +6,9 @@ import sys
 import pytest
 import warnings
 
-from ray._private.test_utils import SignalActor
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.state import list_tasks
+from ray._private.test_utils import wait_for_condition
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fails on windows")
@@ -148,119 +149,6 @@ def test_get_assigned_resources(ray_start_10_cpus):
     assert ray.get(result)["CPU"] == 2.0
 
 
-def test_actor_stats_normal_task(ray_start_regular):
-    # Because it works at the core worker level, this API works for tasks.
-    @ray.remote
-    def func():
-        return ray.get_runtime_context()._get_actor_call_stats()
-
-    assert ray.get(func.remote())["func"] == {
-        "pending": 0,
-        "running": 1,
-        "finished": 0,
-    }
-
-
-def test_actor_stats_sync_actor(ray_start_regular):
-    signal = SignalActor.remote()
-
-    @ray.remote
-    class SyncActor:
-        def run(self):
-            return ray.get_runtime_context()._get_actor_call_stats()
-
-        def wait_signal(self):
-            ray.get(signal.wait.remote())
-            return ray.get_runtime_context()._get_actor_call_stats()
-
-    actor = SyncActor.remote()
-    counts = ray.get(actor.run.remote())
-    assert counts == {
-        "SyncActor.run": {"pending": 0, "running": 1, "finished": 0},
-        "SyncActor.__init__": {"pending": 0, "running": 0, "finished": 1},
-    }
-
-    ref = actor.wait_signal.remote()
-    other_refs = [actor.run.remote() for _ in range(3)] + [
-        actor.wait_signal.remote() for _ in range(5)
-    ]
-    ray.wait(other_refs, timeout=1)
-    signal.send.remote()
-    counts = ray.get(ref)
-    assert counts == {
-        "SyncActor.run": {
-            "pending": 3,
-            "running": 0,
-            "finished": 1,  # from previous run
-        },
-        "SyncActor.wait_signal": {
-            "pending": 5,
-            "running": 1,
-            "finished": 0,
-        },
-        "SyncActor.__init__": {"pending": 0, "running": 0, "finished": 1},
-    }
-
-
-def test_actor_stats_threaded_actor(ray_start_regular):
-    signal = SignalActor.remote()
-
-    @ray.remote
-    class ThreadedActor:
-        def func(self):
-            ray.get(signal.wait.remote())
-            return ray.get_runtime_context()._get_actor_call_stats()
-
-    actor = ThreadedActor.options(max_concurrency=3).remote()
-    refs = [actor.func.remote() for _ in range(6)]
-    ready, _ = ray.wait(refs, timeout=1)
-    assert len(ready) == 0
-    signal.send.remote()
-    results = ray.get(refs)
-    assert max(result["ThreadedActor.func"]["running"] for result in results) > 1
-    assert max(result["ThreadedActor.func"]["pending"] for result in results) > 1
-
-
-def test_actor_stats_async_actor(ray_start_regular):
-    signal = SignalActor.remote()
-
-    @ray.remote
-    class AysncActor:
-        async def func(self):
-            await signal.wait.remote()
-            return ray.get_runtime_context()._get_actor_call_stats()
-
-    actor = AysncActor.options(max_concurrency=3).remote()
-    refs = [actor.func.remote() for _ in range(6)]
-    ready, _ = ray.wait(refs, timeout=1)
-    assert len(ready) == 0
-    signal.send.remote()
-    results = ray.get(refs)
-    assert max(result["AysncActor.func"]["running"] for result in results) == 3
-    assert max(result["AysncActor.func"]["pending"] for result in results) == 3
-
-
-def test_actor_stats_async_actor_generator(ray_start_regular):
-    signal = SignalActor.remote()
-
-    @ray.remote
-    class AysncActor:
-        async def func(self):
-            await signal.wait.remote()
-            yield ray.get_runtime_context()._get_actor_call_stats()
-
-    actor = AysncActor.options(max_concurrency=3).remote()
-    gens = [actor.func.options(num_returns="streaming").remote() for _ in range(6)]
-    time.sleep(1)
-    signal.send.remote()
-    results = []
-    for gen in gens:
-        for ref in gen:
-            results.append(ray.get(ref))
-    assert max(result["AysncActor.func"]["running"] for result in results) == 3
-    assert max(result["AysncActor.func"]["pending"] for result in results) == 3
-
-
 # Use default filterwarnings behavior for this test
 @pytest.mark.filterwarnings("default")
 def test_ids(ray_start_regular):
@@ -276,6 +164,8 @@ def test_ids(ray_start_regular):
     with warnings.catch_warnings(record=True) as w:
         assert rtc.get_job_id() == rtc.job_id.hex()
         assert any("Use get_job_id() instead" in str(warning.message) for warning in w)
+
+    assert rtc.get_actor_name() is None
 
     # placement group id
     # Driver doesn't belong to any placement group.
@@ -343,11 +233,56 @@ def test_ids(ray_start_regular):
     actor = FooActor.remote()
     ray.get(actor.foo.remote())
 
+    # actor name
+    @ray.remote
+    class NamedActor:
+        def name(self):
+            return ray.get_runtime_context().get_actor_name()
+
+    ACTOR_NAME = "actor_name"
+    named_actor = NamedActor.options(name=ACTOR_NAME).remote()
+    assert ray.get(named_actor.name.remote()) == ACTOR_NAME
+
+    # unnamed actor name
+    unnamed_actor = NamedActor.options().remote()
+    assert ray.get(unnamed_actor.name.remote()) == ""
+
+    # task actor name
+    @ray.remote
+    def task_actor_name():
+        ray.get_runtime_context().get_actor_name()
+
+    assert ray.get(task_actor_name.remote()) is None
+
+    # driver actor name
+    assert rtc.get_actor_name() is None
+
 
 def test_auto_init(shutdown_only):
     assert not ray.is_initialized()
     ray.get_runtime_context()
     assert ray.is_initialized()
+
+
+def test_async_actor_task_id(shutdown_only):
+    ray.init()
+
+    @ray.remote
+    class A:
+        async def f(self):
+            task_id = ray.get_runtime_context().get_task_id()
+            return task_id
+
+    a = A.remote()
+    task_id = ray.get(a.f.remote())
+
+    def verify():
+        tasks = list_tasks(filters=[("name", "=", "A.f")])
+        assert len(tasks) == 1
+        assert tasks[0].task_id == task_id
+        return True
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":

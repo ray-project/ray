@@ -18,9 +18,9 @@ SIGKILL = signal.SIGKILL if sys.platform != "win32" else signal.SIGTERM
 @pytest.fixture
 def config(request):
     config = {
-        "health_check_initial_delay_ms": 0,
+        "health_check_initial_delay_ms": 5000,
         "health_check_period_ms": 100,
-        "health_check_failure_threshold": 10,
+        "health_check_failure_threshold": 20,
         "object_timeout_milliseconds": 200,
     }
 

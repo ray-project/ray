@@ -9,6 +9,9 @@ import json
 from subprocess import Popen, PIPE, STDOUT, list2cmdline
 from typing import List
 from pathlib import Path
+import pytest
+
+import ray.cloudpickle as pickle
 
 import ray
 from ray._private.test_utils import (
@@ -16,8 +19,9 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
     format_web_url,
+    wait_for_pid_to_exit,
 )
-from ray.job_config import JobConfig
+from ray.job_config import JobConfig, LoggingConfig
 from ray.job_submission import JobSubmissionClient
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 
@@ -41,6 +45,20 @@ def execute_driver(commands: List[str], input: bytes = None):
                 pass
 
 
+def test_invalid_gcs_address():
+    with pytest.raises(ValueError):
+        JobSubmissionClient("foobar")
+
+    with pytest.raises(ValueError):
+        JobSubmissionClient("")
+
+    with pytest.raises(ValueError):
+        JobSubmissionClient("abc:abc")
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="lib is not supported on Python 3.12"
+)
 def test_job_isolation(call_ray_start):
     # Make sure two jobs with same module name
     # don't interfere with each other
@@ -82,44 +100,6 @@ assert ray.get(lib.task.remote()) == {}
 
         subprocess.check_call([sys.executable, v1_driver])
         subprocess.check_call([sys.executable, v2_driver])
-
-
-def test_export_queue_isolation(call_ray_start):
-    address = call_ray_start
-    driver_template = """
-import ray
-import ray.experimental.internal_kv as kv
-ray.init(address="{}")
-
-@ray.remote
-def f():
-    pass
-
-ray.get(f.remote())
-
-count = 0
-for k in kv._internal_kv_list(""):
-    if b"IsolatedExports:" + ray.get_runtime_context().job_id.binary() in k:
-        count += 1
-
-# Check exports aren't shared across the 5 jobs.
-assert count < 5, count
-"""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        os.makedirs(os.path.join(tmpdir, "v1"))
-        v1_driver = os.path.join(tmpdir, "v1", "driver.py")
-        with open(v1_driver, "w") as f:
-            f.write(driver_template.format(address))
-
-        try:
-            subprocess.check_call([sys.executable, v1_driver])
-        except Exception:
-            # Ignore the first run, since it runs extra exports.
-            pass
-
-        # Further runs do not increase the num exports count.
-        for _ in range(5):
-            subprocess.check_call([sys.executable, v1_driver])
 
 
 def test_job_observability(ray_start_regular):
@@ -214,6 +194,15 @@ def test_config_metadata(shutdown_only):
     assert dict(from_worker.metadata) == job_config.metadata
 
 
+def test_logging_config_serialization():
+    logging_config = LoggingConfig(encoding="TEXT")
+    serialized_py_logging_config = pickle.dumps(logging_config)
+    job_config = JobConfig()
+    job_config.set_py_logging_config(logging_config)
+    pb = job_config._get_proto_job_config()
+    assert pb.serialized_py_logging_config == serialized_py_logging_config
+
+
 def test_get_entrypoint():
     get_entrypoint = """
 from ray._private.utils import get_entrypoint_name
@@ -291,7 +280,7 @@ ray.get(f.remote())
             "/api/jobs/",
         )
 
-        assert r.status_code == 200
+        assert r.status_code == 200, r.text
         jobs_info_json = json.loads(r.text)
         jobs_info_json.sort(key=lambda j: j["job_id"])
         info_json = jobs_info_json[1]
@@ -322,8 +311,100 @@ ray.get(f.remote())
         # TODO(sang): Client entrypoint not supported yet.
 
 
+def test_task_spec_root_detached_actor_id(shutdown_only):
+    """Test to make sure root detached actor id is set correctly
+    for task spec of submitted task or actor.
+    """
+
+    ray.init()
+
+    @ray.remote
+    def get_task_root_detached_actor_id():
+        core_worker = ray._private.worker.global_worker.core_worker
+        return core_worker.get_current_root_detached_actor_id().hex()
+
+    @ray.remote
+    class Actor:
+        def get_root_detached_actor_id(self):
+            core_worker = ray._private.worker.global_worker.core_worker
+            return core_worker.get_current_root_detached_actor_id().hex()
+
+    @ray.remote(lifetime="detached")
+    class DetachedActor:
+        def check(self):
+            core_worker = ray._private.worker.global_worker.core_worker
+            assert (
+                ray.get_runtime_context().get_actor_id()
+                == core_worker.get_current_root_detached_actor_id().hex()
+            )
+            assert ray.get_runtime_context().get_actor_id() == ray.get(
+                get_task_root_detached_actor_id.remote()
+            )
+            actor = Actor.remote()
+            assert ray.get_runtime_context().get_actor_id() == ray.get(
+                actor.get_root_detached_actor_id.remote()
+            )
+
+    assert (
+        ray.get(get_task_root_detached_actor_id.remote())
+        == ray._raylet.ActorID.nil().hex()
+    )
+    actor = Actor.remote()
+    assert (
+        ray.get(actor.get_root_detached_actor_id.remote())
+        == ray._raylet.ActorID.nil().hex()
+    )
+    detached_actor = DetachedActor.remote()
+    ray.get(detached_actor.check.remote())
+
+
+def test_no_process_leak_after_job_finishes(ray_start_cluster):
+    """Test to make sure when a job finishes,
+    all the worker processes belonging to it exit.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=8)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0)
+    class PidActor:
+        def __init__(self):
+            self.pids = set()
+            self.pids.add(os.getpid())
+
+        def add_pid(self, pid):
+            self.pids.add(pid)
+
+        def get_pids(self):
+            return self.pids
+
+    @ray.remote
+    def child(pid_actor):
+        # child worker process should be forcibly killed
+        # when the job finishes.
+        ray.get(pid_actor.add_pid.remote(os.getpid()))
+        time.sleep(1000000)
+
+    @ray.remote
+    def parent(pid_actor):
+        ray.get(pid_actor.add_pid.remote(os.getpid()))
+        child.remote(pid_actor)
+
+    pid_actor = PidActor.remote()
+    ray.get(parent.remote(pid_actor))
+
+    wait_for_condition(lambda: len(ray.get(pid_actor.get_pids.remote())) == 3)
+
+    pids = ray.get(pid_actor.get_pids.remote())
+
+    ray.shutdown()
+    # Job finishes at this point
+
+    for pid in pids:
+        wait_for_pid_to_exit(pid)
+
+
 if __name__ == "__main__":
-    import pytest
 
     # Make subprocess happy in bazel.
     os.environ["LC_ALL"] = "en_US.UTF-8"

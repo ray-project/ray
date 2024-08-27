@@ -1,31 +1,34 @@
 import logging
 import os
+import time
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from dataclasses import dataclass
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
 import ray
-from ray.data import Dataset
+import ray._private.ray_constants as ray_constants
 from ray._private.ray_constants import env_integer
-from ray.air.config import CheckpointConfig
+from ray.data import Dataset
 from ray.exceptions import RayActorError
-from ray.train.data_config import DataConfig
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint, DataConfig
 from ray.train._internal.session import (
-    TrainingResult,
     TrialInfo,
+    _TrainingResult,
     get_session,
     init_session,
     shutdown_session,
 )
+from ray.train._internal.storage import StorageContext
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
+    ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
+    RAY_TRAIN_ENABLE_STATE_TRACKING,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
-    DISABLE_LAZY_CHECKPOINTING_ENV,
 )
 from ray.util.placement_group import get_current_placement_group, remove_placement_group
 
@@ -42,6 +45,25 @@ class TrainingWorkerError(Exception):
     """Raised if a worker fails during training."""
 
 
+@dataclass
+class ResourceConfig:
+    """
+    Resource configuration for resource_ids to share between workers.
+
+    Args:
+        resource_name: The name of the resource to configure
+         (Example: "neuron_cores" or "gpu").
+        resource_enable_sharing_env_var: The environment variable to
+         check if the resource should be shared.
+        share_resource_ids_env_var: The environment variable to configure for
+         sharing the resources with other workers.
+    """
+
+    resource_name: str
+    resource_enable_sharing_env_var: str
+    share_resource_ids_env_var: str
+
+
 class BackendExecutor:
     """Main execution class for training backends.
 
@@ -53,12 +75,9 @@ class BackendExecutor:
         backend_config: The configurations for this
             specific backend.
         num_workers: Number of workers to use for training.
-        num_cpus_per_worker: Number of CPUs to use per worker.
-        num_gpus_per_worker: Number of GPUs to use per worker.
-        additional_resources_per_worker (Optional[Dict[str, float]]):
-            Dictionary specifying the extra resources that will be
-            requested for each worker in addition to ``num_cpus_per_worker``
-            and ``num_gpus_per_worker``.
+        resources_per_worker (Optional[Dict[str, float]]):
+            Dictionary specifying the resources that will be
+            requested for each worker. Defaults to {"CPU": 1}.
         max_retries: Number of retries when Ray actors fail.
             Defaults to 3. Set to -1 for unlimited retries.
     """
@@ -69,18 +88,17 @@ class BackendExecutor:
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
         num_workers: int = 1,
-        num_cpus_per_worker: float = 1,
-        num_gpus_per_worker: float = 0,
-        additional_resources_per_worker: Optional[Dict[str, float]] = None,
+        resources_per_worker: Optional[Dict[str, float]] = None,
         max_retries: int = 3,
-        checkpoint_config: Optional[CheckpointConfig] = None,
     ):
+        if resources_per_worker is None:
+            self._resources_per_worker = {"CPU": 1}
+        else:
+            self._resources_per_worker = resources_per_worker.copy()
+
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
         self._num_workers = num_workers
-        self._num_cpus_per_worker = num_cpus_per_worker
-        self._num_gpus_per_worker = num_gpus_per_worker
-        self._additional_resources_per_worker = additional_resources_per_worker
         self._max_failures = max_retries
         if self._max_failures < 0:
             self._max_failures = float("inf")
@@ -94,12 +112,19 @@ class BackendExecutor:
         self.worker_group = InactiveWorkerGroup()
         self.dataset_shards = None
 
-        self._checkpoint_keep_all_ranks = (
-            checkpoint_config and checkpoint_config._checkpoint_keep_all_ranks
-        )
-        self._checkpoint_upload_from_workers = (
-            checkpoint_config and checkpoint_config._checkpoint_upload_from_workers
-        )
+        self._resource_configs = [
+            ResourceConfig(
+                ray_constants.NEURON_CORES,
+                ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
+                ray_constants.NEURON_RT_VISIBLE_CORES_ENV_VAR,
+            )
+        ]
+
+        # Record the initialization time of BackendExecutor, which is
+        # after trainer.fit() and before worker_group executes the training function.
+        self._start_time_ms = int(time.time() * 1000)
+
+        self.state_tracking_enabled = env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0)
 
     def start(
         self,
@@ -113,9 +138,7 @@ class BackendExecutor:
         placement_group = self._placement_group or "default"
         self.worker_group = WorkerGroup(
             num_workers=self._num_workers,
-            num_cpus_per_worker=self._num_cpus_per_worker,
-            num_gpus_per_worker=self._num_gpus_per_worker,
-            additional_resources_per_worker=self._additional_resources_per_worker,
+            resources_per_worker=self._resources_per_worker,
             actor_cls=train_cls,
             actor_cls_args=train_cls_args,
             actor_cls_kwargs=train_cls_kwargs,
@@ -127,20 +150,28 @@ class BackendExecutor:
         # trainable, thus allowing for lazy checkpoint transfer to be used.
         # See https://github.com/ray-project/ray/issues/33073
         # for more context.
-        # TODO remove
-        if self._trial_info and self._trial_info.driver_ip:
-            self.worker_group._move_workers_with_ip_to_front(self._trial_info.driver_ip)
+        # TODO remove passing in trial_driver_ip.
 
-        worker_locs = [
-            f"{w.metadata.pid} ({w.metadata.node_ip})"
-            for w in self.worker_group.workers
-        ]
-        logger.info(f"Starting distributed worker processes: {worker_locs}")
+        trial_driver_node_id = (
+            self._trial_info.driver_node_id if self._trial_info else None
+        )
+        self.worker_group.sort_workers_by_node_id_and_gpu_id(trial_driver_node_id)
 
         try:
             if initialization_hook:
                 self._initialization_hook = initialization_hook
                 self.worker_group.execute(initialization_hook)
+
+            # Always propagate the driver's DataContext to each worker in the group.
+            from ray.data import DataContext
+
+            def _set_driver_dataset_context(ctx: DataContext):
+                DataContext._set_current(ctx)
+
+            self.worker_group.execute(
+                _set_driver_dataset_context,
+                DataContext.get_current(),
+            )
 
             share_cuda_visible_devices_enabled = bool(
                 env_integer(
@@ -149,8 +180,20 @@ class BackendExecutor:
                 )
             )
 
-            if self._num_gpus_per_worker > 0 and share_cuda_visible_devices_enabled:
+            if (
+                self._resources_per_worker.get("GPU", 0) > 0
+                and share_cuda_visible_devices_enabled
+            ):
                 self._share_cuda_visible_devices()
+            for resource_config in self._resource_configs:
+                if self._is_share_resources_enabled(
+                    resource_config.resource_name,
+                    resource_config.resource_enable_sharing_env_var,
+                ):
+                    self._share_resource_ids(
+                        resource_config.resource_name,
+                        resource_config.share_resource_ids_env_var,
+                    )
             self._backend.on_start(self.worker_group, self._backend_config)
         except RayActorError as exc:
             logger.exception(str(exc))
@@ -160,6 +203,12 @@ class BackendExecutor:
             )
             self._increment_failures()
             self._restart()
+
+        if self.state_tracking_enabled:
+            from ray.train._internal.state import TrainRunStateManager
+            from ray.train._internal.state.state_actor import get_state_actor
+
+            self.state_manager = TrainRunStateManager(state_actor=get_state_actor())
 
     def _create_placement_group(self):
         """Creates a placement group if it does not exist.
@@ -185,15 +234,9 @@ class BackendExecutor:
         )
 
         if should_create_placement_group:
-            additional_resources_per_worker = (
-                self._additional_resources_per_worker or {}
-            )
-            bundle = {
-                "CPU": self._num_cpus_per_worker,
-                "GPU": self._num_gpus_per_worker,
-                **additional_resources_per_worker,
-            }
-            bundles = [bundle.copy() for _ in range(self._num_workers)]
+            bundles = [
+                self._resources_per_worker.copy() for _ in range(self._num_workers)
+            ]
 
             use_spread = bool(env_integer(TRAIN_ENABLE_WORKER_SPREAD_ENV, 0))
             strategy = "SPREAD" if use_spread else "PACK"
@@ -243,31 +286,79 @@ class BackendExecutor:
             - Worker2: "0,1"
 
         """
+        self._share_resource_ids(
+            ray_constants.GPU, ray_constants.CUDA_VISIBLE_DEVICES_ENV_VAR
+        )
 
-        node_ids_and_gpu_ids = [
-            (w.metadata.node_id, w.metadata.gpu_ids) for w in self.worker_group.workers
+    def _share_resource_ids(self, resource: str, env_var: str):
+        """Sets the given env_var on all workers.
+
+        For each worker, the cores/devices are visible to all the
+        workers on that worker's node.This allows workers on the
+        same node to communicate with one another.
+
+        Example:
+
+            Setup:
+            - Node1:
+                - Worker1: {0, 1}
+                - Worker2: {2, 3}
+            - Node2:
+                - Worker3: {0, 1}
+
+            NEURON_RT_VISIBLE_CORES/TPU_VISIBLE_CHIPS/...:
+            - Worker1: "0,1,2,3"
+            - Worker2: "0,1,2,3"
+            - Worker2: "0,1"
+
+        Args:
+            resource: The name of the resource/accelerator.
+            env_var: The name of the environment variable to set.
+        """
+        node_ids_and_resource_ids = [
+            (
+                w.metadata.node_id,
+                w.metadata.resource_ids[resource],
+            )
+            for w in self.worker_group.workers
         ]
-
         node_id_to_worker_id = defaultdict(set)
-        node_id_to_gpu_ids = defaultdict(set)
+        node_id_to_resource_ids = defaultdict(set)
 
-        for worker_id, (node_id, gpu_ids) in enumerate(node_ids_and_gpu_ids):
+        for worker_id, (node_id, resource_ids) in enumerate(node_ids_and_resource_ids):
             node_id_to_worker_id[node_id].add(worker_id)
-            node_id_to_gpu_ids[node_id].update(gpu_ids)
+            node_id_to_resource_ids[node_id].update(resource_ids)
 
         futures = []
-        for node_id, gpu_ids in node_id_to_gpu_ids.items():
-            gpu_ids = sorted(gpu_ids)
-            all_gpu_ids = ",".join(gpu_ids)
+        for node_id, resource_ids in node_id_to_resource_ids.items():
+            resource_ids = sorted(resource_ids)
+            all_resource_ids = ",".join(resource_ids)
 
-            def set_gpu_ids():
-                os.environ["CUDA_VISIBLE_DEVICES"] = all_gpu_ids
+            def set_resource_ids():
+                os.environ[env_var] = all_resource_ids
 
             for worker_id in node_id_to_worker_id[node_id]:
                 futures.append(
-                    self.worker_group.execute_single_async(worker_id, set_gpu_ids)
+                    self.worker_group.execute_single_async(worker_id, set_resource_ids)
                 )
         ray.get(futures)
+
+    def _is_share_resources_enabled(self, resource_name: str, enable_sharing_env: str):
+        """Whether to share resource IDs on all workers
+        based on enable_sharing_env.
+
+        This will return true if resources are requested and greater than 0.
+        Also, user can disable by configuring the `enable_sharing_env` to "0".
+
+        Args:
+            resource_name: The name of the resource/accelerator.
+            enable_sharing_env: The name of the environment variable
+                to check.
+        """
+        has_resource_requested = self._resources_per_worker.get(resource_name, 0) > 0
+        return has_resource_requested and ray_constants.env_bool(
+            enable_sharing_env, True
+        )
 
     def _create_rank_world_size_mappings(self) -> List[Dict]:
         """Create rank and world size mappings for workers.
@@ -277,14 +368,14 @@ class BackendExecutor:
             - node_rank_map, which maps from world rank to node rank
 
         Example:
-            Worker 0: 0.0.0.0
-            Worker 1: 0.0.0.0
-            Worker 2: 0.0.0.1
-            Worker 3: 0.0.0.0
-            Worker 4: 0.0.0.1
+            Worker 0: node 0
+            Worker 1: node 0
+            Worker 2: node 1
+            Worker 3: node 0
+            Worker 4: node 1
 
-            Workers 0, 1, 3 are on 0.0.0.0.
-            Workers 2, 4 are on 0.0.0.1.
+            Workers 0, 1, 3 are on node 0.
+            Workers 2, 4 are on node 1.
 
             Expected local_rank_map:
             {
@@ -317,25 +408,37 @@ class BackendExecutor:
         local_rank_map = {}  # map from world rank to local rank
         local_world_size_map = {}  # map from world rank to local world size
         node_rank_map = {}  # map from world rank to node rank
-        node_ips = {}  # map from node ip to node index
+        node_ids = {}  # map from node id to node index
         node_cnt = 0  # count the number of nodes
 
-        ip_dict = defaultdict(int)  # map from node ip to the number of workers on it.
+        node_id_dict = defaultdict(
+            int
+        )  # map from node id to the number of workers on it.
         for world_rank in range(len(self.worker_group)):
             worker = self.worker_group.workers[world_rank]
-            node_ip = worker.metadata.node_ip
-            local_rank_map[world_rank] = ip_dict[node_ip]
-            ip_dict[node_ip] += 1
+            node_id = worker.metadata.node_id
+            local_rank_map[world_rank] = node_id_dict[node_id]
+            node_id_dict[node_id] += 1
 
-            if node_ip not in node_ips:
-                node_ips[node_ip] = node_cnt
+            if node_id not in node_ids:
+                node_ids[node_id] = node_cnt
                 node_cnt += 1
-            node_rank_map[world_rank] = node_ips[node_ip]
+            node_rank_map[world_rank] = node_ids[node_id]
 
         for world_rank in range(len(self.worker_group)):
             worker = self.worker_group.workers[world_rank]
-            node_ip = worker.metadata.node_ip
-            local_world_size_map[world_rank] = ip_dict[node_ip]
+            node_id = worker.metadata.node_id
+            local_world_size_map[world_rank] = node_id_dict[node_id]
+
+        workers_info = "\n".join(
+            [
+                f"- (node_id={w.metadata.node_id}, ip={w.metadata.node_ip}, "
+                f"pid={w.metadata.pid}) world_rank={i}, "
+                f"local_rank={local_rank_map[i]}, node_rank={node_rank_map[i]}"
+                for i, w in enumerate(self.worker_group.workers)
+            ]
+        )
+        logger.info(f"Started distributed worker processes: \n{workers_info}")
 
         return local_rank_map, local_world_size_map, node_rank_map
 
@@ -343,7 +446,9 @@ class BackendExecutor:
         self,
         train_func: Callable[[], T],
         datasets: Dict[str, Dataset],
+        metadata: Dict[str, Any],
         data_config: DataConfig,
+        storage: StorageContext,
         checkpoint: Optional[Checkpoint] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
@@ -362,7 +467,6 @@ class BackendExecutor:
         use_detailed_autofilled_metrics = env_integer(
             ENABLE_DETAILED_AUTOFILLED_METRICS_ENV, 0
         )
-        use_lazy_checkpointing = not env_integer(DISABLE_LAZY_CHECKPOINTING_ENV, 0)
 
         # First initialize the session.
         def initialize_session(
@@ -375,9 +479,8 @@ class BackendExecutor:
             trial_info,
             checkpoint,
             dataset_shard,
-            encode_data_fn,
-            checkpoint_keep_all_ranks,
-            checkpoint_upload_from_workers,
+            metadata,
+            storage,
         ):
             try:
                 init_session(
@@ -389,12 +492,10 @@ class BackendExecutor:
                     world_size=world_size,
                     trial_info=trial_info,
                     dataset_shard=dataset_shard,
+                    metadata=metadata,
                     checkpoint=checkpoint,
-                    encode_data_fn=encode_data_fn,
                     detailed_autofilled_metrics=use_detailed_autofilled_metrics,
-                    enable_lazy_checkpointing=use_lazy_checkpointing,
-                    checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
-                    checkpoint_upload_from_workers=(checkpoint_upload_from_workers),
+                    storage=storage,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -434,18 +535,32 @@ class BackendExecutor:
                     trial_info=self._trial_info,
                     train_func=train_func,
                     dataset_shard=self.dataset_shards[index],
+                    metadata=metadata,
                     checkpoint=checkpoint,
-                    encode_data_fn=self._backend._encode_data,
-                    checkpoint_keep_all_ranks=self._checkpoint_keep_all_ranks,
-                    checkpoint_upload_from_workers=(
-                        self._checkpoint_upload_from_workers
-                    ),
+                    storage=storage,
                 )
             )
 
         self._backend.on_training_start(self.worker_group, self._backend_config)
 
         self.get_with_failure_handling(futures)
+
+        # Register Train Run before training starts
+        if self.state_tracking_enabled:
+            from ray.train._internal.state.schema import RunStatusEnum
+
+            core_context = ray.runtime_context.get_runtime_context()
+
+            self.state_manager.register_train_run(
+                run_id=self._trial_info.run_id,
+                run_name=self._trial_info.experiment_name,
+                job_id=core_context.get_job_id(),
+                controller_actor_id=core_context.get_actor_id(),
+                datasets=datasets,
+                worker_group=self.worker_group,
+                start_time_ms=self._start_time_ms,
+                run_status=RunStatusEnum.STARTED,
+            )
 
         # Run the training function asynchronously in its own thread.
         def train_async():
@@ -454,15 +569,15 @@ class BackendExecutor:
 
         self.worker_group.execute_async(train_async)
 
-    def get_next_results(self) -> Optional[List[TrainingResult]]:
-        """Fetches the next ``TrainingResult`` from each worker.
+    def get_next_results(self) -> Optional[List[_TrainingResult]]:
+        """Fetches the next ``_TrainingResult`` from each worker.
 
-        Each ``TrainingResult`` is expected to correspond to the same step from
-        each worker (e.g. the same call to ``session.report()``).
+        Each ``_TrainingResult`` is expected to correspond to the same step from
+        each worker (e.g. the same call to ``train.report()``).
 
         Returns:
-            A list of ``TrainingResult``s with the same
-            ``TrainingResultType``, or ``None`` if there are no more results.
+            A list of ``_TrainingResult``s or ``None`` if there are no more results
+            since the training function has exited on all workers.
         """
 
         def get_next():
@@ -497,27 +612,8 @@ class BackendExecutor:
             else:
                 # Return None if all results are None.
                 return None
-        first_result = results[0]
-        result_type = first_result.type
-        if any(r.type != result_type for r in results):
-            raise RuntimeError(
-                "Some workers returned results with "
-                "different types. Make sure that "
-                "`session.report()` are called the "
-                "same number of times on all workers."
-            )
 
         return results
-
-    def _set_checkpoint_uri(self, uri: str):
-        """Tell remote sessions where to upload the chekcpoint."""
-
-        def set_uri():
-            session = _get_session("_set_checkpoint_uri")
-            session._set_checkpoint_uri(uri)
-
-        futures = self.worker_group.execute_async(set_uri)
-        self.get_with_failure_handling(futures)
 
     def pause_reporting(self):
         """Disable workers from enqueuing results from ``session.report()``.
@@ -560,6 +656,25 @@ class BackendExecutor:
         futures = self.worker_group.execute_async(end_training)
         results = self.get_with_failure_handling(futures)
         return results
+
+    def report_final_run_status(self, errored=False):
+        """Report the final train run status and end time to TrainStateActor."""
+        if self.state_tracking_enabled:
+            from ray.train._internal.state.schema import RunStatusEnum
+
+            if errored:
+                run_status = RunStatusEnum.ERRORED
+                status_detail = "Terminated due to an error in the training function."
+            else:
+                run_status = RunStatusEnum.FINISHED
+                status_detail = ""
+
+            self.state_manager.end_train_run(
+                run_id=self._trial_info.run_id,
+                run_status=run_status,
+                status_detail=status_detail,
+                end_time_ms=int(time.time() * 1000),
+            )
 
     def get_with_failure_handling(self, remote_values):
         """Gets the remote values while handling for worker failures.

@@ -6,7 +6,6 @@ import numpy as np
 import tree
 
 import ray
-from ray.rllib import SampleBatch
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
     PPOTfRLModule,
@@ -14,7 +13,7 @@ from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -58,7 +57,7 @@ def dummy_torch_ppo_loss(module, batch, fwd_out):
     Will eventually use the actual PPO loss function implemented in PPO.
 
     Args:
-        batch: SampleBatch used for training.
+        batch: Batch used for training.
         fwd_out: Forward output of the model.
 
     Returns:
@@ -68,11 +67,11 @@ def dummy_torch_ppo_loss(module, batch, fwd_out):
     # RLOptimizer and RLModule are integrated together.
     # this is not exactly a ppo loss, just something to show that the
     # forward train works
-    adv = batch[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
+    adv = batch[Columns.REWARDS] - fwd_out[Columns.VF_PREDS]
     action_dist_class = module.get_train_action_dist_cls()
     action_probs = action_dist_class.from_logits(
-        fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-    ).logp(batch[SampleBatch.ACTIONS])
+        fwd_out[Columns.ACTION_DIST_INPUTS]
+    ).logp(batch[Columns.ACTIONS])
     actor_loss = -(action_probs * adv).mean()
     critic_loss = (adv**2).mean()
     loss = actor_loss + critic_loss
@@ -87,17 +86,17 @@ def dummy_tf_ppo_loss(module, batch, fwd_out):
 
     Args:
         module: PPOTfRLModule
-        batch: SampleBatch used for training.
+        batch: Batch used for training.
         fwd_out: Forward output of the model.
 
     Returns:
         Loss tensor
     """
-    adv = batch[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
+    adv = batch[Columns.REWARDS] - fwd_out[Columns.VF_PREDS]
     action_dist_class = module.get_train_action_dist_cls()
     action_probs = action_dist_class.from_logits(
-        fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-    ).logp(batch[SampleBatch.ACTIONS])
+        fwd_out[Columns.ACTION_DIST_INPUTS]
+    ).logp(batch[Columns.ACTIONS])
     actor_loss = -tf.reduce_mean(action_probs * adv)
     critic_loss = tf.reduce_mean(tf.square(adv))
     return actor_loss + critic_loss
@@ -118,14 +117,14 @@ def _get_ppo_module(framework, env, lstm, observation_space):
 def _get_input_batch_from_obs(framework, obs, lstm):
     if framework == "torch":
         batch = {
-            SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
+            Columns.OBS: convert_to_torch_tensor(obs)[None],
         }
     else:
         batch = {
-            SampleBatch.OBS: tf.convert_to_tensor(obs)[None],
+            Columns.OBS: tf.convert_to_tensor(obs)[None],
         }
     if lstm:
-        batch[SampleBatch.OBS] = batch[SampleBatch.OBS][None]
+        batch[Columns.OBS] = batch[Columns.OBS][None]
     return batch
 
 
@@ -151,10 +150,7 @@ class TestPPO(unittest.TestCase):
                 # LSTM not implemented in TF2 yet
                 continue
             print(f"[FW={fw} | [ENV={env_name}] | [FWD={fwd_fn}] | LSTM" f"={lstm}")
-            if env_name.startswith("ALE/"):
-                env = gym.make("GymV26Environment-v0", env_id=env_name)
-            else:
-                env = gym.make(env_name)
+            env = gym.make(env_name)
 
             preprocessor_cls = get_preprocessor(env.observation_space)
             preprocessor = preprocessor_cls(env.observation_space)
@@ -175,7 +171,7 @@ class TestPPO(unittest.TestCase):
                 if fw == "torch":
                     state_in = convert_to_torch_tensor(state_in)
                 state_in = tree.map_structure(lambda x: x[None], state_in)
-                batch[STATE_IN] = state_in
+                batch[Columns.STATE_IN] = state_in
 
             if fwd_fn == "forward_exploration":
                 module.forward_exploration(batch)
@@ -191,11 +187,7 @@ class TestPPO(unittest.TestCase):
         for config in itertools.product(*config_combinations):
             fw, env_name, lstm = config
             print(f"[FW={fw} | [ENV={env_name}] | LSTM={lstm}")
-            # TODO(Artur): Figure out why this is needed and fix it.
-            if env_name.startswith("ALE/"):
-                env = gym.make("GymV26Environment-v0", env_id=env_name)
-            else:
-                env = gym.make(env_name)
+            env = gym.make(env_name)
 
             preprocessor_cls = get_preprocessor(env.observation_space)
             preprocessor = preprocessor_cls(env.observation_space)
@@ -228,12 +220,12 @@ class TestPPO(unittest.TestCase):
             while tstep < 10:
                 input_batch = _get_input_batch_from_obs(fw, obs, lstm=lstm)
                 if lstm:
-                    input_batch[STATE_IN] = state_in
+                    input_batch[Columns.STATE_IN] = state_in
 
                 fwd_out = module.forward_exploration(input_batch)
                 action_dist_cls = module.get_exploration_action_dist_cls()
                 action_dist = action_dist_cls.from_logits(
-                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                    fwd_out[Columns.ACTION_DIST_INPUTS]
                 )
                 _action = action_dist.sample()
                 action = convert_to_numpy(_action[0])
@@ -245,19 +237,19 @@ class TestPPO(unittest.TestCase):
                 new_obs, reward, terminated, truncated, _ = env.step(action)
                 new_obs = preprocessor.transform(new_obs)
                 output_batch = {
-                    SampleBatch.OBS: obs,
-                    SampleBatch.NEXT_OBS: new_obs,
-                    SampleBatch.ACTIONS: action,
-                    SampleBatch.ACTION_LOGP: action_logp,
-                    SampleBatch.REWARDS: np.array(reward),
-                    SampleBatch.TERMINATEDS: np.array(terminated),
-                    SampleBatch.TRUNCATEDS: np.array(truncated),
-                    STATE_IN: None,
+                    Columns.OBS: obs,
+                    Columns.NEXT_OBS: new_obs,
+                    Columns.ACTIONS: action,
+                    Columns.ACTION_LOGP: action_logp,
+                    Columns.REWARDS: np.array(reward),
+                    Columns.TERMINATEDS: np.array(terminated),
+                    Columns.TRUNCATEDS: np.array(truncated),
+                    Columns.STATE_IN: None,
                 }
 
                 if lstm:
-                    assert STATE_OUT in fwd_out
-                    state_in = fwd_out[STATE_OUT]
+                    assert Columns.STATE_OUT in fwd_out
+                    state_in = fwd_out[Columns.STATE_OUT]
                 batches.append(output_batch)
                 obs = new_obs
                 tstep += 1
@@ -270,10 +262,10 @@ class TestPPO(unittest.TestCase):
                     k: convert_to_torch_tensor(np.array(v)) for k, v in batch.items()
                 }
                 if lstm:
-                    fwd_in[STATE_IN] = initial_state
+                    fwd_in[Columns.STATE_IN] = initial_state
                     # If we test lstm, the collected timesteps make up only one batch
                     fwd_in = {
-                        k: torch.unsqueeze(v, 0) if k != STATE_IN else v
+                        k: torch.unsqueeze(v, 0) if k != Columns.STATE_IN else v
                         for k, v in fwd_in.items()
                     }
 
@@ -294,10 +286,10 @@ class TestPPO(unittest.TestCase):
                     lambda x: tf.convert_to_tensor(x, dtype=tf.float32), batch
                 )
                 if lstm:
-                    fwd_in[STATE_IN] = initial_state
+                    fwd_in[Columns.STATE_IN] = initial_state
                     # If we test lstm, the collected timesteps make up only one batch
                     fwd_in = {
-                        k: tf.expand_dims(v, 0) if k != STATE_IN else v
+                        k: tf.expand_dims(v, 0) if k != Columns.STATE_IN else v
                         for k, v in fwd_in.items()
                     }
 

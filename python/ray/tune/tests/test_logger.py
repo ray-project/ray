@@ -1,14 +1,17 @@
 import csv
-from dataclasses import dataclass
 import glob
 import json
 import os
-import unittest
+import shutil
+import sys
 import tempfile
+import unittest
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
-import shutil
+
 import numpy as np
+import pytest
 
 import ray
 from ray.air.constants import (
@@ -18,13 +21,14 @@ from ray.air.constants import (
     EXPR_RESULT_FILE,
 )
 from ray.cloudpickle import cloudpickle
+from ray.train import Checkpoint
 from ray.tune.logger import (
-    CSVLoggerCallback,
-    JsonLoggerCallback,
-    JsonLogger,
     CSVLogger,
-    TBXLoggerCallback,
+    CSVLoggerCallback,
+    JsonLogger,
+    JsonLoggerCallback,
     TBXLogger,
+    TBXLoggerCallback,
 )
 from ray.tune.logger.aim import AimLoggerCallback
 from ray.tune.utils import flatten_dict
@@ -37,7 +41,8 @@ class Trial:
     logdir: str
     experiment_path: Optional[str] = None
     experiment_dir_name: Optional[str] = None
-    remote_checkpoint_dir: Optional[str] = None
+    path: Optional[str] = None
+    checkpoint: Optional[Checkpoint] = None
 
     @property
     def config(self):
@@ -58,14 +63,10 @@ class Trial:
     def local_experiment_path(self):
         return self.experiment_path
 
-    @property
-    def remote_path(self):
-        return self.remote_checkpoint_dir
-
     def __hash__(self):
         return hash(self.trial_id)
 
-    def get_runner_ip(self) -> str:
+    def get_ray_actor_ip(self) -> str:
         return ray.util.get_node_ip_address()
 
 
@@ -205,7 +206,7 @@ class LoggerSuite(unittest.TestCase):
             "b": [1, 2],
             "c": {"c": {"D": 123}},
             "d": np.int64(1),
-            "e": np.bool8(True),
+            "e": np.bool_(True),
             "f": None,
         }
         t = Trial(evaluated_params=config, trial_id="tbx", logdir=self.test_dir)
@@ -224,7 +225,7 @@ class LoggerSuite(unittest.TestCase):
             "c": {"c": {"D": 123}},
             "int32": np.int32(1),
             "int64": np.int64(2),
-            "bool8": np.bool8(True),
+            "bool8": np.bool_(True),
             "float32": np.float32(3),
             "float64": np.float64(4),
             "bad": np.float128(4),
@@ -296,6 +297,7 @@ class LoggerSuite(unittest.TestCase):
         assert "INFO" in cm.output[0]
 
 
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="Aim doesn't support py312")
 class AimLoggerSuite(unittest.TestCase):
     """Test Aim integration."""
 
@@ -321,7 +323,7 @@ class AimLoggerSuite(unittest.TestCase):
             "c": {"d": {"e": 123}},
             "int32": np.int32(1),
             "int64": np.int64(2),
-            "bool8": np.bool8(True),
+            "bool8": np.bool_(True),
             "float32": np.float32(3),
             "float64": np.float64(4),
             "bad": Dummy(),
@@ -334,7 +336,7 @@ class AimLoggerSuite(unittest.TestCase):
                 experiment_path=self.test_dir,
                 logdir=trial_logdir,
                 experiment_dir_name="aim_test",
-                remote_checkpoint_dir="s3://bucket/aim_test/trial_0_logdir",
+                path="bucket/aim_test/trial_0_logdir",
             ),
             Trial(
                 evaluated_params=self.config,
@@ -342,7 +344,7 @@ class AimLoggerSuite(unittest.TestCase):
                 experiment_path=self.test_dir,
                 logdir=trial_logdir,
                 experiment_dir_name="aim_test",
-                remote_checkpoint_dir="s3://bucket/aim_test/trial_1_logdir",
+                path="bucket/aim_test/trial_1_logdir",
             ),
         ]
 
@@ -378,7 +380,7 @@ class AimLoggerSuite(unittest.TestCase):
 
         for i, run in enumerate(runs):
             assert set(run["hparams"]) == expected_logged_hparams
-            assert run.get("trial_remote_log_dir")
+            assert run.get("trial_log_dir")
             assert run.get("trial_ip")
 
             results = None
@@ -429,7 +431,8 @@ class AimLoggerSuite(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

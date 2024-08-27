@@ -1,11 +1,24 @@
-.. include:: /_includes/rllib/announcement.rst
-
 .. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 .. _rllib-index:
 
 RLlib: Industry-Grade Reinforcement Learning
 ============================================
+
+.. toctree::
+    :hidden:
+
+    rllib-training
+    key-concepts
+    rllib-env
+    rllib-algorithms
+    user-guides
+    rllib-examples
+    rllib-new-api-stack
+    package_ref/index
+
 
 .. image:: images/rllib-logo.png
     :align: center
@@ -56,10 +69,10 @@ PyTorch (or both, as shown below):
         <span data-ty="input">pip install "ray[rllib]" tensorflow torch</span>
     </div>
 
-.. margin::
+.. note::
 
     For installation on computers running Apple Silicon (such as M1), please follow instructions
-    `here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`._
+    `here. <https://docs.ray.io/en/latest/ray-overview/installation.html#m1-mac-apple-silicon-support>`_
     To be able to run our Atari examples, you should also install
     `pip install "gym[atari]" "gym[accept-rom-license]" atari_py`.
 
@@ -84,7 +97,7 @@ You can also tweak RLlib's default `model` config,and set up a separate config f
 
 If you want to learn more about the RLlib training API,
 `you can learn more about it here <rllib-training.html#using-the-python-api>`_.
-Also, see `here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training.py>`_
+Also, see `here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`_
 
 If you want to get a quick preview of which **algorithms** and **environments** RLlib supports,
 click on the dropdowns below:
@@ -94,65 +107,25 @@ click on the dropdowns below:
 
     *  High-throughput architectures
 
-       -  |pytorch| |tensorflow| :ref:`Distributed Prioritized Experience Replay (Ape-X) <apex>`
-
        -  |pytorch| |tensorflow| :ref:`Importance Weighted Actor-Learner Architecture (IMPALA) <impala>`
 
        -  |pytorch| |tensorflow| :ref:`Asynchronous Proximal Policy Optimization (APPO) <appo>`
 
-       -  |pytorch| :ref:`Decentralized Distributed Proximal Policy Optimization (DD-PPO) <ddppo>`
-
     *  Gradient-based
 
-       -  |pytorch| |tensorflow| :ref:`Advantage Actor-Critic (A2C, A3C) <a3c>`
-
-       -  |pytorch| |tensorflow| :ref:`Deep Deterministic Policy Gradients (DDPG, TD3) <ddpg>`
-
        -  |pytorch| |tensorflow| :ref:`Deep Q Networks (DQN, Rainbow, Parametric DQN) <dqn>`
-
-       -  |pytorch| |tensorflow| :ref:`Policy Gradients <pg>`
 
        -  |pytorch| |tensorflow| :ref:`Proximal Policy Optimization (PPO) <ppo>`
 
        -  |pytorch| |tensorflow| :ref:`Soft Actor Critic (SAC) <sac>`
 
-       -  |pytorch| :ref:`Slate Q-Learning (SlateQ) <slateq>`
-
-    *  Derivative-free
-
-       -  |pytorch| |tensorflow| :ref:`Augmented Random Search (ARS) <ars>`
-
-       -  |pytorch| |tensorflow| :ref:`Evolution Strategies <es>`
-
     *  Model-based / Meta-learning / Offline
 
-       -  |pytorch| :ref:`Single-Player AlphaZero (AlphaZero) <alphazero>`
-
-       -  |pytorch| |tensorflow| :ref:`Model-Agnostic Meta-Learning (MAML) <maml>`
-
-       -  |pytorch| :ref:`Model-Based Meta-Policy-Optimization (MBMPO) <mbmpo>`
-
-       -  |pytorch| :ref:`Dreamer (DREAMER) <dreamer>`
-
-       -  |pytorch| :ref:`Conservative Q-Learning (CQL) <cql>`
-
-    *  Multi-agent
-
-       -  |pytorch| :ref:`QMIX Monotonic Value Factorisation (QMIX, VDN, IQN) <qmix>`
-       -  |tensorflow| :ref:`Multi-Agent Deep Deterministic Policy Gradient (MADDPG) <maddpg>`
+       -  |pytorch| :ref:`DreamerV3 <dreamerv3>`
 
     *  Offline
 
        -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
-
-    *  Contextual bandits
-
-       -  |pytorch| :ref:`Linear Upper Confidence Bound (LinUCB) <lin-ucb>`
-       -  |pytorch| :ref:`Linear Thompson Sampling (LinTS) <lints>`
-
-    *  Exploration-based plug-ins (can be combined with any algo)
-
-       -  |pytorch| :ref:`Curiosity (ICM: Intrinsic Curiosity Module) <curiosity>`
 
 
 .. dropdown:: **RLlib Environments**
@@ -193,7 +166,7 @@ Feature Overview
 
         **RLlib Algorithms**
         ^^^
-        Check out the many available RL algorithms of RLlib for model-free and model-based
+        See the many available RL algorithms of RLlib for model-free and model-based
         RL, on-policy and off-policy training, multi-agent RL, and more.
         +++
         .. button-ref:: rllib-algorithms-doc

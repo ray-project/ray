@@ -1,7 +1,7 @@
 (kuberay-gpu-training-example)=
 
-# ML training with GPUs on Kubernetes
-In this guide, we show you how to run a sample Ray machine learning training workload with GPU on Kubernetes infrastructure. We will run Ray's {ref}`PyTorch image training benchmark <pytorch_gpu_training_benchmark>` with a 1 gigabyte training set.
+# Train PyTorch ResNet model with GPUs on Kubernetes
+This guide runs a sample Ray machine learning training workload with GPU on Kubernetes infrastructure. It runs Ray's {ref}`PyTorch image training benchmark <pytorch_gpu_training_benchmark>` with a 1 gigabyte training set.
 
 :::{note}
 To learn the basics of Ray on Kubernetes, we recommend taking a look
@@ -40,15 +40,16 @@ kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container
 #   (Method 2) "gcloud container clusters get-credentials <your-cluster-name> --region <your-region> --project <your-project>"
 #   (Method 3) "kubectl config use-context ..."
 
-# Install both CRDs and KubeRay operator v0.5.0.
+# Install both CRDs and KubeRay operator v1.0.0.
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm install kuberay-operator kuberay/kuberay-operator --version 0.5.0
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0
 
 # Create a Ray cluster
 kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml
 
 # Set up port-forwarding
-kubectl port-forward --address 0.0.0.0 services/raycluster-head-svc 8265:8265
+kubectl port-forward services/raycluster-head-svc 8265:8265
 
 # Step 3: Run the PyTorch image training benchmark.
 # Install Ray if needed
@@ -114,13 +115,14 @@ It is optional.
 # Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.
 # Create the KubeRay operator
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
-helm install kuberay-operator kuberay/kuberay-operator --version 0.5.0
+helm repo update
+helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0
 
 # Create a Ray cluster
 kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/ray-cluster.gpu.yaml
 
 # port forwarding
-kubectl port-forward --address 0.0.0.0 services/raycluster-head-svc 8265:8265
+kubectl port-forward services/raycluster-head-svc 8265:8265
 
 # Test cluster (optional)
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"

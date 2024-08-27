@@ -163,6 +163,7 @@ WorkerContext::WorkerContext(WorkerType worker_type,
       current_actor_placement_group_id_(PlacementGroupID::Nil()),
       placement_group_capture_child_tasks_(false),
       main_thread_id_(boost::this_thread::get_id()),
+      root_detached_actor_id_(ActorID::Nil()),
       mutex_() {
   // For worker main thread which initializes the WorkerContext,
   // set task_id according to whether current worker is a driver.
@@ -268,7 +269,8 @@ void WorkerContext::SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_num
   GetThreadContext().SetCurrentTaskId(task_id, attempt_number);
 }
 
-void WorkerContext::SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_) {
+void WorkerContext::SetCurrentActorId(const ActorID &actor_id)
+    ABSL_LOCKS_EXCLUDED(mutex_) {
   absl::WriterMutexLock lock(&mutex_);
   if (!current_actor_id_.IsNil()) {
     RAY_CHECK(current_actor_id_ == actor_id);
@@ -289,6 +291,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
   RAY_CHECK(current_job_id_ == task_spec.JobId());
   if (task_spec.IsNormalTask()) {
     current_task_is_direct_call_ = true;
+    root_detached_actor_id_ = task_spec.RootDetachedActorId();
   } else if (task_spec.IsActorCreationTask()) {
     if (!current_actor_id_.IsNil()) {
       RAY_CHECK(current_actor_id_ == task_spec.ActorCreationId());
@@ -300,6 +303,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     is_detached_actor_ = task_spec.IsDetachedActor();
     current_actor_placement_group_id_ = task_spec.PlacementGroupBundleId().first;
     placement_group_capture_child_tasks_ = task_spec.PlacementGroupCaptureChildTasks();
+    root_detached_actor_id_ = task_spec.RootDetachedActorId();
   } else if (task_spec.IsActorTask()) {
     RAY_CHECK(current_actor_id_ == task_spec.ActorId());
   } else {
@@ -320,6 +324,7 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
 
 void WorkerContext::ResetCurrentTask() { GetThreadContext().ResetCurrentTask(); }
 
+/// NOTE: This method can't be used in fiber/async actor context.
 std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
@@ -327,6 +332,11 @@ std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
 const ActorID &WorkerContext::GetCurrentActorID() const {
   absl::ReaderMutexLock lock(&mutex_);
   return current_actor_id_;
+}
+
+const ActorID &WorkerContext::GetRootDetachedActorID() const {
+  absl::ReaderMutexLock lock(&mutex_);
+  return root_detached_actor_id_;
 }
 
 bool WorkerContext::CurrentThreadIsMain() const {
@@ -407,6 +417,7 @@ const ObjectID WorkerContext::GetGeneratorReturnId(
   return ObjectID::FromIndex(current_task_id, current_put_index);
 }
 
+/// NOTE: This method can't be used in fiber/async actor context.
 WorkerThreadContext &WorkerContext::GetThreadContext() const {
   if (thread_context_ == nullptr) {
     absl::ReaderMutexLock lock(&mutex_);

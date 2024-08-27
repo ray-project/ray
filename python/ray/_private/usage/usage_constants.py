@@ -8,6 +8,10 @@ USAGE_STATS_FILE = "usage_stats.json"
 
 USAGE_STATS_ENABLED_ENV_VAR = "RAY_USAGE_STATS_ENABLED"
 
+USAGE_STATS_SOURCE_ENV_VAR = "RAY_USAGE_STATS_SOURCE"
+
+USAGE_STATS_SOURCE_OSS = "OSS"
+
 USAGE_STATS_ENABLED_FOR_CLI_MESSAGE = (
     "Usage stats collection is enabled. To disable this, add `--disable-usage-stats` "
     "to the command that starts the cluster, or run the following command:"
@@ -44,7 +48,9 @@ USAGE_STATS_CONFIRMATION_MESSAGE = (
     "This prompt will auto-proceed in 10 seconds to avoid blocking cluster startup."
 )
 
-LIBRARY_USAGE_PREFIX = "library_usage_"
+LIBRARY_USAGE_SET_NAME = "library_usage_"
+
+HARDWARE_USAGE_SET_NAME = "hardware_usage_"
 
 # Keep in-sync with the same constants defined in usage_stats_client.h
 EXTRA_USAGE_TAG_PREFIX = "extra_usage_tag_"

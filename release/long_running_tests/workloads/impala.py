@@ -56,6 +56,7 @@ run_experiments(
                 "rollout_fragment_length": 50,
                 "train_batch_size": 100,
             },
+            "storage_path": "/mnt/cluster_storage",
         },
     },
     callbacks=[ProgressCallback()],

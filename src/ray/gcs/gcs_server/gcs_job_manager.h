@@ -79,6 +79,12 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   std::shared_ptr<rpc::JobConfig> GetJobConfig(const JobID &job_id) const;
 
+  /// Handle a node death. This will marks all jobs associated with the
+  /// specified node id as finished.
+  ///
+  /// \param node_id The specified node id.
+  void OnNodeDead(const NodeID &node_id);
+
  private:
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsPublisher> gcs_publisher_;

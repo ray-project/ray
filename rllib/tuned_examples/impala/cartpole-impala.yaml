@@ -1,15 +1,15 @@
+# @OldAPIStack
 cartpole-impala:
     env: CartPole-v1
     run: IMPALA
     stop:
-        sampler_results/episode_reward_mean: 150
+        env_runners/episode_return_mean: 150
         timesteps_total: 500000
     config:
+        enable_rl_module_and_learner: true
         # Works for both torch and tf.
-        framework: tf2
+        framework: torch
         num_gpus: 0
-        _enable_rl_module_api: true
-        _enable_learner_api: true
         grad_clip: 40
-        num_workers: 2
-        num_learner_workers: 1
+        num_env_runners: 2
+        num_learners: 1

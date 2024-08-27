@@ -9,10 +9,11 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type, U
 
 import gymnasium as gym
 import numpy as np
+from packaging import version
 import tree  # pip install dm_tree
 
 import ray
-from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -24,13 +25,12 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import _directStepOptimizerSingleton
 from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import (
-    DeveloperAPI,
+    OldAPIStack,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
     is_overridden,
     override,
 )
-from ray.rllib.utils.annotations import ExperimentalAPI
 from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
@@ -42,7 +42,10 @@ from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.threading import with_lock
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.torch_utils import (
+    convert_to_torch_tensor,
+    TORCH_COMPILE_REQUIRED_VERSION,
+)
 from ray.rllib.utils.typing import (
     AlgorithmConfigDict,
     GradInfoDict,
@@ -61,11 +64,10 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class TorchPolicyV2(Policy):
     """PyTorch specific Policy class to use with RLlib."""
 
-    @DeveloperAPI
     def __init__(
         self,
         observation_space: gym.spaces.Space,
@@ -88,7 +90,7 @@ class TorchPolicyV2(Policy):
         super().__init__(observation_space, action_space, config)
 
         # Create model.
-        if self.config.get("_enable_rl_module_api", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             model = self.make_rl_module()
 
             dist_class = None
@@ -175,7 +177,7 @@ class TorchPolicyV2(Policy):
 
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(tree.flatten(self._state_inputs)) > 0
-        if self.config.get("_enable_rl_module_api", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             # Maybe update view_requirements, e.g. for recurrent case.
             self.view_requirements = self.model.update_default_view_requirements(
                 self.view_requirements
@@ -186,13 +188,13 @@ class TorchPolicyV2(Policy):
             # Combine view_requirements for Model and Policy.
             self.view_requirements.update(self.model.view_requirements)
 
-        if self.config.get("_enable_rl_module_api", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             # We don't need an exploration object with RLModules
             self.exploration = None
         else:
             self.exploration = self._create_exploration()
 
-        if not self.config.get("_enable_learner_api", False):
+        if not self.config.get("enable_rl_module_and_learner", False):
             self._optimizers = force_list(self.optimizer())
 
             # Backward compatibility workaround so Policy will call self.loss()
@@ -234,7 +236,6 @@ class TorchPolicyV2(Policy):
     def loss_initialized(self):
         return self._loss_initialized
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     @override(Policy)
     def loss(
@@ -253,21 +254,21 @@ class TorchPolicyV2(Policy):
         Returns:
             Loss tensor given the input batch.
         """
-        # Under the new _enable_learner_api the loss function still gets called in order
-        # to initialize the view requirements of the sample batches that are returned by
+        # Under the new enable_rl_module_and_learner the loss function still gets called
+        # in order to initialize the view requirements of the sample batches that are
+        # returned by
         # the sampler. In this case, we don't actually want to compute any loss, however
         # if we access the keys that are needed for a forward_train pass, then the
         # sampler will include those keys in the sample batches it returns. This means
         # that the correct sample batch keys will be available when using the learner
         # group API.
-        if self.config._enable_learner_api:
+        if self.config.enable_rl_module_and_learner:
             for k in model.input_specs_train():
                 train_batch[k]
             return None
         else:
             raise NotImplementedError
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def action_sampler_fn(
         self,
@@ -292,7 +293,6 @@ class TorchPolicyV2(Policy):
         """
         return None, None, None, None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def action_distribution_fn(
         self,
@@ -316,7 +316,6 @@ class TorchPolicyV2(Policy):
         """
         return None, None, None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def make_model(self) -> ModelV2:
         """Create model.
@@ -329,14 +328,16 @@ class TorchPolicyV2(Policy):
         """
         return None
 
-    @ExperimentalAPI
     @override(Policy)
     def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
         assert self.config.get(
-            "_enable_learner_api", False
+            "enable_rl_module_and_learner", False
         ), "This is a helper method for the new learner API."
 
-        if self.config.get("_enable_rl_module_api", False) and self.model.is_stateful():
+        if (
+            self.config.get("enable_rl_module_and_learner", False)
+            and self.model.is_stateful()
+        ):
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
             ret = {}
@@ -349,7 +350,7 @@ class TorchPolicyV2(Policy):
                 return item.reshape([b_dim * t_dim] + other_dims)
 
             for k, v in input_dict.items():
-                if k not in (STATE_IN, STATE_OUT):
+                if k not in (Columns.STATE_IN, Columns.STATE_OUT):
                     ret[k] = tree.map_structure(fold_mapping, v)
                 else:
                     # state in already has time dimension.
@@ -359,7 +360,6 @@ class TorchPolicyV2(Policy):
         else:
             return input_dict
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def make_model_and_action_dist(
         self,
@@ -372,7 +372,6 @@ class TorchPolicyV2(Policy):
         """
         return None, None
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def get_batch_divisibility_req(self) -> int:
         """Get batch divisibility request.
@@ -383,7 +382,6 @@ class TorchPolicyV2(Policy):
         # By default, any sized batch is ok, so simply return 1.
         return 1
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def stats_fn(self, train_batch: SampleBatch) -> Dict[str, TensorType]:
         """Stats function. Returns a dict of statistics.
@@ -396,7 +394,6 @@ class TorchPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_grad_process(
         self, optimizer: "torch.optim.Optimizer", loss: TensorType
@@ -416,7 +413,6 @@ class TorchPolicyV2(Policy):
         """
         return {}
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_compute_grad_fetches(self) -> Dict[str, Any]:
         """Extra values to fetch and return from compute_gradients().
@@ -427,7 +423,6 @@ class TorchPolicyV2(Policy):
         """
         return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def extra_action_out(
         self,
@@ -452,7 +447,6 @@ class TorchPolicyV2(Policy):
         return {}
 
     @override(Policy)
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def postprocess_trajectory(
         self,
@@ -483,7 +477,6 @@ class TorchPolicyV2(Policy):
         """
         return sample_batch
 
-    @DeveloperAPI
     @OverrideToImplementCustomLogic
     def optimizer(
         self,
@@ -531,6 +524,23 @@ class TorchPolicyV2(Policy):
                 framework=self.framework,
             )
 
+        # Compile the model, if requested by the user.
+        if self.config.get("torch_compile_learner"):
+            if (
+                torch is not None
+                and version.parse(torch.__version__) < TORCH_COMPILE_REQUIRED_VERSION
+            ):
+                raise ValueError("`torch.compile` is not supported for torch < 2.0.0!")
+
+            lw = "learner" if self.config.get("worker_index") else "worker"
+            model = torch.compile(
+                model,
+                backend=self.config.get(
+                    f"torch_compile_{lw}_dynamo_backend", "inductor"
+                ),
+                dynamic=False,
+                mode=self.config.get(f"torch_compile_{lw}_dynamo_mode"),
+            )
         return model, dist_class
 
     @override(Policy)
@@ -547,7 +557,7 @@ class TorchPolicyV2(Policy):
             # Pass lazy (torch) tensor dict to Model as `input_dict`.
             input_dict = self._lazy_tensor_dict(input_dict)
             input_dict.set_training(True)
-            if self.config.get("_enable_rl_module_api", False):
+            if self.config.get("enable_rl_module_and_learner", False):
                 return self._compute_action_helper(
                     input_dict,
                     state_batches=None,
@@ -573,7 +583,6 @@ class TorchPolicyV2(Policy):
                 )
 
     @override(Policy)
-    @DeveloperAPI
     def compute_actions(
         self,
         obs_batch: Union[List[TensorStructType], TensorStructType],
@@ -608,7 +617,6 @@ class TorchPolicyV2(Policy):
 
     @with_lock
     @override(Policy)
-    @DeveloperAPI
     def compute_log_likelihoods(
         self,
         actions: Union[List[TensorStructType], TensorStructType],
@@ -663,7 +671,7 @@ class TorchPolicyV2(Policy):
                 action_dist = dist_class(dist_inputs, self.model)
             # Default action-dist inputs calculation.
             else:
-                if self.config.get("_enable_rl_module_api", False):
+                if self.config.get("enable_rl_module_and_learner", False):
                     if in_training:
                         output = self.model.forward_train(input_dict)
                         action_dist_cls = self.model.get_train_action_dist_cls()
@@ -712,7 +720,6 @@ class TorchPolicyV2(Policy):
 
     @with_lock
     @override(Policy)
-    @DeveloperAPI
     def learn_on_batch(self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
 
         # Set Model to train mode.
@@ -754,7 +761,6 @@ class TorchPolicyV2(Policy):
         return fetches
 
     @override(Policy)
-    @DeveloperAPI
     def load_batch_into_buffer(
         self,
         batch: SampleBatch,
@@ -772,9 +778,11 @@ class TorchPolicyV2(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
-                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False),
+                _enable_new_api_stack=self.config.get(
+                    "enable_rl_module_and_learner", False
+                ),
                 padding="last"
-                if self.config.get("_enable_rl_module_api", False)
+                if self.config.get("enable_rl_module_and_learner", False)
                 else "zero",
             )
             self._lazy_tensor_dict(batch)
@@ -799,9 +807,11 @@ class TorchPolicyV2(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
-                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False),
+                _enable_new_api_stack=self.config.get(
+                    "enable_rl_module_and_learner", False
+                ),
                 padding="last"
-                if self.config.get("_enable_rl_module_api", False)
+                if self.config.get("enable_rl_module_and_learner", False)
                 else "zero",
             )
 
@@ -813,14 +823,12 @@ class TorchPolicyV2(Policy):
         return len(slices[0])
 
     @override(Policy)
-    @DeveloperAPI
     def get_num_samples_loaded_into_buffer(self, buffer_index: int = 0) -> int:
         if len(self.devices) == 1 and self.devices[0] == "/cpu:0":
             assert buffer_index == 0
         return sum(len(b) for b in self._loaded_batches[buffer_index])
 
     @override(Policy)
-    @DeveloperAPI
     def learn_on_loaded_batch(self, offset: int = 0, buffer_index: int = 0):
         if not self._loaded_batches[buffer_index]:
             raise ValueError(
@@ -903,7 +911,7 @@ class TorchPolicyV2(Policy):
                 {
                     LEARNER_STATS_KEY: self.stats_fn(batch),
                     "model": {}
-                    if self.config.get("_enable_rl_module_api", False)
+                    if self.config.get("enable_rl_module_and_learner", False)
                     else model.metrics(),
                     NUM_GRAD_UPDATES_LIFETIME: self.num_grad_updates,
                     # -1, b/c we have to measure this diff before we do the update
@@ -919,7 +927,6 @@ class TorchPolicyV2(Policy):
 
     @with_lock
     @override(Policy)
-    @DeveloperAPI
     def compute_gradients(self, postprocessed_batch: SampleBatch) -> ModelGradients:
 
         assert len(self.devices) == 1
@@ -932,9 +939,11 @@ class TorchPolicyV2(Policy):
                 shuffle=False,
                 batch_divisibility_req=self.batch_divisibility_req,
                 view_requirements=self.view_requirements,
-                _enable_rl_module_api=self.config.get("_enable_rl_module_api", False),
+                _enable_new_api_stack=self.config.get(
+                    "enable_rl_module_and_learner", False
+                ),
                 padding="last"
-                if self.config.get("_enable_rl_module_api", False)
+                if self.config.get("enable_rl_module_and_learner", False)
                 else "zero",
             )
 
@@ -954,7 +963,6 @@ class TorchPolicyV2(Policy):
         return all_grads, dict(fetches, **{LEARNER_STATS_KEY: grad_info})
 
     @override(Policy)
-    @DeveloperAPI
     def apply_gradients(self, gradients: ModelGradients) -> None:
         if gradients == _directStepOptimizerSingleton:
             for i, opt in enumerate(self._optimizers):
@@ -971,7 +979,6 @@ class TorchPolicyV2(Policy):
 
             self._optimizers[0].step()
 
-    @DeveloperAPI
     def get_tower_stats(self, stats_name: str) -> List[TensorStructType]:
         """Returns list of per-tower stats, copied to this Policy's device.
 
@@ -985,7 +992,7 @@ class TorchPolicyV2(Policy):
 
         Raises:
             AssertionError: If the `stats_name` cannot be found in any one
-            of the tower's `tower_stats` dicts.
+                of the tower's `tower_stats` dicts.
         """
         data = []
         for model in self.model_gpu_towers:
@@ -1009,33 +1016,28 @@ class TorchPolicyV2(Policy):
         return data
 
     @override(Policy)
-    @DeveloperAPI
     def get_weights(self) -> ModelWeights:
         return {k: v.cpu().detach().numpy() for k, v in self.model.state_dict().items()}
 
     @override(Policy)
-    @DeveloperAPI
     def set_weights(self, weights: ModelWeights) -> None:
         weights = convert_to_torch_tensor(weights, device=self.device)
-        if self.config.get("_enable_rl_module_api", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             self.model.set_state(weights)
         else:
             self.model.load_state_dict(weights)
 
     @override(Policy)
-    @DeveloperAPI
     def is_recurrent(self) -> bool:
         return self._is_recurrent
 
     @override(Policy)
-    @DeveloperAPI
     def num_state_tensors(self) -> int:
         return len(self.model.get_initial_state())
 
     @override(Policy)
-    @DeveloperAPI
     def get_initial_state(self) -> List[TensorType]:
-        if self.config.get("_enable_rl_module_api", False):
+        if self.config.get("enable_rl_module_and_learner", False):
             # convert the tree of tensors to a tree to numpy arrays
             return tree.map_structure(
                 lambda s: convert_to_numpy(s), self.model.get_initial_state()
@@ -1044,7 +1046,6 @@ class TorchPolicyV2(Policy):
         return [s.detach().cpu().numpy() for s in self.model.get_initial_state()]
 
     @override(Policy)
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def get_state(self) -> PolicyState:
         # Legacy Policy state (w/o torch.nn.Module and w/o PolicySpec).
@@ -1052,19 +1053,21 @@ class TorchPolicyV2(Policy):
 
         state["_optimizer_variables"] = []
         # In the new Learner API stack, the optimizers live in the learner.
-        if not self.config.get("_enable_learner_api", False):
+        if not self.config.get("enable_rl_module_and_learner", False):
             for i, o in enumerate(self._optimizers):
                 optim_state_dict = convert_to_numpy(o.state_dict())
                 state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
-        if not self.config.get("_enable_rl_module_api", False) and self.exploration:
+        if (
+            not self.config.get("enable_rl_module_and_learner", False)
+            and self.exploration
+        ):
             # This is not compatible with RLModules, which have a method
             # `forward_exploration` to specify custom exploration behavior.
             state["_exploration_state"] = self.exploration.get_state()
         return state
 
     @override(Policy)
-    @DeveloperAPI
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def set_state(self, state: PolicyState) -> None:
         # Set optimizer vars first.
@@ -1084,14 +1087,13 @@ class TorchPolicyV2(Policy):
         if hasattr(self, "exploration") and "_exploration_state" in state:
             self.exploration.set_state(state=state["_exploration_state"])
 
-        # Restore glbal timestep.
+        # Restore global timestep.
         self.global_timestep = state["global_timestep"]
 
         # Then the Policy's (NN) weights and connectors.
         super().set_state(state)
 
     @override(Policy)
-    @DeveloperAPI
     def export_model(self, export_dir: str, onnx: Optional[int] = None) -> None:
         """Exports the Policy's Model to local directory for serving.
 
@@ -1105,7 +1107,7 @@ class TorchPolicyV2(Policy):
 
         os.makedirs(export_dir, exist_ok=True)
 
-        enable_rl_module = self.config.get("_enable_rl_module_api", False)
+        enable_rl_module = self.config.get("enable_rl_module_and_learner", False)
         if enable_rl_module and onnx:
             raise ValueError("ONNX export not supported for RLModule API.")
 
@@ -1159,7 +1161,6 @@ class TorchPolicyV2(Policy):
                 logger.warning(ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL)
 
     @override(Policy)
-    @DeveloperAPI
     def import_model_from_h5(self, import_file: str) -> None:
         """Imports weights into torch model."""
         return self.model.import_from_h5(import_file)
@@ -1211,6 +1212,7 @@ class TorchPolicyV2(Policy):
                 # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
                 # Create a distribution object.
                 action_dist = None
+                # Maybe the RLModule has already computed actions.
                 if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
                     dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                     action_dist_class = self.model.get_exploration_action_dist_cls()
@@ -1261,7 +1263,7 @@ class TorchPolicyV2(Policy):
                     actions = action_dist.sample()
 
             # Anything but actions and state_out is an extra fetch.
-            state_out = fwd_out.pop(STATE_OUT, {})
+            state_out = fwd_out.pop(Columns.STATE_OUT, {})
             extra_fetches = fwd_out
 
         elif is_overridden(self.action_sampler_fn):

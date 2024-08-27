@@ -136,7 +136,9 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !options_.log_dir.empty()) {
-    RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
+    const std::vector<SourceTypeVariant> source_types = {
+        ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER};
+    RayEventInit(source_types,
                  absl::flat_hash_map<std::string, std::string>(),
                  options_.log_dir,
                  RayConfig::instance().event_level(),
@@ -146,7 +148,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
 CoreWorkerProcessImpl::~CoreWorkerProcessImpl() {
   RAY_LOG(INFO) << "Destructing CoreWorkerProcessImpl. pid: " << getpid();
-  RAY_LOG(DEBUG) << "Stats stop in core worker.";
   // Shutdown stats module if worker process exits.
   stats::Shutdown();
   if (options_.enable_logging) {
@@ -207,7 +208,8 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
             }
 
             // If there's no more attempt to try.
-            if (status.IsGrpcUnavailable()) {
+            if (status.IsRpcError() &&
+                status.rpc_code() == grpc::StatusCode::UNAVAILABLE) {
               std::ostringstream ss;
               ss << "Failed to get the system config from raylet because "
                  << "it is dead. Worker will terminate. Status: " << status
@@ -234,6 +236,7 @@ void CoreWorkerProcessImpl::InitializeSystemConfig() {
   thread.join();
 
   RayConfig::instance().initialize(promise.get_future().get());
+  ray::asio::testing::init();
 }
 
 void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {

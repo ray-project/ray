@@ -34,40 +34,35 @@ Template for testing with these mocks:
 """
 
 import gc
-import numpy as np
 import os
-import pytest
-import time
 import tempfile
-from unittest.mock import (
-    Mock,
-    patch,
-)
+import time
+from pathlib import Path
+from unittest.mock import Mock, patch
 
+import numpy as np
+import pytest
 
 import ray
-from ray.exceptions import RayActorError
-from ray.air.integrations.wandb import (
-    WandbLoggerCallback,
-    _QueueItem,
-    _WandbLoggingActor,
-)
 from ray.air.integrations.wandb import (
     WANDB_ENV_VAR,
     WANDB_GROUP_ENV_VAR,
     WANDB_POPULATE_RUN_LOCATION_HOOK,
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
+    WandbLoggerCallback,
+    _QueueItem,
+    _WandbLoggingActor,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
-
 from ray.air.tests.mocked_wandb_integration import (
-    _MockWandbAPI,
-    _MockWandbLoggingActor,
     Trial,
     WandbTestExperimentLogger,
+    _MockWandbAPI,
+    _MockWandbLoggingActor,
     get_mock_wandb_logger,
 )
+from ray.exceptions import RayActorError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -449,6 +444,45 @@ class TestWandbLogger:
         with pytest.raises(RayActorError):
             ray.get(actor.get_state.remote())
 
+    def test_wandb_logging_actor_fault_tolerance(self, trial):
+        """Tests that failing wandb logging actors are restarted"""
+
+        with tempfile.TemporaryDirectory() as tempdir:
+            fail_marker = Path(tempdir) / "fail_marker"
+
+            class _FailingWandbLoggingActor(_MockWandbLoggingActor):
+                def _handle_result(self, result):
+                    if (
+                        result.get("training_iteration") == 3
+                        and not fail_marker.exists()
+                    ):
+                        fail_marker.write_text("Ok")
+                        raise SystemExit
+
+                    return super()._handle_result(result)
+
+            logger = WandbLoggerCallback(
+                project="test_project", api_key="1234", excludes=["metric2"]
+            )
+            logger._logger_actor_cls = _FailingWandbLoggingActor
+            logger.setup()
+            logger.log_trial_start(trial)
+
+            actor = logger._trial_logging_actors[trial]
+            queue = logger._trial_queues[trial]
+
+            logger.log_trial_result(1, trial, result={"training_iteration": 1})
+            logger.log_trial_result(2, trial, result={"training_iteration": 2})
+            logger.log_trial_result(3, trial, result={"training_iteration": 3})
+
+            logger.log_trial_result(4, trial, result={"training_iteration": 4})
+            logger.log_trial_result(5, trial, result={"training_iteration": 5})
+
+            queue.put(_QueueItem.END)
+
+            state = ray.get(actor.get_state.remote())
+            assert [metrics["training_iteration"] for metrics in state.logs] == [4, 5]
+
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):
     """
@@ -477,7 +511,8 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

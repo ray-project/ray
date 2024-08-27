@@ -39,7 +39,7 @@ class CoreWorkerMemoryStore;
 
 /// The class provides implementations for local process memory store.
 /// An example usage for this is to retrieve the returned objects from direct
-/// actor call (see direct_actor_transport.cc).
+/// actor call (see task_receiver.cc).
 class CoreWorkerMemoryStore {
  public:
   /// Create a memory store.
@@ -186,11 +186,12 @@ class CoreWorkerMemoryStore {
   /// Emplace the given object entry to the in-memory-store and update stats properly.
   void EmplaceObjectAndUpdateStats(const ObjectID &object_id,
                                    std::shared_ptr<RayObject> &object_entry)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Erase the object of the object id from the in memory store and update stats
   /// properly.
-  void EraseObjectAndUpdateStats(const ObjectID &object_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  void EraseObjectAndUpdateStats(const ObjectID &object_id)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
   /// mandatory once Java is supported.
@@ -205,16 +206,16 @@ class CoreWorkerMemoryStore {
   /// Map from object ID to `RayObject`.
   /// NOTE: This map should be modified by EmplaceObjectAndUpdateStats and
   /// EraseObjectAndUpdateStats.
-  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_ GUARDED_BY(mu_);
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> objects_ ABSL_GUARDED_BY(mu_);
 
   /// Map from object ID to its get requests.
   absl::flat_hash_map<ObjectID, std::vector<std::shared_ptr<GetRequest>>>
-      object_get_requests_ GUARDED_BY(mu_);
+      object_get_requests_ ABSL_GUARDED_BY(mu_);
 
   /// Map from object ID to its async get requests.
   absl::flat_hash_map<ObjectID,
                       std::vector<std::function<void(std::shared_ptr<RayObject>)>>>
-      object_async_get_requests_ GUARDED_BY(mu_);
+      object_async_get_requests_ ABSL_GUARDED_BY(mu_);
 
   /// Function passed in to be called to check for signals (e.g., Ctrl-C).
   std::function<Status()> check_signals_;
@@ -226,13 +227,13 @@ class CoreWorkerMemoryStore {
   /// Below information is stats.
   ///
   /// Number of objects in the plasma store for this memory store.
-  int32_t num_in_plasma_ GUARDED_BY(mu_) = 0;
+  int32_t num_in_plasma_ ABSL_GUARDED_BY(mu_) = 0;
   /// Number of objects that don't exist in the plasma store.
-  int32_t num_local_objects_ GUARDED_BY(mu_) = 0;
+  int32_t num_local_objects_ ABSL_GUARDED_BY(mu_) = 0;
   /// Number of bytes used by this memory store on heap, including both
   /// placeholder values for objects in plasma and inlined small returned
   /// objects from task.
-  int64_t num_local_objects_bytes_ GUARDED_BY(mu_) = 0;
+  int64_t num_local_objects_bytes_ ABSL_GUARDED_BY(mu_) = 0;
 
   /// This lambda is used to allow language frontend to allocate the objects
   /// in the memory store.

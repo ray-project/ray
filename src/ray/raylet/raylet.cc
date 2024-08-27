@@ -17,8 +17,9 @@
 #include <boost/asio.hpp>
 #include <boost/bind/bind.hpp>
 #include <boost/date_time/posix_time/posix_time.hpp>
-#include <iostream>
 
+#include "ray/common/client_connection.h"
+#include "ray/common/scheduling/resource_set.h"
 #include "ray/common/status.h"
 #include "ray/util/util.h"
 
@@ -56,6 +57,7 @@ namespace ray {
 namespace raylet {
 
 Raylet::Raylet(instrumented_io_context &main_service,
+               const NodeID &self_node_id,
                const std::string &socket_name,
                const std::string &node_ip_address,
                const std::string &node_name,
@@ -63,22 +65,21 @@ Raylet::Raylet(instrumented_io_context &main_service,
                const ObjectManagerConfig &object_manager_config,
                std::shared_ptr<gcs::GcsClient> gcs_client,
                int metrics_export_port,
-               bool is_head_node)
-    : main_service_(main_service),
-      self_node_id_(
-          !RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()
-              ? NodeID::FromHex(RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
-              : NodeID::FromRandom()),
+               bool is_head_node,
+               std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully)
+    : self_node_id_(self_node_id),
       gcs_client_(gcs_client),
       node_manager_(main_service,
                     self_node_id_,
                     node_name,
                     node_manager_config,
                     object_manager_config,
-                    gcs_client_),
+                    gcs_client_,
+                    shutdown_raylet_gracefully),
       socket_name_(socket_name),
       acceptor_(main_service, ParseUrlEndpoint(socket_name)),
       socket_(main_service) {
+  SetCloseOnFork(acceptor_);
   self_node_info_.set_node_id(self_node_id_.Binary());
   self_node_info_.set_state(GcsNodeInfo::ALIVE);
   self_node_info_.set_node_manager_address(node_ip_address);
@@ -89,7 +90,9 @@ Raylet::Raylet(instrumented_io_context &main_service,
   self_node_info_.set_node_manager_port(node_manager_.GetServerPort());
   self_node_info_.set_node_manager_hostname(boost::asio::ip::host_name());
   self_node_info_.set_metrics_export_port(metrics_export_port);
-  auto resource_map = node_manager_config.resource_config.ToResourceMap();
+  self_node_info_.set_runtime_env_agent_port(node_manager_config.runtime_env_agent_port);
+  self_node_info_.mutable_state_snapshot()->set_state(NodeSnapshot::ACTIVE);
+  auto resource_map = node_manager_config.resource_config.GetResourceMap();
   self_node_info_.mutable_resources_total()->insert(resource_map.begin(),
                                                     resource_map.end());
   self_node_info_.set_start_time_ms(current_sys_time_ms());
@@ -102,6 +105,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
   self_node_info_.set_instance_id(instance_id ? instance_id : "");
   auto cloud_node_type_name = std::getenv(kNodeTypeNameEnv);
   self_node_info_.set_node_type_name(cloud_node_type_name ? cloud_node_type_name : "");
+  auto instance_type_name = std::getenv(kNodeCloudInstanceTypeNameEnv);
+  self_node_info_.set_instance_type_name(instance_type_name ? instance_type_name : "");
 }
 
 Raylet::~Raylet() {}
@@ -113,8 +118,12 @@ void Raylet::Start() {
   DoAccept();
 }
 
+void Raylet::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
+                            std::function<void()> unregister_done_callback) {
+  gcs_client_->Nodes().UnregisterSelf(node_death_info, unregister_done_callback);
+}
+
 void Raylet::Stop() {
-  RAY_CHECK_OK(gcs_client_->Nodes().DrainSelf());
   node_manager_.Stop();
   acceptor_.close();
 }
@@ -162,7 +171,14 @@ void Raylet::HandleAccept(const boost::system::error_code &error) {
         "worker",
         node_manager_message_enum,
         static_cast<int64_t>(protocol::MessageType::DisconnectClient));
-  }
+  } else {
+    RAY_LOG(ERROR) << "Raylet failed to accept new connection: " << error.message();
+    if (error == boost::asio::error::operation_aborted) {
+      // The server is being destroyed. Don't continue accepting connections.
+      return;
+    }
+  };
+
   // We're ready to accept another client.
   DoAccept();
 }

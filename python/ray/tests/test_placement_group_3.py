@@ -7,12 +7,17 @@ import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.cluster_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS,
+)
+from ray.autoscaler._private.constants import AUTOSCALER_UPDATE_INTERVAL_S
 from ray._private.test_utils import (
     convert_actor_state,
     generate_system_config_map,
     is_placement_group_removed,
     kill_actor_and_wait_for_failure,
+    reset_autoscaler_v2_enabled_cache,
     run_string_as_driver,
     wait_for_condition,
 )
@@ -22,23 +27,19 @@ from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
 
 def get_ray_status_output(address):
     gcs_client = ray._raylet.GcsClient(address=address)
     internal_kv._initialize_internal_kv(gcs_client)
     status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
+    print(debug_status(status, error, address=address))
     return {
-        "demand": debug_status(status, error)
+        "demand": debug_status(status, error, address=address)
         .split("Demands:")[1]
         .strip("\n")
         .strip(" "),
-        "usage": debug_status(status, error)
+        "usage": debug_status(status, error, address=address)
         .split("Demands:")[0]
         .split("Usage:")[1]
         .strip("\n")
@@ -458,18 +459,6 @@ def test_placement_group_gpu_assigned(ray_start_cluster, connect_to_client):
         assert len(gpu_ids_res) == 2
 
 
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
-        generate_system_config_map(
-            use_ray_syncer=True,
-        ),
-        generate_system_config_map(
-            use_ray_syncer=False,
-        ),
-    ],
-    indirect=True,
-)
 @pytest.mark.repeat(3)
 def test_actor_scheduling_not_block_with_placement_group(ray_start_cluster):
     """Tests the scheduling of lots of actors will not be blocked
@@ -589,9 +578,11 @@ def test_placement_group_gpu_unique_assigned(ray_start_cluster, connect_to_clien
     assert len(gpu_ids_res) == 4
 
 
-def test_placement_group_status_no_bundle_demand(ray_start_cluster):
+@pytest.mark.parametrize("enable_v2", [True, False])
+def test_placement_group_status_no_bundle_demand(ray_start_cluster, enable_v2):
+    reset_autoscaler_v2_enabled_cache()
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4, _system_config={"enable_autoscaler_v2": enable_v2})
     ray.init(address=cluster.address)
 
     @ray.remote
@@ -618,10 +609,11 @@ def test_placement_group_status_no_bundle_demand(ray_start_cluster):
     assert demand_output["demand"] == "(no resource demands)"
 
 
-def test_placement_group_status(ray_start_cluster):
+@pytest.mark.parametrize("enable_v2", [True, False])
+def test_placement_group_status(ray_start_cluster, enable_v2):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=4, _system_config={"enable_autoscaler_v2": enable_v2})
+    ray.init(cluster.address)
 
     @ray.remote(num_cpus=1)
     class A:
@@ -631,17 +623,21 @@ def test_placement_group_status(ray_start_cluster):
     pg = ray.util.placement_group([{"CPU": 1}])
     ray.get(pg.ready())
 
-    # Wait until the usage is updated, which is
+    # Wait until the usage is updated to the expected, which is
     # when the demand is also updated.
     def is_usage_updated():
         demand_output = get_ray_status_output(cluster.address)
-        return demand_output["usage"] != ""
+        cpu_usage = demand_output["usage"]
+        if cpu_usage == "":
+            return False
+        cpu_usage = cpu_usage.split("\n")[0]
+        expected = "0.0/4.0 CPU (0.0 used of 1.0 reserved in placement groups)"
+        if cpu_usage != expected:
+            assert cpu_usage == "0.0/4.0 CPU"
+            return False
+        return True
 
-    wait_for_condition(is_usage_updated)
-    demand_output = get_ray_status_output(cluster.address)
-    cpu_usage = demand_output["usage"].split("\n")[0]
-    expected = "0.0/4.0 CPU (0.0 used of 1.0 reserved in placement groups)"
-    assert cpu_usage == expected
+    wait_for_condition(is_usage_updated, AUTOSCALER_UPDATE_INTERVAL_S)
 
     # 2 CPU + 1 PG CPU == 3.0/4.0 CPU (1 used by pg)
     actors = [A.remote() for _ in range(2)]
@@ -655,7 +651,7 @@ def test_placement_group_status(ray_start_cluster):
     ray.get([actor.ready.remote() for actor in actors])
     ray.get([actor.ready.remote() for actor in actors_in_pg])
     # Wait long enough until the usage is propagated to GCS.
-    time.sleep(5)
+    time.sleep(AUTOSCALER_UPDATE_INTERVAL_S)
     demand_output = get_ray_status_output(cluster.address)
     cpu_usage = demand_output["usage"].split("\n")[0]
     expected = "3.0/4.0 CPU (1.0 used of 1.0 reserved in placement groups)"
@@ -705,7 +701,6 @@ def test_placement_group_local_resource_view(monkeypatch, ray_start_cluster):
         # Increase broadcasting interval so that node resource will arrive
         # at raylet after local resource all being allocated.
         m.setenv("RAY_raylet_report_resources_period_milliseconds", "2000")
-        m.setenv("RAY_grpc_based_resource_broadcast", "true")
         cluster = ray_start_cluster
 
         cluster.add_node(num_cpus=16, object_store_memory=1e9)

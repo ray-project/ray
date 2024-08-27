@@ -8,10 +8,12 @@ from gymnasium.spaces import Discrete, MultiDiscrete
 
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
+    NetworkType,
     PartialAlgorithmConfigDict,
     SpaceStruct,
     TensorStructType,
@@ -94,7 +96,7 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
     """
     _, y_var = tf.nn.moments(y, axes=[0])
     _, diff_var = tf.nn.moments(y - pred, axes=[0])
-    return tf.maximum(-1.0, 1 - (diff_var / y_var))
+    return tf.maximum(-1.0, 1 - (diff_var / (y_var + SMALL_NUMBER)))
 
 
 @PublicAPI
@@ -130,26 +132,31 @@ def flatten_inputs_to_1d_tensor(
         flattened/one-hot'd input components. Depending on the time_axis flag,
         the shape is (B, n) or (B, T, n).
 
-    Examples:
-        >>> # B=2
-        >>> from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
-        >>> from gymnasium.spaces import Discrete, Box
-        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
-        ...     {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
-        ...     spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
-        ... ) # doctest: +SKIP
-        >>> print(out) # doctest: +SKIP
-        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+    .. testcode::
+        :skipif: True
 
-        >>> # B=2; T=2
-        >>> out = flatten_inputs_to_1d_tensor( # doctest: +SKIP
-        ...     ([[1, 0], [0, 1]],
-        ...      [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
-        ...     spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
-        ...     time_axis=True
-        ... ) # doctest: +SKIP
-        >>> print(out) # doctest: +SKIP
-        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],\
+        # B=2
+        from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor
+        from gymnasium.spaces import Discrete, Box
+        out = flatten_inputs_to_1d_tensor(
+            {"a": [1, 0], "b": [[[0.0], [0.1]], [1.0], [1.1]]},
+            spaces_struct=dict(a=Discrete(2), b=Box(shape=(2, 1)))
+        )
+        print(out)
+
+        # B=2; T=2
+        out = flatten_inputs_to_1d_tensor(
+            ([[1, 0], [0, 1]],
+             [[[0.0, 0.1], [1.0, 1.1]], [[2.0, 2.1], [3.0, 3.1]]]),
+            spaces_struct=tuple([Discrete(2), Box(shape=(2, ))]),
+            time_axis=True
+        )
+        print(out)
+
+    .. testoutput::
+
+        [[0.0, 1.0,  0.0, 0.1], [1.0, 0.0,  1.0, 1.1]]  # B=2 n=4
+        [[[0.0, 1.0, 0.0, 0.1], [1.0, 0.0, 1.0, 1.1]],
         [[1.0, 0.0, 2.0, 2.1], [0.0, 1.0, 3.0, 3.1]]]  # B=2 T=2 n=4
     """
 
@@ -523,20 +530,32 @@ def one_hot(x: TensorType, space: gym.Space) -> TensorType:
     Raises:
         ValueError: If the given space is not a discrete one.
 
-    Examples:
-        >>> import gymnasium as gym
-        >>> import tensorflow as tf
-        >>> from ray.rllib.utils.tf_utils import one_hot
-        >>> x = tf.Variable([0, 3], dtype=tf.int32)  # batch-dim=2
-        >>> # Discrete space with 4 (one-hot) slots per batch item.
-        >>> s = gym.spaces.Discrete(4)
-        >>> one_hot(x, s) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        import gymnasium as gym
+        import tensorflow as tf
+        from ray.rllib.utils.tf_utils import one_hot
+        x = tf.Variable([0, 3], dtype=tf.int32)  # batch-dim=2
+        # Discrete space with 4 (one-hot) slots per batch item.
+        s = gym.spaces.Discrete(4)
+        one_hot(x, s)
+
+    .. testoutput::
+
         <tf.Tensor 'one_hot:0' shape=(2, 4) dtype=float32>
-        >>> x = tf.Variable([[0, 1, 2, 3]], dtype=tf.int32)  # batch-dim=1
-        >>> # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
-        >>> # per batch item.
-        >>> s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
-        >>> one_hot(x, s) # doctest: +SKIP
+
+    .. testcode::
+        :skipif: True
+
+        x = tf.Variable([[0, 1, 2, 3]], dtype=tf.int32)  # batch-dim=1
+        # MultiDiscrete space with 5 + 4 + 4 + 7 = 20 (one-hot) slots
+        # per batch item.
+        s = gym.spaces.MultiDiscrete([5, 4, 4, 7])
+        one_hot(x, s)
+
+    .. testoutput::
+
         <tf.Tensor 'concat:0' shape=(1, 20) dtype=float32>
     """
     if isinstance(space, Discrete):
@@ -603,7 +622,6 @@ def symlog(x: "tf.Tensor") -> "tf.Tensor":
     D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
     https://arxiv.org/pdf/2301.04104v1.pdf
     """
-    x = tf.cast(x, tf.float32)
     return tf.math.sign(x) * tf.math.log(tf.math.abs(x) + 1)
 
 
@@ -636,6 +654,7 @@ def two_hot(
     num_buckets: int = 255,
     lower_bound: float = -20.0,
     upper_bound: float = 20.0,
+    dtype=None,
 ):
     """Returns a two-hot vector of dim=num_buckets with two entries that are non-zero.
 
@@ -680,7 +699,10 @@ def two_hot(
     # First make sure, values are clipped.
     value = tf.clip_by_value(value, lower_bound, upper_bound)
     # Tensor of batch indices: [0, B=batch size).
-    batch_indices = tf.range(0, tf.shape(value)[0], dtype=tf.float32)
+    batch_indices = tf.cast(
+        tf.range(0, tf.shape(value)[0]),
+        dtype=dtype or tf.float32,
+    )
     # Calculate the step deltas (how much space between each bucket's central value?).
     bucket_delta = (upper_bound - lower_bound) / (num_buckets - 1)
     # Compute the float indices (might be non-int numbers: sitting between two buckets).
@@ -715,8 +737,30 @@ def two_hot(
     return tf.scatter_nd(
         tf.cast(indices, tf.int32),
         updates,
-        shape=(value.shape[0], num_buckets),
+        shape=(tf.shape(value)[0], num_buckets),
     )
+
+
+@PublicAPI
+def update_target_network(
+    main_net: NetworkType,
+    target_net: NetworkType,
+    tau: float,
+) -> None:
+    """Updates a keras.Model target network using Polyak averaging.
+
+    new_target_net_weight = (
+        tau * main_net_weight + (1.0 - tau) * current_target_net_weight
+    )
+
+    Args:
+        main_net: The keras.Model to update from.
+        target_net: The target network to update.
+        tau: The tau value to use in the Polyak averaging formula.
+    """
+    for old_var, current_var in zip(target_net.variables, main_net.variables):
+        updated_var = tau * current_var + (1.0 - tau) * old_var
+        old_var.assign(updated_var)
 
 
 @PublicAPI

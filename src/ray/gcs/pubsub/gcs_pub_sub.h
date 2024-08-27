@@ -40,15 +40,14 @@ class GcsPublisher {
   /// Publish*() member functions below would be incrementally converted to use the GCS
   /// based publisher, if available.
   GcsPublisher(std::unique_ptr<pubsub::Publisher> publisher)
-      : publisher_(std::move(publisher)) {}
+      : publisher_(std::move(publisher)) {
+    RAY_CHECK(publisher_);
+  }
 
-  /// Test only.
-  /// TODO: remove this constructor and inject mock / fake from the other constructor.
-  explicit GcsPublisher() {}
+  virtual ~GcsPublisher() = default;
 
   /// Returns the underlying pubsub::Publisher. Caller does not take ownership.
-  /// Returns nullptr when RayConfig::instance().gcs_grpc_based_pubsub() is false.
-  pubsub::Publisher *GetPublisher() const { return publisher_.get(); }
+  pubsub::Publisher &GetPublisher() const { return *publisher_; }
 
   /// Each publishing method below publishes to a different "channel".
   /// ID is the entity which the message is associated with, e.g. ActorID for Actor data.
@@ -68,18 +67,18 @@ class GcsPublisher {
                     const rpc::JobTableData &message,
                     const StatusCallback &done);
 
-  Status PublishNodeInfo(const NodeID &id,
-                         const rpc::GcsNodeInfo &message,
-                         const StatusCallback &done);
+  virtual Status PublishNodeInfo(const NodeID &id,
+                                 const rpc::GcsNodeInfo &message,
+                                 const StatusCallback &done);
 
   /// Actually rpc::WorkerDeltaData is not a delta message.
   Status PublishWorkerFailure(const WorkerID &id,
                               const rpc::WorkerDeltaData &message,
                               const StatusCallback &done);
 
-  Status PublishError(const std::string &id,
-                      const rpc::ErrorTableData &message,
-                      const StatusCallback &done);
+  virtual Status PublishError(const std::string &id,
+                              const rpc::ErrorTableData &message,
+                              const StatusCallback &done);
 
   /// TODO: remove once it is converted to GRPC-based push broadcasting.
   Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
@@ -152,9 +151,6 @@ class RAY_EXPORT PythonGcsPublisher {
   /// Publish logs to GCS.
   Status PublishLogs(const std::string &key_id, const rpc::LogBatch &log_batch);
 
-  /// Publish a function key to GCS.
-  Status PublishFunctionKey(const rpc::PythonFunction &python_function);
-
  private:
   Status DoPublishWithRetries(const rpc::GcsPublishRequest &request,
                               int64_t num_retries,
@@ -206,11 +202,11 @@ class RAY_EXPORT PythonGcsSubscriber {
   const std::string subscriber_id_;
   std::string publisher_id_;
   const std::string worker_id_;
-  int64_t max_processed_sequence_id_ GUARDED_BY(mu_);
-  int64_t last_batch_size_ GUARDED_BY(mu_);
-  std::deque<rpc::PubMessage> queue_ GUARDED_BY(mu_);
-  bool closed_ GUARDED_BY(mu_);
-  std::shared_ptr<grpc::ClientContext> current_polling_context_ GUARDED_BY(mu_);
+  int64_t max_processed_sequence_id_ ABSL_GUARDED_BY(mu_);
+  int64_t last_batch_size_ ABSL_GUARDED_BY(mu_);
+  std::deque<rpc::PubMessage> queue_ ABSL_GUARDED_BY(mu_);
+  bool closed_ ABSL_GUARDED_BY(mu_);
+  std::shared_ptr<grpc::ClientContext> current_polling_context_ ABSL_GUARDED_BY(mu_);
 };
 
 /// Get the .lines() attribute of a LogBatch as a std::vector

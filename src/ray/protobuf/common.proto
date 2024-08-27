@@ -22,6 +22,8 @@ import "src/ray/protobuf/runtime_env_common.proto";
 option java_package = "io.ray.runtime.generated";
 
 // Language of a task or worker.
+// Note: The Language enum is used in the export API so it is public
+// and any modifications must be backward compatible.
 enum Language {
   PYTHON = 0;
   JAVA = 1;
@@ -47,6 +49,43 @@ enum TaskType {
   ACTOR_TASK = 2;
   // Driver task.
   DRIVER_TASK = 3;
+}
+
+message LabelIn {
+  repeated string values = 1;
+}
+
+message LabelNotIn {
+  repeated string values = 1;
+}
+
+message LabelExists {}
+
+message LabelDoesNotExist {}
+
+message LabelOperator {
+  oneof label_operator {
+    LabelIn label_in = 1;
+    LabelNotIn label_not_in = 2;
+    LabelExists label_exists = 3;
+    LabelDoesNotExist label_does_not_exist = 4;
+  }
+}
+
+message LabelMatchExpression {
+  string key = 1;
+  LabelOperator operator = 2;
+}
+
+message LabelMatchExpressions {
+  repeated LabelMatchExpression expressions = 1;
+}
+
+message NodeLabelSchedulingStrategy {
+  // Required expressions to be satisfied
+  LabelMatchExpressions hard = 1;
+  // Preferred expressions to be satisfied
+  LabelMatchExpressions soft = 2;
 }
 
 message NodeAffinitySchedulingStrategy {
@@ -80,6 +119,7 @@ message SchedulingStrategy {
     // Best effort spread scheduling strategy.
     SpreadSchedulingStrategy spread_scheduling_strategy = 3;
     NodeAffinitySchedulingStrategy node_affinity_scheduling_strategy = 4;
+    NodeLabelSchedulingStrategy node_label_scheduling_strategy = 5;
   }
 }
 
@@ -140,6 +180,8 @@ message ConcurrencyGroup {
 // TODO(hchen): We may want to make these errors more specific. E.g., we may
 // want to distinguish between intentional and expected actor failures, and
 // between worker process failure and node failure.
+// Note: The ErrorType enum is used in the export API so it is public
+// and any modifications must be backward compatible.
 enum ErrorType {
   // Indicates that a task failed because the worker died unexpectedly while
   // executing it.
@@ -150,13 +192,14 @@ enum ErrorType {
   // This object was lost from distributed memory due to a node failure or
   // system error. We use this error when lineage reconstruction is enabled,
   // but this object is not reconstructable (created by actor, ray.put, or a
-  // borowed ObjectRef).
+  // borrowed ObjectRef).
   OBJECT_UNRECONSTRUCTABLE = 2;
   // Indicates that a task failed due to user code failure.
   TASK_EXECUTION_EXCEPTION = 3;
   // Indicates that the object has been placed in plasma. This error shouldn't
   // ever be exposed to user code; it is only used internally to indicate the
   // result of a direct call has been placed in plasma.
+  // IMPORTANT: Keep the enum index "4" in sync with ray_object.cc.
   OBJECT_IN_PLASMA = 4;
   // Indicates that an object has been cancelled.
   TASK_CANCELLED = 5;
@@ -207,9 +250,13 @@ enum ErrorType {
   // We use this error for failure due to node died unexpectedly.
   NODE_DIED = 23;
   // This is a dummy object used to mark the end of a
-  // ray.StreamingObjectRefGenerator. It should never be returned directly to
+  // ray.ObjectRefGenerator. It should never be returned directly to
   // application code (instead raise StopIteration).
   END_OF_STREAMING_GENERATOR = 24;
+  // Actor is unavailable. Maybe there is a temporary network failure. Difference from
+  // ACTOR_DIED is that the actor may still be alive and may become available again
+  // after some retries.
+  ACTOR_UNAVAILABLE = 25;
 }
 
 /// The information per ray error type.
@@ -220,6 +267,8 @@ message RayErrorInfo {
     ActorDeathCause actor_died_error = 2;
     // for ErrorType::RUNTIME_ENV_SETUP_FAILED
     RuntimeEnvFailedContext runtime_env_setup_failed_error = 3;
+    // for ErrorType::ACTOR_UNAVAILABLE
+    ActorUnavailableContext actor_unavailable_error = 4;
   }
   string error_message = 5;
   // The type of error that caused the exception.
@@ -251,9 +300,11 @@ message NodeDiedErrorContext {
 }
 
 /// The task exception encapsulates the information about task
-/// execution execeptions. This should be used by the frontend
+/// execution exceptions. This should be used by the frontend
 /// to represent a user application error. Errors originating from the
 /// backend such as from the raylet should be propagated as RayErrorInfo.
+// Note: RayException is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message RayException {
   // Language of this exception.
   Language language = 1;
@@ -263,6 +314,22 @@ message RayException {
   string formatted_exception_string = 3;
 }
 
+message NodeDeathInfo {
+  // TODO(sang): Update drain reason
+  enum Reason {
+    UNSPECIFIED = 0;
+    EXPECTED_TERMINATION = 1;
+    UNEXPECTED_TERMINATION = 2;
+    AUTOSCALER_DRAIN_PREEMPTED = 3;
+    AUTOSCALER_DRAIN_IDLE = 4;
+  }
+  Reason reason = 1;
+  // A message describing the reason for the node death.
+  string reason_message = 2;
+}
+
+// Note: ActorDeathCause is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message ActorDeathCause {
   oneof context {
     // Indicates that this actor is marked as DEAD due to actor creation task failure.
@@ -275,15 +342,21 @@ message ActorDeathCause {
 }
 // ---Actor death contexts start----
 // Indicates that this actor is marked as DEAD due to runtime environment setup failure.
+// Note: RuntimeEnvFailedContext is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message RuntimeEnvFailedContext {
   // TODO(sang,lixin) Get this error message from agent.
   string error_message = 1;
 }
 
+// Note: ActorUnschedulableContext is used in the export API and state API so it is
+// public. Any modifications must be backward compatible.
 message ActorUnschedulableContext {
   string error_message = 1;
 }
 
+// Note: ActorDiedErrorContext is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message ActorDiedErrorContext {
   string error_message = 1;
   // The id of owner of the actor.
@@ -305,9 +378,13 @@ message ActorDiedErrorContext {
   // Whether the actor had never started running before it died, i.e. it was cancelled
   // before scheduling had completed.
   bool never_started = 10;
+  // The node death info, if node death is the cause of actor death.
+  optional NodeDeathInfo node_death_info = 11;
 }
 
 // Context for task OOM.
+// Note: OomContext is used in the export API and state API so it is public.
+// Any modifications must be backward compatible.
 message OomContext {
   // The error message
   string error_message = 1;
@@ -317,6 +394,10 @@ message OomContext {
 }
 
 // ---Actor death contexts end----
+
+message ActorUnavailableContext {
+  optional bytes actor_id = 1;
+}
 
 message JobConfig {
   enum ActorLifetime {
@@ -343,6 +424,8 @@ message JobConfig {
   // System paths of the driver scripts. Python workers need to search
   // these paths to load modules.
   repeated string py_driver_sys_path = 8;
+  // Python logging configurations that will be passed to Ray tasks/actors.
+  bytes serialized_py_logging_config = 9;
 }
 
 message StreamingGeneratorReturnIdInfo {
@@ -436,7 +519,7 @@ message TaskSpec {
   bytes submitter_task_id = 33;
   // True if the task is a streaming generator. When it is true,
   // returns_dynamic has to be true as well. This is a temporary flag
-  // until we migrate the generator implementatino to streaming.
+  // until we migrate the generator implementation to streaming.
   // TODO(sang): Remove it once migrating to the streaming generator
   // by default.
   bool streaming_generator = 34;
@@ -449,6 +532,19 @@ message TaskSpec {
   // Number of return values from a completed streaming generator return.
   // The value is set only when a task is completed once.
   optional uint64 num_streaming_generator_returns = 37;
+  // The number of unconsumed objects where the streaming
+  // generator pauses until the caller
+  // reads object ref stream.
+  // -1 means there's no backpressure enabled.
+  // TODO(sang): Maybe we should consolidate all streaming generator related config
+  // to a separate message?
+  int64 generator_backpressure_num_objects = 38;
+  // Boolean if task events enabled, i.e tasks events would be reported.
+  bool enable_task_events = 39;
+  // If this task is originated from a detached actor,
+  // this field contains the detached actor id.
+  // Otherwise it's empty and is originated from a driver.
+  bytes root_detached_actor_id = 40;
 }
 
 message TaskInfoEntry {
@@ -516,6 +612,11 @@ message PlacementGroupSpec {
   bool is_detached = 9;
   // The maximum fraction of CPU cores that this placement group can use on each node.
   double max_cpu_fraction_per_node = 10;
+  // Binary ID of the target node where bundles should be placed
+  // iff the target node has enough available resources and alive.
+  // Otherwise, the bundles can be placed elsewhere.
+  // This only applies to STRICT_PACK pg.
+  bytes soft_target_node_id = 11;
 }
 
 message ObjectReference {
@@ -654,7 +755,7 @@ message ResourceMapEntry {
 
 message ViewData {
   message Measure {
-    // A short string that describes the tags for this mesaure, e.g.,
+    // A short string that describes the tags for this measure, e.g.,
     // "Tag1:Value1,Tag2:Value2,Tag3:Value3"
     string tags = 1;
     // Int64 type value (if present).
@@ -821,21 +922,6 @@ message NodeResourceUsage {
   string json = 1;
 }
 
-message MetricPoint {
-  // Name of the metric.
-  string metric_name = 1;
-  // Timestamp when metric is exported.
-  int64 timestamp = 2;
-  // Value of the metric point.
-  double value = 3;
-  // Tags of the metric.
-  map<string, string> tags = 4;
-  // [Optional] Description of the metric.
-  string description = 5;
-  // [Optional] Unit of the metric.
-  string units = 6;
-}
-
 // Type of a worker exit.
 enum WorkerExitType {
   // Worker exits due to system level failures (i.e. worker crash).
@@ -844,10 +930,10 @@ enum WorkerExitType {
   // Workers that are killed because they are idle for a long time.
   INTENDED_SYSTEM_EXIT = 1;
   // Worker exits because of user error.
-  // E.g., execptions from the actor initialization.
+  // E.g., exceptions from the actor initialization.
   USER_ERROR = 2;
   // Intended exit from users (e.g., users exit workers with exit code 0
-  // or exit initated by Ray API such as ray.kill).
+  // or exit initiated by Ray API such as ray.kill).
   INTENDED_USER_EXIT = 3;
   // Worker exits due to node running out of memory.
   NODE_OUT_OF_MEMORY = 4;
@@ -879,4 +965,10 @@ enum PlacementStrategy {
 message NamedActorInfo {
   string ray_namespace = 1;
   string name = 2;
+}
+
+message LineageReconstructionTask {
+  string name = 1;
+  map<string, double> resources = 2;
+  TaskStatus status = 3;
 }

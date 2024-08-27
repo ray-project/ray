@@ -1,233 +1,275 @@
 import asyncio
 import concurrent.futures
-from dataclasses import dataclass
-from functools import wraps
-import inspect
-import os
-from typing import Coroutine, Dict, Optional, Union
+import logging
 import threading
+import time
+import warnings
+from dataclasses import dataclass
+from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorHandle
-
 from ray import serve
-from ray.serve._private.common import EndpointTag
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_ROUTING,
-    SERVE_HANDLE_JSON_KEY,
-    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
-    ServeHandleType,
+from ray._raylet import GcsClient, ObjectRefGenerator
+from ray.serve._private.common import (
+    DeploymentHandleSource,
+    DeploymentID,
+    RequestMetadata,
+    RequestProtocol,
 )
+from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.router import Router
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
-    get_random_letters,
     DEFAULT,
+    calculate_remaining_timeout,
+    generate_request_id,
+    get_current_actor_id,
+    get_random_string,
+    inside_ray_client_context,
+    is_running_in_asyncio_loop,
 )
-from ray.serve._private.router import Router, RequestMetadata
+from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _global_async_loop = None
+_global_async_loop_creation_lock = threading.Lock()
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-# Feature flag to revert to legacy behavior of synchronous deployment
-# handle in dynamic dispatch. This is here as an escape hatch and last resort.
-FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC = (
-    os.environ.get(SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY, "0") == "1"
-)
+def _create_or_get_global_asyncio_event_loop_in_thread():
+    """Provides a global singleton asyncio event loop running in a daemon thread.
 
-
-def _wrap_into_async_task(async_func):
-    """Wrap an async function so it returns async task instead of coroutine
-
-    This makes the returned value awaitable more than once.
+    Thread-safe.
     """
-    assert inspect.iscoroutinefunction(async_func)
-
-    @wraps(async_func)
-    def wrapper(*args, **kwargs):
-        return asyncio.ensure_future(async_func(*args, **kwargs))
-
-    return wrapper
-
-
-def _create_or_get_async_loop_in_thread():
     global _global_async_loop
     if _global_async_loop is None:
-        _global_async_loop = asyncio.new_event_loop()
-        thread = threading.Thread(
-            daemon=True,
-            target=_global_async_loop.run_forever,
-        )
-        thread.start()
+        with _global_async_loop_creation_lock:
+            if _global_async_loop is not None:
+                return _global_async_loop
+
+            _global_async_loop = asyncio.new_event_loop()
+            thread = threading.Thread(
+                daemon=True,
+                target=_global_async_loop.run_forever,
+            )
+            thread.start()
+
     return _global_async_loop
 
 
-@PublicAPI(stability="beta")
 @dataclass(frozen=True)
-class HandleOptions:
-    """Options for each ServeHandle instances. These fields are immutable."""
+class _HandleOptions:
+    """Options for each ServeHandle instance.
 
-    method_name: str = "__call__"
-
-
-@PublicAPI(stability="beta")
-class RayServeHandle:
-    """A handle used to make requests from one deployment to another.
-
-    This is used to compose multiple deployments into a single application. After
-    building the application, this handle is substituted at runtime for deployments
-    passed as arguments via `.bind()`.
-
-    Example:
-
-    .. code-block:: python
-
-        import ray
-        from ray import serve
-        from ray.serve.handle import RayServeHandle, RayServeSyncHandle
-
-        @serve.deployment
-        class Downstream:
-            def __init__(self, message: str):
-                self._message = message
-
-        def __call__(self, name: str) -> str:
-            return self._message + name
-
-        @serve.deployment
-        class Ingress:
-            def __init__(self, handle: RayServeHandle):
-                self._handle = handle
-
-            async def __call__(self, name: str) -> str:
-                obj_ref: ray.ObjectRef = await self._handle.remote(name)
-                return await obj_ref
-
-        app = Ingress.bind(Downstream.bind("Hello "))
-        handle: RayServeSyncHandle = serve.run(app)
-
-        # Prints "Hello Mr. Magoo"
-        print(ray.get(handle.remote("Mr. Magoo")))
-
+    These fields can be changed by calling `.options()` on a handle.
     """
 
+    method_name: str = "__call__"
+    multiplexed_model_id: str = ""
+    stream: bool = False
+    _prefer_local_routing: bool = False
+    _request_protocol: str = RequestProtocol.UNDEFINED
+    _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
+
+    def copy_and_update(
+        self,
+        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _request_protocol: Union[str, DEFAULT] = DEFAULT.VALUE,
+        _source: Union[DeploymentHandleSource, DEFAULT] = DEFAULT.VALUE,
+    ) -> "_HandleOptions":
+        return _HandleOptions(
+            method_name=(
+                self.method_name if method_name == DEFAULT.VALUE else method_name
+            ),
+            multiplexed_model_id=(
+                self.multiplexed_model_id
+                if multiplexed_model_id == DEFAULT.VALUE
+                else multiplexed_model_id
+            ),
+            stream=self.stream if stream == DEFAULT.VALUE else stream,
+            _prefer_local_routing=self._prefer_local_routing
+            if _prefer_local_routing == DEFAULT.VALUE
+            else _prefer_local_routing,
+            _request_protocol=self._request_protocol
+            if _request_protocol == DEFAULT.VALUE
+            else _request_protocol,
+            _source=self._source if _source == DEFAULT.VALUE else _source,
+        )
+
+
+class _DeploymentHandleBase:
     def __init__(
         self,
-        controller_handle: ActorHandle,
-        deployment_name: EndpointTag,
-        handle_options: Optional[HandleOptions] = None,
+        deployment_name: str,
+        app_name: str,
         *,
+        handle_options: Optional[_HandleOptions] = None,
         _router: Optional[Router] = None,
-        _is_for_http_requests: bool = False,
-        _stream: bool = False,
+        _request_counter: Optional[metrics.Counter] = None,
+        _recorded_telemetry: bool = False,
     ):
-        self.controller_handle = controller_handle
-        self.deployment_name = deployment_name
-        self.handle_options = handle_options or HandleOptions()
-        self.handle_tag = f"{self.deployment_name}#{get_random_letters()}"
-        self._is_for_http_requests = _is_for_http_requests
-        self._stream = _stream
+        self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
+        self.handle_options = handle_options or _HandleOptions()
+        self._recorded_telemetry = _recorded_telemetry
 
-        self.request_counter = metrics.Counter(
+        self.handle_id = get_random_string()
+        self.request_counter = _request_counter or self._create_request_counter(
+            app_name, deployment_name, self.handle_id
+        )
+
+        self._router: Optional[Router] = _router
+
+        logger.info(
+            f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
+            extra={"log_to_stderr": False},
+        )
+
+    def _record_telemetry_if_needed(self):
+        # Record telemetry once per handle and not when used from the proxy
+        # (detected via request protocol).
+        if (
+            not self._recorded_telemetry
+            and self.handle_options._request_protocol == RequestProtocol.UNDEFINED
+        ):
+            if self.__class__ == DeploymentHandle:
+                ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
+
+            self._recorded_telemetry = True
+
+    def _set_request_protocol(self, request_protocol: RequestProtocol):
+        self.handle_options = self.handle_options.copy_and_update(
+            _request_protocol=request_protocol
+        )
+
+    def _get_or_create_router(self) -> Tuple[Router, asyncio.AbstractEventLoop]:
+
+        if self._router is None:
+            node_id = ray.get_runtime_context().get_node_id()
+            try:
+                cluster_node_info_cache = create_cluster_node_info_cache(
+                    GcsClient(address=ray.get_runtime_context().gcs_address)
+                )
+                cluster_node_info_cache.update()
+                availability_zone = cluster_node_info_cache.get_node_az(node_id)
+            except Exception:
+                availability_zone = None
+
+            self._router = Router(
+                serve.context._get_global_client()._controller,
+                self.deployment_id,
+                self.handle_id,
+                node_id,
+                get_current_actor_id(),
+                availability_zone,
+                handle_source=self.handle_options._source,
+                event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
+                _prefer_local_node_routing=self.handle_options._prefer_local_routing,
+            )
+
+        return self._router, self._router._event_loop
+
+    @staticmethod
+    def _gen_handle_tag(app_name: str, deployment_name: str, handle_id: str):
+        if app_name:
+            return f"{app_name}#{deployment_name}#{handle_id}"
+        else:
+            return f"{deployment_name}#{handle_id}"
+
+    @classmethod
+    def _create_request_counter(
+        cls, app_name: str, deployment_name: str, handle_id: str
+    ):
+        return metrics.Counter(
             "serve_handle_request_counter",
             description=(
                 "The number of handle.remote() calls that have been "
                 "made on this handle."
             ),
             tag_keys=("handle", "deployment", "route", "application"),
-        )
-        self.request_counter.set_default_tags(
-            {"handle": self.handle_tag, "deployment": self.deployment_name}
+        ).set_default_tags(
+            {
+                "handle": cls._gen_handle_tag(
+                    app_name, deployment_name, handle_id=handle_id
+                ),
+                "deployment": deployment_name,
+                "application": app_name,
+            }
         )
 
-        self.router: Router = _router or self._make_router()
+    def running_replicas_populated(self) -> bool:
+        if self._router is None:
+            return False
 
-    def _make_router(self) -> Router:
-        return Router(
-            self.controller_handle,
-            self.deployment_name,
-            event_loop=get_or_create_event_loop(),
-            _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
-        )
+        return self._router.running_replicas_populated
 
     @property
-    def _is_polling(self) -> bool:
-        """Whether this handle is actively polling for replica updates."""
-        return self.router.long_poll_client.is_running
+    def deployment_name(self) -> str:
+        return self.deployment_id.name
 
     @property
-    def _is_same_loop(self) -> bool:
-        """Whether the caller's asyncio loop is the same loop for handle.
-
-        This is only useful for async handles.
-        """
-        return get_or_create_event_loop() == self.router._event_loop
+    def app_name(self) -> str:
+        return self.deployment_id.app_name
 
     def _options(
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _source: Union[DeploymentHandleSource, DEFAULT] = DEFAULT.VALUE,
     ):
-        new_options_dict = self.handle_options.__dict__.copy()
-        user_modified_options_dict = {
-            key: value
-            for key, value in zip(["method_name"], [method_name])
-            if value != DEFAULT.VALUE
-        }
-        new_options_dict.update(user_modified_options_dict)
-        new_options = HandleOptions(**new_options_dict)
-
-        if multiplexed_model_id != DEFAULT.VALUE:
-            # If the user specifies model id, we need to update the RequestContext
-            # to include the model_id.
-            ray.serve.context._set_request_context(
-                multiplexed_model_id=multiplexed_model_id
+        if stream is True and inside_ray_client_context():
+            raise RuntimeError(
+                "Streaming DeploymentHandles are not currently supported when "
+                "connected to a remote Ray cluster using Ray Client."
             )
 
-        return self.__class__(
-            self.controller_handle,
+        new_handle_options = self.handle_options.copy_and_update(
+            method_name=method_name,
+            multiplexed_model_id=multiplexed_model_id,
+            stream=stream,
+            _prefer_local_routing=_prefer_local_routing,
+            _source=_source,
+        )
+
+        if self._router is None and _prefer_local_routing == DEFAULT.VALUE:
+            self._get_or_create_router()
+
+        return DeploymentHandle(
             self.deployment_name,
-            new_options,
-            _router=self.router,
-            _is_for_http_requests=self._is_for_http_requests,
-            _stream=self._stream,
+            self.app_name,
+            handle_options=new_handle_options,
+            _router=self._router,
+            _request_counter=self.request_counter,
+            _recorded_telemetry=self._recorded_telemetry,
         )
 
-    def options(
-        self,
-        *,
-        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
-        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
-    ) -> "RayServeHandle":
-        """Set options for this handle and return an updated copy of it.
-
-        Example:
-
-        .. code-block:: python
-
-            # The following two lines are equivalent:
-            obj_ref = await handle.other_method.remote(*args)
-            obj_ref = await handle.options(method_name="other_method").remote(*args)
-            obj_ref = await handle.options(
-                multiplexed_model_id="model:v1").remote(*args)
-        """
-        return self._options(
-            method_name=method_name, multiplexed_model_id=multiplexed_model_id
-        )
-
-    def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
+    def _remote(
+        self, args: Tuple[Any], kwargs: Dict[str, Any]
+    ) -> concurrent.futures.Future:
+        self._record_telemetry_if_needed()
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
-            _request_context.request_id,
-            deployment_name,
-            call_method=handle_options.method_name,
-            is_http_request=self._is_for_http_requests,
+            request_id=_request_context.request_id
+            if _request_context.request_id
+            else generate_request_id(),
+            internal_request_id=_request_context._internal_request_id
+            if _request_context._internal_request_id
+            else generate_request_id(),
+            endpoint=self.deployment_name,
+            call_method=self.handle_options.method_name,
             route=_request_context.route,
-            app_name=_request_context.app_name,
-            multiplexed_model_id=_request_context.multiplexed_model_id,
-            is_streaming=self._stream,
+            app_name=self.app_name,
+            multiplexed_model_id=self.handle_options.multiplexed_model_id,
+            is_streaming=self.handle_options.stream,
+            _request_protocol=self.handle_options._request_protocol,
+            grpc_context=_request_context.grpc_context,
         )
         self.request_counter.inc(
             tags={
@@ -235,29 +277,22 @@ class RayServeHandle:
                 "application": _request_context.app_name,
             }
         )
-        coro = self.router.assign_request(request_metadata, *args, **kwargs)
-        return coro
+        router, event_loop = self._get_or_create_router()
 
-    @_wrap_into_async_task
-    async def remote(self, *args, **kwargs) -> asyncio.Task:
-        """Issue an asynchronous request to the __call__ method of the deployment.
-
-        Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
-        points to the final result of the request.
-
-        The final result can be retrieved by awaiting the ObjectRef.
-
-        Example:
-
-        .. code-block:: python
-
-            obj_ref = await handle.remote(*args)
-            result = await obj_ref
-
-        """
-        return await self._remote(
-            self.deployment_name, self.handle_options, args, kwargs
+        # Schedule the coroutine to run on the router loop. This is always a separate
+        # loop running in another thread to avoid user code blocking the router, so we
+        # use the `concurrent.futures.Future` thread safe API.
+        return asyncio.run_coroutine_threadsafe(
+            router.assign_request(request_metadata, *args, **kwargs),
+            loop=event_loop,
         )
+
+    def __getattr__(self, name):
+        return self.options(method_name=name)
+
+    def shutdown(self):
+        if self._router:
+            self._router.shutdown()
 
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
@@ -268,185 +303,535 @@ class RayServeHandle:
         return cls(**kwargs)
 
     def __reduce__(self):
-        serialized_data = {
-            "controller_handle": self.controller_handle,
+        serialized_constructor_args = {
             "deployment_name": self.deployment_name,
+            "app_name": self.app_name,
             "handle_options": self.handle_options,
-            "_is_for_http_requests": self._is_for_http_requests,
-            "_stream": self._stream,
         }
-        return RayServeHandle._deserialize, (serialized_data,)
+        return self.__class__._deserialize, (serialized_constructor_args,)
 
-    def __getattr__(self, name):
-        return self.options(method_name=name)
+
+class _DeploymentResponseBase:
+    def __init__(self, object_ref_future: concurrent.futures.Future):
+        self._cancelled = False
+        # The result of `object_ref_future` must be an ObjectRef or ObjectRefGenerator.
+        self._object_ref_future = object_ref_future
+
+        # Cached result of the `object_ref_future`.
+        # This is guarded by the below locks for async and sync methods.
+        # It's not expected that user code can mix async and sync methods (sync methods
+        # raise an exception when running in an `asyncio` loop).
+        # The `asyncio` lock is lazily constructed because the constructor may run on
+        # a different `asyncio` loop than method calls (or not run on one at all).
+        self._object_ref_or_gen = None
+        self.__lazy_object_ref_or_gen_asyncio_lock = None
+        self._object_ref_or_gen_sync_lock = threading.Lock()
+
+    @property
+    def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
+        """Lazy `asyncio.Lock` object."""
+        if self.__lazy_object_ref_or_gen_asyncio_lock is None:
+            self.__lazy_object_ref_or_gen_asyncio_lock = asyncio.Lock()
+
+        return self.__lazy_object_ref_or_gen_asyncio_lock
+
+    def _should_resolve_gen_to_obj_ref(
+        self, obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator]
+    ) -> bool:
+        """Check if the ref is a generator that needs to be resolved to its first ref.
+
+        This is an edge case to handle the routing code path with replica rejection.
+        In that case, the output of `router.assign_request` is *always* a generator,
+        so if this is a unary response we need to resolve it to its first (and only)
+        output ObjectRef.
+        """
+        return isinstance(obj_ref_or_gen, ray.ObjectRefGenerator) and isinstance(
+            self, DeploymentResponse
+        )
+
+    async def _to_object_ref_or_gen(
+        self,
+        _record_telemetry: bool = True,
+    ) -> Union[ray.ObjectRef, ObjectRefGenerator]:
+        # Record telemetry for using the developer API to convert to an object
+        # ref. Recorded here because all of the other codepaths go through this.
+        # `_record_telemetry` is used to filter other API calls that go through
+        # this path as well as calls from the proxy.
+        if _record_telemetry:
+            ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
+        # object ref or generator cached in order to avoid calling `__anext__()` to
+        # resolve to the underlying object ref more than once.
+        #
+        # See: https://github.com/ray-project/ray/issues/43879.
+        async with self._object_ref_or_gen_asyncio_lock:
+            if self._object_ref_or_gen is None:
+                # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
+                # safely from any asyncio loop.
+                obj_ref_or_gen = await asyncio.wrap_future(self._object_ref_future)
+                if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
+                    obj_ref_or_gen = await obj_ref_or_gen.__anext__()
+
+                self._object_ref_or_gen = obj_ref_or_gen
+
+            return self._object_ref_or_gen
+
+    def _to_object_ref_or_gen_sync(
+        self,
+        _record_telemetry: bool = True,
+        _timeout_s: Optional[float] = None,
+        _allow_running_in_asyncio_loop: bool = False,
+    ) -> Union[ray.ObjectRef, ObjectRefGenerator]:
+        if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
+            raise RuntimeError(
+                "Sync methods should not be called from within an `asyncio` event "
+                "loop. Use `await response` or `await response._to_object_ref()` "
+                "instead."
+            )
+
+        if _record_telemetry:
+            ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        start_time_s = time.time()
+        # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
+        # object ref or generator cached in order to avoid calling `__next__()` to
+        # resolve to the underlying object ref more than once.
+        #
+        # See: https://github.com/ray-project/ray/issues/43879.
+        with self._object_ref_or_gen_sync_lock:
+            if self._object_ref_or_gen is None:
+                try:
+                    obj_ref_or_gen = self._object_ref_future.result(timeout=_timeout_s)
+                except concurrent.futures.TimeoutError:
+                    raise TimeoutError("Timed out resolving to ObjectRef.") from None
+
+                if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
+                    obj_ref_or_gen = obj_ref_or_gen._next_sync(
+                        timeout_s=calculate_remaining_timeout(
+                            timeout_s=_timeout_s,
+                            start_time_s=start_time_s,
+                            curr_time_s=time.time(),
+                        )
+                    )
+                    if obj_ref_or_gen.is_nil():
+                        raise TimeoutError("Timed out resolving to ObjectRef.")
+                self._object_ref_or_gen = obj_ref_or_gen
+
+        return self._object_ref_or_gen
+
+    def cancel(self):
+        """Attempt to cancel the `DeploymentHandle` call.
+
+        This is best effort.
+
+        - If the request hasn't been assigned to a replica actor, the assignment will be
+          cancelled.
+        - If the request has been assigned to a replica actor, `ray.cancel` will be
+          called on the object ref, attempting to cancel the request and any downstream
+          requests it makes.
+
+        If the request is successfully cancelled, subsequent operations on the ref will
+        raise an exception:
+
+            - If the request was cancelled before assignment, they'll raise
+              `asyncio.CancelledError` (or a `concurrent.futures.CancelledError` for
+              synchronous methods like `.result()`.).
+            - If the request was cancelled after assignment, they'll raise
+              `ray.exceptions.TaskCancelledError`.
+        """
+        if self._cancelled:
+            return
+
+        self._cancelled = True
+        if not self._object_ref_future.done():
+            self._object_ref_future.cancel()
+        elif self._object_ref_future.exception() is None:
+            ray.cancel(self._object_ref_future.result())
+
+    @DeveloperAPI
+    def cancelled(self) -> bool:
+        """Whether or not the request has been cancelled.
+
+        This is `True` if `.cancel()` is called, but the request may actually have run
+        to completion.
+        """
+        return self._cancelled
 
 
 @PublicAPI(stability="beta")
-class RayServeSyncHandle(RayServeHandle):
-    """A handle used to make requests to the ingress deployment of an application.
+class DeploymentResponse(_DeploymentResponseBase):
+    """A future-like object wrapping the result of a unary deployment handle call.
 
-    This is returned by `serve.run` and can be used to invoke the application from
-    Python rather than over HTTP. For example:
+    From inside a deployment, a `DeploymentResponse` can be awaited to retrieve the
+    output of the call without blocking the asyncio event loop.
+
+    From outside a deployment, `.result()` can be used to retrieve the output in a
+    blocking manner.
+
+    Example:
+
+    .. code-block:: python
+
+        from ray import serve
+        from ray.serve.handle import DeploymentHandle
+
+        @serve.deployment
+        class Downstream:
+            def say_hi(self, message: str) -> str:
+                return f"Hello {message}!"
+
+        @serve.deployment
+        class Caller:
+            def __init__(self, handle: DeploymentHandle):
+                self._downstream_handle = handle
+
+        async def __call__(self, message: str) -> str:
+            # Inside a deployment: `await` the result to enable concurrency.
+            response = self._downstream_handle.say_hi.remote(message)
+            return await response
+
+        app = Caller.bind(Downstream.bind())
+        handle: DeploymentHandle = serve.run(app)
+
+        # Outside a deployment: call `.result()` to get output.
+        response = handle.remote("world")
+        assert response.result() == "Hello world!"
+
+    A `DeploymentResponse` can be passed directly to another `DeploymentHandle` call
+    without fetching the result to enable composing multiple deployments together.
+
+    Example:
+
+    .. code-block:: python
+
+        from ray import serve
+        from ray.serve.handle import DeploymentHandle
+
+        @serve.deployment
+        class Adder:
+            def add(self, val: int) -> int:
+                return val + 1
+
+        @serve.deployment
+        class Caller:
+            def __init__(self, handle: DeploymentHandle):
+                self._adder_handle = handle
+
+        async def __call__(self, start: int) -> int:
+            return await self._adder_handle.add.remote(
+                # Pass the response directly to another handle call without awaiting.
+                self._adder_handle.add.remote(start)
+            )
+
+        app = Caller.bind(Adder.bind())
+        handle: DeploymentHandle = serve.run(app)
+        assert handle.remote(0).result() == 2
+    """
+
+    def __await__(self):
+        """Yields the final result of the deployment handle call."""
+        obj_ref = yield from self._to_object_ref_or_gen(
+            _record_telemetry=False
+        ).__await__()
+        result = yield from obj_ref.__await__()
+        return result
+
+    def __reduce__(self):
+        raise RayServeException(
+            "`DeploymentResponse` is not serializable. If you are passing the "
+            "`DeploymentResponse` in a nested object (e.g. a list or dictionary) to a "
+            "downstream deployment handle call, that is no longer supported. Please "
+            "only pass `DeploymentResponse` objects as top level arguments."
+        )
+
+    def result(self, *, timeout_s: Optional[float] = None) -> Any:
+        """Fetch the result of the handle call synchronously.
+
+        This should *not* be used from within a deployment as it runs in an asyncio
+        event loop. For model composition, `await` the response instead.
+
+        If `timeout_s` is provided and the result is not available before the timeout,
+        a `TimeoutError` is raised.
+        """
+        start_time_s = time.time()
+        obj_ref = self._to_object_ref_sync(
+            _record_telemetry=False, _timeout_s=timeout_s
+        )
+        remaining_timeout_s = calculate_remaining_timeout(
+            timeout_s=timeout_s, start_time_s=start_time_s, curr_time_s=time.time()
+        )
+        return ray.get(obj_ref, timeout=remaining_timeout_s)
+
+    @DeveloperAPI
+    async def _to_object_ref(self, _record_telemetry: bool = True) -> ray.ObjectRef:
+        """Advanced API to convert the response to a Ray `ObjectRef`.
+
+        This is used to pass the output of a `DeploymentHandle` call to a Ray task or
+        actor method call.
+
+        This method is `async def` because it will block until the handle call has been
+        assigned to a replica actor. If there are many requests in flight and all
+        replicas' queues are full, this may be a slow operation.
+        """
+        return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
+
+    @DeveloperAPI
+    def _to_object_ref_sync(
+        self,
+        _record_telemetry: bool = True,
+        _timeout_s: Optional[float] = None,
+        _allow_running_in_asyncio_loop: bool = False,
+    ) -> ray.ObjectRef:
+        """Advanced API to convert the response to a Ray `ObjectRef`.
+
+        This is used to pass the output of a `DeploymentHandle` call to a Ray task or
+        actor method call.
+
+        This method is a *blocking* call because it will block until the handle call has
+        been assigned to a replica actor. If there are many requests in flight and all
+        replicas' queues are full, this may be a slow operation.
+
+        From inside a deployment, `_to_object_ref` should be used instead to avoid
+        blocking the asyncio event loop.
+        """
+        return self._to_object_ref_or_gen_sync(
+            _record_telemetry=_record_telemetry,
+            _timeout_s=_timeout_s,
+            _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
+        )
+
+
+@PublicAPI(stability="beta")
+class DeploymentResponseGenerator(_DeploymentResponseBase):
+    """A future-like object wrapping the result of a streaming deployment handle call.
+
+    This is returned when using `handle.options(stream=True)` and calling a generator
+    deployment method.
+
+    `DeploymentResponseGenerator` is both a synchronous and asynchronous iterator.
+
+    When iterating over results from inside a deployment, `async for` should be used to
+    avoid blocking the asyncio event loop.
+
+    When iterating over results from outside a deployment, use a standard `for` loop.
+
+    Example:
+
+    .. code-block:: python
+
+        from typing import AsyncGenerator, Generator
+
+        from ray import serve
+        from ray.serve.handle import DeploymentHandle
+
+        @serve.deployment
+        class Streamer:
+            def generate_numbers(self, limit: int) -> Generator[int]:
+                for i in range(limit):
+                    yield i
+
+        @serve.deployment
+        class Caller:
+            def __init__(self, handle: DeploymentHandle):
+                # Set `stream=True` on the handle to enable streaming calls.
+                self._streaming_handle = handle.options(stream=True)
+
+        async def __call__(self, limit: int) -> AsyncIterator[int]:
+            gen: DeploymentResponseGenerator = (
+                self._streaming_handle.generate_numbers.remote(limit)
+            )
+
+            # Inside a deployment: use `async for` to enable concurrency.
+            async for i in gen:
+                yield i
+
+        app = Caller.bind(Streamer.bind())
+        handle: DeploymentHandle = serve.run(app)
+
+        # Outside a deployment: use a standard `for` loop.
+        gen: DeploymentResponseGenerator = handle.options(stream=True).remote(10)
+        assert [i for i in gen] == list(range(10))
+
+    A `DeploymentResponseGenerator` *cannot* currently be passed to another
+    `DeploymentHandle` call.
+    """
+
+    def __init__(
+        self,
+        object_ref_future: concurrent.futures.Future,
+    ):
+        super().__init__(object_ref_future)
+        self._obj_ref_gen: Optional[ObjectRefGenerator] = None
+
+    def __await__(self):
+        raise TypeError(
+            "`DeploymentResponseGenerator` cannot be awaited directly. Use `async for` "
+            "or `_to_object_ref_gen` instead."
+        )
+
+    def __aiter__(self) -> AsyncIterator[Any]:
+        return self
+
+    async def __anext__(self) -> Any:
+        if self._obj_ref_gen is None:
+            self._obj_ref_gen = await self._to_object_ref_gen(_record_telemetry=False)
+
+        next_obj_ref = await self._obj_ref_gen.__anext__()
+        return await next_obj_ref
+
+    def __iter__(self) -> Iterator[Any]:
+        return self
+
+    def __next__(self) -> Any:
+        if self._obj_ref_gen is None:
+            self._obj_ref_gen = self._to_object_ref_gen_sync(_record_telemetry=False)
+
+        next_obj_ref = self._obj_ref_gen.__next__()
+        return ray.get(next_obj_ref)
+
+    @DeveloperAPI
+    async def _to_object_ref_gen(
+        self, _record_telemetry: bool = True
+    ) -> ObjectRefGenerator:
+        """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
+
+        This method is `async def` because it will block until the handle call has been
+        assigned to a replica actor. If there are many requests in flight and all
+        replicas' queues are full, this may be a slow operation.
+        """
+        return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
+
+    @DeveloperAPI
+    def _to_object_ref_gen_sync(
+        self,
+        _record_telemetry: bool = True,
+        _timeout_s: Optional[float] = None,
+        _allow_running_in_asyncio_loop: bool = False,
+    ) -> ObjectRefGenerator:
+        """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
+
+        This method is a *blocking* call because it will block until the handle call has
+        been assigned to a replica actor. If there are many requests in flight and all
+        replicas' queues are full, this may be a slow operation.
+
+        From inside a deployment, `_to_object_ref_gen` should be used instead to avoid
+        blocking the asyncio event loop.
+        """
+        return self._to_object_ref_or_gen_sync(
+            _record_telemetry=_record_telemetry,
+            _timeout_s=_timeout_s,
+            _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
+        )
+
+
+@PublicAPI(stability="beta")
+class DeploymentHandle(_DeploymentHandleBase):
+    """A handle used to make requests to a deployment at runtime.
+
+    This is primarily used to compose multiple deployments within a single application.
+    It can also be used to make calls to the ingress deployment of an application (e.g.,
+    for programmatic testing).
+
+    Example:
+
 
     .. code-block:: python
 
         import ray
         from ray import serve
-        from ray.serve.handle import RayServeSyncHandle
+        from ray.serve.handle import DeploymentHandle, DeploymentResponse
+
+        @serve.deployment
+        class Downstream:
+            def say_hi(self, message: str):
+                return f"Hello {message}!"
+                self._message = message
 
         @serve.deployment
         class Ingress:
-            def __call__(self, name: str) -> str:
-                return f"Hello {name}"
+            def __init__(self, handle: DeploymentHandle):
+                self._downstream_handle = handle
 
-        app = Ingress.bind()
-        handle: RayServeSyncHandle = serve.run(app)
+            async def __call__(self, name: str) -> str:
+                response = self._handle.say_hi.remote(name)
+                return await response
 
-        # Prints "Hello Mr. Magoo"
-        print(ray.get(handle.remote("Mr. Magoo")))
-
+        app = Ingress.bind(Downstream.bind())
+        handle: DeploymentHandle = serve.run(app)
+        response = handle.remote("world")
+        assert response.result() == "Hello world!"
     """
-
-    @property
-    def _is_same_loop(self) -> bool:
-        # NOTE(simon): For sync handle, the caller doesn't have to be in the
-        # same loop as the handle's loop, so we always return True here.
-        return True
-
-    def _make_router(self) -> Router:
-        return Router(
-            self.controller_handle,
-            self.deployment_name,
-            event_loop=_create_or_get_async_loop_in_thread(),
-            _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
-        )
 
     def options(
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
-    ) -> "RayServeSyncHandle":
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        _source: Union[bool, DEFAULT] = DEFAULT.VALUE,
+    ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
         Example:
 
         .. code-block:: python
 
-            # The following two lines are equivalent:
-            obj_ref = handle.other_method.remote(*args)
-            obj_ref = handle.options(method_name="other_method").remote(*args)
-            obj_ref = handle.options(multiplexed_model_id="model1").remote(*args)
-
+            response: DeploymentResponse = handle.options(
+                method_name="other_method",
+                multiplexed_model_id="model:v1",
+            ).remote()
         """
+        if use_new_handle_api is not DEFAULT.VALUE:
+            warnings.warn(
+                "Setting `use_new_handle_api` no longer has any effect. "
+                "This argument will be removed in a future version."
+            )
+
         return self._options(
-            method_name=method_name, multiplexed_model_id=multiplexed_model_id
+            method_name=method_name,
+            multiplexed_model_id=multiplexed_model_id,
+            stream=stream,
+            _prefer_local_routing=_prefer_local_routing,
+            _source=_source,
         )
 
-    def remote(self, *args, **kwargs) -> ray.ObjectRef:
-        """Issue an asynchronous request to the __call__ method of the deployment.
+    def remote(
+        self, *args, **kwargs
+    ) -> Union[DeploymentResponse, DeploymentResponseGenerator]:
+        """Issue a remote call to a method of the deployment.
 
-        Returns a Ray ObjectRef whose results can be waited for or retrieved
-        using ray.wait or ray.get, respectively.
+        By default, the result is a `DeploymentResponse` that can be awaited to fetch
+        the result of the call or passed to another `.remote()` call to compose multiple
+        deployments.
+
+        If `handle.options(stream=True)` is set and a generator method is called, this
+        returns a `DeploymentResponseGenerator` instead.
+
+        Example:
 
         .. code-block:: python
 
-            obj_ref = handle.remote(*args)
-            result = ray.get(obj_ref)
+            # Fetch the result directly.
+            response = handle.remote()
+            result = await response
 
+            # Pass the result to another handle call.
+            composed_response = handle2.remote(handle1.remote())
+            composed_result = await composed_response
+
+        Args:
+            *args: Positional arguments to be serialized and passed to the
+                remote method call.
+            **kwargs: Keyword arguments to be serialized and passed to the
+                remote method call.
         """
-        coro = self._remote(self.deployment_name, self.handle_options, args, kwargs)
-        future: concurrent.futures.Future = asyncio.run_coroutine_threadsafe(
-            coro, self.router._event_loop
-        )
-        return future.result()
+        future = self._remote(args, kwargs)
+        if self.handle_options.stream:
+            response_cls = DeploymentResponseGenerator
+        else:
+            response_cls = DeploymentResponse
 
-    def __reduce__(self):
-        serialized_data = {
-            "controller_handle": self.controller_handle,
-            "deployment_name": self.deployment_name,
-            "handle_options": self.handle_options,
-            "_is_for_http_requests": self._is_for_http_requests,
-            "_stream": self._stream,
-        }
-        return RayServeSyncHandle._deserialize, (serialized_data,)
-
-
-@DeveloperAPI
-class RayServeDeploymentHandle:
-    """Send requests to a deployment. This class should not be manually created."""
-
-    # """Lazily initialized handle that only gets fulfilled upon first execution."""
-    def __init__(
-        self,
-        deployment_name: str,
-        handle_options: Optional[HandleOptions] = None,
-    ):
-        self.deployment_name = deployment_name
-        self.handle_options = handle_options or HandleOptions()
-        # For Serve DAG we need placeholder in DAG binding and building without
-        # requirement of serve.start; Thus handle is fulfilled at runtime.
-        self.handle: RayServeHandle = None
-
-    def options(self, *, method_name: str) -> "RayServeDeploymentHandle":
-        return self.__class__(
-            self.deployment_name, HandleOptions(method_name=method_name)
-        )
-
-    def remote(self, *args, _ray_cache_refs: bool = False, **kwargs) -> asyncio.Task:
-        if not self.handle:
-            handle = serve._private.api.get_deployment(
-                self.deployment_name
-            )._get_handle(sync=FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC)
-            self.handle = handle.options(method_name=self.handle_options.method_name)
-        return self.handle.remote(*args, **kwargs)
-
-    @classmethod
-    def _deserialize(cls, kwargs):
-        """Required for this class's __reduce__ method to be picklable."""
-        return cls(**kwargs)
-
-    def __reduce__(self):
-        serialized_data = {
-            "deployment_name": self.deployment_name,
-            "handle_options": self.handle_options,
-        }
-        return RayServeDeploymentHandle._deserialize, (serialized_data,)
-
-    def __getattr__(self, name):
-        return self.options(method_name=name)
-
-    def __repr__(self):
-        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
-
-
-def _serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
-    """Converts a Serve handle to a JSON-serializable dictionary.
-
-    The dictionary can be converted back to a ServeHandle using
-    _serve_handle_from_json_dict.
-    """
-    if isinstance(handle, RayServeSyncHandle):
-        handle_type = ServeHandleType.SYNC
-    else:
-        handle_type = ServeHandleType.ASYNC
-
-    return {
-        SERVE_HANDLE_JSON_KEY: handle_type,
-        "deployment_name": handle.deployment_name,
-    }
-
-
-def _serve_handle_from_json_dict(d: Dict[str, str]) -> RayServeHandle:
-    """Converts a JSON-serializable dictionary back to a ServeHandle.
-
-    The dictionary should be constructed using _serve_handle_to_json_dict.
-    """
-    if SERVE_HANDLE_JSON_KEY not in d:
-        raise ValueError(f"dict must contain {SERVE_HANDLE_JSON_KEY} key.")
-
-    return serve.context.get_global_client().get_handle(
-        d["deployment_name"],
-        sync=d[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC,
-        missing_ok=True,
-    )
+        return response_cls(future)

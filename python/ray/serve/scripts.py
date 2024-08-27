@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 import os
 import pathlib
+import re
 import sys
 import time
-from typing import Dict, Optional, Tuple
+import traceback
+from dataclasses import asdict
+from typing import Any, Dict, List, Optional, Tuple
 
 import click
+import watchfiles
 import yaml
-import traceback
-import re
-from pydantic import ValidationError
 
 import ray
 from ray import serve
@@ -17,18 +18,23 @@ from ray._private.utils import import_attr
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.serve.api import build as build_app
-from ray.serve.config import DeploymentMode
+from ray.serve._private import api as _private_api
 from ray.serve._private.constants import (
+    DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
-    SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
 )
-from ray.serve._private.common import ServeDeployMode
+from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import (
+    get_and_validate_ingress_deployment,
+)
+from ray.serve._private.utils import DEFAULT
+from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
-from ray.serve._private import api as _private_api
 from ray.serve.schema import (
+    LoggingConfig,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
@@ -41,13 +47,12 @@ APP_DIR_HELP_STR = (
     "from an installed module."
 )
 RAY_INIT_ADDRESS_HELP_STR = (
-    "Address to use for ray.init(). Can also be specified "
-    "using the RAY_ADDRESS environment variable."
+    "Address to use for ray.init(). Can also be set using "
+    "the RAY_ADDRESS environment variable."
 )
 RAY_DASHBOARD_ADDRESS_HELP_STR = (
-    "Address to use to query the Ray dashboard agent (defaults to "
-    "http://localhost:52365). Can also be specified using the "
-    "RAY_AGENT_ADDRESS environment variable."
+    "Address for the Ray dashboard. Defaults to http://localhost:8265. "
+    "Can also be set using the RAY_DASHBOARD_ADDRESS environment variable."
 )
 
 
@@ -122,9 +127,18 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     return args_dict
 
 
+def warn_if_agent_address_set():
+    if "RAY_AGENT_ADDRESS" in os.environ:
+        cli_logger.warning(
+            "The `RAY_AGENT_ADDRESS` env var has been deprecated in favor of "
+            "the `RAY_DASHBOARD_ADDRESS` env var. The `RAY_AGENT_ADDRESS` is "
+            "ignored."
+        )
+
+
 @click.group(
     help="CLI for managing Serve applications on a Ray cluster.",
-    context_settings=dict(help_option_names=["-h", "--help"]),
+    context_settings=dict(help_option_names=["--help", "-h"]),
 )
 def cli():
     pass
@@ -158,71 +172,181 @@ def cli():
     default=DeploymentMode.HeadOnly,
     required=False,
     type=click.Choice(list(DeploymentMode)),
-    help="Location of the HTTP proxies. Defaults to HeadOnly.",
+    help="DEPRECATED: Use `--proxy-location` instead.",
 )
-def start(address, http_host, http_port, http_location):
+@click.option(
+    "--proxy-location",
+    default=ProxyLocation.EveryNode,
+    required=False,
+    type=click.Choice(list(ProxyLocation)),
+    help="Location of the proxies. Defaults to EveryNode.",
+)
+@click.option(
+    "--grpc-port",
+    default=DEFAULT_GRPC_PORT,
+    required=False,
+    type=int,
+    help="Port for gRPC proxies to listen on. " f"Defaults to {DEFAULT_GRPC_PORT}.",
+)
+@click.option(
+    "--grpc-servicer-functions",
+    default=[],
+    required=False,
+    multiple=True,
+    help="Servicer function for adding the method handler to the gRPC server. "
+    "Defaults to an empty list and no gRPC server is started.",
+)
+def start(
+    address,
+    http_host,
+    http_port,
+    http_location,
+    proxy_location,
+    grpc_port,
+    grpc_servicer_functions,
+):
+    if http_location != DeploymentMode.HeadOnly:
+        cli_logger.warning(
+            "The `--http-location` flag to `serve start` is deprecated, "
+            "use `--proxy-location` instead."
+        )
+
+        proxy_location = http_location
+
     ray.init(
         address=address,
         namespace=SERVE_NAMESPACE,
     )
     serve.start(
-        detached=True,
+        proxy_location=proxy_location,
         http_options=dict(
             host=http_host,
             port=http_port,
-            location=http_location,
+        ),
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
         ),
     )
 
 
+def _generate_config_from_file_or_import_path(
+    config_or_import_path: str,
+    *,
+    name: Optional[str],
+    arguments: Dict[str, str],
+    runtime_env: Optional[Dict[str, Any]],
+) -> ServeDeploySchema:
+    """Generates a deployable config schema for the passed application(s)."""
+    if pathlib.Path(config_or_import_path).is_file():
+        config_path = config_or_import_path
+        cli_logger.print(f"Deploying from config file: '{config_path}'.")
+        if len(arguments) > 0:
+            raise click.ClickException(
+                "Application arguments cannot be specified for a config file."
+            )
+
+        # TODO(edoakes): runtime_env is silently ignored -- should we enable overriding?
+        with open(config_path, "r") as config_file:
+            config_dict = yaml.safe_load(config_file)
+            config = ServeDeploySchema.parse_obj(config_dict)
+    else:
+        # TODO(edoakes): should we default to --working-dir="." for this?
+        import_path = config_or_import_path
+        cli_logger.print(f"Deploying from import path: '{import_path}'.")
+
+        app = ServeApplicationSchema(
+            import_path=import_path,
+            runtime_env=runtime_env,
+            args=arguments,
+        )
+        if name is not None:
+            app.name = name
+        config = ServeDeploySchema(applications=[app])
+
+    return config
+
+
 @cli.command(
-    short_help="Deploy Serve application(s) from a YAML config file.",
+    short_help="Deploy an application or group of applications.",
     help=(
-        "This supports both configs of the format ServeApplicationSchema, which "
-        "deploys a single application, as well as ServeDeploySchema, which deploys "
-        "multiple applications.\n\n"
-        "This call is async; a successful response only indicates that the "
-        "request was sent to the Ray cluster successfully. It does not mean "
-        "the the deployments have been deployed/updated.\n\n"
-        "Existing deployments with no code changes will not be redeployed.\n\n"
-        "Use `serve config` to fetch the current config(s) and `serve status` to "
-        "check the status of the application(s) and deployments after deploying."
+        "Deploy an application from an import path (e.g., main:app) "
+        "or a group of applications from a YAML config file.\n\n"
+        "Passed import paths must point to an Application object or "
+        "a function that returns one. If a function is used, arguments can be "
+        "passed to it in 'key=val' format after the import path, for example:\n\n"
+        "serve deploy main:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
+        "This command makes a REST API request to a running Ray cluster."
     ),
 )
-@click.argument("config_file_name")
+@click.argument("config_or_import_path")
+@click.argument("arguments", nargs=-1, required=False)
+@click.option(
+    "--runtime-env",
+    type=str,
+    default=None,
+    required=False,
+    help="Path to a local YAML file containing a runtime_env definition.",
+)
+@click.option(
+    "--runtime-env-json",
+    type=str,
+    default=None,
+    required=False,
+    help="JSON-serialized runtime_env dictionary.",
+)
+@click.option(
+    "--working-dir",
+    type=str,
+    default=None,
+    required=False,
+    help=(
+        "Directory containing files that your application(s) will run in. This must "
+        "be a remote URI to a .zip file (e.g., S3 bucket). This overrides the "
+        "working_dir in --runtime-env if both are specified."
+    ),
+)
+@click.option(
+    "--name",
+    required=False,
+    default=None,
+    type=str,
+    help="Custom name for the application. Ignored when deploying from a config file.",
+)
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
-def deploy(config_file_name: str, address: str):
-    with open(config_file_name, "r") as config_file:
-        config = yaml.safe_load(config_file)
+def deploy(
+    config_or_import_path: str,
+    arguments: Tuple[str],
+    runtime_env: str,
+    runtime_env_json: str,
+    working_dir: str,
+    name: Optional[str],
+    address: str,
+):
+    args_dict = convert_args_to_dict(arguments)
+    final_runtime_env = parse_runtime_env_args(
+        runtime_env=runtime_env,
+        runtime_env_json=runtime_env_json,
+        working_dir=working_dir,
+    )
 
-    try:
-        ServeDeploySchema.parse_obj(config)
-        ServeSubmissionClient(address).deploy_applications(config)
-    except ValidationError as v2_err:
-        try:
-            ServeApplicationSchema.parse_obj(config)
-            ServeSubmissionClient(address).deploy_application(config)
-        except ValidationError as v1_err:
-            # If we find the field "applications" in the config, most likely
-            # user is trying to deploy a multi-application config
-            if "applications" in config:
-                raise v2_err from None
-            else:
-                raise v1_err from None
-        except RuntimeError as e:
-            # Error deploying application
-            raise e from None
-    except RuntimeError:
-        # Error deploying application
-        raise
+    config = _generate_config_from_file_or_import_path(
+        config_or_import_path,
+        name=name,
+        arguments=args_dict,
+        runtime_env=final_runtime_env,
+    )
 
+    ServeSubmissionClient(address).deploy_applications(
+        config.dict(exclude_unset=True),
+    )
     cli_logger.success(
         "\nSent deploy request successfully.\n "
         "* Use `serve status` to check applications' statuses.\n "
@@ -231,11 +355,11 @@ def deploy(config_file_name: str, address: str):
 
 
 @cli.command(
-    short_help="Run Serve application(s).",
+    short_help="Run an application or group of applications.",
     help=(
-        "Runs an application from the specified import path (e.g., my_script:"
-        "app) or application(s) from a YAML config.\n\n"
-        "If passing an import path, it must point to a Serve Application or "
+        "Run an application from an import path (e.g., my_script:"
+        "app) or a group of applications from a YAML config file.\n\n"
+        "Passed import paths must point to an Application object or "
         "a function that returns one. If a function is used, arguments can be "
         "passed to it in 'key=val' format after the import path, for example:\n\n"
         "serve run my_script:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
@@ -292,20 +416,6 @@ def deploy(config_file_name: str, address: str):
     help=RAY_INIT_ADDRESS_HELP_STR,
 )
 @click.option(
-    "--host",
-    "-h",
-    required=False,
-    type=str,
-    help=f"Host for HTTP server to listen on. Defaults to {DEFAULT_HTTP_HOST}.",
-)
-@click.option(
-    "--port",
-    "-p",
-    required=False,
-    type=int,
-    help=f"Port for HTTP proxies to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
-)
-@click.option(
     "--blocking/--non-blocking",
     default=True,
     help=(
@@ -314,12 +424,35 @@ def deploy(config_file_name: str, address: str):
     ),
 )
 @click.option(
-    "--gradio",
+    "--reload",
+    "-r",
     is_flag=True,
     help=(
-        "Whether to enable gradio visualization of deployment graph. The "
-        "visualization can only be used with deployment graphs with DAGDriver "
-        "as the ingress deployment."
+        "Listens for changes to files in the working directory, --working-dir "
+        "or the working_dir in the --runtime-env, and automatically redeploys "
+        "the application. This will block until Ctrl-C'd, then clean up the "
+        "app."
+    ),
+)
+@click.option(
+    "--route-prefix",
+    required=False,
+    type=str,
+    help=(
+        "Route prefix for the application. This should only be used "
+        "when running an application specified by import path and "
+        "will be ignored if running a config file."
+    ),
+)
+@click.option(
+    "--name",
+    required=False,
+    default=SERVE_DEFAULT_APP_NAME,
+    type=str,
+    help=(
+        "Name of the application. This should only be used "
+        "when running an application specified by import path and "
+        "will be ignored if running a config file."
     ),
 )
 def run(
@@ -330,11 +463,13 @@ def run(
     working_dir: str,
     app_dir: str,
     address: str,
-    host: str,
-    port: int,
     blocking: bool,
-    gradio: bool,
+    reload: bool,
+    route_prefix: Optional[str],
+    name: str,
 ):
+    if route_prefix is None:
+        route_prefix = DEFAULT.VALUE
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -356,53 +491,10 @@ def run(
         with open(config_path, "r") as config_file:
             config_dict = yaml.safe_load(config_file)
 
-            try:
-                config = ServeDeploySchema.parse_obj(config_dict)
-                if gradio:
-                    raise click.ClickException(
-                        "The gradio visualization feature of `serve run` does not yet "
-                        "have support for multiple applications."
-                    )
-
-                # If host or port is specified as a CLI argument, they should take
-                # priority over config values.
-                if host is None:
-                    if "http_options" in config_dict:
-                        host = config_dict["http_options"].get(
-                            "host", DEFAULT_HTTP_HOST
-                        )
-                    else:
-                        host = DEFAULT_HTTP_HOST
-                if port is None:
-                    if "http_options" in config_dict:
-                        port = config_dict["http_options"].get(
-                            "port", DEFAULT_HTTP_PORT
-                        )
-                    else:
-                        port = DEFAULT_HTTP_PORT
-            except ValidationError as v2_err:
-                try:
-                    config = ServeApplicationSchema.parse_obj(config_dict)
-                    # If host or port is specified as a CLI argument, they should take
-                    # priority over config values.
-                    if host is None:
-                        host = config_dict.get("host", DEFAULT_HTTP_HOST)
-                    if port is None:
-                        port = config_dict.get("port", DEFAULT_HTTP_PORT)
-                except ValidationError as v1_err:
-                    # If we find the field "applications" in the config, most likely
-                    # user is trying to deploy a multi-application config
-                    if "applications" in config_dict:
-                        raise v2_err from None
-                    else:
-                        raise v1_err from None
+            config = ServeDeploySchema.parse_obj(config_dict)
 
     else:
         is_config = False
-        if host is None:
-            host = DEFAULT_HTTP_HOST
-        if port is None:
-            port = DEFAULT_HTTP_PORT
         import_path = config_or_import_path
         cli_logger.print(f"Running import path: '{import_path}'.")
         app = _private_api.call_app_builder_with_args_if_necessary(
@@ -429,34 +521,65 @@ def run(
             "need to call `ray.init` in your code when using `serve run`."
         )
 
-    http_options = {"host": host, "port": port, "location": "EveryNode"}
-    # Merge http_options with the ones on ServeDeploySchema. If host and/or port is
-    # passed by cli, those continue to take the priority
+    http_options = {"location": "EveryNode"}
+    grpc_options = gRPCOptions()
+    # Merge http_options and grpc_options with the ones on ServeDeploySchema.
     if is_config and isinstance(config, ServeDeploySchema):
         config_http_options = config.http_options.dict()
         http_options = {**config_http_options, **http_options}
-    client = _private_api.serve_start(detached=True, http_options=http_options)
+        grpc_options = gRPCOptions(**config.grpc_options.dict())
+
+    client = _private_api.serve_start(
+        http_options=http_options,
+        grpc_options=grpc_options,
+    )
 
     try:
         if is_config:
-            client.deploy_apps(config, _blocking=gradio)
+            client.deploy_apps(config, _blocking=False)
             cli_logger.success("Submitted deploy config successfully.")
-            if gradio:
-                handle = serve.get_deployment("DAGDriver").get_handle()
-        else:
-            handle = serve.run(app, host=host, port=port)
-            cli_logger.success("Deployed Serve app successfully.")
-
-        if gradio:
-            from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
-
-            visualizer = GraphVisualizer()
-            visualizer.visualize_with_gradio(handle)
-        else:
             if blocking:
                 while True:
                     # Block, letting Ray print logs to the terminal.
                     time.sleep(10)
+        else:
+            # This should not block if reload is true so the watchfiles can be triggered
+            should_block = blocking and not reload
+            serve.run(app, blocking=should_block, name=name, route_prefix=route_prefix)
+
+        if reload:
+            if not blocking:
+                raise click.ClickException(
+                    "The --non-blocking option conflicts with the --reload option."
+                )
+            if working_dir:
+                watch_dir = working_dir
+            else:
+                watch_dir = app_dir
+
+            for changes in watchfiles.watch(
+                watch_dir,
+                rust_timeout=10000,
+                yield_on_timeout=True,
+            ):
+                if changes:
+                    try:
+                        # The module needs to be reloaded with `importlib` in order to
+                        # pick up any changes.
+                        app = _private_api.call_app_builder_with_args_if_necessary(
+                            import_attr(import_path, reload_module=True), args_dict
+                        )
+                        serve.run(
+                            target=app,
+                            blocking=False,
+                            name=name,
+                            route_prefix=route_prefix,
+                        )
+                    except Exception:
+                        traceback.print_exc()
+                        cli_logger.error(
+                            "Deploying the latest version of the application failed."
+                        )
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
@@ -473,11 +596,11 @@ def run(
         sys.exit()
 
 
-@cli.command(help="Gets the current config(s) of Serve application(s) on the cluster.")
+@cli.command(help="Gets the current configs of Serve applications on the cluster.")
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -493,17 +616,11 @@ def run(
     ),
 )
 def config(address: str, name: Optional[str]):
+    warn_if_agent_address_set()
+
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
-
-    if serve_details.deploy_mode != ServeDeployMode.MULTI_APP:
-        if name is not None:
-            raise click.ClickException(
-                "A single-app config was deployed to this cluster, so fetching an "
-                "application config by name is not allowed."
-            )
-        name = SERVE_DEFAULT_APP_NAME
 
     # Fetch app configs for all live applications on the cluster
     if name is None:
@@ -550,7 +667,7 @@ def config(address: str, name: Optional[str]):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
@@ -567,29 +684,26 @@ def config(address: str, name: Optional[str]):
     ),
 )
 def status(address: str, name: Optional[str]):
+    warn_if_agent_address_set()
+
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
+    status = asdict(serve_details._get_status())
 
     # Ensure multi-line strings in app_status is dumped/printed correctly
     yaml.SafeDumper.add_representer(str, str_presenter)
 
     if name is None:
-        if len(serve_details.applications) == 0:
-            print("There are no applications running on this cluster.")
-        else:
-            print(
-                "\n---\n\n".join(
-                    yaml.safe_dump(
-                        # Ensure exception traceback in app_status are printed correctly
-                        process_dict_for_yaml_dump(application.get_status_dict()),
-                        default_flow_style=False,
-                        sort_keys=False,
-                    )
-                    for application in serve_details.applications.values()
-                ),
-                end="",
-            )
+        print(
+            yaml.safe_dump(
+                # Ensure exception traceback in app_status are printed correctly
+                process_dict_for_yaml_dump(status),
+                default_flow_style=False,
+                sort_keys=False,
+            ),
+            end="",
+        )
     else:
         if name not in serve_details.applications:
             cli_logger.error(f'Application "{name}" does not exist.')
@@ -597,9 +711,7 @@ def status(address: str, name: Optional[str]):
             print(
                 yaml.safe_dump(
                     # Ensure exception tracebacks in app_status are printed correctly
-                    process_dict_for_yaml_dump(
-                        serve_details.applications.get(name).get_status_dict()
-                    ),
+                    process_dict_for_yaml_dump(status["applications"][name]),
                     default_flow_style=False,
                     sort_keys=False,
                 ),
@@ -613,13 +725,15 @@ def status(address: str, name: Optional[str]):
 @click.option(
     "--address",
     "-a",
-    default=os.environ.get("RAY_AGENT_ADDRESS", "http://localhost:52365"),
+    default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 @click.option("--yes", "-y", is_flag=True, help="Bypass confirmation prompt.")
 def shutdown(address: str, yes: bool):
+    warn_if_agent_address_set()
+
     if not yes:
         click.confirm(
             f"This will shut down Serve on the cluster at address "
@@ -628,7 +742,7 @@ def shutdown(address: str, yes: bool):
             abort=True,
         )
 
-    ServeSubmissionClient(address).delete_application()
+    ServeSubmissionClient(address).delete_applications()
 
     cli_logger.success(
         "Sent shutdown request; applications will be deleted asynchronously."
@@ -653,15 +767,6 @@ def shutdown(address: str, yes: bool):
     help=APP_DIR_HELP_STR,
 )
 @click.option(
-    "--kubernetes_format",
-    "-k",
-    is_flag=True,
-    help=(
-        "Print a single-application Serve config in Kubernetes format. Must be used "
-        "with the flag `--single-app`."
-    ),
-)
-@click.option(
     "--output-path",
     "-o",
     default=None,
@@ -672,155 +777,84 @@ def shutdown(address: str, yes: bool):
     ),
 )
 @click.option(
-    "--multi-app",
-    is_flag=True,
-    help="Generate a multi-application config from multiple targets.",
-)
-@click.option(
-    "--single-app",
-    is_flag=True,
-    help="Generate a single-application config from one target.",
+    "--grpc-servicer-functions",
+    default=[],
+    required=False,
+    multiple=True,
+    help="Servicer function for adding the method handler to the gRPC server. "
+    "Defaults to an empty list and no gRPC server is started.",
 )
 def build(
     import_paths: Tuple[str],
     app_dir: str,
-    kubernetes_format: bool,
     output_path: Optional[str],
-    # This is no longer used, it is only kept here to avoid breaking existing CLI usage
-    multi_app: bool,
-    single_app: bool,
+    grpc_servicer_functions: List[str],
 ):
-    # Add logger messages for users who are still using --multi-app
-    if multi_app:
-        cli_logger.warning(
-            "`serve build` now generates a config in multi-application format by "
-            "default. The flag `--multi-app` is now redundant and will be removed soon."
-        )
-        if single_app:
-            raise click.ClickException(
-                "You cannot specify both `--single-app` and `--multi-app`."
-            )
-
     sys.path.insert(0, app_dir)
 
-    def build_app_config(import_path: str, _kubernetes_format: bool, name: str = None):
+    def build_app_config(import_path: str, name: str = None):
         app: Application = import_attr(import_path)
         if not isinstance(app, Application):
             raise TypeError(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        app = build_app(app)
+        deployments = pipeline_build(app, name)
+        ingress = get_and_validate_ingress_deployment(deployments)
         schema = ServeApplicationSchema(
+            name=name,
+            route_prefix=ingress.route_prefix,
             import_path=import_path,
             runtime_env={},
             deployments=[
-                deployment_to_schema(d, single_app) for d in app.deployments.values()
+                deployment_to_schema(d, include_route_prefix=False) for d in deployments
             ],
         )
-        # If building a multi-app config, auto-generate names for each application.
-        # Also, each ServeApplicationSchema should not have host and port set, it should
-        # be set at the top level of ServeDeploySchema.
-        if single_app:
-            schema.host = "0.0.0.0"
-            schema.port = 8000
-        else:
-            schema.name = name
-            schema.route_prefix = app.ingress.route_prefix
 
-        if _kubernetes_format:
-            return schema.kubernetes_dict(exclude_unset=True)
-        else:
-            return schema.dict(exclude_unset=True)
+        return schema.dict(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
         f"on Ray v{ray.__version__}.\n\n"
     )
 
-    if single_app:
-        if len(import_paths) > 1:
-            raise click.ClickException(
-                "Got more than one argument. Only one import path is accepted when "
-                "using the flag `--single-app`."
-            )
+    app_configs = []
+    for app_index, import_path in enumerate(import_paths):
+        app_configs.append(build_app_config(import_path, name=f"app{app_index + 1}"))
 
-        config_str += yaml.dump(
-            build_app_config(import_paths[0], kubernetes_format),
-            Dumper=ServeApplicationSchemaDumper,
-            default_flow_style=False,
-            sort_keys=False,
-        )
-    else:
-        if kubernetes_format:
-            raise click.ClickException(
-                "Multi-application config does not support Kubernetes format."
-            )
+    deploy_config = {
+        "proxy_location": "EveryNode",
+        "http_options": {
+            "host": "0.0.0.0",
+            "port": 8000,
+        },
+        "grpc_options": {
+            "port": DEFAULT_GRPC_PORT,
+            "grpc_servicer_functions": grpc_servicer_functions,
+        },
+        "logging_config": LoggingConfig().dict(),
+        "applications": app_configs,
+    }
 
-        app_configs = []
-        for app_index, import_path in enumerate(import_paths):
-            app_configs.append(
-                build_app_config(import_path, False, f"app{app_index + 1}")
-            )
+    # Parse + validate the set of application configs
+    ServeDeploySchema.parse_obj(deploy_config)
 
-        deploy_config = {
-            "proxy_location": "EveryNode",
-            "http_options": {
-                "host": "0.0.0.0",
-                "port": 8000,
-            },
-            "applications": app_configs,
-        }
-
-        # Parse + validate the set of application configs
-        ServeDeploySchema.parse_obj(deploy_config)
-
-        config_str += yaml.dump(
-            deploy_config,
-            Dumper=ServeDeploySchemaDumper,
-            default_flow_style=False,
-            sort_keys=False,
-        )
-        cli_logger.info(
-            "The auto-generated application names default to `app1`, `app2`, ... etc. "
-            "Rename as necessary.\n",
-        )
+    config_str += yaml.dump(
+        deploy_config,
+        Dumper=ServeDeploySchemaDumper,
+        default_flow_style=False,
+        sort_keys=False,
+    )
+    cli_logger.info(
+        "The auto-generated application names default to `app1`, `app2`, ... etc. "
+        "Rename as necessary.\n",
+    )
 
     # Ensure file ends with only one newline
     config_str = config_str.rstrip("\n") + "\n"
 
     with open(output_path, "w") if output_path else sys.stdout as f:
         f.write(config_str)
-
-
-class ServeApplicationSchemaDumper(yaml.SafeDumper):
-    """YAML dumper object with custom formatting for ServeApplicationSchema.
-
-    Reformat config to follow this spacing:
-    ---------------------------------------
-
-    import_path: example.path
-
-    runtime_env: {}
-
-    deployments:
-
-    - name: val1
-        ...
-
-    - name: val2
-        ...
-    """
-
-    def write_line_break(self, data=None):
-        # https://github.com/yaml/pyyaml/issues/127#issuecomment-525800484
-        super().write_line_break(data)
-
-        # Indents must be at most 2 to ensure that only the top 2 levels of
-        # the config file have line breaks between them. The top 2 levels include
-        # import_path, runtime_env, deployments, and all entries of deployments.
-        if len(self.indents) <= 2:
-            super().write_line_break()
 
 
 class ServeDeploySchemaDumper(yaml.SafeDumper):

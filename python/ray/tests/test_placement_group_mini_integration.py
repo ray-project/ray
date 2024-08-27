@@ -4,11 +4,6 @@ import time
 
 from random import random
 
-try:
-    import pytest_timeout
-except ImportError:
-    pytest_timeout = None
-
 import ray
 import ray.cluster_utils
 from ray._private.test_utils import wait_for_condition

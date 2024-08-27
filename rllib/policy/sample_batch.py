@@ -9,12 +9,14 @@ from typing import List, Optional
 import numpy as np
 import tree  # pip install dm_tree
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.utils.annotations import DeveloperAPI, ExperimentalAPI, PublicAPI
 from ray.rllib.utils.compression import pack, unpack, is_compressed
 from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
+    ModuleID,
     PolicyID,
     TensorType,
     SampleBatchType,
@@ -46,15 +48,16 @@ def attempt_count_timesteps(tensor_dict: dict):
     # Try to infer the "length" of the SampleBatch by finding the first
     # value that is actually a ndarray/tensor.
     # Skip manual counting routine if we can directly infer count from sequence lengths
+    seq_lens = tensor_dict.get(SampleBatch.SEQ_LENS)
     if (
-        tensor_dict.get(SampleBatch.SEQ_LENS) is not None
-        and not (tf and tf.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]))
-        and len(tensor_dict[SampleBatch.SEQ_LENS]) > 0
+        seq_lens is not None
+        and not (tf and tf.is_tensor(seq_lens) and not hasattr(seq_lens, "numpy"))
+        and len(seq_lens) > 0
     ):
-        if torch and torch.is_tensor(tensor_dict[SampleBatch.SEQ_LENS]):
-            return tensor_dict[SampleBatch.SEQ_LENS].sum().item()
+        if torch and torch.is_tensor(seq_lens):
+            return seq_lens.sum().item()
         else:
-            return sum(tensor_dict[SampleBatch.SEQ_LENS])
+            return int(sum(seq_lens))
 
     for k, v in tensor_dict.items():
         if k == SampleBatch.SEQ_LENS:
@@ -109,65 +112,43 @@ class SampleBatch(dict):
     # action based on the reset-observation and so on. This scheme is derived from
     # RLlib's sampling logic.
 
-    # Outputs from interacting with the environment:
+    # The following fields have all been moved to `Columns` and are only left here
+    # for backward compatibility.
+    OBS = Columns.OBS
+    ACTIONS = Columns.ACTIONS
+    REWARDS = Columns.REWARDS
+    TERMINATEDS = Columns.TERMINATEDS
+    TRUNCATEDS = Columns.TRUNCATEDS
+    INFOS = Columns.INFOS
+    SEQ_LENS = Columns.SEQ_LENS
+    T = Columns.T
+    ACTION_DIST_INPUTS = Columns.ACTION_DIST_INPUTS
+    ACTION_PROB = Columns.ACTION_PROB
+    ACTION_LOGP = Columns.ACTION_LOGP
+    VF_PREDS = Columns.VF_PREDS
+    VALUES_BOOTSTRAPPED = Columns.VALUES_BOOTSTRAPPED
+    EPS_ID = Columns.EPS_ID
+    NEXT_OBS = Columns.NEXT_OBS
 
-    # Observation that we compute SampleBatch.ACTIONS from.
-    OBS = "obs"
-    # Observation returned after stepping with SampleBatch.ACTIONS.
-    NEXT_OBS = "new_obs"
-    # Action based on SampleBatch.OBS.
-    ACTIONS = "actions"
-    # Reward returned after stepping with SampleBatch.ACTIONS.
-    REWARDS = "rewards"
+    # Action distribution object.
+    ACTION_DIST = "action_dist"
     # Action chosen before SampleBatch.ACTIONS.
     PREV_ACTIONS = "prev_actions"
     # Reward received before SampleBatch.REWARDS.
     PREV_REWARDS = "prev_rewards"
-    # Is the episode finished after stepping via SampleBatch.ACTIONS?
-    TERMINATEDS = "terminateds"
-    # Is the episode truncated (e.g. time limit) after stepping via SampleBatch.ACTIONS?
-    TRUNCATEDS = "truncateds"
-    # Infos returned after stepping with SampleBatch.ACTIONS
-    INFOS = "infos"
-
-    # Additional keys filled by RLlib to manage the data above:
-
-    SEQ_LENS = "seq_lens"  # Groups rows into sequences by defining their length.
-    T = "t"  # Timestep counter
-    EPS_ID = "eps_id"  # Uniquely identifies an episode
     ENV_ID = "env_id"  # An env ID (e.g. the index for a vectorized sub-env).
     AGENT_INDEX = "agent_index"  # Uniquely identifies an agent within an episode.
-
     # Uniquely identifies a sample batch. This is important to distinguish RNN
     # sequences from the same episode when multiple sample batches are
     # concatenated (fusing sequences across batches can be unsafe).
     UNROLL_ID = "unroll_id"
 
-    # Algorithm-specific keys:
-
-    # Extra action fetches keys.
-    ACTION_DIST_INPUTS = "action_dist_inputs"
-    ACTION_PROB = "action_prob"
-    ACTION_LOGP = "action_logp"
-    ACTION_DIST = "action_dist"
-
-    # Value function predictions emitted by the behaviour policy.
-    VF_PREDS = "vf_preds"
-    # Values one ts beyond the last ts taken. These are usually calculated via the value
-    # function network using the final observation (and in case of an RNN: the last
-    # returned internal state).
-    VALUES_BOOTSTRAPPED = "values_bootstrapped"
-
     # RE 3
     # This is only computed and used when RE3 exploration strategy is enabled.
     OBS_EMBEDS = "obs_embeds"
-
     # Decision Transformer
     RETURNS_TO_GO = "returns_to_go"
     ATTENTION_MASKS = "attention_masks"
-
-    # Deprecated keys:
-
     # Do not set this key directly. Instead, the values under this key are
     # auto-computed via the values of the TERMINATEDS and TRUNCATEDS keys.
     DONES = "dones"
@@ -334,11 +315,9 @@ class SampleBatch(dict):
 
     @staticmethod
     @PublicAPI
-    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=False)
-    def concat_samples(
-        samples: Union[List["SampleBatch"], List["MultiAgentBatch"]],
-    ) -> Union["SampleBatch", "MultiAgentBatch"]:
-        return concat_samples(samples)
+    @Deprecated(new="concat_samples() from rllib.policy.sample_batch", error=True)
+    def concat_samples(samples):
+        pass
 
     @PublicAPI
     def concat(self, other: "SampleBatch") -> "SampleBatch":
@@ -350,12 +329,17 @@ class SampleBatch(dict):
         Returns:
             The new SampleBatch, resulting from concating `other` to `self`.
 
-        Examples:
-            >>> import numpy as np
-            >>> from ray.rllib.policy.sample_batch import SampleBatch
-            >>> b1 = SampleBatch({"a": np.array([1, 2])}) # doctest: +SKIP
-            >>> b2 = SampleBatch({"a": np.array([3, 4, 5])}) # doctest: +SKIP
-            >>> print(b1.concat(b2)) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import numpy as np
+            from ray.rllib.policy.sample_batch import SampleBatch
+            b1 = SampleBatch({"a": np.array([1, 2])})
+            b2 = SampleBatch({"a": np.array([3, 4, 5])})
+            print(b1.concat(b2))
+
+        .. testoutput::
+
             {"a": np.array([1, 2, 3, 4, 5])}
         """
         return concat_samples([self, other])
@@ -370,7 +354,7 @@ class SampleBatch(dict):
         Returns:
             A deep or shallow copy of this SampleBatch object.
         """
-        copy_ = {k: v for k, v in self.items()}
+        copy_ = dict(self)
         data = tree.map_structure(
             lambda v: (
                 np.array(v, copy=not shallow) if isinstance(v, np.ndarray) else v
@@ -399,15 +383,20 @@ class SampleBatch(dict):
         Yields:
             The column values of the row in this iteration.
 
-        Examples:
-            >>> from ray.rllib.policy.sample_batch import SampleBatch
-            >>> batch = SampleBatch({ # doctest: +SKIP
-            ...    "a": [1, 2, 3],
-            ...    "b": [4, 5, 6],
-            ...    "seq_lens": [1, 2]
-            ... })
-            >>> for row in batch.rows(): # doctest: +SKIP
-            ...    print(row) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.policy.sample_batch import SampleBatch
+            batch = SampleBatch({
+               "a": [1, 2, 3],
+               "b": [4, 5, 6],
+               "seq_lens": [1, 2]
+            })
+            for row in batch.rows():
+                print(row)
+
+        .. testoutput::
+
             {"a": 1, "b": 4, "seq_lens": 1}
             {"a": 2, "b": 5, "seq_lens": 1}
             {"a": 3, "b": 6, "seq_lens": 1}
@@ -415,11 +404,11 @@ class SampleBatch(dict):
 
         seq_lens = None if self.get(SampleBatch.SEQ_LENS, 1) is None else 1
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
 
         for i in range(self.count):
             yield tree.map_structure_with_path(
-                lambda p, v: v[i] if p[0] != self.SEQ_LENS else seq_lens,
+                lambda p, v, i=i: v[i] if p[0] != self.SEQ_LENS else seq_lens,
                 self_as_dict,
             )
 
@@ -434,10 +423,15 @@ class SampleBatch(dict):
             The list of data items ordered by the order of column
             names in `keys`.
 
-        Examples:
-            >>> from ray.rllib.policy.sample_batch import SampleBatch
-            >>> batch = SampleBatch({"a": [1], "b": [2], "c": [3]}) # doctest: +SKIP
-            >>> print(batch.columns(["a", "b"])) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.policy.sample_batch import SampleBatch
+            batch = SampleBatch({"a": [1], "b": [2], "c": [3]})
+            print(batch.columns(["a", "b"]))
+
+        .. testoutput::
+
             [[1], [2]]
         """
 
@@ -457,10 +451,15 @@ class SampleBatch(dict):
         Raises:
             ValueError: If self[SampleBatch.SEQ_LENS] is defined.
 
-        Examples:
-            >>> from ray.rllib.policy.sample_batch import SampleBatch
-            >>> batch = SampleBatch({"a": [1, 2, 3, 4]})  # doctest: +SKIP
-            >>> print(batch.shuffle()) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.policy.sample_batch import SampleBatch
+            batch = SampleBatch({"a": [1, 2, 3, 4]})
+            print(batch.shuffle())
+
+        .. testoutput::
+
             {"a": [4, 1, 3, 2]}
         """
 
@@ -477,7 +476,7 @@ class SampleBatch(dict):
         # meaningless).
         permutation = np.random.permutation(self.count)
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
         shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
         self.update(shuffled)
         # Flush cache such that intercepted values are recalculated after the
@@ -499,29 +498,38 @@ class SampleBatch(dict):
         Raises:
             KeyError: If the `eps_id` AND `dones` columns are not present.
 
-        Examples:
-            >>> from ray.rllib.policy.sample_batch import SampleBatch
-            >>> # "eps_id" is present
-            >>> batch = SampleBatch( # doctest: +SKIP
-            ...     {"a": [1, 2, 3], "eps_id": [0, 0, 1]})
-            >>> print(batch.split_by_episode()) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.policy.sample_batch import SampleBatch
+            # "eps_id" is present
+            batch = SampleBatch(
+                {"a": [1, 2, 3], "eps_id": [0, 0, 1]})
+            print(batch.split_by_episode())
+
+            # "eps_id" not present, split by "dones" instead
+            batch = SampleBatch(
+                {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 1, 0, 1]})
+            print(batch.split_by_episode())
+
+            # The last episode is appended even if it does not end with done
+            batch = SampleBatch(
+                {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 1, 0, 0]})
+            print(batch.split_by_episode())
+
+            batch = SampleBatch(
+                {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]})
+            print(batch.split_by_episode())
+
+
+        .. testoutput::
+
             [{"a": [1, 2], "eps_id": [0, 0]}, {"a": [3], "eps_id": [1]}]
-            >>>
-            >>> # "eps_id" not present, split by "dones" instead
-            >>> batch = SampleBatch( # doctest: +SKIP
-            ...     {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 1, 0, 1]})
-            >>> print(batch.split_by_episode()) # doctest: +SKIP
             [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "dones": [0, 1]}]
-            >>>
-            >>> # The last episode is appended even if it does not end with done
-            >>> batch = SampleBatch( # doctest: +SKIP
-            ...     {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 1, 0, 0]})
-            >>> print(batch.split_by_episode()) # doctest: +SKIP
             [{"a": [1, 2, 3], "dones": [0, 0, 1]}, {"a": [4, 5], "dones": [0, 0]}]
-            >>> batch = SampleBatch( # doctest: +SKIP
-            ...     {"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]})
-            >>> print(batch.split_by_episode()) # doctest: +SKIP
             [{"a": [1, 2, 3, 4, 5], "dones": [0, 0, 0, 0, 0]}]
+
+
         """
 
         assert key is None or key in [SampleBatch.EPS_ID, SampleBatch.DONES], (
@@ -707,7 +715,15 @@ class SampleBatch(dict):
             stop = len(self)
         assert start >= 0 and stop >= 0 and slice_.step in [1, None]
 
+        # Exclude INFOs from regular array slicing as the data under this column might
+        # be a list (not good for `tree.map_structure` call).
+        # Furthermore, slicing does not work when the data in the column is
+        # singular (not a list or array).
+        infos = self.pop(SampleBatch.INFOS, None)
         data = tree.map_structure(lambda value: value[start:stop], self)
+        if infos is not None:
+            data[SampleBatch.INFOS] = infos[start:stop]
+
         return SampleBatch(
             data,
             _is_training=self.is_training,
@@ -770,9 +786,9 @@ class SampleBatch(dict):
 
             return slices
 
-    @Deprecated(new="SampleBatch.right_zero_pad", error=False)
+    @Deprecated(new="SampleBatch.right_zero_pad", error=True)
     def zero_pad(self, max_seq_len, exclude_states=True):
-        return self.right_zero_pad(max_seq_len, exclude_states)
+        pass
 
     def right_zero_pad(self, max_seq_len: int, exclude_states: bool = True):
         """Right (adding zeros at end) zero-pads this SampleBatch in-place.
@@ -792,20 +808,26 @@ class SampleBatch(dict):
         Raises:
             ValueError: If self[SampleBatch.SEQ_LENS] is None (not defined).
 
-        Examples:
-            >>> from ray.rllib.policy.sample_batch import SampleBatch
-            >>> batch = SampleBatch( # doctest: +SKIP
-            ...     {"a": [1, 2, 3], "seq_lens": [1, 2]})
-            >>> print(batch.right_zero_pad(max_seq_len=4)) # doctest: +SKIP
-            {"a": [1, 0, 0, 0, 2, 3, 0, 0], "seq_lens": [1, 2]}
+        .. testcode::
+            :skipif: True
 
-            >>> batch = SampleBatch({"a": [1, 2, 3], # doctest: +SKIP
-            ...                      "state_in_0": [1.0, 3.0],
-            ...                      "seq_lens": [1, 2]})
-            >>> print(batch.right_zero_pad(max_seq_len=5)) # doctest: +SKIP
+            from ray.rllib.policy.sample_batch import SampleBatch
+            batch = SampleBatch(
+                {"a": [1, 2, 3], "seq_lens": [1, 2]})
+            print(batch.right_zero_pad(max_seq_len=4))
+
+            batch = SampleBatch({"a": [1, 2, 3],
+                                 "state_in_0": [1.0, 3.0],
+                                 "seq_lens": [1, 2]})
+            print(batch.right_zero_pad(max_seq_len=5))
+
+        .. testoutput::
+
+            {"a": [1, 0, 0, 0, 2, 3, 0, 0], "seq_lens": [1, 2]}
             {"a": [1, 0, 0, 0, 0, 2, 3, 0, 0, 0],
              "state_in_0": [1.0, 3.0],  # <- all state-ins remain as-is
              "seq_lens": [1, 2]}
+
         """
         seq_lens = self.get(SampleBatch.SEQ_LENS)
         if seq_lens is None:
@@ -843,7 +865,7 @@ class SampleBatch(dict):
                     curr[p] = f_pad
                 curr = curr[p]
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
         tree.map_structure_with_path(_zero_pad_in_place, self_as_dict)
 
         # Set flags to indicate, we are now zero-padded (and to what extend).
@@ -886,14 +908,20 @@ class SampleBatch(dict):
             return default
 
     @PublicAPI
-    def as_multi_agent(self) -> "MultiAgentBatch":
-        """Returns the respective MultiAgentBatch using DEFAULT_POLICY_ID.
+    def as_multi_agent(self, module_id: Optional[ModuleID] = None) -> "MultiAgentBatch":
+        """Returns the respective MultiAgentBatch
+
+        Note, if `module_id` is not provided uses `DEFAULT_POLICY`_ID`.
+
+        Args;
+            module_id: An optional module ID. If `None` the `DEFAULT_POLICY_ID`
+                is used.
 
         Returns:
             The MultiAgentBatch (using DEFAULT_POLICY_ID) corresponding
             to this SampleBatch.
         """
-        return MultiAgentBatch({DEFAULT_POLICY_ID: self}, self.count)
+        return MultiAgentBatch({module_id or DEFAULT_POLICY_ID: self}, self.count)
 
     @PublicAPI
     def __getitem__(self, key: Union[str, slice]) -> TensorType:
@@ -1129,34 +1157,15 @@ class SampleBatch(dict):
                 if path[0] != SampleBatch.SEQ_LENS and not path[0].startswith(
                     "state_in_"
                 ):
-                    if path[0] != SampleBatch.INFOS:
-                        return value[start_padded:stop_padded]
-                    else:
-                        if (
-                            (isinstance(value, np.ndarray) and value.size > 0)
-                            or (
-                                torch
-                                and torch.is_tensor(value)
-                                and len(list(value.shape)) > 0
-                            )
-                            or (tf and tf.is_tensor(value) and tf.size(value) > 0)
-                        ):
-                            return value[start_unpadded:stop_unpadded]
-                        else:
-                            # Since infos should be stored as lists and not arrays,
-                            # we return the values here and slice them separately
-                            # TODO(Artur): Clean this hack up.
-                            return value
+                    return value[start_padded:stop_padded]
                 else:
                     return value[start_seq_len:stop_seq_len]
 
+            infos = self.pop(SampleBatch.INFOS, None)
             data = tree.map_structure_with_path(map_, self)
-
-            # Since we don't slice in the above map_ function, we do it here.
-            if isinstance(data.get(SampleBatch.INFOS), list):
-                data[SampleBatch.INFOS] = data[SampleBatch.INFOS][
-                    start_unpadded:stop_unpadded
-                ]
+            if infos is not None and isinstance(infos, (list, np.ndarray)):
+                self[SampleBatch.INFOS] = infos
+                data[SampleBatch.INFOS] = infos[start_unpadded:stop_unpadded]
 
             return SampleBatch(
                 data,
@@ -1167,21 +1176,11 @@ class SampleBatch(dict):
                 _num_grad_updates=self.num_grad_updates,
             )
         else:
-
-            def map_(value):
-                if (
-                    isinstance(value, np.ndarray)
-                    or (torch and torch.is_tensor(value))
-                    or (tf and tf.is_tensor(value))
-                ):
-                    return value[start:stop]
-                else:
-                    # Since infos should be stored as lists and not arrays,
-                    # we return the values here and slice them separately
-                    # TODO(Artur): Clean this hack up.
-                    return value
-
-            data = tree.map_structure(map_, self)
+            infos = self.pop(SampleBatch.INFOS, None)
+            data = tree.map_structure(lambda s: s[start:stop], self)
+            if infos is not None and isinstance(infos, (list, np.ndarray)):
+                self[SampleBatch.INFOS] = infos
+                data[SampleBatch.INFOS] = infos[start:stop]
 
             return SampleBatch(
                 data,
@@ -1323,8 +1322,8 @@ class MultiAgentBatch:
     """A batch of experiences from multiple agents in the environment.
 
     Attributes:
-        policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
-            ids to SampleBatches of experiences.
+        policy_batches (Dict[PolicyID, SampleBatch]): Dict mapping policy IDs to
+            SampleBatches of experiences.
         count: The number of env steps in this batch.
     """
 
@@ -1333,8 +1332,7 @@ class MultiAgentBatch:
         """Initialize a MultiAgentBatch instance.
 
         Args:
-            policy_batches: Mapping from policy
-                ids to SampleBatches of experiences.
+            policy_batches: Dict mapping policy IDs to SampleBatches of experiences.
             env_steps: The number of environment steps in the environment
                 this batch contains. This will be less than the number of
                 transitions this batch contains across all policies in total.
@@ -1476,6 +1474,19 @@ class MultiAgentBatch:
             {k: v.copy() for (k, v) in self.policy_batches.items()}, self.count
         )
 
+    @ExperimentalAPI
+    def to_device(self, device, framework="torch"):
+        """TODO: transfer batch to given device as framework tensor."""
+        if framework == "torch":
+            assert torch is not None
+            for pid, policy_batch in self.policy_batches.items():
+                self.policy_batches[pid] = policy_batch.to_device(
+                    device, framework=framework
+                )
+        else:
+            raise NotImplementedError
+        return self
+
     @PublicAPI
     def size_bytes(self) -> int:
         """
@@ -1557,25 +1568,32 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     Returns:
         A new (concatenated) SampleBatch or MultiAgentBatch.
 
-    Examples:
-        >>> import numpy as np
-        >>> from ray.rllib.policy.sample_batch import SampleBatch
-        >>> b1 = SampleBatch({"a": np.array([1, 2]), # doctest: +SKIP
-        ...                   "b": np.array([10, 11])})
-        >>> b2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
-        ...                   "b": np.array([12])})
-        >>> print(concat_samples([b1, b2])) # doctest: +SKIP
-        {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
+    .. testcode::
+        :skipif: True
 
-        >>> c1 = MultiAgentBatch({'default_policy': { # doctest: +SKIP
-        ...                                 "a": np.array([1, 2]),
-        ...                                 "b": np.array([10, 11])
-        ...                                 }}, env_steps=2)
-        >>> c2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
-        ...                   "b": np.array([12])})
-        >>> print(concat_samples([b1, b2])) # doctest: +SKIP
+        import numpy as np
+        from ray.rllib.policy.sample_batch import SampleBatch
+        b1 = SampleBatch({"a": np.array([1, 2]),
+                          "b": np.array([10, 11])})
+        b2 = SampleBatch({"a": np.array([3]),
+                          "b": np.array([12])})
+        print(concat_samples([b1, b2]))
+
+
+        c1 = MultiAgentBatch({'default_policy': {
+                                        "a": np.array([1, 2]),
+                                        "b": np.array([10, 11])
+                                        }}, env_steps=2)
+        c2 = SampleBatch({"a": np.array([3]),
+                          "b": np.array([12])})
+        print(concat_samples([b1, b2]))
+
+    .. testoutput::
+
+        {"a": np.array([1, 2, 3]), "b": np.array([10, 11, 12])}
         MultiAgentBatch = {'default_policy': {"a": np.array([1, 2, 3]),
                                               "b": np.array([10, 11, 12])}}
+
     """
 
     if any(isinstance(s, MultiAgentBatch) for s in samples):
@@ -1588,39 +1606,41 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     # Make sure these settings are consistent amongst all batches.
     zero_padded = max_seq_len = time_major = None
     for s in samples:
-        if s.count > 0:
-            if max_seq_len is None:
-                zero_padded = s.zero_padded
-                max_seq_len = s.max_seq_len
-                time_major = s.time_major
+        if s.count <= 0:
+            continue
 
-            # Make sure these settings are consistent amongst all batches.
-            if s.zero_padded != zero_padded or s.time_major != time_major:
-                raise ValueError(
-                    "All SampleBatches' `zero_padded` and `time_major` settings "
-                    "must be consistent!"
-                )
-            if (
-                s.max_seq_len is None or max_seq_len is None
-            ) and s.max_seq_len != max_seq_len:
-                raise ValueError(
-                    "Samples must consistently either provide or omit " "`max_seq_len`!"
-                )
-            elif zero_padded and s.max_seq_len != max_seq_len:
-                raise ValueError(
-                    "For `zero_padded` SampleBatches, the values of `max_seq_len` "
-                    "must be consistent!"
-                )
+        if max_seq_len is None:
+            zero_padded = s.zero_padded
+            max_seq_len = s.max_seq_len
+            time_major = s.time_major
 
-            if max_seq_len is not None:
-                max_seq_len = max(max_seq_len, s.max_seq_len)
-            if s.get(SampleBatch.SEQ_LENS) is not None:
-                concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
-            if s.num_grad_updates is not None:
-                concatd_num_grad_updates[0] += s.count
-                concatd_num_grad_updates[1] += s.num_grad_updates * s.count
+        # Make sure these settings are consistent amongst all batches.
+        if s.zero_padded != zero_padded or s.time_major != time_major:
+            raise ValueError(
+                "All SampleBatches' `zero_padded` and `time_major` settings "
+                "must be consistent!"
+            )
+        if (
+            s.max_seq_len is None or max_seq_len is None
+        ) and s.max_seq_len != max_seq_len:
+            raise ValueError(
+                "Samples must consistently either provide or omit " "`max_seq_len`!"
+            )
+        elif zero_padded and s.max_seq_len != max_seq_len:
+            raise ValueError(
+                "For `zero_padded` SampleBatches, the values of `max_seq_len` "
+                "must be consistent!"
+            )
 
-            concated_samples.append(s)
+        if max_seq_len is not None:
+            max_seq_len = max(max_seq_len, s.max_seq_len)
+        if s.get(SampleBatch.SEQ_LENS) is not None:
+            concatd_seq_lens.extend(s[SampleBatch.SEQ_LENS])
+        if s.num_grad_updates is not None:
+            concatd_num_grad_updates[0] += s.count
+            concatd_num_grad_updates[1] += s.num_grad_updates * s.count
+
+        concated_samples.append(s)
 
     # If we don't have any samples (0 or only empty SampleBatches),
     # return an empty SampleBatch here.
@@ -1631,28 +1651,16 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     concatd_data = {}
 
     for k in concated_samples[0].keys():
-        try:
-            if k == "infos":
-                concatd_data[k] = _concat_values(
-                    *[s[k] for s in concated_samples],
-                    time_major=time_major,
-                )
-            else:
-                values_to_concat = [c[k] for c in concated_samples]
-                _concat_values_w_time = partial(_concat_values, time_major=time_major)
-                concatd_data[k] = tree.map_structure(
-                    _concat_values_w_time, *values_to_concat
-                )
-        except RuntimeError as e:
-            # This should catch torch errors that occur when concatenating
-            # tensors from different devices.
-            raise e
-        except Exception as e:
-            # Other errors are likely due to mismatching sub-structures.
-            raise ValueError(
-                f"Cannot concat data under key '{k}', b/c "
-                "sub-structures under that key don't match. "
-                f"`samples`={samples}\n Original error: \n {e}"
+        if k == SampleBatch.INFOS:
+            concatd_data[k] = _concat_values(
+                *[s[k] for s in concated_samples],
+                time_major=time_major,
+            )
+        else:
+            values_to_concat = [c[k] for c in concated_samples]
+            _concat_values_w_time = partial(_concat_values, time_major=time_major)
+            concatd_data[k] = tree.map_structure(
+                _concat_values_w_time, *values_to_concat
             )
 
     if concatd_seq_lens != [] and torch and torch.is_tensor(concatd_seq_lens[0]):
@@ -1689,18 +1697,23 @@ def concat_samples_into_ma_batch(samples: List[SampleBatchType]) -> "MultiAgentB
     Returns:
         A new (concatenated) MultiAgentBatch.
 
-    Examples:
-        >>> import numpy as np
-        >>> from ray.rllib.policy.sample_batch import SampleBatch
-        >>> b1 = MultiAgentBatch({'default_policy': { # doctest: +SKIP
-        ...                                 "a": np.array([1, 2]),
-        ...                                 "b": np.array([10, 11])
-        ...                                 }}, env_steps=2)
-        >>> b2 = SampleBatch({"a": np.array([3]), # doctest: +SKIP
-        ...                   "b": np.array([12])})
-        >>> print(concat_samples([b1, b2])) # doctest: +SKIP
-        MultiAgentBatch = {'default_policy': {"a": np.array([1, 2, 3]),
-                                              "b": np.array([10, 11, 12])}}
+    .. testcode::
+        :skipif: True
+
+        import numpy as np
+        from ray.rllib.policy.sample_batch import SampleBatch
+        b1 = MultiAgentBatch({'default_policy': {
+                                        "a": np.array([1, 2]),
+                                        "b": np.array([10, 11])
+                                        }}, env_steps=2)
+        b2 = SampleBatch({"a": np.array([3]),
+                          "b": np.array([12])})
+        print(concat_samples([b1, b2]))
+
+    .. testoutput::
+
+        {'default_policy': {"a": np.array([1, 2, 3]),
+                            "b": np.array([10, 11, 12])}}
 
     """
 

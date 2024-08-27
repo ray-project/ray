@@ -1,3 +1,4 @@
+import asyncio
 import copy
 import importlib
 import inspect
@@ -7,51 +8,38 @@ import random
 import string
 import time
 import traceback
+import uuid
+from abc import ABC, abstractmethod
+from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Iterable,
-    List,
-    Tuple,
-    TypeVar,
-    Union,
-    Optional,
-)
-import threading
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-import fastapi.encoders
-import numpy as np
-import pydantic
-import pydantic.json
 import requests
 
 import ray
 import ray.util.serialization_addons
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._private.utils import import_attr
+from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
+from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
 from ray.exceptions import RayTaskError
-from ray.serve._private.constants import (
-    HTTP_PROXY_TIMEOUT,
-    RAY_GCS_RPC_TIMEOUT_S,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.common import ServeComponentType
+from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
-from ray._raylet import MessagePackSerializer
-from ray._private.utils import import_attr
-from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
-
-import __main__
 
 try:
     import pandas as pd
 except ImportError:
     pd = None
 
-ACTOR_FAILURE_RETRY_TIMEOUT_S = 60
+try:
+    import numpy as np
+except ImportError:
+    np = None
+
 MESSAGE_PACK_OFFSET = 9
 
 
@@ -79,6 +67,9 @@ T = TypeVar("T")
 Default = Union[DEFAULT, T]
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+# Format for component files
+FILE_FMT = "{component_name}_{component_id}{suffix}"
 
 
 class _ServeCustomEncoders:
@@ -109,26 +100,14 @@ class _ServeCustomEncoders:
         return obj.to_dict(orient="records")
 
 
-serve_encoders = {
-    np.ndarray: _ServeCustomEncoders.encode_np_array,
-    np.generic: _ServeCustomEncoders.encode_np_scaler,
-    Exception: _ServeCustomEncoders.encode_exception,
-}
+serve_encoders = {Exception: _ServeCustomEncoders.encode_exception}
+
+if np is not None:
+    serve_encoders[np.ndarray] = _ServeCustomEncoders.encode_np_array
+    serve_encoders[np.generic] = _ServeCustomEncoders.encode_np_scaler
 
 if pd is not None:
     serve_encoders[pd.DataFrame] = _ServeCustomEncoders.encode_pandas_dataframe
-
-
-def install_serve_encoders_to_fastapi():
-    """Inject Serve's encoders so FastAPI's jsonable_encoder can pick it up."""
-    # https://stackoverflow.com/questions/62311401/override-default-encoders-for-jsonable-encoder-in-fastapi # noqa
-    pydantic.json.ENCODERS_BY_TYPE.update(serve_encoders)
-    # FastAPI cache these encoders at import time, so we also needs to refresh it.
-    fastapi.encoders.encoders_by_class_tuples = (
-        fastapi.encoders.generate_encoders_by_class_tuples(
-            pydantic.json.ENCODERS_BY_TYPE
-        )
-    )
 
 
 @ray.remote(num_cpus=0)
@@ -158,75 +137,20 @@ def block_until_http_ready(
         time.sleep(backoff_time_s)
 
 
-def get_random_letters(length=6):
-    return "".join(random.choices(string.ascii_letters, k=length))
+# Match the standard alphabet used for UUIDs.
+RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
 
 
-def format_actor_name(actor_name, controller_name=None, *modifiers):
-    if controller_name is None:
-        name = actor_name
-    else:
-        name = "{}:{}".format(controller_name, actor_name)
+def get_random_string(length=8):
+    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
 
+
+def format_actor_name(actor_name, *modifiers):
+    name = actor_name
     for modifier in modifiers:
         name += "-{}".format(modifier)
 
     return name
-
-
-def get_all_node_ids(gcs_client) -> List[Tuple[str, str]]:
-    """Get IDs for all live nodes in the cluster.
-
-    Returns a list of (node_id: str, ip_address: str). The node_id can be
-    passed into the Ray SchedulingPolicy API.
-    """
-    nodes = gcs_client.get_all_node_info(timeout=RAY_GCS_RPC_TIMEOUT_S)
-    node_ids = [
-        (ray.NodeID.from_binary(node_id).hex(), node["node_name"].decode("utf-8"))
-        for (node_id, node) in nodes.items()
-        if node["state"] == ray.core.generated.gcs_pb2.GcsNodeInfo.ALIVE
-    ]
-
-    # Sort on NodeID to ensure the ordering is deterministic across the cluster.
-    sorted(node_ids)
-    return node_ids
-
-
-def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]:
-    """Given two iterables, return the entries that's (added, removed, updated).
-
-    Usage:
-        >>> from ray.serve._private.utils import compute_iterable_delta
-        >>> old = {"a", "b"}
-        >>> new = {"a", "d"}
-        >>> compute_iterable_delta(old, new)
-        ({'d'}, {'b'}, {'a'})
-    """
-    old_keys, new_keys = set(old), set(new)
-    added_keys = new_keys - old_keys
-    removed_keys = old_keys - new_keys
-    updated_keys = old_keys.intersection(new_keys)
-    return added_keys, removed_keys, updated_keys
-
-
-def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
-    """Given two dicts, return the entries that's (added, removed, updated).
-
-    Usage:
-        >>> from ray.serve._private.utils import compute_dict_delta
-        >>> old = {"a": 1, "b": 2}
-        >>> new = {"a": 3, "d": 4}
-        >>> compute_dict_delta(old, new)
-        ({'d': 4}, {'b': 2}, {'a': 3})
-    """
-    added_keys, removed_keys, updated_keys = compute_iterable_delta(
-        old_dict.keys(), new_dict.keys()
-    )
-    return (
-        {k: new_dict[k] for k in added_keys},
-        {k: old_dict[k] for k in removed_keys},
-        {k: new_dict[k] for k in updated_keys},
-    )
 
 
 def ensure_serialization_context():
@@ -274,50 +198,6 @@ def merge_dict(dict1, dict2):
     for key in dict1.keys() | dict2.keys():
         result[key] = sum([e.get(key, 0) for e in (dict1, dict2)])
     return result
-
-
-def get_deployment_import_path(
-    deployment, replace_main=False, enforce_importable=False
-):
-    """
-    Gets the import path for deployment's func_or_class.
-
-    deployment: A deployment object whose import path should be returned
-    replace_main: If this is True, the function will try to replace __main__
-        with __main__'s file name if the deployment's module is __main__
-    """
-
-    body = deployment._func_or_class
-
-    if isinstance(body, str):
-        # deployment's func_or_class is already an import path
-        return body
-    elif hasattr(body, "__ray_actor_class__"):
-        # If ActorClass, get the class or function inside
-        body = body.__ray_actor_class__
-
-    import_path = f"{body.__module__}.{body.__qualname__}"
-
-    if enforce_importable and "<locals>" in body.__qualname__:
-        raise RuntimeError(
-            "Deployment definitions must be importable to build the Serve app, "
-            f"but deployment '{deployment.name}' is inline defined or returned "
-            "from another function. Please restructure your code so that "
-            f"'{import_path}' can be imported (i.e., put it in a module)."
-        )
-
-    if replace_main:
-        # Replaces __main__ with its file name. E.g. suppose the import path
-        # is __main__.classname and classname is defined in filename.py.
-        # Its import path becomes filename.classname.
-
-        if import_path.split(".")[0] == "__main__" and hasattr(__main__, "__file__"):
-            file_name = os.path.basename(__main__.__file__)
-            extensionless_file_name = file_name.split(".")[0]
-            attribute_name = import_path.split(".")[-1]
-            import_path = f"{extensionless_file_name}.{attribute_name}"
-
-    return import_path
 
 
 def parse_import_path(import_path: str):
@@ -488,67 +368,10 @@ def snake_to_camel_case(snake_str: str) -> str:
     return words[0] + "".join(word[:1].upper() + word[1:] for word in words[1:])
 
 
-def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
-    """Converts dictionary's keys from snake case to camel case.
-
-    Does not modify original dictionary.
-    """
-
-    camel_dict = dict()
-
-    for key, val in snake_dict.items():
-        if isinstance(key, str):
-            camel_dict[snake_to_camel_case(key)] = val
-        else:
-            camel_dict[key] = val
-
-    return camel_dict
-
-
 def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
     """Check if ray object reference is ready without waiting for it."""
     finished, _ = ray.wait([obj_ref], timeout=0)
     return len(finished) == 1
-
-
-serve_telemetry_tag_map = {
-    "SERVE_API_VERSION": TagKey.SERVE_API_VERSION,
-    "SERVE_NUM_DEPLOYMENTS": TagKey.SERVE_NUM_DEPLOYMENTS,
-    "GCS_STORAGE": TagKey.GCS_STORAGE,
-    "SERVE_NUM_GPU_DEPLOYMENTS": TagKey.SERVE_NUM_GPU_DEPLOYMENTS,
-    "SERVE_FASTAPI_USED": TagKey.SERVE_FASTAPI_USED,
-    "SERVE_DAG_DRIVER_USED": TagKey.SERVE_DAG_DRIVER_USED,
-    "SERVE_HTTP_ADAPTER_USED": TagKey.SERVE_HTTP_ADAPTER_USED,
-    "SERVE_GRPC_INGRESS_USED": TagKey.SERVE_GRPC_INGRESS_USED,
-    "SERVE_REST_API_VERSION": TagKey.SERVE_REST_API_VERSION,
-    "SERVE_NUM_APPS": TagKey.SERVE_NUM_APPS,
-    "SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_NUM_REPLICAS_LIGHTWEIGHT_UPDATED
-    ),
-    "SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_USER_CONFIG_LIGHTWEIGHT_UPDATED
-    ),
-    "SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED": (
-        TagKey.SERVE_AUTOSCALING_CONFIG_LIGHTWEIGHT_UPDATED
-    ),
-}
-
-
-def record_serve_tag(key: str, value: str):
-    """Record telemetry.
-
-    TagKey objects cannot be pickled, so deployments can't directly record
-    telemetry using record_extra_usage_tag. They can instead call this function
-    which records telemetry for them.
-    """
-
-    if key not in serve_telemetry_tag_map:
-        raise ValueError(
-            f'The TagKey "{key}" does not exist. Expected a key from: '
-            f"{list(serve_telemetry_tag_map.keys())}."
-        )
-
-    record_extra_usage_tag(serve_telemetry_tag_map[key], value)
 
 
 def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[object]:
@@ -573,94 +396,6 @@ def extract_self_if_method_call(args: List[Any], func: Callable) -> Optional[obj
                 return args[0]
 
     return None
-
-
-class _MetricTask:
-    def __init__(self, task_func, interval_s, callback_func):
-        """
-        Args:
-            task_func: a callable that MetricsPusher will try to call in each loop.
-            interval_s: the interval of each task_func is supposed to be called.
-            callback_func: callback function is called when task_func is done, and
-                the result of task_func is passed to callback_func as the first
-                argument, and the timestamp of the call is passed as the second
-                argument.
-        """
-        self.task_func: Callable = task_func
-        self.interval_s: float = interval_s
-        self.callback_func: Callable[[Any, float]] = callback_func
-        self.last_ref: Optional[ray.ObjectRef] = None
-        self.last_call_succeeded_time: Optional[float] = time.time()
-
-
-class MetricsPusher:
-    """
-    Metrics pusher is a background thread that run the registered tasks in a loop.
-    """
-
-    def __init__(
-        self,
-    ):
-
-        self.tasks: List[_MetricTask] = []
-        self.pusher_thread: Union[threading.Thread, None] = None
-        self.stop_event = threading.Event()
-
-    def register_task(self, task_func, interval_s, process_func=None):
-        self.tasks.append(_MetricTask(task_func, interval_s, process_func))
-
-    def start(self):
-        """Start a background thread to run the registered tasks in a loop.
-
-        We use this background so it will be not blocked by user's code and ensure
-        consistently metrics delivery. Python GIL will ensure that this thread gets
-        fair timeshare to execute and run.
-        """
-
-        def send_forever():
-
-            while True:
-                if self.stop_event.is_set():
-                    return
-
-                start = time.time()
-                least_interval_s = None
-
-                for task in self.tasks:
-                    try:
-                        if least_interval_s is None:
-                            least_interval_s = task.interval_s
-                        else:
-                            least_interval_s = min(least_interval_s, task.interval_s)
-                        if start - task.last_call_succeeded_time > task.interval_s:
-                            if task.last_ref:
-                                ready_refs, _ = ray.wait([task.last_ref], timeout=0)
-                                if len(ready_refs) == 0:
-                                    continue
-                            data = task.task_func()
-                            task.last_call_succeeded_time = time.time()
-                            if task.callback_func and ray.is_initialized():
-                                task.last_ref = task.callback_func(
-                                    data, send_timestamp=time.time()
-                                )
-                    except Exception as e:
-                        logger.warning(
-                            f"MetricsPusher thread failed to run metric task: {e}"
-                        )
-                duration_s = time.time() - start
-                remaining_time = least_interval_s - duration_s
-                if remaining_time > 0:
-                    time.sleep(remaining_time)
-
-        self.pusher_thread = threading.Thread(target=send_forever)
-        # Making this a daemon thread so it doesn't leak upon shutdown, and it
-        # doesn't need to block the replica's shutdown.
-        self.pusher_thread.setDaemon(True)
-        self.pusher_thread.start()
-
-    def __del__(self):
-        self.stop_event.set()
-        self.pusher_thread.join()
 
 
 def call_function_from_import_path(import_path: str) -> Any:
@@ -723,3 +458,148 @@ def calculate_remaining_timeout(
 
     time_since_start_s = curr_time_s - start_time_s
     return max(0, timeout_s - time_since_start_s)
+
+
+def get_all_live_placement_group_names() -> List[str]:
+    """Fetch and parse the Ray placement group table for live placement group names.
+
+    Placement groups are filtered based on their `scheduling_state`; any placement
+    group not in the "REMOVED" state is considered live.
+    """
+    placement_group_table = ray.util.placement_group_table()
+
+    live_pg_names = []
+    for entry in placement_group_table.values():
+        pg_name = entry.get("name", "")
+        if (
+            pg_name
+            and entry.get("stats", {}).get("scheduling_state", "UNKNOWN") != "REMOVED"
+        ):
+            live_pg_names.append(pg_name)
+
+    return live_pg_names
+
+
+def get_current_actor_id() -> str:
+    """Gets the ID of the calling actor.
+
+    If this is called in a driver, returns "DRIVER."
+
+    If otherwise called outside of an actor, returns an empty string.
+
+    This function hangs when GCS is down due to the `ray.get_runtime_context()`
+    call.
+    """
+
+    worker_mode = ray.get_runtime_context().worker.mode
+    if worker_mode in {SCRIPT_MODE, LOCAL_MODE}:
+        return "DRIVER"
+    else:
+        try:
+            actor_id = ray.get_runtime_context().get_actor_id()
+            if actor_id is None:
+                return ""
+            else:
+                return actor_id
+        except Exception:
+            return ""
+
+
+def is_running_in_asyncio_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False
+
+
+class TimerBase(ABC):
+    @abstractmethod
+    def time(self) -> float:
+        """Return the current time."""
+        raise NotImplementedError
+
+
+class Timer(TimerBase):
+    def time(self) -> float:
+        return time.time()
+
+
+def get_capacity_adjusted_num_replicas(
+    num_replicas: int, target_capacity: Optional[float]
+) -> int:
+    """Return the `num_replicas` adjusted by the `target_capacity`.
+
+    The output will only ever be 0 if `target_capacity` is 0 or `num_replicas` is
+    0 (to support autoscaling deployments using scale-to-zero).
+
+    Rather than using the default `round` behavior in Python, which rounds half to
+    even, uses the `decimal` module to round half up (standard rounding behavior).
+    """
+    if target_capacity is None or target_capacity == 100:
+        return num_replicas
+
+    if target_capacity == 0 or num_replicas == 0:
+        return 0
+
+    adjusted_num_replicas = Decimal(num_replicas * target_capacity) / Decimal(100.0)
+    rounded_adjusted_num_replicas = adjusted_num_replicas.to_integral_value(
+        rounding=ROUND_HALF_UP
+    )
+    return max(1, int(rounded_adjusted_num_replicas))
+
+
+def generate_request_id() -> str:
+    return str(uuid.uuid4())
+
+
+def inside_ray_client_context() -> bool:
+    return ray.util.client.ray.is_connected()
+
+
+def get_component_file_name(
+    component_name: str,
+    component_id: str,
+    component_type: Optional[ServeComponentType],
+    suffix: str = "",
+) -> str:
+    """Get the component's file name."""
+
+    # For DEPLOYMENT component type, we want to log the deployment name
+    # instead of adding the component type to the component name.
+    component_log_file_name = component_name
+    if component_type is not None:
+        component_log_file_name = f"{component_type.value}_{component_name}"
+        if component_type != ServeComponentType.REPLICA:
+            component_name = f"{component_type}_{component_name}"
+    file_name = FILE_FMT.format(
+        component_name=component_log_file_name,
+        component_id=component_id,
+        suffix=suffix,
+    )
+    return file_name
+
+
+class FakeObjectRefOrGen:
+    def __init__(self, replica_id):
+        self._replica_id = replica_id
+
+    @property
+    def replica_id(self):
+        return self._replica_id
+
+
+class FakeObjectRef(FakeObjectRefOrGen):
+    def __await__(self):
+        raise NotImplementedError
+
+    def _on_completed(self, callback: Callable):
+        pass
+
+
+class FakeObjectRefGen(FakeObjectRefOrGen):
+    def __anext__(self):
+        raise NotImplementedError
+
+    def completed(self):
+        return FakeObjectRef(self._replica_id)

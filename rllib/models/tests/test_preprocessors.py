@@ -20,7 +20,6 @@ from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
     check_train_results,
-    framework_iterator,
 )
 from ray.rllib.utils.framework import try_import_tf
 
@@ -39,9 +38,10 @@ class TestPreprocessors(unittest.TestCase):
     def test_rlms_and_preprocessing(self):
         config = (
             ppo.PPOConfig()
+            .api_stack(enable_rl_module_and_learner=True)
             .framework("tf2")
             .environment(
-                env="ray.rllib.examples.env.random_env.RandomEnv",
+                env="ray.rllib.examples.envs.classes.random_env.RandomEnv",
                 env_config={
                     "config": {
                         "observation_space": Box(-1.0, 1.0, (1,), dtype=np.int32),
@@ -49,30 +49,27 @@ class TestPreprocessors(unittest.TestCase):
                 },
             )
             # Run this very quickly locally.
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=10)
+            .env_runners(num_env_runners=0)
             .training(
                 train_batch_size=10,
                 sgd_minibatch_size=1,
                 num_sgd_iter=1,
-                _enable_learner_api=True,
             )
-            .rl_module(_enable_rl_module_api=True)
             # Set this to True to enforce no preprocessors being used.
             .experimental(_disable_preprocessor_api=True)
         )
 
-        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
-            algo = config.build()
-            results = algo.train()
-            check_train_results(results)
-            check_compute_single_action(algo)
-            algo.stop()
+        algo = config.build()
+        results = algo.train()
+        check_train_results(results)
+        check_compute_single_action(algo)
+        algo.stop()
 
     def test_preprocessing_disabled_modelv2(self):
         config = (
             ppo.PPOConfig()
             .environment(
-                "ray.rllib.examples.env.random_env.RandomEnv",
+                "ray.rllib.examples.envs.classes.random_env.RandomEnv",
                 env_config={
                     "config": {
                         "observation_space": Dict(
@@ -92,7 +89,7 @@ class TestPreprocessors(unittest.TestCase):
                 },
             )
             # Speed things up a little.
-            .rollouts(rollout_fragment_length=5)
+            .env_runners(rollout_fragment_length=5)
             .training(train_batch_size=100, sgd_minibatch_size=10, num_sgd_iter=1)
             .debugging(seed=42)
             # Set this to True to enforce no preprocessors being used.
@@ -106,21 +103,15 @@ class TestPreprocessors(unittest.TestCase):
         # don't offer arbitrarily complex Models under the RLModules API without
         # preprocessors. Such input spaces require custom implementations of the
         # input space.
-        # TODO (Artur): Delete this test once we remove ModelV2 API.
-        config.rl_module(_enable_rl_module_api=False).training(
-            _enable_learner_api=False
-        )
 
         num_iterations = 1
-        # Only supported for tf so far.
-        for _ in framework_iterator(config):
-            algo = config.build()
-            for i in range(num_iterations):
-                results = algo.train()
-                check_train_results(results)
-                print(results)
-            check_compute_single_action(algo)
-            algo.stop()
+        algo = config.build()
+        for i in range(num_iterations):
+            results = algo.train()
+            check_train_results(results)
+            print(results)
+        check_compute_single_action(algo)
+        algo.stop()
 
     def test_gym_preprocessors(self):
         p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v1"))
@@ -129,16 +120,13 @@ class TestPreprocessors(unittest.TestCase):
         p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v1"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
-        p3 = ModelCatalog.get_preprocessor(
-            gym.make("GymV26Environment-v0", env_id="ALE/MsPacman-ram-v5")
-        )
+        p3 = ModelCatalog.get_preprocessor(gym.make("ALE/MsPacman-ram-v5"))
         self.assertEqual(type(p3), AtariRamPreprocessor)
 
         p4 = ModelCatalog.get_preprocessor(
             gym.make(
-                "GymV26Environment-v0",
-                env_id="ALE/MsPacman-v5",
-                make_kwargs={"frameskip": 1},
+                "ALE/MsPacman-v5",
+                frameskip=1,
             )
         )
         self.assertEqual(type(p4), GenericPixelPreprocessor)

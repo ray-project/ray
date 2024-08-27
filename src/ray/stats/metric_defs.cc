@@ -59,7 +59,8 @@ DEFINE_stats(
 DEFINE_stats(actors,
              "Current number of actors currently in a particular state.",
              // State: the actor state, which is from rpc::ActorTableData::ActorState,
-             // but can also be RUNNING_TASK, RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
+             // For ALIVE actor the sub-state can be IDLE, RUNNING_TASK,
+             // RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
              // Name: the name of actor class.
              // Source: component reporting, e.g., "gcs" or "executor".
              ("State", "Name", "Source", "JobId"),
@@ -349,12 +350,6 @@ DEFINE_stats(gcs_task_manager_task_events_stored,
              (),
              ray::stats::GAUGE);
 
-DEFINE_stats(gcs_task_manager_task_events_stored_bytes,
-             "Number of bytes of all task events stored in GCS.",
-             (),
-             (),
-             ray::stats::GAUGE);
-
 /// Memory Manager
 DEFINE_stats(
     memory_manager_worker_eviction_total,
@@ -362,6 +357,15 @@ DEFINE_stats(
     ("Type", "Name"),
     (),
     ray::stats::COUNT);
+
+/// Core Worker Task Manager
+DEFINE_stats(
+    total_lineage_bytes,
+    "Total amount of memory used to store task specs for lineage reconstruction.",
+    (),
+    (),
+    ray::stats::GAUGE);
+
 }  // namespace stats
 
 }  // namespace ray

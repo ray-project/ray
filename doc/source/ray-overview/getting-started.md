@@ -1,105 +1,22 @@
-```{include} /_includes/overview/announcement.md
-```
-
 (gentle-intro)=
 
 # Getting Started
 Use Ray to scale applications on your laptop or the cloud. Choose the right guide for your task.
-* Scale end-to-end ML applications: [Ray AI Runtime Quickstart](#ray-ai-runtime-quickstart)
-* Scale single ML workloads: [Ray Libraries Quickstart](#ray-libraries-quickstart)
+* Scale ML workloads: [Ray Libraries Quickstart](#libraries-quickstart)
 * Scale general Python applications: [Ray Core Quickstart](#ray-core-quickstart)
 * Deploy to the cloud: [Ray Clusters Quickstart](#ray-cluster-quickstart)
 * Debug and monitor applications: [Debugging and Monitoring Quickstart](#debugging-and-monitoring-quickstart)
-## Ray AI Runtime Quickstart
 
-Explore Ray's full suite of libraries for end-to-end ML pipelines, with the `air` packages:
 
-```
-pip install -U "ray[air]"
-```
+(libraries-quickstart)=
+## Ray AI Libraries Quickstart
 
-`````{dropdown} Efficiently process your data into features.
-
-Load data into a ``Dataset``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_generic_preprocess_start__
-    :end-before: __air_generic_preprocess_end__
-```
-
-Preprocess your data with a ``Preprocessor``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_preprocess_start__
-    :end-before: __air_xgb_preprocess_end__
-```
-`````
-
-`````{dropdown} Scale out model training.
-
-This example will use XGBoost to train a Machine Learning model, so, install Ray's wrapper library `xgboost_ray`:
-
-```
-pip install xgboost_ray
-```
-
-Train a model with an ``XGBoostTrainer``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_train_start__
-    :end-before: __air_xgb_train_end__
-```
-`````
-
-`````{dropdown} Tune the hyperparameters to find the best model with Ray Tune.
-
-Configure the parameters for tuning:
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_tuner_start__
-    :end-before: __air_xgb_tuner_end__
-```
-
-Run hyperparameter tuning with Ray Tune to find the best model:
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_tune_generic_end__
-    :end-before: __air_tune_generic_end__
-```
-`````
-
-`````{dropdown} Use the trained model for Batch prediction
-
-Use the trained model for batch prediction with a ``BatchPredictor``.
-
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_batchpred_start__
-    :end-before: __air_xgb_batchpred_end__
-```
-
-```{button-ref} air
-:color: primary
-:outline:
-:expand:
-
-Learn more about Ray AIR
-```
-`````
-
-## Ray Libraries Quickstart
-
-Use individual libraries for single ML workloads, without having to install the full AI Runtime package. Click on the dropdowns for your workload below.
+Use individual libraries for ML workloads. Click on the dropdowns for your workload below.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
 :animate: fade-in-slide-down
 
-Scale offline inference and training ingest with [Ray Data](data_key_concepts) --
+Scale offline inference and training ingest with [Ray Data](data_quickstart) --
 a data processing library designed for ML.
 
 To learn more, see [Offline batch inference](batch_inference_overview) and
@@ -195,7 +112,7 @@ This training function can be executed with:
 :language: python
 :start-after: __torch_single_run_begin__
 :end-before: __torch_single_run_end__
-:dedent: 0
+:dedent: 4
 ```
 
 Convert this to a distributed multi-worker training function.
@@ -219,7 +136,7 @@ with 4 workers, and use it to run the new training function.
 :language: python
 :start-after: __torch_trainer_begin__
 :end-before: __torch_trainer_end__
-:dedent: 0
+:dedent: 4
 ```
 ````
 
@@ -386,7 +303,7 @@ pip install -U "ray[rllib]" tensorflow  # or torch
 ```
 ````
 
-```{literalinclude} ../../../rllib/examples/documentation/rllib_on_ray_readme.py
+```{literalinclude} ../rllib/doc_code/rllib_on_ray_readme.py
 :end-before: __quick_start_end__
 :language: python
 :start-after: __quick_start_begin__
@@ -613,12 +530,24 @@ Learn more about Ray Core
 
 ## Ray Cluster Quickstart
 
-Deploy your applications on Ray clusters, often with minimal code changes to your existing code.
+Deploy your applications on Ray clusters on AWS, GCP, Azure, and more, often with minimal code changes to your existing code.
+
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on AWS
 :animate: fade-in-slide-down
 
 Ray programs can run on a single machine, or seamlessly scale to large clusters.
+
+:::{note}
+To run this example install the following:
+
+```bash
+pip install -U "ray[default]" boto3
+```
+
+If you haven't already, configure your credentials as described in the https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html#guide-credentials[documentation for boto3].
+:::
+
 Take this simple example that waits for individual nodes to join the cluster.
 
 ````{dropdown} example.py
@@ -628,16 +557,16 @@ Take this simple example that waits for individual nodes to join the cluster.
 :language: python
 ```
 ````
-You can also download this example from our [GitHub repository](https://github.com/ray-project/ray/blob/master/doc/yarn/example.py).
-Go ahead and store it locally in a file called `example.py`.
+You can also download this example from the [GitHub repository](https://github.com/ray-project/ray/blob/master/doc/yarn/example.py).
+Store it locally in a file called `example.py`.
 
-To execute this script in the cloud, just download [this configuration file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-full.yaml),
+To execute this script in the cloud, download [this configuration file](https://github.com/ray-project/ray/blob/master/python/ray/autoscaler/aws/example-minimal.yaml),
 or copy it here:
 
 ````{dropdown} cluster.yaml
 :animate: fade-in-slide-down
 
-```{literalinclude} ../../../python/ray/autoscaler/aws/example-full.yaml
+```{literalinclude} ../../../python/ray/autoscaler/aws/example-minimal.yaml
 :language: yaml
 ```
 ````
@@ -653,7 +582,22 @@ ray submit cluster.yaml example.py --start
 :outline:
 :expand:
 
-Learn more about launching Ray Clusters
+Learn more about launching Ray Clusters on AWS, GCP, Azure, and more
+```
+
+`````
+
+`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on Kubernetes
+:animate: fade-in-slide-down
+
+Ray programs can run on a single node Kubernetes cluster, or seamlessly scale to larger clusters.
+
+```{button-ref}  kuberay-index
+:color: primary
+:outline:
+:expand:
+
+Learn more about launching Ray Clusters on Kubernetes
 ```
 
 `````
@@ -707,56 +651,50 @@ pip install -U "ray[default]"
 Run the following code.
 
 ```{code-block} python
+import ray
+import time
 
-    import ray
-    import time
+ray.init(num_cpus=4)
 
-    ray.init(num_cpus=4)
+@ray.remote
+def task_running_300_seconds():
+    print("Start!")
+    time.sleep(300)
 
-    @ray.remote
-    def task_running_300_seconds():
-        print("Start!")
-        time.sleep(300)
+@ray.remote
+class Actor:
+    def __init__(self):
+        print("Actor created")
 
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            print("Actor created")
+# Create 2 tasks
+tasks = [task_running_300_seconds.remote() for _ in range(2)]
 
-    # Create 2 tasks
-    tasks = [task_running_300_seconds.remote() for _ in range(2)]
+# Create 2 actors
+actors = [Actor.remote() for _ in range(2)]
 
-    # Create 2 actors
-    actors = [Actor.remote() for _ in range(2)]
-
-    ray.get(tasks)
-
+ray.get(tasks)
 ```
 
 See the summarized statistics of Ray tasks using ``ray summary tasks``.
 
 ```{code-block} bash
-
-    ray summary tasks
-
+ray summary tasks
 ```
 
 ```{code-block} text
+======== Tasks Summary: 2022-07-22 08:54:38.332537 ========
+Stats:
+------------------------------------
+total_actor_scheduled: 2
+total_actor_tasks: 0
+total_tasks: 2
 
-    ======== Tasks Summary: 2022-07-22 08:54:38.332537 ========
-    Stats:
-    ------------------------------------
-    total_actor_scheduled: 2
-    total_actor_tasks: 0
-    total_tasks: 2
 
-
-    Table (group by func_name):
-    ------------------------------------
-        FUNC_OR_CLASS_NAME        STATE_COUNTS    TYPE
-    0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
-    1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
-
+Table (group by func_name):
+------------------------------------
+FUNC_OR_CLASS_NAME        STATE_COUNTS    TYPE
+0   task_running_300_seconds  RUNNING: 2      NORMAL_TASK
+1   Actor.__init__            FINISHED: 2     ACTOR_CREATION_TASK
 ```
 
 ```{button-ref}  observability-programmatic
@@ -769,8 +707,57 @@ Learn more about Ray State APIs
 
 `````
 
-```{include} learn-more.md
-```
+## Learn More
 
-```{include} /_includes/overview/announcement_bottom.md
-```
+Here are some talks, papers, and press coverage involving Ray and its libraries.
+Please raise an issue if any of the below links are broken, or if you'd like to add your own talk!
+
+### Blog and Press
+
+- [Modern Parallel and Distributed Python: A Quick Tutorial on Ray](https://towardsdatascience.com/modern-parallel-and-distributed-python-a-quick-tutorial-on-ray-99f8d70369b8)
+- [Why Every Python Developer Will Love Ray](https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/)
+- [Ray: A Distributed System for AI (BAIR)](http://bair.berkeley.edu/blog/2018/01/09/ray/)
+- [10x Faster Parallel Python Without Python Multiprocessing](https://towardsdatascience.com/10x-faster-parallel-python-without-python-multiprocessing-e5017c93cce1)
+- [Implementing A Parameter Server in 15 Lines of Python with Ray](https://ray-project.github.io/2018/07/15/parameter-server-in-fifteen-lines.html)
+- [Ray Distributed AI Framework Curriculum](https://rise.cs.berkeley.edu/blog/ray-intel-curriculum/)
+- [RayOnSpark: Running Emerging AI Applications on Big Data Clusters with Ray and Analytics Zoo](https://medium.com/riselab/rayonspark-running-emerging-ai-applications-on-big-data-clusters-with-ray-and-analytics-zoo-923e0136ed6a)
+- [First user tips for Ray](https://rise.cs.berkeley.edu/blog/ray-tips-for-first-time-users/)
+- [Tune: a Python library for fast hyperparameter tuning at any scale](https://towardsdatascience.com/fast-hyperparameter-tuning-at-scale-d428223b081c)
+- [Cutting edge hyperparameter tuning with Ray Tune](https://medium.com/riselab/cutting-edge-hyperparameter-tuning-with-ray-tune-be6c0447afdf)
+- [New Library Targets High Speed Reinforcement Learning](https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/)
+- [Scaling Multi Agent Reinforcement Learning](http://bair.berkeley.edu/blog/2018/12/12/rllib/)
+- [Functional RL with Keras and Tensorflow Eager](https://bair.berkeley.edu/blog/2019/10/14/functional-rl/)
+- [How to Speed up Pandas by 4x with one line of code](https://www.kdnuggets.com/2019/11/speed-up-pandas-4x.html)
+- [Quick Tip -- Speed up Pandas using Modin](https://pythondata.com/quick-tip-speed-up-pandas-using-modin/)
+- [Ray Blog](https://medium.com/distributed-computing-with-ray)
+
+### Talks (Videos)
+
+- [Unifying Large Scale Data Preprocessing and Machine Learning Pipelines with Ray Data \| PyData 2021](https://zoom.us/rec/share/0cjbk_YdCTbiTm7gNhzSeNxxTCCEy1pCDUkkjfBjtvOsKGA8XmDOx82jflHdQCUP.fsjQkj5PWSYplOTz?startTime=1635456658000) [(slides)](https://docs.google.com/presentation/d/19F_wxkpo1JAROPxULmJHYZd3sKryapkbMd0ib3ndMiU/edit?usp=sharing)
+- [Programming at any Scale with Ray \| SF Python Meetup Sept 2019](https://www.youtube.com/watch?v=LfpHyIXBhlE)
+- [Ray for Reinforcement Learning \| Data Council 2019](https://www.youtube.com/watch?v=Ayc0ca150HI)
+- [Scaling Interactive Pandas Workflows with Modin](https://www.youtube.com/watch?v=-HjLd_3ahCw)
+- [Ray: A Distributed Execution Framework for AI \| SciPy 2018](https://www.youtube.com/watch?v=D_oz7E4v-U0)
+- [Ray: A Cluster Computing Engine for Reinforcement Learning Applications \| Spark Summit](https://www.youtube.com/watch?v=xadZRRB_TeI)
+- [RLlib: Ray Reinforcement Learning Library \| RISECamp 2018](https://www.youtube.com/watch?v=eeRGORQthaQ)
+- [Enabling Composition in Distributed Reinforcement Learning \| Spark Summit 2018](https://www.youtube.com/watch?v=jAEPqjkjth4)
+- [Tune: Distributed Hyperparameter Search \| RISECamp 2018](https://www.youtube.com/watch?v=38Yd_dXW51Q)
+
+
+### Slides
+
+- [Talk given at UC Berkeley DS100](https://docs.google.com/presentation/d/1sF5T_ePR9R6fAi2R6uxehHzXuieme63O2n_5i9m7mVE/edit?usp=sharing)
+- [Talk given in October 2019](https://docs.google.com/presentation/d/13K0JsogYQX3gUCGhmQ1PQ8HILwEDFysnq0cI2b88XbU/edit?usp=sharing)
+- [Talk given at RISECamp 2019](https://docs.google.com/presentation/d/1v3IldXWrFNMK-vuONlSdEuM82fuGTrNUDuwtfx4axsQ/edit?usp=sharing)
+
+
+### Papers
+
+-   [Ray 2.0 Architecture whitepaper](https://docs.google.com/document/d/1tBw9A4j62ruI5omIJbMxly-la5w4q_TjyJgJL_jN2fI/preview)
+-   [Ray 1.0 Architecture whitepaper (old)](https://docs.google.com/document/d/1lAy0Owi-vPz2jEqBSaHNQcy2IBSDEHyXNOQZlGuj93c/preview)
+-   [Exoshuffle: large-scale data shuffle in Ray](https://arxiv.org/abs/2203.05072)
+-   [RLlib paper](https://arxiv.org/abs/1712.09381)
+-   [RLlib flow paper](https://arxiv.org/abs/2011.12719)
+-   [Tune paper](https://arxiv.org/abs/1807.05118)
+-   [Ray paper (old)](https://arxiv.org/abs/1712.05889)
+-   [Ray HotOS paper (old)](https://arxiv.org/abs/1703.03924)

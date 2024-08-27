@@ -22,8 +22,7 @@ def generate_randomize_blocks_fn(
         nonlocal op
         blocks_with_metadata = []
         for ref_bundle in refs:
-            for block, meta in ref_bundle.blocks:
-                blocks_with_metadata.append((block, meta))
+            blocks_with_metadata.extend(ref_bundle.blocks)
 
         if len(blocks_with_metadata) == 0:
             return refs, {op._name: []}

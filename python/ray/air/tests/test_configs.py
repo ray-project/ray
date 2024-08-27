@@ -1,13 +1,8 @@
+import pyarrow.fs
 import pytest
 
-from ray.air.config import (
-    ScalingConfig,
-    DatasetConfig,
-    FailureConfig,
-    CheckpointConfig,
-    RunConfig,
-)
 from ray.air.constants import MAX_REPR_LENGTH
+from ray.train import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
 
 
 @pytest.mark.parametrize(
@@ -15,8 +10,6 @@ from ray.air.constants import MAX_REPR_LENGTH
     [
         ScalingConfig(),
         ScalingConfig(use_gpu=True),
-        DatasetConfig(),
-        DatasetConfig(fit=True),
         FailureConfig(),
         FailureConfig(max_failures=2),
         CheckpointConfig(),
@@ -31,6 +24,11 @@ def test_repr(config):
 
     assert eval(representation) == config
     assert len(representation) < MAX_REPR_LENGTH
+
+
+def test_storage_filesystem_repr():
+    config = RunConfig(storage_filesystem=pyarrow.fs.S3FileSystem())
+    repr(config)
 
 
 def test_failure_config_init():

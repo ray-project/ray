@@ -88,7 +88,6 @@ class RedisStoreClient : public StoreClient {
     void Scan(const std::string &match_pattern, const StatusCallback &callback);
 
     void OnScanCallback(const std::string &match_pattern,
-                        size_t shard_index,
                         const std::shared_ptr<CallbackReply> &reply,
                         const StatusCallback &callback);
     /// The table name that the scanner will scan.
@@ -97,15 +96,15 @@ class RedisStoreClient : public StoreClient {
     // The namespace of the external storage. Used for isolation.
     std::string external_storage_namespace_;
 
-    /// Mutex to protect the shard_to_cursor_ field and the keys_ field and the
+    /// Mutex to protect the cursor_ field and the keys_ field and the
     /// key_value_map_ field.
     absl::Mutex mutex_;
 
     /// All keys that scanned from redis.
     absl::flat_hash_map<std::string, std::string> results_;
 
-    /// The scan cursor for each shard.
-    absl::flat_hash_map<size_t, size_t> shard_to_cursor_;
+    /// The scan cursor.
+    std::optional<size_t> cursor_;
 
     /// The pending shard scan count.
     std::atomic<size_t> pending_request_count_{0};
@@ -122,7 +121,7 @@ class RedisStoreClient : public StoreClient {
   // only when there is no in-flight request for the key.
   size_t PushToSendingQueue(const std::vector<std::string> &keys,
                             std::function<void()> send_request)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Take requests from the sending queue and erase the queue if it's
   // empty.
@@ -131,7 +130,7 @@ class RedisStoreClient : public StoreClient {
   //
   // \return The requests to send.
   std::vector<std::function<void()>> TakeRequestsFromSendingQueue(
-      const std::vector<std::string> &keys) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+      const std::vector<std::string> &keys) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   Status DoPut(const std::string &key,
                const std::string &data,
@@ -163,7 +162,7 @@ class RedisStoreClient : public StoreClient {
   // The pending redis requests queue for each key.
   // The queue will be poped when the request is processed.
   absl::flat_hash_map<std::string, std::queue<std::function<void()>>>
-      pending_redis_request_by_key_ GUARDED_BY(mu_);
+      pending_redis_request_by_key_ ABSL_GUARDED_BY(mu_);
   FRIEND_TEST(RedisStoreClientTest, Random);
 };
 

@@ -15,4 +15,5 @@ def _reduce_mean_results(results: List[ResultDict]) -> ResultDict:
     Returns:
         Averaged result dict
     """
+
     return tree.map_structure(lambda *x: np.mean(x), *results)

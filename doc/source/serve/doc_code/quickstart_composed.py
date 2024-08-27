@@ -2,7 +2,7 @@ import requests
 import starlette
 from typing import Dict
 from ray import serve
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 
 # 1. Define the models in our composition graph and an ingress that calls them.
@@ -24,18 +24,22 @@ class Combiner:
 @serve.deployment
 class Ingress:
     def __init__(
-        self, adder1: RayServeHandle, adder2: RayServeHandle, combiner: RayServeHandle
+        self,
+        adder1: DeploymentHandle,
+        adder2: DeploymentHandle,
+        combiner: DeploymentHandle,
     ):
-        self._adder1, self._adder2, self._combiner = adder1, adder2, combiner
+        self._adder1 = adder1
+        self._adder2 = adder2
+        self._combiner = combiner
 
     async def __call__(self, request: starlette.requests.Request) -> Dict[str, float]:
         input_json = await request.json()
-
-        adder1_result = await self._adder1.add.remote(input_json["val"])
-        adder2_result = await self._adder2.add.remote(input_json["val"])
-        final_result = await self._combiner.average.remote(adder1_result, adder2_result)
-
-        return {"result": await final_result}
+        final_result = await self._combiner.average.remote(
+            self._adder1.add.remote(input_json["val"]),
+            self._adder2.add.remote(input_json["val"]),
+        )
+        return {"result": final_result}
 
 
 # 2. Build the application consisting of the models and ingress.

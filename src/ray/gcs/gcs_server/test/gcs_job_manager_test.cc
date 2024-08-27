@@ -504,6 +504,7 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
   address.set_port(8264);
   address.set_raylet_id(NodeID::FromRandom().Binary());
   address.set_worker_id(WorkerID::FromRandom().Binary());
+  add_job_request->mutable_data()->set_driver_ip_address("10.0.0.1");
   add_job_request->mutable_data()->mutable_driver_address()->CopyFrom(address);
 
   add_job_request->mutable_data()->set_driver_pid(8264);
@@ -548,7 +549,89 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
   ASSERT_EQ(all_job_info_reply.job_info_list().size(), 1);
   rpc::JobTableData data = all_job_info_reply.job_info_list().Get(0);
   ASSERT_EQ(data.driver_address().ip_address(), "10.0.0.1");
+  ASSERT_EQ(data.driver_ip_address(), "10.0.0.1");
   ASSERT_EQ(data.driver_pid(), 8264);
+}
+
+TEST_F(GcsJobManagerTest, TestNodeFailure) {
+  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
+                                     gcs_publisher_,
+                                     runtime_env_manager_,
+                                     *function_manager_,
+                                     *fake_kv_,
+                                     client_factory_);
+
+  auto job_id1 = JobID::FromInt(1);
+  auto job_id2 = JobID::FromInt(2);
+  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
+
+  rpc::AddJobReply empty_reply;
+  std::promise<bool> promise1;
+  std::promise<bool> promise2;
+
+  auto add_job_request1 = Mocker::GenAddJobRequest(job_id1, "namespace_1");
+  gcs_job_manager.HandleAddJob(
+      *add_job_request1,
+      &empty_reply,
+      [&promise1](Status, std::function<void()>, std::function<void()>) {
+        promise1.set_value(true);
+      });
+  promise1.get_future().get();
+
+  auto add_job_request2 = Mocker::GenAddJobRequest(job_id2, "namespace_2");
+  gcs_job_manager.HandleAddJob(
+      *add_job_request2,
+      &empty_reply,
+      [&promise2](Status, std::function<void()>, std::function<void()>) {
+        promise2.set_value(true);
+      });
+  promise2.get_future().get();
+
+  rpc::GetAllJobInfoRequest all_job_info_request;
+  rpc::GetAllJobInfoReply all_job_info_reply;
+  std::promise<bool> all_job_info_promise;
+
+  // Check if all job are not dead
+  gcs_job_manager.HandleGetAllJobInfo(
+      all_job_info_request,
+      &all_job_info_reply,
+      [&all_job_info_promise](Status, std::function<void()>, std::function<void()>) {
+        all_job_info_promise.set_value(true);
+      });
+  all_job_info_promise.get_future().get();
+  for (auto job_info : all_job_info_reply.job_info_list()) {
+    ASSERT_TRUE(!job_info.is_dead());
+  }
+
+  // Remove node and then check that the job is dead.
+  auto address = all_job_info_reply.job_info_list().Get(0).driver_address();
+  auto node_id = NodeID::FromBinary(address.raylet_id());
+  gcs_job_manager.OnNodeDead(node_id);
+
+  // Test get all jobs and check if killed node jobs marked as finished
+  auto condition = [&gcs_job_manager, node_id]() -> bool {
+    rpc::GetAllJobInfoRequest all_job_info_request2;
+    rpc::GetAllJobInfoReply all_job_info_reply2;
+    std::promise<bool> all_job_info_promise2;
+    gcs_job_manager.HandleGetAllJobInfo(
+        all_job_info_request2,
+        &all_job_info_reply2,
+        [&all_job_info_promise2](Status, std::function<void()>, std::function<void()>) {
+          all_job_info_promise2.set_value(true);
+        });
+    all_job_info_promise2.get_future().get();
+
+    bool job_condition = true;
+    // job1 from the current node should dead, while job2 is still alive
+    for (auto job_info : all_job_info_reply2.job_info_list()) {
+      auto job_node_id = NodeID::FromBinary(job_info.driver_address().raylet_id());
+      job_condition = job_condition && (job_info.is_dead() == (job_node_id == node_id));
+    }
+    return job_condition;
+  };
+
+  EXPECT_TRUE(WaitForCondition(condition, 2000));
 }
 
 int main(int argc, char **argv) {

@@ -12,19 +12,20 @@ to express a chain of computations.
 
 This guide shows you how to:
 
-* `Transform rows <#transforming-rows>`_
-* `Transform batches <#transforming-batches>`_
-* `Groupby and transform groups <#groupby-and-transforming-groups>`_
-* `Shuffle rows <#shuffling-rows>`_
-* `Repartition data <#repartitioning-data>`_
+* :ref:`Transform rows <transforming_rows>`
+* :ref:`Transform batches <transforming_batches>`
+* :ref:`Stateful transforms <stateful_transforms>`
+* :ref:`Groupby and transform groups <transforming_groupby>`
 
 .. _transforming_rows:
 
 Transforming rows
 =================
 
-To transform rows, call :meth:`~ray.data.Dataset.map` or
-:meth:`~ray.data.Dataset.flat_map`.
+.. tip::
+
+    If your transformation is vectorized, call :meth:`~ray.data.Dataset.map_batches` for
+    better performance. To learn more, see :ref:`Transforming batches <transforming_batches>`.
 
 Transforming rows with map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -43,14 +44,27 @@ If your transformation returns exactly one row for each input row, call
         return row
 
     ds = (
-        ray.data.read_images("example://image-datasets/simple", include_paths=True)
+        ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
         .map(parse_filename)
     )
 
-.. tip::
+The user defined function passed to :meth:`~ray.data.Dataset.map` should be of type
+`Callable[[Dict[str, Any]], Dict[str, Any]]`. In other words, your function should
+input and output a dictionary with keys of strings and values of any type. For example:
 
-    If your transformation is vectorized, call :meth:`~ray.data.Dataset.map_batches` for
-    better performance. To learn more, see `Transforming batches <#transforming-batches>`_.
+.. testcode::
+
+    from typing import Any, Dict
+
+    def fn(row: Dict[str, Any]) -> Dict[str, Any]:
+        # access row data
+        value = row["col1"]
+
+        # add data to row
+        row["col2"] = ...
+
+        # return row
+        return row
 
 Transforming rows with flat map
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -76,6 +90,28 @@ If your transformation returns multiple rows for each input row, call
 
     [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
 
+The user defined function passed to :meth:`~ray.data.Dataset.flat_map` should be of type
+`Callable[[Dict[str, Any]], List[Dict[str, Any]]]`. In other words your function should
+input a dictionary with keys of strings and values of any type and output a list of
+dictionaries that have the same type as the input, for example:
+
+.. testcode::
+
+    from typing import Any, Dict, List
+
+    def fn(row: Dict[str, Any]) -> List[Dict[str, Any]]:
+        # access row data
+        value = row["col1"]
+
+        # add data to row
+        row["col2"] = ...
+
+        # construct output list
+        output = [row, row]
+
+        # return list of output rows
+        return output
+
 .. _transforming_batches:
 
 Transforming batches
@@ -83,22 +119,6 @@ Transforming batches
 
 If your transformation is vectorized like most NumPy or pandas operations, transforming
 batches is more performant than transforming rows.
-
-Choosing between tasks and actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Ray Data transforms batches with either tasks or actors. Actors perform setup exactly
-once. In contrast, tasks require setup every batch. So, if your transformation involves
-expensive setup like downloading model weights, use actors. Otherwise, use tasks.
-
-To learn more about tasks and actors, read the
-:ref:`Ray Core Key Concepts <core-key-concepts>`.
-
-Transforming batches with tasks
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To transform batches with tasks, call :meth:`~ray.data.Dataset.map_batches`. Ray Data
-uses tasks by default.
 
 .. testcode::
 
@@ -111,23 +131,115 @@ uses tasks by default.
         return batch
 
     ds = (
-        ray.data.read_images("example://image-datasets/simple")
+        ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
         .map_batches(increase_brightness)
     )
 
-.. _transforming_data_actors:
+.. _configure_batch_format:
 
-Transforming batches with actors
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Configuring batch format
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-To transform batches with actors, complete these steps:
+Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
+default, Ray Data represents batches as dicts of NumPy ndarrays. To configure the batch type,
+specify ``batch_format`` in :meth:`~ray.data.Dataset.map_batches`. You can return either
+format from your function, but ``batch_format`` should match the input of your function.
+
+.. tab-set::
+
+    .. tab-item:: NumPy
+
+        .. testcode::
+
+            from typing import Dict
+            import numpy as np
+            import ray
+
+            def increase_brightness(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+                batch["image"] = np.clip(batch["image"] + 4, 0, 255)
+                return batch
+
+            ds = (
+                ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
+                .map_batches(increase_brightness, batch_format="numpy")
+            )
+
+    .. tab-item:: pandas
+
+        .. testcode::
+
+            import pandas as pd
+            import ray
+
+            def drop_nas(batch: pd.DataFrame) -> pd.DataFrame:
+                return batch.dropna()
+
+            ds = (
+                ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+                .map_batches(drop_nas, batch_format="pandas")
+            )
+
+The user defined function you pass to :meth:`~ray.data.Dataset.map_batches` is more flexible. Because you can represent batches
+in multiple ways (see :ref:`Configuring batch format <configure_batch_format>`), the function should be of type
+``Callable[DataBatch, DataBatch]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``. In
+other words, your function should take as input and output a batch of data which you can represent as a
+pandas DataFrame or a dictionary with string keys and NumPy ndarrays values. For example, your function might look like:
+
+.. testcode::
+
+    import pandas as pd
+
+    def fn(batch: pd.DataFrame) -> pd.DataFrame:
+        # modify batch
+        batch = ...
+
+        # return batch
+        return output
+
+The user defined function can also be a Python generator that yields batches, so the function can also
+be of type ``Callable[DataBatch, Iterator[[DataBatch]]``, where ``DataBatch = Union[pd.DataFrame, Dict[str, np.ndarray]]``.
+In this case, your function would look like:
+
+.. testcode::
+
+    from typing import Dict, Iterator
+    import numpy as np
+
+    def fn(batch: Dict[str, np.ndarray]) -> Iterator[Dict[str, np.ndarray]]:
+        # yield the same batch multiple times
+        for _ in range(10):
+            yield batch
+
+Configuring batch size
+~~~~~~~~~~~~~~~~~~~~~~
+
+Increasing ``batch_size`` improves the performance of vectorized transformations like
+NumPy functions and model inference. However, if your batch size is too large, your
+program might run out of memory. If you encounter an out-of-memory error, decrease your
+``batch_size``.
+
+.. _stateful_transforms:
+
+Stateful Transforms
+===================
+
+If your transform requires expensive setup such as downloading
+model weights, use a callable Python class instead of a function to make the transform stateful. When a Python class
+is used, the ``__init__`` method is called to perform setup exactly once on each worker.
+In contrast, functions are stateless, so any setup must be performed for each data item.
+
+Internally, Ray Data uses tasks to execute functions, and uses actors to execute classes.
+To learn more about tasks and actors, read the
+:ref:`Ray Core Key Concepts <core-key-concepts>`.
+
+To transform data with a Python class, complete these steps:
 
 1. Implement a class. Perform setup in ``__init__`` and transform data in ``__call__``.
 
-2. Create an :class:`~ray.data.ActorPoolStrategy` and configure the number of concurrent
-   workers. Each worker transforms a partition of data.
-
-3. Call :meth:`~ray.data.Dataset.map_batches` and pass your ``ActorPoolStrategy`` to ``compute``.
+2. Call :meth:`~ray.data.Dataset.map_batches`, :meth:`~ray.data.Dataset.map`, or
+   :meth:`~ray.data.Dataset.flat_map`. Pass the number of concurrent workers to use with the ``concurrency`` argument. Each worker transforms a partition of data in parallel.
+   Fixing the number of concurrent workers gives the most predictable performance, but you can also pass a tuple of ``(min, max)`` to allow Ray Data to automatically
+   scale the number of concurrent workers.
 
 .. tab-set::
 
@@ -154,7 +266,7 @@ To transform batches with actors, complete these steps:
 
             ds = (
                 ray.data.from_numpy(np.ones((32, 100)))
-                .map_batches(TorchPredictor, compute=ray.data.ActorPoolStrategy(size=2))
+                .map_batches(TorchPredictor, concurrency=2)
             )
 
         .. testcode::
@@ -188,7 +300,7 @@ To transform batches with actors, complete these steps:
                 .map_batches(
                     TorchPredictor,
                     # Two workers with one GPU each
-                    compute=ray.data.ActorPoolStrategy(size=2),
+                    concurrency=2,
                     # Batch size is required if you're using GPUs.
                     batch_size=4,
                     num_gpus=1
@@ -199,65 +311,6 @@ To transform batches with actors, complete these steps:
             :hide:
 
             ds.materialize()
-
-.. _configure_batch_format:
-
-Configuring batch format
-~~~~~~~~~~~~~~~~~~~~~~~~
-
-Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
-default, Ray Data represents batches as dicts of NumPy ndarrays.
-
-To configure the batch type, specify ``batch_format`` in
-:meth:`~ray.data.Dataset.map_batches`. You can return either format from your function.
-
-.. tab-set::
-
-    .. tab-item:: NumPy
-
-        .. testcode::
-
-            from typing import Dict
-            import numpy as np
-            import ray
-
-            def increase_brightness(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-                batch["image"] = np.clip(batch["image"] + 4, 0, 255)
-                return batch
-
-            ds = (
-                ray.data.read_images("example://image-datasets/simple")
-                .map_batches(increase_brightness, batch_format="numpy")
-            )
-
-    .. tab-item:: pandas
-
-        .. testcode::
-
-            import pandas as pd
-            import ray
-
-            def drop_nas(batch: pd.DataFrame) -> pd.DataFrame:
-                return batch.dropna()
-
-            ds = (
-                ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-                .map_batches(drop_nas, batch_format="pandas")
-            )
-
-Configuring batch size
-~~~~~~~~~~~~~~~~~~~~~~
-
-Increasing ``batch_size`` improves the performance of vectorized transformations like
-NumPy functions and model inference. However, if your batch size is too large, your
-program might run out of memory. If you encounter an out-of-memory error, decrease your
-``batch_size``.
-
-.. note::
-
-    The default batch size depends on your resource type. If you're using CPUs,
-    the default batch size is 4096. If you're using GPUs, you must specify an explicit
-    batch size.
 
 .. _transforming_groupby:
 
@@ -310,46 +363,3 @@ To transform groups, call :meth:`~ray.data.Dataset.groupby` to group rows. Then,
                 .groupby("target")
                 .map_groups(normalize_features)
             )
-
-Shuffling rows
-==============
-
-To randomly shuffle all rows, call :meth:`~ray.data.Dataset.random_shuffle`.
-
-.. testcode::
-
-    import ray
-
-    ds = (
-        ray.data.read_images("example://image-datasets/simple")
-        .random_shuffle()
-    )
-
-.. tip::
-
-    :meth:`~ray.data.Dataset.random_shuffle` is slow. For better performance, try
-    `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
-
-Repartitioning data
-===================
-
-A :class:`~ray.data.dataset.Dataset` operates on a sequence of distributed data
-:term:`blocks <block>`. If you want to achieve more fine-grained parallelization,
-increase the number of blocks by setting a higher ``parallelism`` at read time.
-
-To change the number of blocks for an existing Dataset, call
-:meth:`Dataset.repartition() <ray.data.Dataset.repartition>`.
-
-.. testcode::
-
-    import ray
-
-    ds = ray.data.range(10000, parallelism=1000)
-
-    # Repartition the data into 100 blocks. Since shuffle=False, Ray Data will minimize
-    # data movement during this operation by merging adjacent blocks.
-    ds = ds.repartition(100, shuffle=False).materialize()
-
-    # Repartition the data into 200 blocks, and force a full data shuffle.
-    # This operation will be more expensive
-    ds = ds.repartition(200, shuffle=True).materialize()

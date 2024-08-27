@@ -85,6 +85,9 @@ class BaseNodeLauncher:
         resources = copy.deepcopy(
             config["available_node_types"][node_type]["resources"]
         )
+        labels = copy.deepcopy(
+            config["available_node_types"][node_type].get("labels", {})
+        )
         launch_hash = hash_launch_conf(launch_config, config["auth"])
         node_config = copy.deepcopy(config.get("worker_nodes", {}))
         node_tags = {
@@ -107,8 +110,8 @@ class BaseNodeLauncher:
         full_exception = None
         created_nodes = {}
         try:
-            created_nodes = self.provider.create_node_with_resources(
-                node_config, node_tags, count, resources
+            created_nodes = self.provider.create_node_with_resources_and_labels(
+                node_config, node_tags, count, resources, labels
             )
         except NodeLaunchException as node_launch_exception:
             self.node_provider_availability_tracker.update_node_availability(

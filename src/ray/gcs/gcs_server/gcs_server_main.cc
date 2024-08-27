@@ -36,6 +36,7 @@ DEFINE_string(node_ip_address, "", "The ip address of the node.");
 DEFINE_string(session_name,
               "",
               "session_name: The session name (ClusterID) of the cluster.");
+DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
@@ -47,6 +48,12 @@ int main(int argc, char *argv[]) {
   ray::RayLog::InstallTerminateHandler();
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  RAY_LOG(INFO)
+          .WithField("ray_version", kRayVersion)
+          .WithField("ray_commit", FLAGS_ray_commit)
+      << "Ray cluster metadata";
+
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const std::string log_dir = FLAGS_log_dir;
@@ -62,12 +69,15 @@ int main(int argc, char *argv[]) {
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
+  ray::asio::testing::init();
 
   // IO Service for main loop.
   instrumented_io_context main_service;
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::io_service::work work(main_service);
+
+  ray::stats::enable_grpc_metrics_collection_if_needed("gcs");
 
   const ray::stats::TagsType global_tags = {{ray::stats::ComponentKey, "gcs_server"},
                                             {ray::stats::WorkerIdKey, ""},
@@ -78,7 +88,9 @@ int main(int argc, char *argv[]) {
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-    ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
+    const std::vector<ray::SourceTypeVariant> source_types = {
+        ray::rpc::Event_SourceType::Event_SourceType_GCS};
+    ray::RayEventInit(source_types,
                       absl::flat_hash_map<std::string, std::string>(),
                       log_dir,
                       RayConfig::instance().event_level(),
@@ -98,6 +110,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.node_ip_address = node_ip_address;
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
+  gcs_server_config.session_name = session_name;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is

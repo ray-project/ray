@@ -1,0 +1,11 @@
+- name: test_name
+  group: test_group
+  working_dir: cluster_tests
+  frequency: nightly
+  team: team
+  cluster:
+    byod: {}
+    cluster_compute: cpt_autoscaling_1-3_aws.yaml
+  run:
+    timeout: 3600
+    script: test_script.py

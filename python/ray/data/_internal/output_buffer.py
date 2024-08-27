@@ -1,7 +1,8 @@
-from typing import Any, Callable, Optional
+from typing import Any
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 
 class BlockOutputBuffer:
@@ -30,11 +31,8 @@ class BlockOutputBuffer:
         ...     yield output.next() # doctest: +SKIP
     """
 
-    def __init__(
-        self, block_udf: Optional[Callable[[Block], Block]], target_max_block_size: int
-    ):
+    def __init__(self, target_max_block_size: int):
         self._target_max_block_size = target_max_block_size
-        self._block_udf = block_udf
         self._buffer = DelegatingBlockBuilder()
         self._returned_at_least_one_block = False
         self._finalized = False
@@ -71,10 +69,35 @@ class BlockOutputBuffer:
     def next(self) -> Block:
         """Returns the next complete output block."""
         assert self.has_next()
-        block = self._buffer.build()
-        accessor = BlockAccessor.for_block(block)
-        if self._block_udf and accessor.num_rows() > 0:
-            block = self._block_udf(block)
+
+        block_to_yield = self._buffer.build()
+        block_remainder = None
+        block = BlockAccessor.for_block(block_to_yield)
+        if (
+            block.size_bytes()
+            >= MAX_SAFE_BLOCK_SIZE_FACTOR * self._target_max_block_size
+        ):
+            # Slice a block to respect the target max block size.  We only do
+            # this if we are more than 50% above the target block size, because
+            # this ensures that the last block produced will be at least half
+            # the block size.
+            num_bytes_per_row = block.size_bytes() // block.num_rows()
+            target_num_rows = self._target_max_block_size // num_bytes_per_row
+            target_num_rows = max(1, target_num_rows)
+
+            # TODO(swang): If the buffer is finalized, try to create even
+            # blocks?
+
+            if target_num_rows < block.num_rows():
+                # Use copy=True to avoid holding the entire block in memory.
+                block_to_yield = block.slice(0, target_num_rows, copy=True)
+                block_remainder = block.slice(
+                    target_num_rows, block.num_rows(), copy=True
+                )
+
         self._buffer = DelegatingBlockBuilder()
+        if block_remainder is not None:
+            self._buffer.add_block(block_remainder)
+
         self._returned_at_least_one_block = True
-        return block
+        return block_to_yield

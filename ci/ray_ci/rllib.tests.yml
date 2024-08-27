@@ -1,0 +1,42 @@
+flaky_tests:
+  # torch, tf2-static-graph, tf2-eager-tracing
+  - //rllib:learning_tests_multi_agent_cartpole_impala 
+  - //rllib:learning_tests_multi_agent_pendulum_ppo
+  - //rllib:learning_tests_stateless_cartpole_r2d2
+  - //rllib:learning_tests_cartpole_appo_fake_gpus
+  - //rllib:learning_tests_cartpole_ddppo
+  - //rllib:learning_tests_two_step_game_qmix
+  - //rllib:learning_tests_pendulum_cql
+  - //rllib:learning_tests_two_step_game_qmix_no_mixer
+  - //rllib:learning_tests_cartpole_crashing_and_stalling_appo
+  - //rllib:learning_tests_multi_agent_cartpole_crashing_appo
+  - //rllib:learning_tests_multi_agent_cartpole_crashing_and_stalling_appo
+  - //rllib:examples/self_play_with_open_spiel_connect_4_appo_w_rlm_tf2
+  # algorithm, model and other tests
+  - //rllib:test_bc 
+  - //rllib:test_a3c
+  - //rllib:policy/tests/test_policy
+  - //rllib:env/tests/test_local_inference_cartpole
+  - //rllib:evaluation/tests/test_envs_that_crash
+  - //rllib:test_actor_manager 
+  - //rllib:test_apex_ddpg
+  - //rllib:test_algorithm_export_checkpoint
+  - //rllib:test_dataset_reader
+  # examples
+  - //rllib:examples/nested_action_spaces_ppo_torch
+  - //rllib:examples/rl_module/mobilenet_rlm
+  - //rllib:examples/learner/train_w_bc_finetune_w_ppo
+  - //rllib:examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_torch
+  - //rllib:examples/rock_paper_scissors_multiagent_torch
+  # memory leak tf2-eager-tracing
+  - //rllib:test_memory_leak_ppo
+  - //rllib:test_memory_leak_appo
+  - //rllib:test_memory_leak_sac
+  - //rllib:test_memory_leak_impala
+  - //rllib:test_memory_leak_a3c
+  - //rllib:test_memory_leak_dqn
+  - //rllib:test_memory_leak_ddpg
+  # tests/ dir
+  - //rllib:tests/test_io
+  # multi-gpu
+  - //rllib:TestLearnerGroupAsyncUpdate

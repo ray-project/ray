@@ -82,15 +82,10 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             # First thing first, enable eager execution if necessary.
             base.enable_eager_execution_if_necessary()
 
-            # If Learner API is used, we don't need any loss-specific mixins.
-            # However, we also would like to avoid creating special Policy-subclasses
-            # for this as the entire Policy concept will soon not be used anymore with
-            # the new Learner- and RLModule APIs.
-            if not config.get("_enable_learner_api", False):
-                # Although this is a no-op, we call __init__ here to make it clear
-                # that base.__init__ will use the make_model() call.
-                VTraceClipGradients.__init__(self)
-                VTraceOptimizer.__init__(self)
+            # Although this is a no-op, we call __init__ here to make it clear
+            # that base.__init__ will use the make_model() call.
+            VTraceClipGradients.__init__(self)
+            VTraceOptimizer.__init__(self)
 
             # Initialize base class.
             base.__init__(
@@ -111,8 +106,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             ValueNetworkMixin.__init__(self, config)
             KLCoeffMixin.__init__(self, config)
 
-            if not config.get("_enable_learner_api", False):
-                GradStatsMixin.__init__(self)
+            GradStatsMixin.__init__(self)
 
             # Note: this is a bit ugly, but loss and optimizer initialization must
             # happen after all the MixIns are initialized.
@@ -380,7 +374,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                     self, sample_batch, other_agent_batches, episode
                 )
             else:
-                # Add the SampleBatch.VALUES_BOOTSTRAPPED column, which we'll need
+                # Add the Columns.VALUES_BOOTSTRAPPED column, which we'll need
                 # inside the loss for vtrace calculations.
                 sample_batch = compute_bootstrap_value(sample_batch, self)
 

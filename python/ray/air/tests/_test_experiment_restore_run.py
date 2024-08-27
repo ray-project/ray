@@ -1,17 +1,16 @@
 import collections
 import json
 import os
-from pathlib import Path
 import random
 import time
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import ray
-from ray import air, tune
-from ray.air import Checkpoint, session
+from ray import train, tune
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.tune.experiment import Trial
-
 
 RUNNER_TYPE = os.environ.get("RUNNER_TYPE", "trainer")
 STORAGE_PATH = os.environ.get("STORAGE_PATH", "/tmp/ray_results")
@@ -82,8 +81,8 @@ class StatefulSearcher(tune.search.Searcher):
 
 
 def train_fn(config: dict, data: Optional[dict] = None):
-    checkpoint = session.get_checkpoint()
-    start = checkpoint.to_dict()["iteration"] + 1 if checkpoint else 1
+    checkpoint = train.get_checkpoint()
+    start = load_dict_checkpoint(checkpoint)["iteration"] + 1 if checkpoint else 1
 
     training_started_marker = Path(
         os.environ.get("RUN_STARTED_MARKER", "/tmp/does-not-exist")
@@ -98,13 +97,11 @@ def train_fn(config: dict, data: Optional[dict] = None):
     for iteration in range(start, ITERATIONS_PER_TRIAL + 1):
         time.sleep(TIME_PER_ITER_S)
 
-        session.report(
-            {"score": random.random()},
-            checkpoint=Checkpoint.from_dict({"iteration": iteration}),
-        )
+        with create_dict_checkpoint({"iteration": iteration}) as checkpoint:
+            train.report({"score": random.random()}, checkpoint=checkpoint)
 
 
-def tuner(experiment_path: str, run_config: air.RunConfig) -> tune.ResultGrid:
+def tuner(experiment_path: str, run_config: train.RunConfig) -> tune.ResultGrid:
     trainable = tune.with_resources(train_fn, resources={"CPU": 1})
     trainable = tune.with_parameters(trainable, data={"dummy_data": [1, 2, 3]})
 
@@ -127,13 +124,13 @@ def tuner(experiment_path: str, run_config: air.RunConfig) -> tune.ResultGrid:
     return result_grid
 
 
-def trainer(experiment_path: str, run_config: air.RunConfig) -> air.Result:
+def trainer(experiment_path: str, run_config: train.RunConfig) -> train.Result:
     dataset_size = 128
     num_workers = 4
 
     def train_loop_per_worker(config):
         # Wrap the other train_fn with a check for the dataset.
-        assert session.get_dataset_shard("train")
+        assert train.get_dataset_shard("train")
         train_fn(config)
 
     datasets = {
@@ -151,7 +148,7 @@ def trainer(experiment_path: str, run_config: air.RunConfig) -> air.Result:
         trainer = DataParallelTrainer(
             train_loop_per_worker,
             datasets=datasets,
-            scaling_config=air.ScalingConfig(
+            scaling_config=train.ScalingConfig(
                 num_workers=num_workers, trainer_resources={"CPU": 0}
             ),
             run_config=run_config,
@@ -166,10 +163,10 @@ if __name__ == "__main__":
 
     ray.init()
 
-    run_config = air.RunConfig(
+    run_config = train.RunConfig(
         storage_path=STORAGE_PATH,
         name=EXP_NAME,
-        checkpoint_config=air.CheckpointConfig(num_to_keep=1),
+        checkpoint_config=train.CheckpointConfig(num_to_keep=1),
         callbacks=[StatefulCallback()],
     )
 

@@ -65,8 +65,8 @@ over some values. You should probably still use
 supports early stopping).
 
 **If your model is large**, you can try to either use
-**Bayesian Optimization-based search algorithms** like :ref:`BayesOpt <bayesopt>` or
-:ref:`Dragonfly <Dragonfly>` to get good parameter configurations after few
+**Bayesian Optimization-based search algorithms** like :ref:`BayesOpt <bayesopt>`
+to get good parameter configurations after few
 trials. :ref:`Ax <tune-ax>` is similar but more robust to noisy data.
 Please note that these algorithms only work well with **a small number of hyperparameters**.
 Alternatively, you can use :ref:`Population Based Training <tune-scheduler-pbt>` which
@@ -280,14 +280,6 @@ on other nodes as well. Please refer to the
 :ref:`placement groups documentation <ray-placement-group-doc-ref>` to learn more
 about these placement strategies.
 
-You can also use the :ref:`ScalingConfig <train-config>` to achieve the same results:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __resources_scalingconfig_start__
-    :end-before: __resources_scalingconfig_end__
-
 You can also allocate specific resources to a trial based on a custom rule via lambda functions.
 For instance, if you want to allocate GPU resources to trials based on a setting in your param space:
 
@@ -458,28 +450,14 @@ your class trainable or to ``session.report()`` in your function trainable. The 
 The results are repeatedly serialized and written to disk, and this can take a long time.
 
 **Solution**: Use checkpoint by writing data to the trainable's current working directory instead. There are various ways
-to do that depending on whether you are using class or functional Trainable API. 
+to do that depending on whether you are using class or functional Trainable API.
 
 **You are training a large number of trials on a cluster, or you are saving huge checkpoints**
 
-Checkpoints and logs are synced between nodes
-- usually at least to the driver on the head node, but sometimes between worker nodes if needed (e.g. when
-using :ref:`Population Based Training <tune-scheduler-pbt>`). If these checkpoints are very large (e.g. for
-NLP models), or if you are training a large number of trials, this syncing can take a long time.
-
-If nothing else is specified, syncing happens via SSH, which can lead to network overhead as connections are
-not kept open by Ray Tune.
-
-**Solution**: There are multiple solutions, depending on your needs:
-
-1. You can disable syncing to the driver in the :class:`tune.SyncConfig <ray.tune.SyncConfig>`. In this case,
-   logs and checkpoints will not be synced to the driver, so if you need to access them later, you will have to
-   transfer them where you need them manually.
-
-2. You can use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to save logs and checkpoints to a specified `storage_path`.
-   This is the preferred way to deal with this. All syncing will be taken care of automatically, as all nodes
-   are able to access the cloud storage. Additionally, your results will be safe, so even when you're working on
-   pre-emptible instances, you won't lose any of your data.
+**Solution**: You can use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to save logs and checkpoints to a specified `storage_path`.
+This is the preferred way to deal with this. All syncing will be taken care of automatically, as all nodes
+are able to access the cloud storage. Additionally, your results will be safe, so even when you're working on
+pre-emptible instances, you won't lose any of your data.
 
 **You are reporting results too often**
 
@@ -592,35 +570,7 @@ be automatically fetched and passed to your trainable as a parameter.
 How can I upload my Tune results to cloud storage?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If an upload directory is provided, Tune will automatically sync results from the ``RAY_AIR_LOCAL_CACHE_DIR`` to the given directory,
-natively supporting standard URIs for systems like S3, gsutil or HDFS. You can add more filesystems by installing
-`fs-spec <https://filesystem-spec.readthedocs.io/en/latest/>`_-compatible filesystems e.g. using pip.
-
-Here is an example of uploading to S3, using a bucket called ``my-log-dir``:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __log_1_start__
-    :end-before: __log_1_end__
-
-You can customize synchronization behavior by implementing your own Syncer:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __log_2_start__
-    :end-before: __log_2_end__
-
-By default, syncing occurs whenever one of the following conditions are met:
-
-* if you have used a :py:class:`~ray.air.config.CheckpointConfig` with ``num_to_keep`` and a trial has checkpointed more than ``num_to_keep`` times since last sync,
-* a ``sync_period`` of seconds (default 300) has passed since last sync.
-
-To change the frequency of syncing, set the ``sync_period`` attribute of the sync config to the desired syncing period.
-
-Note that uploading only happens when global experiment state is collected, and the frequency of this is
-determined by the experiment checkpoint period. So the true upload period is given by ``max(sync period, TUNE_GLOBAL_CHECKPOINT_S)``.
+See :ref:`tune-cloud-checkpointing`.
 
 Make sure that worker nodes have the write access to the cloud storage.
 Failing to do so would cause error messages like ``Error message (1): fatal error: Unable to locate credentials``.
@@ -628,93 +578,20 @@ For AWS set up, this involves adding an IamInstanceProfile configuration for wor
 Please :ref:`see here for more tips <aws-cluster-s3>`.
 
 
-.. _tune-cloud-syncing-command-line-example:
+.. _tune-kubernetes:
 
-How can I use the awscli or gsutil command line commands for syncing?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Some users reported to run into problems with the default pyarrow-based syncing.
-In this case, a custom syncer that invokes the respective command line tools
-for transferring files between nodes and cloud storage can be implemented.
+How can I use Tune with Kubernetes?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Here is an example for a syncer that uses string templates that will be run
-as a command:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __custom_command_syncer_start__
-    :end-before: __custom_command_syncer_end__
-
-For different cloud services, these are example templates you can use with this syncer:
-
-AWS S3
-''''''
-
-.. code-block::
-
-    sync_up_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
-    sync_down_template="aws s3 sync {source} {target} --exact-timestamps --only-show-errors"
-    delete_template="aws s3 rm {target} --recursive --only-show-errors"
-
-Google cloud storage
-''''''''''''''''''''
-
-.. code-block::
-
-    sync_up_template="gsutil rsync -r {source} {target}"
-    sync_down_template="down": "gsutil rsync -r {source} {target}"
-    delete_template="delete": "gsutil rm -r {target}"
-
-HDFS
-''''
-
-.. code-block::
-
-    sync_up_template="hdfs dfs -put -f {source} {target}"
-    sync_down_template="down": "hdfs dfs -get -f {source} {target}"
-    delete_template="delete": "hdfs dfs -rm -r {target}"
-
+You should configure shared storage. See this user guide: :ref:`tune-storage-options`.
 
 .. _tune-docker:
 
 How can I use Tune with Docker?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Tune automatically syncs files and checkpoints between different remote
-containers as needed.
+You should configure shared storage. See this user guide: :ref:`tune-storage-options`.
 
-.. _tune-kubernetes:
-
-How can I use Tune with Kubernetes?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Ray Tune automatically synchronizes files and checkpoints between different remote nodes as needed.
-This usually happens via the Ray object store, but this can be a :ref:`performance bottleneck <tune-bottlenecks>`,
-especially when running many trials in parallel.
-
-Instead you should use shared storage for checkpoints so that no additional synchronization across nodes
-is necessary. There are two main options.
-
-First, you can use the :ref:`SyncConfig <tune-sync-config>` to store your
-logs and checkpoints on cloud storage, such as AWS S3 or Google Cloud Storage:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __s3_start__
-    :end-before: __s3_end__
-
-Second, you can set up a shared file system like NFS. If you do this, disable automatic trial syncing:
-
-.. literalinclude:: doc_code/faq.py
-    :dedent:
-    :language: python
-    :start-after: __sync_config_start__
-    :end-before: __sync_config_end__
-
-
-Please note that we strongly encourage you to use one of these two options, as they will
-result in less overhead and provide naturally durable checkpoint storage.
 
 .. _tune-default-search-space:
 
@@ -748,17 +625,16 @@ Read about this in the :ref:`Search Space API <tune-search-space>` page.
 How do I access relative filepaths in my Tune training function?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's say you launch a Tune experiment from ``~/code/my_script.py``. By default, Tune
-changes the working directory of each worker from ``~/code`` to its corresponding trial
-directory (e.g. ``~/ray_results/exp_name/trial_0000x``). This default
-guarantees separate working directories for each worker process, avoiding conflicts when
-saving trial-specific outputs.
+Let's say you launch a Tune experiment with ``my_script.py`` from inside ``~/code``.
+By default, Tune changes the working directory of each worker to its corresponding trial
+directory (e.g. ``~/ray_results/exp_name/trial_0000x``). This guarantees separate working
+directories for each worker process, avoiding conflicts when saving trial-specific outputs.
 
-You can configure this by setting `chdir_to_trial_dir=False` in `tune.TuneConfig`.
+You can configure this by setting the `RAY_CHDIR_TO_TRIAL_DIR=0` environment variable.
 This explicitly tells Tune to not change the working directory
 to the trial directory, giving access to paths relative to the original working directory.
 One caveat is that the working directory is now shared between workers, so the
-:meth:`session.get_trial_dir() <ray.air.session.get_trial_dir>`
+:meth:`train.get_context().get_trial_dir() <ray.train.context.TrainContext.get_trial_dir>`
 API should be used to get the path for saving trial-specific outputs.
 
 .. literalinclude:: doc_code/faq.py
@@ -772,8 +648,8 @@ API should be used to get the path for saving trial-specific outputs.
 
     The `TUNE_ORIG_WORKING_DIR` environment variable was the original workaround for
     accessing paths relative to the original working directory. This environment
-    variable is deprecated, and the `chdir_to_trial_dir` flag described above should be
-    used instead.
+    variable is deprecated, and the `RAY_CHDIR_TO_TRIAL_DIR` environment variable above
+    should be used instead.
 
 
 .. _tune-multi-tenancy:

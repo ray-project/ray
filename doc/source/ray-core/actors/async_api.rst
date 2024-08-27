@@ -67,6 +67,7 @@ async frameworks like aiohttp, aioredis, etc.
     # NOTE: The outputs from the previous code block can show up in subsequent tests.
     # To prevent flakiness, we wait for the async calls finish.
     import time
+    print("Sleeping...")
     time.sleep(3)
 
 .. testoutput::

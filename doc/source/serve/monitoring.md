@@ -5,6 +5,7 @@
 This section helps you debug and monitor your Serve applications by:
 
 * viewing the Ray dashboard
+* viewing the `serve status` output
 * using Ray logging and Loki
 * inspecting built-in Ray Serve metrics
 * exporting metrics into Arize platform
@@ -14,7 +15,7 @@ This section helps you debug and monitor your Serve applications by:
 You can use the Ray dashboard to get a high-level overview of your Ray cluster and Ray Serve application's states.
 This includes details such as:
 * the number of deployment replicas currently running
-* logs for your Serve controller, deployment replicas, and HTTP proxies
+* logs for your Serve controller, deployment replicas, and proxies
 * the Ray nodes (i.e. machines) running in your Ray cluster.
 
 You can access the Ray dashboard at port 8265 at your cluster's URI.
@@ -46,6 +47,111 @@ To learn more about the Serve controller actor, the HTTP proxy actor(s), the dep
 
 For a detailed overview of the Ray dashboard, see the [dashboard documentation](observability-getting-started).
 
+(serve-in-production-inspecting)=
+
+## Inspect applications with the Serve CLI
+
+Two Serve CLI commands help you inspect a Serve application in production: `serve config` and `serve status`.
+If you have a remote cluster, `serve config` and `serve status` also has an `--address/-a` argument to access the cluster. See [VM deployment](serve-in-production-remote-cluster) for more information on this argument.
+
+`serve config` gets the latest config file that the Ray Cluster received. This config file represents the Serve application's goal state. The Ray Cluster constantly strives to reach and maintain this state by deploying deployments, and recovering failed replicas, and performing other relevant actions.
+
+Using the `serve_config.yaml` example from [the production guide](production-config-yaml):
+
+```console
+$ ray start --head
+$ serve deploy serve_config.yaml
+...
+
+$ serve config
+name: default
+route_prefix: /
+import_path: text_ml:app
+runtime_env:
+  pip:
+    - torch
+    - transformers
+deployments:
+- name: Translator
+  num_replicas: 1
+  user_config:
+    language: french
+- name: Summarizer
+  num_replicas: 1
+```
+
+`serve status` gets your Serve application's current status. This command reports the status of the `proxies` and the `applications` running on the Ray cluster.
+
+`proxies` lists each proxy's status. Each proxy is identified by the node ID of the node that it runs on. A proxy has three possible statuses:
+* `STARTING`: The proxy is starting up and is not yet ready to serve requests.
+* `HEALTHY`: The proxy is capable of serving requests. It is behaving normally.
+* `UNHEALTHY`: The proxy has failed its health-checks. It will be killed, and a new proxy will be started on that node.
+* `DRAINING`: The proxy is healthy but is closed to new requests. It may contain pending requests that are still being processed.
+* `DRAINED`: The proxy is closed to new requests. There are no pending requests.
+
+`applications` contains a list of applications, their overall statuses, and their deployments' statuses. Each entry in `applications` maps an application's name to four fields:
+* `status`: A Serve application has four possible overall statuses:
+    * `"NOT_STARTED"`: No application has been deployed on this cluster.
+    * `"DEPLOYING"`: The application is currently carrying out a `serve deploy` request. It is deploying new deployments or updating existing ones.
+    * `"RUNNING"`: The application is at steady-state. It has finished executing any previous `serve deploy` requests, and is attempting to maintain the goal state set by the latest `serve deploy` request.
+    * `"DEPLOY_FAILED"`: The latest `serve deploy` request has failed.
+* `message`: Provides context on the current status.
+* `deployment_timestamp`: A UNIX timestamp of when Serve received the last `serve deploy` request. The timestamp is calculated using the `ServeController`'s local clock.
+* `deployments`: A list of entries representing each deployment's status. Each entry maps a deployment's name to three fields:
+    * `status`: A Serve deployment has three possible statuses:
+        * `"UPDATING"`: The deployment is updating to meet the goal state set by a previous `deploy` request.
+        * `"HEALTHY"`: The deployment achieved the latest requests goal state.
+        * `"UNHEALTHY"`: The deployment has either failed to update, or has updated and has become unhealthy afterwards. This condition may be due to an error in the deployment's constructor, a crashed replica, or a general system or machine error.
+    * `replica_states`: A list of the replicas' states and the number of replicas in that state. Each replica has five possible states:
+        * `STARTING`: The replica is starting and not yet ready to serve requests.
+        * `UPDATING`: The replica is undergoing a `reconfigure` update.
+        * `RECOVERING`: The replica is recovering its state.
+        * `RUNNING`: The replica is running normally and able to serve requests.
+        * `STOPPING`: The replica is being stopped.
+    * `message`: Provides context on the current status.
+
+Use the `serve status` command to inspect your deployments after they are deployed and throughout their lifetime.
+
+Using the `serve_config.yaml` example from [an earlier section](production-config-yaml):
+
+```console
+$ ray start --head
+$ serve deploy serve_config.yaml
+...
+
+$ serve status
+proxies:
+  cef533a072b0f03bf92a6b98cb4eb9153b7b7c7b7f15954feb2f38ec: HEALTHY
+applications:
+  default:
+    status: RUNNING
+    message: ''
+    last_deployed_time_s: 1694041157.2211847
+    deployments:
+      Translator:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+      Summarizer:
+        status: HEALTHY
+        replica_states:
+          RUNNING: 1
+        message: ''
+```
+
+For Kubernetes deployments with KubeRay, tighter integrations of `serve status` with Kubernetes are available. See [Getting the status of Serve applications in Kubernetes](serve-getting-status-kubernetes).
+
+## Get application details in Python
+
+Call the `serve.status()` API to get Serve application details in Python. `serve.status()` returns the same information as the `serve status` CLI command inside a `dataclass`. Use this method inside a deployment or a Ray driver script to obtain live information about the Serve applications on the Ray cluster. For example, this `monitoring_app` reports all the `RUNNING` Serve applications on the cluster:
+
+```{literalinclude} doc_code/monitoring/monitor_deployment.py
+:start-after: __monitor_start__
+:end-before: __monitor_end__
+:language: python
+```
+
 (serve-logging)=
 ## Ray logging
 
@@ -53,7 +159,7 @@ To understand system-level behavior and to surface application-level details dur
 
 Ray Serve uses Python's standard `logging` module with a logger named `"ray.serve"`.
 By default, logs are emitted from actors both to `stderr` and on disk on each node at `/tmp/ray/session_latest/logs/serve/`.
-This includes both system-level logs from the Serve controller and HTTP proxy as well as access logs and custom user logs produced from within deployment replicas.
+This includes both system-level logs from the Serve controller and proxy as well as access logs and custom user logs produced from within deployment replicas.
 
 In development, logs are streamed to the driver Ray program (the Python script that calls `serve.run()` or the `serve run` CLI command), so it's convenient to keep the driver running while debugging.
 
@@ -73,9 +179,9 @@ Run this deployment using the `serve run` CLI command:
 $ serve run monitoring:say_hello
 
 2023-04-10 15:57:32,100	INFO scripts.py:380 -- Deploying from import path: "monitoring:say_hello".
-[2023-04-10 15:57:33]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
+[2023-04-10 15:57:33]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (ServeController pid=63503) INFO 2023-04-10 15:57:35,822 controller 63503 deployment_state.py:1168 - Deploying new version of deployment SayHello.
-(HTTPProxyActor pid=63513) INFO:     Started server process [63513]
+(ProxyActor pid=63513) INFO:     Started server process [63513]
 (ServeController pid=63503) INFO 2023-04-10 15:57:35,882 controller 63503 deployment_state.py:1386 - Adding 1 replica to deployment SayHello.
 2023-04-10 15:57:36,840	SUCC scripts.py:398 -- Deployed Serve app successfully.
 ```
@@ -86,7 +192,7 @@ $ serve run monitoring:say_hello
 (ServeController pid=63881)
 ```
 
-These messages are logs from Ray Serve [actors](actor-guide). They describe which actor (Serve controller, HTTP proxy, or deployment replica) created the log and what its process ID is (which is useful when distinguishing between different deployment replicas or HTTP proxies). The rest of these log messages are the actual log statements generated by the actor.
+These messages are logs from Ray Serve [actors](actor-guide). They describe which actor (Serve controller, proxy, or deployment replica) created the log and what its process ID is (which is useful when distinguishing between different deployment replicas or proxies). The rest of these log messages are the actual log statements generated by the actor.
 
 While `serve run` is running, we can query the deployment in a separate terminal window:
 
@@ -126,6 +232,145 @@ This controls which logs are written to STDOUT or files on disk.
 In addition to the standard Python logger, Serve supports custom logging. Custom logging lets you control what messages are written to STDOUT/STDERR, files on disk, or both.
 
 For a detailed overview of logging in Ray, see [Ray Logging](configure-logging).
+
+### Configure Serve logging
+From ray 2.9, the logging_config API configures logging for Ray Serve. You can configure
+logging for Ray Serve. Pass a dictionary or object of [LoggingConfig](../serve/api/doc/ray.serve.schema.LoggingConfig.rst)
+to the `logging_config` argument of `serve.run` or `@serve.deployment`.
+
+#### Configure logging format
+You can configure the JSON logging format by passing `encoding=JSON` to `logging_config`
+argument in `serve.run` or `@serve.deployment`
+
+::::{tab-set}
+
+:::{tab-item} serve.run
+```{literalinclude} doc_code/monitoring/logging_config.py
+:start-after: __serve_run_json_start__
+:end-before: __serve_run_json_end__
+:language: python
+```
+:::
+
+:::{tab-item} @serve.deployment
+```{literalinclude} doc_code/monitoring/logging_config.py
+:start-after: __deployment_json_start__
+:end-before: __deployment_json_end__
+:language: python
+```
+:::
+
+::::
+
+In the replica `Model` log file, you should see the following:
+
+```
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Model_*`
+
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:08,908", "deployment": "default_Model", "replica": "rdofcrh4", "message": "replica.py:855 - Started initializing replica."}
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:08,908", "deployment": "default_Model", "replica": "rdofcrh4", "message": "replica.py:877 - Finished initializing replica."}
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:10,127", "deployment": "default_Model", "replica": "rdofcrh4", "request_id": "f4f4b3c0-1cca-4424-9002-c887d7858525", "route": "/", "application": "default", "message": "replica.py:1068 - Started executing request to method '__call__'."}
+{"levelname": "INFO", "asctime": "2024-02-27 10:36:10,127", "deployment": "default_Model", "replica": "rdofcrh4", "request_id": "f4f4b3c0-1cca-4424-9002-c887d7858525", "route": "/", "application": "default", "message": "replica.py:373 - __CALL__ OK 0.6ms"}
+```
+
+:::{note}
+The `RAY_SERVE_ENABLE_JSON_LOGGING=1` environment variable is getting deprecated in the
+next release. To enable JSON logging globally, use `RAY_SERVE_LOG_ENCODING=JSON`.
+:::
+
+#### Disable access log
+
+:::{note}
+Access log is Ray Serve traffic log, it is printed to proxy log files and replica log files per request. Sometimes it is useful for debugging, but it can also be noisy.
+:::
+
+You can also disable the access log by passing `disable_access_log=True` to `logging_config` argument of `@serve.deployment`. For example:
+
+```{literalinclude} doc_code/monitoring/logging_config.py
+:start-after: __enable_access_log_start__
+:end-before:  __enable_access_log_end__
+:language: python
+```
+
+The `Model` replica log file doesn't include the Serve traffic log, you should only see the application log in the log file.
+
+```
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Model_*`
+
+INFO 2024-02-27 15:43:12,983 default_Model 4guj63jr replica.py:855 - Started initializing replica.
+INFO 2024-02-27 15:43:12,984 default_Model 4guj63jr replica.py:877 - Finished initializing replica.
+INFO 2024-02-27 15:43:13,492 default_Model 4guj63jr 2246c4bb-73dc-4524-bf37-c7746a6b3bba / <stdin>:5 - hello world
+```
+
+#### Configure logging in different deployments and applications
+You can also configure logging at the application level by passing `logging_config` to `serve.run`. For example:
+
+```{literalinclude} doc_code/monitoring/logging_config.py
+:start-after: __application_and_deployment_start__
+:end-before:  __application_and_deployment_end__
+:language: python
+```
+
+In the Router log file, you should see the following:
+
+```
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Router_*`
+
+INFO 2024-02-27 16:05:10,738 default_Router cwnihe65 replica.py:855 - Started initializing replica.
+INFO 2024-02-27 16:05:10,739 default_Router cwnihe65 replica.py:877 - Finished initializing replica.
+INFO 2024-02-27 16:05:11,233 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:1068 - Started executing request to method '__call__'.
+DEBUG 2024-02-27 16:05:11,234 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / <stdin>:7 - This debug message is from the router.
+INFO 2024-02-27 16:05:11,238 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / router.py:308 - Using router <class 'ray.serve._private.replica_scheduler.pow_2_scheduler.PowerOfTwoChoicesReplicaScheduler'>.
+DEBUG 2024-02-27 16:05:11,240 default_Router cwnihe65 long_poll.py:157 - LongPollClient <ray.serve._private.long_poll.LongPollClient object at 0x10daa5a80> received updates for keys: [(LongPollNamespace.DEPLOYMENT_CONFIG, DeploymentID(name='Model', app='default')), (LongPollNamespace.RUNNING_REPLICAS, DeploymentID(name='Model', app='default'))].
+INFO 2024-02-27 16:05:11,241 default_Router cwnihe65 pow_2_scheduler.py:255 - Got updated replicas for deployment 'Model' in application 'default': {'default#Model#256v3hq4'}.
+DEBUG 2024-02-27 16:05:11,241 default_Router cwnihe65 long_poll.py:157 - LongPollClient <ray.serve._private.long_poll.LongPollClient object at 0x10daa5900> received updates for keys: [(LongPollNamespace.DEPLOYMENT_CONFIG, DeploymentID(name='Model', app='default')), (LongPollNamespace.RUNNING_REPLICAS, DeploymentID(name='Model', app='default'))].
+INFO 2024-02-27 16:05:11,245 default_Router cwnihe65 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:373 - __CALL__ OK 12.2ms
+```
+
+In the Model log file, you should see the following:
+
+```
+# cat `ls /tmp/ray/session_latest/logs/serve/replica_default_Model_*`
+
+INFO 2024-02-27 16:05:10,735 default_Model 256v3hq4 replica.py:855 - Started initializing replica.
+INFO 2024-02-27 16:05:10,735 default_Model 256v3hq4 replica.py:877 - Finished initializing replica.
+INFO 2024-02-27 16:05:11,244 default_Model 256v3hq4 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:1068 - Started executing request to method '__call__'.
+INFO 2024-02-27 16:05:11,244 default_Model 256v3hq4 4db9445d-fc9e-490b-8bad-0a5e6bf30899 / replica.py:373 - __CALL__ OK 0.6ms
+```
+
+When you set `logging_config` at the application level, Ray Serve applies to all deployments in the application. When you set `logging_config` at the deployment level at the same time, the deployment level configuration will overrides the application level configuration.
+
+#### Configure logging for serve components
+You can also update logging configuration similar above to the Serve controller and proxies by passing `logging_config` to `serve.start`.
+
+```{literalinclude} doc_code/monitoring/logging_config.py
+:start-after: __configure_serve_component_start__
+:end-before:  __configure_serve_component_end__
+:language: python
+```
+
+### Set Request ID
+You can set a custom request ID for each HTTP request by including `X-Request-ID` in the request header and retrieve request ID from response. For example
+
+```{literalinclude} doc_code/monitoring/request_id.py
+:language: python
+```
+The custom request ID `123-234` can be seen in the access logs that are printed to the HTTP Proxy log files and deployment log files.
+
+HTTP proxy log file:
+```
+INFO 2023-07-20 13:47:54,221 http_proxy 127.0.0.1 123-234 / default http_proxy.py:538 - GET 200 8.9ms
+```
+
+Deployment log file:
+```
+(ServeReplica:default_Model pid=84006) INFO 2023-07-20 13:47:54,218 default_Model default_Model#yptKoo 123-234 / default replica.py:691 - __CALL__ OK 0.2ms
+```
+
+:::{note}
+The request ID is used to associate logs across the system. Avoid sending
+duplicate request IDs, which may lead to confusion when debugging.
+:::
 
 (serve-logging-loki)=
 ### Filtering logs with Loki
@@ -226,7 +471,7 @@ failed requests through the [Ray metrics monitoring infrastructure](dash-metrics
 
 :::{note}
 Different metrics are collected when Deployments are called
-via Python `ServeHandle` and when they are called via HTTP.
+via Python `DeploymentHandle` and when they are called via HTTP.
 
 See the list of metrics below marked for each.
 :::
@@ -240,108 +485,170 @@ The following metrics are exposed by Ray Serve:
    * - Name
      - Fields
      - Description
-   * - ``serve_deployment_request_counter`` [**]
+   * - ``ray_serve_deployment_request_counter_total`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of queries that have been processed in this replica.
-   * - ``serve_deployment_error_counter`` [**]
+   * - ``ray_serve_deployment_error_counter_total`` [**]
      - * deployment
        * replica
        * route
        * application
      - The number of exceptions that have occurred in the deployment.
-   * - ``serve_deployment_replica_starts`` [**]
+   * - ``ray_serve_deployment_replica_starts_total`` [**]
      - * deployment
        * replica
        * application
      - The number of times this replica has been restarted due to failure.
-   * - ``serve_deployment_replica_healthy``
+   * - ``ray_serve_deployment_replica_healthy``
      - * deployment
        * replica
        * application
      - Whether this deployment replica is healthy. 1 means healthy, 0 unhealthy.
-   * - ``serve_deployment_processing_latency_ms`` [**]
+   * - ``ray_serve_deployment_processing_latency_ms`` [**]
      - * deployment
        * replica
        * route
        * application
      - The latency for queries to be processed.
-   * - ``serve_replica_processing_queries`` [**]
+   * - ``ray_serve_replica_processing_queries`` [**]
      - * deployment
        * replica
        * application
      - The current number of queries being processed.
-   * - ``serve_replica_pending_queries`` [**]
-     - * deployment
-       * replica
-       * application
-     - The current number of pending queries.
-   * - ``serve_num_http_requests`` [*]
+   * - ``ray_serve_num_http_requests_total`` [*]
      - * route
        * method
        * application
+       * status_code
      - The number of HTTP requests processed.
-   * - ``serve_num_http_error_requests`` [*]
+   * - ``ray_serve_num_grpc_requests_total`` [*]
+     - * route
+       * method
+       * application
+       * status_code
+     - The number of gRPC requests processed.
+   * - ``ray_serve_num_http_error_requests_total`` [*]
      - * route
        * error_code
        * method
+       * application
      - The number of non-200 HTTP responses.
-   * - ``serve_num_router_requests`` [*]
+   * - ``ray_serve_num_grpc_error_requests_total`` [*]
+     - * route
+       * error_code
+       * method
+     - The number of non-OK gRPC responses.
+   * - ``ray_serve_num_ongoing_http_requests`` [*]
+     - * node_id
+       * node_ip_address
+     - The number of ongoing requests in the HTTP Proxy.
+   * - ``ray_serve_num_ongoing_grpc_requests`` [*]
+     - * node_id
+       * node_ip_address
+     - The number of ongoing requests in the gRPC Proxy.
+   * - ``ray_serve_num_router_requests_total`` [*]
      - * deployment
        * route
        * application
+       * handle
+       * actor_id
      - The number of requests processed by the router.
-   * - ``serve_handle_request_counter`` [**]
+   * - ``ray_serve_num_scheduling_tasks`` [*][†]
+     - * deployment
+       * actor_id
+     - The number of request scheduling tasks in the router.
+   * - ``ray_serve_num_scheduling_tasks_in_backoff`` [*][†]
+     - * deployment
+       * actor_id
+     - The number of request scheduling tasks in the router that are undergoing backoff.
+   * - ``ray_serve_handle_request_counter_total`` [**]
      - * handle
        * deployment
        * route
        * application
-     - The number of requests processed by this ServeHandle.
-   * - ``serve_deployment_queued_queries`` [*]
+     - The number of requests processed by this DeploymentHandle.
+   * - ``ray_serve_deployment_queued_queries`` [*]
      - * deployment
-       * route
-     - The number of queries for this deployment waiting to be assigned to a replica.
-   * - ``serve_num_deployment_http_error_requests`` [*]
+       * application
+       * handle
+       * actor_id
+     - The current number of requests to this deployment that have been submitted to a replica.
+   * - ``ray_serve_num_ongoing_requests_at_replicas`` [*]
+     - * deployment
+       * application
+       * handle
+       * actor_id
+     - The current number of requests to this deployment that's been assigned and sent to execute on a replica.
+   * - ``ray_serve_num_deployment_http_error_requests_total`` [*]
      - * deployment
        * error_code
        * method
        * route
        * application
      - The number of non-200 HTTP responses returned by each deployment.
-   * - ``serve_http_request_latency_ms`` [*]
-     - * route
+   * - ``ray_serve_num_deployment_grpc_error_requests_total`` [*]
+     - * deployment
+       * error_code
+       * method
+       * route
        * application
+     - The number of non-OK gRPC responses returned by each deployment.
+   * - ``ray_serve_http_request_latency_ms`` [*]
+     - * method
+       * route
+       * application
+       * status_code
      - The end-to-end latency of HTTP requests (measured from the Serve HTTP proxy).
-   * - ``serve_multiplexed_model_load_latency_s``
+   * - ``ray_serve_grpc_request_latency_ms`` [*]
+     - * method
+       * route
+       * application
+       * status_code
+     - The end-to-end latency of gRPC requests (measured from the Serve gRPC proxy).
+   * - ``ray_serve_multiplexed_model_load_latency_ms``
      - * deployment
        * replica
        * application
      - The time it takes to load a model.
-   * - ``serve_multiplexed_model_unload_latency_s``
+   * - ``ray_serve_multiplexed_model_unload_latency_ms``
      - * deployment
        * replica
        * application
      - The time it takes to unload a model.
-   * - ``serve_num_multiplexed_models``
+   * - ``ray_serve_num_multiplexed_models``
      - * deployment
        * replica
        * application
      - The number of models loaded on the current replica.
-   * - ``serve_multiplexed_models_unload_counter``
+   * - ``ray_serve_multiplexed_models_unload_counter_total``
      - * deployment
        * replica
        * application
      - The number of times models unloaded on the current replica.
-   * - ``serve_multiplexed_models_load_counter``
+   * - ``ray_serve_multiplexed_models_load_counter_total``
      - * deployment
        * replica
        * application
      - The number of times models loaded on the current replica.
+   * - ``ray_serve_registered_multiplexed_model_id``
+     - * deployment
+       * replica
+       * application
+       * model_id
+     - The mutliplexed model ID registered on the current replica.
+   * - ``ray_serve_multiplexed_get_model_requests_counter_total``
+     - * deployment
+       * replica
+       * application
+     - The number of calls to get a multiplexed model.
 ```
-[*] - only available when using HTTP calls
-[**] - only available when using Python `ServeHandle` calls
+
+[*] - only available when using proxy calls</br>
+[**] - only available when using Python `DeploymentHandle` calls</br>
+[†] - developer metrics for advanced usage; may change in future releases
 
 To see this in action, first run the following command to start Ray and set up the metrics export port:
 
@@ -383,12 +690,18 @@ Here's an example:
 The emitted logs include:
 
 ```
-# HELP ray_my_counter The number of odd-numbered requests to this deployment.
-# TYPE ray_my_counter gauge
-ray_my_counter{..., deployment="MyDeployment",model="123",replica="MyDeployment#rUVqKh"} 5.0
+# HELP ray_my_counter_total The number of odd-numbered requests to this deployment.
+# TYPE ray_my_counter_total counter
+ray_my_counter_total{..., deployment="MyDeployment",model="123",replica="MyDeployment#rUVqKh"} 5.0
 ```
 
 See the [Ray Metrics documentation](collect-metrics) for more details, including instructions for scraping these metrics using Prometheus.
+
+## Profiling memory
+
+Ray provides two useful metrics to track memory usage: `ray_component_rss_mb` (resident set size) and `ray_component_mem_shared_bytes` (shared memory). Approximate a Serve actor's memory usage by subtracting its shared memory from its resident set size (i.e. `ray_component_rss_mb` - `ray_component_mem_shared_bytes`).
+
+If you notice a memory leak on a Serve actor, use `memray` to debug (`pip install memray`). Set the env var `RAY_SERVE_ENABLE_MEMORY_PROFILING=1`, and run your Serve application. All the Serve actors will run a `memray` tracker that logs their memory usage to `bin` files in the `/tmp/ray/session_latest/logs/serve/` directory. Run the `memray flamegraph [bin file]` command to generate a flamegraph of the memory usage. See the [memray docs](https://bloomberg.github.io/memray/overview.html) for more info.
 
 ## Exporting metrics into Arize
 Besides using Prometheus to check out Ray metrics, Ray Serve also has the flexibility to export the metrics into other observability platforms.

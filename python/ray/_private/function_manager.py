@@ -1,4 +1,5 @@
 import dis
+import sys
 import hashlib
 import importlib
 import inspect
@@ -27,7 +28,11 @@ from ray._private.utils import (
     format_error_message,
 )
 from ray._private.serialization import pickle_dumps
-from ray._raylet import JobID, PythonFunctionDescriptor, WORKER_SETUP_HOOK_KEY_NAME_GCS
+from ray._raylet import (
+    JobID,
+    PythonFunctionDescriptor,
+    WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS,
+)
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
@@ -47,11 +52,6 @@ def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]
         return b":".join([key_type, job_id.hex().encode()])
     else:
         return b":".join([key_type, job_id.hex().encode(), key])
-
-
-def make_export_key(pos: int, job_id: JobID) -> bytes:
-    # big-endian for ordering in binary
-    return make_function_table_key(b"IsolatedExports", job_id, pos.to_bytes(8, "big"))
 
 
 class FunctionActorManager:
@@ -87,12 +87,10 @@ class FunctionActorManager:
         # Deserialize an ActorHandle will call load_actor_class(). If a
         # function closure captured an ActorHandle, the deserialization of the
         # function will be:
-        #     import_thread.py
         #         -> fetch_and_register_remote_function (acquire lock)
         #         -> _load_actor_class_from_gcs (acquire lock, too)
         # So, the lock should be a reentrant lock.
         self.lock = threading.RLock()
-        self.cv = threading.Condition(lock=self.lock)
 
         self.execution_infos = {}
         # This is the counter to keep track of how many keys have already
@@ -146,39 +144,13 @@ class FunctionActorManager:
         except Exception:
             return None
 
-    def export_key(self, key):
-        """Export a key so it can be imported by other workers"""
-
-        # It's going to check all the keys until if reserve one key not
-        # existing in the cluster.
-        # One optimization is that we can use importer counter since
-        # it's sure keys before this counter has been allocated.
-        with self._export_lock:
-            while True:
-                self._num_exported += 1
-                holder = make_export_key(
-                    self._num_exported, self._worker.current_job_id
-                )
-                # This step is atomic since internal kv is a single thread
-                # atomic db.
-                if (
-                    self._worker.gcs_client.internal_kv_put(
-                        holder, key, False, KV_NAMESPACE_FUNCTION_TABLE
-                    )
-                    > 0
-                ):
-                    break
-        # Notify all subscribers that there is a new function exported. Note
-        # that the notification doesn't include any actual data.
-        # TODO(mwtian) implement per-job notification here.
-        self._worker.gcs_publisher.publish_function_key(key)
-
     def export_setup_func(
         self, setup_func: Callable, timeout: Optional[int] = None
     ) -> bytes:
         """Export the setup hook function and return the key."""
         pickled_function = pickle_dumps(
-            setup_func, f"Cannot serialize the worker_setup_hook {setup_func.__name__}"
+            setup_func,
+            "Cannot serialize the worker_process_setup_hook " f"{setup_func.__name__}",
         )
 
         function_to_run_id = hashlib.shake_128(pickled_function).digest(
@@ -187,7 +159,7 @@ class FunctionActorManager:
         key = make_function_table_key(
             # This value should match with gcs_function_manager.h.
             # Otherwise, it won't be GC'ed.
-            WORKER_SETUP_HOOK_KEY_NAME_GCS.encode(),
+            WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS.encode(),
             # b"FunctionsToRun",
             self._worker.current_job_id.binary(),
             function_to_run_id,
@@ -327,7 +299,8 @@ class FunctionActorManager:
                         "The remote function failed to import on the "
                         "worker. This may be because needed library "
                         "dependencies are not installed in the worker "
-                        "environment:\n\n{}".format(traceback_str)
+                        "environment or cannot be found from sys.path "
+                        f"{sys.path}:\n\n{traceback_str}"
                     )
 
                 # Use a placeholder method when function pickled failed
@@ -472,9 +445,6 @@ class FunctionActorManager:
                         job_id=job_id,
                     )
                 warning_sent = True
-            # Try importing in case the worker did not get notified, or the
-            # importer thread did not run.
-            self._worker.import_thread._do_importing()
             time.sleep(0.001)
 
     def export_actor_class(

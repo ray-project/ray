@@ -31,7 +31,10 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(
   std::string bootstrap_address = JavaStringToNativeString(env, j_bootstrap_address);
   std::string redis_password = JavaStringToNativeString(env, j_redis_passowrd);
   gcs::GlobalStateAccessor *gcs_accessor = nullptr;
-  ray::gcs::GcsClientOptions client_options(bootstrap_address);
+  ray::gcs::GcsClientOptions client_options(bootstrap_address,
+                                            ray::ClusterID::Nil(),
+                                            /*allow_cluster_id_nil=*/true,
+                                            /*fetch_cluster_id_if_nil=*/false);
   gcs_accessor = new gcs::GlobalStateAccessor(client_options);
   return reinterpret_cast<jlong>(gcs_accessor);
 }
@@ -82,9 +85,23 @@ Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllNodeInfo(JNIEnv *env,
 
 JNIEXPORT jobject JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetAllActorInfo(
-    JNIEnv *env, jobject o, jlong gcs_accessor_ptr) {
+    JNIEnv *env,
+    jobject o,
+    jlong gcs_accessor_ptr,
+    jbyteArray j_job_id,
+    jstring j_actor_state_name) {
+  std::optional<JobID> job_id = std::nullopt;
+  std::optional<std::string> actor_state_name = std::nullopt;
+  if (j_job_id != NULL) {
+    job_id = std::make_optional<JobID>(JavaByteArrayToId<JobID>(env, j_job_id));
+  }
+  if (j_actor_state_name != NULL) {
+    actor_state_name = std::make_optional<std::string>(
+        JavaStringToNativeString(env, j_actor_state_name));
+  }
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
-  auto actor_info_list = gcs_accessor->GetAllActorInfo();
+  auto actor_info_list =
+      gcs_accessor->GetAllActorInfo(std::nullopt, job_id, actor_state_name);
   return NativeVectorToJavaList<std::string>(
       env, actor_info_list, [](JNIEnv *env, const std::string &str) {
         return NativeStringToJavaByteArray(env, str);
@@ -95,8 +112,8 @@ JNIEXPORT jbyteArray JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeGetActorInfo(JNIEnv *env,
                                                                jobject o,
                                                                jlong gcs_accessor_ptr,
-                                                               jbyteArray actorId) {
-  const auto actor_id = JavaByteArrayToId<ActorID>(env, actorId);
+                                                               jbyteArray j_actor_id) {
+  const auto actor_id = JavaByteArrayToId<ActorID>(env, j_actor_id);
   auto *gcs_accessor = reinterpret_cast<gcs::GlobalStateAccessor *>(gcs_accessor_ptr);
   auto actor_info = gcs_accessor->GetActorInfo(actor_id);
   if (actor_info) {

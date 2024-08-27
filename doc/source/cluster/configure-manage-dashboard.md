@@ -45,6 +45,10 @@ When you start a single-node Ray cluster on your laptop, you can access the dash
 
 When you start a remote Ray cluster with the {ref}`VM cluster launcher <vm-cluster-quick-start>`, {ref}`KubeRay operator <kuberay-quickstart>`, or manual configuration, the Ray Dashboard launches on the head node but the dashboard port may not be publicly exposed. You need an additional setup to access the Ray Dashboard from outside the head node.
 
+:::{danger}
+For security purpose, do not expose Ray Dashboard publicly without proper authentication in place.
+:::
+
 ::::{tab-set}
 
 :::{tab-item} VM Cluster Launcher
@@ -67,13 +71,13 @@ Dashboard from within the Kubernetes cluster at ``http://<RayCluster name>-head-
 There are two ways to expose Dashboard outside the Cluster:
 
 **1. Setting up ingress** <br/>
-Follow the [instructions](https://github.com/ray-project/kuberay/blob/master/docs/guidance/ingress.md) to set up ingress to access Ray Dashboard.
+Follow the [instructions](kuberay-ingress) to set up ingress to access Ray Dashboard. **The Ingress must only allows access from trusted sources.**
 
 **2. Port forwarding** <br/>
 You can also view the dashboard from outside the Kubernetes cluster by using port-forwarding:
 
 ```shell
-$ kubectl port-forward --address 0.0.0.0 service/${RAYCLUSTER_NAME}-head-svc 8265:8265 
+$ kubectl port-forward service/${RAYCLUSTER_NAME}-head-svc 8265:8265 
 # Visit ${YOUR_IP}:8265 for the Dashboard (e.g. 127.0.0.1:8265 or ${YOUR_VM_IP}:8265)
 ```
 
@@ -87,7 +91,6 @@ For more information about configuring network access to a Ray cluster on Kubern
 :::
 
 ::::
-
 
 ## Running behind a reverse proxy
 
@@ -123,9 +126,14 @@ Below is an example with a [traefik](https://doc.traefik.io/traefik/getting-star
         url = "http://localhost:8265"
 ```
 
+```{admonition} Warning
+:class: warning
+The Ray Dashboard provides read **and write** access to the Ray Cluster. The reverse proxy must provide authentication or network ingress controls to prevent unauthorized access to the Cluster.
+```
+
 ## Disabling the Dashboard
 
-Dashboard is included if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` and automatically started.
+Dashboard is included if you use `ray[default]` or {ref}`other installation commands <installation>` and automatically started.
 
 To disable Dashboard, use the following arguments `--include-dashboard`.
 
@@ -190,17 +198,20 @@ Grafana is a tool that supports advanced visualizations of Prometheus metrics an
 ### Embedding Grafana visualizations into Ray Dashboard
 To view embedded time-series visualizations in Ray Dashboard, the following must be set up:
 
-1. The head node of the cluster is able to access Prometheus and Grafana
+1. The head node of the cluster is able to access Prometheus and Grafana.
 2. The browser of the dashboard user is able to access Grafana. 
 
 Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`, `RAY_PROMETHEUS_NAME`, and `RAY_GRAFANA_IFRAME_HOST` environment variables when you start the Ray Clusters.
 
 * Set `RAY_GRAFANA_HOST` to an address that the head node can use to access Grafana. Head node does health checks on Grafana on the backend.
 * Set `RAY_PROMETHEUS_HOST` to an address the head node can use to access Prometheus.
-* Set `RAY_PROMETHEUS_NAME` is used when you select a different data source to use for the Grafana dashboard panles. Default is "Prometheus".
+* Set `RAY_PROMETHEUS_NAME` to select a different data source to use for the Grafana dashboard panels to use. Default is "Prometheus".
 * Set `RAY_GRAFANA_IFRAME_HOST` to an address that the user's browsers can use to access Grafana and embed visualizations. If `RAY_GRAFANA_IFRAME_HOST` is not set, Ray Dashboard uses the value of `RAY_GRAFANA_HOST`.
 
-For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value to `RAY_GRAFANA_HOST=55.66.77.88:3000`.
+For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
+* If you start a single-node Ray Cluster manually, make sure these environment variables are set and accessible before you start the cluster or as a prefix to the `ray start ...` command, e.g., `RAY_GRAFANA_HOST=http://55.66.77.88:3000 ray start ...`
+* If you start a Ray Cluster with {ref}`VM Cluster Launcher <cloud-vm-index>`, the environment variables should be set under `head_start_ray_commands` as a prefix to the `ray start ...` command.
+* If you start a Ray Cluster with {ref}`KubeRay <kuberay-index>`, refer to this {ref}`tutorial <kuberay-prometheus-grafana>`.
 
 If all the environment variables are set properly, you should see time-series metrics in {ref}`Ray Dashboard <observability-getting-started>`.
 
@@ -229,7 +240,7 @@ When both Grafana and the Ray Cluster are on the same Kubernetes cluster, set `R
 
 
 #### User authentication for Grafana
-When the Grafana instance requires user authentication, the following settings have to be in its `configuration file <https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/>`_ to correctly embed in Ray Dashboard:
+When the Grafana instance requires user authentication, the following settings have to be in its [configuration file](https://grafana.com/docs/grafana/latest/setup-grafana/configure-grafana/) to correctly embed in Ray Dashboard:
 
 ```ini
   [security]
@@ -240,8 +251,15 @@ When the Grafana instance requires user authentication, the following settings h
 
 #### Troubleshooting
 
-##### Grafana dashboards are not embedded in the Ray dashboard
-If you're getting an error that says `RAY_GRAFANA_HOST` is not setup despite having set it up, check that:
+##### Dashboard message: either Prometheus or Grafana server is not deteced
+If you have followed the instructions above to set up everything, run the connection checks below in your browser:
+* check Head Node connection to Prometheus server: add `api/prometheus_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/prometheus_health)and visit it.
+* check Head Node connection to Grafana server: add `api/grafana_health` to the end of Ray Dashboard URL (for example: http://127.0.0.1:8265/api/grafana_health) and visit it.
+* check browser connection to Grafana server: visit the URL used in `RAY_GRAFANA_IFRAME_HOST`.
+
+
+##### Getting an error that says `RAY_GRAFANA_HOST` is not setup
+If you have set up Grafana , check that:
 * You've included the protocol in the URL (e.g., `http://your-grafana-url.com` instead of `your-grafana-url.com`).
 * The URL doesn't have a trailing slash (e.g., `http://your-grafana-url.com` instead of `http://your-grafana-url.com/`).
 

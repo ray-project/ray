@@ -11,15 +11,15 @@ from ray.rllib.connectors.connector import (
 )
 from ray.rllib.connectors.registry import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.filter import Filter
 from ray.rllib.utils.filter import MeanStdFilter, ConcurrentMeanStdFilter
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import AgentConnectorDataType
-from ray.util.annotations import PublicAPI
 from ray.rllib.utils.filter import RunningStat
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
     """A connector used to mean-std-filter observations.
 
@@ -149,7 +149,7 @@ class MeanStdObservationFilterAgentConnector(SyncedFilterAgentConnector):
         return self.filter.sync(other.filter)
 
 
-@PublicAPI(stability="alpha")
+@OldAPIStack
 class ConcurrentMeanStdObservationFilterAgentConnector(
     MeanStdObservationFilterAgentConnector
 ):

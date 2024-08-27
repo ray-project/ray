@@ -5,12 +5,7 @@ set -euxo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-PY_VERSIONS=("3.7"
-             "3.8"
-             "3.9"
-             "3.10"
-             "3.11"
-             )
+PY_VERSIONS=("3.9" "3.10" "3.11" "3.12")
 
 bazel_preclean() {
   "${WORKSPACE_DIR}"/ci/run/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
@@ -69,8 +64,9 @@ install_ray() {
   (
     pip install wheel
 
-    pushd dashboard/client
-      choco install nodejs  -y
+
+    pushd python/ray/dashboard/client
+      choco install nodejs --version=22.4.1 -y
       refreshenv
       # https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
       export NODE_OPTIONS=--openssl-legacy-provider
@@ -94,8 +90,23 @@ build_wheel_windows() {
   uninstall_ray || ray_uninstall_status=1
 
   local local_dir="python/dist"
+  {
+    echo "build --announce_rc";  
+    echo "build --config=ci";
+    echo "startup --output_user_root=c:/raytmp";
+    echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}";
+  } >> ~/.bazelrc
+
+  if [[ "${BUILDKITE_PIPELINE_ID:-}" == "0189942e-0876-4b8f-80a4-617f988ec59b" || "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
+    # Do not upload cache results for premerge pipeline
+    echo "build --remote_upload_local_results=false" >> ~/.bazelrc
+  fi
+
   for pyversion in "${PY_VERSIONS[@]}"; do
-    if [ -z "${pyversion}" ]; then continue; fi
+    if [[ "${BUILD_ONE_PYTHON_ONLY:-}" != "" && "${pyversion}" != "${BUILD_ONE_PYTHON_ONLY}" ]]; then
+      continue
+    fi
+
     bazel_preclean
     git clean -q -f -f -x -d -e "${local_dir}" -e python/ray/dashboard/client
     git checkout -q -f -- .
@@ -103,7 +114,7 @@ build_wheel_windows() {
     # Start a subshell to prevent PATH and cd from affecting our shell environment
     (
       if ! is_python_version "${pyversion}"; then
-        conda install -y python="${pyversion}"
+        conda install -y conda=24.1.2 python="${pyversion}"
       fi
       if ! is_python_version "${pyversion}"; then
         echo "Expected pip for Python ${pyversion} but found Python $(get_python_version) with $(pip --version); exiting..." 1>&2
@@ -113,9 +124,9 @@ build_wheel_windows() {
       unset PYTHON2_BIN_PATH PYTHON3_BIN_PATH  # make sure these aren't set by some chance
       install_ray
       cd "${WORKSPACE_DIR}"/python
-      # Set the commit SHA in __init__.py.
+      # Set the commit SHA in _version.py.
       if [ -n "$BUILDKITE_COMMIT" ]; then
-        sed -i.bak "s/{{RAY_COMMIT_SHA}}/$BUILDKITE_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
+        sed -i.bak "s/{{RAY_COMMIT_SHA}}/$BUILDKITE_COMMIT/g" ray/_version.py && rm ray/_version.py.bak
       else
         echo "BUILDKITE_COMMIT variable not set - required to populated ray.__commit__."
         exit 1

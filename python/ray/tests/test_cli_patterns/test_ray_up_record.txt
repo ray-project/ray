@@ -73,9 +73,9 @@
 .+\.py.*Full command is `ssh.+`
 .+\.py.*NodeUpdater: i-.+: Setup commands succeeded \[LogTimer=.+\]
 .+\.py.*\[7/7\] Starting the Ray runtime
-.+\.py.*Running `export RAY_USAGE_STATS_ENABLED=1;export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray stop`
+.+\.py.*Running `export RAY_USAGE_STATS_ENABLED=1;export RAY_OVERRIDE_RESOURCES='{"CPU":1}';export RAY_OVERRIDE_LABELS='{"key1":"value1"}';ray stop`
 .+\.py.*Full command is `ssh.+`
-.+\.py.*Running `export RAY_USAGE_STATS_ENABLED=1;export RAY_OVERRIDE_RESOURCES='{"CPU":1}';ray start --head --autoscaling-config=~/ray_bootstrap_config\.yaml`
+.+\.py.*Running `export RAY_USAGE_STATS_ENABLED=1;export RAY_OVERRIDE_RESOURCES='{"CPU":1}';export RAY_OVERRIDE_LABELS='{"key1":"value1"}';ray start --head --autoscaling-config=~/ray_bootstrap_config\.yaml`
 .+\.py.*Full command is `ssh.+`
 .+\.py.*NodeUpdater: i-.+: Ray start commands succeeded \[LogTimer=.+\]
 .+\.py.*NodeUpdater: i-.+: Applied config .+  \[LogTimer=.+\]
@@ -83,10 +83,16 @@
 .+\.py.*AWSNodeProvider: Set tag ray-runtime-config=.+ on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*AWSNodeProvider: Set tag ray-file-mounts-contents=.+ on \['.+'\]  \[LogTimer=.+\]
 .+\.py.*New status: up-to-date
-.+\.py.*Useful commands
-.+\.py.*Monitor autoscaling with
-.+\.py.*  ray exec .+ 'tail -n 100 -f .+
-.+\.py.*Connect to a terminal on the cluster head:
+.+\.py.*Useful commands:
+.+\.py.*To terminate the cluster:
+.+\.py.*  ray down .+
+.+\.py.*To retrieve the IP address of the cluster head:
+.+\.py.*  ray get-head-ip .+
+.+\.py.*To port-forward the cluster's Ray Dashboard to the local machine:
+.+\.py.*  ray dashboard .+
+.+\.py.*To submit a job to the cluster, port-forward the Ray Dashboard in another terminal and run:
+.+\.py.*  ray job submit --address .+
+.+\.py.*To connect to a terminal on the cluster head for debugging:
 .+\.py.*  ray attach .+
-.+\.py.*Get a remote shell to the cluster manually:
-.+\.py.*  ssh.+\.pem.+
+.+\.py.*To monitor autoscaling:
+.+\.py.*  ray exec .+ 'tail -n 100 -f /tmp/ray/session_latest/logs/monitor\*'

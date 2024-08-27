@@ -38,7 +38,7 @@ import click
 from pybuildkite.buildkite import Buildkite
 
 BUILDKITE_ORGANIZATION = "ray-project"
-BUILDKITE_PIPELINE = "release-tests-branch"
+BUILDKITE_PIPELINE = "release"
 
 # Format: job name regex --> filename to save results to
 RESULTS_TO_FETCH = {
@@ -199,16 +199,18 @@ def write_results(log_dir: Path, fetched_results: Dict[str, Any]) -> None:
 
 @click.command()
 @click.argument("version", required=True)
-def main(version: str):
+@click.argument("commit", required=True)
+@click.argument("branch", required=True)
+def main(version: str, commit: str, branch: str):
     log_dir = Path(__file__).parent.joinpath(version)
-    branch = f"releases/{version}"
 
     bk = get_buildkite_api()
     build_dict_list = bk.builds().list_all_for_pipeline(
-        organization=BUILDKITE_ORGANIZATION, pipeline=BUILDKITE_PIPELINE, branch=branch
+        organization=BUILDKITE_ORGANIZATION,
+        pipeline=BUILDKITE_PIPELINE,
+        branch=branch,
+        commit=commit,
     )
-    breakpoint()
-
     fetched_results = get_results_from_build_collection(bk, build_dict_list)
     write_results(log_dir, fetched_results)
 

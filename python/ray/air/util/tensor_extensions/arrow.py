@@ -1,18 +1,19 @@
 import itertools
+import json
+import logging
 import sys
-from typing import Iterable, Optional, Tuple, List, Sequence, Union
+from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
-from pkg_resources._vendor.packaging.version import parse as parse_version
 import numpy as np
 import pyarrow as pa
+from packaging.version import parse as parse_version
 
+from ray._private.utils import _get_pyarrow_version
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
 )
-from ray._private.utils import _get_pyarrow_version
-from ray.util.annotations import PublicAPI
-
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 PYARROW_VERSION = _get_pyarrow_version()
 if PYARROW_VERSION is not None:
@@ -25,6 +26,21 @@ MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
+
+logger = logging.getLogger(__name__)
+
+
+@DeveloperAPI
+class ArrowConversionError(Exception):
+    """Error raised when there is an issue converting data to Arrow."""
+
+    MAX_DATA_STR_LEN = 200
+
+    def __init__(self, data_str: str):
+        if len(data_str) > self.MAX_DATA_STR_LEN:
+            data_str = data_str[: self.MAX_DATA_STR_LEN] + "..."
+        message = f"Error converting data to Arrow: {data_str}"
+        super().__init__(message)
 
 
 def _arrow_supports_extension_scalars():
@@ -52,8 +68,34 @@ def _arrow_extension_scalars_are_subclassable():
     )
 
 
+@DeveloperAPI
+def pyarrow_table_from_pydict(
+    pydict: Dict[str, Union[List[Any], pa.Array]],
+) -> pa.Table:
+    """
+    Convert a Python dictionary to a pyarrow Table.
+
+    Raises:
+        ArrowConversionError: if the conversion fails.
+    """
+    try:
+        return pa.Table.from_pydict(pydict)
+    except Exception as e:
+        raise ArrowConversionError(str(pydict)) from e
+
+
+@DeveloperAPI
+def convert_list_to_pyarrow_array(
+    val: List[Any], enclosing_dict: Dict[str, Any]
+) -> pa.Array:
+    try:
+        return pa.array(val)
+    except Exception as e:
+        raise ArrowConversionError(str(enclosing_dict)) from e
+
+
 @PublicAPI(stability="beta")
-class ArrowTensorType(pa.PyExtensionType):
+class ArrowTensorType(pa.ExtensionType):
     """
     Arrow ExtensionType for an array of fixed-shaped, homogeneous-typed
     tensors.
@@ -73,7 +115,7 @@ class ArrowTensorType(pa.PyExtensionType):
             dtype: pyarrow dtype of tensor elements.
         """
         self._shape = shape
-        super().__init__(pa.list_(dtype))
+        super().__init__(pa.list_(dtype), "ray.data.arrow_tensor")
 
     @property
     def shape(self):
@@ -99,7 +141,18 @@ class ArrowTensorType(pa.PyExtensionType):
         return TensorDtype(self._shape, self.storage_type.value_type.to_pandas_dtype())
 
     def __reduce__(self):
-        return ArrowTensorType, (self._shape, self.storage_type.value_type)
+        return self.__arrow_ext_deserialize__, (
+            self.storage_type,
+            self.__arrow_ext_serialize__(),
+        )
+
+    def __arrow_ext_serialize__(self):
+        return json.dumps(self._shape).encode()
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        shape = tuple(json.loads(serialized))
+        return cls(shape, storage_type.value_type)
 
     def __arrow_ext_class__(self):
         """
@@ -277,7 +330,9 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
     @classmethod
     def from_numpy(
-        cls, arr: Union[np.ndarray, Iterable[np.ndarray]]
+        cls,
+        arr: Union[np.ndarray, Iterable[np.ndarray]],
+        column_name: Optional[str] = None,
     ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
         """
         Convert an ndarray or an iterable of ndarrays to an array of homogeneous-typed
@@ -287,6 +342,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
         Args:
             arr: An ndarray or an iterable of ndarrays.
+            column_name: Optional. Used only in logging outputs to provide
+                additional details.
 
         Returns:
             - If fixed-shape tensor elements, an ``ArrowTensorArray`` containing
@@ -295,6 +352,9 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
               containing ``len(arr)`` tensors of variable shape.
             - If scalar elements, a ``pyarrow.Array``.
         """
+        if not isinstance(arr, np.ndarray) and isinstance(arr, Iterable):
+            arr = list(arr)
+
         if isinstance(arr, (list, tuple)) and arr and isinstance(arr[0], np.ndarray):
             # Stack ndarrays and pass through to ndarray handling logic below.
             try:
@@ -302,63 +362,75 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             except ValueError:
                 # ndarray stacking may fail if the arrays are heterogeneously-shaped.
                 arr = np.array(arr, dtype=object)
-        if isinstance(arr, np.ndarray):
-            if len(arr) > 0 and np.isscalar(arr[0]):
-                # Elements are scalar so a plain Arrow Array will suffice.
-                return pa.array(arr)
-            if _is_ndarray_variable_shaped_tensor(arr):
-                # Tensor elements have variable shape, so we delegate to
-                # ArrowVariableShapedTensorArray.
-                return ArrowVariableShapedTensorArray.from_numpy(arr)
-            if not arr.flags.c_contiguous:
-                # We only natively support C-contiguous ndarrays.
-                arr = np.ascontiguousarray(arr)
-            pa_dtype = pa.from_numpy_dtype(arr.dtype)
-            if pa.types.is_string(pa_dtype):
-                if arr.dtype.byteorder == ">" or (
-                    arr.dtype.byteorder == "=" and sys.byteorder == "big"
-                ):
-                    raise ValueError(
-                        "Only little-endian string tensors are supported, "
-                        f"but got: {arr.dtype}",
-                    )
-                pa_dtype = pa.binary(arr.dtype.itemsize)
-            outer_len = arr.shape[0]
-            element_shape = arr.shape[1:]
-            total_num_items = arr.size
-            num_items_per_element = np.prod(element_shape) if element_shape else 1
-
-            # Data buffer.
-            if pa.types.is_boolean(pa_dtype):
-                # NumPy doesn't represent boolean arrays as bit-packed, so we manually
-                # bit-pack the booleans before handing the buffer off to Arrow.
-                # NOTE: Arrow expects LSB bit-packed ordering.
-                # NOTE: This creates a copy.
-                arr = np.packbits(arr, bitorder="little")
-            data_buffer = pa.py_buffer(arr)
-            data_array = pa.Array.from_buffers(
-                pa_dtype, total_num_items, [None, data_buffer]
+        if not isinstance(arr, np.ndarray):
+            raise ValueError(
+                f"Must give ndarray or iterable of ndarrays, got {type(arr)} {arr}"
             )
 
-            # Offset buffer.
-            offset_buffer = pa.py_buffer(
-                cls.OFFSET_DTYPE(
-                    [i * num_items_per_element for i in range(outer_len + 1)]
+        try:
+            return cls._from_numpy(arr)
+        except Exception as e:
+            data_str = ""
+            if column_name:
+                data_str += f"column: '{column_name}', "
+            data_str += f"shape: {arr.shape}, dtype: {arr.dtype}, data: {arr}"
+            raise ArrowConversionError(data_str) from e
+
+    @classmethod
+    def _from_numpy(
+        cls,
+        arr: np.ndarray,
+    ) -> Union["ArrowTensorArray", "ArrowVariableShapedTensorArray"]:
+        if len(arr) > 0 and np.isscalar(arr[0]):
+            # Elements are scalar so a plain Arrow Array will suffice.
+            return pa.array(arr)
+        if _is_ndarray_variable_shaped_tensor(arr):
+            # Tensor elements have variable shape, so we delegate to
+            # ArrowVariableShapedTensorArray.
+            return ArrowVariableShapedTensorArray.from_numpy(arr)
+        if not arr.flags.c_contiguous:
+            # We only natively support C-contiguous ndarrays.
+            arr = np.ascontiguousarray(arr)
+        pa_dtype = pa.from_numpy_dtype(arr.dtype)
+        if pa.types.is_string(pa_dtype):
+            if arr.dtype.byteorder == ">" or (
+                arr.dtype.byteorder == "=" and sys.byteorder == "big"
+            ):
+                raise ValueError(
+                    "Only little-endian string tensors are supported, "
+                    f"but got: {arr.dtype}",
                 )
-            )
+            pa_dtype = pa.binary(arr.dtype.itemsize)
+        outer_len = arr.shape[0]
+        element_shape = arr.shape[1:]
+        total_num_items = arr.size
+        num_items_per_element = np.prod(element_shape) if element_shape else 1
 
-            storage = pa.Array.from_buffers(
-                pa.list_(pa_dtype),
-                outer_len,
-                [None, offset_buffer],
-                children=[data_array],
-            )
-            type_ = ArrowTensorType(element_shape, pa_dtype)
-            return pa.ExtensionArray.from_storage(type_, storage)
-        elif isinstance(arr, Iterable):
-            return cls.from_numpy(list(arr))
-        else:
-            raise ValueError("Must give ndarray or iterable of ndarrays.")
+        # Data buffer.
+        if pa.types.is_boolean(pa_dtype):
+            # NumPy doesn't represent boolean arrays as bit-packed, so we manually
+            # bit-pack the booleans before handing the buffer off to Arrow.
+            # NOTE: Arrow expects LSB bit-packed ordering.
+            # NOTE: This creates a copy.
+            arr = np.packbits(arr, bitorder="little")
+        data_buffer = pa.py_buffer(arr)
+        data_array = pa.Array.from_buffers(
+            pa_dtype, total_num_items, [None, data_buffer]
+        )
+
+        # Offset buffer.
+        offset_buffer = pa.py_buffer(
+            cls.OFFSET_DTYPE([i * num_items_per_element for i in range(outer_len + 1)])
+        )
+
+        storage = pa.Array.from_buffers(
+            pa.list_(pa_dtype),
+            outer_len,
+            [None, offset_buffer],
+            children=[data_array],
+        )
+        type_ = ArrowTensorType(element_shape, pa_dtype)
+        return pa.ExtensionArray.from_storage(type_, storage)
 
     def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
         """
@@ -526,7 +598,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
 
 @PublicAPI(stability="alpha")
-class ArrowVariableShapedTensorType(pa.PyExtensionType):
+class ArrowVariableShapedTensorType(pa.ExtensionType):
     """
     Arrow ExtensionType for an array of heterogeneous-shaped, homogeneous-typed
     tensors.
@@ -550,7 +622,8 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
         """
         self._ndim = ndim
         super().__init__(
-            pa.struct([("data", pa.list_(dtype)), ("shape", pa.list_(pa.int64()))])
+            pa.struct([("data", pa.list_(dtype)), ("shape", pa.list_(pa.int64()))]),
+            "ray.data.arrow_variable_shaped_tensor",
         )
 
     def to_pandas_dtype(self):
@@ -579,10 +652,19 @@ class ArrowVariableShapedTensorType(pa.PyExtensionType):
         return self.storage_type[data_field_index].type.value_type
 
     def __reduce__(self):
-        return (
-            ArrowVariableShapedTensorType,
-            (self.storage_type["data"].type.value_type, self._ndim),
+        return self.__arrow_ext_deserialize__, (
+            self.storage_type,
+            self.__arrow_ext_serialize__(),
         )
+
+    def __arrow_ext_serialize__(self):
+        return json.dumps(self._ndim).encode()
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        ndim = json.loads(serialized)
+        dtype = storage_type["data"].type.value_type
+        return cls(dtype, ndim)
 
     def __arrow_ext_class__(self):
         """
@@ -691,7 +773,7 @@ class ArrowVariableShapedTensorArray(
                 raise ValueError(
                     "ArrowVariableShapedTensorArray only supports tensor elements that "
                     "all have the same number of dimensions, but got tensor elements "
-                    f"with dimensions: {ndim}, {a.ndim}: {arr}"
+                    f"with dimensions: {ndim}, {a.ndim}"
                 )
             ndim = a.ndim
             shapes.append(a.shape)
@@ -890,3 +972,13 @@ def _to_ndarray_helper(shape, value_type, offset, data_buffer):
     if pa.types.is_fixed_size_binary(value_type):
         ext_dtype = np.dtype(f"<U{value_type.byte_width // NUM_BYTES_PER_UNICODE_CHAR}")
     return np.ndarray(shape, dtype=ext_dtype, buffer=data_buffer, offset=data_offset)
+
+
+try:
+    # Registration needs an extension type instance, but then works for any instance of
+    # the same subclass regardless of parametrization of the type.
+    pa.register_extension_type(ArrowTensorType((0,), pa.int64()))
+    pa.register_extension_type(ArrowVariableShapedTensorType(pa.int64(), 0))
+except pa.ArrowKeyError:
+    # Extension types are already registered.
+    pass

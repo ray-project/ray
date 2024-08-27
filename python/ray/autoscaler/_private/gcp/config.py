@@ -2,8 +2,9 @@ import copy
 import json
 import logging
 import os
+import re
 import time
-from functools import partial
+from functools import partial, reduce
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import serialization
@@ -12,6 +13,7 @@ from google.oauth2 import service_account
 from google.oauth2.credentials import Credentials as OAuthCredentials
 from googleapiclient import discovery, errors
 
+from ray._private.accelerators import TPUAcceleratorManager
 from ray.autoscaler._private.gcp.node import MAX_POLLS, POLL_INTERVAL, GCPNodeType
 from ray.autoscaler._private.util import check_legacy_fields
 
@@ -46,6 +48,133 @@ HAS_TPU_PROVIDER_FIELD = "_has_tpus"
 # NOTE: iam.serviceAccountUser allows the Head Node to create worker nodes
 # with ServiceAccounts.
 
+# By default TPU VMs come with 4 chips per host and 2 tensorcores per chip.
+# For more details: https://cloud.google.com/tpu/docs/system-architecture-tpu-vm
+DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
+DEFAULT_TPU_CORES_PER_CHIP = 2
+
+
+def tpu_accelerator_config_to_type(accelerator_config: dict) -> str:
+    """Convert a provided accelerator_config to accelerator_type.
+
+    Args:
+        accelerator_config: A dictionary defining the spec of a
+            TPU accelerator. The dictionary should consist of
+            the keys 'type', indicating the TPU chip type, and
+            'topology', indicating the topology of the TPU.
+
+    Returns:
+        A string, accelerator_type, e.g. "v4-8".
+
+    """
+    generation = accelerator_config["type"].lower()
+    topology = accelerator_config["topology"]
+    # Reduce e.g. "2x2x2" to 8
+    chip_dimensions = [int(chip_count) for chip_count in topology.split("x")]
+    num_chips = reduce(lambda x, y: x * y, chip_dimensions)
+    num_cores = num_chips * DEFAULT_TPU_CORES_PER_CHIP
+
+    # V5LitePod is rendered as "V5LITE_POD" in accelerator configuration but
+    # accelerator type uses a format like "v5litepod-{cores}", so we need
+    # to manually convert the string here.
+    if generation == "v5lite_pod":
+        generation = "v5litepod"
+        num_cores = num_chips
+
+    return f"{generation}-{num_cores}"
+
+
+def _validate_tpu_config(node: dict):
+    """Validate the provided node with TPU support.
+
+    If the config is malformed, users will run into an error but this function
+    will raise the error at config parsing time. This only tests very simple assertions.
+
+    Raises: `ValueError` in case the input is malformed.
+
+    """
+    if "acceleratorType" in node and "acceleratorConfig" in node:
+        raise ValueError(
+            "For TPU usage, acceleratorType and acceleratorConfig "
+            "cannot both be set."
+        )
+    if "acceleratorType" in node:
+        accelerator_type = node["acceleratorType"]
+        if not TPUAcceleratorManager.is_valid_tpu_accelerator_type(accelerator_type):
+            raise ValueError(
+                "`acceleratorType` should match v(generation)-(cores/chips). "
+                f"Got {accelerator_type}."
+            )
+    else:  # "acceleratorConfig" in node
+        accelerator_config = node["acceleratorConfig"]
+        if "type" not in accelerator_config or "topology" not in accelerator_config:
+            raise ValueError(
+                "acceleratorConfig expects 'type' and 'topology'. "
+                f"Got {accelerator_config}"
+            )
+        generation = node["acceleratorConfig"]["type"]
+        topology = node["acceleratorConfig"]["topology"]
+
+        generation_pattern = re.compile(r"^V\d+[a-zA-Z]*$")
+        topology_pattern = re.compile(r"^\d+x\d+(x\d+)?$")
+
+        if generation != "V5LITE_POD" and not generation_pattern.match(generation):
+            raise ValueError(f"type should match V(generation). Got {generation}.")
+        if generation == "V2" or generation == "V3":
+            raise ValueError(
+                f"acceleratorConfig is not supported on V2/V3 TPUs. Got {generation}."
+            )
+        if not topology_pattern.match(topology):
+            raise ValueError(
+                f"topology should be of form axbxc or axb. Got {topology}."
+            )
+
+
+def _get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
+    if accelerator_type == "v5litepod-8":
+        return 8
+
+    return DEFAULT_TPU_NUM_CHIPS_PER_HOST
+
+
+def _get_tpu_cores_per_chip(accelerator_type: str) -> int:
+    # accelerator_type  is in the form v{generateion}-{cores}
+    accelerator_type = accelerator_type.split("-")[0]
+
+    # V5Litepods have 1 core per chip
+    if accelerator_type == "v5litepod":
+        return 1
+
+    return DEFAULT_TPU_CORES_PER_CHIP
+
+
+def _get_num_tpu_chips(node: dict) -> int:
+    chips = 0
+    if "acceleratorType" in node:
+        accelerator_type = node["acceleratorType"]
+        # `acceleratorType` is typically v{generation}-{cores}
+        cores = int(accelerator_type.split("-")[1])
+        chips = cores / _get_tpu_cores_per_chip(accelerator_type)
+    if "acceleratorConfig" in node:
+        topology = node["acceleratorConfig"]["topology"]
+        # `topology` is typically {chips}x{chips}x{chips}
+        # Multiply all dimensions together to get total number of chips
+        chips = 1
+        for dim in topology.split("x"):
+            chips *= int(dim)
+    return chips
+
+
+def _is_single_host_tpu(node: dict) -> bool:
+    accelerator_type = ""
+    if "acceleratorType" in node:
+        accelerator_type = node["acceleratorType"]
+    else:
+        accelerator_type = tpu_accelerator_config_to_type(node["acceleratorConfig"])
+    return _get_num_tpu_chips(node) == _get_num_tpu_visible_chips_per_host(
+        accelerator_type
+    )
+
 
 def get_node_type(node: dict) -> GCPNodeType:
     """Returns node type based on the keys in ``node``.
@@ -58,23 +187,29 @@ def get_node_type(node: dict) -> GCPNodeType:
     This works for both node configs and API returned nodes.
     """
 
-    if "machineType" not in node and "acceleratorType" not in node:
+    if (
+        "machineType" not in node
+        and "acceleratorType" not in node
+        and "acceleratorConfig" not in node
+    ):
         raise ValueError(
-            "Invalid node. For a Compute instance, 'machineType' is "
-            "required. "
-            "For a TPU instance, 'acceleratorType' and no 'machineType' "
-            "is required. "
-            f"Got {list(node)}"
+            "Invalid node. For a Compute instance, 'machineType' is required."
+            "For a TPU instance, 'acceleratorType' OR 'acceleratorConfig' and "
+            f"no 'machineType' is required. Got {list(node)}."
         )
 
-    if "machineType" not in node and "acceleratorType" in node:
-        # remove after TPU pod support is added!
-        if node["acceleratorType"] not in ("v2-8", "v3-8", "v4-8"):
-            raise ValueError(
-                "For now, only 'v2-8', 'v3-8' and 'v4-8' accelerator types are "
-                "supported. Support for TPU pods will be added in the future."
+    if "machineType" not in node and (
+        "acceleratorType" in node or "acceleratorConfig" in node
+    ):
+        _validate_tpu_config(node)
+        if not _is_single_host_tpu(node):
+            # Remove once proper autoscaling support is added.
+            logger.warning(
+                "TPU pod detected. Note that while the cluster launcher can create "
+                "multiple TPU pods, proper autoscaling will not work as expected, "
+                "as all hosts in a TPU pod need to execute the same program. "
+                "Proceed with caution."
             )
-
         return GCPNodeType.TPU
     return GCPNodeType.COMPUTE
 

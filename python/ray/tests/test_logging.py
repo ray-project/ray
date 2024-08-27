@@ -9,8 +9,10 @@ import logging
 from collections import Counter, defaultdict
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import Mock, MagicMock
+from typing import Dict
+from unittest.mock import Mock, MagicMock, patch
 
+import colorama
 import pytest
 
 import ray
@@ -25,12 +27,14 @@ from ray._private.log_monitor import (
 from ray._private.test_utils import (
     get_log_batch,
     get_log_message,
+    get_log_data,
     init_log_pubsub,
     run_string_as_driver,
     wait_for_condition,
 )
 from ray.cross_language import java_actor_class
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray._private.worker import print_worker_logs
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
@@ -127,7 +131,7 @@ def test_log_rotation_config(ray_start_cluster, monkeypatch):
 
 def test_log_file_exists(shutdown_only):
     """Verify all log files exist as specified in
-    https://docs.ray.io/en/master/ray-observability/ray-logging.html#logging-directory-structure # noqa
+    https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#logging-directory-structure # noqa
     """
     ray.init(num_cpus=1)
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
@@ -137,6 +141,7 @@ def test_log_file_exists(shutdown_only):
     log_rotating_component = [
         (ray_constants.PROCESS_TYPE_DASHBOARD, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, [".log"]),
+        (ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_LOG_MONITOR, [".log", ".err"]),
         (ray_constants.PROCESS_TYPE_MONITOR, [".log", ".out", ".err"]),
         (ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER, [".log"]),
@@ -458,6 +463,15 @@ assert set(log_component_names).isdisjoint(set(paths)), paths
         assert f"({component}" in stderr, stderr
 
 
+def test_custom_logging_format(shutdown_only):
+    script = """
+import ray
+ray.init(logging_format='custom logging format - %(message)s')
+"""
+    stderr = run_string_as_driver(script)
+    assert "custom logging format - " in stderr
+
+
 def test_segfault_stack_trace(ray_start_cluster, capsys):
     @ray.remote
     def f():
@@ -550,7 +564,7 @@ def test_log_monitor(tmp_path, live_dead_pids):
 
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, is_proc_alive, max_files_open=5
     )
 
     # files
@@ -705,7 +719,7 @@ def test_log_monitor_actor_task_name_and_job_id(tmp_path):
 
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, lambda _: True, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, lambda _: True, max_files_open=5
     )
     worker_out_log_file = f"worker-{worker_id}-{job_id}-{pid}.out"
     first_line = "First line\n"
@@ -791,7 +805,7 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     log_dir.mkdir()
     mock_publisher = MagicMock()
     log_monitor = LogMonitor(
-        str(log_dir), mock_publisher, lambda _: True, max_files_open=5
+        "127.0.0.1", str(log_dir), mock_publisher, lambda _: True, max_files_open=5
     )
 
     current = 0
@@ -815,7 +829,7 @@ def test_log_monitor_update_backpressure(tmp_path, mock_timer):
     assert log_monitor.should_update_filenames(current)
 
 
-def test_repr_inheritance():
+def test_repr_inheritance(shutdown_only):
     """Tests that a subclass's repr is used in logging."""
     logger = logging.getLogger(__name__)
 
@@ -879,29 +893,6 @@ def test_ray_does_not_break_makeRecord():
 
 
 @pytest.mark.parametrize(
-    "logger_name,package_name",
-    (
-        ("ray", ""),
-        ("ray.air", "[Ray AIR]"),
-        ("ray.data", "[Ray Data]"),
-        ("ray.rllib", "[Ray RLlib]"),
-        ("ray.serve", "[Ray Serve]"),
-        ("ray.train", "[Ray Train]"),
-        ("ray.tune", "[Ray Tune]"),
-        ("ray.workflow", "[Ray Workflow]"),
-    ),
-)
-def test_log_library_context(propagate_logs, caplog, logger_name, package_name):
-    """Test that the log configuration injects the correct context into log messages."""
-    logger = logging.getLogger(logger_name)
-    logger.critical("Test!")
-
-    assert (
-        caplog.records[-1].package == package_name
-    ), "Missing ray package name in log record."
-
-
-@pytest.mark.parametrize(
     "logger_name,logger_level",
     (
         ("ray", logging.INFO),
@@ -940,6 +931,131 @@ def test_log_level_settings(
         assert caplog.records[-1].levelno == test_level, "Log message level mismatch."
     else:
         assert len(caplog.records) == 0, "Log message found where none are expected."
+
+
+def test_log_with_import():
+
+    logger = logging.getLogger(__name__)
+    assert not logger.disabled
+    ray.log.logger_initialized = False
+    ray.log.generate_logging_config()
+    assert not logger.disabled
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
+def test_log_monitor_ip_correct(ray_start_cluster):
+    cluster = ray_start_cluster
+    # add first node
+    cluster.add_node(node_ip_address="127.0.0.2")
+    address = cluster.address
+    ray.init(address)
+    # add second node
+    cluster.add_node(node_ip_address="127.0.0.3")
+
+    @ray.remote
+    def print_msg():
+        print("abc")
+
+    p = init_log_pubsub()
+    print_msg.remote()
+    data = get_log_data(
+        p, num=6, timeout=10, job_id=ray.get_runtime_context().get_job_id()
+    )
+    assert data[0]["ip"] == "127.0.0.2"
+
+
+def get_print_worker_logs_output(data: Dict[str, str]) -> str:
+    """
+    Helper function that returns the output of `print_worker_logs` as a str.
+    """
+    out = io.StringIO()
+    print_worker_logs(data, out)
+    out.seek(0)
+    return out.readline()
+
+
+def test_print_worker_logs_default_color() -> None:
+    # Test multiple since pid may affect color
+    for pid in (0, 1):
+        data = dict(
+            ip="10.0.0.1",
+            localhost="172.0.0.1",
+            pid=str(pid),
+            task_name="my_task",
+            lines=["is running"],
+        )
+        output = get_print_worker_logs_output(data)
+        assert output == (
+            f"{colorama.Fore.CYAN}(my_task pid={pid}, ip=10.0.0.1)"
+            + f"{colorama.Style.RESET_ALL} is running\n"
+        )
+
+    # Special case
+    raylet = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="raylet",
+        task_name="my_task",
+        lines=["Warning: uh oh"],
+    )
+    output = get_print_worker_logs_output(raylet)
+    assert output == (
+        f"{colorama.Fore.YELLOW}(raylet, ip=10.0.0.1){colorama.Style.RESET_ALL} "
+        + "Warning: uh oh\n"
+    )
+
+
+@patch.dict(os.environ, {"RAY_COLOR_PREFIX": "0"})
+def test_print_worker_logs_no_color() -> None:
+    for pid in (0, 1):
+        data = dict(
+            ip="10.0.0.1",
+            localhost="172.0.0.1",
+            pid=str(pid),
+            task_name="my_task",
+            lines=["is running"],
+        )
+        output = get_print_worker_logs_output(data)
+        assert output == f"(my_task pid={pid}, ip=10.0.0.1) is running\n"
+
+    raylet = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="raylet",
+        task_name="my_task",
+        lines=["Warning: uh oh"],
+    )
+    output = get_print_worker_logs_output(raylet)
+    assert output == "(raylet, ip=10.0.0.1) Warning: uh oh\n"
+
+
+@patch.dict(os.environ, {"RAY_COLOR_PREFIX": "1"})
+def test_print_worker_logs_multi_color() -> None:
+    data_pid_0 = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="0",
+        task_name="my_task",
+        lines=["is running"],
+    )
+    output = get_print_worker_logs_output(data_pid_0)
+    assert output == (
+        f"{colorama.Fore.MAGENTA}(my_task pid=0, ip=10.0.0.1)"
+        + f"{colorama.Style.RESET_ALL} is running\n"
+    )
+
+    data_pid_2 = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="2",
+        task_name="my_task",
+        lines=["is running"],
+    )
+    output = get_print_worker_logs_output(data_pid_2)
+    assert output == (
+        f"{colorama.Fore.GREEN}(my_task pid=2, ip=10.0.0.1){colorama.Style.RESET_ALL} "
+        + "is running\n"
+    )
 
 
 if __name__ == "__main__":

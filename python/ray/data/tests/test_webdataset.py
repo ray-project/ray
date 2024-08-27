@@ -7,6 +7,7 @@ import os
 import tarfile
 
 import pytest
+import webdataset as wds
 
 import ray
 from ray.tests.conftest import *  # noqa
@@ -38,7 +39,7 @@ def test_webdataset_read(ray_start_2_cpus, tmp_path):
             tf.write(f"{i}.b", str(i**2).encode("utf-8"))
     assert os.path.exists(path)
     assert len(glob.glob(f"{tmp_path}/*.tar")) == 1
-    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1)
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], override_num_blocks=1)
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
@@ -61,7 +62,7 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
 
     # test simple suffixes
     ds = ray.data.read_webdataset(
-        paths=[str(tmp_path)], parallelism=1, suffixes=["txt", "cls"]
+        paths=[str(tmp_path)], override_num_blocks=1, suffixes=["txt", "cls"]
     )
     samples = ds.take(100)
     assert len(samples) == 100
@@ -70,7 +71,7 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
 
     # test fnmatch patterns for suffixes
     ds = ray.data.read_webdataset(
-        paths=[str(tmp_path)], parallelism=1, suffixes=["*.txt", "*.cls"]
+        paths=[str(tmp_path)], override_num_blocks=1, suffixes=["*.txt", "*.cls"]
     )
     samples = ds.take(100)
     assert len(samples) == 100
@@ -81,7 +82,9 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
     def select(name):
         return name.endswith("txt")
 
-    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1, suffixes=select)
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)], override_num_blocks=1, suffixes=select
+    )
     samples = ds.take(100)
     assert len(samples) == 100
     for i, sample in enumerate(samples):
@@ -94,7 +97,7 @@ def test_webdataset_suffixes(ray_start_2_cpus, tmp_path):
         return result
 
     ds = ray.data.read_webdataset(
-        paths=[str(tmp_path)], parallelism=1, filerename=renamer
+        paths=[str(tmp_path)], override_num_blocks=1, filerename=renamer
     )
     samples = ds.take(100)
     assert len(samples) == 100
@@ -141,7 +144,6 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
     image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
     gray = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
     dstruct = dict(a=[1], b=dict(c=2), d="hello")
-    # Note: tensors are supported as numpy format only in strict mode.
     ttensor = torch.tensor([1, 2, 3]).numpy()
 
     sample = {
@@ -165,7 +167,7 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
     assert len(paths) == 1
     path = paths[0]
     assert os.path.exists(path)
-    ds = ray.data.read_webdataset(paths=[str(tmp_path)], parallelism=1)
+    ds = ray.data.read_webdataset(paths=[str(tmp_path)], override_num_blocks=1)
     samples = ds.take(1)
     assert len(samples) == 1
     for sample in samples:
@@ -185,7 +187,7 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
 
     # test the format argument to the default decoder and multiple decoders
     ds = ray.data.read_webdataset(
-        paths=[str(tmp_path)], parallelism=1, decoder=["PIL", custom_decoder]
+        paths=[str(tmp_path)], override_num_blocks=1, decoder=["PIL", custom_decoder]
     )
     samples = ds.take(1)
     assert len(samples) == 1
@@ -197,6 +199,17 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
         assert isinstance(sample["und"], bytes)
         assert sample["und"] == b"undecoded"
         assert sample["custom"] == "custom-value"
+
+
+@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
+def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+    ray.data.from_items(
+        [{"id": str(i)} for i in range(100)], override_num_blocks=20
+    ).write_webdataset(tmp_path, num_rows_per_file=num_rows_per_file)
+
+    for filename in os.listdir(tmp_path):
+        dataset = wds.WebDataset(os.path.join(tmp_path, filename))
+        assert len(list(dataset)) == num_rows_per_file
 
 
 if __name__ == "__main__":

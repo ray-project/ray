@@ -5,17 +5,14 @@ from typing import Dict
 from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.models.utils import get_activation_fn
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType, List, ModelConfigDict
-from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
 
-# TODO: (sven) obsolete this class once we only support native keras models.
-@DeveloperAPI
+@OldAPIStack
 class FullyConnectedNetwork(TFModelV2):
     """Generic fully connected network implemented in ModelV2 API."""
 
@@ -27,8 +24,6 @@ class FullyConnectedNetwork(TFModelV2):
         model_config: ModelConfigDict,
         name: str,
     ):
-        if log_once("rllib_models_fcnet_deprecation"):
-            deprecation_warning(old="ray.rllib.models.tf.fcnet.FullyConnectedNetwork")
         super(FullyConnectedNetwork, self).__init__(
             obs_space, action_space, num_outputs, model_config, name
         )
@@ -58,7 +53,7 @@ class FullyConnectedNetwork(TFModelV2):
 
         # We are using obs_flat, so take the flattened shape as input.
         inputs = tf.keras.layers.Input(
-            shape=(int(np.product(obs_space.shape)),), name="observations"
+            shape=(int(np.prod(obs_space.shape)),), name="observations"
         )
         # Last hidden layer output (before logits outputs).
         last_layer = inputs
@@ -104,9 +99,7 @@ class FullyConnectedNetwork(TFModelV2):
                 )(last_layer)
             # Adjust num_outputs to be the number of nodes in the last layer.
             else:
-                self.num_outputs = ([int(np.product(obs_space.shape))] + hiddens[-1:])[
-                    -1
-                ]
+                self.num_outputs = ([int(np.prod(obs_space.shape))] + hiddens[-1:])[-1]
 
         # Concat the log std vars to the end of the state-dependent means.
         if free_log_std and logits_out is not None:

@@ -11,7 +11,12 @@ from typing import Optional
 
 import numpy as np
 
-from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
+from ray.rllib.algorithms.dreamerv3.utils import (
+    get_cnn_multiplier,
+    get_gru_units,
+    get_num_z_categoricals,
+    get_num_z_classes,
+)
 from ray.rllib.utils.framework import try_import_tf
 
 _, tf, _ = try_import_tf()
@@ -48,7 +53,8 @@ class ConvTransposeAtari(tf.keras.Model):
         """
         super().__init__(name="image_decoder")
 
-        cnn_multiplier = get_cnn_multiplier(model_size, override=cnn_multiplier)
+        self.model_size = model_size
+        cnn_multiplier = get_cnn_multiplier(self.model_size, override=cnn_multiplier)
 
         # The shape going into the first Conv2DTranspose layer.
         # We start with a 4x4 channels=8 "image".
@@ -111,6 +117,22 @@ class ConvTransposeAtari(tf.keras.Model):
         )
         # .. until output is 64 x 64 x 3 (or 1 for self.gray_scaled=True).
 
+        # Trace self.call.
+        dl_type = tf.keras.mixed_precision.global_policy().compute_dtype or tf.float32
+        self.call = tf.function(
+            input_signature=[
+                tf.TensorSpec(shape=[None, get_gru_units(model_size)], dtype=dl_type),
+                tf.TensorSpec(
+                    shape=[
+                        None,
+                        get_num_z_categoricals(model_size),
+                        get_num_z_classes(model_size),
+                    ],
+                    dtype=dl_type,
+                ),
+            ]
+        )(self.call)
+
     def call(self, h, z):
         """Performs a forward pass through the Conv2D transpose decoder.
 
@@ -123,9 +145,19 @@ class ConvTransposeAtari(tf.keras.Model):
         # Flatten last two dims of z.
         assert len(z.shape) == 3
         z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z = tf.reshape(z, shape=(z_shape[0], -1))
         assert len(z.shape) == 2
         input_ = tf.concat([h, z], axis=-1)
+        input_.set_shape(
+            [
+                None,
+                (
+                    get_num_z_categoricals(self.model_size)
+                    * get_num_z_classes(self.model_size)
+                    + get_gru_units(self.model_size)
+                ),
+            ]
+        )
 
         # Feed through initial dense layer to get the right number of input nodes
         # for the first conv2dtranspose layer.

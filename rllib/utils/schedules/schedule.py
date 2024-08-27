@@ -1,14 +1,14 @@
 from abc import ABCMeta, abstractmethod
 from typing import Any, Union
 
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
 
 tf1, tf, tfv = try_import_tf()
 
 
-@DeveloperAPI
+@OldAPIStack
 class Schedule(metaclass=ABCMeta):
     """Schedule classes implement various time-dependent scheduling schemas.
 
@@ -45,7 +45,6 @@ class Schedule(metaclass=ABCMeta):
         """Simply calls self.value(t). Implemented to make Schedules callable."""
         return self.value(t)
 
-    @DeveloperAPI
     @abstractmethod
     def _value(self, t: Union[int, TensorType]) -> Any:
         """
@@ -59,7 +58,6 @@ class Schedule(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def _tf_value_op(self, t: TensorType) -> TensorType:
         """
         Returns the tf-op that calculates the value based on a time step input.

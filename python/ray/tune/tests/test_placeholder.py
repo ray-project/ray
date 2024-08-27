@@ -1,13 +1,14 @@
-import numpy as np
 import unittest
+
+import numpy as np
 
 from ray import tune
 from ray.tune.impl.placeholder import (
-    inject_placeholders,
-    resolve_placeholders,
-    create_resolvers_map,
     _FunctionResolver,
     _RefResolver,
+    create_resolvers_map,
+    inject_placeholders,
+    resolve_placeholders,
 )
 from ray.tune.search.sample import Float, Integer
 
@@ -308,7 +309,8 @@ class PlaceholderTest(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

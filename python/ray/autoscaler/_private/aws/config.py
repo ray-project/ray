@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import time
+from collections import Counter
 from functools import lru_cache, partial
 from typing import Any, Dict, List, Optional, Set, Tuple
 
@@ -766,6 +767,8 @@ def _get_vpc_id_or_die(ec2, subnet_id: str):
 
 @lru_cache()
 def _get_subnets_or_die(ec2, subnet_ids: Tuple[str]):
+    # Remove any duplicates as multiple interfaces are allowed to use same subnet
+    subnet_ids = tuple(Counter(subnet_ids).keys())
     subnets = list(
         ec2.subnets.filter(Filters=[{"Name": "subnet-id", "Values": list(subnet_ids)}])
     )
@@ -805,6 +808,15 @@ def _create_security_group(config, vpc_id, group_name):
         Description="Auto-created security group for Ray workers",
         GroupName=group_name,
         VpcId=vpc_id,
+        TagSpecifications=[
+            {
+                "ResourceType": "security-group",
+                "Tags": [
+                    {"Key": RAY, "Value": "true"},
+                    {"Key": "ray-cluster-name", "Value": config["cluster_name"]},
+                ],
+            },
+        ],
     )
     security_group = _get_security_group(config, vpc_id, group_name)
     cli_logger.doassert(security_group, "Failed to create security group")  # err msg

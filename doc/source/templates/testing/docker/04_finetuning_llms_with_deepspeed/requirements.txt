@@ -1,0 +1,12 @@
+deepspeed==0.10.2
+fairscale
+transformers>=4.36.2
+dataset
+accelerate
+evaluate
+wandb
+pytorch-lightning
+protobuf<3.21.0
+torchmetrics
+sentencepiece
+peft==0.7.0

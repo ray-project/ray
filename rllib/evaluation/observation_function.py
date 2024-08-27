@@ -3,10 +3,12 @@ from typing import Dict
 from ray.rllib.env import BaseEnv
 from ray.rllib.policy import Policy
 from ray.rllib.evaluation import Episode, RolloutWorker
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import TensorType
 from ray.rllib.utils.typing import AgentID, PolicyID
 
 
+@OldAPIStack
 class ObservationFunction:
     """Interceptor function for rewriting observations from the environment.
 
@@ -59,15 +61,26 @@ class ObservationFunction:
                 can have a dummy "global" observation, and the observer can
                 merge the global state into individual observations.
 
-        Examples:
-            >>> # Observer that merges global state into individual obs. It is
-            ... # rewriting the discrete obs into a tuple with global state.
-            >>> example_obs_fn1({"a": 1, "b": 2, "global_state": 101}, ...)
+        .. testcode::
+            :skipif: True
+
+            # Observer that merges global state into individual obs. It is
+            # rewriting the discrete obs into a tuple with global state.
+            example_obs_fn1({"a": 1, "b": 2, "global_state": 101}, ...)
+
+        .. testoutput::
+
             {"a": [1, 101], "b": [2, 101]}
 
-            >>> # Observer for e.g., custom centralized critic model. It is
-            ... # rewriting the discrete obs into a dict with more data.
-            >>> example_obs_fn2({"a": 1, "b": 2}, ...)
+        .. testcode::
+            :skipif: True
+
+            # Observer for e.g., custom centralized critic model. It is
+            # rewriting the discrete obs into a dict with more data.
+            example_obs_fn2({"a": 1, "b": 2}, ...)
+
+        .. testoutput::
+
             {"a": {"self": 1, "other": 2}, "b": {"self": 2, "other": 1}}
         """
 

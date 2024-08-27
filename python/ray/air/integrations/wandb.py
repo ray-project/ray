@@ -3,34 +3,35 @@ import os
 import pickle
 import urllib
 import warnings
-
-import numpy as np
 from numbers import Number
-
 from types import ModuleType
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
+import numpy as np
+import pyarrow.fs
+
 import ray
 from ray import logger
+from ray._private.storage import _load_class
 from ray.air import session
 from ray.air._internal import usage as air_usage
+from ray.air.constants import TRAINING_ITERATION
 from ray.air.util.node import _force_on_current_node
-
+from ray.train._internal.syncer import DEFAULT_SYNC_TIMEOUT
+from ray.tune.experiment import Trial
 from ray.tune.logger import LoggerCallback
 from ray.tune.utils import flatten_dict
-from ray.tune.experiment import Trial
-from ray.tune.syncer import DEFAULT_SYNC_TIMEOUT
-
-from ray._private.storage import _load_class
 from ray.util import PublicAPI
 from ray.util.queue import Queue
 
 try:
     import wandb
+    from wandb.sdk.data_types.base_types.wb_value import WBValue
+    from wandb.sdk.data_types.image import Image
+    from wandb.sdk.data_types.video import Video
+    from wandb.sdk.lib.disabled import RunDisabled
     from wandb.util import json_dumps_safer
     from wandb.wandb_run import Run
-    from wandb.sdk.lib.disabled import RunDisabled
-    from wandb.sdk.data_types.base_types.wb_value import WBValue
 except ImportError:
     wandb = json_dumps_safer = Run = RunDisabled = WBValue = None
 
@@ -103,7 +104,7 @@ def setup_wandb(
 
     Example:
 
-        .. code-block: python
+        .. code-block:: python
 
             from ray.air.integrations.wandb import setup_wandb
 
@@ -166,7 +167,7 @@ def _setup_wandb(
     project = _get_wandb_project(kwargs.pop("project", None))
     group = kwargs.pop("group", os.environ.get(WANDB_GROUP_ENV_VAR))
 
-    # remove unpickleable items
+    # Remove unpickleable items.
     _config = _clean_log(_config)
 
     wandb_init_kwargs = dict(
@@ -205,7 +206,7 @@ def _is_allowed_type(obj):
     if isinstance(obj, np.ndarray) and obj.size == 1:
         return isinstance(obj.item(), Number)
     if isinstance(obj, Sequence) and len(obj) > 0:
-        return isinstance(obj[0], WBValue)
+        return isinstance(obj[0], (Image, Video, WBValue))
     return isinstance(obj, (Number, WBValue))
 
 
@@ -217,6 +218,19 @@ def _clean_log(obj: Any):
         return [_clean_log(v) for v in obj]
     elif isinstance(obj, tuple):
         return tuple(_clean_log(v) for v in obj)
+    elif isinstance(obj, np.ndarray) and obj.ndim == 3:
+        # Must be single image (H, W, C).
+        return Image(obj)
+    elif isinstance(obj, np.ndarray) and obj.ndim == 4:
+        # Must be batch of images (N >= 1, H, W, C).
+        return (
+            _clean_log([Image(v) for v in obj]) if obj.shape[0] > 1 else Image(obj[0])
+        )
+    elif isinstance(obj, np.ndarray) and obj.ndim == 5:
+        # Must be batch of videos (N >= 1, T, C, W, H).
+        return (
+            _clean_log([Video(v) for v in obj]) if obj.shape[0] > 1 else Video(obj[0])
+        )
     elif _is_allowed_type(obj):
         return obj
 
@@ -402,7 +416,7 @@ class _WandbLoggingActor:
             log, config_update = self._handle_result(item_content)
             try:
                 self._wandb.config.update(config_update, allow_val_change=True)
-                self._wandb.log(log)
+                self._wandb.log(log, step=log.get(TRAINING_ITERATION))
             except urllib.error.HTTPError as e:
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
@@ -435,6 +449,7 @@ class _WandbLoggingActor:
         return log, config_update
 
 
+@PublicAPI(stability="alpha")
 class WandbLoggerCallback(LoggerCallback):
     """WandbLoggerCallback
 
@@ -449,8 +464,8 @@ class WandbLoggerCallback(LoggerCallback):
 
             import random
 
-            from ray import tune
-            from ray.air import session, RunConfig
+            from ray import train, tune
+            from ray.train import RunConfig
             from ray.air.integrations.wandb import WandbLoggerCallback
 
 
@@ -459,7 +474,7 @@ class WandbLoggerCallback(LoggerCallback):
                 for epoch in range(2, config["epochs"]):
                     acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
                     loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
-                    session.report({"acc": acc, "loss": loss})
+                    train.report({"acc": acc, "loss": loss})
 
 
             tuner = tune.Tuner(
@@ -636,10 +651,17 @@ class WandbLoggerCallback(LoggerCallback):
                 num_cpus=0,
                 **_force_on_current_node(),
                 runtime_env={"env_vars": env_vars},
+                max_restarts=-1,
+                max_task_retries=-1,
             )(self._logger_actor_cls)
 
         self._trial_queues[trial] = Queue(
-            actor_options={"num_cpus": 0, **_force_on_current_node()}
+            actor_options={
+                "num_cpus": 0,
+                **_force_on_current_node(),
+                "max_restarts": -1,
+                "max_task_retries": -1,
+            }
         )
         self._trial_logging_actors[trial] = self._remote_logger_class.remote(
             logdir=trial.local_path,
@@ -664,9 +686,12 @@ class WandbLoggerCallback(LoggerCallback):
 
     def log_trial_save(self, trial: "Trial"):
         if self.upload_checkpoints and trial.checkpoint:
-            self._trial_queues[trial].put(
-                (_QueueItem.CHECKPOINT, trial.checkpoint.dir_or_data)
-            )
+            checkpoint_root = None
+            if isinstance(trial.checkpoint.filesystem, pyarrow.fs.LocalFileSystem):
+                checkpoint_root = trial.checkpoint.path
+
+            if checkpoint_root:
+                self._trial_queues[trial].put((_QueueItem.CHECKPOINT, checkpoint_root))
 
     def log_trial_end(self, trial: "Trial", failed: bool = False):
         self._signal_logging_actor_stop(trial=trial)

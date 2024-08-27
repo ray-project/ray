@@ -2,13 +2,12 @@ import argparse
 import atexit
 import json
 import os
+import tempfile
 import time
 import subprocess
 
 import ray
-from ray.air import session
-from ray.air.config import ScalingConfig, RunConfig
-from ray.air.util.node import _force_on_current_node
+from ray.train import Checkpoint, ScalingConfig, RunConfig
 from ray.tune.tune_config import TuneConfig
 import requests
 import torch
@@ -16,7 +15,7 @@ import torch.nn as nn
 import torchvision.transforms as transforms
 from filelock import FileLock
 from ray import serve, tune, train
-from ray.train.torch import TorchTrainer, TorchCheckpoint
+from ray.train.torch import TorchTrainer
 from ray.tune import Tuner
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import MNIST
@@ -37,7 +36,10 @@ def load_mnist_data(train: bool, download: bool):
         )
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer):
+def train_epoch(epoch, dataloader, model, loss_fn, optimizer):
+    if ray.train.get_context().get_world_size() > 1:
+        dataloader.sampler.set_epoch(epoch)
+
     for X, y in dataloader:
         # Compute prediction error
         pred = model(X)
@@ -84,7 +86,7 @@ def training_loop(config):
         validation_dataset = Subset(validation_dataset, list(range(64)))
 
     train_loader = DataLoader(
-        train_dataset, batch_size=config["batch_size"], num_workers=2
+        train_dataset, batch_size=config["batch_size"], num_workers=2, shuffle=True
     )
     validation_loader = DataLoader(
         validation_dataset, batch_size=config["batch_size"], num_workers=2
@@ -97,13 +99,12 @@ def training_loop(config):
     criterion = nn.CrossEntropyLoss()
 
     for epoch_idx in range(2):
-        train_epoch(train_loader, model, criterion, optimizer)
+        train_epoch(epoch_idx, train_loader, model, criterion, optimizer)
         validation_loss = validate_epoch(validation_loader, model, criterion)
 
-        session.report(
-            validation_loss,
-            checkpoint=TorchCheckpoint.from_state_dict(model.module.state_dict()),
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            torch.save(model.module.state_dict(), os.path.join(tmpdir, "model.pt"))
+            train.report(validation_loss, checkpoint=Checkpoint.from_directory(tmpdir))
 
 
 def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
@@ -127,29 +128,25 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
         ),
         run_config=RunConfig(
             verbose=1,
+            storage_path=(
+                "/mnt/cluster_storage"
+                if os.path.exists("/mnt/cluster_storage")
+                else None
+            ),
         ),
     )
 
     return tuner.fit()
 
 
-def get_remote_model(remote_model_checkpoint_path):
-    if ray.util.client.ray.is_connected():
-        remote_load = ray.remote(get_model)
-        remote_load = _force_on_current_node(remote_load)
-        return ray.get(remote_load.remote(remote_model_checkpoint_path))
-    else:
-        get_best_model_remote = ray.remote(get_model)
-        return ray.get(get_best_model_remote.remote(remote_model_checkpoint_path))
-
-
-def get_model(model_checkpoint_path):
-    checkpoint_dict = TorchCheckpoint.from_directory(model_checkpoint_path)
-    model_state = checkpoint_dict.to_dict()["model"]
-
+def get_model(checkpoint_dir: str):
     model = resnet18()
     model.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=1, padding=3, bias=False)
-    model.load_state_dict(model_state)
+
+    model_state_dict = torch.load(
+        os.path.join(checkpoint_dir, "model.pt"), map_location="cpu"
+    )
+    model.load_state_dict(model_state_dict)
 
     return model
 
@@ -181,9 +178,14 @@ def setup_serve(model, use_gpu: bool = False):
     serve.start(
         http_options={"location": "EveryNode"}
     )  # Start on every node so `predict` can hit localhost.
-    MnistDeployment.options(
-        num_replicas=2, ray_actor_options={"num_gpus": bool(use_gpu)}
-    ).deploy(model)
+    serve.run(
+        MnistDeployment.options(
+            num_replicas=2,
+            ray_actor_options={"num_gpus": 1, "resources": {"worker": 1}}
+            if use_gpu
+            else {},
+        ).bind(model)
+    )
 
 
 @ray.remote
@@ -271,13 +273,13 @@ if __name__ == "__main__":
     use_gpu = not args.smoke_test
 
     print("Training model.")
-    analysis = train_mnist(args.smoke_test, num_workers, use_gpu)._experiment_analysis
+    result_grid = train_mnist(args.smoke_test, num_workers, use_gpu)
 
     print("Retrieving best model.")
-    best_checkpoint_path = analysis.get_best_checkpoint(
-        analysis.best_trial, return_path=True
-    )
-    model = get_remote_model(best_checkpoint_path)
+    best_result = result_grid.get_best_result()
+    best_checkpoint = best_result.get_best_checkpoint(metric="val_loss", mode="min")
+    with best_checkpoint.as_directory() as checkpoint_dir:
+        model = get_model(checkpoint_dir)
 
     print("Setting up Serve.")
     setup_serve(model, use_gpu)

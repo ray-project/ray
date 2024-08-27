@@ -1,25 +1,26 @@
 import copy
-import glob
 import itertools
 import os
 import uuid
-from typing import Dict, List, Optional, Union, TYPE_CHECKING
 import warnings
+from pathlib import Path
+from typing import TYPE_CHECKING, Dict, List, Optional, Union
+
 import numpy as np
 
 from ray.air._internal.usage import tag_searcher
 from ray.tune.error import TuneError
-from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
-from ray.tune.search.sample import np_random_generator, _BackwardsCompatibleNumpyRng
+from ray.tune.experiment.config_parser import _create_trial_from_spec, _make_parser
+from ray.tune.search.sample import _BackwardsCompatibleNumpyRng, np_random_generator
+from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.search.variant_generator import (
-    _count_variants,
     _count_spec_samples,
-    generate_variants,
-    format_vars,
+    _count_variants,
     _flatten_resolved_vars,
     _get_preset_variants,
+    format_vars,
+    generate_variants,
 )
-from ray.tune.search.search_algorithm import SearchAlgorithm
 from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
 from ray.util import PublicAPI
 
@@ -77,7 +78,6 @@ class _TrialIterator:
             that might have unresolved distributions.
         constant_grid_search: Should random variables be sampled
             first before iterating over grid variants (True) or not (False).
-        output_path: A specific output path within the local_dir.
         points_to_evaluate: Configurations that will be tried out without sampling.
         lazy_eval: Whether variants should be generated
             lazily or eagerly. This is toggled depending
@@ -96,7 +96,6 @@ class _TrialIterator:
         num_samples: int,
         unresolved_spec: dict,
         constant_grid_search: bool = False,
-        output_path: str = "",
         points_to_evaluate: Optional[List] = None,
         lazy_eval: bool = False,
         start: int = 0,
@@ -110,7 +109,6 @@ class _TrialIterator:
         self.num_samples_left = num_samples
         self.unresolved_spec = unresolved_spec
         self.constant_grid_search = constant_grid_search
-        self.output_path = output_path
         self.points_to_evaluate = points_to_evaluate or []
         self.num_points_to_evaluate = len(self.points_to_evaluate)
         self.counter = start
@@ -127,7 +125,6 @@ class _TrialIterator:
         self.counter += 1
         return _create_trial_from_spec(
             spec,
-            self.output_path,
             self.parser,
             evaluated_params=_flatten_resolved_vars(resolved_vars),
             trial_id=trial_id,
@@ -353,7 +350,6 @@ class BasicVariantGenerator(SearchAlgorithm):
                 num_samples=experiment.spec.get("num_samples", 1),
                 unresolved_spec=experiment.spec,
                 constant_grid_search=self._constant_grid_search,
-                output_path=experiment.dir_name,
                 points_to_evaluate=points_to_evaluate,
                 lazy_eval=lazy_eval,
                 start=previous_samples,
@@ -415,7 +411,7 @@ class BasicVariantGenerator(SearchAlgorithm):
 
     def has_checkpoint(self, dirpath: str):
         """Whether a checkpoint file exists within dirpath."""
-        return bool(glob.glob(os.path.join(dirpath, self.CKPT_FILE_TMPL.format("*"))))
+        return any(Path(dirpath).glob(self.CKPT_FILE_TMPL.format("*")))
 
     def restore_from_dir(self, dirpath: str):
         """Restores self + searcher + search wrappers from dirpath."""

@@ -1,5 +1,5 @@
 from functools import lru_cache
-import os
+from pathlib import Path
 
 
 @lru_cache()
@@ -9,4 +9,4 @@ def _is_ray_cluster():
     This will always exist if using an autoscaling cluster/started
     with the ray cluster launcher.
     """
-    return os.path.exists(os.path.expanduser("~/ray_bootstrap_config.yaml"))
+    return Path("~/ray_bootstrap_config.yaml").expanduser().exists()

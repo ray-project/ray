@@ -1,14 +1,14 @@
-from abc import ABCMeta
 import glob
-import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import warnings
+from abc import ABCMeta
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+    from ray.train import Checkpoint
     from ray.tune.experiment import Trial
     from ray.tune.stopper import Stopper
 
@@ -30,14 +30,12 @@ class _CallbackMeta(ABCMeta):
     def need_check(
         mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
     ) -> bool:
-
         return attrs.get("IS_CALLBACK_CONTAINER", False)
 
     @classmethod
     def check(
         mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
     ) -> None:
-
         methods = set()
         for base in bases:
             methods.update(
@@ -83,7 +81,7 @@ class Callback(metaclass=_CallbackMeta):
 
     .. testcode::
 
-        from ray import air, tune
+        from ray import train, tune
         from ray.tune import Callback
 
 
@@ -93,13 +91,13 @@ class Callback(metaclass=_CallbackMeta):
                 print(f"Got result: {result['metric']}")
 
 
-        def train(config):
+        def train_func(config):
             for i in range(10):
                 tune.report(metric=i)
 
         tuner = tune.Tuner(
-            train,
-            run_config=air.RunConfig(
+            train_func,
+            run_config=train.RunConfig(
                 callbacks=[MyCallback()]
             )
         )
@@ -131,7 +129,7 @@ class Callback(metaclass=_CallbackMeta):
 
         Arguments:
             stop: Stopping criteria.
-                If ``time_budget_s`` was passed to ``air.RunConfig``, a
+                If ``time_budget_s`` was passed to ``train.RunConfig``, a
                 ``TimeoutStopper`` will be passed here, either by itself
                 or as a part of a ``CombinedStopper``.
             num_samples: Number of times to sample from the
@@ -245,6 +243,22 @@ class Callback(metaclass=_CallbackMeta):
         """
         pass
 
+    def on_trial_recover(
+        self, iteration: int, trials: List["Trial"], trial: "Trial", **info
+    ):
+        """Called after a trial instance failed (errored) but the trial is scheduled
+        for retry.
+
+        The search algorithm and scheduler are not notified.
+
+        Arguments:
+            iteration: Number of iterations of the tuning loop.
+            trials: List of trials.
+            trial: Trial that just has errored.
+            **info: Kwargs dict for forward compatibility.
+        """
+        pass
+
     def on_trial_error(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
@@ -266,7 +280,7 @@ class Callback(metaclass=_CallbackMeta):
         iteration: int,
         trials: List["Trial"],
         trial: "Trial",
-        checkpoint: "_TrackedCheckpoint",
+        checkpoint: "Checkpoint",
         **info,
     ):
         """Called after a trial saved a checkpoint with Tune.
@@ -399,6 +413,10 @@ class CallbackList(Callback):
         for callback in self._callbacks:
             callback.on_trial_complete(**info)
 
+    def on_trial_recover(self, **info):
+        for callback in self._callbacks:
+            callback.on_trial_recover(**info)
+
     def on_trial_error(self, **info):
         for callback in self._callbacks:
             callback.on_trial_error(**info)
@@ -483,8 +501,8 @@ class CallbackList(Callback):
             can_restore: True if the checkpoint_dir contains a file of the
                 format `CKPT_FILE_TMPL`. False otherwise.
         """
-        return bool(
-            glob.glob(os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")))
+        return any(
+            glob.iglob(Path(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")).as_posix())
         )
 
     def __len__(self) -> int:

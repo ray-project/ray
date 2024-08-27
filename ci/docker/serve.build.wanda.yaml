@@ -1,0 +1,12 @@
+name: "servebuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_build-py$PYTHON"]
+dockerfile: ci/docker/serve.build.Dockerfile
+srcs:
+  - python/requirements.txt
+  - python/requirements_compiled.txt
+  - python/requirements/test-requirements.txt
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py$PYTHON
+  - PYTHON=$PYTHON
+tags:
+  - cr.ray.io/rayproject/servebuild-py$PYTHON

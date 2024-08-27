@@ -41,6 +41,18 @@ class MockGcsWorkerManager : public GcsWorkerManager {
                rpc::AddWorkerInfoReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
+  MOCK_METHOD(void,
+              HandleUpdateWorkerDebuggerPort,
+              (rpc::UpdateWorkerDebuggerPortRequest request,
+               rpc::UpdateWorkerDebuggerPortReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
+              HandleUpdateWorkerNumPausedThreads,
+              (rpc::UpdateWorkerNumPausedThreadsRequest request,
+               rpc::UpdateWorkerNumPausedThreadsReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
 };
 
 }  // namespace gcs

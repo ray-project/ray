@@ -1,20 +1,34 @@
 import os
+import random
+import subprocess
+import tempfile
+from copy import deepcopy
 
 import pytest
-import tempfile
-import subprocess
-import random
-
 import requests
+
 import ray
 from ray import serve
-
-from ray._private.test_utils import wait_for_condition
-from ray.tests.conftest import pytest_runtest_makereport, propagate_logs  # noqa
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray._private.usage import usage_lib
+from ray.cluster_utils import AutoscalingCluster, Cluster
+from ray.serve._private.test_utils import (
+    TELEMETRY_ROUTE_PREFIX,
+    check_ray_started,
+    check_ray_stopped,
+    start_telemetry_app,
+)
+from ray.serve.context import _get_global_client
+from ray.tests.conftest import propagate_logs, pytest_runtest_makereport  # noqa
 
 # https://tools.ietf.org/html/rfc6335#section-6
 MIN_DYNAMIC_PORT = 49152
 MAX_DYNAMIC_PORT = 65535
+
+TEST_GRPC_SERVICER_FUNCTIONS = [
+    "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    "ray.serve.generated.serve_pb2_grpc.add_FruitServiceServicer_to_server",
+]
 
 if os.environ.get("RAY_SERVE_INTENTIONALLY_CRASH", False) == 1:
     serve.controller._CRASH_AFTER_CHECKPOINT_PROBABILITY = 0.5
@@ -25,6 +39,28 @@ def ray_shutdown():
     yield
     serve.shutdown()
     ray.shutdown()
+
+
+@pytest.fixture
+def ray_cluster():
+    cluster = Cluster()
+    yield Cluster()
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
+
+
+@pytest.fixture
+def ray_autoscaling_cluster(request):
+    # NOTE(zcin): We have to make a deepcopy here because AutoscalingCluster
+    # modifies the dictionary that's passed in.
+    params = deepcopy(request.param)
+    cluster = AutoscalingCluster(**params)
+    cluster.start()
+    yield
+    serve.shutdown()
+    ray.shutdown()
+    cluster.shutdown()
 
 
 @pytest.fixture
@@ -72,18 +108,34 @@ def _shared_serve_instance():
         _metrics_export_port=9999,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
-    yield serve.start(detached=True, http_options={"host": "0.0.0.0"})
+    serve.start(
+        http_options={"host": "0.0.0.0"},
+        grpc_options={
+            "port": 9000,
+            "grpc_servicer_functions": TEST_GRPC_SERVICER_FUNCTIONS,
+        },
+    )
+    yield _get_global_client()
 
 
 @pytest.fixture
 def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
-    # Clear all applications to avoid naming & route_prefix collisions.
+    # Clear all state for 2.x applications and deployments.
     _shared_serve_instance.delete_all_apps()
-    # Clear all state between tests to avoid naming collisions.
-    _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
     # Clear the ServeHandle cache between tests to avoid them piling up.
-    _shared_serve_instance.handle_cache.clear()
+    _shared_serve_instance.shutdown_cached_handles()
+
+
+@pytest.fixture
+def serve_instance_with_signal(serve_instance):
+    client = serve_instance
+
+    signal = SignalActor.options(name="signal123").remote()
+    yield client, signal
+
+    # Delete signal actor so there is no conflict between tests
+    ray.kill(signal)
 
 
 def check_ray_stop():
@@ -115,6 +167,35 @@ def ray_start_stop():
     )
 
 
+@pytest.fixture(scope="function")
+def ray_start_stop_in_specific_directory(request):
+    original_working_dir = os.getcwd()
+
+    # Change working directory so Ray will start in the requested directory.
+    new_working_dir = request.param
+    os.chdir(new_working_dir)
+    print(f"\nChanged working directory to {new_working_dir}\n")
+
+    subprocess.check_output(["ray", "start", "--head"])
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        == 200,
+        timeout=15,
+    )
+    try:
+        yield
+    finally:
+        # Change the directory back to the original one.
+        os.chdir(original_working_dir)
+        print(f"\nChanged working directory back to {original_working_dir}\n")
+
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(
+            check_ray_stop,
+            timeout=15,
+        )
+
+
 @pytest.fixture
 def ray_instance(request):
     """Starts and stops a Ray instance for this test.
@@ -132,7 +213,6 @@ def ray_instance(request):
         requested_env_vars = {}
 
     os.environ.update(requested_env_vars)
-
     yield ray.init(
         _metrics_export_port=9999,
         _system_config={
@@ -145,3 +225,38 @@ def ray_instance(request):
 
     os.environ.clear()
     os.environ.update(original_env_vars)
+
+
+@pytest.fixture
+def manage_ray_with_telemetry(monkeypatch):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_USAGE_STATS_ENABLED", "1")
+        m.setenv(
+            "RAY_USAGE_STATS_REPORT_URL",
+            f"http://127.0.0.1:8000{TELEMETRY_ROUTE_PREFIX}",
+        )
+        m.setenv("RAY_USAGE_STATS_REPORT_INTERVAL_S", "1")
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(check_ray_stopped, timeout=5)
+
+        subprocess.check_output(["ray", "start", "--head"])
+        wait_for_condition(check_ray_started, timeout=5)
+
+        storage = start_telemetry_app()
+        wait_for_condition(
+            lambda: ray.get(storage.get_reports_received.remote()) > 1, timeout=15
+        )
+
+        yield storage
+
+        # Call Python API shutdown() methods to clear global variable state
+        serve.shutdown()
+        ray.shutdown()
+
+        # Reset global state (any keys that may have been set and cached while the
+        # workload was running).
+        usage_lib.reset_global_state()
+
+        # Shut down Ray cluster with CLI
+        subprocess.check_output(["ray", "stop", "--force"])
+        wait_for_condition(check_ray_stopped, timeout=5)

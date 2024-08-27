@@ -1,14 +1,14 @@
-# Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
-from ray.tests.conftest import pytest_runtest_makereport  # noqa
-from ray.tests.conftest import propagate_logs  # noqa
-
-
 import logging
+
 import boto3
 import pytest
 
-from ray.air._internal.uri_utils import URI
 from ray._private.test_utils import simulate_storage
+from ray.air._internal.uri_utils import URI
+
+# Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
+from ray.tests.conftest import propagate_logs  # noqa
+from ray.tests.conftest import pytest_runtest_makereport  # noqa
 
 
 @pytest.fixture

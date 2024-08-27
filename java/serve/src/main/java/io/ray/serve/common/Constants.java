@@ -49,4 +49,13 @@ public class Constants {
   public static final Double DEFAULT_HEALTH_CHECK_PERIOD_S = 10.0;
 
   public static final Double DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30.0;
+
+  /** Default Serve application name */
+  public static final String SERVE_DEFAULT_APP_NAME = "default";
+
+  public static final String MIGRATION_MESSAGE =
+      "This API is deprecated and may be removed in future Ray releases. "
+          + "Please see https://docs.ray.io/en/latest/serve/index.html for more information.";
+
+  public static final String SEPARATOR_HASH = "#";
 }

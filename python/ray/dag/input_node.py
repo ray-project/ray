@@ -3,7 +3,6 @@ from typing import Any, Dict, List, Union, Optional
 from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 from ray.experimental.gradio_utils import type_to_string
-from ray.dag.constants import DAGNODE_TYPE_KEY
 from ray.util.annotations import DeveloperAPI
 
 IN_CONTEXT_MANAGER = "__in_context_manager__"
@@ -173,20 +172,6 @@ class InputNode(DAGNode):
     def __exit__(self, *args):
         pass
 
-    def to_json(self) -> Dict[str, Any]:
-        return {
-            DAGNODE_TYPE_KEY: InputNode.__name__,
-            "other_args_to_resolve": self.get_other_args_to_resolve(),
-            "uuid": self.get_stable_uuid(),
-        }
-
-    @classmethod
-    def from_json(cls, input_json):
-        assert input_json[DAGNODE_TYPE_KEY] == InputNode.__name__
-        node = cls(_other_args_to_resolve=input_json["other_args_to_resolve"])
-        node._stable_uuid = input_json["uuid"]
-        return node
-
     def get_result_type(self) -> str:
         """Get type of the output of this DAGNode.
 
@@ -230,7 +215,7 @@ class InputAttributeNode(DAGNode):
     def __init__(
         self,
         dag_input_node: InputNode,
-        key: str,
+        key: Union[int, str],
         accessor_method: str,
         input_type: str = None,
     ):
@@ -298,25 +283,6 @@ class InputAttributeNode(DAGNode):
     def __str__(self) -> str:
         return get_dag_node_str(self, f'["{self._key}"]')
 
-    def to_json(self) -> Dict[str, Any]:
-        return {
-            DAGNODE_TYPE_KEY: InputAttributeNode.__name__,
-            "other_args_to_resolve": self.get_other_args_to_resolve(),
-            "uuid": self.get_stable_uuid(),
-        }
-
-    @classmethod
-    def from_json(cls, input_json):
-        assert input_json[DAGNODE_TYPE_KEY] == InputAttributeNode.__name__
-        node = cls(
-            input_json["other_args_to_resolve"]["dag_input_node"],
-            input_json["other_args_to_resolve"]["key"],
-            input_json["other_args_to_resolve"]["accessor_method"],
-            input_json["other_args_to_resolve"]["result_type_string"],
-        )
-        node._stable_uuid = input_json["uuid"]
-        return node
-
     def get_result_type(self) -> str:
         """Get type of the output of this DAGNode.
 
@@ -324,6 +290,10 @@ class InputAttributeNode(DAGNode):
         """
         if "result_type_string" in self._bound_other_args_to_resolve:
             return self._bound_other_args_to_resolve["result_type_string"]
+
+    @property
+    def key(self) -> Union[int, str]:
+        return self._key
 
 
 @DeveloperAPI

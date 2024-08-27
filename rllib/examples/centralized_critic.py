@@ -1,3 +1,10 @@
+# @OldAPIStack
+
+# ***********************************************************************************
+# IMPORTANT NOTE: This script uses the old API stack and will soon be replaced by
+# `ray.rllib.examples.multi_agent.pettingzoo_shared_value_function.py`!
+# ***********************************************************************************
+
 """An example of customizing PPO to leverage a centralized critic.
 
 Here the model and policy are hard-coded to implement a centralized critic
@@ -14,12 +21,13 @@ modifies the environment.
 """
 
 import argparse
-import numpy as np
 from gymnasium.spaces import Discrete
+import numpy as np
 import os
 
 import ray
 from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo.ppo import PPO, PPOConfig
 from ray.rllib.algorithms.ppo.ppo_tf_policy import (
     PPOTF1Policy,
@@ -27,8 +35,8 @@ from ray.rllib.algorithms.ppo.ppo_tf_policy import (
 )
 from ray.rllib.algorithms.ppo.ppo_torch_policy import PPOTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages, Postprocessing
-from ray.rllib.examples.env.two_step_game import TwoStepGame
-from ray.rllib.examples.models.centralized_critic_models import (
+from ray.rllib.examples.envs.classes.two_step_game import TwoStepGame
+from ray.rllib.examples._old_api_stack.models.centralized_critic_models import (
     CentralizedCriticModel,
     TorchCentralizedCriticModel,
 )
@@ -36,6 +44,11 @@ from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.rllib.utils.tf_utils import explained_variance, make_tf_callable
@@ -261,9 +274,8 @@ if __name__ == "__main__":
         PPOConfig()
         .environment(TwoStepGame)
         .framework(args.framework)
-        .rollouts(batch_mode="complete_episodes", num_rollout_workers=0)
-        # TODO (Kourosh): Lift this example to the new RLModule stack, and enable it.
-        .training(model={"custom_model": "cc_model"}, _enable_learner_api=False)
+        .env_runners(batch_mode="complete_episodes", num_env_runners=0)
+        .training(model={"custom_model": "cc_model"})
         .multi_agent(
             policies={
                 "pol1": (
@@ -287,13 +299,12 @@ if __name__ == "__main__":
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     tuner = tune.Tuner(

@@ -19,12 +19,6 @@ To compile the documentation and open it locally, run the following command from
 make develop && open _build/html/index.html
 ```
 
-> **_NOTE:_**  The above command is for development. To reproduce build failures from the
-> CI, you should use `make html` which is the same as `make develop` but treats warnings as errors.
-> Additionally, note that `make develop` uses the `FAST` environment variable to skip some
-> expensive parts of the build process. In particular, it will aggressively prune the
-> left-hand side navigation, but leave the documents itself intact.
-
 ## Building just one subproject
 
 Often your changes in documentation just concern one subproject, such as Tune or Train.
@@ -65,14 +59,14 @@ make linkcheck
 To run tests for examples shipping with docstrings in Python files, run the following command:
 
 ```shell
-RAY_MOCK_MODULES=0 make doctest
+make doctest
 ```
 
 ## Adding examples as MyST Markdown Notebooks
 
 You can now add [executable notebooks](https://myst-nb.readthedocs.io/en/latest/use/markdown.html) to this project,
 which will get built into the documentation.
-An [example can be found here](./source/serve/tutorials/rllib.md).
+<!--An [example can be found here](./source/serve/tutorials/rllib.md).-->
 By default, building the docs with `make develop` will not run those notebooks.
 If you set the `RUN_NOTEBOOKS` environment variable to `"cache"`, each notebook cell will be run when you build the
 documentation, and outputs will be cached into `_build/.jupyter_cache`.
@@ -90,7 +84,7 @@ The benefits of working with notebooks for examples are that you don't separate 
 
 ## Adding Markdown docs from external (ecosystem) repositories
 
-In order to avoid a situation where duplicate documentation files live in both the docs folder
+In order to avoid a situation where duplicate documentation files live in both the `doc/` folder
 in this repository and in external repositories of ecosystem libraries (eg. xgboost-ray), you can
 specify Markdown files that will be downloaded from other GitHub repositories during the build process.
 

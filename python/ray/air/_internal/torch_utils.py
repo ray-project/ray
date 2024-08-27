@@ -1,20 +1,24 @@
 import os
 import warnings
-from typing import Dict, List, Optional, Union, Any
+from typing import Any, Dict, List, Optional, Union
 
 import numpy as np
 import pandas as pd
 import torch
 
 import ray
+from ray._private.accelerators.hpu import HPU_PACKAGE_AVAILABLE
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
+if HPU_PACKAGE_AVAILABLE:
+    import habana_frameworks.torch.hpu as torch_hpu
 
-def get_device() -> Union[torch.device, List[torch.device]]:
-    """Gets the correct torch device configured for this process.
 
-    Returns a list of devices if more than 1 GPU per worker
-    is requested.
+def get_devices() -> List[torch.device]:
+    """Gets the correct torch device list configured for this process.
+
+    Returns a list of torch CUDA devices allocated for the current worker.
+    If no GPUs are assigned, then it returns a list with a single CPU device.
 
     Assumes that `CUDA_VISIBLE_DEVICES` is set and is a
     superset of the `ray.get_gpu_ids()`.
@@ -55,11 +59,12 @@ def get_device() -> Union[torch.device, List[torch.device]]:
             device_ids.append(0)
 
         devices = [torch.device(f"cuda:{device_id}") for device_id in device_ids]
-        device = devices[0] if len(devices) == 1 else devices
+    elif HPU_PACKAGE_AVAILABLE and torch_hpu.is_available():
+        devices = [torch.device("hpu")]
     else:
-        device = torch.device("cpu")
+        devices = [torch.device("cpu")]
 
-    return device
+    return devices
 
 
 def convert_pandas_to_torch_tensor(
@@ -100,7 +105,7 @@ def convert_pandas_to_torch_tensor(
 
     multi_input = columns and (isinstance(columns[0], (list, tuple)))
 
-    if not multi_input and column_dtypes and type(column_dtypes) != torch.dtype:
+    if not multi_input and column_dtypes and not isinstance(column_dtypes, torch.dtype):
         raise TypeError(
             "If `columns` is a list of strings, "
             "`column_dtypes` must be None or a single `torch.dtype`."
@@ -145,11 +150,11 @@ def convert_pandas_to_torch_tensor(
             col_vals = batch[col].values
             try:
                 t = tensorize(col_vals, dtype=dtype)
-            except Exception:
+            except Exception as e:
                 raise ValueError(
                     f"Failed to convert column {col} to a Torch Tensor of dtype "
                     f"{dtype}. See above exception chain for the exact failure."
-                )
+                ) from e
             if unsqueeze:
                 t = t.unsqueeze(1)
             feature_tensors.append(t)

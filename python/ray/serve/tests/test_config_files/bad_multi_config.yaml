@@ -12,6 +12,7 @@ applications:
           increment: 1
 
   - name: "app2"
+    # Route prefixes should be unique across all apps!
     route_prefix: "/app1"
     import_path: ray.serve.tests.test_config_files.pizza.serve_dag
     deployments:

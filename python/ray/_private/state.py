@@ -1,13 +1,19 @@
 import json
 import logging
 from collections import defaultdict
+from typing import Dict
 
-from google.protobuf.json_format import MessageToDict
+from ray._private.protobuf_compat import message_to_dict
 
 import ray
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.resource_spec import NODE_ID_PREFIX, HEAD_NODE_RESOURCE_NAME
-from ray._private.utils import binary_to_hex, decode, hex_to_binary
+from ray._private.utils import (
+    binary_to_hex,
+    decode,
+    hex_to_binary,
+    validate_actor_state_name,
+)
 from ray._raylet import GlobalStateAccessor
 from ray.core.generated import common_pb2
 from ray.core.generated import gcs_pb2
@@ -74,13 +80,22 @@ class GlobalState:
         self.global_state_accessor = GlobalStateAccessor(self.gcs_options)
         self.global_state_accessor.connect()
 
-    def actor_table(self, actor_id):
+    def actor_table(
+        self, actor_id: str, job_id: ray.JobID = None, actor_state_name: str = None
+    ):
         """Fetch and parse the actor table information for a single actor ID.
 
         Args:
             actor_id: A hex string of the actor ID to fetch information about.
                 If this is None, then the actor table is fetched.
-
+                If this is not None, `job_id` and `actor_state_name`
+                will not take effect.
+            job_id: To filter actors by job_id, which is of type `ray.JobID`.
+                You can use the `ray.get_runtime_context().job_id` function
+                to get the current job ID
+            actor_state_name: To filter actors based on actor state,
+                which can be one of the following: "DEPENDENCIES_UNREADY",
+                "PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD".
         Returns:
             Information from the actor table.
         """
@@ -95,7 +110,10 @@ class GlobalState:
                 actor_table_data = gcs_pb2.ActorTableData.FromString(actor_info)
                 return self._gen_actor_info(actor_table_data)
         else:
-            actor_table = self.global_state_accessor.get_actor_table()
+            validate_actor_state_name(actor_state_name)
+            actor_table = self.global_state_accessor.get_actor_table(
+                job_id, actor_state_name
+            )
             results = {}
             for i in range(len(actor_table)):
                 actor_table_data = gcs_pb2.ActorTableData.FromString(actor_table[i])
@@ -299,6 +317,8 @@ class GlobalState:
         def get_state(state):
             if state == gcs_pb2.PlacementGroupTableData.PENDING:
                 return "PENDING"
+            elif state == gcs_pb2.PlacementGroupTableData.PREPARED:
+                return "PREPARED"
             elif state == gcs_pb2.PlacementGroupTableData.CREATED:
                 return "CREATED"
             elif state == gcs_pb2.PlacementGroupTableData.RESCHEDULING:
@@ -328,7 +348,7 @@ class GlobalState:
             "bundles": {
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
-                bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
+                bundle.bundle_id.bundle_index: message_to_dict(bundle)["unitResources"]
                 for bundle in placement_group_info.bundles
             },
             "bundles_to_node_id": {
@@ -490,7 +510,7 @@ class GlobalState:
             logger.warning(
                 "No profiling events found. Ray profiling must be enabled "
                 "by setting RAY_PROFILING=1, and make sure "
-                "RAY_task_events_report_interval_ms is a positive value (default 1000)."
+                "RAY_task_events_report_interval_ms=0."
             )
 
         if filename is not None:
@@ -646,6 +666,61 @@ class GlobalState:
             worker_data.SerializeToString()
         )
 
+    def update_worker_debugger_port(self, worker_id, debugger_port):
+        """Update the debugger port of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+            debugger_port: Port of the debugger. Type is int.
+
+        Returns:
+             Is operation success
+        """
+        self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+        assert (
+            debugger_port is not None and debugger_port > 0
+        ), "debugger_port is not valid"
+
+        return self.global_state_accessor.update_worker_debugger_port(
+            worker_id, debugger_port
+        )
+
+    def get_worker_debugger_port(self, worker_id):
+        """Get the debugger port of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+
+        Returns:
+             Debugger port of the worker.
+        """
+        self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+
+        return self.global_state_accessor.get_worker_debugger_port(worker_id)
+
+    def update_worker_num_paused_threads(self, worker_id, num_paused_threads_delta):
+        """Updates the number of paused threads of a worker.
+
+        Args:
+            worker_id: ID of this worker. Type is bytes.
+            num_paused_threads_delta: The delta of the number of paused threads.
+
+        Returns:
+             Is operation success
+        """
+        self._check_connected()
+
+        assert worker_id is not None, "worker_id is not valid"
+        assert num_paused_threads_delta is not None, "worker_id is not valid"
+
+        return self.global_state_accessor.update_worker_num_paused_threads(
+            worker_id, num_paused_threads_delta
+        )
+
     def cluster_resources(self):
         """Get the current total cluster resources.
 
@@ -658,20 +733,19 @@ class GlobalState:
         """
         self._check_connected()
 
-        resources = defaultdict(int)
-        nodes = self.node_table()
-        for node in nodes:
-            # Only count resources from latest entries of live nodes.
-            if node["Alive"]:
-                for key, value in node["Resources"].items():
-                    resources[key] += value
-        return dict(resources)
+        # Calculate total resources.
+        total_resources = defaultdict(int)
+        for node_total_resources in self.total_resources_per_node().values():
+            for resource_id, value in node_total_resources.items():
+                total_resources[resource_id] += value
+
+        return dict(total_resources)
 
     def _live_node_ids(self):
         """Returns a set of node IDs corresponding to nodes still alive."""
-        return {node["NodeID"] for node in self.node_table() if (node["Alive"])}
+        return set(self.total_resources_per_node().keys())
 
-    def _available_resources_per_node(self):
+    def available_resources_per_node(self):
         """Returns a dictionary mapping node id to avaiable resources."""
         self._check_connected()
         available_resources_by_id = {}
@@ -689,14 +763,25 @@ class GlobalState:
             node_id = ray._private.utils.binary_to_hex(message.node_id)
             available_resources_by_id[node_id] = dynamic_resources
 
-        # Update nodes in cluster.
-        node_ids = self._live_node_ids()
-        # Remove disconnected nodes.
-        for node_id in list(available_resources_by_id.keys()):
-            if node_id not in node_ids:
-                del available_resources_by_id[node_id]
-
         return available_resources_by_id
+
+    # returns a dict that maps node_id(hex string) to a dict of {resource_id: capacity}
+    def total_resources_per_node(self) -> Dict[str, Dict[str, int]]:
+        self._check_connected()
+        total_resources_by_node = {}
+
+        all_total_resources = self.global_state_accessor.get_all_total_resources()
+        for node_total_resources in all_total_resources:
+            message = gcs_pb2.TotalResources.FromString(node_total_resources)
+            # Calculate total resources for this node.
+            node_resources = {}
+            for resource_id, capacity in message.resources_total.items():
+                node_resources[resource_id] = capacity
+            # Update total resources for this node.
+            node_id = ray._private.utils.binary_to_hex(message.node_id)
+            total_resources_by_node[node_id] = node_resources
+
+        return total_resources_by_node
 
     def available_resources(self):
         """Get the current available cluster resources.
@@ -708,11 +793,13 @@ class GlobalState:
 
         Returns:
             A dictionary mapping resource name to the total quantity of that
-                resource in the cluster.
+                resource in the cluster. Note that if a resource (e.g., "CPU")
+                is currently not available (i.e., quantity is 0), it will not
+                be included in this dictionary.
         """
         self._check_connected()
 
-        available_resources_by_id = self._available_resources_per_node()
+        available_resources_by_id = self.available_resources_per_node()
 
         # Calculate total available resources.
         total_available_resources = defaultdict(int)
@@ -733,6 +820,20 @@ class GlobalState:
         return self.global_state_accessor.get_node_to_connect_for_driver(
             node_ip_address
         )
+
+    def get_node(self, node_id: str):
+        """Get the node information for a node id."""
+        self._check_connected()
+        return self.global_state_accessor.get_node(node_id)
+
+    def get_draining_nodes(self) -> Dict[str, int]:
+        """Get all the hex ids of nodes that are being drained
+        and the corresponding draining deadline timestamps in ms.
+
+        There is no deadline if the timestamp is 0.
+        """
+        self._check_connected()
+        return self.global_state_accessor.get_draining_nodes()
 
 
 state = GlobalState()
@@ -806,24 +907,38 @@ def node_ids():
         List of the node resource ids.
     """
     node_ids = []
-    for node in nodes():
-        for k, v in node["Resources"].items():
-            if k.startswith(NODE_ID_PREFIX) and k != HEAD_NODE_RESOURCE_NAME:
-                node_ids.append(k)
+    for node_total_resources in state.total_resources_per_node().values():
+        for resource_id in node_total_resources.keys():
+            if (
+                resource_id.startswith(NODE_ID_PREFIX)
+                and resource_id != HEAD_NODE_RESOURCE_NAME
+            ):
+                node_ids.append(resource_id)
     return node_ids
 
 
-def actors(actor_id=None):
+def actors(
+    actor_id: str = None, job_id: ray.JobID = None, actor_state_name: str = None
+):
     """Fetch actor info for one or more actor IDs (for debugging only).
 
     Args:
         actor_id: A hex string of the actor ID to fetch information about. If
             this is None, then all actor information is fetched.
-
+            If this is not None, `job_id` and `actor_state_name`
+            will not take effect.
+        job_id: To filter actors by job_id, which is of type `ray.JobID`.
+            You can use the `ray.get_runtime_context().job_id` function
+            to get the current job ID
+        actor_state_name: To filter actors based on actor state,
+            which can be one of the following: "DEPENDENCIES_UNREADY",
+            "PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD".
     Returns:
         Information about the actors.
     """
-    return state.actor_table(actor_id=actor_id)
+    return state.actor_table(
+        actor_id=actor_id, job_id=job_id, actor_state_name=actor_state_name
+    )
 
 
 @DeveloperAPI
@@ -832,8 +947,7 @@ def timeline(filename=None):
     """Return a list of profiling events that can viewed as a timeline.
 
     Ray profiling must be enabled by setting the RAY_PROFILING=1 environment
-    variable prior to starting Ray, and RAY_task_events_report_interval_ms set
-    to be positive (default 1000)
+    variable prior to starting Ray, and set RAY_task_events_report_interval_ms=0
 
     To view this information as a timeline, simply dump it as a json file by
     passing in "filename" or using using json.dump, and then load go to
@@ -896,6 +1010,72 @@ def available_resources():
 
     Returns:
         A dictionary mapping resource name to the total quantity of that
-            resource in the cluster.
+            resource in the cluster. Note that if a resource (e.g., "CPU")
+            is currently not available (i.e., quantity is 0), it will not
+            be included in this dictionary.
     """
     return state.available_resources()
+
+
+@DeveloperAPI
+def available_resources_per_node():
+    """Get the current available resources of each live node.
+
+    Note that this information can grow stale as tasks start and finish.
+
+    Returns:
+        A dictionary mapping node hex id to available resources dictionary.
+    """
+
+    return state.available_resources_per_node()
+
+
+@DeveloperAPI
+def total_resources_per_node():
+    """Get the current total resources of each live node.
+
+    Note that this information can grow stale as tasks start and finish.
+
+    Returns:
+        A dictionary mapping node hex id to total resources dictionary.
+    """
+
+    return state.total_resources_per_node()
+
+
+def update_worker_debugger_port(worker_id, debugger_port):
+    """Update the debugger port of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+        debugger_port: Port of the debugger. Type is int.
+
+    Returns:
+         Is operation success
+    """
+    return state.update_worker_debugger_port(worker_id, debugger_port)
+
+
+def update_worker_num_paused_threads(worker_id, num_paused_threads_delta):
+    """Update the number of paused threads of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+        num_paused_threads_delta: The delta of the number of paused threads.
+
+    Returns:
+         Is operation success
+    """
+    return state.update_worker_num_paused_threads(worker_id, num_paused_threads_delta)
+
+
+def get_worker_debugger_port(worker_id):
+    """Get the debugger port of a worker.
+
+    Args:
+        worker_id: ID of this worker. Type is bytes.
+
+    Returns:
+         Debugger port of the worker.
+    """
+    return state.get_worker_debugger_port(worker_id)

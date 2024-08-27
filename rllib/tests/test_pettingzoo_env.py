@@ -1,6 +1,6 @@
 from numpy import float32
 from pettingzoo.butterfly import pistonball_v6
-from pettingzoo.mpe import simple_spread_v2
+from pettingzoo.mpe import simple_spread_v3
 from supersuit import (
     color_reduction_v0,
     dtype_v0,
@@ -63,8 +63,8 @@ class TestPettingZooEnv(unittest.TestCase):
                 policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "av",
             )
             .debugging(log_level="DEBUG")
-            .rollouts(
-                num_rollout_workers=1,
+            .env_runners(
+                num_env_runners=1,
                 # Fragment length, collected at once from each worker
                 # and for each agent!
                 rollout_fragment_length=30,
@@ -78,12 +78,12 @@ class TestPettingZooEnv(unittest.TestCase):
         algo.stop()
 
     def test_pettingzoo_env(self):
-        register_env("simple_spread", lambda _: PettingZooEnv(simple_spread_v2.env()))
+        register_env("simple_spread", lambda _: PettingZooEnv(simple_spread_v3.env()))
 
         config = (
             PPOConfig()
             .environment("simple_spread")
-            .rollouts(num_rollout_workers=0, rollout_fragment_length=30)
+            .env_runners(num_env_runners=0, rollout_fragment_length=30)
             .debugging(log_level="DEBUG")
             .training(train_batch_size=200)
             .multi_agent(

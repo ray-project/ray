@@ -11,15 +11,21 @@
 
 import argparse
 import os
+import sys
 
 from filelock import FileLock
-from tensorflow.keras.layers import Dense, Flatten, Conv2D
-from tensorflow.keras import Model
-from tensorflow.keras.datasets.mnist import load_data
 
-from ray import air, tune
+from ray import train, tune
 
 MAX_TRAIN_BATCH = 10
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    from tensorflow.keras import Model
+    from tensorflow.keras.datasets.mnist import load_data
+    from tensorflow.keras.layers import Conv2D, Dense, Flatten
 
 
 class MyModel(Model):
@@ -92,6 +98,12 @@ class MNISTTrainable(tune.Trainable):
         self.tf_train_step = train_step
         self.tf_test_step = test_step
 
+    def save_checkpoint(self, checkpoint_dir: str):
+        return None
+
+    def load_checkpoint(self, checkpoint):
+        return None
+
     def step(self):
         self.train_loss.reset_states()
         self.train_accuracy.reset_states()
@@ -129,7 +141,7 @@ if __name__ == "__main__":
             metric="test_loss",
             mode="min",
         ),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             stop={"training_iteration": 5 if args.smoke_test else 50},
             verbose=1,
         ),

@@ -1,208 +1,23 @@
-from concurrent.futures.thread import ThreadPoolExecutor
 import functools
 import os
 import sys
+import threading
 import time
+from concurrent.futures.thread import ThreadPoolExecutor
 from typing import Dict
 
 import pytest
 import requests
 
 import ray
-from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
-from pydantic import ValidationError
-from ray.serve.drivers import DAGDriver
-from ray.serve._private.common import ApplicationStatus
-
-
-class TestGetDeployment:
-    # Test V1 API get_deployment()
-    def get_deployment(self, name, use_list_api):
-        if use_list_api:
-            return serve.list_deployments()[name]
-        else:
-            return serve.get_deployment(name)
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_basic_get(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name, version="1")
-        def d(*args):
-            return "1", os.getpid()
-
-        with pytest.raises(KeyError):
-            self.get_deployment(name, use_list_api)
-
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
-        assert val1 == "1"
-
-        del d
-
-        d2 = self.get_deployment(name, use_list_api)
-        val2, pid2 = ray.get(d2.get_handle().remote())
-        assert val2 == "1"
-        assert pid2 == pid1
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_get_after_delete(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name, version="1")
-        def d(*args):
-            return "1", os.getpid()
-
-        d.deploy()
-        del d
-
-        d2 = self.get_deployment(name, use_list_api)
-        d2.delete()
-        del d2
-
-        with pytest.raises(KeyError):
-            self.get_deployment(name, use_list_api)
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_deploy_new_version(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name, version="1")
-        def d(*args):
-            return "1", os.getpid()
-
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
-        assert val1 == "1"
-
-        del d
-
-        d2 = self.get_deployment(name, use_list_api)
-        d2.options(version="2").deploy()
-        val2, pid2 = ray.get(d2.get_handle().remote())
-        assert val2 == "1"
-        assert pid2 != pid1
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_deploy_empty_version(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name)
-        def d(*args):
-            return "1", os.getpid()
-
-        d.deploy()
-        val1, pid1 = ray.get(d.get_handle().remote())
-        assert val1 == "1"
-
-        del d
-
-        d2 = self.get_deployment(name, use_list_api)
-        d2.deploy()
-        val2, pid2 = ray.get(d2.get_handle().remote())
-        assert val2 == "1"
-        assert pid2 != pid1
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_init_args(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name)
-        class D:
-            def __init__(self, val):
-                self._val = val
-
-            def __call__(self, *arg):
-                return self._val, os.getpid()
-
-        D.deploy("1")
-        val1, pid1 = ray.get(D.get_handle().remote())
-        assert val1 == "1"
-
-        del D
-
-        D2 = self.get_deployment(name, use_list_api)
-        D2.deploy()
-        val2, pid2 = ray.get(D2.get_handle().remote())
-        assert val2 == "1"
-        assert pid2 != pid1
-
-        D2 = self.get_deployment(name, use_list_api)
-        D2.deploy("2")
-        val3, pid3 = ray.get(D2.get_handle().remote())
-        assert val3 == "2"
-        assert pid3 != pid2
-
-    @pytest.mark.parametrize("use_list_api", [True, False])
-    def test_scale_replicas(self, serve_instance, use_list_api):
-        name = "test"
-
-        @serve.deployment(name=name)
-        def d(*args):
-            return os.getpid()
-
-        def check_num_replicas(num):
-            handle = self.get_deployment(name, use_list_api).get_handle()
-            assert len(set(ray.get([handle.remote() for _ in range(50)]))) == num
-
-        d.deploy()
-        check_num_replicas(1)
-        del d
-
-        d2 = self.get_deployment(name, use_list_api)
-        d2.options(num_replicas=2).deploy()
-        check_num_replicas(2)
-
-
-def test_list_deployments(serve_instance):
-    assert serve.list_deployments() == {}
-
-    @serve.deployment(name="hi", num_replicas=2)
-    def d1(*args):
-        pass
-
-    d1.deploy()
-
-    assert serve.list_deployments() == {"hi": d1}
-
-
-def test_deploy_change_route_prefix(serve_instance):
-    name = "test"
-
-    @serve.deployment(name=name, version="1", route_prefix="/old")
-    def d(*args):
-        return f"1|{os.getpid()}"
-
-    def call(route):
-        ret = requests.get(f"http://localhost:8000/{route}").text
-        return ret.split("|")[0], ret.split("|")[1]
-
-    d.deploy()
-    val1, pid1 = call("old")
-    assert val1 == "1"
-
-    # Check that the old route is gone and the response from the new route
-    # has the same value and PID (replica wasn't restarted).
-    def check_switched():
-        try:
-            print(call("old"))
-            return False
-        except Exception:
-            print("failed")
-            pass
-
-        try:
-            val2, pid2 = call("new")
-        except Exception:
-            return False
-
-        assert val2 == "1"
-        assert pid2 == pid1
-        return True
-
-    d.options(route_prefix="/new").deploy()
-    wait_for_condition(check_switched)
+from ray._private.pydantic_compat import ValidationError
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.common import ApplicationStatus, DeploymentStatus
+from ray.serve._private.logging_utils import get_serve_logs_dir
+from ray.serve._private.test_utils import check_deployment_status, check_num_replicas_eq
+from ray.serve._private.utils import get_component_file_name
+from ray.util.state import list_actors
 
 
 @pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
@@ -217,11 +32,11 @@ def test_deploy_nullify_route_prefix(serve_instance, prefixes):
         return "got me"
 
     for prefix in prefixes:
-        dag = DAGDriver.options(route_prefix=prefix).bind(f.bind())
+        dag = f.options(route_prefix=prefix).bind()
         handle = serve.run(dag)
         assert requests.get("http://localhost:8000/f").status_code == 200
-        assert requests.get("http://localhost:8000/f").text == '"got me"'
-        assert ray.get(handle.predict.remote()) == "got me"
+        assert requests.get("http://localhost:8000/f").text == "got me"
+        assert handle.remote().result() == "got me"
 
 
 @pytest.mark.timeout(10, method="thread")
@@ -274,35 +89,36 @@ def test_json_serialization_user_config(serve_instance):
         def get_nested_value(self) -> None:
             return self.nested_value
 
-    SimpleDeployment.options(
+    app = SimpleDeployment.options(
         user_config={
             "value": "Success!",
             "nested": {"value": "Success!"},
         }
-    ).deploy()
+    ).bind()
+    handle = serve.run(app)
 
-    handle = SimpleDeployment.get_handle()
-    assert ray.get(handle.get_value.remote()) == "Success!"
-    assert ray.get(handle.get_nested_value.remote()) == "Success!"
+    assert handle.get_value.remote().result() == "Success!"
+    assert handle.get_nested_value.remote().result() == "Success!"
 
-    SimpleDeployment.options(
-        user_config={
-            "value": "Failure!",
-            "another-value": "Failure!",
-            "nested": {"value": "Success!"},
-        }
-    ).deploy()
+    handle = serve.run(
+        SimpleDeployment.options(
+            user_config={
+                "value": "Failure!",
+                "another-value": "Failure!",
+                "nested": {"value": "Success!"},
+            }
+        ).bind()
+    )
 
-    handle = SimpleDeployment.get_handle()
-    assert ray.get(handle.get_value.remote()) == "Failure!"
-    assert ray.get(handle.get_nested_value.remote()) == "Success!"
+    assert handle.get_value.remote().result() == "Failure!"
+    assert handle.get_nested_value.remote().result() == "Success!"
 
 
 def test_http_proxy_request_cancellation(serve_instance):
     # https://github.com/ray-project/ray/issues/21425
     s = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class A:
         def __init__(self) -> None:
             self.counter = 0
@@ -345,11 +161,8 @@ def test_http_proxy_request_cancellation(serve_instance):
 
 
 def test_nonserializable_deployment(serve_instance):
-    import threading
-
     lock = threading.Lock()
 
-    @serve.deployment
     class D:
         def hello(self, _):
             return lock
@@ -359,23 +172,17 @@ def test_nonserializable_deployment(serve_instance):
         TypeError,
         match=r"Could not serialize the deployment[\s\S]*was found to be non-serializable.*",  # noqa
     ):
-        serve.run(D.bind())
+        serve.deployment(D)
 
     @serve.deployment
     class E:
         def __init__(self, arg):
             self.arg = arg
 
-    with pytest.raises(
-        TypeError,
-        match=r"Could not serialize the deployment init args:[\s\S]*was found to be non-serializable.*",  # noqa
-    ):
+    with pytest.raises(TypeError, match="pickle"):
         serve.run(E.bind(lock))
 
-    with pytest.raises(
-        TypeError,
-        match=r"Could not serialize the deployment init kwargs:[\s\S]*was found to be non-serializable.*",  # noqa
-    ):
+    with pytest.raises(TypeError, match="pickle"):
         serve.run(E.bind(arg=lock))
 
 
@@ -405,26 +212,193 @@ def test_deploy_application_unhealthy(serve_instance):
                 raise RuntimeError("Intentionally failing.")
 
     handle = serve.run(Model.bind(), name="app")
-    assert ray.get(handle.remote()) == "hello world"
-    assert (
-        serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.RUNNING
-    )
+    assert handle.remote().result() == "hello world"
+    assert serve.status().applications["app"].status == ApplicationStatus.RUNNING
 
     # When a deployment becomes unhealthy, application should transition -> UNHEALTHY
     event.set.remote()
     wait_for_condition(
-        lambda: serve_instance.get_serve_status("app").app_status.status
-        == ApplicationStatus.UNHEALTHY
+        lambda: serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
     )
 
     # Check that application stays unhealthy
     for _ in range(10):
-        assert (
-            serve_instance.get_serve_status("app").app_status.status
-            == ApplicationStatus.UNHEALTHY
-        )
+        assert serve.status().applications["app"].status == ApplicationStatus.UNHEALTHY
         time.sleep(0.1)
+
+    # At least 10 control loop iterations should have passed. Check that
+    # the logs from application state manager notifying about unhealthy
+    # deployments doesn't spam, they should get printed only once.
+    controller_pid = [
+        actor["pid"]
+        for actor in list_actors()
+        if actor["name"] == "SERVE_CONTROLLER_ACTOR"
+    ][0]
+    controller_log_file_name = get_component_file_name(
+        "controller", controller_pid, component_type=None, suffix=".log"
+    )
+    controller_log_path = os.path.join(get_serve_logs_dir(), controller_log_file_name)
+    with open(controller_log_path, "r") as f:
+        s = f.read()
+        assert s.count("The deployments ['Model'] are UNHEALTHY.") <= 1
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Runtime env support experimental on windows"
+)
+def test_deploy_bad_pip_package_deployment(serve_instance):
+    """Test deploying with a bad runtime env at deployment level."""
+
+    @serve.deployment(ray_actor_options={"runtime_env": {"pip": ["does_not_exist"]}})
+    class Model:
+        def __call__(self):
+            return "hello world"
+
+    serve._run(Model.bind(), _blocking=False)
+
+    def check_fail():
+        app_status = serve.status().applications["default"]
+        assert app_status.status == ApplicationStatus.DEPLOY_FAILED
+        deployment_message = app_status.deployments["Model"].message
+        assert "No matching distribution found for does_not_exist" in deployment_message
+        return True
+
+    wait_for_condition(check_fail, timeout=15)
+
+
+def test_deploy_same_deployment_name_different_app(serve_instance):
+    @serve.deployment
+    class Model:
+        def __init__(self, name):
+            self.name = name
+
+        def __call__(self):
+            return f"hello {self.name}"
+
+    serve.run(Model.bind("alice"), name="app1", route_prefix="/app1")
+    serve.run(Model.bind("bob"), name="app2", route_prefix="/app2")
+
+    assert requests.get("http://localhost:8000/app1").text == "hello alice"
+    assert requests.get("http://localhost:8000/app2").text == "hello bob"
+    routes = requests.get("http://localhost:8000/-/routes").json()
+    assert routes["/app1"] == "app1"
+    assert routes["/app2"] == "app2"
+
+    app1_status = serve.status().applications["app1"]
+    app2_status = serve.status().applications["app2"]
+    assert app1_status.status == "RUNNING"
+    assert app1_status.deployments["Model"].status == "HEALTHY"
+    assert app2_status.status == "RUNNING"
+    assert app2_status.deployments["Model"].status == "HEALTHY"
+
+
+@pytest.mark.parametrize("use_options", [True, False])
+def test_num_replicas_auto_api(serve_instance, use_options):
+    """Test setting only `num_replicas="auto"`."""
+
+    signal = SignalActor.remote()
+
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    if use_options:
+        A = serve.deployment(A).options(num_replicas="auto")
+    else:
+        A = serve.deployment(num_replicas="auto")(A)
+
+    serve.run(A.bind(), name="default")
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+    check_num_replicas_eq("A", 1)
+
+    app_details = serve_instance.get_serve_details()["applications"]["default"]
+    deployment_config = app_details["deployments"]["A"]["deployment_config"]
+    assert "num_replicas" not in deployment_config
+    assert deployment_config["max_ongoing_requests"] == 5
+    assert deployment_config["autoscaling_config"] == {
+        # Set by `num_replicas="auto"`
+        "target_ongoing_requests": 2.0,
+        "min_replicas": 1,
+        "max_replicas": 100,
+        # Untouched defaults
+        "metrics_interval_s": 10.0,
+        "upscale_delay_s": 30.0,
+        "look_back_period_s": 30.0,
+        "downscale_delay_s": 600.0,
+        "upscale_smoothing_factor": None,
+        "downscale_smoothing_factor": None,
+        "upscaling_factor": None,
+        "downscaling_factor": None,
+        "smoothing_factor": 1.0,
+        "initial_replicas": None,
+    }
+
+
+@pytest.mark.parametrize("use_options", [True, False])
+def test_num_replicas_auto_basic(serve_instance, use_options):
+    """Test `num_replicas="auto"` and the defaults are used by autoscaling."""
+
+    signal = SignalActor.remote()
+
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    if use_options:
+        A = serve.deployment(A).options(
+            num_replicas="auto",
+            autoscaling_config={"metrics_interval_s": 1, "upscale_delay_s": 1},
+            graceful_shutdown_timeout_s=1,
+        )
+    else:
+        A = serve.deployment(
+            num_replicas="auto",
+            autoscaling_config={"metrics_interval_s": 1, "upscale_delay_s": 1},
+            graceful_shutdown_timeout_s=1,
+        )(A)
+
+    h = serve.run(A.bind(), name="default")
+    wait_for_condition(
+        check_deployment_status, name="A", expected_status=DeploymentStatus.HEALTHY
+    )
+    check_num_replicas_eq("A", 1)
+
+    app_details = serve_instance.get_serve_details()["applications"]["default"]
+    deployment_config = app_details["deployments"]["A"]["deployment_config"]
+    assert "num_replicas" not in deployment_config
+    assert deployment_config["max_ongoing_requests"] == 5
+    assert deployment_config["autoscaling_config"] == {
+        # Set by `num_replicas="auto"`
+        "target_ongoing_requests": 2.0,
+        "min_replicas": 1,
+        "max_replicas": 100,
+        # Overrided by `autoscaling_config`
+        "metrics_interval_s": 1.0,
+        "upscale_delay_s": 1.0,
+        # Untouched defaults
+        "look_back_period_s": 30.0,
+        "downscale_delay_s": 600.0,
+        "upscale_smoothing_factor": None,
+        "downscale_smoothing_factor": None,
+        "upscaling_factor": None,
+        "downscaling_factor": None,
+        "smoothing_factor": 1.0,
+        "initial_replicas": None,
+    }
+
+    for i in range(3):
+        [h.remote() for _ in range(2)]
+
+        def check_num_waiters(target: int):
+            assert ray.get(signal.cur_num_waiters.remote()) == target
+            return True
+
+        wait_for_condition(check_num_waiters, target=2 * (i + 1))
+        print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
+        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1)
+        print(time.time(), f"Confirmed number of replicas are at {i+1}.")
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data.exceptions import UserCodeException
 from ray.data.preprocessors import Concatenator
 
 
@@ -27,8 +28,9 @@ class TestConcatenator:
             output_column_name="c", exclude=["b"], raise_if_missing=True
         )
 
-        with pytest.raises(ValueError, match="'b'"):
-            prep.transform(ds).materialize()
+        with pytest.raises(UserCodeException):
+            with pytest.raises(ValueError, match="'b'"):
+                prep.transform(ds).materialize()
 
     @pytest.mark.parametrize("exclude", ("b", ["b"]))
     def test_exclude(self, exclude):

@@ -1,12 +1,13 @@
 # flake8: noqa
+# isort: skip_file
 # TODO(rliaw): Include this in the docs.
 
 # fmt: off
 # __custom_trainer_begin__
 import torch
 
+from ray import train
 from ray.train.trainer import BaseTrainer
-from ray.air import session
 
 
 class MyPytorchTrainer(BaseTrainer):
@@ -42,7 +43,7 @@ class MyPytorchTrainer(BaseTrainer):
 
             # Use Tune functions to report intermediate
             # results.
-            session.report({"loss": loss, "epoch": epoch_idx})
+            train.report({"loss": loss, "epoch": epoch_idx})
 
 
 # __custom_trainer_end__

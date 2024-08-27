@@ -95,8 +95,10 @@ The resulting output follows:
 
 ### Coloring Actor log prefixes
 By default, Ray prints Actor log prefixes in light blue.
-Activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``.
-This indexes into an array of colors modulo the PID of each process.
+Turn color logging off by setting the environment variable ``RAY_COLOR_PREFIX=0``
+(for example, when outputting logs to a file or other location that does not support ANSI codes).
+Or activate multi-color prefixes by setting the environment variable ``RAY_COLOR_PREFIX=1``;
+this indexes into an array of colors modulo the PID of each process.
 
 ![coloring-actor-log-prefixes](../images/coloring-actor-log-prefixes.png)
 
@@ -176,19 +178,17 @@ import logging
 logger = logging.getLogger("ray")
 logger # Modify the Ray logging config
 ```
-Similarly, to modify the logging configuration for Ray AIR or other libraries, specify the appropriate logger name:
+Similarly, to modify the logging configuration for Ray libraries, specify the appropriate logger name:
 
 ```python
 import logging
 
 # First, get the handle for the logger you want to modify
-ray_air_logger = logging.getLogger("ray.air")
 ray_data_logger = logging.getLogger("ray.data")
 ray_tune_logger = logging.getLogger("ray.tune")
 ray_rllib_logger = logging.getLogger("ray.rllib")
 ray_train_logger = logging.getLogger("ray.train")
 ray_serve_logger = logging.getLogger("ray.serve")
-ray_workflow_logger = logging.getLogger("ray.workflow")
 
 # Modify the ray.data logging level
 ray_data_logger.setLevel(logging.WARNING)
@@ -224,8 +224,8 @@ If you want to control the logger for particular actors or tasks, view [customiz
 
 :::
 
-:::{tab-item} Ray AIR or other libraries
-If you are using Ray AIR or any of the Ray libraries, follow the instructions provided in the documentation for the library.
+:::{tab-item} Ray libraries
+If you are using any of the Ray libraries, follow the instructions provided in the documentation for the library.
 :::
 
 ::::
@@ -384,10 +384,12 @@ ray.get(f.remote("A log message for a task."))
 
 ```{admonition} Caution
 :class: caution
-This is an experimental feature. It doesn't support [Ray Client](ray-client-ref) yet.
+This is an experimental feature. The semantic of the API is subject to change.
+It doesn't support [Ray Client](ray-client-ref) yet.
 ```
 
 Use `worker_process_setup_hook` to apply the new logging configuration to all worker processes within a job.
+
 ```python
 # driver.py
 def logging_setup_func():
@@ -401,8 +403,8 @@ logging_setup_func()
 ```
 :::
 
-:::{tab-item} Ray AIR or other libraries
-If you are using Ray AIR or any of the Ray libraries, follow the instructions provided in the documentation for the library.
+:::{tab-item} Ray libraries
+If you are using any of the Ray libraries, follow the instructions provided in the documentation for the library.
 :::
 
 ::::

@@ -91,6 +91,13 @@ if __name__ == "__main__":
         help="List of folders to skip linking to facilitate workspace dev",
         required=False,
     )
+    parser.add_argument(
+        "--extras",
+        "-e",
+        nargs="*",
+        help="List of extra folders to link to facilitate workspace dev",
+        required=False,
+    )
 
     args = parser.parse_args()
     if not args.yes:
@@ -109,19 +116,17 @@ if __name__ == "__main__":
     do_link("experimental", force=args.yes, skip_list=args.skip)
     do_link("util", force=args.yes, skip_list=args.skip)
     do_link("workflow", force=args.yes, skip_list=args.skip)
+    do_link("serve", force=args.yes, skip_list=args.skip)
     do_link("dag", force=args.yes, skip_list=args.skip)
     do_link("widgets", force=args.yes, skip_list=args.skip)
     do_link("cluster_utils.py", force=args.yes, skip_list=args.skip)
     do_link("_private", force=args.yes, skip_list=args.skip)
-    # Link package's `dashboard` directly to local (repo's) dashboard.
-    # The repo's `dashboard` is a file, soft-linking to which will not work
-    # on Mac.
-    do_link(
-        "dashboard",
-        force=args.yes,
-        skip_list=args.skip,
-        local_path="../../../dashboard",
-    )
+    do_link("dashboard", force=args.yes, skip_list=args.skip)
+
+    if args.extras is not None:
+        for package in args.extras:
+            do_link(package, force=args.yes, skip_list=args.skip)
+
     print(
         "Created links.\n\nIf you run into issues initializing Ray, please "
         "ensure that your local repo and the installed Ray are in sync "

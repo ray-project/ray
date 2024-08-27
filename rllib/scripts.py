@@ -5,14 +5,16 @@ from rich.console import Console
 from rich.table import Table
 import typer
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import train as train_module
 from ray.rllib.common import CLIArguments as cli
 from ray.rllib.common import (
     EXAMPLES,
     FrameworkEnum,
     example_help,
-    download_example_file,
+    _download_example_file,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 
 # Main Typer CLI app
 app = typer.Typer()
@@ -85,7 +87,7 @@ def get(example_id: str = typer.Argument(..., help="The example ID of the exampl
     Example usage: `rllib example get atari-a2c`
     """
     example_file = get_example_file(example_id)
-    example_file, temp_file = download_example_file(example_file)
+    example_file, temp_file = _download_example_file(example_file)
     with open(example_file) as f:
         console = Console()
         console.print(f.read())
@@ -99,7 +101,7 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
     """
     example = EXAMPLES[example_id]
     example_file = get_example_file(example_id)
-    example_file, temp_file = download_example_file(example_file)
+    example_file, temp_file = _download_example_file(example_file)
     stop = example.get("stop")
 
     train_module.file(
@@ -108,7 +110,7 @@ def run(example_id: str = typer.Argument(..., help="Example ID to run.")):
         checkpoint_freq=1,
         checkpoint_at_end=True,
         keep_checkpoints_num=None,
-        checkpoint_score_attr="training_iteration",
+        checkpoint_score_attr=TRAINING_ITERATION,
         framework=FrameworkEnum.tf2,
         v=True,
         vv=False,
@@ -194,22 +196,7 @@ def rollout(
     """Old rollout script. Please use `rllib evaluate` instead."""
     from ray.rllib.utils.deprecation import deprecation_warning
 
-    deprecation_warning(old="rllib rollout", new="rllib evaluate", error=False)
-
-    return evaluate(
-        checkpoint=checkpoint,
-        algo=algo,
-        env=env,
-        local_mode=local_mode,
-        render=render,
-        steps=steps,
-        episodes=episodes,
-        out=out,
-        config=config,
-        save_info=save_info,
-        use_shelve=use_shelve,
-        track_progress=track_progress,
-    )
+    deprecation_warning(old="rllib rollout", new="rllib evaluate", error=True)
 
 
 @app.callback()
@@ -248,6 +235,15 @@ def main_helper():
 def cli():
     # Keep this function here, it's referenced in the setup.py file, and exposes
     # the CLI as entry point ("rllib" command).
+    deprecation_warning(
+        old="RLlib CLI (`rllib train` and `rllib evaluate`)",
+        help="The RLlib CLI scripts will be deprecated soon! "
+        "Use RLlib's python API instead, which is more flexible and offers a more "
+        "unified approach to running RL experiments, evaluating policies, and "
+        "creating checkpoints for later deployments. See here for a quick intro: "
+        "https://docs.ray.io/en/latest/rllib/rllib-training.html#using-the-python-api",
+        error=False,
+    )
     app()
 
 

@@ -1,12 +1,10 @@
 import gymnasium as gym
 import logging
 import numpy as np
-import re
 from typing import (
     Callable,
     Dict,
     List,
-    Mapping,
     Optional,
     Tuple,
     Type,
@@ -17,6 +15,7 @@ import tree  # pip install dm_tree
 
 
 import ray.cloudpickle as pickle
+from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.models.preprocessors import ATARI_OBS_SHAPE
 from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -27,7 +26,6 @@ from ray.rllib.utils.typing import (
     AgentConnectorDataType,
     AgentConnectorsOutput,
     PartialAlgorithmConfigDict,
-    PolicyID,
     PolicyState,
     TensorStructType,
     TensorType,
@@ -41,38 +39,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 tf1, tf, tfv = try_import_tf()
-
-
-@PublicAPI(stability="alpha")
-def validate_policy_id(policy_id: str, error: bool = False) -> None:
-    """Makes sure the given `policy_id` is valid.
-
-    Args:
-        policy_id: The Policy ID to check.
-            IMPORTANT: Must not contain characters that
-            are also not allowed in Unix/Win filesystems, such as: `<>:"/\\|?*`
-            or a dot `.` or space ` ` at the end of the ID.
-        error: Whether to raise an error (ValueError) or a warning in case of an
-            invalid `policy_id`.
-
-    Raises:
-        ValueError: If the given `policy_id` is not a valid one and `error` is True.
-    """
-    if (
-        not isinstance(policy_id, str)
-        or len(policy_id) == 0
-        or re.search('[<>:"/\\\\|?]', policy_id)
-        or policy_id[-1] in (" ", ".")
-    ):
-        msg = (
-            f"PolicyID `{policy_id}` not valid! IDs must be a non-empty string, "
-            "must not contain characters that are also disallowed file- or directory "
-            "names on Unix/Windows and must not end with a dot `.` or a space ` `."
-        )
-        if error:
-            raise ValueError(msg)
-        elif log_once("invalid_policy_id"):
-            logger.warning(msg)
 
 
 @PublicAPI
@@ -184,7 +150,7 @@ def local_policy_inference(
     reward: Optional[float] = None,
     terminated: Optional[bool] = None,
     truncated: Optional[bool] = None,
-    info: Optional[Mapping] = None,
+    info: Optional[Dict] = None,
     explore: bool = None,
     timestep: Optional[int] = None,
 ) -> TensorStructType:
@@ -314,12 +280,9 @@ def compute_log_likelihoods_from_input_dict(
     return log_likelihoods
 
 
-@Deprecated(new="Policy.from_checkpoint([checkpoint path], [policy IDs]?)", error=False)
-def load_policies_from_checkpoint(
-    path: str, policy_ids: Optional[List[PolicyID]] = None
-) -> Dict[PolicyID, "Policy"]:
-
-    return Policy.from_checkpoint(path, policy_ids)
+@Deprecated(new="Policy.from_checkpoint([checkpoint path], [policy IDs]?)", error=True)
+def load_policies_from_checkpoint(path, policy_ids=None):
+    pass
 
 
 def __check_atari_obs_space(obs):
@@ -338,3 +301,7 @@ def __check_atari_obs_space(obs):
                 "ray.rllib.env.wrappers.atari_wrappers.wrap_deepmind to wrap "
                 "you environment."
             )
+
+
+# @OldAPIStack
+validate_policy_id = validate_module_id

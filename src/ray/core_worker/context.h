@@ -55,45 +55,48 @@ class WorkerContext {
 
   const WorkerID &GetWorkerID() const;
 
-  JobID GetCurrentJobID() const LOCKS_EXCLUDED(mutex_);
-  rpc::JobConfig GetCurrentJobConfig() const LOCKS_EXCLUDED(mutex_);
+  JobID GetCurrentJobID() const ABSL_LOCKS_EXCLUDED(mutex_);
+  rpc::JobConfig GetCurrentJobConfig() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   const TaskID &GetCurrentTaskID() const;
 
   const TaskID GetMainThreadOrActorCreationTaskID() const;
 
-  const PlacementGroupID &GetCurrentPlacementGroupId() const LOCKS_EXCLUDED(mutex_);
+  const PlacementGroupID &GetCurrentPlacementGroupId() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  bool ShouldCaptureChildTasksInPlacementGroup() const LOCKS_EXCLUDED(mutex_);
+  bool ShouldCaptureChildTasksInPlacementGroup() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   const std::shared_ptr<rpc::RuntimeEnvInfo> GetCurrentRuntimeEnvInfo() const
-      LOCKS_EXCLUDED(mutex_);
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
-  const std::string &GetCurrentSerializedRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
+  const std::string &GetCurrentSerializedRuntimeEnv() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  std::shared_ptr<json> GetCurrentRuntimeEnv() const LOCKS_EXCLUDED(mutex_);
+  std::shared_ptr<json> GetCurrentRuntimeEnv() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Initialize worker's job_id and job_config if they haven't already.
   // Note a worker's job config can't be changed after initialization.
   void MaybeInitializeJobInfo(const JobID &job_id, const rpc::JobConfig &job_config)
-      LOCKS_EXCLUDED(mutex_);
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   // TODO(edoakes): remove this once Python core worker uses the task interfaces.
   void SetCurrentTaskId(const TaskID &task_id, uint64_t attempt_number);
 
   const TaskID &GetCurrentInternalTaskId() const;
 
-  void SetCurrentActorId(const ActorID &actor_id) LOCKS_EXCLUDED(mutex_);
+  void SetCurrentActorId(const ActorID &actor_id) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void SetTaskDepth(int64_t depth) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void SetTaskDepth(int64_t depth) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void SetCurrentTask(const TaskSpecification &task_spec) LOCKS_EXCLUDED(mutex_);
+  void SetCurrentTask(const TaskSpecification &task_spec) ABSL_LOCKS_EXCLUDED(mutex_);
 
   void ResetCurrentTask();
 
+  /// NOTE: This method can't be used in fiber/async actor context.
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
-  const ActorID &GetCurrentActorID() const LOCKS_EXCLUDED(mutex_);
+  const ActorID &GetCurrentActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  const ActorID &GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns whether the current thread is the main worker thread.
   bool CurrentThreadIsMain() const;
@@ -103,17 +106,17 @@ class WorkerContext {
   bool ShouldReleaseResourcesOnBlockingCalls() const;
 
   /// Returns whether we are in a direct call actor.
-  bool CurrentActorIsDirectCall() const LOCKS_EXCLUDED(mutex_);
+  bool CurrentActorIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns whether we are in a direct call task. This encompasses both direct
   /// actor and normal tasks.
-  bool CurrentTaskIsDirectCall() const LOCKS_EXCLUDED(mutex_);
+  bool CurrentTaskIsDirectCall() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  int CurrentActorMaxConcurrency() const LOCKS_EXCLUDED(mutex_);
+  int CurrentActorMaxConcurrency() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  bool CurrentActorIsAsync() const LOCKS_EXCLUDED(mutex_);
+  bool CurrentActorIsAsync() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  bool CurrentActorDetached() const LOCKS_EXCLUDED(mutex_);
+  bool CurrentActorDetached() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   uint64_t GetNextTaskIndex();
 
@@ -134,32 +137,36 @@ class WorkerContext {
   const WorkerID worker_id_;
 
   // a worker's job infomation might be lazily initialized.
-  JobID current_job_id_ GUARDED_BY(mutex_);
-  std::optional<rpc::JobConfig> job_config_ GUARDED_BY(mutex_);
+  JobID current_job_id_ ABSL_GUARDED_BY(mutex_);
+  std::optional<rpc::JobConfig> job_config_ ABSL_GUARDED_BY(mutex_);
 
-  int64_t task_depth_ GUARDED_BY(mutex_) = 0;
-  ActorID current_actor_id_ GUARDED_BY(mutex_);
-  int current_actor_max_concurrency_ GUARDED_BY(mutex_) = 1;
-  bool current_actor_is_asyncio_ GUARDED_BY(mutex_) = false;
-  bool is_detached_actor_ GUARDED_BY(mutex_) = false;
+  int64_t task_depth_ ABSL_GUARDED_BY(mutex_) = 0;
+  ActorID current_actor_id_ ABSL_GUARDED_BY(mutex_);
+  int current_actor_max_concurrency_ ABSL_GUARDED_BY(mutex_) = 1;
+  bool current_actor_is_asyncio_ ABSL_GUARDED_BY(mutex_) = false;
+  bool is_detached_actor_ ABSL_GUARDED_BY(mutex_) = false;
   // The placement group id that the current actor belongs to.
-  PlacementGroupID current_actor_placement_group_id_ GUARDED_BY(mutex_);
+  PlacementGroupID current_actor_placement_group_id_ ABSL_GUARDED_BY(mutex_);
   // Whether or not we should implicitly capture parent's placement group.
-  bool placement_group_capture_child_tasks_ GUARDED_BY(mutex_);
+  bool placement_group_capture_child_tasks_ ABSL_GUARDED_BY(mutex_);
   // The runtime env for the current actor or task.
-  std::shared_ptr<json> runtime_env_ GUARDED_BY(mutex_);
+  std::shared_ptr<json> runtime_env_ ABSL_GUARDED_BY(mutex_);
   // The runtime env info.
-  std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ GUARDED_BY(mutex_);
+  std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ ABSL_GUARDED_BY(mutex_);
   /// The id of the (main) thread that constructed this worker context.
   const boost::thread::id main_thread_id_;
   /// The currently executing main thread's task id. It's the actor creation task id
   /// for concurrent actor, or the main thread's task id for other cases.
   /// Used merely for observability purposes to track task hierarchy.
-  TaskID main_thread_or_actor_creation_task_id_ GUARDED_BY(mutex_);
+  TaskID main_thread_or_actor_creation_task_id_ ABSL_GUARDED_BY(mutex_);
+  /// If the current task or actor is originated from a detached actor,
+  /// this contains that actor's id otherwise it's nil.
+  ActorID root_detached_actor_id_ ABSL_GUARDED_BY(mutex_);
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;
 
  private:
+  /// NOTE: This method can't be used in fiber/async actor context.
   WorkerThreadContext &GetThreadContext() const;
 
   /// Per-thread worker context.

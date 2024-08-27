@@ -1,3 +1,5 @@
+from weakref import ReferenceType
+
 import ray
 from ray.dag.dag_node import DAGNode
 from ray.dag.input_node import InputNode
@@ -5,11 +7,11 @@ from ray.dag.format_utils import get_dag_node_str
 from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
     PREV_CLASS_METHOD_CALL_KEY,
-    DAGNODE_TYPE_KEY,
+    BIND_INDEX_KEY,
 )
 from ray.util.annotations import DeveloperAPI
 
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Union, Tuple, Optional
 
 
 @DeveloperAPI
@@ -86,48 +88,21 @@ class ClassNode(DAGNode):
             raise AttributeError(f".bind() cannot be used again on {type(self)} ")
         # Raise an error if the method is invalid.
         getattr(self._body, method_name)
-        call_node = _UnboundClassMethodNode(self, method_name)
+        call_node = _UnboundClassMethodNode(self, method_name, {})
         return call_node
 
     def __str__(self) -> str:
         return get_dag_node_str(self, str(self._body))
 
-    def get_import_path(self) -> str:
-        body = self._body.__ray_actor_class__
-        return f"{body.__module__}.{body.__qualname__}"
-
-    def to_json(self) -> Dict[str, Any]:
-        return {
-            DAGNODE_TYPE_KEY: ClassNode.__name__,
-            # Will be overriden by build()
-            "import_path": self.get_import_path(),
-            "args": self.get_args(),
-            "kwargs": self.get_kwargs(),
-            # .options() should not contain any DAGNode type
-            "options": self.get_options(),
-            "other_args_to_resolve": self.get_other_args_to_resolve(),
-            "uuid": self.get_stable_uuid(),
-        }
-
-    @classmethod
-    def from_json(cls, input_json, module, object_hook=None):
-        assert input_json[DAGNODE_TYPE_KEY] == ClassNode.__name__
-        node = cls(
-            module.__ray_metadata__.modified_class,
-            input_json["args"],
-            input_json["kwargs"],
-            input_json["options"],
-            other_args_to_resolve=input_json["other_args_to_resolve"],
-        )
-        node._stable_uuid = input_json["uuid"]
-        return node
-
 
 class _UnboundClassMethodNode(object):
-    def __init__(self, actor: ClassNode, method_name: str):
+    def __init__(self, actor: ClassNode, method_name: str, options: dict):
+        # TODO(sang): Theoretically, We should use weakref cuz it is
+        # a circular dependency but when I used weakref, it fails
+        # because we cannot serialize the weakref.
         self._actor = actor
         self._method_name = method_name
-        self._options = {}
+        self._options = options
 
     def bind(self, *args, **kwargs):
         other_args_to_resolve = {
@@ -177,14 +152,19 @@ class ClassMethodNode(DAGNode):
         self._bound_options = method_options or {}
         self._method_name: str = method_name
         # Parse other_args_to_resolve and assign to variables
-        self._parent_class_node: ClassNode = other_args_to_resolve.get(
-            PARENT_CLASS_NODE_KEY
-        )
+        self._parent_class_node: Union[
+            ClassNode, ReferenceType["ray._private.actor.ActorHandle"]
+        ] = other_args_to_resolve.get(PARENT_CLASS_NODE_KEY)
         # Used to track lineage of ClassMethodCall to preserve deterministic
         # submission and execution order.
         self._prev_class_method_call: Optional[
             ClassMethodNode
         ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
+        # The index/order when bind() is called on this class method
+        self._bind_index: Optional[int] = other_args_to_resolve.get(
+            BIND_INDEX_KEY, None
+        )
+
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
         # executed prior to this node.
@@ -231,33 +211,22 @@ class ClassMethodNode(DAGNode):
     def get_method_name(self) -> str:
         return self._method_name
 
-    def get_import_path(self) -> str:
-        body = self._parent_class_node._body.__ray_actor_class__
-        return f"{body.__module__}.{body.__qualname__}"
+    def _get_bind_index(self) -> int:
+        return self._bind_index
 
-    def to_json(self) -> Dict[str, Any]:
-        return {
-            DAGNODE_TYPE_KEY: ClassMethodNode.__name__,
-            # Will be overriden by build()
-            "method_name": self.get_method_name(),
-            "import_path": self.get_import_path(),
-            "args": self.get_args(),
-            "kwargs": self.get_kwargs(),
-            # .options() should not contain any DAGNode type
-            "options": self.get_options(),
-            "other_args_to_resolve": self.get_other_args_to_resolve(),
-            "uuid": self.get_stable_uuid(),
-        }
+    def _get_remote_method(self, method_name):
+        method_body = getattr(self._parent_class_node, method_name)
+        return method_body
 
-    @classmethod
-    def from_json(cls, input_json):
-        assert input_json[DAGNODE_TYPE_KEY] == ClassMethodNode.__name__
-        node = cls(
-            input_json["method_name"],
-            input_json["args"],
-            input_json["kwargs"],
-            input_json["options"],
-            other_args_to_resolve=input_json["other_args_to_resolve"],
-        )
-        node._stable_uuid = input_json["uuid"]
-        return node
+    def _get_actor_handle(self) -> Optional["ray.actor.ActorHandle"]:
+        if not isinstance(self._parent_class_node, ray.actor.ActorHandle):
+            return None
+        return self._parent_class_node
+
+    @property
+    def num_returns(self) -> int:
+        num_returns = self._bound_options.get("num_returns", None)
+        if num_returns is None:
+            method = self._get_remote_method(self._method_name)
+            num_returns = method.__getstate__()["num_returns"]
+        return num_returns

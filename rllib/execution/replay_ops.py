@@ -1,13 +1,12 @@
 from typing import Optional
 import random
 
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.replay_buffers.replay_buffer import warn_replay_capacity
 from ray.rllib.utils.typing import SampleBatchType
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
 
 
-# TODO(sven) deprecate this class.
+@OldAPIStack
 class SimpleReplayBuffer:
     """Simple replay buffer that operates over batches."""
 
@@ -20,8 +19,6 @@ class SimpleReplayBuffer:
         self.num_slots = num_slots
         self.replay_batches = []
         self.replay_index = 0
-        if log_once("simple_replay_buffer_deprecation_warning"):
-            deprecation_warning(old="ray.rllib.execution.replay_ops.SimpleReplayBuffer")
 
     def add_batch(self, sample_batch: SampleBatchType) -> None:
         warn_replay_capacity(item=sample_batch, num_items=self.num_slots)

@@ -1,6 +1,6 @@
 import collections
 from contextlib import nullcontext
-from typing import Any, Callable, Dict, Iterator, Optional, Tuple
+from typing import Any, Callable, Dict, Iterator, Optional
 
 import ray
 from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
@@ -10,19 +10,21 @@ from ray.data._internal.block_batching.util import (
     blocks_to_batches,
     collate,
     extract_data_from_batch,
+    finalize_batches,
     format_batches,
-    make_async_gen,
     resolve_block_refs,
 )
+from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import Block, BlockMetadata, DataBatch
+from ray.data._internal.util import make_async_gen
+from ray.data.block import Block, DataBatch
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
 def iter_batches(
-    block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+    ref_bundles: Iterator[RefBundle],
     *,
     stats: Optional[DatasetStats] = None,
     clear_block_after_read: bool = False,
@@ -30,6 +32,7 @@ def iter_batches(
     batch_format: Optional[str] = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+    finalize_fn: Optional[Callable[[Any], Any]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
@@ -41,13 +44,12 @@ def iter_batches(
     This takes a block iterator and creates batch_size batches, slicing,
     unioning, shuffling, prefetching, and formatting blocks as needed.
 
-
     The algorithm uses both pipeline parallelism and data parallelism:
 
     If prefetch_batches=2, these are all the batches in flight:
 
     [User thread] trains on Batch 0
-    - [Fetch thread] Batch 1 in output queue
+    - [Fetch thread] Batch 1 finalization + move to output queue
             - [Worker thread 1] Batch 2 formatting + collating
             - [Worker thread 2] Batch 3 formatting + collating
             - [Raylet] Batches 4 + 5 fetched to local object store memory
@@ -66,11 +68,11 @@ def iter_batches(
         4. Then, in a threadpool consisting of `prefetch_batches` threads:
             a. Format the batches to the provided batch format.
             b. Apply the collate function.
-        5. Fetch outputs from the threadpool, maintaining order of the batches.
+        5. Finalize each of the collated batches
+        6. Fetch outputs from the threadpool, maintaining order of the batches.
 
     Args:
-        block_refs: An iterator over block object references and their corresponding
-            metadata.
+        ref_bundles: An iterator over RefBundles.
         stats: DatasetStats object to record timing and other statistics.
         clear_block_after_read: Whether to clear the block from object store
             manually (i.e. without waiting for Python's automatic GC) after it
@@ -86,6 +88,9 @@ def iter_batches(
             as batches. Default is "default".
         drop_last: Whether to drop the last batch if it's incomplete.
         collate_fn: A function to apply to each data batch before returning it.
+        finalize_fn: A function to apply to each data batch after it has been collated.
+            This function is not run in a threadpool so it can be used for
+            memory-intensive operations such as GPU preloading.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -97,8 +102,7 @@ def iter_batches(
             process. If set to greater than 0, a separate thread will be used to fetch
             the specified amount of formatted batches from blocks. This improves
             performance for non-CPU bound UDFs, allowing batch fetching compute and
-            formatting to be overlapped with the UDF. Defaults to 0 (no prefetching
-            enabled).
+            formatting to be overlapped with the UDF. Defaults to 1.
 
     Returns:
         An iterator over record batches.
@@ -117,12 +121,11 @@ def iter_batches(
     eager_free = clear_block_after_read and DataContext.get_current().eager_free
 
     def _async_iter_batches(
-        block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+        ref_bundles: Iterator[RefBundle],
     ) -> Iterator[DataBatch]:
-
         # Step 1: Prefetch logical batches locally.
-        block_refs = prefetch_batches_locally(
-            block_ref_iter=block_refs,
+        block_iter = prefetch_batches_locally(
+            ref_bundles=ref_bundles,
             prefetcher=prefetcher,
             num_batches_to_prefetch=prefetch_batches,
             batch_size=batch_size,
@@ -130,7 +133,7 @@ def iter_batches(
         )
 
         # Step 2: Resolve the blocks.
-        block_iter = resolve_block_refs(block_ref_iter=block_refs, stats=stats)
+        block_iter = resolve_block_refs(block_ref_iter=block_iter, stats=stats)
 
         # Step 3: Batch and shuffle the resolved blocks.
         batch_iter = blocks_to_batches(
@@ -152,14 +155,22 @@ def iter_batches(
             num_threadpool_workers=prefetch_batches,
         )
 
-        # Step 5: Restore original order.
+        # Step 5: Finalize each batch.
+        if finalize_fn is not None:
+            batch_iter = finalize_batches(
+                batch_iter, finalize_fn=finalize_fn, stats=stats
+            )
+
+        # Step 6: Restore original order.
         batch_iter: Iterator[Batch] = restore_original_order(batch_iter)
 
         yield from extract_data_from_batch(batch_iter)
 
     # Run everything in a separate thread to not block the main thread when waiting
     # for streaming results.
-    async_batch_iter = make_async_gen(block_refs, fn=_async_iter_batches, num_workers=1)
+    async_batch_iter = make_async_gen(
+        ref_bundles, fn=_async_iter_batches, num_workers=1
+    )
 
     while True:
         with stats.iter_total_blocked_s.timer() if stats else nullcontext():
@@ -193,7 +204,7 @@ def _format_in_threadpool(
         num_threadpool_workers: The number of threads to use in the threadpool.
     """
 
-    def threadpool_computations(
+    def threadpool_computations_format_collate(
         batch_iter: Iterator[Batch],
     ) -> Iterator[Batch]:
         # Step 4a: Format the batches.
@@ -209,27 +220,29 @@ def _format_in_threadpool(
         yield from formatted_batch_iter
 
     if num_threadpool_workers > 0:
-        return make_async_gen(
+        collated_iter = make_async_gen(
             base_iterator=batch_iter,
-            fn=threadpool_computations,
+            fn=threadpool_computations_format_collate,
             num_workers=num_threadpool_workers,
         )
     else:
-        return threadpool_computations(batch_iter)
+        collated_iter = threadpool_computations_format_collate(batch_iter)
+    return collated_iter
 
 
 def prefetch_batches_locally(
-    block_ref_iter: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
+    ref_bundles: Iterator[RefBundle],
     prefetcher: BlockPrefetcher,
     num_batches_to_prefetch: int,
     batch_size: Optional[int],
     eager_free: bool = False,
 ) -> Iterator[ObjectRef[Block]]:
-    """Given an iterator of batched block references, returns an iterator over the same
-    block references while prefetching `num_batches_to_prefetch` batches in advance.
+    """Given an iterator of batched RefBundles, returns an iterator over the
+    corresponding block references while prefetching `num_batches_to_prefetch`
+    batches in advance.
 
     Args:
-        block_ref_iter: An iterator over batched block references.
+        ref_bundles: An iterator over batched RefBundles.
         prefetcher: The prefetcher to use.
         num_batches_to_prefetch: The number of batches to prefetch ahead of the
             current batch during the scan.
@@ -241,8 +254,9 @@ def prefetch_batches_locally(
     current_window_size = 0
 
     if num_batches_to_prefetch <= 0:
-        for block_ref, metadata in block_ref_iter:
-            yield block_ref
+        for ref_bundle in ref_bundles:
+            for block_ref in ref_bundle.block_refs:
+                yield block_ref
         return
 
     if batch_size is not None:
@@ -258,11 +272,11 @@ def prefetch_batches_locally(
         batch_size is None and len(sliding_window) < num_batches_to_prefetch
     ):
         try:
-            next_block_ref_and_metadata = next(block_ref_iter)
+            next_ref_bundle = next(ref_bundles)
+            sliding_window.extend(next_ref_bundle.blocks)
+            current_window_size += next_ref_bundle.num_rows()
         except StopIteration:
             break
-        sliding_window.append(next_block_ref_and_metadata)
-        current_window_size += next_block_ref_and_metadata[1].num_rows
 
     prefetcher.prefetch_blocks([block_ref for block_ref, _ in list(sliding_window)])
 
@@ -271,7 +285,10 @@ def prefetch_batches_locally(
         current_window_size -= metadata.num_rows
         if batch_size is None or current_window_size < num_rows_to_prefetch:
             try:
-                sliding_window.append(next(block_ref_iter))
+                next_ref_bundle = next(ref_bundles)
+                for block_ref_and_md in next_ref_bundle.blocks:
+                    sliding_window.append(block_ref_and_md)
+                    current_window_size += block_ref_and_md[1].num_rows
                 prefetcher.prefetch_blocks(
                     [block_ref for block_ref, _ in list(sliding_window)]
                 )

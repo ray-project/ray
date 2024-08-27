@@ -42,6 +42,10 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   void MarkDependencyFailed(uint64_t sequence_no) override;
   /// Make a task's dependency is resolved thus ready to send.
   void MarkDependencyResolved(uint64_t sequence_no) override;
+  // Mark a task has been canceled.
+  // If a task hasn't been sent yet, this API will guarantee a task won't be
+  // popped via PopNextTaskToSend.
+  void MarkTaskCanceled(uint64_t sequence_no) override;
   /// Clear the queue and returns all tasks ids that haven't been sent yet.
   std::vector<TaskID> ClearAllTasks() override;
   /// Find next task to send.
@@ -59,8 +63,8 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   /// Get the task's sequence number according to the internal offset.
   uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override;
   /// Mark a task has been executed on the receiver side.
-  void MarkTaskCompleted(uint64_t sequence_no,
-                         const TaskSpecification &task_spec) override;
+  void MarkSeqnoCompleted(uint64_t sequence_no,
+                          const TaskSpecification &task_spec) override;
 
  private:
   /// The ID of the actor.
@@ -105,6 +109,11 @@ class SequentialActorSubmitQueue : public IActorSubmitQueue {
   ///
   /// The send position of the next task to send to this actor. This sequence
   /// number increases monotonically.
+  ///
+  /// If a task raised a retryable user exception, it's marked as "completed" via
+  /// `MarkSeqnoCompleted` and `next_task_reply_position` may be updated. Afterwards Ray
+  /// retries by creating another task pushed to the back of the queue, making it executes
+  /// later than all tasks pending in the queue.
   uint64_t next_send_position = 0;
   /// The offset at which the the actor should start its counter for this
   /// caller. This is used for actors that can be restarted, so that the new

@@ -37,8 +37,6 @@ TEST_F(GcsFunctionManagerTest, TestFunctionManagerGC) {
   JobID job_id = BaseID<JobID>::FromRandom();
   int num_del_called = 0;
   auto f = [&num_del_called]() mutable { ++num_del_called; };
-  EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("IsolatedExports:"), true, _))
-      .WillOnce(InvokeWithoutArgs(f));
   EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("RemoteFunction:"), true, _))
       .WillOnce(InvokeWithoutArgs(f));
   EXPECT_CALL(*kv, Del(StrEq("fun"), StartsWith("ActorClass:"), true, _))
@@ -56,5 +54,5 @@ TEST_F(GcsFunctionManagerTest, TestFunctionManagerGC) {
   function_manager->RemoveJobReference(job_id);
   EXPECT_EQ(0, num_del_called);
   function_manager->RemoveJobReference(job_id);
-  EXPECT_EQ(4, num_del_called);
+  EXPECT_EQ(3, num_del_called);
 }

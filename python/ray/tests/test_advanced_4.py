@@ -1,4 +1,4 @@
-import mock
+from unittest import mock
 import subprocess
 import sys
 
@@ -69,7 +69,7 @@ def test_jemalloc_env_var_propagate():
     When the shared library is specified
     """
     library_path = "/abc"
-    expected = {"LD_PRELOAD": library_path}
+    expected = {"LD_PRELOAD": library_path, "RAY_LD_PRELOAD": "1"}
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf="",
@@ -100,7 +100,11 @@ def test_jemalloc_env_var_propagate():
     """
     library_path = "/abc"
     malloc_conf = "a,b,c"
-    expected = {"LD_PRELOAD": library_path, "MALLOC_CONF": malloc_conf}
+    expected = {
+        "LD_PRELOAD": library_path,
+        "MALLOC_CONF": malloc_conf,
+        "RAY_LD_PRELOAD": "1",
+    }
     actual = ray._private.services.propagate_jemalloc_env_var(
         jemalloc_path=library_path,
         jemalloc_conf=malloc_conf,
@@ -112,6 +116,11 @@ def test_jemalloc_env_var_propagate():
 
 def test_check_health(shutdown_only):
     assert not check_health("127.0.0.1:8888")
+    # Should not raise error: https://github.com/ray-project/ray/issues/38785
+    assert not check_health("ip:address:with:colon:name:8265")
+
+    with pytest.raises(ValueError):
+        check_health("bad_address_no_port")
 
     conn = ray.init()
     addr = conn.address_info["address"]
@@ -192,11 +201,6 @@ def function_entry_num(job_id):
 
     return (
         len(
-            _internal_kv_list(
-                b"IsolatedExports:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
-            )
-        )
-        + len(
             _internal_kv_list(
                 b"RemoteFunction:" + job_id, namespace=KV_NAMESPACE_FUNCTION_TABLE
             )

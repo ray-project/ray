@@ -1,8 +1,11 @@
+import os
+import tempfile
+
 import torch
 
 import ray.train as train
-from ray.train.torch import TorchTrainer, TorchCheckpoint
-from ray.air import ScalingConfig, session
+from ray.train import Checkpoint, ScalingConfig
+from ray.train.torch import TorchTrainer
 
 
 def train_func():
@@ -20,16 +23,25 @@ def train_func():
     dataloader = train.torch.prepare_data_loader(dataloader)
 
     # Train.
-    for _ in range(5):
+    for epoch in range(5):
+        if train.get_context().get_world_size() > 1:
+            dataloader.sampler.set_epoch(epoch)
+
+        epoch_loss = []
         for X, y in dataloader:
             pred = model(X)
             loss = loss_fn(pred, y)
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-            session.report({"loss": loss.item()})
+            epoch_loss.append(loss.item())
+        train.report({"loss": sum(epoch_loss) / len(epoch_loss)})
 
-    session.report({}, checkpoint=TorchCheckpoint.from_model(model))
+    with tempfile.TemporaryDirectory() as tmpdir:
+        torch.save(model.module.state_dict(), os.path.join(tmpdir, "model.pt"))
+        train.report(
+            {"loss": loss.item()}, checkpoint=Checkpoint.from_directory(tmpdir)
+        )
 
 
 trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=4))

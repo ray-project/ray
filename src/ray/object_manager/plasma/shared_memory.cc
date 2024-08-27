@@ -19,19 +19,20 @@ ClientMmapTableEntry::ClientMmapTableEntry(MEMFD_TYPE fd, int64_t map_size)
   // in fake_mmap in malloc.h, to make map_size page-aligned again.
   length_ = map_size - kMmapRegionsGap;
 #ifdef _WIN32
-  pointer_ = reinterpret_cast<uint8_t *>(
-      MapViewOfFile(fd.first, FILE_MAP_ALL_ACCESS, 0, 0, length_));
+  pointer_ = MapViewOfFile(fd.first, FILE_MAP_ALL_ACCESS, 0, 0, length_);
   // TODO(pcm): Don't fail here, instead return a Status.
   if (pointer_ == NULL) {
     RAY_LOG(FATAL) << "mmap failed";
   }
   CloseHandle(fd.first);  // Closing this fd has an effect on performance.
 #else
-  pointer_ = reinterpret_cast<uint8_t *>(
-      mmap(NULL, length_, PROT_READ | PROT_WRITE, MAP_SHARED, fd.first, 0));
+  pointer_ = mmap(NULL, length_, PROT_READ | PROT_WRITE, MAP_SHARED, fd.first, 0);
   // TODO(pcm): Don't fail here, instead return a Status.
   if (pointer_ == MAP_FAILED) {
     RAY_LOG(FATAL) << "mmap failed";
+  } else {
+    RAY_LOG(DEBUG) << "ClientMmapTableEntry ctor mmaped " << fd_.first << ", "
+                   << fd_.second << ", addr " << pointer_ << ", size " << length_;
   }
   close(fd.first);  // Closing this fd has an effect on performance.
 
@@ -75,6 +76,9 @@ ClientMmapTableEntry::~ClientMmapTableEntry() {
 #endif
   if (r != 0) {
     RAY_LOG(ERROR) << "munmap returned " << r << ", errno = " << errno;
+  } else {
+    RAY_LOG(DEBUG) << "ClientMmapTableEntry dtor munmaped " << fd_.first << ", "
+                   << fd_.second << ", addr " << pointer_ << ", size " << length_;
   }
 }
 

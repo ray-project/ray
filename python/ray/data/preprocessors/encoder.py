@@ -6,8 +6,9 @@ import numpy as np
 import pandas as pd
 import pandas.api.types
 
+from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset
-from ray.data.preprocessor import Preprocessor
+from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
 from ray.util.annotations import PublicAPI
 
 
@@ -417,6 +418,48 @@ class LabelEncoder(Preprocessor):
         df[self.label_column] = df[self.label_column].transform(column_label_encoder)
         return df
 
+    def inverse_transform(self, ds: "Dataset") -> "Dataset":
+        """Inverse transform the given dataset.
+
+        Args:
+            ds: Input Dataset that has been fitted and/or transformed.
+
+        Returns:
+            ray.data.Dataset: The inverse transformed Dataset.
+
+        Raises:
+            PreprocessorNotFittedException: if ``fit`` is not called yet.
+        """
+
+        fit_status = self.fit_status()
+
+        if fit_status in (
+            Preprocessor.FitStatus.PARTIALLY_FITTED,
+            Preprocessor.FitStatus.NOT_FITTED,
+        ):
+            raise PreprocessorNotFittedException(
+                "`fit` must be called before `inverse_transform`, "
+            )
+
+        kwargs = self._get_transform_config()
+
+        return ds.map_batches(
+            self._inverse_transform_pandas, batch_format=BatchFormat.PANDAS, **kwargs
+        )
+
+    def _inverse_transform_pandas(self, df: pd.DataFrame):
+        def column_label_decoder(s: pd.Series):
+            inverse_values = {
+                value: key
+                for key, value in self.stats_[
+                    f"unique_values({self.label_column})"
+                ].items()
+            }
+            return s.map(inverse_values)
+
+        df[self.label_column] = df[self.label_column].transform(column_label_decoder)
+        return df
+
     def __repr__(self):
         return f"{self.__class__.__name__}(label_column={self.label_column!r})"
 
@@ -479,7 +522,7 @@ class Categorizer(Preprocessor):
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         columns_to_get = [
-            column for column in self.columns if column not in self.dtypes
+            column for column in self.columns if column not in set(self.dtypes)
         ]
         if columns_to_get:
             unique_indices = _get_unique_value_indices(
@@ -518,8 +561,9 @@ def _get_unique_value_indices(
 
     if max_categories is None:
         max_categories = {}
+    columns_set = set(columns)
     for column in max_categories:
-        if column not in columns:
+        if column not in columns_set:
             raise ValueError(
                 f"You set `max_categories` for {column}, which is not present in "
                 f"{columns}."

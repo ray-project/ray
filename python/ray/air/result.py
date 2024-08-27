@@ -1,80 +1,74 @@
-import os
+import io
 import json
-import pandas as pd
-import warnings
+import logging
+import os
 from dataclasses import dataclass
-from os.path import join
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+
+import pandas as pd
+import pyarrow
 
 import ray
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
-    EXPR_RESULT_FILE,
-    EXPR_PROGRESS_FILE,
     EXPR_ERROR_PICKLE_FILE,
-    CHECKPOINT_TUNE_METADATA_FILE,
+    EXPR_PROGRESS_FILE,
+    EXPR_RESULT_FILE,
 )
-from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
-import logging
+if TYPE_CHECKING:
+    from ray.train import Checkpoint
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@PublicAPI(stability="stable")
 @dataclass
 class Result:
     """The final result of a ML training run or a Tune trial.
 
-    This is the class produced by Trainer.fit().
-    It contains a checkpoint, which can be used for resuming training and for
-    creating a Predictor object. It also contains a metrics object describing
-    training metrics. ``error`` is included so that unsuccessful runs
-    and trials can be represented as well.
+    This is the output produced by ``Trainer.fit``.
+    ``Tuner.fit`` outputs a :class:`~ray.tune.ResultGrid` that is a collection
+    of ``Result`` objects.
 
-    The constructor is a private API.
+    This API is the recommended way to access the outputs such as:
+    - checkpoints (``Result.checkpoint``)
+    - the history of reported metrics (``Result.metrics_dataframe``, ``Result.metrics``)
+    - errors encountered during a training run (``Result.error``)
+
+    The constructor is a private API -- use ``Result.from_path`` to create a result
+    object from a directory.
 
     Attributes:
-        metrics: The final metrics as reported by a Trainable.
-        checkpoint: The final checkpoint of the Trainable.
+        metrics: The latest set of reported metrics.
+        checkpoint: The latest checkpoint.
         error: The execution error of the Trainable run, if the trial finishes in error.
+        path: Path pointing to the result directory on persistent storage. This can
+            point to a remote storage location (e.g. S3) or to a local location (path
+            on the head node). The path is accessible via the result's associated
+            `filesystem`. For instance, for a result stored in S3 at
+            ``s3://bucket/location``, ``path`` will have the value ``bucket/location``.
         metrics_dataframe: The full result dataframe of the Trainable.
             The dataframe is indexed by iterations and contains reported
-            metrics.
-        best_checkpoints: A list of tuples of the best checkpoints saved
-            by the Trainable and their associated metrics. The number of
-            saved checkpoints is determined by the ``checkpoint_config``
-            argument of ``run_config`` (by default, all checkpoints will
-            be saved).
-
+            metrics. Note that the dataframe columns are indexed with the
+            *flattened* keys of reported metrics, so the format of this dataframe
+            may be slightly different than ``Result.metrics``, which is an unflattened
+            dict of the latest set of reported metrics.
+        best_checkpoints: A list of tuples of the best checkpoints and
+            their associated metrics. The number of
+            saved checkpoints is determined by :class:`~ray.train.CheckpointConfig`
+            (by default, all checkpoints will be saved).
     """
 
     metrics: Optional[Dict[str, Any]]
-    checkpoint: Optional[Checkpoint]
+    checkpoint: Optional["Checkpoint"]
     error: Optional[Exception]
+    path: str
     metrics_dataframe: Optional["pd.DataFrame"] = None
-    best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None
-    _local_path: Optional[str] = None
-    _remote_path: Optional[str] = None
-    _items_to_repr = ["error", "metrics", "path", "checkpoint"]
-    # Deprecate: raise in 2.5, remove in 2.6
-    log_dir: Optional[Path] = None
-
-    def __post_init__(self):
-        if self.log_dir and log_once("result_log_dir_deprecated"):
-            warnings.warn(
-                "The `Result.log_dir` property is deprecated. "
-                "Use `local_path` instead."
-            )
-            self._local_path = str(self.log_dir)
-
-        # Duplicate for retrieval
-        self.log_dir = Path(self._local_path) if self._local_path else None
-        # Backwards compatibility: Make sure to cast Path to string
-        # Deprecate: Remove this line after 2.6
-        self._local_path = str(self._local_path) if self._local_path else None
+    best_checkpoints: Optional[List[Tuple["Checkpoint", Dict[str, Any]]]] = None
+    _storage_filesystem: Optional[pyarrow.fs.FileSystem] = None
+    _items_to_repr = ["error", "metrics", "path", "filesystem", "checkpoint"]
 
     @property
     def config(self) -> Optional[Dict[str, Any]]:
@@ -84,19 +78,17 @@ class Result:
         return self.metrics.get("config", None)
 
     @property
-    def path(self) -> str:
-        """Path pointing to the result directory on persistent storage.
+    def filesystem(self) -> pyarrow.fs.FileSystem:
+        """Return the filesystem that can be used to access the result path.
 
-        This can point to a remote storage location (e.g. S3) or to a local
-        location (path on the head node).
-
-        For instance, if your remote storage path is ``s3://bucket/location``,
-        this will point to ``s3://bucket/location/experiment_name/trial_name``.
+        Returns:
+            pyarrow.fs.FileSystem implementation.
         """
-        return self._remote_path or self._local_path
+        return self._storage_filesystem or pyarrow.fs.LocalFileSystem()
 
     def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""
+        from ray.tune.experimental.output import BLACKLISTED_KEYS
         from ray.tune.result import AUTO_RESULT_KEYS
 
         shown_attributes = {k: getattr(self, k) for k in self._items_to_repr}
@@ -105,9 +97,13 @@ class Result:
         else:
             shown_attributes.pop("error")
 
+        shown_attributes["filesystem"] = shown_attributes["filesystem"].type_name
+
         if self.metrics:
+            exclude = set(AUTO_RESULT_KEYS)
+            exclude.update(BLACKLISTED_KEYS)
             shown_attributes["metrics"] = {
-                k: v for k, v in self.metrics.items() if k not in AUTO_RESULT_KEYS
+                k: v for k, v in self.metrics.items() if k not in exclude
             }
 
         cls_indent = " " * indent
@@ -123,97 +119,136 @@ class Result:
         return self._repr(indent=0)
 
     @staticmethod
-    def _validate_trial_dir(trial_dir: str):
-        """Check the validity of the local trial folder."""
-
-        # TODO(yunxuanx): Add more checks for cloud storage restoration
-        if not os.path.exists(trial_dir):
-            raise RuntimeError(f"Trial folder {trial_dir} doesn't exists!")
-
-    @classmethod
-    def from_path(cls, path: str) -> "Result":
-        """Restore a Result object from local trial directory.
+    def _read_file_as_str(
+        storage_filesystem: pyarrow.fs.FileSystem,
+        storage_path: str,
+    ) -> str:
+        """Opens a file as an input stream reading all byte content sequentially and
+         decoding read bytes as utf-8 string.
 
         Args:
-            path: the path to a local trial directory.
+            storage_filesystem: The filesystem to use.
+            storage_path: The source to open for reading.
+        """
+
+        with storage_filesystem.open_input_stream(storage_path) as f:
+            return f.readall().decode()
+
+    @classmethod
+    def from_path(
+        cls,
+        path: Union[str, os.PathLike],
+        storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
+    ) -> "Result":
+        """Restore a Result object from local or remote trial directory.
+
+        Args:
+            path: A path of a trial directory on local or remote storage
+                (ex: s3://bucket/path or /tmp/ray_results).
+            storage_filesystem: A custom filesystem to use. If not provided,
+                this will be auto-resolved by pyarrow. If provided, the path
+                is assumed to be prefix-stripped already, and must be a valid path
+                on the filesystem.
 
         Returns:
             A :py:class:`Result` object of that trial.
         """
+        # TODO(justinvyu): Fix circular dependency.
+        from ray.train import Checkpoint
+        from ray.train._internal.storage import (
+            _exists_at_fs_path,
+            _list_at_fs_path,
+            get_fs_and_path,
+        )
+        from ray.train.constants import CHECKPOINT_DIR_NAME
 
-        local_path = path
-        # TODO(yunxuanx): restoration from cloud storage
-        cls._validate_trial_dir(local_path)
-        file_list = os.listdir(local_path)
+        fs, fs_path = get_fs_and_path(path, storage_filesystem)
+        if not _exists_at_fs_path(fs, fs_path):
+            raise RuntimeError(f"Trial folder {fs_path} doesn't exist!")
 
         # Restore metrics from result.json
-        if EXPR_RESULT_FILE in file_list:
-            with open(Path(local_path) / EXPR_RESULT_FILE, "r") as f:
-                json_list = [json.loads(line) for line in f if line]
-                metrics_df = pd.json_normalize(json_list, sep="/")
+        result_json_file = Path(fs_path, EXPR_RESULT_FILE).as_posix()
+        progress_csv_file = Path(fs_path, EXPR_PROGRESS_FILE).as_posix()
+        if _exists_at_fs_path(fs, result_json_file):
+            lines = cls._read_file_as_str(fs, result_json_file).split("\n")
+            json_list = [json.loads(line) for line in lines if line]
+            metrics_df = pd.json_normalize(json_list, sep="/")
+            latest_metrics = json_list[-1] if json_list else {}
         # Fallback to restore from progress.csv
-        elif EXPR_PROGRESS_FILE in file_list:
-            metrics_df = pd.read_csv(Path(local_path) / EXPR_PROGRESS_FILE)
+        elif _exists_at_fs_path(fs, progress_csv_file):
+            metrics_df = pd.read_csv(
+                io.StringIO(cls._read_file_as_str(fs, progress_csv_file))
+            )
+            latest_metrics = (
+                metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
+            )
         else:
             raise RuntimeError(
                 f"Failed to restore the Result object: Neither {EXPR_RESULT_FILE}"
                 f" nor {EXPR_PROGRESS_FILE} exists in the trial folder!"
             )
 
-        latest_metrics = metrics_df.iloc[-1].to_dict() if not metrics_df.empty else {}
-
         # Restore all checkpoints from the checkpoint folders
-        ckpt_dirs = [
-            join(local_path, entry)
-            for entry in file_list
-            if entry.startswith("checkpoint_")
-        ]
-
-        ckpt_metadata_dicts = [
-            ray.cloudpickle.load(
-                open(join(ckpt_dir, CHECKPOINT_TUNE_METADATA_FILE), "rb")
+        checkpoint_dir_names = sorted(
+            _list_at_fs_path(
+                fs,
+                fs_path,
+                file_filter=lambda file_info: file_info.type
+                == pyarrow.fs.FileType.Directory
+                and file_info.base_name.startswith("checkpoint_"),
             )
-            for ckpt_dir in ckpt_dirs
-        ]
+        )
 
-        if ckpt_dirs:
+        if checkpoint_dir_names:
             checkpoints = [
-                Checkpoint.from_directory(ckpt_dir) for ckpt_dir in ckpt_dirs
+                Checkpoint(
+                    path=Path(fs_path, checkpoint_dir_name).as_posix(), filesystem=fs
+                )
+                for checkpoint_dir_name in checkpoint_dir_names
             ]
 
-            checkpoint_ids = [
-                metadata["iteration"] - 1 for metadata in ckpt_metadata_dicts
-            ]
+            metrics = []
+            for checkpoint_dir_name in checkpoint_dir_names:
+                metrics_corresponding_to_checkpoint = metrics_df[
+                    metrics_df[CHECKPOINT_DIR_NAME] == checkpoint_dir_name
+                ]
+                if metrics_corresponding_to_checkpoint.empty:
+                    logger.warning(
+                        "Could not find metrics corresponding to "
+                        f"{checkpoint_dir_name}. These will default to an empty dict."
+                    )
+                metrics.append(
+                    {}
+                    if metrics_corresponding_to_checkpoint.empty
+                    else metrics_corresponding_to_checkpoint.iloc[-1].to_dict()
+                )
 
-            checkpoint_metrics = [
-                metadata["last_result"] for metadata in ckpt_metadata_dicts
-            ]
-
-            # TODO(air-team): make metrics a property of Checkpoint
-            best_checkpoints = list(zip(checkpoints, checkpoint_metrics))
-            latest_checkpoint_index = checkpoint_ids.index(max(checkpoint_ids))
-            latest_checkpoint = checkpoints[latest_checkpoint_index]
+            latest_checkpoint = checkpoints[-1]
+            # TODO(justinvyu): These are ordered by checkpoint index, since we don't
+            # know the metric to order these with.
+            best_checkpoints = list(zip(checkpoints, metrics))
         else:
             best_checkpoints = latest_checkpoint = None
 
         # Restore the trial error if it exists
         error = None
-        error_file_path = Path(local_path) / EXPR_ERROR_PICKLE_FILE
-        if error_file_path.exists():
-            error = ray.cloudpickle.load(open(error_file_path, "rb"))
+        error_file_path = Path(fs_path, EXPR_ERROR_PICKLE_FILE).as_posix()
+        if _exists_at_fs_path(fs, error_file_path):
+            with fs.open_input_stream(error_file_path) as f:
+                error = ray.cloudpickle.load(f)
 
         return Result(
             metrics=latest_metrics,
             checkpoint=latest_checkpoint,
-            _local_path=local_path,
-            _remote_path=None,
+            path=fs_path,
+            _storage_filesystem=fs,
             metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
             error=error,
         )
 
     @PublicAPI(stability="alpha")
-    def get_best_checkpoint(self, metric: str, mode: str) -> Optional[Checkpoint]:
+    def get_best_checkpoint(self, metric: str, mode: str) -> Optional["Checkpoint"]:
         """Get the best checkpoint from this trial based on a specific metric.
 
         Any checkpoints without an associated metric value will be filtered out.
@@ -223,7 +258,7 @@ class Result:
             mode: One of ["min", "max"].
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object, or None if there is
+            :class:`Checkpoint <ray.train.Checkpoint>` object, or None if there is
             no valid checkpoint associated with the metric.
         """
         if not self.best_checkpoints:

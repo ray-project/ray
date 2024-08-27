@@ -25,7 +25,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/gcs/pb_util.h"
-#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
+#include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
 namespace ray {
@@ -61,6 +61,7 @@ struct Mocker {
                               1,
                               false,
                               false,
+                              -1,
                               required_resources,
                               required_placement_resources,
                               "",
@@ -168,6 +169,7 @@ struct Mocker {
                                   strategy,
                                   /* is_detached */ false,
                                   /* max_cpu_fraction_per_node */ 1.0,
+                                  /* soft_target_node_id */ NodeID::Nil(),
                                   job_id,
                                   actor_id,
                                   /* is_creator_detached */ false);
@@ -213,6 +215,7 @@ struct Mocker {
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->set_is_dead(false);
     job_table_data->set_timestamp(current_sys_time_ms());
+    job_table_data->set_driver_ip_address("127.0.0.1");
     rpc::Address address;
     address.set_ip_address("127.0.0.1");
     address.set_port(1234);
@@ -286,8 +289,30 @@ struct Mocker {
       auto new_events = data.add_events_by_task();
       new_events->CopyFrom(events);
     }
-    data.set_num_profile_task_events_dropped(num_profile_task_events_dropped);
-    data.set_num_status_task_events_dropped(num_status_task_events_dropped);
+
+    for (int i = 0; i < num_status_task_events_dropped; ++i) {
+      rpc::TaskAttempt rpc_task_attempt;
+      rpc_task_attempt.set_task_id(RandomTaskId().Binary());
+      rpc_task_attempt.set_attempt_number(0);
+      *(data.add_dropped_task_attempts()) = rpc_task_attempt;
+    }
+
+    data.set_num_profile_events_dropped(num_profile_task_events_dropped);
+    data.set_job_id(JobID::FromInt(0).Binary());
+
+    return data;
+  }
+
+  static rpc::TaskEventData GenTaskEventsDataLoss(
+      const std::vector<TaskAttempt> &drop_tasks, int job_id = 0) {
+    rpc::TaskEventData data;
+    for (const auto &task_attempt : drop_tasks) {
+      rpc::TaskAttempt rpc_task_attempt;
+      rpc_task_attempt.set_task_id(task_attempt.first.Binary());
+      rpc_task_attempt.set_attempt_number(task_attempt.second);
+      *(data.add_dropped_task_attempts()) = rpc_task_attempt;
+    }
+    data.set_job_id(JobID::FromInt(job_id).Binary());
 
     return data;
   }
@@ -312,8 +337,9 @@ struct Mocker {
       const NodeID &node_id,
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
-      bool available_resources_changed,
-      int64_t idle_ms = 0) {
+      int64_t idle_ms = 0,
+      bool is_draining = false,
+      int64_t draining_deadline_timestamp_ms = -1) {
     resources_data.set_node_id(node_id.Binary());
     for (const auto &resource : available_resources) {
       (*resources_data.mutable_resources_available())[resource.first] = resource.second;
@@ -321,14 +347,14 @@ struct Mocker {
     for (const auto &resource : total_resources) {
       (*resources_data.mutable_resources_total())[resource.first] = resource.second;
     }
-    resources_data.set_resources_available_changed(available_resources_changed);
     resources_data.set_idle_duration_ms(idle_ms);
+    resources_data.set_is_draining(is_draining);
+    resources_data.set_draining_deadline_timestamp_ms(draining_deadline_timestamp_ms);
   }
 
   static void FillResourcesData(rpc::ResourcesData &data,
                                 const std::string &node_id,
-                                std::vector<rpc::ResourceDemand> demands,
-                                bool resource_load_changed = true) {
+                                std::vector<rpc::ResourceDemand> demands) {
     auto load_by_shape = data.mutable_resource_load_by_shape();
     auto agg_load = data.mutable_resource_load();
     for (const auto &demand : demands) {
@@ -339,8 +365,17 @@ struct Mocker {
                                 demand.num_infeasible_requests_queued()));
       }
     }
-    data.set_resource_load_changed(resource_load_changed);
     data.set_node_id(node_id);
+  }
+
+  static std::shared_ptr<rpc::PlacementGroupLoad> GenPlacementGroupLoad(
+      std::vector<rpc::PlacementGroupTableData> placement_group_table_data_vec) {
+    auto placement_group_load = std::make_shared<rpc::PlacementGroupLoad>();
+    for (auto &placement_group_table_data : placement_group_table_data_vec) {
+      placement_group_load->add_placement_group_data()->CopyFrom(
+          placement_group_table_data);
+    }
+    return placement_group_load;
   }
 
   static rpc::PlacementGroupTableData GenPlacementGroupTableData(
@@ -377,11 +412,17 @@ struct Mocker {
     return placement_group_table_data;
   }
   static rpc::autoscaler::ClusterResourceConstraint GenClusterResourcesConstraint(
-      const std::vector<std::unordered_map<std::string, double>> &request_resources) {
+      const std::vector<std::unordered_map<std::string, double>> &request_resources,
+      const std::vector<int64_t> &count_array) {
     rpc::autoscaler::ClusterResourceConstraint constraint;
-    for (const auto &resource : request_resources) {
+    RAY_CHECK(request_resources.size() == count_array.size());
+    for (size_t i = 0; i < request_resources.size(); i++) {
+      auto &resource = request_resources[i];
+      auto count = count_array[i];
       auto bundle = constraint.add_min_bundles();
-      bundle->mutable_resources_bundle()->insert(resource.begin(), resource.end());
+      bundle->set_count(count);
+      bundle->mutable_request()->mutable_resources_bundle()->insert(resource.begin(),
+                                                                    resource.end());
     }
     return constraint;
   }

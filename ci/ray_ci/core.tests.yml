@@ -1,0 +1,12 @@
+flaky_tests:
+  - windows://:metric_exporter_grpc_test
+  - windows://python/ray/tests:test_actor_retry
+  - windows://python/ray/tests:test_object_spilling
+  - windows://python/ray/tests:test_object_spilling_asan
+  - windows://python/ray/tests:test_object_spilling_debug_mode
+  - windows://python/ray/tests:test_placement_group_3
+  - windows://python/ray/tests:test_reference_counting_2 
+  - windows://python/ray/tests:test_runtime_env_working_dir_3
+  - windows://python/ray/tests:test_task_events_2
+  # Flaky when keep starting many ray sessions on windows.
+  - windows://python/ray/tests:test_task_events_3 

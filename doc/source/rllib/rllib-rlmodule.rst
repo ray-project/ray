@@ -1,6 +1,6 @@
-.. include:: /_includes/rllib/announcement.rst
-
 .. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
 
 .. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
@@ -10,6 +10,8 @@
     :class: inline-figure
     :width: 16
 
+
+.. _rlmodule-guide:
 
 RL Modules (Alpha)
 ==================
@@ -46,8 +48,8 @@ RL Modules (Alpha)
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
-         - 
-         - 
+         -
+         -
 
 
 
@@ -60,7 +62,7 @@ RL Module is a neural network container that implements three public methods: :p
 Enabling RL Modules in the Configuration
 ----------------------------------------
 
-Enable RL Modules by setting the ``_enable_rl_module_api`` flag to ``True`` in the configuration object.
+Enable RL Modules via our configuration object: ``AlgorithmConfig.api_stack(enable_rl_module_and_learner=True)``.
 
 .. literalinclude:: doc_code/rlmodule_guide.py
     :language: python
@@ -71,7 +73,7 @@ Constructing RL Modules
 -----------------------
 The RLModule API provides a unified way to define custom reinforcement learning models in RLlib. This API enables you to design and implement your own models to suit specific needs.
 
-To maintain consistency and usability, RLlib offers a standardized approach for defining module objects for both single-agent and multi-agent reinforcement learning environments. This is achieved through the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` and :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` classes. The built-in RLModules in RLlib follow this consistent design pattern, making it easier for you to understand and utilize these modules.
+To maintain consistency and usability, RLlib offers a standardized approach for defining module objects for both single-agent and multi-agent reinforcement learning environments. This is achieved through the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` and :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec` classes. The built-in RLModules in RLlib follow this consistent design pattern, making it easier for you to understand and utilize these modules.
 
 .. tab-set::
 
@@ -104,7 +106,7 @@ You can pass RL Module specs to the algorithm configuration to be used by the al
 
 
         .. note::
-            For passing RL Module specs, all fields do not have to be filled as they are filled based on the described environment or other algorithm configuration parameters (i.e. ,``observation_space``, ``action_space``, ``model_config_dict`` are not required fields when passing a custom RL Module spec to the algorithm config.)
+            For passing RL Module specs, all fields don't have to be filled as they are filled based on the described environment or other algorithm configuration parameters (i.e. ,``observation_space``, ``action_space``, ``model_config_dict`` are not required fields when passing a custom RL Module spec to the algorithm config.)
 
 
     .. tab-item:: Multi Agent
@@ -118,9 +120,9 @@ You can pass RL Module specs to the algorithm configuration to be used by the al
 Writing Custom Single Agent RL Modules
 --------------------------------------
 
-For single-agent algorithms (e.g., PPO, DQN) or independent multi-agent algorithms (e.g., PPO-MultiAgent), use :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`. For more advanced multi-agent use cases with a shared communication between agents, extend the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` class. 
+For single-agent algorithms (e.g., PPO, DQN) or independent multi-agent algorithms (e.g., PPO-MultiAgent), use :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`. For more advanced multi-agent use cases with a shared communication between agents, extend the :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` class.
 
-RLlib treats single-agent modules as a special case of :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` with only one module. Create the multi-agent representation of all RLModules by calling :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.as_multi_agent`. For example:
+RLlib treats single-agent modules as a special case of :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` with only one module. Create the multi-agent representation of all RLModules by calling :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.as_multi_rl_module`. For example:
 
 .. literalinclude:: doc_code/rlmodule_guide.py
     :language: python
@@ -148,7 +150,7 @@ If you return the "actions" key:
 - RLlib will use the actions provided thereunder as-is.
 - If you also returned the "action_dist_inputs" key: RLlib will also create a :py:class:`~ray.rllib.models.distributions.Distribution` object from the distribution parameters under that key and - in the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` - compute action probs and logp values from the given actions automatically.
 
-If you do not return the "actions" key:
+If you don't return the "actions" key:
 
 - You must return the "action_dist_inputs" key instead from your :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` methods.
 - RLlib will create a :py:class:`~ray.rllib.models.distributions.Distribution` object from the distribution parameters under that key and sample actions from the thus generated distribution.
@@ -197,7 +199,7 @@ Commonly used distribution implementations can be found under ``ray.rllib.models
         .. code-block:: python
 
             """
-            An RLModule whose forward_exploration/inference methods do NOT return the
+            An RLModule whose forward_exploration/inference methods don't return the
             "actions" key.
             """
 
@@ -302,39 +304,39 @@ In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the 
 To learn more, see the `SpecType` documentation.
 
 
-
 Writing Custom Multi-Agent RL Modules (Advanced)
 ------------------------------------------------
 
-For multi-agent modules, RLlib implements :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`, which is a dictionary of :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` objects, one for each policy, and possibly some shared modules. The base-class implementation works for most of use cases that need to define independent neural networks for sub-groups of agents. For more complex, multi-agent use cases, where the agents share some part of their neural network, you should inherit from this class and override the default implementation.
+For multi-agent modules, RLlib implements :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiAgentRLModule`, which is a dictionary of :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` objects, one for each policy, and possibly some shared modules. The base-class implementation works for most of use cases that need to define independent neural networks for sub-groups of agents. For more complex, multi-agent use cases, where the agents share some part of their neural network, you should inherit from this class and override the default implementation.
 
 
-The :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule` offers an API for constructing custom models tailored to specific needs. The key method for this customization is :py:meth:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`.build.
+The :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` offers an API for constructing custom models tailored to specific needs. The key method for this customization is :py:meth:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`.build.
 
-The following example creates a custom multi-agent RL module with underlying modules. The modules share an encoder, which gets applied to the global part of the observations space. The local part passes through a separate encoder, specific to each policy. 
+The following example creates a custom multi-agent RL module with underlying modules. The modules share an encoder, which gets applied to the global part of the observations space. The local part passes through a separate encoder, specific to each policy.
 
-.. tab-set::
-
-    .. tab-item:: Multi agent with shared encoder (Torch)
-
-        .. literalinclude:: doc_code/rlmodule_guide.py
-            :language: python
-            :start-after: __write-custom-marlmodule-shared-enc-begin__
-            :end-before: __write-custom-marlmodule-shared-enc-end__
-
-
-To construct this custom multi-agent RL module, pass the class to the :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` constructor. Also, pass the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec` for each agent because RLlib requires the observation, action spaces, and model hyper-parameters for each agent.
 
 .. literalinclude:: doc_code/rlmodule_guide.py
     :language: python
-    :start-after: __pass-custom-marlmodule-shared-enc-begin__
-    :end-before: __pass-custom-marlmodule-shared-enc-end__
+    :start-after: __write-custom-multirlmodule-shared-enc-begin__
+    :end-before: __write-custom-multirlmodule-shared-enc-end__
+
+
+To construct this custom multi-agent RL module, pass the class to the :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec` constructor. Also, pass the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` for each agent because RLlib requires the observation, action spaces, and model hyper-parameters for each agent.
+
+.. literalinclude:: doc_code/rlmodule_guide.py
+    :language: python
+    :start-after: __pass-custom-multirlmodule-shared-enc-begin__
+    :end-before: __pass-custom-multirlmodule-shared-enc-end__
 
 
 Extending Existing RLlib RL Modules
 -----------------------------------
 
-RLlib provides a number of RL Modules for different frameworks (e.g., PyTorch, TensorFlow, etc.). Extend these modules by inheriting from them and overriding the methods you need to customize. For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. Then pass the new customized class into the algorithm configuration.
+RLlib provides a number of RL Modules for different frameworks (e.g., PyTorch, TensorFlow, etc.).
+To customize existing RLModules you can change the RLModule directly by inheriting the class and changing the
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` or other methods.
+For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization.
+Then pass the new customized class into the appropriate :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`.
 
 There are two possible ways to extend existing RL Modules:
 
@@ -342,7 +344,10 @@ There are two possible ways to extend existing RL Modules:
 
     .. tab-item:: Inheriting existing RL Modules
 
-        One way to extend existing RL Modules is to inherit from them and override the methods you need to customize. For example, extend :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule` and augment it with your own customization. Then pass the new customized class into the algorithm configuration to use the PPO algorithm to optimize your custom RL Module.
+        The default way to extend existing RL Modules is to inherit from them and override the methods you need to customize.
+        Then pass the new customized class into the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` to optimize your custom RL Module.
+        This is the preferred approach. With it, we can define our own models explicitly within a given RL Module
+        and don't need to interact with a Catalog, so you don't need to learn about Catalog.
 
         .. code-block:: python
 
@@ -354,31 +359,61 @@ There are two possible ways to extend existing RL Modules:
 
             # Pass in the custom RL Module class to the spec
             algo_config = algo_config.rl_module(
-                rl_module_spec=SingleAgentRLModuleSpec(module_class=MyPPORLModule)
+                rl_module_spec=RLModuleSpec(module_class=MyPPORLModule)
             )
+
+        A concrete example: If you want to replace the default encoder that RLlib builds for torch, PPO and a given observation space,
+        you can override the `__init__` method on the :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule`
+        class to create your custom encoder instead of the default one. We do this in the following example.
+
+        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/mobilenet_rlm.py
+                :language: python
+                :start-after: __sphinx_doc_begin__
+                :end-before: __sphinx_doc_end__
 
 
     .. tab-item:: Extending RL Module Catalog
 
-        Another way to customize your module is by extending its :py:class:`~ray.rllib.core.models.catalog.Catalog`. The :py:class:`~ray.rllib.core.models.catalog.Catalog` is a component that defines the default architecture and behavior of a model based on factors such as ``observation_space``, ``action_space``, etc. To modify sub-components of an existing RL Module, extend the corresponding Catalog class.
+        An advanced way to customize your module is by extending its :py:class:`~ray.rllib.core.models.catalog.Catalog`.
+        The Catalog is a component that defines the default models and other sub-components for RL Modules based on factors such as ``observation_space``, ``action_space``, etc.
+        For more information on the :py:class:`~ray.rllib.core.models.catalog.Catalog` class, refer to the `Catalog user guide <rllib-catalogs.html>`__.
+        By modifying the Catalog, you can alter what sub-components are being built for existing RL Modules.
+        This approach is useful mostly if you want your custom component to integrate with the decision trees that the Catalogs represent.
+        The following use cases are examples of what may require you to extend the Catalogs:
 
-        For instance, to adapt the existing ``PPORLModule`` for a custom graph observation space not supported by RLlib out-of-the-box, extend the :py:class:`~ray.rllib.core.models.catalog.Catalog` class used to create the ``PPORLModule`` and override the method responsible for returning the encoder component to ensure that your custom encoder replaces the default one initially provided by RLlib. For more information on the :py:class:`~ray.rllib.core.models.catalog.Catalog` class, refer to the `Catalog user guide <rllib-catalogs.html>`__.
+            - Choosing a custom model only for a certain observation space.
+            - Using a custom action distribution in multiple distinct Algorithms.
+            - Reusing your custom component in many distinct RL Modules.
 
+        For instance, to adapt existing ``PPORLModules`` for a custom graph observation space not supported by RLlib out-of-the-box,
+        extend the :py:class:`~ray.rllib.core.models.catalog.Catalog` class used to create the ``PPORLModule``
+        and override the method responsible for returning the encoder component to ensure that your custom encoder replaces the default one initially provided by RLlib.
 
         .. code-block:: python
 
             class MyAwesomeCatalog(PPOCatalog):
 
-                def get_actor_critic_encoder_config():
+                def build_actor_critic_encoder():
                     # create your awesome graph encoder here and return it
                     pass
 
 
             # Pass in the custom catalog class to the spec
             algo_config = algo_config.rl_module(
-                rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyAwesomeCatalog)
+                rl_module_spec=RLModuleSpec(catalog_class=MyAwesomeCatalog)
             )
 
+
+Checkpointing RL Modules
+------------------------
+
+RL Modules can be checkpointed with their two methods :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.save_to_path` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.from_checkpoint`.
+The following example shows how these methods can be used outside of, or in conjunction with, an RLlib Algorithm.
+
+.. literalinclude:: doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __checkpointing-begin__
+        :end-before: __checkpointing-end__
 
 Migrating from Custom Policies and Models to RL Modules
 -------------------------------------------------------
@@ -542,11 +577,3 @@ See `Writing Custom Single Agent RL Modules`_ for more details on how to impleme
 
                 def _forward_exploration(self, batch):
                     ...
-
-
-Notable TODOs
--------------
-
-- [] Add support for RNNs.
-- [] Checkpointing.
-- [] End to end example for custom RL Modules extending PPORLModule (e.g. LLM)

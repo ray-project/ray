@@ -7,15 +7,16 @@ Requires the HyperOpt library to be installed (`pip install hyperopt`).
 For an example of using a Tune search space, see
 :doc:`/tune/examples/hyperopt_example`.
 """
+
 import time
 
-import ray
-from ray import tune
-from ray.air import session
-from ray.tune.search import ConcurrencyLimiter
-from ray.tune.schedulers import AsyncHyperBandScheduler
-from ray.tune.search.hyperopt import HyperOptSearch
 from hyperopt import hp
+
+import ray
+from ray import train, tune
+from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.search import ConcurrencyLimiter
+from ray.tune.search.hyperopt import HyperOptSearch
 
 
 def f_unpack_dict(dct):
@@ -36,7 +37,7 @@ def f_unpack_dict(dct):
     """
 
     res = {}
-    for (k, v) in dct.items():
+    for k, v in dct.items():
         if isinstance(v, dict):
             res = {**res, **f_unpack_dict(v)}
         else:
@@ -59,7 +60,7 @@ def easy_objective(config_in):
         # Iterative training function - can be any arbitrary training procedure
         intermediate_score = evaluation_fn(step, width, height, mult)
         # Feed the score back back to Tune.
-        session.report({"iterations": step, "mean_loss": intermediate_score})
+        train.report({"iterations": step, "mean_loss": intermediate_score})
         time.sleep(0.1)
 
 

@@ -21,11 +21,11 @@
 #include "ray/common/id.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
@@ -87,9 +87,6 @@ class GcsActor {
     actor_table_data_.set_job_id(task_spec.job_id());
     actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
     actor_table_data_.set_num_restarts(0);
-
-    auto dummy_object = TaskSpecification(task_spec).ActorDummyObject().Binary();
-    actor_table_data_.set_actor_creation_dummy_object_id(dummy_object);
 
     actor_table_data_.mutable_function_descriptor()->CopyFrom(
         task_spec.function_descriptor());
@@ -291,7 +288,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::shared_ptr<GcsPublisher> gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
-      std::function<void(const ActorID &)> destroy_ownded_placement_group_if_needed,
+      std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
       const rpc::ClientFactoryFn &worker_client_factory = nullptr);
 
   ~GcsActorManager() = default;
@@ -335,6 +332,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// this case.
   Status RegisterActor(const rpc::RegisterActorRequest &request,
                        RegisterActorCallback success_callback);
+
+  /// Set actors on the node as preempted and publish the actor information.
+  /// If the node is already dead, this method is a no-op.
+  void SetPreemptedAndPublish(const NodeID &node_id);
 
   /// Create actor asynchronously.
   ///
@@ -380,7 +381,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param node_id The specified node id.
   /// \param node_ip_address The ip address of the dead node.
-  void OnNodeDead(const NodeID &node_id, const std::string node_ip_address);
+  void OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
+                  const std::string node_ip_address);
 
   /// Handle a worker failure. This will restart the associated actor, if any,
   /// which may be pending or already created. If the worker owned other
@@ -456,6 +458,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   }
 
  private:
+  const ray::rpc::ActorDeathCause GenNodeDiedCause(
+      const ray::gcs::GcsActor *actor,
+      const std::string ip_address,
+      std::shared_ptr<rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
     Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)
@@ -519,19 +525,16 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   ///
   /// \param actor_id ID of the actor to kill.
   /// \param force_kill Whether to force kill an actor by killing the worker.
-  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
-  void KillActor(const ActorID &actor_id, bool force_kill, bool no_restart);
+  void KillActor(const ActorID &actor_id, bool force_kill);
 
   /// Notify CoreWorker to kill the specified actor.
   ///
   /// \param actor The actor to be killed.
   /// \param death_cause Context about why this actor is dead.
   /// \param force_kill Whether to force kill an actor by killing the worker.
-  /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   void NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor> &actor,
                                    const rpc::ActorDeathCause &death_cause,
-                                   bool force_kill = true,
-                                   bool no_restart = true);
+                                   bool force_kill = true);
 
   /// Add the destroyed actor to the cache. If the cache is full, one actor is randomly
   /// evicted.
@@ -551,6 +554,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->set_start_time(actor.start_time());
     actor_delta->set_end_time(actor.end_time());
     actor_delta->set_repr_name(actor.repr_name());
+    actor_delta->set_preempted(actor.preempted());
     // Acotr's namespace and name are used for removing cached name when it's dead.
     if (!actor.ray_namespace().empty()) {
       actor_delta->set_ray_namespace(actor.ray_namespace());

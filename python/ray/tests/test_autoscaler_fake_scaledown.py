@@ -28,7 +28,8 @@ class Actor:
 # Tests that we scale down even if secondary copies of objects are present on
 # idle nodes: https://github.com/ray-project/ray/issues/21870
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-def test_scaledown_shared_objects(shutdown_only):
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_scaledown_shared_objects(autoscaler_v2, shutdown_only):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -43,6 +44,7 @@ def test_scaledown_shared_objects(shutdown_only):
             },
         },
         idle_timeout_minutes=0.05,
+        autoscaler_v2=autoscaler_v2,
     )
 
     try:
@@ -110,7 +112,8 @@ def check_memory(local_objs, num_spilled_objects=None, num_plasma_objects=None):
 
 # Tests that node with live spilled object does not get scaled down.
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-def test_no_scaledown_with_spilled_objects(shutdown_only):
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_no_scaledown_with_spilled_objects(autoscaler_v2, shutdown_only):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -125,6 +128,7 @@ def test_no_scaledown_with_spilled_objects(shutdown_only):
             },
         },
         idle_timeout_minutes=0.05,
+        autoscaler_v2=autoscaler_v2,
     )
 
     try:

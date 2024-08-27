@@ -1,120 +1,51 @@
-from typing import List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
-from ._internal.table_block import TableBlockAccessor
-from ray.data._internal import sort
+from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-from ray.data._internal.plan import AllToAllStage
-from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
-from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
-from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
-from ray.data.aggregate._aggregate import _AggregateOnKeyBase
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockExecStats,
-    BlockMetadata,
-    KeyType,
-    UserDefinedFunction,
-)
-from ray.data.context import DataContext
+from ray.data.aggregate import AggregateFn
+from ray.data.block import BlockAccessor, CallableClass, UserDefinedFunction
 from ray.data.dataset import DataBatch, Dataset
 from ray.util.annotations import PublicAPI
 
-
-class _GroupbyOp(ShuffleOp):
-    @staticmethod
-    def map(
-        idx: int,
-        block: Block,
-        output_num_blocks: int,
-        boundaries: List[KeyType],
-        key: str,
-        aggs: Tuple[AggregateFn],
-    ) -> List[Union[BlockMetadata, Block]]:
-        """Partition the block and combine rows with the same key."""
-        stats = BlockExecStats.builder()
-
-        block = _GroupbyOp._prune_unused_columns(block, key, aggs)
-
-        if key is None:
-            partitions = [block]
-        else:
-            partitions = BlockAccessor.for_block(block).sort_and_partition(
-                boundaries,
-                [(key, "ascending")] if isinstance(key, str) else key,
-                descending=False,
-            )
-        parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
-        meta = BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        )
-        return parts + [meta]
-
-    @staticmethod
-    def reduce(
-        key: str,
-        aggs: Tuple[AggregateFn],
-        *mapper_outputs: List[Block],
-        partial_reduce: bool = False,
-    ) -> (Block, BlockMetadata):
-        """Aggregate sorted and partially combined blocks."""
-        return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
-            list(mapper_outputs), key, aggs, finalize=not partial_reduce
-        )
-
-    @staticmethod
-    def _prune_unused_columns(
-        block: Block,
-        key: str,
-        aggs: Tuple[AggregateFn],
-    ) -> Block:
-        """Prune unused columns from block before aggregate."""
-        prune_columns = True
-        columns = set()
-
-        if isinstance(key, str):
-            columns.add(key)
-        elif callable(key):
-            prune_columns = False
-
-        for agg in aggs:
-            if isinstance(agg, _AggregateOnKeyBase) and isinstance(agg._key_fn, str):
-                columns.add(agg._key_fn)
-            elif not isinstance(agg, Count):
-                # Don't prune columns if any aggregate key is not string.
-                prune_columns = False
-
-        block_accessor = BlockAccessor.for_block(block)
-        if (
-            prune_columns
-            and isinstance(block_accessor, TableBlockAccessor)
-            and block_accessor.num_rows() > 0
-        ):
-            return block_accessor.select(list(columns))
-        else:
-            return block
+CDS_API_GROUP = "Computations or Descriptive Stats"
+FA_API_GROUP = "Function Application"
 
 
-class SimpleShuffleGroupbyOp(_GroupbyOp, SimpleShufflePlan):
-    pass
+class _MultiColumnSortedKey:
+    """Represents a tuple of group keys with a ``__lt__`` method
+
+    This is a simple implementation to support multi-column groupby.
+    While a 1D array of tuples suffices to maintain the lexicographical
+    sorted order, a comparison method is also needed in ``np.searchsorted``
+    (for computing the group key boundaries).
+    """
+
+    __slots__ = ("data",)
+
+    def __init__(self, *args):
+        self.data = tuple(args)
+
+    def __lt__(self, obj: "_MultiColumnSortedKey") -> bool:
+        return self.data < obj.data
+
+    def __repr__(self) -> str:
+        """Print as T(1, 2)"""
+        return "T" + self.data.__repr__()
 
 
-class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
-    pass
-
-
-@PublicAPI
 class GroupedData:
     """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 
     The actual groupby is deferred until an aggregation is applied.
     """
 
-    def __init__(self, dataset: Dataset, key: str):
+    def __init__(
+        self,
+        dataset: Dataset,
+        key: Union[str, List[str]],
+    ):
         """Construct a dataset grouped by key (internal API).
 
         The constructor is not part of the GroupedData API.
@@ -128,6 +59,7 @@ class GroupedData:
             f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
         )
 
+    @PublicAPI(api_group=FA_API_GROUP)
     def aggregate(self, *aggs: AggregateFn) -> Dataset:
         """Implements an accumulator-based aggregation.
 
@@ -141,67 +73,15 @@ class GroupedData:
             If groupby key is ``None`` then the key part of return is omitted.
         """
 
-        def do_agg(blocks, task_ctx: TaskContext, clear_input_blocks: bool, *_):
-            # TODO: implement clear_input_blocks
-            stage_info = {}
-            if len(aggs) == 0:
-                raise ValueError("Aggregate requires at least one aggregation")
-            for agg in aggs:
-                agg._validate(self._dataset.schema(fetch_if_missing=True))
-            # Handle empty dataset.
-            if blocks.initial_num_blocks() == 0:
-                return blocks, stage_info
-
-            num_mappers = blocks.initial_num_blocks()
-            num_reducers = num_mappers
-            if self._key is None:
-                num_reducers = 1
-                boundaries = []
-            else:
-                boundaries = sort.sample_boundaries(
-                    blocks.get_blocks(),
-                    [(self._key, "ascending")]
-                    if isinstance(self._key, str)
-                    else self._key,
-                    num_reducers,
-                    task_ctx,
-                )
-            ctx = DataContext.get_current()
-            if ctx.use_push_based_shuffle:
-                shuffle_op_cls = PushBasedGroupbyOp
-            else:
-                shuffle_op_cls = SimpleShuffleGroupbyOp
-            shuffle_op = shuffle_op_cls(
-                map_args=[boundaries, self._key, aggs], reduce_args=[self._key, aggs]
-            )
-            return shuffle_op.execute(
-                blocks,
-                num_reducers,
-                clear_input_blocks,
-                ctx=task_ctx,
-            )
-
-        plan = self._dataset._plan.with_stage(
-            AllToAllStage(
-                "Aggregate",
-                None,
-                do_agg,
-                sub_stage_names=["SortSample", "ShuffleMap", "ShuffleReduce"],
-            )
+        plan = self._dataset._plan.copy()
+        op = Aggregate(
+            self._dataset._logical_plan.dag,
+            key=self._key,
+            aggs=aggs,
         )
-
-        logical_plan = self._dataset._logical_plan
-        if logical_plan is not None:
-            op = Aggregate(
-                logical_plan.dag,
-                key=self._key,
-                aggs=aggs,
-            )
-            logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op)
         return Dataset(
             plan,
-            self._dataset._epoch,
-            self._dataset._lazy,
             logical_plan,
         )
 
@@ -225,12 +105,20 @@ class GroupedData:
         )
         return self.aggregate(*aggs)
 
+    @PublicAPI(api_group=FA_API_GROUP)
     def map_groups(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
         compute: Union[str, ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
+        fn_args: Optional[Iterable[Any]] = None,
+        fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each group of records of this dataset.
@@ -282,6 +170,18 @@ class GroupedData:
                 select ``pyarrow.Table``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
+            fn_args: Arguments to `fn`.
+            fn_kwargs: Keyword arguments to `fn`.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
@@ -297,13 +197,20 @@ class GroupedData:
         else:
             sorted_ds = self._dataset.repartition(1)
 
-        # Returns the group boundaries.
-        def get_key_boundaries(block_accessor: BlockAccessor):
+        def get_key_boundaries(block_accessor: BlockAccessor) -> List[int]:
+            """Compute block boundaries based on the key(s)"""
+
             import numpy as np
 
-            boundaries = []
             # Get the keys of the batch in numpy array format
             keys = block_accessor.to_numpy(self._key)
+
+            if isinstance(keys, dict):
+                # For multiple keys, we generate a separate tuple column
+                convert_to_multi_column_sorted_key = np.vectorize(_MultiColumnSortedKey)
+                keys: np.ndarray = convert_to_multi_column_sorted_key(*keys.values())
+
+            boundaries = []
             start = 0
             while start < keys.size:
                 end = start + np.searchsorted(keys[start:], keys[start], side="right")
@@ -313,14 +220,13 @@ class GroupedData:
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
-        def group_fn(batch):
+        def apply_udf_to_groups(udf, batch, *args, **kwargs):
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
             if self._key:
                 boundaries = get_key_boundaries(block_accessor)
             else:
                 boundaries = [block_accessor.num_rows()]
-            builder = DelegatingBlockBuilder()
             start = 0
             for end in boundaries:
                 group_block = block_accessor.slice(start, end)
@@ -329,22 +235,48 @@ class GroupedData:
                 # block format here can be different from batch format
                 # (e.g. block is Arrow format, and batch is NumPy format).
                 group_batch = group_block_accessor.to_batch_format(batch_format)
-                applied = fn(group_batch)
-                builder.add_batch(applied)
+                applied = udf(group_batch, *args, **kwargs)
+                yield applied
                 start = end
-            rs = builder.build()
-            return rs
+
+        if isinstance(fn, CallableClass):
+
+            class wrapped_fn:
+                def __init__(self, *args, **kwargs):
+                    self.fn = fn(*args, **kwargs)
+
+                def __call__(self, batch, *args, **kwargs):
+                    yield from apply_udf_to_groups(self.fn, batch, *args, **kwargs)
+
+        else:
+
+            def wrapped_fn(batch, *args, **kwargs):
+                yield from apply_udf_to_groups(fn, batch, *args, **kwargs)
+
+        # Change the name of the wrapped function so that users see the name of their
+        # function rather than `wrapped_fn` in the progress bar.
+        wrapped_fn.__name__ = fn.__name__
 
         # Note we set batch_size=None here, so it will use the entire block as a batch,
         # which ensures that each group will be contained within a batch in entirety.
-        return sorted_ds.map_batches(
-            group_fn,
+        return sorted_ds._map_batches_without_batch_size_validation(
+            wrapped_fn,
             batch_size=None,
             compute=compute,
             batch_format=batch_format,
+            zero_copy_batch=False,
+            fn_args=fn_args,
+            fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            concurrency=concurrency,
+            ray_remote_args_fn=None,
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def count(self) -> Dataset:
         """Compute count aggregation.
 
@@ -361,6 +293,7 @@ class GroupedData:
         """
         return self.aggregate(Count())
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def sum(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -404,6 +337,7 @@ class GroupedData:
         """
         return self._aggregate_on(Sum, on, ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def min(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -442,6 +376,7 @@ class GroupedData:
         """
         return self._aggregate_on(Min, on, ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def max(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -480,6 +415,7 @@ class GroupedData:
         """
         return self._aggregate_on(Max, on, ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def mean(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -518,6 +454,7 @@ class GroupedData:
         """
         return self._aggregate_on(Mean, on, ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def std(
         self,
         on: Union[str, List[str]] = None,

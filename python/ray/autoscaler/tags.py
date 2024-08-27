@@ -13,6 +13,8 @@ NODE_KIND_UNMANAGED = "unmanaged"
 # Tag for user defined node types (e.g., m4xl_spot). This is used for multi
 # node type clusters.
 TAG_RAY_USER_NODE_TYPE = "ray-user-node-type"
+# Tag for index of replica node belongs to. Used for multi-host worker groups.
+TAG_RAY_REPLICA_INDEX = "ray-replica-index"
 # Tag for autofilled node types for legacy cluster yamls without multi
 # node type defined in the cluster configs.
 NODE_TYPE_LEGACY_HEAD = "ray-legacy-head-node-type"
@@ -39,3 +41,7 @@ TAG_RAY_RUNTIME_CONFIG = "ray-runtime-config"
 # if the node is a worker, this also hashes content of the directories
 # specified by the cluster_synced_files config
 TAG_RAY_FILE_MOUNTS_CONTENTS = "ray-file-mounts-contents"
+
+# Tag for the launch request id, used to identify nodes launched by the same
+# launch request.
+TAG_RAY_LAUNCH_REQUEST = "ray-launch-request"

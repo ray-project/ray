@@ -6,6 +6,12 @@ import numpy as np
 import pandas as pd
 
 from ray.tune.result import DEFAULT_METRIC
+from ray.tune.search import (
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
+    Searcher,
+)
 from ray.tune.search.sample import (
     Categorical,
     Domain,
@@ -14,12 +20,6 @@ from ray.tune.search.sample import (
     LogUniform,
     Quantized,
     Uniform,
-)
-from ray.tune.search import (
-    UNRESOLVED_SEARCH_SPACE,
-    UNDEFINED_METRIC_MODE,
-    UNDEFINED_SEARCH_SPACE,
-    Searcher,
 )
 from ray.tune.search.variant_generator import parse_spec_vars
 from ray.tune.utils.util import is_nan_or_inf, unflatten_dict, validate_warmstart
@@ -77,7 +77,7 @@ class HEBOSearch(Searcher):
             re-running those trials by passing in the reward attributes
             as a list so the optimiser can be told the results without
             needing to re-compute the trial. Must be the same length as
-            points_to_evaluate. (See tune/examples/hebo_example.py)
+            points_to_evaluate.
         random_state_seed: Seed for reproducible
             results. Defaults to None. Please note that setting this to a value
             will change global random states for `numpy` and `torch`

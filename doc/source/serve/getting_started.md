@@ -1,4 +1,4 @@
-(getting-started)=
+(serve-getting-started)=
 
 # Getting Started
 
@@ -202,25 +202,24 @@ it was the best of times, it was worst of times .
 
 Here's an application that chains the two models together. The graph takes English text, summarizes it, and then translates it:
 
-```{literalinclude} ../serve/doc_code/getting_started/model_graph.py
+```{literalinclude} ../serve/doc_code/getting_started/translator.py
 :start-after: __start_graph__
 :end-before: __end_graph__
 :language: python
 ```
 
-This script contains our `Summarizer` class converted to a deployment and our `Translator` class with some modifications. In this script, the `Summarizer` class contains the `__call__` method since requests are sent to it first. It also takes in the `Translator` as one of its constructor arguments, so it can forward summarized texts to the `Translator` deployment. The `__call__` method also contains some new code:
+This script contains our `Summarizer` class converted to a deployment and our `Translator` class with some modifications. In this script, the `Summarizer` class contains the `__call__` method since requests are sent to it first. It also takes in a handle to the `Translator` as one of its constructor arguments, so it can forward summarized texts to the `Translator` deployment. The `__call__` method also contains some new code:
 
 ```python
-translation_ref = await self.translator.translate.remote(summary)
-translation = await translation_ref
+translation = await self.translator.translate.remote(summary)
 ```
 
-`self.translator.translate.remote(summary)` issues an asynchronous call to the `Translator`'s `translate` method. The line immediately returns a reference to the method's output, then the next line `await translation_ref` waits for `translate` to execute and returns the value of that execution.
+`self.translator.translate.remote(summary)` issues an asynchronous call to the `Translator`'s `translate` method and returns a `DeploymentResponse` object immediately. Calling `await` on the response waits for the remote method call to execute and returns its return value. The response could also be passed directly to another `DeploymentHandle` call.
 
 We define the full application as follows:
 
 ```python
-deployment_graph = Summarizer.bind(Translator.bind())
+app = Summarizer.bind(Translator.bind())
 ```
 
 Here, we bind `Translator` to its (empty) constructor arguments, and then we pass in the bound `Translator` as the constructor argument for the `Summarizer`. We can run this deployment graph using the `serve run` CLI command. Make sure to run this command from a directory containing a local copy of the `serve_quickstart_composed.py` code:
@@ -231,7 +230,7 @@ $ serve run serve_quickstart_composed:app
 
 We can use this client script to make requests to the graph:
 
-```{literalinclude} ../serve/doc_code/getting_started/model_graph.py
+```{literalinclude} ../serve/doc_code/getting_started/translator.py
 :start-after: __start_client__
 :end-before: __end_client__
 :language: python
@@ -252,7 +251,7 @@ Composed Ray Serve applications let you deploy each part of your machine learnin
 - Dive into the {doc}`key-concepts` to get a deeper understanding of Ray Serve.
 - View details about your Serve application in the Ray Dashboard: {ref}`dash-serve-view`.
 - Learn more about how to deploy your Ray Serve application to production: {ref}`serve-in-production`.
-- Check more in-depth tutorials for popular machine learning frameworks: {doc}`tutorials/index`.
+- Check more in-depth tutorials for popular machine learning frameworks: {doc}`examples`.
 
 ```{rubric} Footnotes
 ```

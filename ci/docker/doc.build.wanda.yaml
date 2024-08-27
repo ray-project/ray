@@ -1,0 +1,9 @@
+name: "docbuild-py$PYTHON"
+froms: ["cr.ray.io/rayproject/oss-ci-base_build-py$PYTHON"]
+dockerfile: ci/docker/doc.build.Dockerfile
+srcs:
+  - doc/requirements-doc.txt
+build_args:
+  - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py$PYTHON
+tags:
+  - cr.ray.io/rayproject/docbuild-py$PYTHON

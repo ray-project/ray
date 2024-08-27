@@ -9,7 +9,6 @@ import io.ray.serve.config.RayServeConfig;
 import io.ray.serve.exception.RayServeException;
 import io.ray.serve.replica.ReplicaContext;
 import io.ray.serve.replica.ReplicaName;
-import io.ray.serve.util.CommonUtil;
 import java.util.Map;
 import java.util.Optional;
 import org.apache.commons.lang3.RandomStringUtils;
@@ -24,20 +23,14 @@ public class ServeTest {
     try {
       String dummyName = "getReplicaContextNormalTest";
       ReplicaName replicaName = new ReplicaName(dummyName, RandomStringUtils.randomAlphabetic(6));
-      String controllerName = dummyName;
       Object servableObject = new Object();
       Serve.setInternalReplicaContext(
-          replicaName.getDeploymentTag(),
-          replicaName.getReplicaTag(),
-          controllerName,
-          servableObject,
-          null);
+          replicaName.getDeploymentTag(), replicaName.getReplicaTag(), servableObject, null, null);
 
       ReplicaContext replicaContext = Serve.getReplicaContext();
       Assert.assertNotNull(replicaContext, "no replica context");
       Assert.assertEquals(replicaContext.getDeploymentName(), replicaName.getDeploymentTag());
       Assert.assertEquals(replicaContext.getReplicaTag(), replicaName.getReplicaTag());
-      Assert.assertEquals(replicaContext.getInternalControllerName(), controllerName);
     } finally {
       BaseServeTest.clearContext();
     }
@@ -54,7 +47,7 @@ public class ServeTest {
       // The default port 8000 is occupied by other processes on the ci platform.
       Map<String, String> config = Maps.newHashMap();
       config.put(RayServeConfig.PROXY_HTTP_PORT, "8341");
-      Serve.start(true, false, config);
+      Serve.start(config);
 
       Optional<PyActorHandle> controller = Ray.getActor(Constants.SERVE_CONTROLLER_NAME);
       Assert.assertTrue(controller.isPresent());
@@ -90,13 +83,7 @@ public class ServeTest {
       BaseServeTest.initRay();
 
       // Mock controller.
-      String controllerName =
-          CommonUtil.formatActorName(
-              Constants.SERVE_CONTROLLER_NAME, "getGlobalClientInReplicaTest");
-      Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
-
-      // Mock replica context.
-      Serve.setInternalReplicaContext(null, null, controllerName, null, null);
+      Ray.actor(DummyServeController::new, "").setName(Constants.SERVE_CONTROLLER_NAME).remote();
 
       // Get client.
       ServeControllerClient client = Serve.getGlobalClient();
@@ -104,18 +91,6 @@ public class ServeTest {
     } finally {
       BaseServeTest.shutdownRay();
       BaseServeTest.clearContext();
-    }
-  }
-
-  @Test(groups = {"cluster"})
-  public void connectTest() {
-    try {
-      BaseServeTest.startServe();
-
-      ServeControllerClient client = Serve.connect();
-      Assert.assertNotNull(client);
-    } finally {
-      BaseServeTest.shutdownServe();
     }
   }
 }

@@ -1,29 +1,23 @@
 import collections
-from enum import Enum
 import json
 import os
+from enum import Enum
 from typing import TYPE_CHECKING, Dict, List, Optional, Set, Union
-import urllib.parse
 
-from ray.air._internal.remote_storage import _is_network_mount
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 if TYPE_CHECKING:
+    from ray.train._internal.storage import StorageContext
     from ray.train.trainer import BaseTrainer
+    from ray.tune import Callback
     from ray.tune.schedulers import TrialScheduler
     from ray.tune.search import BasicVariantGenerator, Searcher
-    from ray.tune import Callback
-    from ray.tune import SyncConfig
 
 
 AIR_TRAINERS = {
-    "AccelerateTrainer",
     "HorovodTrainer",
-    "TransformersTrainer",
     "LightGBMTrainer",
-    "LightningTrainer",
     "MosaicTrainer",
-    "RLTrainer",
     "SklearnTrainer",
     "TensorflowTrainer",
     "TorchTrainer",
@@ -36,12 +30,10 @@ TUNE_SEARCHERS = {
     "AxSearch",
     "BayesOptSearch",
     "TuneBOHB",
-    "DragonflySearch",
     "HEBOSearch",
     "HyperOptSearch",
     "NevergradSearch",
     "OptunaSearch",
-    "SkOptSearch",
     "ZOOptSearch",
 }
 
@@ -143,14 +135,13 @@ def tag_setup_mlflow():
 
 def _count_callbacks(callbacks: Optional[List["Callback"]]) -> Dict[str, int]:
     """Creates a map of callback class name -> count given a list of callbacks."""
+    from ray.air.integrations.comet import CometLoggerCallback
+    from ray.air.integrations.mlflow import MLflowLoggerCallback
+    from ray.air.integrations.wandb import WandbLoggerCallback
     from ray.tune import Callback
     from ray.tune.logger import LoggerCallback
-    from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
-
-    from ray.air.integrations.wandb import WandbLoggerCallback
-    from ray.air.integrations.mlflow import MLflowLoggerCallback
-    from ray.air.integrations.comet import CometLoggerCallback
     from ray.tune.logger.aim import AimLoggerCallback
+    from ray.tune.utils.callback import DEFAULT_CALLBACK_CLASSES
 
     built_in_callbacks = (
         WandbLoggerCallback,
@@ -205,55 +196,28 @@ def tag_callbacks(callbacks: Optional[List["Callback"]]) -> bool:
         record_extra_usage_tag(TagKey.AIR_CALLBACKS, callback_counts_str)
 
 
-def _get_tag_for_remote_path(remote_path: str) -> str:
-    scheme = urllib.parse.urlparse(remote_path).scheme
-    if scheme == "file":
-        # NOTE: We treat a file:// storage_path as a "remote" path, so this case
-        # differs from the local path only case.
-        # In particular, default syncing to head node is not enabled here.
-        tag = "local_uri"
-    elif scheme == "memory":
-        # NOTE: This is used in tests and does not make sense to actually use.
-        # This condition filters the tag out of the `custom` catch-all.
-        tag = "memory"
-    elif scheme == "hdfs":
-        tag = "hdfs"
-    elif scheme in {"s3", "s3a"}:
-        tag = "s3"
-    elif scheme in {"gs", "gcs"}:
-        tag = "gs"
-    else:
-        tag = "custom_remote_storage"
-    return tag
+def tag_storage_type(storage: "StorageContext"):
+    """Records the storage configuration of an experiment.
 
+    The storage configuration is set by `RunConfig(storage_path, storage_filesystem)`.
 
-def tag_ray_air_storage_config(
-    local_path: str, remote_path: Optional[str], sync_config: "SyncConfig"
-) -> None:
-    """Records the storage storage configuration of an experiment.
-
-    The storage configuration is set by `RunConfig(storage_path, sync_config)`.
-
-    The possible configurations are:
-    - 'driver' = Default syncing to Tune driver node if no remote path is specified.
-    - 'local' = No synchronization at all.
-    - 'nfs' = Using a mounted shared network filesystem.
-    - ('s3', 'gs', 'hdfs', 'custom_remote_storage'): Various remote storage schemes.
-    - ('local_uri', 'memory'): Mostly used by internal testing by setting `storage_path`
-        to `file://` or `memory://`.
+    The possible storage types (defined by `pyarrow.fs.FileSystem.type_name`) are:
+    - 'local' = pyarrow.fs.LocalFileSystem. This includes NFS usage.
+    - 'mock' = pyarrow.fs._MockFileSystem. This is used for testing.
+    - ('s3', 'gcs', 'abfs', 'hdfs'): Various remote storage schemes
+        with default implementations in pyarrow.
+    - 'custom' = All other storage schemes, which includes ALL cases where a
+        custom `storage_filesystem` is provided.
+    - 'other' = catches any other cases not explicitly handled above.
     """
-    if remote_path:
-        # HDFS or cloud storage
-        storage_config_tag = _get_tag_for_remote_path(remote_path)
-    elif _is_network_mount(local_path):
-        # NFS
-        storage_config_tag = "nfs"
-    elif sync_config.syncer is None:
-        # Syncing is disabled - results are only available on node-local storage
-        storage_config_tag = "local"
+    whitelist = {"local", "mock", "s3", "gcs", "abfs", "hdfs"}
+
+    if storage.custom_fs_provided:
+        storage_config_tag = "custom"
+    elif storage.storage_filesystem.type_name in whitelist:
+        storage_config_tag = storage.storage_filesystem.type_name
     else:
-        # The driver node's local storage is the synchronization point.
-        storage_config_tag = "driver"
+        storage_config_tag = "other"
 
     record_extra_usage_tag(TagKey.AIR_STORAGE_CONFIGURATION, storage_config_tag)
 
@@ -269,8 +233,8 @@ def tag_ray_air_env_vars() -> bool:
         bool: True if at least one environment var is supplied by the user.
     """
     from ray.air.constants import AIR_ENV_VARS
-    from ray.tune.constants import TUNE_ENV_VARS
     from ray.train.constants import TRAIN_ENV_VARS
+    from ray.tune.constants import TUNE_ENV_VARS
 
     all_ray_air_env_vars = sorted(
         set().union(AIR_ENV_VARS, TUNE_ENV_VARS, TRAIN_ENV_VARS)
