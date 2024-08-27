@@ -1725,10 +1725,10 @@ class SingleAgentEpisode:
             "t": self.t,
             "_observation_space": gym_space_to_dict(self._observation_space)
             if self._observation_space
-            else self._observation_space,
+            else None,
             "_action_space": gym_space_to_dict(self._action_space)
             if self._action_space
-            else self._action_space,
+            else None,
             "_start_time": self._start_time,
             "_last_step_time": self._last_step_time,
             "_temporary_timestep_data": dict(self._temporary_timestep_data)
@@ -1782,12 +1782,12 @@ class SingleAgentEpisode:
         episode._observation_space = (
             gym_space_from_dict(state["_observation_space"])
             if state["_observation_space"]
-            else state["_observation_space"]
+            else None
         )
         episode._action_space = (
             gym_space_from_dict(state["_action_space"])
             if state["_action_space"]
-            else state["_action_space"]
+            else None
         )
         episode._start_time = state["_start_time"]
         episode._last_step_time = state["_last_step_time"]
