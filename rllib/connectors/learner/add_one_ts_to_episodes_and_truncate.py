@@ -3,6 +3,7 @@ from typing import Any, List, Optional
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.postprocessing.episodes import add_one_ts_to_episodes_and_truncate
 from ray.rllib.utils.typing import EpisodeType
@@ -101,10 +102,23 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         # batch: - - - - - - - T B0- - - - - R Bx- - - - R Bx
         # mask : t t t t t t t t f t t t t t t f t t t t t f
 
+        # TODO (sven): Same situation as in TODO below, but for multi-agent episode.
+        #  Maybe add a dedicated connector piece for this task?
+        # We extend the MultiAgentEpisode's ID by a running number here to make sure
+        # we treat each MAEpisode chunk as separate (for potentially upcoming v-trace
+        # and LSTM zero-padding) and don't mix data from different chunks.
+        if isinstance(episodes[0], MultiAgentEpisode):
+            for i, ma_episode in enumerate(episodes):
+                ma_episode.id_ += "_" + str(i)
+                # Also change the underlying single-agent episode's
+                # `multi_agent_episode_id` properties.
+                for sa_episode in ma_episode.agent_episodes.values():
+                    sa_episode.multi_agent_episode_id = ma_episode.id_
+
         for i, sa_episode in enumerate(
             self.single_agent_episode_iterator(episodes, agents_that_stepped_only=False)
         ):
-            # TODO (sven): This is a little bit of a hack: By expanding the Episode's
+            # TODO (sven): This is a little bit of a hack: By extending the Episode's
             #  ID, we make sure that each episode chunk in `episodes` is treated as a
             #  separate episode in the `self.add_n_batch_items` below. Some algos (e.g.
             #  APPO) may have >1 episode chunks from the same episode (same ID) in the

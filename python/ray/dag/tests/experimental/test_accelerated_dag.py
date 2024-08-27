@@ -90,6 +90,9 @@ class Actor:
     def return_two(self, x):
         return x, x + 1
 
+    def read_input(self, x):
+        return x
+
 
 @ray.remote
 class Collector:
@@ -621,8 +624,9 @@ def test_dag_errors(ray_start_regular):
     a = Actor.remote(0)
     dag = a.inc.bind(1)
     with pytest.raises(
-        NotImplementedError,
-        match="Compiled DAGs currently require exactly one InputNode",
+        ValueError,
+        match="No InputNode found in the DAG: when traversing upwards, "
+        "no upstream node was found for",
     ):
         dag.experimental_compile()
 
@@ -1100,6 +1104,108 @@ class TestCompositeChannel:
         assert ray.get(ref) == [3, 3]
 
         compiled_dag.teardown()
+
+
+class TestLeafNode:
+    def test_leaf_node_one_actor(self, ray_start_regular):
+        """
+        driver -> a.inc
+               |
+               -> a.inc -> driver
+
+        The upper branch (branch 1) is a leaf node, and it will be executed
+        before the lower `a.inc` task because of the control dependency. Hence,
+        the result will be [20] because `a.inc` will be executed twice.
+        """
+        a = Actor.remote(0)
+        with InputNode() as i:
+            input_data = a.read_input.bind(i)
+            a.inc.bind(input_data)  # branch1: leaf node
+            branch2 = a.inc.bind(input_data)
+            dag = MultiOutputNode([branch2])
+
+        compiled_dag = dag.experimental_compile()
+
+        ref = compiled_dag.execute(10)
+        assert ray.get(ref) == [20]
+        compiled_dag.teardown()
+
+    def test_leaf_node_two_actors(self, ray_start_regular):
+        """
+        driver -> b.inc -> a.inc --
+               |        |         |
+               |        -> b.inc ----> driver
+               |
+               -> a.inc (branch 1)
+
+        The lower branch (branch 1) is a leaf node, and it will be executed
+        before the upper `a.inc` task because of the control dependency.
+        """
+        a = Actor.remote(0)
+        b = Actor.remote(100)
+        with InputNode() as i:
+            a.inc.bind(i)  # branch1: leaf node
+            branch2 = b.inc.bind(i)
+            dag = MultiOutputNode([a.inc.bind(branch2), b.inc.bind(branch2)])
+        compiled_dag = dag.experimental_compile()
+
+        ref = compiled_dag.execute(10)
+        assert ray.get(ref) == [120, 220]
+        compiled_dag.teardown()
+
+
+def test_output_node(ray_start_regular):
+    """
+    This test is similar to the `test_output_node` in `test_output_node.py`, but
+    this test is for the accelerated DAG.
+    """
+
+    @ray.remote
+    class Worker:
+        def __init__(self):
+            pass
+
+        def echo(self, data):
+            return data
+
+    worker1 = Worker.remote()
+    worker2 = Worker.remote()
+    worker3 = Worker.remote()
+    with pytest.raises(ValueError):
+        with InputNode() as input_data:
+            dag = MultiOutputNode(worker1.echo.bind(input_data))
+
+    with InputNode() as input_data:
+        dag = MultiOutputNode([worker1.echo.bind(input_data)])
+    compiled_dag = dag.experimental_compile()
+
+    assert ray.get(compiled_dag.execute(1)) == [1]
+    assert ray.get(compiled_dag.execute(2)) == [2]
+    compiled_dag.teardown()
+
+    with InputNode() as input_data:
+        dag = MultiOutputNode(
+            [worker1.echo.bind(input_data.x), worker2.echo.bind(input_data.y)]
+        )
+    compiled_dag = dag.experimental_compile()
+
+    ref = compiled_dag.execute(x=1, y=2)
+    assert ray.get(ref) == [1, 2]
+    compiled_dag.teardown()
+
+    with InputNode() as input_data:
+        dag = MultiOutputNode(
+            [
+                worker1.echo.bind(input_data.x),
+                worker2.echo.bind(input_data.y),
+                worker3.echo.bind(input_data.x),
+            ]
+        )
+    compiled_dag = dag.experimental_compile()
+
+    ref = compiled_dag.execute(x=1, y=2)
+    assert ray.get(ref) == [1, 2, 1]
+    compiled_dag.teardown()
 
 
 def test_simulate_pipeline_parallelism(ray_start_regular):

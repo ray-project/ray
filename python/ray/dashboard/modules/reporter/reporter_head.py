@@ -66,11 +66,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     async def _update_stubs(self, change):
         if change.old:
             node_id, port = change.old
-            ip = DataSource.node_id_to_ip[node_id]
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
             self._stubs.pop(ip)
         if change.new:
             node_id, ports = change.new
-            ip = DataSource.node_id_to_ip[node_id]
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
             options = GLOBAL_GRPC_OPTIONS
             channel = init_grpc_channel(
                 f"{ip}:{ports[1]}", options=options, asynchronous=True
@@ -248,7 +248,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         attempt_number = req.query.get("attempt_number")
         node_id = req.query.get("node_id")
 
-        ip = DataSource.node_id_to_ip[node_id]
+        ip = DataSource.nodes[node_id]["nodeManagerAddress"]
 
         reporter_stub = self._stubs[ip]
 
@@ -340,7 +340,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         attempt_number = req.query.get("attempt_number")
         node_id = req.query.get("node_id")
 
-        ip = DataSource.node_id_to_ip[node_id]
+        ip = DataSource.nodes[node_id]["nodeManagerAddress"]
 
         duration_s = int(req.query.get("duration", 5))
         if duration_s > 60:
@@ -514,7 +514,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             task_id = req.query.get("task_id")
             attempt_number = req.query.get("attempt_number")
             node_id = req.query.get("node_id")
-            ip = DataSource.node_id_to_ip[node_id]
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
             try:
                 (pid, _) = await self.get_worker_details_for_running_task(
                     task_id, attempt_number
