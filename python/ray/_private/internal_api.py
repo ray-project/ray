@@ -240,11 +240,12 @@ def free(object_refs: list, local_only: bool = False):
 def get_local_lineage_reconstruction_tasks() -> List[
     Tuple[common_pb2.LineageReconstructionTask, int]
 ]:
-    """Return the ongoing retry tasks triggered by lineage reconstruction.
+    """Return the locally submitted ongoing retry tasks
+       triggered by lineage reconstruction.
 
-    The return type is a list of pair where pair.first is the
+    The return type is a list of pairs where pair.first is the
     lineage reconstruction task info and pair.second is the number
-    of ongoing tasks of this type.
+    of ongoing lineage reconstruction tasks of this type.
     """
 
     worker = ray._private.worker.global_worker
