@@ -551,7 +551,8 @@ def build(build_python, build_java, build_cpp):
                 "pip",
                 "install",
                 "-q",
-                "--target=" + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
+                "--target="
+                + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
             ]
             + runtime_env_agent_pip_packages
         )
