@@ -1516,6 +1516,7 @@ def test_self_handle_leak(ray_start_regular_shared):
     wait_for_pid_to_exit(pid)
 
 
+@pytest.mark.skipif(client_test_enabled(), reason="internal api")
 def test_get_local_actor_state(ray_start_regular_shared):
     @ray.remote
     class Actor:
