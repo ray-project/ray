@@ -160,7 +160,10 @@ from ray.includes.libcoreworker cimport (
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-from ray.includes.global_state_accessor cimport RedisDelExternalStorageNamespaceSync, RedisGetKeySync
+from ray.includes.global_state_accessor cimport (
+    RedisDelExternalStorageNamespaceSync,
+    RedisGetKeySync
+)
 from ray.includes.optional cimport (
     optional, nullopt
 )
