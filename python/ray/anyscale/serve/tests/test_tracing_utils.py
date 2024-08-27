@@ -1,6 +1,5 @@
 import json
 import os
-import pickle
 import re
 import shutil
 from pathlib import Path
@@ -17,7 +16,6 @@ import ray
 from ray import serve
 from ray.anyscale.serve._private.tracing_utils import (
     DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
-    _extract_value_from_method_args,
     _load_span_processors,
     _validate_tracing_exporter,
     _validate_tracing_exporter_processors,
@@ -223,76 +221,6 @@ def test_tracing_sampler(use_custom_tracing_exporter):
     sampler_data = sampler.__dict__
     assert "_rate" in sampler_data
     assert sampler_data["_rate"] == tracing_sampling_ratio
-
-
-def test_extract_value_from_method_args():
-    """Given a path to an argument, extract the value from either
-    the function's positional arguments or keyword arguments.
-
-    Test that `_extract_value_from_method_args` behaves correctly if:
-    1. The function belongs to a class.
-    2. The value maps to either positional or keyword arguments.
-    3. Nested objects are passed into the arguments.
-    4. Objects are depickled if they are serialized.
-    """
-
-    class RequestType:
-        def __init__(self, request_type, is_streaming_request=True):
-            self.request_type = request_type
-            self.is_streaming_request = is_streaming_request
-
-        @property
-        def is_streaming(self) -> str:
-            return self.is_streaming_request
-
-    # Example usage
-    class RequestMetadata:
-        def __init__(self, request_id, request_type="http", is_streaming_request=True):
-            self.request_id = request_id
-            self.request_type = RequestType(request_type, is_streaming_request)
-
-    pickled_object = pickle.dumps({"data": "pickled_data"})
-
-    class TestClass:
-        def __init__(self):
-            self.class_val = 1
-
-        def test_function(self, val1, val2, request_metadata, pickled_object):
-            return
-
-    cls = TestClass()
-    func = cls.test_function
-
-    request_metadata = RequestMetadata(request_id="123")
-
-    kwargs = {"request_metadata": request_metadata, "pickled_object": pickled_object}
-    args = (cls, 2, 3)
-
-    assert _extract_value_from_method_args(func, "self.class_val", *args, **kwargs) == 1
-    assert _extract_value_from_method_args(func, "val1", *args, **kwargs) == 2
-    assert _extract_value_from_method_args(func, "val2", *args, **kwargs) == 3
-    assert (
-        _extract_value_from_method_args(
-            func, "request_metadata.request_id", *args, **kwargs
-        )
-        == "123"
-    )
-    assert (
-        _extract_value_from_method_args(
-            func, "request_metadata.request_type.request_type", *args, **kwargs
-        )
-        == "http"
-    )
-    assert (
-        _extract_value_from_method_args(
-            func, "request_metadata.request_type.is_streaming", *args, **kwargs
-        )
-        is True
-    )
-    assert (
-        _extract_value_from_method_args(func, "pickled_object.data", *args, **kwargs)
-        == "pickled_data"
-    )
 
 
 @pytest.mark.parametrize(

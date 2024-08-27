@@ -18,9 +18,10 @@ from ray import cloudpickle
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
 from ray.anyscale.serve._private.tracing_utils import (
+    TraceContextManager,
+    extract_propagated_context,
     set_span_attributes,
     setup_tracing,
-    tracing_decorator_factory,
 )
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
@@ -426,10 +427,6 @@ class ReplicaActor:
         if user_exception is not None:
             raise user_exception from None
 
-    @tracing_decorator_factory(
-        trace_name="replica_handle_request",
-        propagated_trace_context_path="pickled_request_metadata.tracing_context",
-    )
     async def handle_request(
         self,
         pickled_request_metadata: bytes,
@@ -438,7 +435,12 @@ class ReplicaActor:
     ) -> Tuple[bytes, Any]:
         """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata):
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
+        with trace_manager, self._wrap_user_method_call(request_metadata):
             return await self._user_callable_wrapper.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
@@ -510,10 +512,6 @@ class ReplicaActor:
             if wait_for_message_task is not None and not wait_for_message_task.done():
                 wait_for_message_task.cancel()
 
-    @tracing_decorator_factory(
-        trace_name="replica_handle_request",
-        propagated_trace_context_path="pickled_request_metadata.tracing_context",
-    )
     async def handle_request_streaming(
         self,
         pickled_request_metadata: bytes,
@@ -522,7 +520,12 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata):
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
+        with trace_manager, self._wrap_user_method_call(request_metadata):
             async for result in self._call_user_generator(
                 request_metadata,
                 request_args,
@@ -530,10 +533,6 @@ class ReplicaActor:
             ):
                 yield result
 
-    @tracing_decorator_factory(
-        trace_name="replica_handle_request",
-        propagated_trace_context_path="pickled_request_metadata.tracing_context",
-    )
     async def handle_request_with_rejection(
         self,
         pickled_request_metadata: bytes,
@@ -553,6 +552,11 @@ class ReplicaActor:
         user request handler (which must be a generator).
         """
         request_metadata = pickle.loads(pickled_request_metadata)
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
         limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
@@ -568,7 +572,7 @@ class ReplicaActor:
             )
             return
 
-        with self._wrap_user_method_call(request_metadata):
+        with trace_manager, self._wrap_user_method_call(request_metadata):
             yield pickle.dumps(
                 ReplicaQueueLengthInfo(
                     accepted=True,

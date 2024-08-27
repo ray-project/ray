@@ -1,6 +1,5 @@
 import inspect
 import os
-import pickle
 from contextvars import ContextVar
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional
@@ -106,9 +105,7 @@ class TraceContextManager:
         return False
 
 
-def tracing_decorator_factory(
-    trace_name, span_kind=None, propagated_trace_context_path=None
-):
+def tracing_decorator_factory(trace_name, span_kind=None):
     """
     Factory function to create a tracing decorator for instrumenting functions/methods
     with distributed tracing.
@@ -117,9 +114,6 @@ def tracing_decorator_factory(
     - trace_name (str): The name of the trace.
     - span_kind (trace.SpanKind, optional): The kind of span to create
     (e.g., SERVER, CLIENT). Defaults to trace.SpanKind.SERVER.
-    - propagated_trace_context_path (str, optional). Path to the function's argument
-    that contains the trace context. This is necessary if the trace context
-    is propagated through an argument.
 
     Returns:
     - decorator (function): A decorator function that can be used to wrap
@@ -130,7 +124,7 @@ def tracing_decorator_factory(
     @tracing_decorator_factory(
         "my_trace",
         span_kind=trace.SpanKind.CLIENT,
-        propagated_trace_context_path="obj.trace_context")
+    )
     def my_function(obj):
         # Function implementation
     ```
@@ -139,42 +133,26 @@ def tracing_decorator_factory(
     def tracing_decorator(func):
         @wraps(func)
         def synchronous_wrapper(*args, **kwargs):
-            propagated_trace_context = _extract_value_from_method_args(
-                func, propagated_trace_context_path, *args, **kwargs
-            )
-            trace_context = extract_propagated_context(propagated_trace_context)
-            with TraceContextManager(trace_name, span_kind, trace_context):
+            with TraceContextManager(trace_name, span_kind):
                 result = func(*args, **kwargs)
 
             return result
 
         @wraps(func)
         def generator_wrapper(*args, **kwargs):
-            propagated_trace_context = _extract_value_from_method_args(
-                func, propagated_trace_context_path, *args, **kwargs
-            )
-            trace_context = extract_propagated_context(propagated_trace_context)
-            with TraceContextManager(trace_name, span_kind, trace_context):
+            with TraceContextManager(trace_name, span_kind):
                 for item in func(*args, **kwargs):
                     yield item
 
         @wraps(func)
         async def asynchronous_wrapper(*args, **kwargs):
-            propagated_trace_context = _extract_value_from_method_args(
-                func, propagated_trace_context_path, *args, **kwargs
-            )
-            trace_context = extract_propagated_context(propagated_trace_context)
-            with TraceContextManager(trace_name, span_kind, trace_context):
+            with TraceContextManager(trace_name, span_kind):
                 result = await func(*args, **kwargs)
             return result
 
         @wraps(func)
         async def asyc_generator_wrapper(*args, **kwargs):
-            propagated_trace_context = _extract_value_from_method_args(
-                func, propagated_trace_context_path, *args, **kwargs
-            )
-            trace_context = extract_propagated_context(propagated_trace_context)
-            with TraceContextManager(trace_name, span_kind, trace_context):
+            with TraceContextManager(trace_name, span_kind):
                 async for item in func(*args, **kwargs):
                     yield item
 
@@ -272,7 +250,7 @@ def extract_propagated_context(
     propagated_context: Optional[Dict[str, str]] = None
 ) -> Optional[Dict[str, str]]:
     """Extract the trace context from a Trace Context Propagator."""
-    if propagated_context and TraceContextTextMapPropagator:
+    if is_tracing_enabled() and propagated_context and TraceContextTextMapPropagator:
         return TraceContextTextMapPropagator().extract(carrier=propagated_context)
 
     return None
@@ -316,7 +294,7 @@ def set_trace_status(is_ok: bool, status_message: str = ""):
 
 
 def is_tracing_enabled() -> bool:
-    return bool(trace and trace.get_tracer_provider() is not None)
+    return ANYSCALE_TRACING_EXPORTER_IMPORT_PATH != "" and trace is not None
 
 
 def _append_trace_stack(span):
@@ -384,62 +362,6 @@ def _load_span_processors(
         _validate_tracing_exporter_processors(span_processors)
 
     return span_processors
-
-
-def _extract_value_from_method_args(func, obj_path, *args, **kwargs):
-    """Given a path to an argument, extract the value from either
-    the function's positional arguments or keyword arguments.
-    """
-    if not obj_path:
-        return None
-
-    is_class_method = inspect.ismethod(func)
-    obj_path = obj_path.split(".")
-
-    # If func is a class method and "self" is in the obj path,
-    # then check the first positional argument
-    if is_class_method and (obj_path and obj_path[0] == "self"):
-        return _find_root_value(args[0], obj_path[1:])
-
-    # If the func is not a class method,
-    # check if obj path exists in the keyword arguments.
-    value = _find_root_value(kwargs, obj_path)
-    if value:
-        return value
-
-    # If an obj is not found in the positional arguments,
-    # check keyword arguments.
-    signature = inspect.signature(func)
-    positional_args = [
-        param.name
-        for param in signature.parameters.values()
-        if param.kind == inspect.Parameter.POSITIONAL_OR_KEYWORD
-    ]
-    if obj_path[0] in positional_args:
-        index = positional_args.index(obj_path[0])
-        if is_class_method:
-            index += 1
-        if len(args) >= index:
-            return _find_root_value(args[index], obj_path[1:])
-
-    return None
-
-
-def _find_root_value(obj, obj_path):
-    """Given an object path, find the value
-    at the root.
-    """
-    for key in obj_path:
-        if isinstance(obj, bytes):
-            obj = pickle.loads(obj)
-
-        if hasattr(obj, key):
-            obj = getattr(obj, key)
-        elif isinstance(obj, dict) and key in obj:
-            obj = obj[key]
-        else:
-            return None
-    return obj
 
 
 def _is_generator_function(func):
