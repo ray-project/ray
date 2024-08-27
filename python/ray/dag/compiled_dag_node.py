@@ -298,7 +298,7 @@ class ExecutableTask:
         self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
         # A unique index which can be used to index into `idx_to_task` to get
         # the corresponding task.
-        self.dag_idx = task.idx
+        self.task_idx = task.idx
 
         # Reverse map for input_channels: maps an input channel to
         # its index in input_channels.
@@ -1229,26 +1229,26 @@ class CompiledDAG:
             for exec_task_idx, exec_task in enumerate(executable_tasks):
                 # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
                 # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
-                dag_idx = exec_task.dag_idx
-                dag_node = self.idx_to_task[dag_idx].dag_node
+                task_index = exec_task.task_idx
+                dag_node = self.idx_to_task[task_index].dag_node
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
 
                 read_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.READ),
-                    dag_idx,
+                    task_index,
                     actor_handle,
                     requires_nccl,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.COMPUTE),
-                    dag_idx,
+                    task_index,
                     actor_handle,
                     requires_nccl,
                 )
                 write_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.WRITE),
-                    dag_idx,
+                    task_index,
                     actor_handle,
                     requires_nccl,
                 )
