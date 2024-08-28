@@ -98,10 +98,16 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("CartPole-v1")
-        .framework(torch_loss_scaling=True)
+        #.framework(torch_loss_scaling=True)
         .env_runners(env_to_module_connector=lambda env: Float16Connector())
         .callbacks(Float16InitCallback)
-        .training(lr=0.00001)
+        .training(
+            gamma=0.99,
+            lr=0.0003,
+            num_sgd_iter=6,
+            vf_loss_coeff=0.01,
+            use_kl_loss=True,
+        )
     )
 
     run_rllib_example_script_experiment(base_config, args)

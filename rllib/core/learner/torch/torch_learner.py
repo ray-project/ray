@@ -100,7 +100,7 @@ class TorchLearner(Learner):
 
         # Loss scalers for mixed precision training. Map optimizer names to
         # associated torch GradScaler objects.
-        self._amp_grad_scalers = defaultdict(lambda: torch.cuda.amp.GradScaler())
+        #self._amp_grad_scalers = defaultdict(lambda: torch.cuda.amp.GradScaler())
 
     @OverrideToImplementCustomLogic
     @override(Learner)
@@ -115,7 +115,7 @@ class TorchLearner(Learner):
         # attached lr Scheduler (controlled by self.config.lr, which can be a
         # fixed value of a schedule setting).
         params = self.get_parameters(module)
-        optimizer = torch.optim.Adam(params)
+        optimizer = torch.optim.Adam(params, eps=1e-4)
 
         # Register the created optimizer (under the default optimizer name).
         self.register_optimizer(
@@ -155,16 +155,17 @@ class TorchLearner(Learner):
             # `set_to_none=True` is a faster way to zero out the gradients.
             optim.zero_grad(set_to_none=True)
 
-        if self.config.torch_loss_scaling:
-            total_loss = sum(
-                self._amp_grad_scalers[mid].scale(loss)
-                for mid, loss in loss_per_module.items()
-            )
-        else:
-            total_loss = sum(loss_per_module.values())
+        #if self.config.torch_loss_scaling:
+        total_loss = sum(
+            #self._amp_grad_scalers[mid].scale(loss)
+            loss * 1024.0
+            for mid, loss in loss_per_module.items()
+        )
+        #else:
+        #    total_loss = sum(loss_per_module.values())
 
         total_loss.backward()
-        grads = {pid: p.grad for pid, p in self._params.items()}
+        grads = {pid: p.grad / 1024.0 for pid, p in self._params.items()}
 
         return grads
 
@@ -183,15 +184,15 @@ class TorchLearner(Learner):
             for optimizer_name in optimizer_names:
                 optim = self.get_optimizer(module_id, optimizer_name)
                 # Unscale gradients, if applicable.
-                if self.config.torch_loss_scaling:
-                    self._amp_grad_scalers[module_id].step(optim)
-                else:
-                    optim.step()
+                #if self.config.torch_loss_scaling:
+                #    self._amp_grad_scalers[module_id].step(optim)
+                #else:
+                optim.step()
 
         # Reset the grad scalers, if applicable.
-        if self.config.torch_loss_scaling:
-            for scaler in self._amp_grad_scalers.values():
-                scaler.update()
+        #if self.config.torch_loss_scaling:
+        #    for scaler in self._amp_grad_scalers.values():
+        #        scaler.update()
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
