@@ -56,7 +56,7 @@ class MARWILConfig(AlgorithmConfig):
         from ray.rllib.algorithms.marwil import MARWILConfig
 
         # Get the base path (to ray/rllib)
-        base_path = Path(__file__).parents[2]
+        base_path = Path(__file__).parents[3]
         # Get the path to the data in rllib folder.
         data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
 
@@ -97,7 +97,7 @@ class MARWILConfig(AlgorithmConfig):
         from ray import tune
 
         # Get the base path (to ray/rllib)
-        base_path = Path(__file__).parents[2]
+        base_path = Path(__file__).parents[3]
         # Get the path to the data in rllib folder.
         data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
 
