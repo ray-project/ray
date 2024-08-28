@@ -174,10 +174,10 @@ class TorchMLP(nn.Module):
 
         self.mlp = nn.Sequential(*layers)
 
-        self.expected_input_dtype = torch.float32
+        # self.expected_input_dtype = torch.float32
 
     def forward(self, x):
-        return self.mlp(x.type(self.expected_input_dtype))
+        return self.mlp(x)  # .type(self.expected_input_dtype)
 
 
 class TorchCNN(nn.Module):
@@ -307,13 +307,13 @@ class TorchCNN(nn.Module):
         # Create the CNN.
         self.cnn = nn.Sequential(*layers)
 
-        self.expected_input_dtype = torch.float32
+        # self.expected_input_dtype = torch.float32
 
     def forward(self, inputs):
         # Permute b/c data comes in as channels_last ([B, dim, dim, channels]) ->
         # Convert to `channels_first` for torch:
         inputs = inputs.permute(0, 3, 1, 2)
-        out = self.cnn(inputs.type(self.expected_input_dtype))
+        out = self.cnn(inputs)  # .type(self.expected_input_dtype)
         # Permute back to `channels_last`.
         return out.permute(0, 2, 3, 1)
 
@@ -459,12 +459,12 @@ class TorchCNNTranspose(nn.Module):
         # Create the final CNNTranspose network.
         self.cnn_transpose = nn.Sequential(*layers)
 
-        self.expected_input_dtype = torch.float32
+        # self.expected_input_dtype = torch.float32
 
     def forward(self, inputs):
         # Permute b/c data comes in as [B, dim, dim, channels]:
         out = inputs.permute(0, 3, 1, 2)
-        out = self.cnn_transpose(out.type(self.expected_input_dtype))
+        out = self.cnn_transpose(out)  # .type(self.expected_input_dtype)
         return out.permute(0, 2, 3, 1)
 
 

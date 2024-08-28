@@ -100,7 +100,11 @@ class TorchLearner(Learner):
 
         # Loss scalers for mixed precision training. Map optimizer names to
         # associated torch GradScaler objects.
-        self._amp_grad_scalers = defaultdict(lambda: torch.amp.GradScaler(self._device))
+        self._grad_scalers = None
+        if self.config._torch_grad_scaler_class:
+            self._grad_scalers = defaultdict(
+                lambda: self.config._torch_grad_scaler_class()
+            )
 
     @OverrideToImplementCustomLogic
     @override(Learner)
@@ -113,7 +117,7 @@ class TorchLearner(Learner):
 
         # For this default implementation, the learning rate is handled by the
         # attached lr Scheduler (controlled by self.config.lr, which can be a
-        # fixed value of a schedule setting).
+        # fixed value or a schedule setting).
         params = self.get_parameters(module)
         optimizer = torch.optim.Adam(params)
 
@@ -160,10 +164,10 @@ class TorchLearner(Learner):
             # `set_to_none=True` is a faster way to zero out the gradients.
             optim.zero_grad(set_to_none=True)
 
-        if self.config._enable_torch_mixed_precision_training:
+        if self._grad_scalers is not None:
             total_loss = sum(
-                self._amp_grad_scalers[key].scale(loss)
-                for key, loss in loss_per_module.items()
+                self._grad_scalers[mid].scale(loss)
+                for mid, loss in loss_per_module.items()
             )
         else:
             total_loss = sum(loss_per_module.values())
@@ -175,10 +179,6 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def apply_gradients(self, gradients_dict: ParamDict) -> None:
-        # Make sure the parameters do not carry gradients on their own.
-        # for optim in self._optimizer_parameters:
-        #    optim.zero_grad(set_to_none=True)
-
         # Set the gradient of the parameters.
         for pid, grad in gradients_dict.items():
             self._params[pid].grad = grad
@@ -187,14 +187,24 @@ class TorchLearner(Learner):
         for module_id, optimizer_names in self._module_optimizers.items():
             for optimizer_name in optimizer_names:
                 optim = self.get_optimizer(module_id, optimizer_name)
-                if self.config._enable_torch_mixed_precision_training:
-                    self._amp_grad_scalers[module_id].step(optim)
-                else:
+                # Step through the scaler (unscales gradients, if applicable).
+                if self._grad_scalers is not None:
+                    scaler = self._grad_scalers[module_id]
+                    scaler.step(optim)
+                    self.metrics.log_value(
+                        (module_id, "_torch_grad_scaler_current_scale"),
+                        scaler.get_scale(),
+                        window=1,  # snapshot in time, no EMA/mean.
+                    )
+                    # Update the scaler.
+                    scaler.update()
+                # `step` the optimizer (default), but only if all gradients are finite.
+                elif all(
+                    param.grad is None or torch.isfinite(param.grad).all()
+                    for group in optim.param_groups
+                    for param in group["params"]
+                ):
                     optim.step()
-
-        if self.config._enable_torch_mixed_precision_training:
-            for scaler in self._amp_grad_scalers.values():
-                scaler.update()
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
