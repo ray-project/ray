@@ -26,7 +26,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check
 from ray.tune import register_env
 
 
@@ -248,174 +248,166 @@ class TestAlgorithm(unittest.TestCase):
         obs_space = gym.spaces.Box(-2.0, 2.0, (4,))
         act_space = gym.spaces.Discrete(2)
 
-        for fw in framework_iterator(config):
-            # Pre-generate a policy instance to test adding these directly to an
-            # existing algorithm.
-            if fw == "tf":
-                policy_obj = ppo.PPOTF1Policy(obs_space, act_space, config.to_dict())
-            elif fw == "tf2":
-                policy_obj = ppo.PPOTF2Policy(obs_space, act_space, config.to_dict())
+        # Pre-generate a policy instance to test adding these directly to an
+        # existing algorithm.
+        policy_obj = ppo.PPOTorchPolicy(obs_space, act_space, config.to_dict())
+
+        # Construct the Algorithm with a single policy in it.
+        algo = config.build()
+        pol0 = algo.get_policy("p0")
+        r = algo.train()
+        self.assertTrue("p0" in r["info"][LEARNER_INFO])
+        for i in range(1, 3):
+
+            def new_mapping_fn(agent_id, episode, worker, i=i, **kwargs):
+                return f"p{choice([i, i - 1])}"
+
+            # Add a new policy either by class (and options) or by instance.
+            pid = f"p{i}"
+            print(f"Adding policy {pid} ...")
+            # By (already instantiated) instance.
+            if i == 2:
+                new_pol = algo.add_policy(
+                    pid,
+                    # Pass in an already existing policy instance.
+                    policy=policy_obj,
+                    # Test changing the mapping fn.
+                    policy_mapping_fn=new_mapping_fn,
+                    # Change the list of policies to train.
+                    policies_to_train=[f"p{i}", f"p{i - 1}"],
+                )
+            # By class (and options).
             else:
-                policy_obj = ppo.PPOTorchPolicy(obs_space, act_space, config.to_dict())
-
-            # Construct the Algorithm with a single policy in it.
-            algo = config.build()
-            pol0 = algo.get_policy("p0")
-            r = algo.train()
-            self.assertTrue("p0" in r["info"][LEARNER_INFO])
-            for i in range(1, 3):
-
-                def new_mapping_fn(agent_id, episode, worker, i=i, **kwargs):
-                    return f"p{choice([i, i - 1])}"
-
-                # Add a new policy either by class (and options) or by instance.
-                pid = f"p{i}"
-                print(f"Adding policy {pid} ...")
-                # By (already instantiated) instance.
-                if i == 2:
-                    new_pol = algo.add_policy(
-                        pid,
-                        # Pass in an already existing policy instance.
-                        policy=policy_obj,
-                        # Test changing the mapping fn.
-                        policy_mapping_fn=new_mapping_fn,
-                        # Change the list of policies to train.
-                        policies_to_train=[f"p{i}", f"p{i - 1}"],
-                    )
-                # By class (and options).
-                else:
-                    new_pol = algo.add_policy(
-                        pid,
-                        algo.get_default_policy_class(config),
-                        observation_space=obs_space,
-                        action_space=act_space,
-                        # Test changing the mapping fn.
-                        policy_mapping_fn=new_mapping_fn,
-                        # Change the list of policies to train.
-                        policies_to_train=[f"p{i}", f"p{i-1}"],
-                    )
-
-                # Make sure new policy is part of remote workers in the
-                # worker set and the eval worker set.
-                self.assertTrue(
-                    all(
-                        algo.env_runner_group.foreach_worker(
-                            func=lambda w, pid=pid: pid in w.policy_map
-                        )
-                    )
-                )
-                self.assertTrue(
-                    all(
-                        algo.eval_env_runner_group.foreach_worker(
-                            func=lambda w, pid=pid: pid in w.policy_map
-                        )
-                    )
+                new_pol = algo.add_policy(
+                    pid,
+                    algo.get_default_policy_class(config),
+                    observation_space=obs_space,
+                    action_space=act_space,
+                    # Test changing the mapping fn.
+                    policy_mapping_fn=new_mapping_fn,
+                    # Change the list of policies to train.
+                    policies_to_train=[f"p{i}", f"p{i-1}"],
                 )
 
-                # Assert new policy is part of local worker (eval worker set does NOT
-                # have a local worker, only the main EnvRunnerGroup does).
-                pol_map = algo.env_runner.policy_map
-                self.assertTrue(new_pol is not pol0)
-                for j in range(i + 1):
-                    self.assertTrue(f"p{j}" in pol_map)
-                self.assertTrue(len(pol_map) == i + 1)
-                algo.train()
-                checkpoint = algo.save().checkpoint
+            # Make sure new policy is part of remote workers in the
+            # worker set and the eval worker set.
+            self.assertTrue(
+                all(
+                    algo.env_runner_group.foreach_worker(
+                        func=lambda w, pid=pid: pid in w.policy_map
+                    )
+                )
+            )
+            self.assertTrue(
+                all(
+                    algo.eval_env_runner_group.foreach_worker(
+                        func=lambda w, pid=pid: pid in w.policy_map
+                    )
+                )
+            )
 
-                # Test restoring from the checkpoint (which has more policies
-                # than what's defined in the config dict).
-                test = ppo.PPO.from_checkpoint(checkpoint=checkpoint)
+            # Assert new policy is part of local worker (eval worker set does NOT
+            # have a local worker, only the main EnvRunnerGroup does).
+            pol_map = algo.env_runner.policy_map
+            self.assertTrue(new_pol is not pol0)
+            for j in range(i + 1):
+                self.assertTrue(f"p{j}" in pol_map)
+            self.assertTrue(len(pol_map) == i + 1)
+            algo.train()
+            checkpoint = algo.save().checkpoint
 
-                # Make sure evaluation worker also got the restored, added policy.
-                def _has_policies(w, pid=pid):
+            # Test restoring from the checkpoint (which has more policies
+            # than what's defined in the config dict).
+            test = ppo.PPO.from_checkpoint(checkpoint=checkpoint)
+
+            # Make sure evaluation worker also got the restored, added policy.
+            def _has_policies(w, pid=pid):
+                return w.get_policy("p0") is not None and w.get_policy(pid) is not None
+
+            self.assertTrue(
+                all(test.eval_env_runner_group.foreach_worker(_has_policies))
+            )
+
+            # Make sure algorithm can continue training the restored policy.
+            pol0 = test.get_policy("p0")
+            test.train()
+            # Test creating an action with the added (and restored) policy.
+            a = test.compute_single_action(
+                np.zeros_like(pol0.observation_space.sample()), policy_id=pid
+            )
+            self.assertTrue(pol0.action_space.contains(a))
+            test.stop()
+
+            # After having added 2 policies, try to restore the Algorithm,
+            # but only with 1 of the originally added policies (plus the initial
+            # p0).
+            if i == 2:
+
+                def new_mapping_fn(agent_id, episode, worker, **kwargs):
+                    return f"p{choice([0, 2])}"
+
+                test2 = ppo.PPO.from_checkpoint(
+                    path=checkpoint,
+                    policy_ids=["p0", "p2"],
+                    policy_mapping_fn=new_mapping_fn,
+                    policies_to_train=["p0"],
+                )
+
+                # Make sure evaluation workers have the same policies.
+                def _has_policies(w):
                     return (
-                        w.get_policy("p0") is not None and w.get_policy(pid) is not None
+                        w.get_policy("p0") is not None
+                        and w.get_policy("p2") is not None
+                        and w.get_policy("p1") is None
                     )
 
                 self.assertTrue(
-                    all(test.eval_env_runner_group.foreach_worker(_has_policies))
+                    all(test2.eval_env_runner_group.foreach_worker(_has_policies))
                 )
 
                 # Make sure algorithm can continue training the restored policy.
-                pol0 = test.get_policy("p0")
-                test.train()
+                pol2 = test2.get_policy("p2")
+                test2.train()
                 # Test creating an action with the added (and restored) policy.
-                a = test.compute_single_action(
-                    np.zeros_like(pol0.observation_space.sample()), policy_id=pid
+                a = test2.compute_single_action(
+                    np.zeros_like(pol2.observation_space.sample()), policy_id=pid
                 )
-                self.assertTrue(pol0.action_space.contains(a))
-                test.stop()
+                self.assertTrue(pol2.action_space.contains(a))
+                test2.stop()
 
-                # After having added 2 policies, try to restore the Algorithm,
-                # but only with 1 of the originally added policies (plus the initial
-                # p0).
-                if i == 2:
+        # Delete all added policies again from Algorithm.
+        for i in range(2, 0, -1):
+            pid = f"p{i}"
+            algo.remove_policy(
+                pid,
+                # Note that the complete signature of a policy_mapping_fn
+                # is: `agent_id, episode, worker, **kwargs`.
+                policy_mapping_fn=(
+                    lambda agent_id, episode, worker, i=i, **kwargs: f"p{i - 1}"
+                ),
+                # Update list of policies to train.
+                policies_to_train=[f"p{i - 1}"],
+            )
+            # Make sure removed policy is no longer part of remote workers in the
+            # worker set and the eval worker set.
+            self.assertTrue(
+                algo.env_runner_group.foreach_worker(
+                    func=lambda w, pid=pid: pid not in w.policy_map
+                )[0]
+            )
+            self.assertTrue(
+                algo.eval_env_runner_group.foreach_worker(
+                    func=lambda w, pid=pid: pid not in w.policy_map
+                )[0]
+            )
+            # Assert removed policy is no longer part of local worker
+            # (eval worker set does NOT have a local worker, only the main
+            # EnvRunnerGroup does).
+            pol_map = algo.env_runner.policy_map
+            self.assertTrue(pid not in pol_map)
+            self.assertTrue(len(pol_map) == i)
 
-                    def new_mapping_fn(agent_id, episode, worker, **kwargs):
-                        return f"p{choice([0, 2])}"
-
-                    test2 = ppo.PPO.from_checkpoint(
-                        path=checkpoint,
-                        policy_ids=["p0", "p2"],
-                        policy_mapping_fn=new_mapping_fn,
-                        policies_to_train=["p0"],
-                    )
-
-                    # Make sure evaluation workers have the same policies.
-                    def _has_policies(w):
-                        return (
-                            w.get_policy("p0") is not None
-                            and w.get_policy("p2") is not None
-                            and w.get_policy("p1") is None
-                        )
-
-                    self.assertTrue(
-                        all(test2.eval_env_runner_group.foreach_worker(_has_policies))
-                    )
-
-                    # Make sure algorithm can continue training the restored policy.
-                    pol2 = test2.get_policy("p2")
-                    test2.train()
-                    # Test creating an action with the added (and restored) policy.
-                    a = test2.compute_single_action(
-                        np.zeros_like(pol2.observation_space.sample()), policy_id=pid
-                    )
-                    self.assertTrue(pol2.action_space.contains(a))
-                    test2.stop()
-
-            # Delete all added policies again from Algorithm.
-            for i in range(2, 0, -1):
-                pid = f"p{i}"
-                algo.remove_policy(
-                    pid,
-                    # Note that the complete signature of a policy_mapping_fn
-                    # is: `agent_id, episode, worker, **kwargs`.
-                    policy_mapping_fn=(
-                        lambda agent_id, episode, worker, i=i, **kwargs: f"p{i - 1}"
-                    ),
-                    # Update list of policies to train.
-                    policies_to_train=[f"p{i - 1}"],
-                )
-                # Make sure removed policy is no longer part of remote workers in the
-                # worker set and the eval worker set.
-                self.assertTrue(
-                    algo.env_runner_group.foreach_worker(
-                        func=lambda w, pid=pid: pid not in w.policy_map
-                    )[0]
-                )
-                self.assertTrue(
-                    algo.eval_env_runner_group.foreach_worker(
-                        func=lambda w, pid=pid: pid not in w.policy_map
-                    )[0]
-                )
-                # Assert removed policy is no longer part of local worker
-                # (eval worker set does NOT have a local worker, only the main
-                # EnvRunnerGroup does).
-                pol_map = algo.env_runner.policy_map
-                self.assertTrue(pid not in pol_map)
-                self.assertTrue(len(pol_map) == i)
-
-            algo.stop()
+        algo.stop()
 
     def test_evaluation_option(self):
         # Use a custom callback that asserts that we are running the
@@ -432,29 +424,28 @@ class TestAlgorithm(unittest.TestCase):
             .callbacks(callbacks_class=AssertEvalCallback)
         )
 
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            algo = config.build()
-            # Given evaluation_interval=2, r0, r2, r4 should not contain
-            # evaluation metrics, while r1, r3 should.
-            r0 = algo.train()
-            print(r0)
-            r1 = algo.train()
-            print(r1)
-            r2 = algo.train()
-            print(r2)
-            r3 = algo.train()
-            print(r3)
-            algo.stop()
+        algo = config.build()
+        # Given evaluation_interval=2, r0, r2, r4 should not contain
+        # evaluation metrics, while r1, r3 should.
+        r0 = algo.train()
+        print(r0)
+        r1 = algo.train()
+        print(r1)
+        r2 = algo.train()
+        print(r2)
+        r3 = algo.train()
+        print(r3)
+        algo.stop()
 
-            self.assertFalse(EVALUATION_RESULTS in r0)
-            self.assertTrue(EVALUATION_RESULTS in r1)
-            self.assertFalse(EVALUATION_RESULTS in r2)
-            self.assertTrue(EVALUATION_RESULTS in r3)
-            self.assertTrue(ENV_RUNNER_RESULTS in r1[EVALUATION_RESULTS])
-            self.assertTrue(
-                EPISODE_RETURN_MEAN in r1[EVALUATION_RESULTS][ENV_RUNNER_RESULTS]
-            )
-            self.assertNotEqual(r1[EVALUATION_RESULTS], r3[EVALUATION_RESULTS])
+        self.assertFalse(EVALUATION_RESULTS in r0)
+        self.assertTrue(EVALUATION_RESULTS in r1)
+        self.assertFalse(EVALUATION_RESULTS in r2)
+        self.assertTrue(EVALUATION_RESULTS in r3)
+        self.assertTrue(ENV_RUNNER_RESULTS in r1[EVALUATION_RESULTS])
+        self.assertTrue(
+            EPISODE_RETURN_MEAN in r1[EVALUATION_RESULTS][ENV_RUNNER_RESULTS]
+        )
+        self.assertNotEqual(r1[EVALUATION_RESULTS], r3[EVALUATION_RESULTS])
 
     def test_evaluation_option_always_attach_eval_metrics(self):
         # Use a custom callback that asserts that we are running the
@@ -471,22 +462,21 @@ class TestAlgorithm(unittest.TestCase):
             .reporting(min_sample_timesteps_per_iteration=100)
             .callbacks(callbacks_class=AssertEvalCallback)
         )
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            algo = config.build()
-            # Should only see eval results, when eval actually ran.
-            r0 = algo.train()
-            r1 = algo.train()
-            r2 = algo.train()
-            r3 = algo.train()
-            algo.stop()
+        algo = config.build()
+        # Should only see eval results, when eval actually ran.
+        r0 = algo.train()
+        r1 = algo.train()
+        r2 = algo.train()
+        r3 = algo.train()
+        algo.stop()
 
-            # Eval results are not available at step 0.
-            # But step 3 should still have it, even though no eval was
-            # run during that step.
-            self.assertTrue(EVALUATION_RESULTS not in r0)
-            self.assertTrue(EVALUATION_RESULTS in r1)
-            self.assertTrue(EVALUATION_RESULTS not in r2)
-            self.assertTrue(EVALUATION_RESULTS in r3)
+        # Eval results are not available at step 0.
+        # But step 3 should still have it, even though no eval was
+        # run during that step.
+        self.assertTrue(EVALUATION_RESULTS not in r0)
+        self.assertTrue(EVALUATION_RESULTS in r1)
+        self.assertTrue(EVALUATION_RESULTS not in r2)
+        self.assertTrue(EVALUATION_RESULTS in r3)
 
     def test_evaluation_wo_evaluation_env_runner_group(self):
         # Use a custom callback that asserts that we are running the
@@ -497,30 +487,29 @@ class TestAlgorithm(unittest.TestCase):
             .callbacks(callbacks_class=AssertEvalCallback)
         )
 
-        for _ in framework_iterator(frameworks=("torch", "tf")):
-            # Setup algorithm w/o evaluation worker set and still call
-            # evaluate() -> Expect error.
-            algo_wo_env_on_local_worker = config.build()
-            self.assertRaisesRegex(
-                ValueError,
-                "Can't evaluate on a local worker",
-                algo_wo_env_on_local_worker.evaluate,
-            )
-            algo_wo_env_on_local_worker.stop()
+        # Setup algorithm w/o evaluation worker set and still call
+        # evaluate() -> Expect error.
+        algo_wo_env_on_local_worker = config.build()
+        self.assertRaisesRegex(
+            ValueError,
+            "Can't evaluate on a local worker",
+            algo_wo_env_on_local_worker.evaluate,
+        )
+        algo_wo_env_on_local_worker.stop()
 
-            # Try again using `create_env_on_driver=True`.
-            # This force-adds the env on the local-worker, so this Algorithm
-            # can `evaluate` even though it doesn't have an evaluation-worker
-            # set.
-            config.create_env_on_local_worker = True
-            algo_w_env_on_local_worker = config.build()
-            results = algo_w_env_on_local_worker.evaluate()
-            assert (
-                ENV_RUNNER_RESULTS in results
-                and EPISODE_RETURN_MEAN in results[ENV_RUNNER_RESULTS]
-            )
-            algo_w_env_on_local_worker.stop()
-            config.create_env_on_local_worker = False
+        # Try again using `create_env_on_driver=True`.
+        # This force-adds the env on the local-worker, so this Algorithm
+        # can `evaluate` even though it doesn't have an evaluation-worker
+        # set.
+        config.create_env_on_local_worker = True
+        algo_w_env_on_local_worker = config.build()
+        results = algo_w_env_on_local_worker.evaluate()
+        assert (
+            ENV_RUNNER_RESULTS in results
+            and EPISODE_RETURN_MEAN in results[ENV_RUNNER_RESULTS]
+        )
+        algo_w_env_on_local_worker.stop()
+        config.create_env_on_local_worker = False
 
     def test_space_inference_from_remote_workers(self):
         # Expect to not do space inference if the learner has an env.

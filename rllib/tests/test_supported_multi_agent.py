@@ -11,7 +11,7 @@ from ray.rllib.examples.envs.classes.multi_agent import (
     MultiAgentMountainCar,
 )
 from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.test_utils import check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import check_train_results
 from ray.tune.registry import register_env
 
 
@@ -36,18 +36,15 @@ def check_support_multiagent(alg: str, config: AlgorithmConfig):
 
     config.multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
 
-    for fw in framework_iterator(config):
-        if fw == "tf2" and alg == "IMPALA":
-            continue
-        if alg == "SAC":
-            a = config.build(env="multi_agent_mountaincar")
-        else:
-            a = config.build(env="multi_agent_cartpole")
+    if alg == "SAC":
+        a = config.build(env="multi_agent_mountaincar")
+    else:
+        a = config.build(env="multi_agent_cartpole")
 
-        results = a.train()
-        check_train_results(results)
-        print(results)
-        a.stop()
+    results = a.train()
+    check_train_results(results)
+    print(results)
+    a.stop()
 
 
 class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):

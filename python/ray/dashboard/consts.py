@@ -32,14 +32,7 @@ DASHBOARD_RPC_ADDRESS = "dashboard_rpc"
 DASHBOARD_RPC_PORT = env_integer("RAY_DASHBOARD_RPC_PORT", 0)
 GCS_SERVER_ADDRESS = "GcsServerAddress"
 # GCS check alive
-GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR = env_integer(
-    "GCS_CHECK_ALIVE_MAX_COUNT_OF_RPC_ERROR", 40
-)
 GCS_CHECK_ALIVE_INTERVAL_SECONDS = env_integer("GCS_CHECK_ALIVE_INTERVAL_SECONDS", 5)
-GCS_CHECK_ALIVE_RPC_TIMEOUT = env_integer("GCS_CHECK_ALIVE_RPC_TIMEOUT", 10)
-GCS_RETRY_CONNECT_INTERVAL_SECONDS = env_integer(
-    "GCS_RETRY_CONNECT_INTERVAL_SECONDS", 2
-)
 GCS_RPC_TIMEOUT_SECONDS = env_integer("RAY_DASHBOARD_GCS_RPC_TIMEOUT_SECONDS", 60)
 # aiohttp_cache
 AIOHTTP_CACHE_TTL_SECONDS = 2
@@ -55,6 +48,12 @@ DEFAULT_JOB_ID = "ffff"
 # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
+
+# Works in the thread pool should not starve the main thread loop, so we default to 1.
+RAY_DASHBOARD_THREAD_POOL_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_THREAD_POOL_MAX_WORKERS", 1
+)
+RAY_AGENT_THREAD_POOL_MAX_WORKERS = env_integer("RAY_AGENT_THREAD_POOL_MAX_WORKERS", 1)
 
 # The number of candidate agents
 CANDIDATE_AGENT_NUMBER = max(env_integer("CANDIDATE_AGENT_NUMBER", 1), 1)

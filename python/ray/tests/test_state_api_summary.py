@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, AsyncMock
 import random
 import sys
 from dataclasses import asdict
+from concurrent.futures import ThreadPoolExecutor
 
 from ray.util.state import (
     summarize_tasks,
@@ -42,7 +43,9 @@ from ray.util.state.state_manager import StateDataSourceClient
 @pytest.fixture
 def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
-    manager = StateAPIManager(data_source_client)
+    manager = StateAPIManager(
+        data_source_client, thread_pool_executor=ThreadPoolExecutor()
+    )
     yield manager
 
 
