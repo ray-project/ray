@@ -153,10 +153,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 actor_dicts = await get_or_create_event_loop().run_in_executor(
                     self._dashboard_head._thread_pool_executor, convert, actors
                 )
-                actor_dicts: Dict[str, dict] = {
-                    actor_id.hex(): actor_table_data_to_dict(actor_table_data)
-                    for actor_id, actor_table_data in actors.items()
-                }
                 # Update actors.
                 DataSource.actors.reset(actor_dicts)
                 # Update node actors and job actors.
