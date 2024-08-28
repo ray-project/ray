@@ -101,6 +101,11 @@ class JSONDatasource(FileBasedDatasource):
 
         import pyarrow as pa
 
+        # Check if the buffer is empty
+        if buffer.size == 0:
+            yield pa.Table.from_pylist([])  # Yield an empty PyArrow Table
+            return
+
         parsed_json = json.load(BytesIO(buffer))
         try:
             yield pa.Table.from_pylist(parsed_json)
