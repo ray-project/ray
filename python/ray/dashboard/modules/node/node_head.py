@@ -49,7 +49,7 @@ def _gcs_node_info_to_dict(message: gcs_pb2.GcsNodeInfo) -> dict:
     )
 
 
-def _batch__gcs_node_info_to_dict(messages: List[gcs_pb2.GcsNodeInfo]) -> List[dict]:
+def _batch_gcs_node_info_to_dict(messages: List[gcs_pb2.GcsNodeInfo]) -> List[dict]:
     return [_gcs_node_info_to_dict(message) for message in messages]
 
 
@@ -184,11 +184,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # it happens after the subscription. That is, an update between
         # get-all-node-info and the subscription is not missed.
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        all_node_info = await self.get_all_node_info(timeout=GCS_RPC_TIMEOUT_SECONDS)
+        all_node_info = await self.get_all_node_info(timeout=-1)
 
         all_node_dicts = await get_or_create_event_loop().run_in_executor(
             self._dashboard_head._thread_pool_executor,
-            _batch__gcs_node_info_to_dict,
+            _batch_gcs_node_info_to_dict,
             all_node_info,
         )
         for node in all_node_dicts:
@@ -248,18 +248,22 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         """
         key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}".encode()
         while True:
-            agent_port = await self._gcs_aio_client.internal_kv_get(
-                key,
-                namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                timeout=GCS_RPC_TIMEOUT_SECONDS,
-            )
-            # The node may be dead already. Only update DataSource.agents if the node is
-            # still alive.
-            if DataSource.nodes.get(node_id, {}).get("state") != "ALIVE":
-                return
-            if agent_port:
-                DataSource.agents[node_id] = json.loads(agent_port)
-                return
+            try:
+                agent_port = await self._gcs_aio_client.internal_kv_get(
+                    key,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    timeout=-1,
+                )
+                # The node may be dead already. Only update DataSource.agents if the
+                # node is still alive.
+                if DataSource.nodes.get(node_id, {}).get("state") != "ALIVE":
+                    return
+                if agent_port:
+                    DataSource.agents[node_id] = json.loads(agent_port)
+                    return
+            except Exception:
+                logger.exception(f"Error getting agent port for node {node_id}.")
+
             await asyncio.sleep(node_consts.RAY_NODE_HEAD_AGENT_POLL_INTERVAL_S)
 
     async def _update_nodes(self):
