@@ -292,6 +292,7 @@ py_test_module_list(
     "test_distributed_sort.py",
     "test_environ.py",
     "test_get_or_create_actor.py",
+    "test_ids.py",
     "test_list_actors.py",
     "test_list_actors_2.py",
     "test_list_actors_3.py",
