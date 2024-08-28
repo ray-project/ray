@@ -2,8 +2,6 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. include:: /_includes/rllib/new_api_stack_component.rst
-
 .. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
     :width: 16

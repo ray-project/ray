@@ -14,27 +14,17 @@
 
 #include "ray/core_worker/reference_count.h"
 
-#define PRINT_REF_COUNT(it)                                                        \
-  RAY_LOG(DEBUG) << "REF " << it->first                                            \
-                 << " borrowers: " << it->second.borrow().borrowers.size()         \
-                 << " local_ref_count: " << it->second.local_ref_count             \
-                 << " submitted_count: " << it->second.submitted_task_ref_count    \
-                 << " contained_in_owned: "                                        \
-                 << it->second.nested().contained_in_owned.size()                  \
-                 << " contained_in_borrowed: "                                     \
-                 << (it)->second.nested().contained_in_borrowed_ids.size()         \
-                 << " contains: " << it->second.nested().contains.size()           \
-                 << " stored_in: " << it->second.borrow().stored_in_objects.size() \
-                 << " lineage_ref_count: " << it->second.lineage_ref_count;
+#define PRINT_REF_COUNT(it) \
+  RAY_LOG(DEBUG) << "REF " << it->first << ": " << it->second.DebugString();
 
 namespace {}  // namespace
 
 namespace ray {
 namespace core {
 
-bool ReferenceCounter::OwnObjects() const {
+size_t ReferenceCounter::Size() const {
   absl::MutexLock lock(&mutex_);
-  return !object_id_refs_.empty();
+  return object_id_refs_.size();
 }
 
 bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
@@ -1615,6 +1605,31 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
   // This will ensure that the subscriber will get the first snapshot of the
   // object location.
   PushToLocationSubscribers(it);
+}
+
+std::string ReferenceCounter::DebugString() const {
+  absl::MutexLock lock(&mutex_);
+  std::stringstream ss;
+  ss << "ReferenceTable{size: " << object_id_refs_.size();
+  if (!object_id_refs_.empty()) {
+    ss << " sample: " << object_id_refs_.begin()->first << ":"
+       << object_id_refs_.begin()->second.DebugString();
+  }
+  ss << "}";
+  return ss.str();
+}
+
+std::string ReferenceCounter::Reference::DebugString() const {
+  std::stringstream ss;
+  ss << "Reference{borrowers: " << borrow().borrowers.size()
+     << " local_ref_count: " << local_ref_count
+     << " submitted_count: " << submitted_task_ref_count
+     << " contained_on_owned: " << nested().contained_in_owned.size()
+     << " contained_in_borrowed: " << nested().contained_in_borrowed_ids.size()
+     << " contains: " << nested().contains.size()
+     << " stored_in: " << borrow().stored_in_objects.size()
+     << " lineage_ref_count: " << lineage_ref_count << "}";
+  return ss.str();
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

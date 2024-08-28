@@ -2368,15 +2368,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     }
     ExecuteTaskLocalMode(task_spec);
   } else {
-    int max_retries;
-    if (actor_creation_options.max_restarts == -1) {
-      max_retries = -1;
-    } else {
-      max_retries = std::max((int64_t)RayConfig::instance().actor_creation_min_retries(),
-                             actor_creation_options.max_restarts);
-    }
     task_manager_->AddPendingTask(
-        rpc_address_, task_spec, CurrentCallSite(), max_retries);
+        rpc_address_,
+        task_spec,
+        CurrentCallSite(),
+        // Actor creation task retry happens on GCS not on core worker.
+        /*max_retries*/ 0);
 
     if (actor_name.empty()) {
       io_service_.post(
@@ -2726,6 +2723,11 @@ Status CoreWorker::KillActorLocalMode(const ActorID &actor_id) {
 void CoreWorker::RemoveActorHandleReference(const ActorID &actor_id) {
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
   reference_counter_->RemoveLocalReference(actor_handle_id, nullptr);
+}
+
+std::optional<rpc::ActorTableData::ActorState> CoreWorker::GetLocalActorState(
+    const ActorID &actor_id) const {
+  return actor_task_submitter_->GetLocalActorState(actor_id);
 }
 
 ActorID CoreWorker::DeserializeAndRegisterActorHandle(const std::string &serialized,
@@ -3928,6 +3930,11 @@ void CoreWorker::ProcessSubscribeObjectLocations(
   reference_counter_->PublishObjectLocationSnapshot(object_id);
 }
 
+std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
+CoreWorker::GetLocalOngoingLineageReconstructionTasks() const {
+  return task_manager_->GetOngoingLineageReconstructionTasks();
+}
+
 Status CoreWorker::GetLocalObjectLocations(
     const std::vector<ObjectID> &object_ids,
     std::vector<std::optional<ObjectLocation>> *results) {
@@ -4374,22 +4381,28 @@ void CoreWorker::HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest req
 void CoreWorker::HandleExit(rpc::ExitRequest request,
                             rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
-  const bool own_objects = reference_counter_->OwnObjects();
+  const size_t num_objects_with_references = reference_counter_->Size();
   const size_t num_pending_tasks = task_manager_->NumPendingTasks();
   const int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
-  // We consider the worker to be idle if it doesn't own any objects and it doesn't have
-  // any object pinning RPCs in flight and it doesn't have pending tasks.
-  bool is_idle = !own_objects && (pins_in_flight == 0) && (num_pending_tasks == 0);
+  // We consider the worker to be idle if it doesn't have object references and it doesn't
+  // have any object pinning RPCs in flight and it doesn't have pending tasks.
+  bool is_idle = (num_objects_with_references == 0) && (pins_in_flight == 0) &&
+                 (num_pending_tasks == 0);
   bool force_exit = request.force_exit();
   RAY_LOG(DEBUG) << "Exiting: is_idle: " << is_idle << " force_exit: " << force_exit;
-  if (!is_idle && force_exit) {
-    RAY_LOG(INFO) << "Force exiting worker that owns object. This may cause other "
-                     "workers that depends on the object to lose it. "
-                  << "Own objects: " << own_objects
-                  << " # Pins in flight: " << pins_in_flight
-                  << " # pending tasks: " << num_pending_tasks;
+  if (!is_idle) {
+    RAY_LOG_EVERY_MS(INFO, 60000)
+        << "Worker is not idle: reference counter: " << reference_counter_->DebugString()
+        << " # pins in flight: " << pins_in_flight
+        << " # pending tasks: " << num_pending_tasks;
+    if (force_exit) {
+      RAY_LOG(INFO) << "Force exiting worker that's not idle. "
+                    << "reference counter: " << reference_counter_->DebugString()
+                    << " # Pins in flight: " << pins_in_flight
+                    << " # pending tasks: " << num_pending_tasks;
+    }
   }
-  bool will_exit = is_idle || force_exit;
+  const bool will_exit = is_idle || force_exit;
   reply->set_success(will_exit);
   send_reply_callback(
       Status::OK(),

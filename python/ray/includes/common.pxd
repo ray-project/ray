@@ -229,6 +229,9 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CLabelNotIn* mutable_label_not_in()
         CLabelExists* mutable_label_exists()
         CLabelDoesNotExist* mutable_label_does_not_exist()
+    cdef cppclass CLineageReconstructionTask "ray::rpc::LineageReconstructionTask":
+        CLineageReconstructionTask()
+        const c_string &SerializeAsString() const
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
