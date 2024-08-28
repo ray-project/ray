@@ -173,121 +173,18 @@ class CQLTorchLearner(SACTorchLearner):
 
         # Now calculate the CQL loss (we use the entropy version of the CQL algorithm).
         # Note, the entropy version performs best in shown experiments.
-        # Generate random actions (from the mu distribution as named in Kumar et
-        # al. (2020))
-        low = torch.tensor(
-            self.module[module_id].config.action_space.low,
-            device=fwd_out[QF_PREDS].device,
-        )
-        high = torch.tensor(
-            self.module[module_id].config.action_space.high,
-            device=fwd_out[QF_PREDS].device,
-        )
-        num_samples = batch[Columns.ACTIONS].shape[0] * config.num_actions
-        actions_rand_repeat = low + (high - low) * torch.rand(
-            (num_samples, low.shape[0]), device=fwd_out[QF_PREDS].device
-        )
 
-        # Sample current and next actions (from the pi distribution as named in Kumar
-        # et al. (2020)) using repeated observations.
-        actions_curr_repeat, logps_curr_repeat, obs_curr_repeat = self._repeat_actions(
-            action_dist_class, batch[Columns.OBS], config.num_actions, module_id
-        )
-        actions_next_repeat, logps_next_repeat, obs_next_repeat = self._repeat_actions(
-            action_dist_class, batch[Columns.NEXT_OBS], config.num_actions, module_id
-        )
-
-        # Calculate the Q-values for all actions.
-        batch_rand_repeat = {
-            Columns.OBS: obs_curr_repeat,
-            Columns.ACTIONS: actions_rand_repeat,
-        }
-        # Note, we need here the Q-values from the base Q-value function
-        # and not the minimum with an eventual Q-value twin.
-        q_rand_repeat = (
-            self.module[module_id]
-            ._qf_forward_train_helper(
-                batch_rand_repeat,
-                self.module[module_id].qf_encoder,
-                self.module[module_id].qf,
-            )
-            .view(batch_size, config.num_actions, 1)
-        )
-        # Calculate twin Q-values for the random actions, if needed.
-        if config.twin_q:
-            q_twin_rand_repeat = (
-                self.module[module_id]
-                ._qf_forward_train_helper(
-                    batch_rand_repeat,
-                    self.module[module_id].qf_twin_encoder,
-                    self.module[module_id].qf_twin,
-                )
-                .view(batch_size, config.num_actions, 1)
-            )
-        del batch_rand_repeat
-        batch_curr_repeat = {
-            Columns.OBS: obs_curr_repeat,
-            Columns.ACTIONS: actions_curr_repeat,
-        }
-        q_curr_repeat = (
-            self.module[module_id]
-            ._qf_forward_train_helper(
-                batch_curr_repeat,
-                self.module[module_id].qf_encoder,
-                self.module[module_id].qf,
-            )
-            .view(batch_size, config.num_actions, 1)
-        )
-        # Calculate twin Q-values for the repeated actions from the current policy,
-        # if needed.
-        if config.twin_q:
-            q_twin_curr_repeat = (
-                self.module[module_id]
-                ._qf_forward_train_helper(
-                    batch_curr_repeat,
-                    self.module[module_id].qf_twin_encoder,
-                    self.module[module_id].qf_twin,
-                )
-                .view(batch_size, config.num_actions, 1)
-            )
-        del batch_curr_repeat
-        batch_next_repeat = {
-            # Note, we use here the current observations b/c we want to keep the
-            # state fix while sampling the actions.
-            Columns.OBS: obs_curr_repeat,
-            Columns.ACTIONS: actions_next_repeat,
-        }
-        q_next_repeat = (
-            self.module[module_id]
-            ._qf_forward_train_helper(
-                batch_next_repeat,
-                self.module[module_id].qf_encoder,
-                self.module[module_id].qf,
-            )
-            .view(batch_size, config.num_actions, 1)
-        )
-        # Calculate also the twin Q-values for the current policy and next actions,
-        # if needed.
-        if config.twin_q:
-            q_twin_next_repeat = (
-                self.module[module_id]
-                ._qf_forward_train_helper(
-                    batch_next_repeat,
-                    self.module[module_id].qf_twin_encoder,
-                    self.module[module_id].qf_twin,
-                )
-                .view(batch_size, config.num_actions, 1)
-            )
-        del batch_next_repeat
-
-        # Compute the log-probabilities for the random actions.
+        # Compute the log-probabilities for the random actions (note, we generate random
+        # actions (from the mu distribution as named in Kumar et al. (2020))).
+        # Note, all actions, action log-probabilities and Q-values are already computed
+        # by the module's `_forward_train` method.
         # TODO (simon): This is the density for a discrete uniform, however, actions
         # come from a continuous one. So actually this density should use (1/(high-low))
         # instead of (1/2).
         random_density = torch.log(
             torch.pow(
                 torch.tensor(
-                    actions_curr_repeat.shape[-1], device=actions_curr_repeat.device
+                    fwd_out["actions_curr_repeat"].shape[-1], device=fwd_out["actions_curr_repeat"].device
                 ),
                 0.5,
             )
@@ -296,9 +193,9 @@ class CQLTorchLearner(SACTorchLearner):
         # entropy version of CQL).
         q_repeat = torch.cat(
             [
-                q_rand_repeat - random_density,
-                q_next_repeat - logps_next_repeat.detach(),
-                q_curr_repeat - logps_curr_repeat.detach(),
+                fwd_out["q_rand_repeat"] - random_density,
+                fwd_out["q_next_repeat"] - fwd_out["logps_next_repeat"],
+                fwd_out["q_curr_repeat"] - fwd_out["logps_curr_repeat"],
             ],
             dim=1,
         )
@@ -315,9 +212,9 @@ class CQLTorchLearner(SACTorchLearner):
         if config.twin_q:
             q_twin_repeat = torch.cat(
                 [
-                    q_twin_rand_repeat - random_density,
-                    q_twin_next_repeat - logps_next_repeat.detach(),
-                    q_twin_curr_repeat - logps_curr_repeat.detach(),
+                    fwd_out["q_twin_rand_repeat"] - random_density,
+                    fwd_out["q_twin_next_repeat"] - fwd_out["logps_next_repeat"],
+                    fwd_out["q_twin_curr_repeat"] - fwd_out["logps_curr_repeat"],
                 ],
                 dim=1,
             )
