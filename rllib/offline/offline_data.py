@@ -42,18 +42,8 @@ class OfflineData:
             logger.error(e)
         # Avoids reinstantiating the batch iterator each time we sample.
         self.batch_iterator = None
-        self.map_method = (
-            "map"
-            if self.config.input_read_episodes or self.config.input_read_sample_batches
-            else "map_batches"
-        )
         self.map_batches_kwargs = (
             self.default_map_batches_kwargs | self.config.map_batches_kwargs
-        )
-        self.iter_method = (
-            "iter_rows"
-            if self.config.input_read_episodes or self.config.input_read_sample_batches
-            else "iter_batches"
         )
         self.iter_batches_kwargs = (
             self.default_iter_batches_kwargs | self.config.iter_batches_kwargs
