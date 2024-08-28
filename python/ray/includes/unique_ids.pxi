@@ -60,11 +60,8 @@ cdef class BaseID:
     def binary(self):
         raise NotImplementedError
 
-    def size(self):
-        raise NotImplementedError
-
-    @staticmethod
-    def size():
+    @classmethod
+    def size(cls):
         raise NotImplementedError
 
     def hex(self):
@@ -122,11 +119,8 @@ cdef class UniqueID(BaseID):
     def from_random(cls):
         return cls(CUniqueID.FromRandom().Binary())
 
-    @staticmethod
-    def size():
-        return CUniqueID.Size()
-
-    def size(self):
+    @classmethod
+    def size(cls):
         return CUniqueID.Size()
 
     def binary(self):
@@ -157,7 +151,8 @@ cdef class TaskID(BaseID):
     cdef CTaskID native(self):
         return <CTaskID>self.data
 
-    def size(self):
+    @classmethod
+    def size(cls):
         return CTaskID.Size()
 
     def binary(self):
@@ -181,10 +176,6 @@ cdef class TaskID(BaseID):
     @classmethod
     def nil(cls):
         return cls(CTaskID.Nil().Binary())
-
-    @classmethod
-    def size(cls):
-        return CTaskID.Size()
 
     @classmethod
     def for_fake_task(cls, job_id):
@@ -275,9 +266,6 @@ cdef class JobID(BaseID):
     def hex(self):
         return decode(self.data.Hex())
 
-    def size(self):
-        return CJobID.Size()
-
     def is_nil(self):
         return self.data.IsNil()
 
@@ -326,9 +314,6 @@ cdef class ActorID(BaseID):
 
     @classmethod
     def size(cls):
-        return CActorID.Size()
-
-    def size(self):
         return CActorID.Size()
 
     def _set_id(self, id):
@@ -439,9 +424,6 @@ cdef class PlacementGroupID(BaseID):
 
     def hex(self):
         return decode(self.data.Hex())
-
-    def size(self):
-        return CPlacementGroupID.Size()
 
     def is_nil(self):
         return self.data.IsNil()

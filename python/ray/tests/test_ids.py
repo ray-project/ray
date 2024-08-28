@@ -38,8 +38,7 @@ def test_id_methods(id_cls, size):
     - `binary() -> bytes`
     - `hex() -> str`
     - `from_hex(hex_str: str) -> id_cls`
-    - `size() -> int`
-    - `size(self) -> int`
+    - `size(cls) -> int`
     - `nil() -> id_cls`
     - `is_nil() -> bool`
     - `__hash__() -> int`
@@ -71,7 +70,7 @@ def test_id_methods(id_cls, size):
     assert isinstance(hex_str, str)
     assert id_cls.from_hex(hex_str) == id_instance
 
-    # size() can be accessed from cls or instance
+    # size() is classmethod, can be called on both class and instance
     assert id_cls.size() == size
     assert id_instance.size() == size
 

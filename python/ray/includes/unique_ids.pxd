@@ -8,7 +8,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         T FromBinary(const c_string &binary)
 
         @staticmethod
-        T FromHex(const c_string &hex)
+        T FromHex(const c_string &hex_str)
 
         @staticmethod
         const T Nil()
@@ -49,7 +49,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CActorClassID FromBinary(const c_string &binary)
 
         @staticmethod
-        CActorClassID FromHex(const c_string &hex)
+        CActorClassID FromHex(const c_string &hex_str)
 
     cdef cppclass CActorID "ray::ActorID"(CBaseID[CActorID]):
 
@@ -93,7 +93,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CFunctionID FromBinary(const c_string &binary)
 
         @staticmethod
-        CFunctionID FromHex(const c_string &binary)
+        CFunctionID FromHex(const c_string &hex_str)
 
     cdef cppclass CJobID "ray::JobID"(CBaseID[CJobID]):
 
@@ -101,7 +101,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CJobID FromBinary(const c_string &binary)
 
         @staticmethod
-        CJobID FromHex(const c_string &binary)
+        CJobID FromHex(const c_string &hex_str)
 
         @staticmethod
         const CJobID Nil()
@@ -120,7 +120,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CTaskID FromBinary(const c_string &binary)
 
         @staticmethod
-        CTaskID FromHex(const c_string &binary)
+        CTaskID FromHex(const c_string &hex_str)
 
         @staticmethod
         const CTaskID Nil()
@@ -195,7 +195,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CWorkerID FromBinary(const c_string &binary)
 
         @staticmethod
-        CWorkerID FromHex(const c_string &binary)
+        CWorkerID FromHex(const c_string &hex_str)
 
     cdef cppclass CPlacementGroupID "ray::PlacementGroupID" \
                                     (CBaseID[CPlacementGroupID]):
@@ -204,7 +204,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CPlacementGroupID FromBinary(const c_string &binary)
 
         @staticmethod
-        CPlacementGroupID FromHex(const c_string &binary)
+        CPlacementGroupID FromHex(const c_string &hex_str)
 
         @staticmethod
         const CPlacementGroupID Nil()
