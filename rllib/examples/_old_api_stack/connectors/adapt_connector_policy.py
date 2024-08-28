@@ -1,5 +1,6 @@
+# @OldAPIStack
 """This example script shows how to load a connector enabled policy,
-and adapt/use it with a different version of the environment.
+and adapt or use it with a different version of the environment.
 """
 
 import gymnasium as gym

@@ -369,6 +369,10 @@ class NodeResourceInfoGcsServiceHandler {
       rpc::GetAllAvailableResourcesReply *reply,
       rpc::SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGetAllTotalResources(rpc::GetAllTotalResourcesRequest request,
+                                          rpc::GetAllTotalResourcesReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleGetDrainingNodes(rpc::GetDrainingNodesRequest request,
                                       rpc::GetDrainingNodesReply *reply,
                                       rpc::SendReplyCallback send_reply_callback) = 0;
@@ -396,6 +400,7 @@ class NodeResourceInfoGrpcService : public GrpcService {
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllAvailableResources);
+    NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllTotalResources);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetDrainingNodes);
     NODE_RESOURCE_INFO_SERVICE_RPC_HANDLER(GetAllResourceUsage);
   }

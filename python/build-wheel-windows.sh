@@ -64,8 +64,9 @@ install_ray() {
   (
     pip install wheel
 
-    pushd dashboard/client
-      choco install nodejs  -y
+
+    pushd python/ray/dashboard/client
+      choco install nodejs --version=22.4.1 -y
       refreshenv
       # https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
       export NODE_OPTIONS=--openssl-legacy-provider
@@ -96,7 +97,7 @@ build_wheel_windows() {
     echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}";
   } >> ~/.bazelrc
 
-  if [[ "$BUILDKITE_PIPELINE_ID" == "0189942e-0876-4b8f-80a4-617f988ec59b" ]]; then
+  if [[ "${BUILDKITE_PIPELINE_ID:-}" == "0189942e-0876-4b8f-80a4-617f988ec59b" || "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
     # Do not upload cache results for premerge pipeline
     echo "build --remote_upload_local_results=false" >> ~/.bazelrc
   fi

@@ -125,6 +125,103 @@ inline const char *ConstBasename(const char *filepath) {
   return base ? (base + 1) : filepath;
 }
 
+// Adapted from nlohmann/json
+std::size_t json_extra_space(const std::string &s) {
+  std::size_t result = 0;
+
+  for (const auto &c : s) {
+    switch (c) {
+    case '"':
+    case '\\':
+    case '\b':
+    case '\f':
+    case '\n':
+    case '\r':
+    case '\t': {
+      // from c (1 byte) to \x (2 bytes)
+      result += 1;
+      break;
+    }
+
+    default:
+      break;
+    }
+  }
+
+  return result;
+}
+std::string json_escape_string(const std::string &s) noexcept {
+  const auto space = json_extra_space(s);
+  if (space == 0) {
+    return s;
+  }
+
+  // create a result string of necessary size
+  std::string result(s.size() + space, '\\');
+  std::size_t pos = 0;
+
+  for (const auto &c : s) {
+    switch (c) {
+    // quotation mark (0x22)
+    case '"': {
+      result[pos + 1] = '"';
+      pos += 2;
+      break;
+    }
+
+    // reverse solidus (0x5c)
+    case '\\': {
+      // nothing to change
+      pos += 2;
+      break;
+    }
+
+    // backspace (0x08)
+    case '\b': {
+      result[pos + 1] = 'b';
+      pos += 2;
+      break;
+    }
+
+    // formfeed (0x0c)
+    case '\f': {
+      result[pos + 1] = 'f';
+      pos += 2;
+      break;
+    }
+
+    // newline (0x0a)
+    case '\n': {
+      result[pos + 1] = 'n';
+      pos += 2;
+      break;
+    }
+
+    // carriage return (0x0d)
+    case '\r': {
+      result[pos + 1] = 'r';
+      pos += 2;
+      break;
+    }
+
+    // horizontal tab (0x09)
+    case '\t': {
+      result[pos + 1] = 't';
+      pos += 2;
+      break;
+    }
+
+    default: {
+      // all other characters are added as-is
+      result[pos++] = c;
+      break;
+    }
+    }
+  }
+
+  return result;
+}
+
 /// A logger that prints logs to stderr.
 /// This is the default logger if logging is not initialized.
 /// NOTE(lingxuan.zlx): Default stderr logger must be singleton and global
@@ -450,9 +547,9 @@ RayLog::~RayLog() {
   // NOTE(lingxuan.zlx): See more fmt by visiting https://github.com/fmtlib/fmt.
   if (log_format_json_) {
     logger->log(GetMappedSeverity(severity_),
-                /*fmt*/ ",\"{}\":{}{}",
+                /*fmt*/ ",\"{}\":\"{}\"{}",
                 kLogKeyMessage,
-                nlohmann::json(msg_osstream_.str()).dump(),
+                json_escape_string(msg_osstream_.str()),
                 context_osstream_.str());
   } else {
     logger->log(GetMappedSeverity(severity_),
@@ -470,7 +567,7 @@ RayLog::~RayLog() {
 template <>
 RayLog &RayLog::WithFieldJsonFormat<std::string>(std::string_view key,
                                                  const std::string &value) {
-  context_osstream_ << ",\"" << key << "\":" << nlohmann::json(value).dump();
+  context_osstream_ << ",\"" << key << "\":\"" << json_escape_string(value) << "\"";
   return *this;
 }
 

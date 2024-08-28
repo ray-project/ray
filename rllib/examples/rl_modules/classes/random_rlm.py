@@ -1,5 +1,4 @@
-import pathlib
-from typing import Mapping, Any
+from typing import Any, Dict
 
 import gymnasium as gym
 import numpy as np
@@ -44,9 +43,6 @@ class RandomRLModule(RLModule):
         )
         return {SampleBatch.ACTIONS: actions}
 
-    def _module_state_file_name(self) -> pathlib.Path:
-        return pathlib.Path("random_rl_module_dummy_state")
-
     def compile(self, *args, **kwargs):
         """Dummy method for compatibility with TorchRLModule.
 
@@ -59,7 +55,7 @@ class RandomRLModule(RLModule):
         observation_space: gym.Space,
         action_space: gym.Space,
         *,
-        model_config_dict: Mapping[str, Any],
+        model_config_dict: Dict[str, Any],
     ) -> "RLModule":
         return cls(action_space)
 

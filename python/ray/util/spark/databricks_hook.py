@@ -83,14 +83,6 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
     def on_cluster_created(self, ray_cluster_handler):
         db_api_entry = get_db_entry_point()
 
-        try:
-            get_databricks_display_html_function()(
-                "<b style='background-color:yellow;'>When you are using Ray on Spark "
-                "cluster, you only pay for Spark cluster usage.</b>"
-            )
-        except Exception:
-            pass
-
         if ray_cluster_handler.autoscale or self.is_global:
             # Disable auto shutdown if
             # 1) autoscaling enabled

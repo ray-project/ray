@@ -192,45 +192,45 @@ print(f"Queued task time: {queued_time} ({MAX_QUEUED_TASKS} tasks)")
 print(f"Ray.get large object time: {large_object_time} " f"({MAX_RAY_GET_SIZE} bytes)")
 
 if "TEST_OUTPUT_JSON" in os.environ:
-    out_file = open(os.environ["TEST_OUTPUT_JSON"], "w")
-    results = {
-        "args_time": args_time,
-        "num_args": MAX_ARGS,
-        "returns_time": returns_time,
-        "num_returns": MAX_RETURNS,
-        "get_time": get_time,
-        "num_get_args": MAX_RAY_GET_ARGS,
-        "queued_time": queued_time,
-        "num_queued": MAX_QUEUED_TASKS,
-        "large_object_time": large_object_time,
-        "large_object_size": MAX_RAY_GET_SIZE,
-        "success": "1",
-    }
-    results["perf_metrics"] = [
-        {
-            "perf_metric_name": f"{MAX_ARGS}_args_time",
-            "perf_metric_value": args_time,
-            "perf_metric_type": "LATENCY",
-        },
-        {
-            "perf_metric_name": f"{MAX_RETURNS}_returns_time",
-            "perf_metric_value": returns_time,
-            "perf_metric_type": "LATENCY",
-        },
-        {
-            "perf_metric_name": f"{MAX_RAY_GET_ARGS}_get_time",
-            "perf_metric_value": get_time,
-            "perf_metric_type": "LATENCY",
-        },
-        {
-            "perf_metric_name": f"{MAX_QUEUED_TASKS}_queued_time",
-            "perf_metric_value": queued_time,
-            "perf_metric_type": "LATENCY",
-        },
-        {
-            "perf_metric_name": f"{MAX_RAY_GET_SIZE}_large_object_time",
-            "perf_metric_value": large_object_time,
-            "perf_metric_type": "LATENCY",
-        },
-    ]
-    json.dump(results, out_file)
+    with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_file:
+        results = {
+            "args_time": args_time,
+            "num_args": MAX_ARGS,
+            "returns_time": returns_time,
+            "num_returns": MAX_RETURNS,
+            "get_time": get_time,
+            "num_get_args": MAX_RAY_GET_ARGS,
+            "queued_time": queued_time,
+            "num_queued": MAX_QUEUED_TASKS,
+            "large_object_time": large_object_time,
+            "large_object_size": MAX_RAY_GET_SIZE,
+            "success": "1",
+        }
+        results["perf_metrics"] = [
+            {
+                "perf_metric_name": f"{MAX_ARGS}_args_time",
+                "perf_metric_value": args_time,
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": f"{MAX_RETURNS}_returns_time",
+                "perf_metric_value": returns_time,
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": f"{MAX_RAY_GET_ARGS}_get_time",
+                "perf_metric_value": get_time,
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": f"{MAX_QUEUED_TASKS}_queued_time",
+                "perf_metric_value": queued_time,
+                "perf_metric_type": "LATENCY",
+            },
+            {
+                "perf_metric_name": f"{MAX_RAY_GET_SIZE}_large_object_time",
+                "perf_metric_value": large_object_time,
+                "perf_metric_type": "LATENCY",
+            },
+        ]
+        json.dump(results, out_file)

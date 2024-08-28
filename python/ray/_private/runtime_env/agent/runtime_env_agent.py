@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import os
 import time
@@ -106,7 +105,7 @@ class ReferenceTable:
                     unused_uris.append((uri, uri_type))
                     del self._uri_reference[uri]
             else:
-                default_logger.warn(f"URI {uri} does not exist.")
+                default_logger.warning(f"URI {uri} does not exist.")
         if unused_uris:
             default_logger.info(f"Unused uris {unused_uris}.")
             self._unused_uris_callback(unused_uris)
@@ -125,7 +124,7 @@ class ReferenceTable:
                 unused = True
                 del self._runtime_env_reference[serialized_env]
         else:
-            default_logger.warn(f"Runtime env {serialized_env} does not exist.")
+            default_logger.warning(f"Runtime env {serialized_env} does not exist.")
         if unused:
             default_logger.info(f"Unused runtime env {serialized_env}.")
             self._unused_runtime_env_callback(serialized_env)
@@ -302,18 +301,11 @@ class RuntimeEnvAgent:
         async def _setup_runtime_env(
             runtime_env: RuntimeEnv,
             serialized_runtime_env,
-            serialized_allocated_resource_instances,
         ):
-            allocated_resource: dict = json.loads(
-                serialized_allocated_resource_instances or "{}"
-            )
             runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
             log_files = runtime_env_config.get("log_files", [])
             # Use a separate logger for each job.
             per_job_logger = self.get_or_create_logger(request.job_id, log_files)
-            # TODO(chenk008): Add log about allocated_resource to
-            # avoid lint error. That will be moved to cgroup plugin.
-            per_job_logger.debug(f"Worker has resource :" f"{allocated_resource}")
             context = RuntimeEnvContext(env_vars=runtime_env.env_vars())
 
             # Warn about unrecognized fields in the runtime env.
@@ -359,7 +351,6 @@ class RuntimeEnvAgent:
         async def _create_runtime_env_with_retry(
             runtime_env,
             serialized_runtime_env,
-            serialized_allocated_resource_instances,
             setup_timeout_seconds,
         ) -> Tuple[bool, str, str]:
             """
@@ -368,8 +359,6 @@ class RuntimeEnvAgent:
             Args:
                 runtime_env: The instance of RuntimeEnv class.
                 serialized_runtime_env: The serialized runtime env.
-                serialized_allocated_resource_instances: The serialized allocated
-                resource instances.
                 setup_timeout_seconds: The timeout of runtime environment creation.
 
             Returns:
@@ -388,7 +377,6 @@ class RuntimeEnvAgent:
                     runtime_env_setup_task = _setup_runtime_env(
                         runtime_env,
                         serialized_env,
-                        request.serialized_allocated_resource_instances,
                     )
                     runtime_env_context = await asyncio.wait_for(
                         runtime_env_setup_task, timeout=setup_timeout_seconds
@@ -507,7 +495,6 @@ class RuntimeEnvAgent:
             ) = await _create_runtime_env_with_retry(
                 runtime_env,
                 serialized_env,
-                request.serialized_allocated_resource_instances,
                 setup_timeout_seconds,
             )
             creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))

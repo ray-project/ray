@@ -4,14 +4,18 @@ import numpy as np
 import pytest
 
 import ray
+from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.memory_tracing import (
     leak_report,
     trace_allocation,
     trace_deallocation,
 )
-from ray.data._internal.util import _check_pyarrow_version, _split_list
-from ray.data.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.util import (
+    _check_pyarrow_version,
+    _split_list,
+    iterate_with_retry,
+)
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
@@ -129,6 +133,36 @@ class ConcurrencyCounter:
 
     def get_max_concurrency(self):
         return self.max_concurrency
+
+
+def test_iterate_with_retry():
+    has_raised_error = False
+
+    class MockIterable:
+        """Iterate over the numbers 0, 1, 2, and raise an error on the first iteration
+        attempt.
+        """
+
+        def __init__(self):
+            self._index = -1
+
+        def __iter__(self):
+            return self
+
+        def __next__(self):
+            self._index += 1
+
+            if self._index >= 3:
+                raise StopIteration
+
+            nonlocal has_raised_error
+            if self._index == 1 and not has_raised_error:
+                has_raised_error = True
+                raise RuntimeError("Transient error")
+
+            return self._index
+
+    assert list(iterate_with_retry(MockIterable, description="get item")) == [0, 1, 2]
 
 
 if __name__ == "__main__":

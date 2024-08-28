@@ -97,19 +97,35 @@ typename C::mapped_type &map_find_or_die(C &c, const typename C::key_type &k) {
       map_find_or_die(const_cast<const C &>(c), k));
 }
 
-/// Remove elements whole matcher returns true against the element.
-///
-/// @param matcher the matcher function to be applied to each elements
-/// @param container the container of the elements
-template <typename T>
-void remove_elements(std::function<bool(T)> matcher, std::deque<T> &container) {
-  auto itr = container.begin();
-  while (itr != container.end()) {
-    if (matcher(*itr)) {
-      itr = container.erase(itr);
+// This is guaranteed that predicate is applied to each element exactly once,
+// so it can have side effect.
+template <typename K, typename V>
+void erase_if(absl::flat_hash_map<K, std::deque<V>> &map,
+              std::function<bool(const V &)> predicate) {
+  for (auto map_it = map.begin(); map_it != map.end();) {
+    auto &queue = map_it->second;
+    for (auto queue_it = queue.begin(); queue_it != queue.end();) {
+      if (predicate(*queue_it)) {
+        queue_it = queue.erase(queue_it);
+      } else {
+        ++queue_it;
+      }
     }
-    if (itr != container.end()) {
-      itr++;
+    if (queue.empty()) {
+      map.erase(map_it++);
+    } else {
+      ++map_it;
+    }
+  }
+}
+
+template <typename T>
+void erase_if(std::list<T> &list, std::function<bool(const T &)> predicate) {
+  for (auto list_it = list.begin(); list_it != list.end();) {
+    if (predicate(*list_it)) {
+      list_it = list.erase(list_it);
+    } else {
+      ++list_it;
     }
   }
 }

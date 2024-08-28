@@ -1,5 +1,6 @@
+# @OldAPIStack
 """
-This script demonstrates how to specify n (vectorized) envs
+This script specifies n (vectorized) envs
 as Ray remote (actors), such that stepping through these occurs in parallel.
 Also, actions for each env step are calculated on the "main" node.
 

@@ -9,7 +9,7 @@ import ray._private.worker
 import ray._raylet
 from ray import ActorClassID, Language, cross_language
 from ray._private import ray_option_utils
-from ray._private.async_compat import is_async_func
+from ray._private.async_compat import has_async_methods
 from ray._private.auto_init_hook import wrap_auto_init
 from ray._private.client_mode_hook import (
     client_mode_convert_actor,
@@ -947,10 +947,7 @@ class ActorClass:
         if kwargs is None:
             kwargs = {}
         meta = self.__ray_metadata__
-        actor_has_async_methods = (
-            len(inspect.getmembers(meta.modified_class, predicate=is_async_func)) > 0
-        )
-        is_asyncio = actor_has_async_methods
+        is_asyncio = has_async_methods(meta.modified_class)
 
         if actor_options.get("max_concurrency") is None:
             actor_options["max_concurrency"] = 1000 if is_asyncio else 1
@@ -1262,6 +1259,13 @@ class ActorHandle:
         _ray_original_handle: True if this is the original actor handle for a
             given actor. If this is true, then the actor will be destroyed when
             this handle goes out of scope.
+        _ray_weak_ref: True means that this handle does not count towards the
+            distributed ref count for the actor, i.e. the actor may be GCed
+            while this handle is still in scope. This is set to True if the
+            handle was created by getting an actor by name or by getting the
+            self handle. It is set to False if this is the original handle or
+            if it was created by passing the original handle through task args
+            and returns.
         _ray_is_cross_language: Whether this actor is cross language.
         _ray_actor_creation_function_descriptor: The function descriptor
             of the actor creation task.
@@ -1285,11 +1289,13 @@ class ActorHandle:
         actor_creation_function_descriptor,
         cluster_and_job,
         original_handle=False,
+        weak_ref: bool = False,
     ):
         self._ray_actor_language = language
         self._ray_actor_id = actor_id
         self._ray_max_task_retries = max_task_retries
         self._ray_original_handle = original_handle
+        self._ray_weak_ref = weak_ref
         self._ray_enable_task_events = enable_task_events
 
         self._ray_method_is_generator = method_is_generator
@@ -1348,6 +1354,11 @@ class ActorHandle:
                 setattr(self, method_name, method)
 
     def __del__(self):
+        # Weak references don't count towards the distributed ref count, so no
+        # need to decrement the ref count.
+        if self._ray_weak_ref:
+            return
+
         try:
             # Mark that this actor handle has gone out of scope. Once all actor
             # handles are out of scope, the actor will exit.
@@ -1532,6 +1543,20 @@ class ActorHandle:
     def _actor_id(self):
         return self._ray_actor_id
 
+    def _get_local_state(self):
+        """Get the local actor state.
+
+        NOTE: this method only returns accurate actor state
+        after a first actor method call is made against
+        this actor handle due to https://github.com/ray-project/ray/pull/24600.
+
+        Returns:
+           ActorTableData.ActorState or None if the state is unknown.
+        """
+        worker = ray._private.worker.global_worker
+        worker.check_connected()
+        return worker.core_worker.get_local_actor_state(self._ray_actor_id)
+
     def _serialization_helper(self):
         """This is defined in order to make pickling work.
 
@@ -1568,10 +1593,10 @@ class ActorHandle:
                 None,
             )
 
-        return state
+        return (*state, self._ray_weak_ref)
 
     @classmethod
-    def _deserialization_helper(cls, state, outer_object_ref=None):
+    def _deserialization_helper(cls, state, weak_ref: bool, outer_object_ref=None):
         """This is defined in order to make pickling work.
 
         Args:
@@ -1579,6 +1604,8 @@ class ActorHandle:
             outer_object_ref: The ObjectRef that the serialized actor handle
                 was contained in, if any. This is used for counting references
                 to the actor handle.
+            weak_ref: Whether this was serialized from an actor handle with a
+                weak ref to the actor.
 
         """
         worker = ray._private.worker.global_worker
@@ -1587,7 +1614,9 @@ class ActorHandle:
         if hasattr(worker, "core_worker"):
             # Non-local mode
             return worker.core_worker.deserialize_and_register_actor_handle(
-                state, outer_object_ref
+                state,
+                outer_object_ref,
+                weak_ref,
             )
         else:
             # Local mode
@@ -1614,10 +1643,10 @@ class ActorHandle:
 
     def __reduce__(self):
         """This code path is used by pickling but not by Ray forking."""
-        (serialized, _) = self._serialization_helper()
+        (serialized, _, weak_ref) = self._serialization_helper()
         # There is no outer object ref when the actor handle is
         # deserialized out-of-band using pickle.
-        return ActorHandle._deserialization_helper, (serialized, None)
+        return ActorHandle._deserialization_helper, (serialized, weak_ref, None)
 
 
 def _modify_class(cls):

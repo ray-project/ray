@@ -122,6 +122,9 @@ def check_sum_metric_eq(
     expected: float,
     tags: Optional[Dict[str, str]] = None,
 ) -> bool:
+    if tags is None:
+        tags = {}
+
     metrics = fetch_prometheus_metrics([f"localhost:{TEST_METRICS_EXPORT_PORT}"])
     metric_samples = metrics.get(metric_name, None)
     if metric_samples is None:
@@ -133,8 +136,8 @@ def check_sum_metric_eq(
         metric_sum = sum(sample.value for sample in metric_samples)
 
     # Check the metrics sum to the expected number
-    assert (
-        metric_sum == expected
+    assert float(metric_sum) == float(
+        expected
     ), f"The following metrics don't sum to {expected}: {metric_samples}. {metrics}"
 
     # # For debugging
@@ -322,7 +325,6 @@ def test_proxy_metrics_not_found(serve_start_shutdown):
 
     # Ping gPRC proxy
     channel = grpc.insecure_channel("localhost:9000")
-    wait_for_condition(ping_grpc_list_applications, channel=channel, app_names=[])
     ping_grpc_call_method(channel=channel, app_name="foo", test_not_found=True)
 
     # Ensure all expected metrics are present.
@@ -1330,7 +1332,9 @@ class TestHandleMetrics:
             check_metric_float_eq,
             timeout=15,
             metric="ray_serve_num_scheduling_tasks",
-            expected=-1,  # -1 means not expected to be present yet.
+            # Router is eagerly created on HTTP proxy, so there are metrics emitted
+            # from proxy router
+            expected=0,
             # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
             # metrics from new and old sessions.
             expected_tags={
@@ -1342,7 +1346,9 @@ class TestHandleMetrics:
             check_metric_float_eq,
             timeout=15,
             metric="serve_num_scheduling_tasks_in_backoff",
-            expected=-1,  # -1 means not expected to be present yet.
+            # Router is eagerly created on HTTP proxy, so there are metrics emitted
+            # from proxy router
+            expected=0,
             # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
             # metrics from new and old sessions.
             expected_tags={
@@ -1365,9 +1371,9 @@ class TestHandleMetrics:
 
         print("First request is executing.")
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_num_ongoing_http_requests",
+            metric_name="ray_serve_num_ongoing_http_requests",
             expected=1,
         )
         print("ray_serve_num_ongoing_http_requests updated successfully.")
@@ -1378,16 +1384,16 @@ class TestHandleMetrics:
 
         # First request should be processing. All others should be queued.
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_deployment_queued_queries",
+            metric_name="ray_serve_deployment_queued_queries",
             expected=num_queued_requests,
         )
         print("ray_serve_deployment_queued_queries updated successfully.")
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_num_ongoing_http_requests",
+            metric_name="ray_serve_num_ongoing_http_requests",
             expected=num_queued_requests + 1,
         )
         print("ray_serve_num_ongoing_http_requests updated successfully.")
@@ -1395,16 +1401,16 @@ class TestHandleMetrics:
         # There should be 2 scheduling tasks (which is the max, since
         # 2 = 2 * 1 replica) that are attempting to schedule the hanging requests.
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_num_scheduling_tasks",
+            metric_name="ray_serve_num_scheduling_tasks",
             expected=2,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="serve_num_scheduling_tasks_in_backoff",
+            metric_name="ray_serve_num_scheduling_tasks_in_backoff",
             expected=2,
         )
         print("serve_num_scheduling_tasks_in_backoff updated successfully.")
@@ -1414,33 +1420,33 @@ class TestHandleMetrics:
         print("Cancelled all HTTP requests.")
 
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_deployment_queued_queries",
+            metric_name="ray_serve_deployment_queued_queries",
             expected=0,
         )
         print("ray_serve_deployment_queued_queries updated successfully.")
 
         # Task should get cancelled.
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_num_ongoing_http_requests",
+            metric_name="ray_serve_num_ongoing_http_requests",
             expected=0,
         )
         print("ray_serve_num_ongoing_http_requests updated successfully.")
 
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_num_scheduling_tasks",
+            metric_name="ray_serve_num_scheduling_tasks",
             expected=0,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="serve_num_scheduling_tasks_in_backoff",
+            metric_name="ray_serve_num_scheduling_tasks_in_backoff",
             expected=0,
         )
         print("serve_num_scheduling_tasks_in_backoff updated successfully.")

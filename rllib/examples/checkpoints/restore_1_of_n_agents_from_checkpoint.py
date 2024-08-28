@@ -3,13 +3,14 @@ from checkpoint.
 
 This example:
     - Runs a multi-agent `Pendulum-v1` experiment with >= 2 policies.
-    - Saves a checkpoint of the `MultiAgentRLModule` used every `--checkpoint-freq`
-        iterations.
-    - Stops the experiments after the agents reach a combined return of `-800`.
+    - Saves a checkpoint of the `MultiRLModule` used every `--checkpoint-freq`
+       iterations.
+    - Stops the experiments after the agents reach a combined return of -800.
     - Picks the best checkpoint by combined return and restores policy 0 from it.
     - Runs a second experiment with the restored `RLModule` for policy 0 and
         a fresh `RLModule` for the other policies.
-    - Stops the second experiment after the agents reach a combined return of `-800`.
+    - Stops the second experiment after the agents reach a combined return of -800.
+
 
 How to run this script
 ----------------------
@@ -34,11 +35,12 @@ For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 
+
 Results to expect
 -----------------
 You should expect a reward of -400.0 eventually being achieved by a simple
 single PPO policy (no tuning, just using RLlib's default settings). In the
-second run of the experiment, the MARL module weights for policy 0 are
+second run of the experiment, the MultiRLModule weights for policy 0 are
 restored from the checkpoint of the first run. The reward for a single agent
 should be -400.0 again, but the training time should be shorter (around 30
 iterations instead of 190).
@@ -46,7 +48,7 @@ iterations instead of 190).
 
 import os
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -135,10 +137,10 @@ if __name__ == "__main__":
     module_spec.load_state_path = p_0_module_state_path
     module_specs["p0"] = module_spec
 
-    # Create the MARL module.
-    marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
-    # Define the MARL module in the base config.
-    base_config.rl_module(rl_module_spec=marl_module_spec)
+    # Create the MultiRLModule.
+    multi_rl_module_spec = MultiRLModuleSpec(module_specs=module_specs)
+    # Define the MultiRLModule in the base config.
+    base_config.rl_module(rl_module_spec=multi_rl_module_spec)
     # We need to re-register the environment when starting a new run.
     register_env(
         "env",
@@ -151,5 +153,5 @@ if __name__ == "__main__":
         TRAINING_ITERATION: 30,
     }
 
-    # Run the experiment again with the restored MARL module.
+    # Run the experiment again with the restored MultiRLModule.
     run_rllib_example_script_experiment(base_config, args, stop=stop)

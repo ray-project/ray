@@ -9,7 +9,17 @@ from ray.exceptions import RayTaskError
 from ray.tests.conftest import *  # noqa
 
 
-def test_user_exception(caplog, propagate_logs, ray_start_regular_shared):
+@pytest.mark.parametrize("log_internal_stack_trace_to_stdout", [True, False])
+def test_user_exception(
+    log_internal_stack_trace_to_stdout,
+    caplog,
+    propagate_logs,
+    restore_data_context,
+    ray_start_regular_shared,
+):
+    ctx = ray.data.DataContext.get_current()
+    ctx.log_internal_stack_trace_to_stdout = log_internal_stack_trace_to_stdout
+
     def f(row):
         1 / 0
         return row
@@ -21,16 +31,17 @@ def test_user_exception(caplog, propagate_logs, ray_start_regular_shared):
     assert issubclass(exc_info.type, UserCodeException)
     assert ZeroDivisionError.__name__ in str(exc_info.value)
 
-    assert any(
-        record.levelno == logging.ERROR
-        and "Exception occurred in user code" in record.message
-        for record in caplog.records
-    ), caplog.records
+    if not log_internal_stack_trace_to_stdout:
+        assert any(
+            record.levelno == logging.ERROR
+            and "Exception occurred in user code" in record.message
+            for record in caplog.records
+        ), caplog.records
 
     assert any(
         record.levelno == logging.ERROR
         and "Full stack trace:" in record.message
-        and record.hide
+        and getattr(record, "hide", False) == (not log_internal_stack_trace_to_stdout)
         for record in caplog.records
     ), caplog.records
 
@@ -41,10 +52,7 @@ def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
 
     with pytest.raises(FakeException) as exc_info:
         with patch(
-            (
-                "ray.data._internal.execution.legacy_compat."
-                "get_legacy_lazy_block_list_read_only"
-            ),
+            "ray.data._internal.plan.ExecutionPlan.has_computed_output",
             side_effect=FakeException(),
         ):
             ray.data.range(1).materialize()
@@ -61,7 +69,7 @@ def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
     assert any(
         record.levelno == logging.ERROR
         and "Full stack trace:" in record.message
-        and record.hide
+        and not getattr(record, "hide", False)
         for record in caplog.records
     ), caplog.records
 
@@ -83,7 +91,9 @@ def test_full_traceback_logged_with_ray_debugger(
     assert ZeroDivisionError.__name__ in str(exc_info.value)
 
     assert any(
-        record.levelno == logging.ERROR and "Full stack trace:" in record.message
+        record.levelno == logging.ERROR
+        and "Full stack trace:" in record.message
+        and not getattr(record, "hide", False)
         for record in caplog.records
     ), caplog.records
 

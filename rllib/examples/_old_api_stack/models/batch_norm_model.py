@@ -1,3 +1,4 @@
+# @OldAPIStack
 import numpy as np
 
 from ray.rllib.models.modelv2 import ModelV2
@@ -183,7 +184,7 @@ class TorchBatchNormModel(TorchModelV2, nn.Module):
         )
         nn.Module.__init__(self)
         layers = []
-        prev_layer_size = int(np.product(obs_space.shape))
+        prev_layer_size = int(np.prod(obs_space.shape))
         self._logits = None
 
         # Create layers 0 to second-last.

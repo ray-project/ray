@@ -76,7 +76,7 @@ class DTTorchPolicy(LearningRateSchedule, TorchPolicyV2):
             use_return_output=self.config.get("loss_coef_returns_to_go", 0) > 0,
         )
 
-        num_outputs = int(np.product(self.observation_space.shape))
+        num_outputs = int(np.prod(self.observation_space.shape))
 
         model = ModelCatalog.get_model_v2(
             obs_space=self.observation_space,

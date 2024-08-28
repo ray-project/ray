@@ -181,7 +181,7 @@ def test_sort_arrow_with_empty_blocks(
         assert (
             len(
                 SortTaskSpec.sample_boundaries(
-                    ds._plan.execute().get_blocks(), SortKey("id"), 3
+                    ds._plan.execute().block_refs, SortKey("id"), 3
                 )
             )
             == 2
@@ -282,7 +282,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     assert (
         len(
             SortTaskSpec.sample_boundaries(
-                ds._plan.execute().get_blocks(), SortKey("id"), 3
+                ds._plan.execute().block_refs, SortKey("id"), 3
             )
         )
         == 2

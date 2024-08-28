@@ -33,13 +33,16 @@ Or more about `Ray Core`_ and its key abstractions:
 - `Actors`_: Stateful worker processes created in the cluster.
 - `Objects`_: Immutable values accessible across the cluster.
 
-Monitor and debug Ray applications and clusters using the `Ray dashboard <https://docs.ray.io/en/latest/ray-core/ray-dashboard.html>`__.
+Learn more about Monitoring and Debugging:
+
+- Monitor Ray apps and clusters with the `Ray Dashboard <https://docs.ray.io/en/latest/ray-core/ray-dashboard.html>`__.
+- Debug Ray apps with the `Ray Distributed Debugger <https://docs.ray.io/en/latest/ray-observability/ray-distributed-debugger.html>`__.
 
 Ray runs on any machine, cluster, cloud provider, and Kubernetes, and features a growing
 `ecosystem of community integrations`_.
 
 Install Ray with: ``pip install ray``. For nightly wheels, see the
-`Installation page <https://docs.ray.io/en/latest/installation.html>`__.
+`Installation page <https://docs.ray.io/en/latest/ray-overview/installation.html>`__.
 
 .. _`Serve`: https://docs.ray.io/en/latest/serve/index.html
 .. _`Data`: https://docs.ray.io/en/latest/data/dataset.html

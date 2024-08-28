@@ -355,6 +355,8 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   Note: If the local directory contains a ``.gitignore`` file, the files and paths specified there are not uploaded to the cluster.  You can disable this by setting the environment variable `RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1` on the machine doing the uploading.
 
+  Note: If the local directory contains symbolic links, Ray follows the links and the files they point to are uploaded to the cluster.
+
 - ``py_modules`` (List[str|module]): Specifies Python modules to be available for import in the Ray workers.  (For more ways to specify packages, see also the ``pip`` and ``conda`` fields below.)
   Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip or wheel file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local `.whl` file.
 
@@ -402,12 +404,12 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``{"packages":["tensorflow", "requests"], "pip_check": False, "pip_version": "==22.0.2;python_version=='3.8.11'"}``
 
-  When specifying a path to a ``requirements.txt`` file, the file must be present on your local machine and it must be a valid absolute path or relative filepath relative to your local current working directory, *not* relative to the `working_dir` specified in the `runtime_env`.
-  Furthermore, referencing local files *within* a `requirements.txt` file isn't directly supported (e.g., ``-r ./my-laptop/more-requirements.txt``, ``./my-pkg.whl``). Instead, use the `${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}` environment variable in the creation process. For example, use `-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-laptop/more-requirements.txt` or `${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-pkg.whl` to reference local files, while ensuring they're in the `working_dir`.
+  When specifying a path to a ``requirements.txt`` file, the file must be present on your local machine and it must be a valid absolute path or relative filepath relative to your local current working directory, *not* relative to the ``working_dir`` specified in the ``runtime_env``.
+  Furthermore, referencing local files *within* a ``requirements.txt`` file isn't directly supported (e.g., ``-r ./my-laptop/more-requirements.txt``, ``./my-pkg.whl``). Instead, use the ``${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}`` environment variable in the creation process. For example, use ``-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-laptop/more-requirements.txt`` or ``${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-pkg.whl`` to reference local files, while ensuring they're in the ``working_dir``.
 
 - ``conda`` (dict | str): Either (1) a dict representing the conda environment YAML, (2) a string containing the path to a local
   `conda “environment.yml” <https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually>`_ file,
-  or (3) the name of a local conda environment already installed on each node in your cluster (e.g., ``"pytorch_p36"``).
+  or (3) the name of a local conda environment already installed on each node in your cluster (e.g., ``"pytorch_p36"``) or its absolute path (e.g. ``"/home/youruser/anaconda3/envs/pytorch_p36"``) .
   In the first two cases, the Ray and Python dependencies will be automatically injected into the environment to ensure compatibility, so there is no need to manually include them.
   The Python and Ray version must match that of the cluster, so you likely should not specify them manually.
   Note that the ``conda`` and ``pip`` keys of ``runtime_env`` cannot both be specified at the same time---to use them together, please use ``conda`` and add your pip dependencies in the ``"pip"`` field in your conda ``environment.yaml``.
@@ -418,8 +420,10 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
 
   - Example: ``"pytorch_p36"``
 
-  When specifying a path to a ``environment.yml`` file, the file must be present on your local machine and it must be a valid absolute path or a relative filepath relative to your local current working directory, *not* relative to the `working_dir` specified in the `runtime_env`.
-  Furthermore, referencing local files *within* a `environment.yml` file isn't directly supported (e.g., ``-r ./my-laptop/more-requirements.txt``, ``./my-pkg.whl``). Instead, use the `${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}` environment variable in the creation process. For example, use `-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-laptop/more-requirements.txt` or `${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-pkg.whl` to reference local files, while ensuring they're in the `working_dir`.
+  - Example: ``"/home/youruser/anaconda3/envs/pytorch_p36"``
+
+  When specifying a path to a ``environment.yml`` file, the file must be present on your local machine and it must be a valid absolute path or a relative filepath relative to your local current working directory, *not* relative to the ``working_dir`` specified in the ``runtime_env``.
+  Furthermore, referencing local files *within* a ``environment.yml`` file isn't directly supported (e.g., ``-r ./my-laptop/more-requirements.txt``, ``./my-pkg.whl``). Instead, use the ``${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}`` environment variable in the creation process. For example, use ``-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-laptop/more-requirements.txt`` or ``${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/my-pkg.whl`` to reference local files, while ensuring they're in the ``working_dir``.
 
 - ``env_vars`` (Dict[str, str]): Environment variables to set.  Environment variables already set on the cluster will still be visible to the Ray workers; so there is
   no need to include ``os.environ`` or similar in the ``env_vars`` field.
@@ -444,7 +448,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   The `worker_path` is the default_worker.py path. It is required only if ray installation directory in the container is different from raylet host.
   The `run_options` list spec is `here <https://docs.docker.com/engine/reference/run/>`__.
 
-  - Example: ``{"image": "anyscale/ray-ml:nightly-py38-cpu", "worker_path": "/root/python/ray/workers/default_worker.py", "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}``
+  - Example: ``{"image": "anyscale/ray:2.31.0-py39-cpu", "worker_path": "/root/python/ray/workers/default_worker.py", "run_options": ["--cap-drop SYS_ADMIN","--log-level=debug"]}``
 
   Note: ``container`` is experimental now. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
 

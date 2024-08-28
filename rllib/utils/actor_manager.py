@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import logging
 import sys
 import time
-from typing import Any, Callable, Dict, Iterator, List, Mapping, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -261,14 +261,14 @@ class FaultTolerantActorManager:
         self._next_id = init_id
 
         # Actors are stored in a map and indexed by a unique (int) ID.
-        self._actors: Mapping[int, ActorHandle] = {}
-        self._remote_actor_states: Mapping[int, self._ActorState] = {}
+        self._actors: Dict[int, ActorHandle] = {}
+        self._remote_actor_states: Dict[int, self._ActorState] = {}
         self._restored_actors = set()
         self.add_actors(actors or [])
 
         # Maps outstanding async requests to the IDs of the actor IDs that
         # are executing them.
-        self._in_flight_req_to_actor_id: Mapping[ray.ObjectRef, int] = {}
+        self._in_flight_req_to_actor_id: Dict[ray.ObjectRef, int] = {}
 
         self._max_remote_requests_in_flight_per_actor = (
             max_remote_requests_in_flight_per_actor
@@ -446,7 +446,7 @@ class FaultTolerantActorManager:
         tags: List[str],
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
     ) -> Tuple[List[ray.ObjectRef], RemoteCallResults]:
         """Try fetching results from remote actor calls.
 
@@ -491,7 +491,7 @@ class FaultTolerantActorManager:
             actor_id = remote_actor_ids[remote_calls.index(ready)]
             tag = tags[remote_calls.index(ready)]
 
-            # If caller wants ObjectRefs, return directly without resolve them.
+            # If caller wants ObjectRefs, return directly without resolving.
             if return_obj_refs:
                 remote_results.add_result(actor_id, ResultOrError(result=ready), tag)
                 continue
@@ -578,7 +578,7 @@ class FaultTolerantActorManager:
         remote_actor_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
     ) -> RemoteCallResults:
         """Calls the given function with each actor instance as arg.
 
@@ -772,7 +772,7 @@ class FaultTolerantActorManager:
         tags: Union[str, List[str], Tuple[str]] = (),
         timeout_seconds: Optional[float] = 0.0,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
     ) -> RemoteCallResults:
         """Get results from outstanding async requests that are ready.
 
@@ -828,7 +828,7 @@ class FaultTolerantActorManager:
     def probe_unhealthy_actors(
         self,
         timeout_seconds: Optional[float] = None,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
     ) -> List[int]:
         """Ping all unhealthy actors to try bringing them back.
 

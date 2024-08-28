@@ -82,7 +82,7 @@ class GcsActorSchedulerInterface {
   /// Notify raylets to release unused workers.
   ///
   /// \param node_to_workers Workers used by each node.
-  virtual void ReleaseUnusedWorkers(
+  virtual void ReleaseUnusedActorWorkers(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) = 0;
 
   /// Handle the destruction of an actor.
@@ -178,7 +178,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Notify raylets to release unused workers.
   ///
   /// \param node_to_workers Workers used by each node.
-  void ReleaseUnusedWorkers(
+  void ReleaseUnusedActorWorkers(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) override;
 
   /// Handle the destruction of an actor.
@@ -418,7 +418,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   FRIEND_TEST(GcsActorSchedulerTest, TestWorkerFailedWhenCreating);
   FRIEND_TEST(GcsActorSchedulerTest, TestSpillback);
   FRIEND_TEST(GcsActorSchedulerTest, TestReschedule);
-  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedWorkers);
+  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedActorWorkers);
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleFailedWithZeroNodeByGcs);
   FRIEND_TEST(GcsActorSchedulerTest, TestNotEnoughClusterResources);
   FRIEND_TEST(GcsActorSchedulerTest, TestScheduleAndDestroyOneActor);
@@ -431,7 +431,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   FRIEND_TEST(GcsActorSchedulerTest, TestNodeFailedWhenCreatingByGcs);
   FRIEND_TEST(GcsActorSchedulerTest, TestWorkerFailedWhenCreatingByGcs);
   FRIEND_TEST(GcsActorSchedulerTest, TestRescheduleByGcs);
-  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedWorkersByGcs);
+  FRIEND_TEST(GcsActorSchedulerTest, TestReleaseUnusedActorWorkersByGcs);
 
   friend class GcsActorSchedulerMockTest;
   FRIEND_TEST(GcsActorSchedulerMockTest, KillWorkerLeak1);

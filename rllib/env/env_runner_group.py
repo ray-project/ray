@@ -6,7 +6,7 @@ import os
 from typing import (
     Any,
     Callable,
-    Container,
+    Collection,
     Dict,
     List,
     Optional,
@@ -20,7 +20,15 @@ from typing import (
 import ray
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core import (
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_LEARNER,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+    COMPONENT_RL_MODULE,
+)
+from ray.rllib.core.learner import LearnerGroup
+from ray.rllib.core.rl_module import validate_module_id
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
@@ -28,7 +36,6 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -37,7 +44,6 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
-from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -52,7 +58,6 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-    from ray.rllib.core.learner import LearnerGroup
 
 tf1, tf, tfv = try_import_tf()
 
@@ -80,6 +85,7 @@ class EnvRunnerGroup:
         local_env_runner: bool = True,
         logdir: Optional[str] = None,
         _setup: bool = True,
+        tune_trial_id: Optional[str] = None,
         # Deprecated args.
         num_workers=DEPRECATED_VALUE,
         local_worker=DEPRECATED_VALUE,
@@ -108,12 +114,8 @@ class EnvRunnerGroup:
             deprecation_warning(
                 old="WorkerSet(num_workers=... OR local_worker=...)",
                 new="EnvRunnerGroup(num_env_runners=... AND local_env_runner=...)",
-                error=False,
+                error=True,
             )
-            if num_workers != DEPRECATED_VALUE:
-                num_env_runners = num_workers
-            if local_worker != DEPRECATED_VALUE:
-                local_env_runner = local_worker
 
         from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
@@ -132,21 +134,39 @@ class EnvRunnerGroup:
             "resources": self._remote_config.custom_resources_per_env_runner,
             "max_restarts": config.max_num_env_runner_restarts,
         }
+        self._tune_trial_id = tune_trial_id
 
         # Set the EnvRunner subclass to be used as "workers". Default: RolloutWorker.
         self.env_runner_cls = config.env_runner_cls
         if self.env_runner_cls is None:
             if config.enable_env_runner_and_connector_v2:
-                if config.is_multi_agent():
-                    from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+                # If experiences should be recorded, use the `
+                # OfflineSingleAgentEnvRunner`.
+                if config.output:
+                    # No multi-agent support.
+                    if config.is_multi_agent():
+                        raise ValueError("Multi-agent recording is not supported, yet.")
+                    # Otherwise, load the single-agent env runner for
+                    # recording.
+                    else:
+                        from ray.rllib.offline.offline_env_runner import (
+                            OfflineSingleAgentEnvRunner,
+                        )
 
-                    self.env_runner_cls = MultiAgentEnvRunner
+                        self.env_runner_cls = OfflineSingleAgentEnvRunner
                 else:
-                    from ray.rllib.env.single_agent_env_runner import (
-                        SingleAgentEnvRunner,
-                    )
+                    if config.is_multi_agent():
+                        from ray.rllib.env.multi_agent_env_runner import (
+                            MultiAgentEnvRunner,
+                        )
 
-                    self.env_runner_cls = SingleAgentEnvRunner
+                        self.env_runner_cls = MultiAgentEnvRunner
+                    else:
+                        from ray.rllib.env.single_agent_env_runner import (
+                            SingleAgentEnvRunner,
+                        )
+
+                        self.env_runner_cls = SingleAgentEnvRunner
             else:
                 self.env_runner_cls = RolloutWorker
         self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
@@ -214,7 +234,7 @@ class EnvRunnerGroup:
         """
         # Force a local worker if num_env_runners == 0 (no remote workers).
         # Otherwise, this EnvRunnerGroup would be empty.
-        self._local_worker = None
+        self._local_env_runner = None
         if num_env_runners == 0:
             local_env_runner = True
         # Create a local (learner) version of the config for the local worker.
@@ -251,13 +271,13 @@ class EnvRunnerGroup:
             and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):
-            spaces = self._get_spaces_from_remote_worker()
+            spaces = self.get_spaces()
         else:
             spaces = None
 
         # Create a local worker, if needed.
         if local_env_runner:
-            self._local_worker = self._make_worker(
+            self._local_env_runner = self._make_worker(
                 cls=self.env_runner_cls,
                 env_creator=self._env_creator,
                 validate_env=validate_env,
@@ -267,68 +287,24 @@ class EnvRunnerGroup:
                 spaces=spaces,
             )
 
-    def _get_spaces_from_remote_worker(self):
-        """Infer observation and action spaces from a remote worker.
+    def get_spaces(self):
+        """Infer observation and action spaces from one (local or remote) EnvRunner.
 
         Returns:
-            A dict mapping from policy ids to spaces.
+            A dict mapping from ModuleID to a 2-tuple containing obs- and action-space.
         """
         # Get ID of the first remote worker.
-        worker_id = self._worker_manager.actor_ids()[0]
+        remote_worker_ids = (
+            [self._worker_manager.actor_ids()[0]]
+            if self._worker_manager.actor_ids()
+            else []
+        )
 
-        # Try to figure out spaces from the first remote worker.
-        # Traditional RolloutWorker.
-        if issubclass(self.env_runner_cls, RolloutWorker):
-            remote_spaces = self.foreach_worker(
-                lambda worker: worker.foreach_policy(
-                    lambda p, pid: (pid, p.observation_space, p.action_space)
-                ),
-                remote_worker_ids=[worker_id],
-                local_worker=False,
-            )
-        # Generic EnvRunner.
-        else:
-            remote_spaces = self.foreach_worker(
-                lambda worker: worker.marl_module.foreach_module(
-                    lambda mid, m: (
-                        mid,
-                        m.config.observation_space,
-                        m.config.action_space,
-                    ),
-                )
-                if hasattr(worker, "marl_module")
-                else [
-                    (
-                        DEFAULT_POLICY_ID,
-                        worker.module.config.observation_space,
-                        worker.module.config.action_space,
-                    ),
-                ]
-            )
-
-        if not remote_spaces:
-            raise ValueError(
-                "Could not get observation and action spaces from remote "
-                "worker. Maybe specify them manually in the config?"
-            )
-        spaces = {
-            e[0]: (getattr(e[1], "original_space", e[1]), e[2])
-            for e in remote_spaces[0]
-        }
-
-        if issubclass(self.env_runner_cls, RolloutWorker):
-            # Try to add the actual env's obs/action spaces.
-            env_spaces = self.foreach_worker(
-                lambda worker: worker.foreach_env(
-                    lambda env: (env.observation_space, env.action_space)
-                ),
-                remote_worker_ids=[worker_id],
-                local_worker=False,
-            )
-            if env_spaces:
-                # env_spaces group spaces by environment then worker.
-                # So need to unpack thing twice.
-                spaces["__env__"] = env_spaces[0][0]
+        spaces = self.foreach_worker(
+            lambda env_runner: env_runner.get_spaces(),
+            remote_worker_ids=remote_worker_ids,
+            local_env_runner=not remote_worker_ids,
+        )[0]
 
         logger.info(
             "Inferred observation/action spaces from remote "
@@ -340,12 +316,7 @@ class EnvRunnerGroup:
     @property
     def local_env_runner(self) -> EnvRunner:
         """Returns the local EnvRunner."""
-        return self._local_worker
-
-    @DeveloperAPI
-    def local_worker(self) -> EnvRunner:
-        """Returns the local EnvRunner."""
-        return self._local_worker
+        return self._local_env_runner
 
     @DeveloperAPI
     def healthy_worker_ids(self) -> List[int]:
@@ -370,7 +341,7 @@ class EnvRunnerGroup:
     @DeveloperAPI
     def num_healthy_workers(self) -> int:
         """Returns the number of all healthy workers, including the local worker."""
-        return int(bool(self._local_worker)) + self.num_healthy_remote_workers()
+        return int(bool(self._local_env_runner)) + self.num_healthy_remote_workers()
 
     @DeveloperAPI
     def num_in_flight_async_reqs(self) -> int:
@@ -385,14 +356,18 @@ class EnvRunnerGroup:
     @DeveloperAPI
     def sync_env_runner_states(
         self,
+        *,
         config: "AlgorithmConfig",
         from_worker: Optional[EnvRunner] = None,
         env_steps_sampled: Optional[int] = None,
+        connector_states: Optional[List[Dict[str, Any]]] = None,
+        rl_module_state: Optional[Dict[str, Any]] = None,
+        env_runner_indices_to_update: Optional[List[int]] = None,
     ) -> None:
         """Synchronizes the connectors of this EnvRunnerGroup's EnvRunners.
 
         The exact procedure works as follows:
-        - If `from_worker` is None, set `from_worker=self.local_worker()`.
+        - If `from_worker` is None, set `from_worker=self.local_env_runner`.
         - If `config.use_worker_filter_stats` is True, gather all remote EnvRunners'
         ConnectorV2 states. Otherwise, only use the ConnectorV2 states of `from_worker`.
         - Merge all gathered states into one resulting state.
@@ -407,18 +382,30 @@ class EnvRunnerGroup:
             env_steps_sampled: The total number of env steps taken thus far by all
                 workers combined. Used to broadcast this number to all remote workers
                 if `update_worker_filter_stats` is True in `config`.
+            env_runner_indices_to_update: The indices of those EnvRunners to update
+                with the merged state. Use None (default) to update all remote
+                EnvRunners.
         """
-        local_worker = self.local_worker()
-        from_worker = from_worker or local_worker
+        from_worker = from_worker or self.local_env_runner
 
         # Early out if the number of (healthy) remote workers is 0. In this case, the
         # local worker is the only operating worker and thus of course always holds
         # the reference connector state.
         if self.num_healthy_remote_workers() == 0:
-            if env_steps_sampled:
-                self.local_worker().metrics.set_value(
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME, env_steps_sampled
-                )
+            self.local_env_runner.set_state(
+                {
+                    **(
+                        {NUM_ENV_STEPS_SAMPLED_LIFETIME: env_steps_sampled}
+                        if env_steps_sampled is not None
+                        else {}
+                    ),
+                    **(
+                        {COMPONENT_RL_MODULE: rl_module_state}
+                        if rl_module_state is not None
+                        else {}
+                    ),
+                }
+            )
             return
 
         # Also early out, if we a) don't use the remote states AND b) don't want to
@@ -427,72 +414,86 @@ class EnvRunnerGroup:
         if not config.update_worker_filter_stats and not config.use_worker_filter_stats:
             return
 
-        env_runner_states = {}
         # Use states from all remote EnvRunners.
         if config.use_worker_filter_stats:
-            connector_states = self.foreach_worker(
-                lambda w: (w._env_to_module.get_state(), w._module_to_env.get_state()),
-                local_worker=False,
-                timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
-            )
-            env_to_module_states = [s[0] for s in connector_states]
-            module_to_env_states = [s[1] for s in connector_states]
+            if connector_states == []:
+                env_runner_states = {}
+            else:
+                if connector_states is None:
+                    connector_states = self.foreach_worker(
+                        lambda w: w.get_state(
+                            components=[
+                                COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                                COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                            ]
+                        ),
+                        local_env_runner=False,
+                        timeout_seconds=(
+                            config.sync_filters_on_rollout_workers_timeout_s
+                        ),
+                    )
+                env_to_module_states = [
+                    s[COMPONENT_ENV_TO_MODULE_CONNECTOR] for s in connector_states
+                ]
+                module_to_env_states = [
+                    s[COMPONENT_MODULE_TO_ENV_CONNECTOR] for s in connector_states
+                ]
 
-            env_runner_states["connector_states"] = {
-                "env_to_module_states": local_worker._env_to_module.merge_states(
-                    env_to_module_states
-                ),
-                "module_to_env_states": local_worker._module_to_env.merge_states(
-                    module_to_env_states
-                ),
-            }
+                env_runner_states = {
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR: (
+                        self.local_env_runner._env_to_module.merge_states(
+                            env_to_module_states
+                        )
+                    ),
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR: (
+                        self.local_env_runner._module_to_env.merge_states(
+                            module_to_env_states
+                        )
+                    ),
+                }
         # Ignore states from remote EnvRunners (use the current `from_worker` states
         # only).
         else:
-            env_runner_states["connector_states"] = {
-                "env_to_module_states": from_worker._env_to_module.get_state(),
-                "module_to_env_states": from_worker._module_to_env.get_state(),
-            }
+            env_runner_states = from_worker.get_state(
+                components=[
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                ]
+            )
 
         # Update the global number of environment steps, if necessary.
-        if env_steps_sampled:
-            env_runner_states["env_steps_sampled"] = env_steps_sampled
+        if env_steps_sampled is not None:
+            env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled
 
-        # Put the state dictionary into Ray's object store to avoid having to make n
-        # pickled copies of the state dict.
-        ref_env_runner_states = ray.put(env_runner_states)
+        # Update the rl_module component of the EnvRunner states, if necessary:
+        if rl_module_state:
+            env_runner_states[COMPONENT_RL_MODULE] = rl_module_state
 
-        def _update(_env_runner: EnvRunner) -> Any:
-            env_runner_states = ray.get(ref_env_runner_states)
-            _env_runner._env_to_module.set_state(
-                env_runner_states["connector_states"]["env_to_module_states"]
-            )
-            _env_runner._module_to_env.set_state(
-                env_runner_states["connector_states"]["module_to_env_states"]
-            )
-            # Update the global number of environment steps for each worker.
-            if "env_steps_sampled" in env_runner_states:
-                # _env_runner.global_num_env_steps_sampled =
-                _env_runner.metrics.set_value(
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-                    env_runner_states["env_steps_sampled"],
-                )
+        # If we do NOT want remote EnvRunners to get their Connector states updated,
+        # only update the local worker here (with all state components) and then remove
+        # the connector components.
+        if not config.update_worker_filter_stats:
+            self.local_env_runner.set_state(env_runner_states)
+            del env_runner_states[COMPONENT_ENV_TO_MODULE_CONNECTOR]
+            del env_runner_states[COMPONENT_MODULE_TO_ENV_CONNECTOR]
 
-        # Broadcast updated states back to all workers (including the local one).
-        if config.update_worker_filter_stats:
+        # If there are components in the state left -> Update remote workers with these
+        # state components (and maybe the local worker, if it hasn't been updated yet).
+        if env_runner_states:
+            # Put the state dictionary into Ray's object store to avoid having to make n
+            # pickled copies of the state dict.
+            ref_env_runner_states = ray.put(env_runner_states)
+
+            def _update(_env_runner: EnvRunner) -> None:
+                _env_runner.set_state(ray.get(ref_env_runner_states))
+
+            # Broadcast updated states back to all workers.
             self.foreach_worker(
                 _update,
-                local_worker=True,
-                timeout_seconds=config.sync_filters_on_rollout_workers_timeout_s,
+                remote_worker_ids=env_runner_indices_to_update,
+                local_env_runner=config.update_worker_filter_stats,
+                timeout_seconds=0.0,  # This is a state update -> Fire-and-forget.
             )
-        # Update only the local_worker. Why don't we use `from_worker` here (assuming
-        # it's different from the local worker)? B/c we want to use this utility as
-        # a means to update the local worker of EnvRunnerGroup A from another
-        # EnvRunnerGroup B (for example synching eval EnvRunners from training
-        # EnvRunners). In other words, if `from_worker` != local worker,
-        # `from_worker`'s state will not be altered by this method, no matter what.
-        else:
-            _update(self.local_worker())
 
     @DeveloperAPI
     def sync_weights(
@@ -520,56 +521,93 @@ class EnvRunnerGroup:
             global_vars: An optional global vars dict to set this
                 worker to. If None, do not update the global_vars.
             timeout_seconds: Timeout in seconds to wait for the sync weights
-                calls to complete. Default is 0 (sync-and-forget, do not wait
-                for any sync calls to finish). This significantly improves
-                algorithm performance.
-            inference_only: Synch weights with workers that keep inference-only
+                calls to complete. Default is 0.0 (fire-and-forget, do not wait
+                for any sync calls to finish). Setting this to 0.0 might significantly
+                improve algorithm performance, depending on the algo's `training_step`
+                logic.
+            inference_only: Sync weights with workers that keep inference-only
                 modules. This is needed for algorithms in the new stack that
                 use inference-only modules. In this case only a part of the
                 parameters are synced to the workers. Default is False.
         """
-        if self.local_worker() is None and from_worker_or_learner_group is None:
+        if self.local_env_runner is None and from_worker_or_learner_group is None:
             raise TypeError(
-                "No `local_worker` in EnvRunnerGroup, must provide "
+                "No `local_env_runner` in EnvRunnerGroup! Must provide "
                 "`from_worker_or_learner_group` arg in `sync_weights()`!"
             )
 
         # Only sync if we have remote workers or `from_worker_or_trainer` is provided.
-        weights = None
+        rl_module_state = None
         if self.num_remote_workers() or from_worker_or_learner_group is not None:
-            weights_src = from_worker_or_learner_group or self.local_worker()
+            weights_src = from_worker_or_learner_group or self.local_env_runner
 
             if weights_src is None:
                 raise ValueError(
                     "`from_worker_or_trainer` is None. In this case, EnvRunnerGroup "
                     "should have local_env_runner. But local_env_runner is also None."
                 )
-            weights = weights_src.get_weights(policies, inference_only)
+
+            modules = (
+                [COMPONENT_RL_MODULE + "/" + p for p in policies]
+                if policies is not None
+                else [COMPONENT_RL_MODULE]
+            )
+            # LearnerGroup has-a Learner has-a RLModule.
+            if isinstance(weights_src, LearnerGroup):
+                rl_module_state = weights_src.get_state(
+                    components=[COMPONENT_LEARNER + "/" + m for m in modules],
+                    inference_only=inference_only,
+                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            # EnvRunner has-a RLModule.
+            elif self._remote_config.enable_env_runner_and_connector_v2:
+                rl_module_state = weights_src.get_state(
+                    components=modules,
+                    inference_only=inference_only,
+                )[COMPONENT_RL_MODULE]
+            else:
+                rl_module_state = weights_src.get_weights(
+                    policies=policies,
+                    inference_only=inference_only,
+                )
+
             # Move weights to the object store to avoid having to make n pickled copies
             # of the weights dict for each worker.
-            weights_ref = ray.put(weights)
+            rl_module_state_ref = ray.put(rl_module_state)
 
-            def _set_weights(env_runner):
-                _weights = ray.get(weights_ref)
-                env_runner.set_weights(_weights, global_vars)
+            if self._remote_config.enable_env_runner_and_connector_v2:
+
+                def _set_weights(env_runner):
+                    _rl_module_state = ray.get(rl_module_state_ref)
+                    env_runner.set_state({COMPONENT_RL_MODULE: _rl_module_state})
+
+            else:
+
+                def _set_weights(env_runner):
+                    _weights = ray.get(rl_module_state_ref)
+                    env_runner.set_weights(_weights, global_vars)
 
             # Sync to specified remote workers in this EnvRunnerGroup.
             self.foreach_worker(
                 func=_set_weights,
-                local_worker=False,  # Do not sync back to local worker.
+                local_env_runner=False,  # Do not sync back to local worker.
                 remote_worker_ids=to_worker_indices,
                 timeout_seconds=timeout_seconds,
             )
 
         # If `from_worker_or_learner_group` is provided, also sync to this
         # EnvRunnerGroup's local worker.
-        if self.local_worker() is not None:
+        if self.local_env_runner is not None:
             if from_worker_or_learner_group is not None:
-                self.local_worker().set_weights(weights, global_vars=global_vars)
+                if self._remote_config.enable_env_runner_and_connector_v2:
+                    self.local_env_runner.set_state(
+                        {COMPONENT_RL_MODULE: rl_module_state}
+                    )
+                else:
+                    self.local_env_runner.set_weights(rl_module_state)
             # If `global_vars` is provided and local worker exists  -> Update its
             # global_vars.
-            elif global_vars is not None:
-                self.local_worker().set_global_vars(global_vars)
+            if global_vars is not None:
+                self.local_env_runner.set_global_vars(global_vars)
 
     @DeveloperAPI
     def add_policy(
@@ -585,11 +623,11 @@ class EnvRunnerGroup:
         policy_mapping_fn: Optional[Callable[[AgentID, EpisodeID], PolicyID]] = None,
         policies_to_train: Optional[
             Union[
-                Container[PolicyID],
+                Collection[PolicyID],
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
-        module_spec: Optional[SingleAgentRLModuleSpec] = None,
+        module_spec: Optional[RLModuleSpec] = None,
         # Deprecated.
         workers: Optional[List[Union[EnvRunner, ActorHandle]]] = DEPRECATED_VALUE,
     ) -> None:
@@ -631,12 +669,12 @@ class EnvRunnerGroup:
         Raises:
             KeyError: If the given `policy_id` already exists in this EnvRunnerGroup.
         """
-        if self.local_worker() and policy_id in self.local_worker().policy_map:
+        if self.local_env_runner and policy_id in self.local_env_runner.policy_map:
             raise KeyError(
                 f"Policy ID '{policy_id}' already exists in policy map! "
                 "Make sure you use a Policy ID that has not been taken yet."
                 " Policy IDs that are already in your policy map: "
-                f"{list(self.local_worker().policy_map.keys())}"
+                f"{list(self.local_env_runner.policy_map.keys())}"
             )
 
         if workers is not DEPRECATED_VALUE:
@@ -654,7 +692,7 @@ class EnvRunnerGroup:
                 "Only one of `policy_cls` or `policy` must be provided to "
                 "staticmethod: `EnvRunnerGroup.add_policy()`!"
             )
-        validate_policy_id(policy_id, error=False)
+        validate_module_id(policy_id, error=False)
 
         # Policy instance not provided: Use the information given here.
         if policy_cls is not None:
@@ -694,10 +732,10 @@ class EnvRunnerGroup:
             # maybe changes its policy_mapping_fn - if provided here).
             worker.add_policy(**new_policy_instance_kwargs)
 
-        if self.local_worker() is not None:
+        if self.local_env_runner is not None:
             # Add policy directly by (already instantiated) object.
             if policy is not None:
-                self.local_worker().add_policy(
+                self.local_env_runner.add_policy(
                     policy_id=policy_id,
                     policy=policy,
                     policy_mapping_fn=policy_mapping_fn,
@@ -706,10 +744,10 @@ class EnvRunnerGroup:
                 )
             # Add policy by constructor kwargs.
             else:
-                self.local_worker().add_policy(**new_policy_instance_kwargs)
+                self.local_env_runner.add_policy(**new_policy_instance_kwargs)
 
         # Add the policy to all remote workers.
-        self.foreach_worker(_create_new_policy_fn, local_worker=False)
+        self.foreach_worker(_create_new_policy_fn, local_env_runner=False)
 
     @DeveloperAPI
     def add_workers(self, num_workers: int, validate: bool = False) -> None:
@@ -726,7 +764,7 @@ class EnvRunnerGroup:
 
         Raises:
             RayError: If any of the constructed remote workers is not up and running
-            properly.
+                properly.
         """
         old_num_workers = self._worker_manager.num_actors()
         new_workers = [
@@ -755,11 +793,11 @@ class EnvRunnerGroup:
 
     @DeveloperAPI
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
-        """Hard overrides the remote workers in this set with the given one.
+        """Hard overrides the remote EnvRunners in this set with the provided ones.
 
         Args:
-            new_remote_workers: A list of new EnvRunners
-                (as `ActorHandles`) to use as remote workers.
+            new_remote_workers: A list of new EnvRunners (as `ActorHandles`) to use as
+                new remote workers.
         """
         self._worker_manager.clear()
         self._worker_manager.add_actors(new_remote_workers)
@@ -772,7 +810,7 @@ class EnvRunnerGroup:
             # restarted / recovered or that are tagged unhealthy (at least, we should
             # try).
             self.foreach_worker(
-                lambda w: w.stop(), healthy_only=False, local_worker=True
+                lambda w: w.stop(), healthy_only=False, local_env_runner=True
             )
         except Exception:
             logger.exception("Failed to stop workers!")
@@ -784,11 +822,10 @@ class EnvRunnerGroup:
         self, policy_id: PolicyID, batch: Optional[SampleBatchType] = None
     ) -> bool:
         """Whether given PolicyID (optionally inside some batch) is trainable."""
-        local_worker = self.local_worker()
-        if local_worker:
-            if local_worker.is_policy_to_train is None:
+        if self.local_env_runner:
+            if self.local_env_runner.is_policy_to_train is None:
                 return True
-            return local_worker.is_policy_to_train(policy_id, batch)
+            return self.local_env_runner.is_policy_to_train(policy_id, batch)
         else:
             raise NotImplementedError
 
@@ -797,21 +834,27 @@ class EnvRunnerGroup:
         self,
         func: Callable[[EnvRunner], T],
         *,
-        local_worker: bool = True,
+        local_env_runner: bool = True,
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
+        # Deprecated args.
+        local_worker=DEPRECATED_VALUE,
     ) -> List[T]:
         """Calls the given function with each EnvRunner as its argument.
 
         Args:
             func: The function to call for each worker (as only arg).
-            local_worker: Whether apply `func` on local worker too. Default is True.
+            local_env_runner: Whether to apply `func` to local EnvRunner, too.
+                Default is True.
             healthy_only: Apply `func` on known-to-be healthy workers only.
-            remote_worker_ids: Apply `func` on a selected set of remote workers.
-            timeout_seconds: Time to wait for results. Default is None.
+            remote_worker_ids: Apply `func` on a selected set of remote workers. Use
+                None (default) for all remote EnvRunners.
+            timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
+                fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
+                synchronous execution).
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
                 never be resolved with ray.get() outside of this WorkerSet.
@@ -820,19 +863,27 @@ class EnvRunnerGroup:
                 call (within the given `timeout_seconds`).
                 Note that workers are NOT set unhealthy, if they simply time out
                 (only if they return a RayActorError).
-                Also not that this setting is ignored if `healthy_only=True` (b/c this
-                setting only affects workers that are currently tagged as unhealthy).
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
              The list of return values of all calls to `func([worker])`.
         """
+        if local_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="foreach_worker(local_worker=..)",
+                new="foreach_worker(local_env_runner=..)",
+                error=True,
+            )
+
         assert (
-            not return_obj_refs or not local_worker
+            not return_obj_refs or not local_env_runner
         ), "Can not return ObjectRef from local worker."
 
         local_result = []
-        if local_worker and self.local_worker() is not None:
-            local_result = [func(self.local_worker())]
+        if local_env_runner and self.local_env_runner is not None:
+            local_result = [func(self.local_env_runner)]
 
         if not self._worker_manager.actor_ids():
             return local_result
@@ -860,27 +911,48 @@ class EnvRunnerGroup:
         self,
         func: Callable[[int, EnvRunner], T],
         *,
-        local_worker: bool = True,
-        # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only: bool = False,
+        local_env_runner: bool = True,
+        healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+        # Deprecated args.
+        local_worker=DEPRECATED_VALUE,
     ) -> List[T]:
         """Calls the given function with each EnvRunner and its ID as its arguments.
 
         Args:
             func: The function to call for each worker (as only arg).
-            local_worker: Whether apply `func` on local worker too. Default is True.
+            local_env_runner: Whether to apply `func` tn local worker, too.
+                Default is True.
             healthy_only: Apply `func` on known-to-be healthy workers only.
             remote_worker_ids: Apply `func` on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
+            return_obj_refs: whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of this WorkerSet.
+            mark_healthy: Whether to mark all those workers healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that workers are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
              The list of return values of all calls to `func([worker, id])`.
         """
+        if local_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="foreach_worker_with_id(local_worker=...)",
+                new="foreach_worker_with_id(local_env_runner=...)",
+                error=True,
+            )
         local_result = []
-        if local_worker and self.local_worker() is not None:
-            local_result = [func(0, self.local_worker())]
+        if local_env_runner and self.local_env_runner is not None:
+            local_result = [func(0, self.local_env_runner)]
 
         if not remote_worker_ids:
             remote_worker_ids = self._worker_manager.actor_ids()
@@ -892,6 +964,8 @@ class EnvRunnerGroup:
             healthy_only=healthy_only,
             remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
         _handle_remote_call_result_errors(
@@ -907,8 +981,7 @@ class EnvRunnerGroup:
         self,
         func: Callable[[EnvRunner], T],
         *,
-        # TODO(jungong) : switch to True once Algorithm is migrated.
-        healthy_only: bool = False,
+        healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
     ) -> int:
         """Calls the given function asynchronously with each worker as the argument.
@@ -923,7 +996,11 @@ class EnvRunnerGroup:
             remote_worker_ids: Apply `func` on a selected set of remote workers.
 
         Returns:
-             The number of async requests that are currently in-flight.
+             The number of async requests that have actually been made. This is the
+             length of `remote_worker_ids` (or self.num_remote_workers()` if
+             `remote_worker_ids` is None) minus the number of requests that were NOT
+             made b/c a remote worker already had its
+             `max_remote_requests_in_flight_per_actor` counter reached.
         """
         return self._worker_manager.foreach_actor_async(
             func,
@@ -950,10 +1027,9 @@ class EnvRunnerGroup:
                 call (within the given `timeout_seconds`).
                 Note that workers are NOT set unhealthy, if they simply time out
                 (only if they return a RayActorError).
-                Also not that this setting is ignored if `healthy_only=True` was set
-                in the preceding `self.foreach_worker_asyn()` call, b/c the
-                `mark_healthy` setting only affects workers that are currently tagged as
-                unhealthy.
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
             A list of results successfully returned from outstanding remote calls,
@@ -992,7 +1068,7 @@ class EnvRunnerGroup:
         """
         results = []
         for r in self.foreach_worker(
-            lambda w: w.foreach_policy(func), local_worker=True
+            lambda w: w.foreach_policy(func), local_env_runner=True
         ):
             results.extend(r)
         return results
@@ -1012,7 +1088,7 @@ class EnvRunnerGroup:
         """
         results = []
         for r in self.foreach_worker(
-            lambda w: w.foreach_policy_to_train(func), local_worker=True
+            lambda w: w.foreach_policy_to_train(func), local_env_runner=True
         ):
             results.extend(r)
         return results
@@ -1037,7 +1113,7 @@ class EnvRunnerGroup:
         return list(
             self.foreach_worker(
                 lambda w: w.foreach_env(func),
-                local_worker=True,
+                local_env_runner=True,
             )
         )
 
@@ -1064,7 +1140,7 @@ class EnvRunnerGroup:
         return list(
             self.foreach_worker(
                 lambda w: w.foreach_env_with_context(func),
-                local_worker=True,
+                local_env_runner=True,
             )
         )
 
@@ -1077,19 +1153,8 @@ class EnvRunnerGroup:
         """
         return self._worker_manager.probe_unhealthy_actors(
             timeout_seconds=self._remote_config.env_runner_health_probe_timeout_s,
+            mark_healthy=True,
         )
-
-    # TODO (sven): Deprecate once ARS/ES have been moved to `rllib_contrib`.
-    @staticmethod
-    def _from_existing(
-        local_worker: EnvRunner, remote_workers: List[ActorHandle] = None
-    ):
-        workers = EnvRunnerGroup(
-            env_creator=None, default_policy_class=None, config=None, _setup=False
-        )
-        workers.reset(remote_workers or [])
-        workers._local_worker = local_worker
-        return workers
 
     def _make_worker(
         self,
@@ -1116,6 +1181,7 @@ class EnvRunnerGroup:
             log_dir=self._logdir,
             spaces=spaces,
             dataset_shards=self._ds_shards,
+            tune_trial_id=self._tune_trial_id,
         )
 
         return worker
@@ -1139,6 +1205,10 @@ class EnvRunnerGroup:
                     f"input {class_path}"
                 )
         return False
+
+    @Deprecated(new="EnvRunnerGroup.local_env_runner", error=False)
+    def local_worker(self) -> EnvRunner:
+        return self._local_env_runner
 
     @Deprecated(new="EnvRunnerGroup.foreach_policy_to_train", error=True)
     def foreach_trainable_policy(self, func):

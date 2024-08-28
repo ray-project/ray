@@ -1,4 +1,5 @@
-"""Example of handling variable length and/or parametric action spaces.
+# @OldAPIStack
+"""Example of handling variable length or parametric action spaces.
 
 This toy example demonstrates the action-embedding based approach for handling large
 discrete action spaces (potentially infinite in size), similar to this example:

@@ -2,8 +2,9 @@ import asyncio
 import concurrent
 import copy
 import threading
+import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 import ray
 from ray.experimental.channel.nccl_group import _NcclGroup
@@ -75,7 +76,7 @@ class ChannelOutputType:
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
-        readers: List[Optional["ray.actor.ActorHandle"]],
+        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     ) -> "ChannelInterface":
         """
         Instantiate a ChannelInterface class that can be used
@@ -83,8 +84,8 @@ class ChannelOutputType:
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            readers: The actors that may read from the channel. None signifies
-                the driver.
+            reader_and_node_list: A list of tuples, where each tuple contains a reader
+                actor handle and the node ID where the actor is located.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
@@ -175,45 +176,52 @@ class ChannelInterface:
         pass
 
     def ensure_registered_as_writer(self):
+        """
+        Check whether the process is a valid writer. This method must be idempotent.
+        """
         raise NotImplementedError
 
     def ensure_registered_as_reader(self):
+        """
+        Check whether the process is a valid reader. This method must be idempotent.
+        """
         raise NotImplementedError
 
-    def write(self, value: Any) -> None:
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """
         Write a value to the channel.
 
         Blocks if there are still pending readers for the previous value. The
         writer may not write again until the specified number of readers have
-        called ``end_read``.
+        read the value.
 
         Args:
             value: The value to write.
+            timeout: The maximum time in seconds to wait to write the value.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
         """
         raise NotImplementedError
 
-    def begin_read(self) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         """
         Read the latest value from the channel. This call will block until a
         value is available to read.
 
-        Subsequent calls to begin_read() will *block*, until end_read() is
-        called and the next value is available to read.
+        Subsequent calls to read() may *block* if the deserialized object is
+        zero-copy (e.g., bytes or a numpy array) *and* the object is still in scope.
+
+        Args:
+            timeout: The maximum time in seconds to wait to read the value.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
 
         Returns:
-            Any: The deserialized value.
+            Any: The deserialized value. If the deserialized value is an
+            Exception, it will be returned directly instead of being raised.
         """
-        raise NotImplementedError
-
-    def end_read(self) -> None:
-        """
-        Signal to the writer that the channel is ready to write again.
-
-        If begin_read is not called first, then this call will block until a
-        value is written, then drop the value.
-        """
-        raise NotImplementedError
 
     def close(self) -> None:
         """
@@ -228,14 +236,9 @@ class ChannelInterface:
 @DeveloperAPI
 class ReaderInterface:
     def __init__(self, input_channels: List[ChannelInterface]):
-        if isinstance(input_channels, List):
-            for chan in input_channels:
-                assert isinstance(chan, ChannelInterface)
-            self._has_single_output = False
-        else:
-            assert isinstance(input_channels, ChannelInterface)
-            self._has_single_output = True
-            input_channels = [input_channels]
+        assert isinstance(input_channels, list)
+        for chan in input_channels:
+            assert isinstance(chan, ChannelInterface)
 
         self._input_channels = input_channels
         self._closed = False
@@ -247,19 +250,35 @@ class ReaderInterface:
     def start(self):
         raise NotImplementedError
 
-    def _begin_read_list(self) -> Any:
+    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        """
+        Read a list of values from this reader.
+
+        Args:
+            timeout: The maximum time in seconds to wait for reading.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
+
+        """
         raise NotImplementedError
 
-    def begin_read(self) -> Any:
-        outputs = self._begin_read_list()
+    def read(self, timeout: Optional[float] = None) -> List[Any]:
+        """
+        Read from this reader.
+
+        Args:
+            timeout: The maximum time in seconds to wait for reading.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
+        """
+        assert (
+            timeout is None or timeout >= 0 or timeout == -1
+        ), "Timeout must be non-negative or -1."
+        outputs = self._read_list(timeout)
         self._num_reads += 1
-        if self._has_single_output:
-            return outputs[0]
-        else:
-            return outputs
-
-    def end_read(self) -> Any:
-        raise NotImplementedError
+        return outputs
 
     def close(self) -> None:
         self._closed = True
@@ -275,12 +294,15 @@ class SynchronousReader(ReaderInterface):
     def start(self):
         pass
 
-    def _begin_read_list(self) -> Any:
-        return [c.begin_read() for c in self._input_channels]
-
-    def end_read(self) -> Any:
+    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        results = []
         for c in self._input_channels:
-            c.end_read()
+            start_time = time.monotonic()
+            results.append(c.read(timeout))
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+        return results
 
 
 @DeveloperAPI
@@ -307,10 +329,7 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
-        vals = [c.begin_read() for c in self._input_channels]
-        if self._has_single_output:
-            vals = vals[0]
-        return vals
+        return [c.read() for c in self._input_channels]
 
     async def run(self):
         loop = asyncio.get_running_loop()
@@ -323,14 +342,15 @@ class AwaitableBackgroundReader(ReaderInterface):
 
             # Set the result on the main thread.
             fut.set_result(res)
-
-    def end_read(self) -> Any:
-        for c in self._input_channels:
-            c.end_read()
+            # NOTE(swang): If the object is zero-copy deserialized, then it
+            # will stay in scope as long as ret and the future are in scope.
+            # Therefore, we must delete both here after fulfilling the future.
+            del res
+            del fut
 
     def close(self):
-        self._background_task.cancel()
         super().close()
+        self._background_task_executor.shutdown(cancel_futures=True)
 
 
 @DeveloperAPI
@@ -346,7 +366,16 @@ class WriterInterface:
     def start(self):
         raise NotImplementedError()
 
-    def write(self, val: Any) -> None:
+    def write(self, val: Any, timeout: Optional[float] = None) -> None:
+        """
+        Write the value.
+
+        Args:
+            timeout: The maximum time in seconds to wait for writing.
+                None means using default timeout, 0 means immediate timeout
+                (immediate success or timeout without blocking), -1 means
+                infinite timeout (block indefinitely).
+        """
         raise NotImplementedError()
 
     def close(self) -> None:
@@ -360,8 +389,8 @@ class SynchronousWriter(WriterInterface):
         self._output_channel.ensure_registered_as_writer()
         pass
 
-    def write(self, val: Any) -> None:
-        self._output_channel.write(val)
+    def write(self, val: Any, timeout: Optional[float] = None) -> None:
+        self._output_channel.write(val, timeout)
         self._num_writes += 1
 
 
@@ -372,7 +401,10 @@ class AwaitableBackgroundWriter(WriterInterface):
     ):
         super().__init__(output_channel)
         if max_queue_size is None:
-            max_queue_size = 0
+            from ray.dag import DAGContext
+
+            ctx = DAGContext.get_current()
+            max_queue_size = ctx.asyncio_max_queue_size
         self._queue = asyncio.Queue(max_queue_size)
         self._background_task = None
         self._background_task_executor = concurrent.futures.ThreadPoolExecutor(

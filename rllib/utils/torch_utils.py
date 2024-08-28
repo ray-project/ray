@@ -15,6 +15,7 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
+    NetworkType,
     SpaceStruct,
     TensorStructType,
     TensorType,
@@ -640,6 +641,34 @@ def sequence_mask(
     mask.type(dtype or torch.bool)
 
     return mask
+
+
+@PublicAPI
+def update_target_network(
+    main_net: NetworkType,
+    target_net: NetworkType,
+    tau: float,
+) -> None:
+    """Updates a torch.nn.Module target network using Polyak averaging.
+
+    new_target_net_weight = (
+        tau * main_net_weight + (1.0 - tau) * current_target_net_weight
+    )
+
+    Args:
+        main_net: The nn.Module to update from.
+        target_net: The target network to update.
+        tau: The tau value to use in the Polyak averaging formula.
+    """
+    # Get the current parameters from the Q network.
+    state_dict = main_net.state_dict()
+    # Use here Polyak averaging.
+    new_state_dict = {
+        k: tau * state_dict[k] + (1 - tau) * v
+        for k, v in target_net.state_dict().items()
+    }
+    # Apply the new parameters to the target Q network.
+    target_net.load_state_dict(new_state_dict)
 
 
 @DeveloperAPI

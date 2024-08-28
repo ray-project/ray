@@ -60,12 +60,15 @@ void GlobalStateAccessor::Disconnect() {
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
+  // This method assumes GCS is HA and does not return any error. On GCS down, it
+  // retries indefinitely.
   std::vector<std::string> job_table_data;
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise)));
+        TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise),
+        /*timeout_ms=*/-1));
   }
   promise.get_future().get();
   return job_table_data;
@@ -82,12 +85,15 @@ JobID GlobalStateAccessor::GetNextJobID() {
 }
 
 std::vector<std::string> GlobalStateAccessor::GetAllNodeInfo() {
+  // This method assumes GCS is HA and does not return any error. On GCS down, it
+  // retries indefinitely.
   std::vector<std::string> node_table_data;
   std::promise<bool> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetAll(
-        TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise)));
+        TransformForMultiItemCallback<rpc::GcsNodeInfo>(node_table_data, promise),
+        /*timeout_ms=*/-1));
   }
   promise.get_future().get();
   return node_table_data;
@@ -116,6 +122,18 @@ std::vector<std::string> GlobalStateAccessor::GetAllAvailableResources() {
   }
   promise.get_future().get();
   return available_resources;
+}
+
+std::vector<std::string> GlobalStateAccessor::GetAllTotalResources() {
+  std::vector<std::string> total_resources;
+  std::promise<bool> promise;
+  {
+    absl::ReaderMutexLock lock(&mutex_);
+    RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetAllTotalResources(
+        TransformForMultiItemCallback<rpc::TotalResources>(total_resources, promise)));
+  }
+  promise.get_future().get();
+  return total_resources;
 }
 
 std::unordered_map<NodeID, int64_t> GlobalStateAccessor::GetDrainingNodes() {
@@ -226,7 +244,7 @@ uint32_t GlobalStateAccessor::GetWorkerDebuggerPort(const WorkerID &worker_id) {
     RAY_CHECK_OK(gcs_client_->Workers().AsyncGet(
         worker_id,
         [&promise](const Status &status,
-                   const boost::optional<rpc::WorkerTableData> &result) {
+                   const std::optional<rpc::WorkerTableData> &result) {
           RAY_CHECK_OK(status);
           if (result.has_value()) {
             promise.set_value(result->debugger_port());
@@ -360,7 +378,7 @@ std::string GlobalStateAccessor::GetSystemConfig() {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(
         [&promise](const Status &status,
-                   const boost::optional<std::string> &stored_raylet_config) {
+                   const std::optional<std::string> &stored_raylet_config) {
           RAY_CHECK_OK(status);
           promise.set_value(*stored_raylet_config);
         }));
@@ -382,7 +400,8 @@ ray::Status GlobalStateAccessor::GetAliveNodes(std::vector<rpc::GcsNodeInfo> &no
         [&promise](Status status, std::vector<rpc::GcsNodeInfo> &&nodes) {
           promise.set_value(
               std::pair<Status, std::vector<rpc::GcsNodeInfo>>(status, std::move(nodes)));
-        }));
+        },
+        /*timeout_ms=*/-1));
   }
   auto result = promise.get_future().get();
   auto status = result.first;
@@ -423,7 +442,10 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id,
       }
 
       if (relevant_client_index < 0) {
-        status = Status::NotFound("GCS cannot find the node with node ID " + node_id);
+        status = Status::NotFound(
+            "GCS cannot find the node with node ID " + node_id +
+            ". The node registration may not be complete yet before the timeout." +
+            " Try increase the RAY_raylet_start_wait_time_s config.");
       } else {
         *node_info = nodes[relevant_client_index].SerializeAsString();
         return Status::OK();

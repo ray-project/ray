@@ -1,5 +1,6 @@
+# @OldAPIStack
 """
-This script demonstrates how to specify custom env APIs in
+This script specifies custom env APIs in
 combination with RLlib's `remote_worker_envs` setting, which
 parallelizes individual sub-envs within a vector env by making each
 one a Ray Actor.
@@ -104,7 +105,7 @@ class TaskSettingCallback(DefaultCallbacks):
 
         # Sub-envs are now ray.actor.ActorHandles, so we have to add
         # `remote()` here.
-        algorithm.workers.foreach_env(lambda env: env.set_task.remote(phase))
+        algorithm.env_runner_group.foreach_env(lambda env: env.set_task.remote(phase))
 
 
 if __name__ == "__main__":

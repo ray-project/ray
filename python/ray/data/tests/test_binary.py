@@ -193,7 +193,6 @@ def test_read_binary_snappy_partitioned_with_filter(
             count=2,
             num_rows=2,
             schema="{bytes: binary}",
-            num_computed=None,
             sorted_values=[b"1 a\n1 b\n1 c", b"3 e\n3 f\n3 g"],
             ds_take_transform_fn=lambda t: extract_values("bytes", t),
         )

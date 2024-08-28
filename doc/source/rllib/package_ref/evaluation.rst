@@ -13,7 +13,7 @@ Data ingest via either environment rollouts or other data-generating methods
 (e.g. reading from offline files) is done in RLlib by :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances,
 which sit inside a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
 (together with other parallel ``EnvRunners``) in the RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-(under the ``self.workers`` property):
+(under the ``self.env_runner_group`` property):
 
 
 .. https://docs.google.com/drawings/d/1OewMLAu6KZNon7zpDfZnTh9qiT6m-3M9wnkqWkQQMRc/edit
@@ -23,7 +23,7 @@ which sit inside a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
 
     **A typical RLlib EnvRunnerGroup setup inside an RLlib Algorithm:** Each :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` contains
     exactly one local :py:class:`~ray.rllib.env.env_runner.EnvRunner` object and N ray remote
-    :py:class:`~ray.rllib.env.env_runner.EnvRunner` (ray actors).
+    :py:class:`~ray.rllib.env.env_runner.EnvRunner` (Ray actors).
     The workers contain a policy map (with one or more policies), and - in case a simulator
     (env) is available - a vectorized :py:class:`~ray.rllib.env.base_env.BaseEnv`
     (containing M sub-environments) and a :py:class:`~ray.rllib.evaluation.sampler.SamplerInput` (either synchronous or asynchronous) which controls
@@ -144,6 +144,17 @@ Miscellaneous
 
 
 .. _workerset-reference-docs:
+
+EnvRunner API
+-------------
+
+.. currentmodule:: ray.rllib.env.env_runner
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   EnvRunner
 
 EnvRunnerGroup API
 ------------------
@@ -357,5 +368,3 @@ MultiAgent batch API
     MultiAgentBatch
     MultiAgentBatch.env_steps
     MultiAgentBatch.agent_steps
-
-

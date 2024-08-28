@@ -100,7 +100,7 @@ class SimpleCorridor(gym.Env):
         random.seed(seed)
         self.cur_pos = 0
         # Return obs and (empty) info dict.
-        return np.array([self.cur_pos], np.float32), {}
+        return np.array([self.cur_pos], np.float32), {"env_state": "reset"}
 
     def step(self, action):
         assert action in [0, 1], action

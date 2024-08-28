@@ -80,23 +80,23 @@ async def fetch_grpc(stub, data):
 
 @ray.remote
 class HTTPClient:
-    def __init__(self):
-        self.session = aiohttp.ClientSession()
-
     def ready(self):
         return "ok"
 
     async def do_queries(self, num, data):
-        for _ in range(num):
-            await fetch_http(self.session, data)
+        async with aiohttp.ClientSession() as session:
+            for _ in range(num):
+                await fetch_http(session, data)
 
     async def time_queries(self, num, data):
         stats = []
-        for _ in range(num):
-            start = time.time()
-            await fetch_http(self.session, data)
-            end = time.time()
-            stats.append(end - start)
+        async with aiohttp.ClientSession() as session:
+            for _ in range(num):
+                start = time.time()
+                await fetch_http(session, data)
+                end = time.time()
+                stats.append(end - start)
+
         return stats
 
 

@@ -94,7 +94,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, override_num_blocks=2.
@@ -376,7 +376,6 @@ def test_csv_read_many_files_partitioned(
         num_input_files=num_files,
         num_rows=num_rows,
         schema="{one: int64, two: int64}",
-        num_computed=num_files,
         sorted_values=sorted(
             itertools.chain.from_iterable(
                 list(
@@ -661,7 +660,7 @@ def test_csv_read_partitioned_with_filter_multikey(
             filesystem=fs,
             override_num_blocks=6,
         )
-        assert_base_partitioned_ds(ds, num_input_files=6, num_computed=6)
+        assert_base_partitioned_ds(ds, num_input_files=6)
         assert ray.get(kept_file_counter.get.remote()) == 6
         if i == 0:
             # expect to skip 1 unpartitioned files in the parent of the base directory
@@ -730,7 +729,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert ds2df.equals(df)
     # Test metadata ops.
-    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Two blocks.
@@ -742,7 +741,7 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
     ds2df = ds2.to_pandas()
     assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
     # Test metadata ops.
-    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
+    for block, meta in ds2._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 

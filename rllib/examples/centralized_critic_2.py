@@ -1,7 +1,7 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 # ***********************************************************************************
-# IMPORTANT NOTE: This script is using the old API stack and will soon be replaced by
+# IMPORTANT NOTE: This script uses the old API stack and will soon be replaced by
 # `ray.rllib.examples.multi_agent.pettingzoo_shared_value_function.py`!
 # ***********************************************************************************
 

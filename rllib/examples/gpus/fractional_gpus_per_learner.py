@@ -77,6 +77,7 @@ from ray.tune.registry import get_trainable_cls
 parser = add_rllib_example_script_args(
     default_iters=50, default_reward=180, default_timesteps=100000
 )
+parser.set_defaults(num_env_runners=2)
 # TODO (sven): Retire the currently supported --num-gpus in favor of --num-learners.
 parser.add_argument("--num-learners", type=int, default=1)
 parser.add_argument("--num-gpus-per-learner", type=float, default=0.5)
@@ -98,10 +99,12 @@ if __name__ == "__main__":
             enable_env_runner_and_connector_v2=True,
         )
         .environment("CartPole-v1")
+        # Define EnvRunner scaling.
+        .env_runners(num_env_runners=args.num_env_runners)
         # Define Learner scaling.
         .learners(
-            # How many Learner workers do we need? If you have more than 1 GPU, you
-            # should set this to the number of GPUs available.
+            # How many Learner workers do we need? If you have more than 1 GPU,
+            # set this parameter to the number of GPUs available.
             num_learners=args.num_learners,
             # How many GPUs does each Learner need? If you have more than 1 GPU or only
             # one Learner, you should set this to 1, otherwise, set this to some

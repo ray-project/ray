@@ -10,11 +10,7 @@ from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.learner.learner import DEFAULT_OPTIMIZER, LR_KEY
 
 from ray.rllib.utils.metrics import LEARNER_RESULTS
-from ray.rllib.utils.test_utils import (
-    check,
-    check_train_results_new_api_stack,
-    framework_iterator,
-)
+from ray.rllib.utils.test_utils import check, check_train_results_new_api_stack
 
 
 def get_model_config(framework, lstm=False):
@@ -97,7 +93,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        # TODO (sven): Bring back "FrozenLake-v1"
+        # TODO (sven) Bring back "FrozenLake-v1"
         for env in [
             # "CliffWalking-v0",
             "CartPole-v1",
