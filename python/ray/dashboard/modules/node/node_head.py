@@ -198,7 +198,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 updated_dicts = await get_or_create_event_loop().run_in_executor(
                     self._dashboard_head._thread_pool_executor,
                     batch_updated_pairs_to_dict,
-                    (node_info for _, node_info in published),
+                    published,
                 )
                 yield from updated_dicts
             except Exception:
