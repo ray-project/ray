@@ -96,6 +96,7 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     WriteNodeExportEvent(request.node_info());
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    WriteNodeExportEvent(request.node_info());
   };
   if (request.node_info().is_head_node()) {
     // mark all old head nodes as dead if exists:
@@ -428,6 +429,7 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
         node_table_updated_callback(Status::OK());
       }
       RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
+      WriteNodeExportEvent(*node);
     };
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
   } else if (node_table_updated_callback != nullptr) {
