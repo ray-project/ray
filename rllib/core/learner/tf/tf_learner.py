@@ -74,7 +74,7 @@ class TfLearner(Learner):
 
         # For this default implementation, the learning rate is handled by the
         # attached lr Scheduler (controlled by self.config.lr, which can be a
-        # fixed value of a schedule setting).
+        # fixed value or a schedule setting).
         optimizer = tf.keras.optimizers.Adam()
         params = self.get_parameters(module)
 

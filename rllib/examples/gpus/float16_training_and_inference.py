@@ -57,6 +57,8 @@ import torch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -70,57 +72,6 @@ parser = add_rllib_example_script_args(
 parser.set_defaults(
     enable_new_api_stack=True,
 )
-
-
-class Float16GradScaler:
-    def __init__(
-        self,
-        init_scale=1000.0,
-        growth_factor=2.0,
-        backoff_factor=0.5,
-        growth_interval=2000,
-    ):
-        self._scale = init_scale
-        self.growth_factor = growth_factor
-        self.backoff_factor = backoff_factor
-        self.growth_interval = growth_interval
-        self._found_inf_or_nan = False
-        self.steps_since_growth = 0
-
-    def scale(self, loss):
-        return loss * self._scale
-
-    def get_scale(self):
-        return self._scale
-
-    def step(self, optimizer):
-        """Unscale the gradients for all model parameters and apply."""
-        for group in optimizer.param_groups:
-            for param in group["params"]:
-                if param.grad is not None:
-                    param.grad.data.div_(self._scale)
-                    if torch.isinf(param.grad).any() or torch.isnan(param.grad).any():
-                        self._found_inf_or_nan = True
-                        break
-            if self._found_inf_or_nan:
-                break
-        # Only step if no inf/NaN grad found.
-        if not self._found_inf_or_nan:
-            optimizer.step()
-
-    def update(self):
-        # If gradients are found to be inf/NaN, reduce the scale.
-        if self._found_inf_or_nan:
-            self._scale *= self.backoff_factor
-            self.steps_since_growth = 0
-        # Increase the scale after a set number of steps without inf/NaN.
-        else:
-            self.steps_since_growth += 1
-            if self.steps_since_growth >= self.growth_interval:
-                self._scale *= self.growth_factor
-                self.steps_since_growth = 0
-        # Reset inf/NaN flag.
-        self._found_inf_or_nan = False
 
 
 class Float16InitCallback(DefaultCallbacks):
@@ -177,6 +128,91 @@ class Float16Connector(ConnectorV2):
         return batch
 
 
+class Float16GradScaler:
+    """Custom grad scaler for `TorchLearner`.
+
+    This class is utilizing the experimental support for the `TorchLearner`'s support
+    for loss/gradient scaling (analogous to how a `torch.amp.GradScaler` would work).
+
+    TorchLearner performs the following steps using this class (`scaler`):
+    - loss_per_module = TorchLearner.compute_losses()
+    - for L in loss_per_module: L = scaler.scale(L)
+    - grads = TorchLearner.compute_gradients()  # L.backward() on scaled loss
+    - TorchLearner.apply_gradients(grads):
+        for optim in optimizers:
+            scaler.step(optim)  # <- grads should get unscaled
+            scaler.update()  # <- update scaling factor
+    """
+
+    def __init__(
+        self,
+        init_scale=1000.0,
+        growth_factor=2.0,
+        backoff_factor=0.5,
+        growth_interval=2000,
+    ):
+        self._scale = init_scale
+        self.growth_factor = growth_factor
+        self.backoff_factor = backoff_factor
+        self.growth_interval = growth_interval
+        self._found_inf_or_nan = False
+        self.steps_since_growth = 0
+
+    def scale(self, loss):
+        # Scale the loss by `self._scale`.
+        return loss * self._scale
+
+    def get_scale(self):
+        return self._scale
+
+    def step(self, optimizer):
+        # Unscale the gradients for all model parameters and apply.
+        for group in optimizer.param_groups:
+            for param in group["params"]:
+                if param.grad is not None:
+                    param.grad.data.div_(self._scale)
+                    if torch.isinf(param.grad).any() or torch.isnan(param.grad).any():
+                        self._found_inf_or_nan = True
+                        break
+            if self._found_inf_or_nan:
+                break
+        # Only step if no inf/NaN grad found.
+        if not self._found_inf_or_nan:
+            optimizer.step()
+
+    def update(self):
+        # If gradients are found to be inf/NaN, reduce the scale.
+        if self._found_inf_or_nan:
+            self._scale *= self.backoff_factor
+            self.steps_since_growth = 0
+        # Increase the scale after a set number of steps without inf/NaN.
+        else:
+            self.steps_since_growth += 1
+            if self.steps_since_growth >= self.growth_interval:
+                self._scale *= self.growth_factor
+                self.steps_since_growth = 0
+        # Reset inf/NaN flag.
+        self._found_inf_or_nan = False
+
+
+class Float16TorchLearner(TorchLearner):
+    @override(TorchLearner)
+    def configure_optimizers_for_module(self, module_id, config):
+        module = self._module[module_id]
+
+        params = self.get_parameters(module)
+        # Create an Adam optimizer with a different eps for better float16 stability.
+        optimizer = torch.optim.Adam(params, eps=1e-4)
+
+        # Register the created optimizer (under the default optimizer name).
+        self.register_optimizer(
+            module_id=module_id,
+            optimizer=optimizer,
+            params=params,
+            lr_or_lr_schedule=config.lr,
+        )
+
+
 if __name__ == "__main__":
     args = parser.parse_args()
 
@@ -189,6 +225,7 @@ if __name__ == "__main__":
         .env_runners(env_to_module_connector=lambda env: Float16Connector())
         .callbacks(Float16InitCallback)
         .training(
+            learner_class=Float16TorchLearner,
             # Switch off grad clipping entirely b/c we use our custom grad scaler with
             # built-in inf/nan detection (see `step` method of `Float16GradScaler`).
             grad_clip=None,

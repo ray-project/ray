@@ -117,9 +117,9 @@ class TorchLearner(Learner):
 
         # For this default implementation, the learning rate is handled by the
         # attached lr Scheduler (controlled by self.config.lr, which can be a
-        # fixed value of a schedule setting).
+        # fixed value or a schedule setting).
         params = self.get_parameters(module)
-        optimizer = torch.optim.Adam(params, eps=1e-4)
+        optimizer = torch.optim.Adam(params)
 
         # Register the created optimizer (under the default optimizer name).
         self.register_optimizer(
@@ -174,10 +174,6 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def apply_gradients(self, gradients_dict: ParamDict) -> None:
-        # Make sure the parameters do not carry gradients on their own.
-        # for optim in self._optimizer_parameters:
-        #   optim.zero_grad(set_to_none=True)
-
         # Set the gradient of the parameters.
         for pid, grad in gradients_dict.items():
             self._params[pid].grad = grad
@@ -188,7 +184,15 @@ class TorchLearner(Learner):
                 optim = self.get_optimizer(module_id, optimizer_name)
                 # Step through the scaler (unscales gradients, if applicable).
                 if self._grad_scalers is not None:
-                    self._grad_scalers[module_id].step(optim)
+                    scaler = self._grad_scalers[module_id]
+                    scaler.step(optim)
+                    self.metrics.log_value(
+                        (module_id, "_torch_grad_scaler_current_scale"),
+                        scaler.get_scale(),
+                        window=1,  # snapshot in time, no EMA/mean.
+                    )
+                    # Update the scaler.
+                    scaler.update()
                 # `step` the optimizer (default), but only if all gradients are finite.
                 elif all(
                     param.grad is None or torch.isfinite(param.grad).all()
@@ -196,16 +200,6 @@ class TorchLearner(Learner):
                     for param in group["params"]
                 ):
                     optim.step()
-
-        # Reset the grad scalers, if applicable.
-        if self._grad_scalers is not None:
-            for mid, scaler in self._grad_scalers.items():
-                scaler.update()
-                self.metrics.log_value(
-                    (mid, "_torch_grad_scaler_current_scale"),
-                    scaler.get_scale(),
-                    window=1,  # snapshot in time, no EMA/mean.
-                )
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
