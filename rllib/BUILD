@@ -1867,6 +1867,7 @@ py_test(
     srcs = ["offline/tests/test_offline_data.py"],
     data = [
         "tests/data/cartpole/cartpole-v1_large",
+        "tests/data/cartpole/large.json",
     ],
 )
 
