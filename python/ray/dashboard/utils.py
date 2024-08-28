@@ -69,6 +69,26 @@ class DashboardAgentModule(abc.ABC):
         return self._dashboard_agent.gcs_address
 
 
+class DashboardHeadActorModule(abc.ABC):
+    def __init__(self, gcs_address):
+        self._gcs_address = gcs_address
+
+    @abc.abstractmethod
+    async def run(self):
+        """
+        Run the module in an asyncio loop.
+        """
+
+    @staticmethod
+    @abc.abstractclassmethod
+    def is_minimal_module():
+        """
+        Return True if the module is minimal, meaning it
+        should work with `pip install ray` that doesn't requires additional
+        dependencies.
+        """
+
+
 class DashboardHeadModule(abc.ABC):
     def __init__(self, dashboard_head):
         """
@@ -76,7 +96,8 @@ class DashboardHeadModule(abc.ABC):
         :param dashboard_head: The DashboardHead instance.
         """
         self._dashboard_head = dashboard_head
-        self.session_name = dashboard_head.session_name
+        if self._dashboard_head is not None:
+            self.session_name = dashboard_head.session_name
 
     @property
     def http_session(self):

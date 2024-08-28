@@ -1216,6 +1216,10 @@ def start_api_server(
             - Dashboard URL if dashboard enabled and started.
             - ProcessInfo for the process that was started.
     """
+    import traceback
+
+    logger.error(traceback.format_stack())
+
     try:
         # Make sure port is available.
         if port is None:

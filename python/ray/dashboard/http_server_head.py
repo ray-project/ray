@@ -216,10 +216,14 @@ class HttpServerDashboardHead:
             return response
         return await handler(request)
 
-    async def run(self, modules):
+    async def run(self, modules, actors):
+        logger.error(f"http_server_head.run() is called. {modules=}, {actors=}")
         # Bind http routes of each module.
         for c in modules:
             dashboard_optional_utils.DashboardHeadRouteTable.bind(c)
+
+        for cls, actor in actors:
+            dashboard_optional_utils.DashboardHeadRouteTable.bind_actor(cls, actor)
 
         # Http server should be initialized after all modules loaded.
         # working_dir uploads for job submission can be up to 100MiB.

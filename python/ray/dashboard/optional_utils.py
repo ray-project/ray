@@ -91,7 +91,15 @@ def method_route_table_factory():
                         #   * (Request, )
                         #   * (self, Request)
                         req = args[-1]
-                        return await handler(bind_info.instance, req)
+                        # If the instance is an ActorHandle, make the remote call. Else
+                        # call the method directly.
+                        # HACK(ryw): find if we need it more explicit.
+                        if isinstance(bind_info.instance, ray.actor.ActorHandle):
+                            method_name = handler.__name__
+                            remote_method = getattr(bind_info.instance, method_name)
+                            return await remote_method.remote(await req.read())
+                        else:
+                            return await handler(bind_info.instance, req)
                     except Exception:
                         logger.exception("Handle %s %s failed.", method, path)
                         return rest_response(
@@ -101,6 +109,7 @@ def method_route_table_factory():
                 cls._bind_map[method][path] = bind_info
                 _handler_route.__route_method__ = method
                 _handler_route.__route_path__ = path
+                logger.error(_handler_route)
                 return cls._routes.route(method, path, **kwargs)(_handler_route)
 
             return _wrapper
@@ -140,6 +149,7 @@ def method_route_table_factory():
         @classmethod
         def bind(cls, instance):
             def predicate(o):
+                logger.error(f"predicate: {o}")
                 if inspect.ismethod(o):
                     return hasattr(o, "__route_method__") and hasattr(
                         o, "__route_path__"
@@ -148,9 +158,35 @@ def method_route_table_factory():
 
             handler_routes = inspect.getmembers(instance, predicate)
             for _, h in handler_routes:
+                logger.error(f"{h=}, {h.__func__}")
                 cls._bind_map[h.__func__.__route_method__][
                     h.__func__.__route_path__
                 ].instance = instance
+
+        @classmethod
+        def bind_actor(cls, actor_cls, actor):
+            logger.error(f"bind_actor: {actor_cls}, {actor}")
+
+            def predicate(o):
+                logger.error(
+                    f"predicate: {o}, ismethod {inspect.ismethod(o)},"
+                    f" isfunction {inspect.isfunction(o)}"
+                    f" hasattr {hasattr(o, '__route_method__')},"
+                    f" hasattr {hasattr(o, '__route_path__')}"
+                )
+                if inspect.isfunction(o):
+                    return hasattr(o, "__route_method__") and hasattr(
+                        o, "__route_path__"
+                    )
+                return False
+
+            handler_routes = inspect.getmembers(actor_cls, predicate)
+            logger.error(
+                f"handler_routes: {handler_routes} for {actor_cls}, {actor}, "
+                f"all = {inspect.getmembers(actor_cls)}"
+            )
+            for _, h in handler_routes:
+                cls._bind_map[h.__route_method__][h.__route_path__].instance = actor
 
     return MethodRouteTable
 

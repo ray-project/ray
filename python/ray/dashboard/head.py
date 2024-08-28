@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional, Set
 
+import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
@@ -14,7 +15,11 @@ from ray._raylet import GcsClient
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
 from ray.dashboard.datacenter import DataOrganizer
-from ray.dashboard.utils import DashboardHeadModule, async_loop_forever
+from ray.dashboard.utils import (
+    DashboardHeadActorModule,
+    DashboardHeadModule,
+    async_loop_forever,
+)
 
 try:
     import prometheus_client
@@ -130,7 +135,7 @@ class DashboardHead:
         # be configured to expose APIs.
         self.http_server = None
 
-    async def _configure_http_server(self, modules):
+    async def _configure_http_server(self, modules, actors):
         from ray.dashboard.http_server_head import HttpServerDashboardHead
 
         self.http_server = HttpServerDashboardHead(
@@ -142,7 +147,7 @@ class DashboardHead:
             self.session_name,
             self.metrics,
         )
-        await self.http_server.run(modules)
+        await self.http_server.run(modules, actors)
 
     @property
     def http_session(self):
@@ -172,12 +177,20 @@ class DashboardHead:
         Args:
             modules: A list of module names to load. By default (None),
                 it loads all modules.
+
+        Returns ([DashboardHeadModule], [(DashboardHeadActorModule, ActorHandle)]).
         """
+        logger.error(f"{modules_to_load=}")
         modules = []
+        actors = []
         head_cls_list = dashboard_utils.get_all_modules(DashboardHeadModule)
+        head_actor_cls_list = dashboard_utils.get_all_modules(DashboardHeadActorModule)
 
         # Select modules to load.
-        modules_to_load = modules_to_load or {m.__name__ for m in head_cls_list}
+        modules_to_load = modules_to_load or (
+            {m.__name__ for m in head_cls_list}
+            | {m.__name__ for m in head_actor_cls_list}
+        )
         logger.info("Modules to load: %s", modules_to_load)
 
         for cls in head_cls_list:
@@ -186,8 +199,17 @@ class DashboardHead:
                 c = cls(self)
                 modules.append(c)
 
+        for cls in head_actor_cls_list:
+            logger.info("Loading %s: %s", DashboardHeadActorModule.__name__, cls)
+            logger.info(f"{cls.__name__=}")
+            if cls.__name__ in modules_to_load:
+                c = ray.remote(cls).remote(gcs_address=self.gcs_address)
+                actors.append((cls, c))
+
         # Verify modules are loaded as expected.
-        loaded_modules = {type(m).__name__ for m in modules}
+        loaded_modules = {type(m).__name__ for m in modules} | {
+            m.__name__ for m, _ in actors
+        }
         if loaded_modules != modules_to_load:
             assert False, (
                 "Actual loaded modules, {}, doesn't match the requested modules "
@@ -196,9 +218,11 @@ class DashboardHead:
 
         self._modules_loaded = True
         logger.info("Loaded %d modules. %s", len(modules), modules)
-        return modules
+        logger.info("Loaded %d actors. %s", len(actors), actors)
+        return modules, actors
 
     async def _setup_metrics(self, gcs_aio_client):
+        return
         metrics = DashboardPrometheusMetrics()
 
         # Setup prometheus metrics export server
@@ -277,12 +301,12 @@ class DashboardHead:
                 except Exception:
                     logger.exception(f"Error notifying coroutine {co}")
 
-        modules = self._load_modules(self._modules_to_load)
+        modules, actors = self._load_modules(self._modules_to_load)
 
         http_host, http_port = self.http_host, self.http_port
         if self.serve_frontend:
             logger.info("Initialize the http server.")
-            await self._configure_http_server(modules)
+            await self._configure_http_server(modules, actors)
             http_host, http_port = self.http_server.get_address()
             logger.info(f"http server initialized at {http_host}:{http_port}")
         else:
@@ -323,7 +347,11 @@ class DashboardHead:
             DataOrganizer.organize(self._thread_pool_executor),
         ]
         for m in modules:
-            concurrent_tasks.append(m.run(self.server))
+            if isinstance(m, ray.actor.ActorHandle):
+                # Ray ObjectRef is awaitable.
+                concurrent_tasks.append(m.run.remote())
+            else:
+                concurrent_tasks.append(m.run(self.server))
         if self.server:
             concurrent_tasks.append(self.server.wait_for_termination())
         await asyncio.gather(*concurrent_tasks)
