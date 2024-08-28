@@ -147,7 +147,7 @@ class OfflinePreLearner:
             episodes = batch["item"].tolist()
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
-            episodes = OfflinePreLearner._map_batch_to_episode(
+            episodes = OfflinePreLearner._map_sample_batch_to_episode(
                 self._is_multi_agent,
                 batch,
                 finalize=False,
@@ -281,7 +281,7 @@ class OfflinePreLearner:
 
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                pass
+                NotImplementedError
             else:
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
@@ -359,7 +359,7 @@ class OfflinePreLearner:
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
 
-    def _map_batch_to_episode(
+    def _map_sample_batch_to_episode(
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
@@ -396,7 +396,7 @@ class OfflinePreLearner:
 
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                pass
+                NotImplementedError
             else:
                 # Unpack observations, if needed.
                 obs = (

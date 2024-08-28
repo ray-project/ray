@@ -28,7 +28,7 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
             episodes = batch["item"].tolist()
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
-            episodes = OfflinePreLearner._map_batch_to_episode(
+            episodes = OfflinePreLearner._map_sample_batch_to_episode(
                 self._is_multi_agent,
                 batch,
                 finalize=False,

@@ -59,7 +59,9 @@ class TestOfflineData(unittest.TestCase):
         offline_data = OfflineData(config)
 
         batch = offline_data.data.take_batch(batch_size=10)
-        episodes = OfflinePreLearner._map_batch_to_episode(False, batch)["episodes"]
+        episodes = OfflinePreLearner._map_sample_batch_to_episode(False, batch)[
+            "episodes"
+        ]
 
         self.assertTrue(len(episodes) == 10)
         self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
