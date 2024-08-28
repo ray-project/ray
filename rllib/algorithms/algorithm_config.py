@@ -2466,9 +2466,9 @@ class AlgorithmConfig(_Config):
                 inside of RLlib's schema. The other format is a columnar format and is
                 agnostic to the RL framework used. Use the latter format, if you are
                 unsure when to use the data or in which RL framework. The default is
-                to read column data, i.e. `False`. input_read_episodes` and
-                `inpuit_read_sample_batches` cannot be `True` at the same time.See
-                also `output_write_episodes`to define the output data format when
+                to read column data, i.e. `False`. `input_read_episodes` and
+                `inpuit_read_sample_batches` cannot be `True` at the same time. See
+                also `output_write_episodes` to define the output data format when
                 recording.
             input_read_sample_batches: Whether offline data is stored in RLlib's old
                 stack `SampleBatch` type. This is usually the case for older data

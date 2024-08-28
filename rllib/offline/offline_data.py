@@ -25,7 +25,7 @@ class OfflineData:
         self.path = (
             config.input_ if isinstance(config.input_, list) else Path(config.input_)
         )
-        # Use `read_json` as default data read method.
+        # Use `read_parquet` as default data read method.
         self.data_read_method = config.input_read_method
         # Override default arguments for the data read method.
         self.data_read_method_kwargs = (
