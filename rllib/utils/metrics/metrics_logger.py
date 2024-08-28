@@ -898,7 +898,7 @@ class MetricsLogger:
         for flat_key, stats_state in state["stats"].items():
             self._set_key(flat_key, Stats.from_state(stats_state))
 
-    def _check_tensor(self, key, value) -> None:
+    def _check_tensor(self, key: Tuple[str], value) -> None:
         # `value` is a tensor -> Log it in our keys set.
         if self.tensor_mode and (
             (torch and torch.is_tensor(value)) or (tf and tf.is_tensor(value))
@@ -938,6 +938,12 @@ class MetricsLogger:
 
     def _del_key(self, flat_key, key_error=False):
         flat_key = force_tuple(tree.flatten(flat_key))
+
+        # Erase the tensor key as well, if applicable.
+        if flat_key in self._tensor_keys:
+            self._tensor_keys.discard(flat_key)
+
+        # Erase the key from the (nested) `self.stats` dict.
         _dict = self.stats
         try:
             for i, key in enumerate(flat_key):
