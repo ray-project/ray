@@ -473,6 +473,99 @@ class ExperimentAnalysis:
         )
         return best_checkpoint
 
+    def get_best_trials(
+        self,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        scope: str = "last",
+        filter_nan_and_inf: bool = True,
+    ) -> List[Trial]:
+        """Retrieve the best trial objects.
+
+        Compares all trials' scores on ``metric``.
+        If ``metric`` is not specified, ``self.default_metric`` will be used.
+        If `mode` is not specified, ``self.default_mode`` will be used.
+        These values are usually initialized by passing the ``metric`` and
+        ``mode`` parameters to ``tune.run()``.
+
+        Args:
+            metric: Key for trial info to order on. Defaults to
+                ``self.default_metric``.
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
+                If `scope=last`, only look at each trial's final step for
+                `metric`, and compare across trials based on `mode=[min,max]`.
+                If `scope=avg`, consider the simple average over all steps
+                for `metric` and compare across trials based on
+                `mode=[min,max]`. If `scope=last-5-avg` or `scope=last-10-avg`,
+                consider the simple average over the last 5 or 10 steps for
+                `metric` and compare across trials based on `mode=[min,max]`.
+                If `scope=all`, find each trial's min/max score for `metric`
+                based on `mode`, and compare trials based on `mode=[min,max]`.
+            filter_nan_and_inf: If True (default), NaN or infinite
+                values are disregarded and these trials are never selected as
+                the best trial.
+
+        Returns:
+            The best trials for the provided metric. If no trials contain the provided
+                metric, or if the value for the metric is NaN for all trials,
+                then returns None. Note that multiple trials may have exactly the
+                same metric value, and all of them will be returned.
+        """
+        if len(self.trials) == 1:
+            return self.trials[0]
+
+        metric = self._validate_metric(metric)
+        mode = self._validate_mode(mode)
+
+        if scope not in ["all", "last", "avg", "last-5-avg", "last-10-avg"]:
+            raise ValueError(
+                "ExperimentAnalysis: attempting to get best trial for "
+                'metric {} for scope {} not in ["all", "last", "avg", '
+                '"last-5-avg", "last-10-avg"]. '
+                "If you didn't pass a `metric` parameter to `tune.run()`, "
+                "you have to pass one when fetching the best trial.".format(
+                    metric, scope
+                )
+            )
+        best_trials = []
+        best_metric_score = None
+
+        for trial in self.trials:
+            if metric not in trial.metric_analysis:
+                continue
+
+            if scope in ["last", "avg", "last-5-avg", "last-10-avg"]:
+                metric_score = trial.metric_analysis[metric][scope]
+            else:
+                metric_score = trial.metric_analysis[metric][mode]
+
+            if filter_nan_and_inf and is_nan_or_inf(metric_score):
+                continue
+
+            if best_metric_score is None:
+                best_metric_score = metric_score
+                best_trials = [trial]
+                continue
+
+            if (mode == "max") and (best_metric_score < metric_score):
+                best_metric_score = metric_score
+                best_trials = [trial]
+            elif (mode == "min") and (best_metric_score > metric_score):
+                best_metric_score = metric_score
+                best_trials = [trial]
+            elif best_metric_score == metric_score:
+                best_trials.append(trial)
+
+        if not best_trials:
+            logger.warning(
+                "Could not find best trial. Did you pass the correct `metric` "
+                "parameter?"
+            )
+
+        best_trials.sort()
+        return best_trials
+
     def get_best_trial(
         self,
         metric: Optional[str] = None,
@@ -509,57 +602,41 @@ class ExperimentAnalysis:
         Returns:
             The best trial for the provided metric. If no trials contain the provided
                 metric, or if the value for the metric is NaN for all trials,
-                then returns None.
+                then returns None. If multiple trials have exactly the same
+                metric value, it returns the one with the lower id value.
         """
-        if len(self.trials) == 1:
-            return self.trials[0]
+        return next(self.get_best_trials(metric, mode, scope, filter_nan_and_inf), None)
 
-        metric = self._validate_metric(metric)
-        mode = self._validate_mode(mode)
+    def get_best_configs(
+        self,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
+        scope: str = "last",
+    ) -> Optional[Dict]:
+        """Retrieve the best configs corresponding to the best trials.
 
-        if scope not in ["all", "last", "avg", "last-5-avg", "last-10-avg"]:
-            raise ValueError(
-                "ExperimentAnalysis: attempting to get best trial for "
-                'metric {} for scope {} not in ["all", "last", "avg", '
-                '"last-5-avg", "last-10-avg"]. '
-                "If you didn't pass a `metric` parameter to `tune.run()`, "
-                "you have to pass one when fetching the best trial.".format(
-                    metric, scope
-                )
-            )
-        best_trial = None
-        best_metric_score = None
+        Compares all trials' scores on `metric`.
+        If ``metric`` is not specified, ``self.default_metric`` will be used.
+        If `mode` is not specified, ``self.default_mode`` will be used.
+        These values are usually initialized by passing the ``metric`` and
+        ``mode`` parameters to ``tune.run()``.
 
-        for trial in self.trials:
-            if metric not in trial.metric_analysis:
-                continue
-
-            if scope in ["last", "avg", "last-5-avg", "last-10-avg"]:
-                metric_score = trial.metric_analysis[metric][scope]
-            else:
-                metric_score = trial.metric_analysis[metric][mode]
-
-            if filter_nan_and_inf and is_nan_or_inf(metric_score):
-                continue
-
-            if best_metric_score is None:
-                best_metric_score = metric_score
-                best_trial = trial
-                continue
-
-            if (mode == "max") and (best_metric_score < metric_score):
-                best_metric_score = metric_score
-                best_trial = trial
-            elif (mode == "min") and (best_metric_score > metric_score):
-                best_metric_score = metric_score
-                best_trial = trial
-
-        if not best_trial:
-            logger.warning(
-                "Could not find best trial. Did you pass the correct `metric` "
-                "parameter?"
-            )
-        return best_trial
+        Args:
+            metric: Key for trial info to order on. Defaults to
+                ``self.default_metric``.
+            mode: One of [min, max]. Defaults to ``self.default_mode``.
+            scope: One of [all, last, avg, last-5-avg, last-10-avg].
+                If `scope=last`, only look at each trial's final step for
+                `metric`, and compare across trials based on `mode=[min,max]`.
+                If `scope=avg`, consider the simple average over all steps
+                for `metric` and compare across trials based on
+                `mode=[min,max]`. If `scope=last-5-avg` or `scope=last-10-avg`,
+                consider the simple average over the last 5 or 10 steps for
+                `metric` and compare across trials based on `mode=[min,max]`.
+                If `scope=all`, find each trial's min/max score for `metric`
+                based on `mode`, and compare trials based on `mode=[min,max]`.
+        """
+        return [bt.config for bt in self.get_best_trials(metric, mode, scope)]
 
     def get_best_config(
         self,
@@ -590,8 +667,7 @@ class ExperimentAnalysis:
                 If `scope=all`, find each trial's min/max score for `metric`
                 based on `mode`, and compare trials based on `mode=[min,max]`.
         """
-        best_trial = self.get_best_trial(metric, mode, scope)
-        return best_trial.config if best_trial else None
+        return next(self.get_best_configs(metric, mode, scope), None)
 
     def get_last_checkpoint(
         self, trial=None, metric="training_iteration", mode="max"
