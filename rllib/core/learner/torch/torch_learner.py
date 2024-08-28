@@ -138,13 +138,8 @@ class TorchLearner(Learner):
         # Activate tensor-mode on our MetricsLogger.
         self.metrics.activate_tensor_mode()
 
-        if self.config._enable_torch_mixed_precision_training:
-            with torch.cuda.amp.autocast():
-                fwd_out = self.module.forward_train(batch)
-                loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
-        else:
-            fwd_out = self.module.forward_train(batch)
-            loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
+        fwd_out = self.module.forward_train(batch)
+        loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
 
         gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
