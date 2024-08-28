@@ -176,7 +176,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
         def convert(all_node_info) -> List[dict]:
             return [
-                gcs_node_info_to_dict(node_info) for node_info in all_node_info.items()
+                gcs_node_info_to_dict(node_info) for node_info in all_node_info.values()
             ]
 
         all_node_dict = await get_or_create_event_loop().run_in_executor(
