@@ -95,7 +95,6 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         CFunctionID FromHex(const c_string &binary)
 
-
     cdef cppclass CJobID "ray::JobID"(CBaseID[CJobID]):
 
         @staticmethod
