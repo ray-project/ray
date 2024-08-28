@@ -22,6 +22,7 @@ ResultGrid (tune.ResultGrid)
     :toctree: doc/
 
     ~tune.ResultGrid.get_best_result
+    ~tune.ResultGrid.get_best_results
     ~tune.ResultGrid.get_dataframe
 
 .. _result-docstring:
