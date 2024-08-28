@@ -19,11 +19,11 @@ DEFAULT_ASYNCIO_MAX_QUEUE_SIZE = int(
 # The default max_buffered_results is 1000, and the default buffer size is 1 MB.
 # The maximum memory usage for buffered results is 1 GB.
 DEFAULT_MAX_BUFFERED_RESULTS = int(os.environ.get("RAY_DAG_max_buffered_results", 1000))
-# The default number of in-filght inputs that can be submitted before consuming the
-# output. The CPU memory overhead per shared memory channel is
-# DEFAULT_BUFFER_SIZE_BYTES * DEFAULT_MAX_BUFFERED_INPUTS even when channel is unused.
-# There's no additional memory impact on Nccl channels.
-DEFAULT_MAX_BUFFERED_INPUTS = int(os.environ.get("RAY_DAG_max_buffered_inputs", 10))
+# The default number of in-filght requests that can be submitted before consuming the
+# output.
+DEFAULT_MAX_IN_FLIGHT_REQUESTS = int(
+    os.environ.get("RAY_DAG_max_in_flight_requests", 10)
+)
 
 
 @DeveloperAPI
@@ -65,7 +65,7 @@ class DAGContext:
     buffer_size_bytes: int = DEFAULT_BUFFER_SIZE_BYTES
     asyncio_max_queue_size: int = DEFAULT_ASYNCIO_MAX_QUEUE_SIZE
     max_buffered_results: int = DEFAULT_MAX_BUFFERED_RESULTS
-    max_buffered_inputs: int = DEFAULT_MAX_BUFFERED_INPUTS
+    max_in_flight_requests: int = DEFAULT_MAX_IN_FLIGHT_REQUESTS
 
     @staticmethod
     def get_current() -> "DAGContext":

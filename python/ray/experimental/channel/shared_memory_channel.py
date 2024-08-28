@@ -86,21 +86,22 @@ class _ResizeChannel:
 
 
 class SharedMemoryType(ChannelOutputType):
-    def __init__(self, buffer_size_bytes: int):
+    def __init__(self, buffer_size_bytes: int, *, num_shm_buffers: int):
         """
         Args:
             buffer_size_bytes: The number of bytes to allocate for the object data and
                 metadata. Writes to the channel must produce serialized data and
                 metadata less than or equal to this value.
+            num_shm_buffers: The number of shared memory buffer per channel.
         """
         super().__init__()
         self.buffer_size_bytes = buffer_size_bytes
+        self._num_shm_buffers = num_shm_buffers
 
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-        num_shm_buffers: Optional[int] = None,
     ) -> "Channel":
         """
         Instantiate a ChannelInterface class that can be used
@@ -110,7 +111,6 @@ class SharedMemoryType(ChannelOutputType):
             writer: The actor that may write to the channel. None signifies the driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
-            num_shm_buffers: The number of shared memory buffer per channel.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
@@ -126,7 +126,8 @@ class SharedMemoryType(ChannelOutputType):
 
             if self._contains_type.requires_nccl():
                 cpu_data_typ = SharedMemoryType(
-                    buffer_size_bytes=self.buffer_size_bytes
+                    buffer_size_bytes=self.buffer_size_bytes,
+                    num_shm_buffers=1,
                 )
                 return NestedTorchTensorNcclChannel(
                     writer,
@@ -135,7 +136,7 @@ class SharedMemoryType(ChannelOutputType):
                     cpu_data_typ=cpu_data_typ,
                 )
 
-        return CompositeChannel(writer, reader_and_node_list, num_shm_buffers)
+        return CompositeChannel(writer, reader_and_node_list, self._num_shm_buffers)
 
     def set_nccl_group_id(self, group_id: str) -> None:
         assert self.requires_nccl()
@@ -186,9 +187,9 @@ class Channel(ChannelInterface):
             assert isinstance(reader, ray.actor.ActorHandle)
 
         if typ is None:
-            typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE)
+            typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE, num_shm_buffers=1)
         elif isinstance(typ, int):
-            typ = SharedMemoryType(typ)
+            typ = SharedMemoryType(typ, num_shm_buffers=1)
 
         if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
             raise ValueError(

@@ -63,7 +63,6 @@ def do_allocate_channel(
     self,
     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
-    num_shm_buffers: int,
 ) -> ChannelInterface:
     """Generic actor method to allocate an output channel.
 
@@ -71,7 +70,6 @@ def do_allocate_channel(
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
-        num_shm_buffers: The number of shared memory buffer per channel.
 
     Returns:
         The allocated channel.
@@ -86,7 +84,6 @@ def do_allocate_channel(
     output_channel = typ.create_channel(
         self_actor,
         reader_and_node_list,
-        num_shm_buffers=num_shm_buffers,
     )
     return output_channel
 
@@ -514,7 +511,7 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         asyncio_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
-        max_buffered_inputs: Optional[int] = None,
+        max_in_flight_requests: Optional[int] = None,
     ):
         """
         Args:
@@ -543,7 +540,7 @@ class CompiledDAG:
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
-            max_buffered_inputs: The maximum number of in-flight requests that
+            max_in_flight_requests: The maximum number of in-flight requests that
                 are allowed to be buffered. Before submitting more requests,
                 the caller is responsible for calling ray.get to clear finished
                 in-flight requests.
@@ -555,22 +552,6 @@ class CompiledDAG:
 
         ctx = DAGContext.get_current()
 
-        self._dag_id = uuid.uuid4().hex
-        self._execution_timeout: Optional[float] = execution_timeout
-        if self._execution_timeout is None:
-            self._execution_timeout = ctx.execution_timeout
-        self._buffer_size_bytes: Optional[int] = buffer_size_bytes
-        if self._buffer_size_bytes is None:
-            self._buffer_size_bytes = ctx.buffer_size_bytes
-        self._default_type_hint: ChannelOutputType = SharedMemoryType(
-            self._buffer_size_bytes
-        )
-        if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
-            raise ValueError(
-                "`buffer_size_bytes` must be a positive integer, found "
-                f"{self._buffer_size_bytes}"
-            )
-
         self._enable_asyncio: bool = enable_asyncio
         self._fut_queue = asyncio.Queue()
         self._asyncio_max_queue_size: Optional[int] = asyncio_max_queue_size
@@ -578,9 +559,30 @@ class CompiledDAG:
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
             self._max_buffered_results = ctx.max_buffered_results
-        self._max_buffered_inputs = max_buffered_inputs
-        if self._max_buffered_inputs is None:
-            self._max_buffered_inputs = ctx.max_buffered_inputs
+        self._max_in_flight_requests = max_in_flight_requests
+        if self._max_in_flight_requests is None:
+            self._max_in_flight_requests = ctx.max_in_flight_requests
+        self._dag_id = uuid.uuid4().hex
+        self._execution_timeout: Optional[float] = execution_timeout
+        if self._execution_timeout is None:
+            self._execution_timeout = ctx.execution_timeout
+        self._buffer_size_bytes: Optional[int] = buffer_size_bytes
+        if self._buffer_size_bytes is None:
+            self._buffer_size_bytes = ctx.buffer_size_bytes
+
+        self._default_type_hint: ChannelOutputType = SharedMemoryType(
+            self._buffer_size_bytes,
+            # We conservatively set num_shm_buffers to _max_in_flight_requests.
+            # It means that the DAG can be underutilized, but it guarantees there's
+            # no false positive timeouts.
+            num_shm_buffers=self._max_in_flight_requests,
+        )
+        if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
+            raise ValueError(
+                "`buffer_size_bytes` must be a positive integer, found "
+                f"{self._buffer_size_bytes}"
+            )
+
         # Used to ensure that the future returned to the
         # caller corresponds to the correct DAG output. I.e.
         # order of futures added to fut_queue should match the
@@ -1046,7 +1048,6 @@ class CompiledDAG:
                         do_allocate_channel,
                         reader_and_node_list,
                         typ=type_hint,
-                        num_shm_buffers=self._max_buffered_inputs,
                     )
                 )
                 actor_handle = task.dag_node._get_actor_handle()
@@ -1076,7 +1077,6 @@ class CompiledDAG:
                     self,
                     reader_and_node_list,
                     typ=type_hint,
-                    num_shm_buffers=self._max_buffered_inputs,
                 )
             else:
                 assert isinstance(task.dag_node, InputAttributeNode) or isinstance(
@@ -1587,14 +1587,14 @@ class CompiledDAG:
         num_in_flight_requests = (
             self._execution_index - self._max_finished_execution_index
         )
-        if num_in_flight_requests > self._max_buffered_inputs:
-            raise ray.exceptions.RayChannelBufferAtMaxCapacity(
+        if num_in_flight_requests > self._max_in_flight_requests:
+            raise ray.exceptions.RayAdagAtMaxCapacity(
                 f"There are {num_in_flight_requests} in-flight requests which "
                 "is more than the max buffer size of the dag: "
-                f"{self._max_buffered_inputs}. Retrieve the output using "
+                f"{self._max_in_flight_requests}. Retrieve the output using "
                 "ray.get before submitting more requests or increase "
-                "`max_buffered_inputs`. "
-                "`adag.experimental_compile(_max_buffered_inputs=...)`"
+                "`max_in_flight_requests`. "
+                "`adag.experimental_compile(_max_in_flight_requests=...)`"
             )
 
     def _execute_until(
@@ -1781,7 +1781,7 @@ def build_compiled_dag_from_ray_dag(
     enable_asyncio: bool = False,
     asyncio_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
-    max_buffered_inputs: Optional[int] = None,
+    max_in_flight_requests: Optional[int] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         execution_timeout,
@@ -1789,7 +1789,7 @@ def build_compiled_dag_from_ray_dag(
         enable_asyncio,
         asyncio_max_queue_size,
         max_buffered_results,
-        max_buffered_inputs,
+        max_in_flight_requests,
     )
 
     def _build_compiled_dag(node):

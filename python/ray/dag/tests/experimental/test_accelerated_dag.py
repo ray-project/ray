@@ -1405,14 +1405,14 @@ def temporary_reduce_timeout(request):
 def test_buffering_inputs(shutdown_only, temporary_reduce_timeout):
     ray.init()
 
-    MAX_BUFFERED_INPUTS = 10
+    MAX_IN_FLIGHT_REQUESTS = 10
     DAG_EXECUTION_TIME = 0.2
 
     # Timeout should be larger than a single execution time.
     assert temporary_reduce_timeout > DAG_EXECUTION_TIME
     # Entire execution time (iteration * execution) should be higher than
     # the timeout for testing.
-    assert DAG_EXECUTION_TIME * MAX_BUFFERED_INPUTS > temporary_reduce_timeout
+    assert DAG_EXECUTION_TIME * MAX_IN_FLIGHT_REQUESTS > temporary_reduce_timeout
 
     @ray.remote
     class Actor1:
@@ -1424,33 +1424,33 @@ def test_buffering_inputs(shutdown_only, temporary_reduce_timeout):
     actor1 = Actor1.remote()
 
     # Since the timeout is 1 second, if buffering is not working,
-    # it will timeout (0.12s for each dag * MAX_BUFFERED_INPUTS).
+    # it will timeout (0.12s for each dag * MAX_IN_FLIGHT_REQUESTS).
     with InputNode() as input_node:
         dag = actor1.fwd.bind(input_node)
 
     # With buffering it should work.
-    dag = dag.experimental_compile(_max_buffered_inputs=MAX_BUFFERED_INPUTS)
+    dag = dag.experimental_compile(_max_in_flight_requests=MAX_IN_FLIGHT_REQUESTS)
 
     # Test the regular case.
     output_refs = []
-    for i in range(MAX_BUFFERED_INPUTS):
+    for i in range(MAX_IN_FLIGHT_REQUESTS):
         output_refs.append(dag.execute(i))
     for i, ref in enumerate(output_refs):
         assert ray.get(ref) == i
 
     # Test there are more items than max bufcfered inputs.
     output_refs = []
-    for i in range(MAX_BUFFERED_INPUTS):
+    for i in range(MAX_IN_FLIGHT_REQUESTS):
         output_refs.append(dag.execute(i))
-    with pytest.raises(ray.exceptions.RayChannelBufferAtMaxCapacity):
+    with pytest.raises(ray.exceptions.RayAdagAtMaxCapacity):
         dag.execute(1)
-    assert len(output_refs) == MAX_BUFFERED_INPUTS
+    assert len(output_refs) == MAX_IN_FLIGHT_REQUESTS
     for i, ref in enumerate(output_refs):
         assert ray.get(ref) == i
 
     # Make sure it works properly after that.
     output_refs = []
-    for i in range(MAX_BUFFERED_INPUTS):
+    for i in range(MAX_IN_FLIGHT_REQUESTS):
         output_refs.append(dag.execute(i))
     for i, ref in enumerate(output_refs):
         assert ray.get(ref) == i
@@ -1462,31 +1462,31 @@ def test_buffering_inputs(shutdown_only, temporary_reduce_timeout):
         async_dag = actor1.fwd.bind(input_node)
 
     async_dag = async_dag.experimental_compile(
-        _max_buffered_inputs=MAX_BUFFERED_INPUTS,
+        _max_in_flight_requests=MAX_IN_FLIGHT_REQUESTS,
         enable_asyncio=True,
     )
 
     async def main():
         # Test the regular case.
         output_refs = []
-        for i in range(MAX_BUFFERED_INPUTS):
+        for i in range(MAX_IN_FLIGHT_REQUESTS):
             output_refs.append(await async_dag.execute_async(i))
         for i, ref in enumerate(output_refs):
             assert await ref == i
 
         # Test there are more items than max bufcfered inputs.
         output_refs = []
-        for i in range(MAX_BUFFERED_INPUTS):
+        for i in range(MAX_IN_FLIGHT_REQUESTS):
             output_refs.append(await async_dag.execute_async(i))
-        with pytest.raises(ray.exceptions.RayChannelBufferAtMaxCapacity):
+        with pytest.raises(ray.exceptions.RayAdagAtMaxCapacity):
             await async_dag.execute_async(1)
-        assert len(output_refs) == MAX_BUFFERED_INPUTS
+        assert len(output_refs) == MAX_IN_FLIGHT_REQUESTS
         for i, ref in enumerate(output_refs):
             assert await ref == i
 
         # Make sure it works properly after that.
         output_refs = []
-        for i in range(MAX_BUFFERED_INPUTS):
+        for i in range(MAX_IN_FLIGHT_REQUESTS):
             output_refs.append(await async_dag.execute_async(i))
         for i, ref in enumerate(output_refs):
             assert await ref == i

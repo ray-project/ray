@@ -77,7 +77,6 @@ class ChannelOutputType:
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-        num_shm_buffers: Optional[int] = None,
     ) -> "ChannelInterface":
         """
         Instantiate a ChannelInterface class that can be used
@@ -87,7 +86,6 @@ class ChannelOutputType:
             writer: The actor that may write to the channel. None signifies the driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
-            num_shm_buffers: The number of shared memory buffer per channel.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.

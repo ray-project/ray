@@ -117,10 +117,8 @@ class TorchTensorType(ChannelOutputType):
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-        num_shm_buffers: Optional[int] = None,
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
-        assert num_shm_buffers is None
 
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
