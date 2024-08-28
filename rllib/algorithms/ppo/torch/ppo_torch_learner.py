@@ -41,7 +41,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        dtype = fwd_out[Columns.ACTION_DIST_INPUTS].dtype
+        dtype = torch.float32#fwd_out[Columns.ACTION_DIST_INPUTS].dtype
 
         # Possibly apply masking to some sub loss terms and to the total loss term
         # at the end. Masking could be used for RNN-based model (zero padded `batch`)
@@ -106,11 +106,13 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
         # Ignore the value function.
         else:
-            value_fn_out = mean_vf_unclipped_loss = vf_loss_clipped = mean_vf_loss = (
-                torch.tensor(0.0, device=surrogate_loss.device, dtype=dtype)
+            value_fn_out = (
+                mean_vf_unclipped_loss
+            ) = vf_loss_clipped = mean_vf_loss = torch.tensor(
+                0.0, device=surrogate_loss.device, dtype=dtype
             )
-            #mean_vf_unclipped_loss = torch.tensor(0.0, device=surrogate_loss.device, dtype=dtype)
-            #vf_loss_clipped = mean_vf_loss = torch.tensor(0.0, device=surrogate_loss.device, dtype=dtype)
+            # mean_vf_unclipped_loss = torch.tensor(0.0, device=surrogate_loss.device, dtype=dtype)
+            # vf_loss_clipped = mean_vf_loss = torch.tensor(0.0, device=surrogate_loss.device, dtype=dtype)
 
         total_loss = possibly_masked_mean(
             -surrogate_loss

@@ -26,6 +26,7 @@ from typing import Optional
 
 import gymnasium as gym
 import numpy as np
+import torch
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -45,7 +46,60 @@ parser.set_defaults(
 )
 
 
+class Float16GradScaler:
+    def __init__(
+        self,
+        init_scale=1000.0,
+        growth_factor=2.0,
+        backoff_factor=0.5,
+        growth_interval=2000,
+    ):
+        self._scale = init_scale
+        self.growth_factor = growth_factor
+        self.backoff_factor = backoff_factor
+        self.growth_interval = growth_interval
+        self._found_inf_or_nan = False
+        self.steps_since_growth = 0
+
+    def scale(self, loss):
+        return loss * self._scale
+
+    def get_scale(self):
+        return self._scale
+
+    def step(self, optimizer):
+        """Unscale the gradients for all model parameters and apply."""
+        for group in optimizer.param_groups:
+            for param in group["params"]:
+                if param.grad is not None:
+                    param.grad.data.div_(self._scale)
+                    if torch.isinf(param.grad).any() or torch.isnan(param.grad).any():
+                        self._found_inf_or_nan = True
+                        break
+            if self._found_inf_or_nan:
+                break
+        # Only step if no inf/NaN grad found.
+        if not self._found_inf_or_nan:
+            optimizer.step()
+
+    def update(self):
+        # If gradients are found to be inf/NaN, reduce the scale.
+        if self._found_inf_or_nan:
+            self._scale *= self.backoff_factor
+            self.steps_since_growth = 0
+        # Increase the scale after a set number of steps without inf/NaN.
+        else:
+            self.steps_since_growth += 1
+            if self.steps_since_growth >= self.growth_interval:
+                self._scale *= self.growth_factor
+                self.steps_since_growth = 0
+        # Reset inf/NaN flag.
+        self._found_inf_or_nan = False
+
+
 class Float16InitCallback(DefaultCallbacks):
+    """Callback making sure that all RLModules in the algo are `half()`'ed."""
+
     def on_algorithm_init(
         self,
         *,
@@ -68,6 +122,12 @@ class Float16InitCallback(DefaultCallbacks):
 
 
 class Float16Connector(ConnectorV2):
+    """ConnectorV2 piece preprocessing observations and rewards to be float16.
+
+    Note that users can also write a gymnasium.Wrapper for observations and rewards
+    to achieve the same thing.
+    """
+
     def recompute_output_observation_space(
         self,
         input_observation_space,
@@ -98,10 +158,12 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("CartPole-v1")
-        #.framework(torch_loss_scaling=True)
+        # Plug in our custom loss scaler class.
+        .experimental(_torch_grad_scaler_class=Float16GradScaler)
         .env_runners(env_to_module_connector=lambda env: Float16Connector())
         .callbacks(Float16InitCallback)
         .training(
+            grad_clip=None,  # switch off grad clipping entirely as we use our custom scaler
             gamma=0.99,
             lr=0.0003,
             num_sgd_iter=6,

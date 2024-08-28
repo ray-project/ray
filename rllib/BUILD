@@ -2973,7 +2973,7 @@ py_test(
     name = "examples/gpus/float16_training_and_inference",
     main = "examples/gpus/float16_training_and_inference.py",
     tags = ["team:rllib", "exclusive", "examples", "gpu"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/gpus/float16_training_and_inference.py"],
     args = ["--enable-new-api-stack", "--as-test", "--stop-reward=150.0"]
 )
