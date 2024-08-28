@@ -41,15 +41,13 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        dtype = torch.float32#fwd_out[Columns.ACTION_DIST_INPUTS].dtype
-
         # Possibly apply masking to some sub loss terms and to the total loss term
         # at the end. Masking could be used for RNN-based model (zero padded `batch`)
         # and for PPO's batched value function (and bootstrap value) computations,
         # for which we add an additional (artificial) timestep to each episode to
         # simplify the actual computation.
         if Columns.LOSS_MASK in batch:
-            mask = batch[Columns.LOSS_MASK].to(dtype)
+            mask = batch[Columns.LOSS_MASK]
             num_valid = torch.sum(mask)
 
             def possibly_masked_mean(data_):
@@ -69,12 +67,11 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             fwd_out[Columns.ACTION_DIST_INPUTS]
         )
         prev_action_dist = action_dist_class_exploration.from_logits(
-            batch[Columns.ACTION_DIST_INPUTS].to(dtype)
+            batch[Columns.ACTION_DIST_INPUTS]
         )
 
         logp_ratio = torch.exp(
-            curr_action_dist.logp(batch[Columns.ACTIONS])
-            - batch[Columns.ACTION_LOGP].to(dtype)
+            curr_action_dist.logp(batch[Columns.ACTIONS]) - batch[Columns.ACTION_LOGP]
         )
 
         # Only calculate kl loss if necessary (kl-coeff > 0.0).
@@ -82,37 +79,28 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             action_kl = prev_action_dist.kl(curr_action_dist)
             mean_kl_loss = possibly_masked_mean(action_kl)
         else:
-            mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device, dtype=dtype)
+            mean_kl_loss = torch.tensor(0.0, device=logp_ratio.device)
 
         curr_entropy = curr_action_dist.entropy()
         mean_entropy = possibly_masked_mean(curr_entropy)
 
-        advantages = batch[Postprocessing.ADVANTAGES].to(dtype)
         surrogate_loss = torch.min(
-            advantages * logp_ratio,
-            advantages
+            batch[Postprocessing.ADVANTAGES] * logp_ratio,
+            batch[Postprocessing.ADVANTAGES]
             * torch.clamp(logp_ratio, 1 - config.clip_param, 1 + config.clip_param),
         )
 
         # Compute a value function loss.
         if config.use_critic:
             value_fn_out = fwd_out[Columns.VF_PREDS]
-            vf_loss = torch.pow(
-                value_fn_out - batch[Postprocessing.VALUE_TARGETS].to(dtype),
-                2.0,
-            )
+            vf_loss = torch.pow(value_fn_out - batch[Postprocessing.VALUE_TARGETS], 2.0)
             vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)
             mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
             mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
         # Ignore the value function.
         else:
-            value_fn_out = (
-                mean_vf_unclipped_loss
-            ) = vf_loss_clipped = mean_vf_loss = torch.tensor(
-                0.0, device=surrogate_loss.device, dtype=dtype
-            )
-            # mean_vf_unclipped_loss = torch.tensor(0.0, device=surrogate_loss.device, dtype=dtype)
-            # vf_loss_clipped = mean_vf_loss = torch.tensor(0.0, device=surrogate_loss.device, dtype=dtype)
+            z = torch.tensor(0.0, device=surrogate_loss.device)
+            value_fn_out = mean_vf_unclipped_loss = vf_loss_clipped = mean_vf_loss = z
 
         total_loss = possibly_masked_mean(
             -surrogate_loss

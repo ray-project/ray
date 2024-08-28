@@ -1,6 +1,17 @@
-"""Example of using fractional GPUs (< 1.0) per Learner worker.
+"""Example of using float16 precision for training and inference.
 
 This example:
+    - shows how to write a custom callback for RLlib to convert all RLModules
+    (on the EnvRunners and Learners) to float16 precision.
+    - shows how to write a custom env-to-module ConnectorV2 piece to convert all
+    observations and rewards in the collected trajectories to float16 (numpy) arrays.
+    - shows how to write a custom grad scaler for torch that is necessary to stabilize
+    learning with float16 weight matrices and gradients. This custom scaler behaves
+    exactly like the torch built-in `torch.amp.GradScaler` but also works for float16
+    gradients (which the torch built-in one doesn't).
+    - demonstrates how to plug in all the above custom components into an
+    `AlgorithmConfig` instance and start training (and inference) with float16
+    precision.
 
 
 How to run this script
@@ -21,6 +32,21 @@ You can visualize experiment results in ~/ray_results using TensorBoard.
 
 Results to expect
 -----------------
+You should see something similar to the following on your terminal, when running this
+script with the above recommended options:
+
++-----------------------------+------------+-----------------+--------+
+| Trial name                  | status     | loc             |   iter |
+|                             |            |                 |        |
+|-----------------------------+------------+-----------------+--------+
+| PPO_CartPole-v1_437ee_00000 | TERMINATED | 127.0.0.1:81045 |      6 |
++-----------------------------+------------+-----------------+--------+
++------------------+------------------------+------------------------+
+|   total time (s) |    episode_return_mean |  num_episodes_lifetime |
+|                  |                        |                        |
+|------------------+------------------------+------------------------+
+|          71.3123 |                 153.79 |                    358 |
++------------------+------------------------+------------------------+
 """
 from typing import Optional
 
@@ -163,7 +189,10 @@ if __name__ == "__main__":
         .env_runners(env_to_module_connector=lambda env: Float16Connector())
         .callbacks(Float16InitCallback)
         .training(
-            grad_clip=None,  # switch off grad clipping entirely as we use our custom scaler
+            # Switch off grad clipping entirely b/c we use our custom grad scaler with
+            # built-in inf/nan detection (see `step` method of `Float16GradScaler`).
+            grad_clip=None,
+            # Typical CartPole-v1 hyperparams known to work well:
             gamma=0.99,
             lr=0.0003,
             num_sgd_iter=6,
