@@ -437,6 +437,8 @@ class AlgorithmConfig(_Config):
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
         self.input_read_episodes = False
+        self.input_filesystem = None
+        self.input_filesystem_kwargs = {}
         self.input_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
         self.input_spaces_jsonable = True
         self.map_batches_kwargs = {}
@@ -2403,6 +2405,8 @@ class AlgorithmConfig(_Config):
         input_read_method_kwargs: Optional[Dict] = NotProvided,
         input_read_schema: Optional[Dict[str, str]] = NotProvided,
         input_read_episodes: Optional[bool] = NotProvided,
+        input_filesystem: Optional[str] = NotProvided,
+        input_filesystem_kwargs: Optional[Dict] = NotProvided,
         input_compress_columns: Optional[List[str]] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
@@ -2466,6 +2470,13 @@ class AlgorithmConfig(_Config):
                 unsure when to use the data or in which RL framework. The default is
                 to read column data, i.e. `False`. See also `output_write_episodes`
                 to define the output data format when recording.
+            input_filesystem: A cloud filesystem to handle access to cloud storage when
+                reading experiences. Should be either `gcs` for Google Cloud Storage,
+                `s3` for AWS S3 buckets, or `abs` for Azure Blob Storage.
+            input_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
+                given by `input_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
+                `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
+                ABS filesystem arguments.
             input_compress_columns: What input columns are compressed with LZ4 in the
                 input data. If data is stored in `RLlib`'s `SingleAgentEpisode` (
                 `MultiAgentEpisode` not supported, yet). Note,
@@ -2565,6 +2576,10 @@ class AlgorithmConfig(_Config):
             self.input_read_schema = input_read_schema
         if input_read_episodes is not NotProvided:
             self.input_read_episodes = input_read_episodes
+        if input_filesystem is not NotProvided:
+            self.input_filesystem = input_filesystem
+        if input_filesystem_kwargs is not NotProvided:
+            self.input_filesystem_kwargs = input_filesystem_kwargs
         if input_compress_columns is not NotProvided:
             self.input_compress_columns = input_compress_columns
         if map_batches_kwargs is not NotProvided:

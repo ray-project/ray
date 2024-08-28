@@ -66,8 +66,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
             else:
                 raise ValueError(
                     f"Unknown filesystem: {self.filesystem}. Filesystems can be "
-                    "'gcs' for GCS, "
-                    "'s3' for S3, or 'abs'"
+                    "'gcs' for GCS, 's3' for S3, or 'abs'"
                 )
             # Add the filesystem object to the write method kwargs.
             self.output_write_method_kwargs.update(

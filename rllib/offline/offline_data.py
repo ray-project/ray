@@ -30,6 +30,38 @@ class OfflineData:
         self.data_read_method_kwargs = (
             self.default_read_method_kwargs | config.input_read_method_kwargs
         )
+
+        # If a specific filesystem is given, set it up. Note, this could
+        # be `gcsfs` for GCS, `pyarrow` for S3 or `adlfs` for Azure Blob Storage.
+        # this filesystem is specifically needed, if a session has to be created
+        # with the cloud provider.
+        if self.filesystem:
+            if self.filesystem == "gcs":
+                import gcsfs
+
+                self.filesystem_object = gcsfs.GCSFileSystem(**self.filesystem_kwargs)
+            elif self.filesystem == "s3":
+                from pyarrow import fs
+
+                self.filesystem_object = fs.S3FileSystem(**self.filesystem_kwargs)
+            elif self.filesystem == "abs":
+                import adlfs
+
+                self.filesystem_object = adlfs.AzureBlobFileSystem(
+                    **self.filesystem_kwargs
+                )
+            else:
+                raise ValueError(
+                    f"Unknown filesystem: {self.filesystem}. Filesystems can be "
+                    "'gcs' for GCS, 's3' for S3, or 'abs'"
+                )
+            # Add the filesystem object to the write method kwargs.
+            self.data_read_method_kwargs.update(
+                {
+                    "filesystem": self.filesystem_object,
+                }
+            )
+
         try:
             # Load the dataset.
             self.data = getattr(ray.data, self.data_read_method)(
