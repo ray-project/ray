@@ -854,7 +854,7 @@ class MetricsLogger:
 
             logger = MetricsLogger()
             logger.log_value("a", 1.0)
-            check(logger.peek("a", 1.0)
+            check(logger.peek("a"), 1.0)
             logger.reset()
             check(logger.reduce(), {})
         """
