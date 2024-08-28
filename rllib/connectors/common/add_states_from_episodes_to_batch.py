@@ -1,6 +1,6 @@
 from collections import deque
 import math
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -13,7 +13,7 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import batch, BatchedNdArray
+from ray.rllib.utils.spaces.space_utils import batch as batch_fn, BatchedNdArray
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -95,9 +95,9 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         connector = AddStatesFromEpisodesToBatch(as_learner_connector=False)
 
         # Call the connector.
-        output_data = connector(
+        output_batch = connector(
             rl_module=rl_module,
-            data={},
+            batch={},
             episodes=[episode],
             shared_data={},
         )
@@ -105,7 +105,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # plus the one state out found in the episode in a "per-episode organized"
         # fashion.
         check(
-            output_data[Columns.STATE_IN],
+            output_batch[Columns.STATE_IN],
             {
                 (episode.id_,): [rl_module_init_state],
             },
@@ -127,9 +127,9 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         )
 
         # Call the connector.
-        output_data = connector(
+        output_batch = connector(
             rl_module=rl_module,
-            data={},
+            batch={},
             episodes=[episode],
             shared_data={},
         )
@@ -137,7 +137,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # STATE_OUT, NOT the RLModule's initial state in a "per-episode organized"
         # fashion.
         check(
-            output_data[Columns.STATE_IN],
+            output_batch[Columns.STATE_IN],
             {
                 # Expect the episode's last STATE_OUT.
                 (episode.id_,): [-1.0],
@@ -154,14 +154,14 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         )
 
         # Call the connector.
-        output_data = connector(
+        output_batch = connector(
             rl_module=rl_module,
-            data={},
+            batch={},
             episodes=[episode.finalize()],
             shared_data={},
         )
         check(
-            output_data[Columns.STATE_IN],
+            output_batch[Columns.STATE_IN],
             {
                 # Expect initial module state + every 2nd STATE_OUT from episode, but
                 # not the very last one (just like the very last observation, this data
@@ -211,15 +211,15 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
         # If not stateful OR STATE_IN already in data, early out.
-        if not rl_module.is_stateful() or Columns.STATE_IN in data:
-            return data
+        if not rl_module.is_stateful() or Columns.STATE_IN in batch:
+            return batch
 
         # Make all inputs (other than STATE_IN) have an additional T-axis.
         # Since data has not been batched yet (we are still operating on lists in the
@@ -228,9 +228,9 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # Also, let module-to-env pipeline know that we had added a single timestep
         # time rank to the data (to remove it again).
         if not self._as_learner_connector:
-            for column in data.keys():
+            for column in batch.keys():
                 self.foreach_batch_item_change_in_place(
-                    batch=data,
+                    batch=batch,
                     column=column,
                     func=lambda item, eps_id, aid, mid: (
                         item
@@ -249,7 +249,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         else:
             # Before adding STATE_IN to the `data`, zero-pad existing data and batch
             # into max_seq_len chunks.
-            for column, column_data in data.copy().items():
+            for column, column_data in batch.copy().items():
                 # Do not zero-pad INFOS column.
                 if column == Columns.INFOS:
                     continue
@@ -317,7 +317,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 # state_outs.shape=(T,[state-dim])  T=episode len
                 state_outs = sa_episode.get_extra_model_outputs(key=Columns.STATE_OUT)
                 self.add_n_batch_items(
-                    batch=data,
+                    batch=batch,
                     column=Columns.STATE_IN,
                     # items_to_add.shape=(B,[state-dim])  # B=episode len // max_seq_len
                     items_to_add=tree.map_structure(
@@ -340,7 +340,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     len(sa_episode), self.max_seq_len
                 )
                 self.add_n_batch_items(
-                    batch=data,
+                    batch=batch,
                     column=Columns.SEQ_LENS,
                     items_to_add=seq_lens,
                     num_items=len(seq_lens),
@@ -348,7 +348,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 )
                 if not shared_data.get("_added_loss_mask_for_valid_episode_ts"):
                     self.add_n_batch_items(
-                        batch=data,
+                        batch=batch,
                         column=Columns.LOSS_MASK,
                         items_to_add=mask,
                         num_items=len(mask),
@@ -375,13 +375,13 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         key=Columns.STATE_OUT, indices=-1
                     )
                 self.add_batch_item(
-                    data,
+                    batch,
                     Columns.STATE_IN,
                     item_to_add=state,
                     single_agent_episode=sa_episode,
                 )
 
-        return data
+        return batch
 
 
 def split_and_zero_pad_list(item_list, T: int):
@@ -417,7 +417,7 @@ def split_and_zero_pad_list(item_list, T: int):
 
         if current_t == T:
             ret.append(
-                batch(
+                batch_fn(
                     current_time_row,
                     individual_items_already_have_batch_dim="auto",
                 )
@@ -428,7 +428,7 @@ def split_and_zero_pad_list(item_list, T: int):
     if current_t > 0 and current_t < T:
         current_time_row.extend([zero_element] * (T - current_t))
         ret.append(
-            batch(current_time_row, individual_items_already_have_batch_dim="auto")
+            batch_fn(current_time_row, individual_items_already_have_batch_dim="auto")
         )
 
     return ret
