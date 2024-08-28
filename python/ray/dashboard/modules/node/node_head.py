@@ -188,7 +188,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             batch_gcs_node_info_to_dict,
             all_node_info,
         )
-        yield from all_node_dicts
+        for node in all_node_dicts:
+            yield node
 
         while True:
             try:
@@ -200,7 +201,8 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                     batch_updated_pairs_to_dict,
                     published,
                 )
-                yield from updated_dicts
+                for node in updated_dicts:
+                    yield node
             except Exception:
                 logger.exception("Failed handling updated nodes.")
 
