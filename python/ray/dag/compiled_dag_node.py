@@ -1588,16 +1588,17 @@ class CompiledDAG:
                 self._max_execution_index += 1
                 start_time = time.monotonic()
 
+                # Fetch results from each output channel up to execution_index and store
+                # them separately to enable individual retrieval
                 for chan, fetcher in self._dag_output_fetchers.items():
                     if self._max_execution_index not in self._result_buffer:
                         self._result_buffer[self._max_execution_index] = {}
                     self._result_buffer[self._max_execution_index][chan] = fetcher.read(
                         timeout
                     )
-
-                if timeout != -1:
-                    timeout -= time.monotonic() - start_time
-                    timeout = max(timeout, 0)
+                    if timeout != -1:
+                        timeout -= time.monotonic() - start_time
+                        timeout = max(timeout, 0)
 
         # CompiledDAGRef guarantees that the same execution index will not
         # be requested multiple times

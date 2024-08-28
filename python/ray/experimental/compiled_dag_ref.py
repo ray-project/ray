@@ -45,7 +45,7 @@ class CompiledDAGRef:
     def __init__(
         self,
         dag: "ray.experimental.CompiledDAG",
-        channel,
+        channel: "ray.experimental.channel.common.ChannelInterface",
         execution_index: int,
     ):
         """
