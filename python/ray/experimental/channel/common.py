@@ -366,6 +366,18 @@ class WriterInterface:
     def __init__(
         self, output_channels: List[ChannelInterface], output_idxs: List[Optional[int]]
     ):
+        """
+        Initialize the writer.
+
+        Args:
+            output_channels: The output channels to write to.
+            output_idxs: The indices of the values to write to each channel.
+                It is the same length as output_channels. If an index is None,
+                the entire value is written. Otherwise, the value at the index
+                of the tuple is written.
+        """
+
+        assert len(output_channels) == len(output_idxs)
         self._output_channels = output_channels
         self._output_idxs = output_idxs
         self._closed = False
@@ -402,6 +414,13 @@ class SynchronousWriter(WriterInterface):
             channel.ensure_registered_as_writer()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
+        if len(self._output_channels) > 1:
+            assert isinstance(
+                val, tuple
+            ), f"Expect a tuple for {len(self._output_channels)} outputs, got {type(val)}"
+            assert len(val) == len(
+                self._output_channels
+            ), f"Expect {len(self._output_channels)} outputs, got {len(val)} outputs"
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
             if idx is not None:
