@@ -56,6 +56,7 @@ import torch
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
@@ -195,7 +196,7 @@ class Float16GradScaler:
         self._found_inf_or_nan = False
 
 
-class Float16TorchLearner(TorchLearner):
+class Float16TorchLearner(PPOTorchLearner):
     @override(TorchLearner)
     def configure_optimizers_for_module(self, module_id, config):
         module = self._module[module_id]
