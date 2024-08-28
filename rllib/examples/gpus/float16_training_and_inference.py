@@ -226,6 +226,9 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("CartPole-v1")
+        # Plug in our custom callback (on_algorithm_init) to make all RLModules
+        # float16 models.
+        .callbacks(MakeAllRLModulesFloat16)
         # Plug in our custom loss scaler class to stabilize gradient computations
         # (by scaling the loss, then unscaling the gradients before applying them).
         # This is using the built-in, experimental feature of TorchLearner.
@@ -233,9 +236,6 @@ if __name__ == "__main__":
         # Plug in our custom env-to-module ConnectorV2 piece to convert all observations
         # and reward in the episodes (permanently) to float16.
         .env_runners(env_to_module_connector=lambda env: WriteObsAndRewardsAsFloat16())
-        # Plug in our custom callback (on_algorithm_init) to make all RLModules
-        # float16 models.
-        .callbacks(MakeAllRLModulesFloat16)
         .training(
             # Plug in our custom TorchLearner (using a much larger, stabilizing epsilon
             # on the Adam optimizer).

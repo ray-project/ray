@@ -81,7 +81,7 @@ parser.set_defaults(
 )
 
 
-class Float16InitCallback(DefaultCallbacks):
+class MakeEnvRunnerRLModulesFloat16(DefaultCallbacks):
     """Callback making sure that all RLModules in the algo are `half()`'ed."""
 
     def on_algorithm_init(
@@ -151,11 +151,17 @@ if __name__ == "__main__":
     base_config = (
         (PPOConfig().environment("CartPole-v1"))
         .env_runners(env_to_module_connector=lambda env: Float16Connector())
+        # Plug in our custom callback (on_algorithm_init) to make EnvRunner RLModules
+        # float16 models.
+        .callbacks(MakeEnvRunnerRLModulesFloat16)
+        # Plug in the torch built-int loss scaler class to stabilize gradient
+        # computations (by scaling the loss, then unscaling the gradients before
+        # applying them). This is using the built-in, experimental feature of
+        # TorchLearner.
         .experimental(_torch_grad_scaler_class=torch.cuda.amp.GradScaler)
-        .callbacks(Float16InitCallback)
-        # Activate mixed-precision training for our torch RLModule through the custom
-        # Learner class.
         .training(
+            # Plug in the custom Learner class to activate mixed-precision training for
+            # our torch RLModule (uses `torch.amp.autocast()`).
             learner_class=PPOTorchMixedPrecisionLearner,
             # Switch off grad clipping entirely b/c we use our custom grad scaler with
             # built-in inf/nan detection (see `step` method of `Float16GradScaler`).
@@ -167,8 +173,6 @@ if __name__ == "__main__":
             vf_loss_coeff=0.01,
             use_kl_loss=True,
         )
-        # Use a large network to demonstrate the advantage of mixed-precision training.
-        # .rl_module(model_config_dict={"fcnet_hiddens": [2048, 2048, 2048, 2048]})
     )
 
     run_rllib_example_script_experiment(base_config, args)
