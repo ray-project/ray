@@ -88,7 +88,6 @@ class ChannelOutputType:
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
             num_shm_buffers: The number of shared memory buffer per channel.
-                It is currently ignored for nccl channel.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.

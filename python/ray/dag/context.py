@@ -23,7 +23,7 @@ DEFAULT_MAX_BUFFERED_RESULTS = int(os.environ.get("RAY_DAG_max_buffered_results"
 # output. The CPU memory overhead per shared memory channel is
 # DEFAULT_BUFFER_SIZE_BYTES * DEFAULT_MAX_BUFFERED_INPUTS even when channel is unused.
 # There's no additional memory impact on Nccl channels.
-DEFAULT_MAX_BUFFERED_INPUTS = int(os.environ.get("RAY_DAG_max_buffered_results", 10))
+DEFAULT_MAX_BUFFERED_INPUTS = int(os.environ.get("RAY_DAG_max_buffered_inputs", 10))
 
 
 @DeveloperAPI

@@ -111,7 +111,6 @@ class SharedMemoryType(ChannelOutputType):
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
             num_shm_buffers: The number of shared memory buffer per channel.
-                It is currently ignored for nccl channel.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
@@ -129,7 +128,6 @@ class SharedMemoryType(ChannelOutputType):
                 cpu_data_typ = SharedMemoryType(
                     buffer_size_bytes=self.buffer_size_bytes
                 )
-                # TODO(sang): We don't support buffers for nccl channel now.
                 return NestedTorchTensorNcclChannel(
                     writer,
                     reader_and_node_list,
@@ -486,12 +484,15 @@ class Channel(ChannelInterface):
 
 @DeveloperAPI
 class BufferedSharedMemoryChannel(ChannelInterface):
-    """A Channel that allow to buffer inputs.
+    """A Channel that allows to buffer inputs.
 
-    The write/read APIs are non-blocking as long as the buffers are not
-    exhausted. The caller of the API should guarantee to consume buffers
-    before they are exhausted, otherwise write/read raises
-    `RayChannelTimeoutError`.
+    If the buffer is full for writes or empty for reads and the operation
+    blocks longer than configured timeouts, RayChannelTimeoutError will be
+    raised.
+
+    As long as the buffer is not full, read/write APIs are non-blocking.
+    The caller of the API should guarantee to consume buffers before they are
+    exhausted.
     """
 
     def __init__(
@@ -505,7 +506,9 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._channels = [
             Channel(writer, reader_and_node_list, typ) for _ in range(num_shm_buffers)
         ]
+        # The next index to write from self._channels.
         self._next_write_index = 0
+        # The next index to read from self._channels.
         self._next_read_index = 0
 
     def ensure_registered_as_writer(self):
@@ -523,18 +526,33 @@ class BufferedSharedMemoryChannel(ChannelInterface):
             chan.ensure_registered_as_reader()
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
+        """Write a value to a channel.
+
+        If the next buffer is available, it returns immediately. If the next
+        buffer is still in use, it blocks until a buffer is available to write.
+        If a buffer is not available within timeout, it raises RayChannelTimeoutError.
+        """
+        # A single channel is not supposed to read and write at the same time.
+        assert self._next_read_index == 0
         self._channels[self._next_write_index].write(value, timeout)
         self._next_write_index += 1
         self._next_write_index %= self._num_shm_buffers
 
     def read(self, timeout: Optional[float] = None) -> Any:
+        """Read a value to a channel.
+
+        If the next buffer is available, it returns immediately. If the next
+        buffer is still in use, it blocks until a buffer is available to read.
+        If a buffer is not available within timeout, it raises RayChannelTimeoutError.
+        """
+        # A single channel is not supposed to read and write at the same time.
+        assert self._next_write_index == 0
         output = self._channels[self._next_read_index].read(timeout)
         self._next_read_index += 1
         self._next_read_index %= self._num_shm_buffers
         return output
 
     def close(self) -> None:
-        # self.queue.put(((_CloseSignal(), -1)))
         for chan in self._channels:
             chan.close()
 
