@@ -5,7 +5,7 @@ import os
 import time
 from collections import deque
 from itertools import chain
-from typing import AsyncGenerator, Dict, List
+from typing import AsyncGenerator, Dict, List, Tuple
 
 import aiohttp.web
 import grpc
@@ -34,20 +34,29 @@ from ray.core.generated import (
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.node import node_consts
-from ray.dashboard.modules.node.node_consts import FREQUENT_UPDATE_TIMEOUT_SECONDS
+from ray.dashboard.modules.node.node_consts import (
+    RAY_NODE_HEAD_HEAD_NODE_REGISTRATION_TIMEOUT,
+)
 from ray.dashboard.utils import async_loop_forever
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
-# This is consistent with gcs_node_manager.cc
-MAX_NODES_TO_CACHE = int(os.environ.get("RAY_maximum_gcs_dead_node_cached_count", 1000))
 
-
-def gcs_node_info_to_dict(message):
+def gcs_node_info_to_dict(message: gcs_pb2.GcsNodeInfo) -> dict:
     return dashboard_utils.message_to_dict(
         message, {"nodeId"}, always_print_fields_with_no_presence=True
     )
+
+
+def batch_gcs_node_info_to_dict(messages: List[gcs_pb2.GcsNodeInfo]) -> List[dict]:
+    return [gcs_node_info_to_dict(message) for message in messages]
+
+
+def batch_updated_pairs_to_dict(
+    messages: List[Tuple[bytes, gcs_pb2.GcsNodeInfo]]
+) -> List[dict]:
+    return [gcs_node_info_to_dict(node_info) for node_id_bytes, node_info in messages]
 
 
 def node_stats_to_dict(message):
@@ -130,7 +139,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
-        # Queue of dead nodes to be removed, up to MAX_NODES_TO_CACHE
+        # Queue of dead nodes to be removed, up to MAX_DEAD_NODES_TO_CACHE
         self._dead_node_queue = deque()
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._gcs_address = dashboard_head.gcs_address
@@ -174,31 +183,26 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # Get all node info from GCS. For TOCTOU, it happens after the subscription.
         all_node_info = await self.get_all_node_info(timeout=GCS_RPC_TIMEOUT_SECONDS)
 
-        def convert(all_node_info) -> List[dict]:
-            return [
-                gcs_node_info_to_dict(node_info) for node_info in all_node_info.values()
-            ]
-
-        all_node_dict = await get_or_create_event_loop().run_in_executor(
-            self._dashboard_head._thread_pool_executor, convert, all_node_info
+        all_node_dicts = await get_or_create_event_loop().run_in_executor(
+            self._dashboard_head._thread_pool_executor,
+            batch_gcs_node_info_to_dict,
+            all_node_info,
         )
-        for node in all_node_dict:
-            yield node
+        yield from all_node_dicts
 
         while True:
             try:
-                published = await subscriber.poll(batch_size=200)
-                for node_id, node_info in published:
-                    if node_id is not None:
-                        yield await get_or_create_event_loop().run_in_executor(
-                            self._dashboard_head._thread_pool_executor,
-                            gcs_node_info_to_dict,
-                            node_info,
-                        )
-                    # yield control to APIs
-                    await asyncio.sleep(0)
+                published = await subscriber.poll(
+                    batch_size=node_consts.RAY_NODE_HEAD_SUBSCRIBER_POLL_SIZE
+                )
+                updated_dicts = await get_or_create_event_loop().run_in_executor(
+                    self._dashboard_head._thread_pool_executor,
+                    batch_updated_pairs_to_dict,
+                    (node_info for _, node_info in published),
+                )
+                yield from updated_dicts
             except Exception:
-                logger.exception("Error updating nodes from subscriber.")
+                logger.exception("Failed handling updated nodes.")
 
     async def _update_node(self, node: dict):
         node_id = node["nodeId"]  # hex
@@ -216,15 +220,18 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             )
         assert node["state"] in ["ALIVE", "DEAD"]
         is_alive = node["state"] == "ALIVE"
-        # prepare agents for alive node, and pop for dead node
+        # Prepare agents for alive node, and pop agents for dead node.
         if is_alive:
             if node_id not in DataSource.agents:
+                # Agent port is read from internal KV. Problem is it's not present when
+                # we receive this update; it's only present after agent.py starts
+                # listening. So we make an async task that periodically polls internal
+                # KV.
                 asyncio.create_task(self._update_agent(node_id))
         else:
-            # not alive
             DataSource.agents.pop(node_id, None)
             self._dead_node_queue.append(node_id)
-            if len(self._dead_node_queue) > MAX_NODES_TO_CACHE:
+            if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
                 DataSource.nodes.pop(self._dead_node_queue.popleft(), None)
         DataSource.nodes[node_id] = node
 
@@ -248,12 +255,13 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             if agent_port:
                 DataSource.agents[node_id] = json.loads(agent_port)
                 return
-            await asyncio.sleep(1)
+            await asyncio.sleep(node_consts.RAY_NODE_HEAD_AGENT_POLL_INTERVAL_S)
 
     async def _update_nodes(self):
         """
         Subscribe to node updates and update the internal states. If the head node is
-        not registered after FREQUENT_UPDATE_TIMEOUT_SECONDS, it logs a warning once.
+        not registered after RAY_NODE_HEAD_HEAD_NODE_REGISTRATION_TIMEOUT, it logs a
+        warning only once.
         """
         warning_shown = False
         async for node in self._subscribe_nodes():
@@ -263,11 +271,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 if (
                     not warning_shown
                     and (time.time() - self._module_start_time)
-                    > FREQUENT_UPDATE_TIMEOUT_SECONDS
+                    > RAY_NODE_HEAD_HEAD_NODE_REGISTRATION_TIMEOUT
                 ):
                     logger.warning(
                         "Head node is not registered even after "
-                        f"{FREQUENT_UPDATE_TIMEOUT_SECONDS} seconds. "
+                        f"{RAY_NODE_HEAD_HEAD_NODE_REGISTRATION_TIMEOUT} seconds. "
                         "The API server might not work correctly. Please "
                         "report a Github issue. Internal states :"
                         f"{self.get_internal_states()}"

@@ -17,10 +17,11 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.cluster_utils import Cluster
-from ray.dashboard.modules.node.node_consts import UPDATE_NODES_INTERVAL_SECONDS
 from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
+
+UPDATE_NODES_INTERVAL_SECONDS = 5
 
 
 def test_nodes_update(enable_test_module, ray_start_with_dashboard):
@@ -104,7 +105,6 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
             assert detail["raylet"]["isHeadNode"] is True
             assert "raylet" in detail["cmdline"][0]
             assert len(detail["workers"]) >= 2
-            print(detail)
             assert len(detail["actors"]) == 2, detail["actors"]
 
             actor_worker_pids = set()

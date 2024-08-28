@@ -15,6 +15,7 @@ except ImportError:
 import ray._private.gcs_utils as gcs_utils
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated import gcs_service_pb2
+from ray.core.generated import gcs_pb2
 from ray.core.generated import common_pb2
 from ray.core.generated import pubsub_pb2
 
@@ -253,11 +254,13 @@ class GcsAioActorSubscriber(_AioSubscriber):
     def queue_size(self):
         return len(self._queue)
 
-    async def poll(self, timeout=None, batch_size=500) -> List[Tuple[bytes, str]]:
+    async def poll(
+        self, timeout=None, batch_size=500
+    ) -> List[Tuple[bytes, gcs_pb2.ActorTableData]]:
         """Polls for new actor message.
 
         Returns:
-            A tuple of binary actor ID and actor table data.
+            A list of tuples of binary actor ID and actor table data.
         """
         await self._poll(timeout=timeout)
         return self._pop_actors(self._queue, batch_size=batch_size)
@@ -284,11 +287,13 @@ class GcsAioNodeInfoSubscriber(_AioSubscriber):
     ):
         super().__init__(pubsub_pb2.GCS_NODE_INFO_CHANNEL, worker_id, address, channel)
 
-    async def poll(self, timeout=None, batch_size=100) -> Tuple[bytes, str]:
-        """Polls for new resource usage message.
+    async def poll(
+        self, timeout=None, batch_size=100
+    ) -> List[Tuple[bytes, gcs_pb2.GcsNodeInfo]]:
+        """Polls for new node info message.
 
         Returns:
-            A tuple of string reporter ID and resource usage json string.
+            A list of tuples of (node_id, GcsNodeInfo).
         """
         await self._poll(timeout=timeout)
         return self._pop_node_infos(self._queue, batch_size=batch_size)
