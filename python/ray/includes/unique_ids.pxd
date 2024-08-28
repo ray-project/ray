@@ -49,7 +49,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CActorClassID FromBinary(const c_string &binary)
 
         @staticmethod
-        CActorClassID FromHex(const c_string &binary)
+        CActorClassID FromHex(const c_string &hex)
 
     cdef cppclass CActorID "ray::ActorID"(CBaseID[CActorID]):
 
