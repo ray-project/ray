@@ -3,11 +3,14 @@
 # This script is for users to build docker images locally. It is most useful for users wishing to edit the
 # base-deps, or ray images. This script is *not* tested.
 
+VERSION="2.35.0"
 GPU=""
-BASE_IMAGE="ubuntu:22.04"
-WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
-CPP_WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray_cpp-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
-PYTHON_VERSION="3.9"
+BASE_IMAGE="nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04"
+#WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
+#CPP_WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray_cpp-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
+WHEEL_URL="https://files.pythonhosted.org/packages/9a/88/9bbad3defb451113002eac56ed391b9fe943311fead0db5340cb7c30ef2f/ray-2.35.0-cp310-cp310-manylinux2014_x86_64.whl"
+CPP_WHEEL_URL="https://files.pythonhosted.org/packages/63/a0/e6401cba6d98f227901d66cf44a3d4faff4151547e07ac7a39a65557dcc7/ray_cpp-2.35.0-cp310-cp310-manylinux2014_x86_64.whl"
+PYTHON_VERSION="3.10"
 
 BUILD_ARGS=()
 
@@ -15,7 +18,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --gpu)
             GPU="-gpu"
-            BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
+            BASE_IMAGE="nvidia/cuda:12.4.1-cudnn-devel-ubuntu22.04"
         ;;
         --base-image)
             # Override for the base image.
@@ -55,15 +58,16 @@ if [[ "$OUTPUT_SHA" != "YES" ]]; then
 fi
 
 BUILD_CMD=(
-    docker build "${BUILD_ARGS[@]}"
-    --build-arg BASE_IMAG="$BASE_IMAGE"
+    docker buildx build "${BUILD_ARGS[@]}"
+    --build-arg BASE_IMAGE="$BASE_IMAGE"
     --build-arg PYTHON_VERSION="${PYTHON_VERSION}"
-    -t "rayproject/base-deps:dev$GPU" "docker/base-deps"
+    --platform linux/amd64
+    -t "sisilabridge/base-deps:$VERSION$GPU" --push "docker/base-deps"
 )
 
 if [[ "$OUTPUT_SHA" == "YES" ]]; then
     IMAGE_SHA="$("${BUILD_CMD[@]}")"
-    echo "rayproject/base-deps:dev$GPU SHA:$IMAGE_SHA"
+    echo "sisilabridge/base-deps:$VERSION$GPU SHA:$IMAGE_SHA"
 else
     "${BUILD_CMD[@]}"
 fi
@@ -78,21 +82,40 @@ RAY_BUILD_DIR="$(mktemp -d)"
 mkdir -p "$RAY_BUILD_DIR/.whl"
 wget --quiet "$WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
 wget --quiet "$CPP_WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
+#cp ./.whl/* "$RAY_BUILD_DIR/.whl/" 
+echo "NOT COPYING ./.whl to ${RAY_BUILD_DIR}/.whl/"
+ls "$RAY_BUILD_DIR/.whl/"
 cp python/requirements_compiled.txt "$RAY_BUILD_DIR"
 cp docker/ray/Dockerfile "$RAY_BUILD_DIR"
 
 WHEEL="$(basename "$WHEEL_DIR"/.whl/ray-*.whl)"
 
 BUILD_CMD=(
-    docker build "${BUILD_ARGS[@]}"
-    --build-arg FULL_BASE_IMAGE="rayproject/base-deps:dev$GPU"
+    docker buildx build "${BUILD_ARGS[@]}"
+    --build-arg FULL_BASE_IMAGE="sisilabridge/base-deps:$VERSION$GPU"
     --build-arg WHEEL_PATH=".whl/${WHEEL}"
-    -t "rayproject/ray:dev$GPU" "$RAY_BUILD_DIR"
+    --platform linux/amd64
+    -t "sisilabridge/ray:$VERSION$GPU" --push "$RAY_BUILD_DIR"
 )
 
 if [[ "$OUTPUT_SHA" == "YES" ]]; then
     IMAGE_SHA="$("${BUILD_CMD[@]}")"
-    echo "rayproject/ray:dev$GPU SHA:$IMAGE_SHA"
+    echo "sisilabridge/ray:$VERSION$GPU SHA:$IMAGE_SHA"
+else
+    "${BUILD_CMD[@]}"
+fi
+
+echo "=== Building the ray-ml image ==="
+BUILD_CMD=(
+    docker buildx build "${BUILD_ARGS[@]}"
+    --build-arg FULL_BASE_IMAGE="sisilabridge/ray:$VERSION$GPU"
+    --platform linux/amd64
+    -t "sisilabridge/ray-ml:$VERSION$GPU" --push -f docker/ray-ml/Dockerfile .
+)
+
+if [[ "$OUTPUT_SHA" == "YES" ]]; then
+    IMAGE_SHA="$("${BUILD_CMD[@]}")"
+    echo "sisilabridge/ray-ml:$VERSION$GPU SHA:$IMAGE_SHA"
 else
     "${BUILD_CMD[@]}"
 fi
