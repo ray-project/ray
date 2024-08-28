@@ -49,11 +49,13 @@ def _gcs_node_info_to_dict(message: gcs_pb2.GcsNodeInfo) -> dict:
     )
 
 
-def _batch_gcs_node_info_to_dict(messages: List[gcs_pb2.GcsNodeInfo]) -> List[dict]:
-    return [_gcs_node_info_to_dict(message) for message in messages]
+def _map_batch_node_info_to_dict(
+    messages: Dict[NodeID, gcs_pb2.GcsNodeInfo]
+) -> List[dict]:
+    return [_gcs_node_info_to_dict(message) for message in messages.values()]
 
 
-def _batch_updated_pairs_to_dict(
+def _list_gcs_node_info_to_dict(
     messages: List[Tuple[bytes, gcs_pb2.GcsNodeInfo]]
 ) -> List[dict]:
     return [_gcs_node_info_to_dict(node_info) for _, node_info in messages]
@@ -184,11 +186,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # it happens after the subscription. That is, an update between
         # get-all-node-info and the subscription is not missed.
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        all_node_info = await self.get_all_node_info(timeout=-1)
+        all_node_info = await self.get_all_node_info(timeout=None)
 
         all_node_dicts = await get_or_create_event_loop().run_in_executor(
             self._dashboard_head._thread_pool_executor,
-            _batch_gcs_node_info_to_dict,
+            _map_batch_node_info_to_dict,
             all_node_info,
         )
         for node in all_node_dicts:
@@ -201,7 +203,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 )
                 updated_dicts = await get_or_create_event_loop().run_in_executor(
                     self._dashboard_head._thread_pool_executor,
-                    _batch_updated_pairs_to_dict,
+                    _list_gcs_node_info_to_dict,
                     published,
                 )
                 for node in updated_dicts:
@@ -252,7 +254,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
                 agent_port = await self._gcs_aio_client.internal_kv_get(
                     key,
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=-1,
+                    timeout=None,
                 )
                 # The node may be dead already. Only update DataSource.agents if the
                 # node is still alive.
