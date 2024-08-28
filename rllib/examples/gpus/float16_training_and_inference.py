@@ -204,17 +204,19 @@ class LargeEpsAdamTorchLearner(TorchLearner):
     @override(TorchLearner)
     def configure_optimizers_for_module(self, module_id, config):
         """Registers an Adam optimizer with a larg epsilon under the given module_id."""
-        module = self._module[module_id]
+        params = list(self._module[module_id].parameters())
 
-        params = self.get_parameters(module)
-        # Create an Adam optimizer with a different eps for better float16 stability.
-        optimizer = torch.optim.Adam(params, eps=1e-4)
-
-        # Register the created optimizer (under the default optimizer name).
+        # Register one Adam optimizer (under the default optimizer name:
+        # DEFAULT_OPTIMIZER) for the `module_id`.
         self.register_optimizer(
             module_id=module_id,
-            optimizer=optimizer,
+            # Create an Adam optimizer with a different eps for better float16
+            # stability.
+            optimizer=torch.optim.Adam(params, eps=1e-4),
             params=params,
+            # Let RLlib handle the learning rate/learning rate schedule.
+            # You can leave `lr_or_lr_schedule` at None, but then you should
+            # pass a fixed learning rate into the Adam constructor above.
             lr_or_lr_schedule=config.lr,
         )
 
