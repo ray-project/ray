@@ -78,7 +78,7 @@ cdef class NewGcsClient:
     @property
     def cluster_id(self) -> ray.ClusterID:
         cdef CClusterID cluster_id = self.inner.get().GetClusterId()
-        return ray.ClusterID(cluster_id.Binary())
+        return ray.ClusterID.from_binary(cluster_id.Binary())
 
     #############################################################
     # Internal KV sync methods
@@ -612,7 +612,7 @@ cdef convert_get_all_node_info(
         for b in serialized_reply:
             proto = gcs_pb2.GcsNodeInfo()
             proto.ParseFromString(b)
-            node_table_data[NodeID(proto.node_id)] = proto
+            node_table_data[NodeID.from_binary(proto.node_id)] = proto
         return node_table_data, None
     except Exception as e:
         return None, e
@@ -634,7 +634,7 @@ cdef convert_get_all_job_info(
         for b in serialized_reply:
             proto = gcs_pb2.JobTableData()
             proto.ParseFromString(b)
-            job_table_data[JobID(proto.job_id)] = proto
+            job_table_data[JobID.from_binary(proto.job_id)] = proto
         return job_table_data, None
     except Exception as e:
         return None, e
@@ -653,7 +653,7 @@ cdef convert_get_all_actor_info(
         for b in serialized_reply:
             proto = gcs_pb2.ActorTableData()
             proto.ParseFromString(b)
-            actor_table_data[ActorID(proto.actor_id)] = proto
+            actor_table_data[ActorID.from_binary(proto.actor_id)] = proto
         return actor_table_data, None
     except Exception as e:
         return None, e
