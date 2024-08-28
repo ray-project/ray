@@ -97,7 +97,10 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
               RAY_LOG(INFO).WithField(actor_id)
                   << "Failed to create actor with status: " << status.ToString();
             }
-            RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(
+            // Actor creation task retry happens in GCS
+            // and transient rpc errors are retried in gcs client
+            // so we don't need to retry here.
+            RAY_UNUSED(task_finisher_.FailPendingTask(
                 task_id,
                 rpc::ErrorType::ACTOR_CREATION_FAILED,
                 &status,
