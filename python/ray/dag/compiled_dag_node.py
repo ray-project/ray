@@ -112,7 +112,9 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                done = tasks[operation.local_idx].exec_operation(self, operation.type)
+                done = tasks[operation.exec_task_idx].exec_operation(
+                    self, operation.type
+                )
                 if done:
                     break
     except Exception:
@@ -152,7 +154,8 @@ class CompiledTask:
         self.idx = idx
         self.dag_node = dag_node
 
-        self.downstream_node_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
+        # Dict from task index to actor handle for immediate downstream tasks.
+        self.downstream_task_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
         self.output_channel = None
         self.arg_type_hints: List["ChannelOutputType"] = []
 
@@ -166,7 +169,7 @@ class CompiledTask:
 
     @property
     def num_readers(self) -> int:
-        return len(self.downstream_node_idxs)
+        return len(self.downstream_task_idxs)
 
     def __str__(self) -> str:
         return f"""
@@ -295,7 +298,7 @@ class ExecutableTask:
         self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
         # A unique index which can be used to index into `idx_to_task` to get
         # the corresponding task.
-        self.dag_idx = task.idx
+        self.task_idx = task.idx
 
         # Reverse map for input_channels: maps an input channel to
         # its index in input_channels.
@@ -632,15 +635,19 @@ class CompiledDAG:
         self._max_execution_index: int = -1
         self._result_buffer: Dict[int, Any] = {}
 
-        def _get_or_create_local_actor_handle():
+        def _get_creator_or_proxy_actor() -> "ray.actor.ActorHandle":
             """
-            Get the actor handle of the current process. If the current process is
-            the driver process, create a new actor handle DAGDriverProxyActor.
+            Get the creator actor or proxy actor handle of the DAG.
+
+            If the current process is an actor, it is the creator of the DAG,
+            its actor handle is returned. Otherwise, create a proxy actor and
+            return its actor handle. Note that this actor is always on the same
+            node where the DAG is created.
 
             Returns:
               Return the actor handle if the current task is an actor method.
-              Create a DAGDriverProxyActor actor if the current process is the
-              driver process.
+              Create a DAGDriverProxyActor actor and return its handle if the
+              current process is the driver process.
 
             Raises:
                 NotImplementedError: If the current process is a Ray task.
@@ -667,7 +674,7 @@ class CompiledDAG:
                 )
             ).remote()
 
-        self._dag_creator_actor = _get_or_create_local_actor_handle()
+        self._creator_or_proxy_actor = _get_creator_or_proxy_actor()
 
     @property
     def has_single_output(self):
@@ -713,8 +720,28 @@ class CompiledDAG:
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
-                assert self.input_task_idx is None, "more than one InputNode found"
+                assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
+
+        # Find the (multi-)output node to the DAG.
+        for idx, task in self.idx_to_task.items():
+            if idx == self.input_task_idx or isinstance(
+                task.dag_node, InputAttributeNode
+            ):
+                continue
+            if len(task.downstream_task_idxs) == 0 and task.dag_node.is_output_node:
+                assert self.output_task_idx is None, "More than one output node found"
+                self.output_task_idx = idx
+
+        assert self.output_task_idx is not None
+        output_node = self.idx_to_task[self.output_task_idx].dag_node
+        # Add an MultiOutputNode to the end of the DAG if it's not already there.
+        if not isinstance(output_node, MultiOutputNode):
+            self._has_single_output = True
+            output_node = MultiOutputNode([output_node])
+            self._add_node(output_node)
+            self.output_task_idx = self.dag_node_to_idx[output_node]
+
         # TODO: Support no-input DAGs (use an empty object to signal).
         if self.input_task_idx is None:
             raise NotImplementedError(
@@ -731,7 +758,7 @@ class CompiledDAG:
 
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
-        for node_idx, task in self.idx_to_task.items():
+        for task_idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
             if not (
                 isinstance(dag_node, InputNode)
@@ -790,19 +817,19 @@ class CompiledDAG:
                     continue
 
                 upstream_node_idx = self.dag_node_to_idx[arg]
-                upstream_node = self.idx_to_task[upstream_node_idx]
+                upstream_task = self.idx_to_task[upstream_node_idx]
                 downstream_actor_handle = None
                 if isinstance(dag_node, ClassMethodNode):
                     downstream_actor_handle = dag_node._get_actor_handle()
 
-                if isinstance(upstream_node.dag_node, InputAttributeNode):
+                if isinstance(upstream_task.dag_node, InputAttributeNode):
                     # Record all of the keys used to index the InputNode.
                     # During execution, we will check that the user provides
                     # the same args and kwargs.
-                    if isinstance(upstream_node.dag_node.key, int):
-                        input_positional_args.add(upstream_node.dag_node.key)
-                    elif isinstance(upstream_node.dag_node.key, str):
-                        input_kwargs.add(upstream_node.dag_node.key)
+                    if isinstance(upstream_task.dag_node.key, int):
+                        input_positional_args.add(upstream_task.dag_node.key)
+                    elif isinstance(upstream_task.dag_node.key, str):
+                        input_kwargs.add(upstream_task.dag_node.key)
                     else:
                         raise ValueError(
                             "InputNode() can only be indexed using int "
@@ -819,9 +846,9 @@ class CompiledDAG:
 
                     # If the upstream node is an InputAttributeNode, treat the
                     # DAG's input node as the actual upstream node
-                    upstream_node = self.idx_to_task[self.input_task_idx]
+                    upstream_task = self.idx_to_task[self.input_task_idx]
 
-                elif isinstance(upstream_node.dag_node, InputNode):
+                elif isinstance(upstream_task.dag_node, InputNode):
                     if direct_input is not None and not direct_input:
                         raise ValueError(
                             "All tasks must either use InputNode() directly, "
@@ -829,7 +856,7 @@ class CompiledDAG:
                         )
                     direct_input = True
 
-                elif isinstance(upstream_node.dag_node, ClassMethodNode):
+                elif isinstance(upstream_task.dag_node, ClassMethodNode):
                     from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
 
                     if (
@@ -841,50 +868,28 @@ class CompiledDAG:
                         not RAY_ADAG_ENABLE_DETECT_DEADLOCK
                         and downstream_actor_handle is not None
                         and downstream_actor_handle
-                        == upstream_node.dag_node._get_actor_handle()
-                        and upstream_node.dag_node.type_hint.requires_nccl()
+                        == upstream_task.dag_node._get_actor_handle()
+                        and upstream_task.dag_node.type_hint.requires_nccl()
                     ):
                         raise ValueError(
                             "Compiled DAG does not support NCCL communication between "
                             "methods on the same actor. NCCL type hint is specified "
                             "for the channel from method "
-                            f"{upstream_node.dag_node.get_method_name()} to method "
+                            f"{upstream_task.dag_node.get_method_name()} to method "
                             f"{dag_node.get_method_name()} on actor "
                             f"{downstream_actor_handle}. Please remove the NCCL "
                             "type hint between these methods."
                         )
 
-                upstream_node.downstream_node_idxs[node_idx] = downstream_actor_handle
-                task.arg_type_hints.append(upstream_node.dag_node.type_hint)
+                upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
+                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
-                if upstream_node.dag_node.type_hint.requires_nccl():
+                if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL group.
                     nccl_actors.add(downstream_actor_handle)
 
             if dag_node.type_hint is not None:
                 self._type_hints.append(dag_node.type_hint)
-
-        # Find the (multi-)output node to the DAG.
-        for idx, task in self.idx_to_task.items():
-            if idx == self.input_task_idx or isinstance(
-                task.dag_node, InputAttributeNode
-            ):
-                continue
-            if len(task.downstream_node_idxs) == 0:
-                assert self.output_task_idx is None, "More than one output node found"
-                self.output_task_idx = idx
-
-        assert self.output_task_idx is not None
-        output_node = self.idx_to_task[self.output_task_idx].dag_node
-        # Add an MultiOutputNode to the end of the DAG if it's not already there.
-        if not isinstance(output_node, MultiOutputNode):
-            self._has_single_output = True
-            output_node = MultiOutputNode([output_node])
-            self._add_node(output_node)
-            self.output_task_idx = self.dag_node_to_idx[output_node]
-            # Preprocess one more time so that we have the right output node
-            # now.
-            self._preprocess()
 
         # If there were type hints indicating transport via NCCL, initialize
         # the NCCL group on the participating actors.
@@ -914,7 +919,7 @@ class CompiledDAG:
         if actor_handle in self.actor_to_node_id:
             return self.actor_to_node_id[actor_handle]
         node_id = None
-        if actor_handle == self._dag_creator_actor:
+        if actor_handle == self._creator_or_proxy_actor:
             node_id = ray.get_runtime_context().get_node_id()
         else:
             node_id = ray.get(
@@ -974,7 +979,7 @@ class CompiledDAG:
             if isinstance(task.dag_node, ClassMethodNode):
                 # `readers` is the nodes that are ordered after the current one (`task`)
                 # in the DAG.
-                readers = [self.idx_to_task[idx] for idx in task.downstream_node_idxs]
+                readers = [self.idx_to_task[idx] for idx in task.downstream_task_idxs]
                 reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                 dag_nodes = [reader.dag_node for reader in readers]
                 read_by_multi_output_node = False
@@ -1010,11 +1015,11 @@ class CompiledDAG:
                     #     print(result)
 
                     #     compiled_dag.teardown()
-                    assert self._dag_creator_actor is not None
+                    assert self._creator_or_proxy_actor is not None
                     reader_and_node_list.append(
                         (
-                            self._dag_creator_actor,
-                            self._get_node_id(self._dag_creator_actor),
+                            self._creator_or_proxy_actor,
+                            self._get_node_id(self._creator_or_proxy_actor),
                         )
                     )
                 else:
@@ -1046,7 +1051,7 @@ class CompiledDAG:
                 # when we support multiple readers for both shared memory channel
                 # and IntraProcessChannel.
                 reader_handles_set = set()
-                for idx in task.downstream_node_idxs:
+                for idx in task.downstream_task_idxs:
                     reader_task = self.idx_to_task[idx]
                     assert isinstance(reader_task.dag_node, ClassMethodNode)
                     reader_handle = reader_task.dag_node._get_actor_handle()
@@ -1065,7 +1070,7 @@ class CompiledDAG:
                     task.dag_node, MultiOutputNode
                 )
 
-            for idx in task.downstream_node_idxs:
+            for idx in task.downstream_task_idxs:
                 frontier.append(idx)
 
         # Validate input channels for tasks that have not been visited
@@ -1202,14 +1207,14 @@ class CompiledDAG:
             _DAGOperationGraphNode. For the same actor, the index of the
             outer list corresponds to the index of the ExecutableTask in
             the list of `executable_tasks` in `actor_to_executable_tasks`,
-            i.e. `local_idx`. In the inner list, the order of operations
+            i.e. `exec_task_idx`. In the inner list, the order of operations
             is READ, COMPUTE, and WRITE.
 
             Example:
             {
                 actor1: [
-                    [READ COMPUTE WRITE] # local_idx 0
-                    [READ COMPUTE WRITE] # local_idx 1
+                    [READ COMPUTE WRITE] # exec_task_idx 0
+                    [READ COMPUTE WRITE] # exec_task_idx 1
                 ]
             }
         """
@@ -1221,29 +1226,29 @@ class CompiledDAG:
         ] = defaultdict(list)
 
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
-            for local_idx, exec_task in enumerate(executable_tasks):
+            for exec_task_idx, exec_task in enumerate(executable_tasks):
                 # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
                 # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
-                dag_idx = exec_task.dag_idx
-                dag_node = self.idx_to_task[dag_idx].dag_node
+                task_index = exec_task.task_idx
+                dag_node = self.idx_to_task[task_index].dag_node
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
 
                 read_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(local_idx, _DAGNodeOperationType.READ),
-                    dag_idx,
+                    _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.READ),
+                    task_index,
                     actor_handle,
                     requires_nccl,
                 )
                 compute_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(local_idx, _DAGNodeOperationType.COMPUTE),
-                    dag_idx,
+                    _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.COMPUTE),
+                    task_index,
                     actor_handle,
                     requires_nccl,
                 )
                 write_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(local_idx, _DAGNodeOperationType.WRITE),
-                    dag_idx,
+                    _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.WRITE),
+                    task_index,
                     actor_handle,
                     requires_nccl,
                 )
@@ -1252,7 +1257,9 @@ class CompiledDAG:
                 )
         return actor_to_operation_nodes
 
-    def _build_execution_schedule(self):
+    def _build_execution_schedule(
+        self,
+    ) -> Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]:
         """
         Generate an execution schedule for each actor. The schedule is a list of
         _DAGNodeOperation.
@@ -1416,7 +1423,7 @@ class CompiledDAG:
             # on the same actor.
             next_task_idx = _get_next_task_idx(task)
             _add_edge(graph, idx, next_task_idx)
-            for downstream_idx in task.downstream_node_idxs:
+            for downstream_idx in task.downstream_task_idxs:
                 # Add an edge from the writer to the reader.
                 _add_edge(graph, idx, downstream_idx)
                 if task.dag_node.type_hint.requires_nccl():
@@ -1760,6 +1767,7 @@ def build_compiled_dag_from_ray_dag(
         compiled_dag._add_node(node)
         return node
 
-    dag.apply_recursive(_build_compiled_dag)
+    root = dag._find_root()
+    root.traverse_and_apply(_build_compiled_dag)
     compiled_dag._get_or_compile()
     return compiled_dag
