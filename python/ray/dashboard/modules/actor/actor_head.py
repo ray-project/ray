@@ -11,7 +11,6 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
-from ray._private.utils import get_or_create_event_loop
 from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.actor import actor_consts
@@ -137,22 +136,30 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         self.accumulative_event_processing_s = 0
 
     async def _update_actors(self):
+        """
+        Yields actor info. First yields all actors from GCS, then subscribes to
+        actor updates.
+
+        To prevent Time-of-check to time-of-use issue [1], the get-all-actor-info
+        happens after the subscription. That is, an update between get-all-actor-info
+        and the subscription is not missed.
+        # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
+        """
+        # Receive actors from channel.
+        gcs_addr = self._dashboard_head.gcs_address
+        subscriber = GcsAioActorSubscriber(address=gcs_addr)
+        await subscriber.subscribe()
+
         # Get all actor info.
         while True:
             try:
                 logger.info("Getting all actor info from GCS.")
 
                 actors = await self.get_all_actor_info(timeout=5)
-
-                def convert(actors) -> Dict[str, dict]:
-                    return {
-                        actor_id.hex(): actor_table_data_to_dict(actor_table_data)
-                        for actor_id, actor_table_data in actors.items()
-                    }
-
-                actor_dicts = await get_or_create_event_loop().run_in_executor(
-                    self._dashboard_head._thread_pool_executor, convert, actors
-                )
+                actor_dicts: Dict[str, dict] = {
+                    actor_id.hex(): actor_table_data_to_dict(actor_table_data)
+                    for actor_id, actor_table_data in actors.items()
+                }
                 # Update actors.
                 DataSource.actors.reset(actor_dicts)
                 # Update node actors and job actors.
@@ -204,11 +211,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 node_actors = DataSource.node_actors.get(node_id, {})
                 node_actors[actor_id] = actor_table_data
                 DataSource.node_actors[node_id] = node_actors
-
-        # Receive actors from channel.
-        gcs_addr = self._dashboard_head.gcs_address
-        subscriber = GcsAioActorSubscriber(address=gcs_addr)
-        await subscriber.subscribe()
 
         while True:
             try:

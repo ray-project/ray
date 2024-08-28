@@ -255,7 +255,7 @@ class GcsAioActorSubscriber(_AioSubscriber):
         return len(self._queue)
 
     async def poll(
-        self, timeout=None, batch_size=500
+        self, batch_size, timeout=None
     ) -> List[Tuple[bytes, gcs_pb2.ActorTableData]]:
         """Polls for new actor message.
 
@@ -266,7 +266,7 @@ class GcsAioActorSubscriber(_AioSubscriber):
         return self._pop_actors(self._queue, batch_size=batch_size)
 
     @staticmethod
-    def _pop_actors(queue, batch_size=100):
+    def _pop_actors(queue, batch_size):
         if len(queue) == 0:
             return []
         popped = 0
@@ -288,7 +288,7 @@ class GcsAioNodeInfoSubscriber(_AioSubscriber):
         super().__init__(pubsub_pb2.GCS_NODE_INFO_CHANNEL, worker_id, address, channel)
 
     async def poll(
-        self, timeout=None, batch_size=100
+        self, batch_size, timeout=None
     ) -> List[Tuple[bytes, gcs_pb2.GcsNodeInfo]]:
         """Polls for new node info message.
 
@@ -299,7 +299,7 @@ class GcsAioNodeInfoSubscriber(_AioSubscriber):
         return self._pop_node_infos(self._queue, batch_size=batch_size)
 
     @staticmethod
-    def _pop_node_infos(queue, batch_size=100):
+    def _pop_node_infos(queue, batch_size):
         if len(queue) == 0:
             return []
         popped = 0

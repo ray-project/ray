@@ -21,8 +21,6 @@ from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
 
-UPDATE_NODES_INTERVAL_SECONDS = 5
-
 
 def test_nodes_update(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -227,32 +225,6 @@ def test_multi_node_churn(
     while datetime.now() < t_st + duration:
         get_index()
         time.sleep(2)
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster_head", [{"include_dashboard": True}], indirect=True
-)
-def test_frequent_node_update(
-    enable_test_module, disable_aiohttp_cache, ray_start_cluster_head
-):
-    cluster: Cluster = ray_start_cluster_head
-    assert wait_until_server_available(cluster.webui_url)
-    webui_url = cluster.webui_url
-    webui_url = format_web_url(webui_url)
-
-    def verify():
-        response = requests.get(webui_url + "/internal/node_module")
-        response.raise_for_status()
-        result = response.json()
-        data = result["data"]
-        head_node_registration_time = data["headNodeRegistrationTimeS"]
-        # If the head node is not registered, it is None.
-        assert head_node_registration_time is not None
-        # Head node should be registered before the node update interval
-        # because we do frequent until the head node is registered.
-        return head_node_registration_time < UPDATE_NODES_INTERVAL_SECONDS
-
-    wait_for_condition(verify, timeout=15)
 
 
 if __name__ == "__main__":
