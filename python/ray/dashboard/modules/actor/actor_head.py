@@ -137,8 +137,9 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
 
     async def _update_actors(self):
         """
-        Yields actor info. First yields all actors from GCS, then subscribes to
-        actor updates.
+        Processes actor info. First gets all actors from GCS, then subscribes to
+        actor updates. For each actor update, updates DataSource.node_actors and
+        DataSource.actors.
 
         To prevent Time-of-check to time-of-use issue [1], the get-all-actor-info
         happens after the subscription. That is, an update between get-all-actor-info

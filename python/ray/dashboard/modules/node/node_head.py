@@ -199,7 +199,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         while True:
             try:
                 published = await subscriber.poll(
-                    batch_size=node_consts.RAY_NODE_HEAD_SUBSCRIBER_POLL_SIZE
+                    batch_size=node_consts.RAY_DASHBOARD_NODE_SUBSCRIBER_POLL_SIZE
                 )
                 updated_dicts = await get_or_create_event_loop().run_in_executor(
                     self._dashboard_head._thread_pool_executor,
@@ -266,7 +266,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             except Exception:
                 logger.exception(f"Error getting agent port for node {node_id}.")
 
-            await asyncio.sleep(node_consts.RAY_NODE_HEAD_AGENT_POLL_INTERVAL_S)
+            await asyncio.sleep(node_consts.RAY_DASHBOARD_AGENT_POLL_INTERVAL_S)
 
     async def _update_nodes(self):
         """
