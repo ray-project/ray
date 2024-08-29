@@ -2970,6 +2970,22 @@ py_test(
 # subdirectory: gpus/
 # ....................................
 py_test(
+    name = "examples/gpus/float16_training_and_inference",
+    main = "examples/gpus/float16_training_and_inference.py",
+    tags = ["team:rllib", "exclusive", "examples", "gpu"],
+    size = "medium",
+    srcs = ["examples/gpus/float16_training_and_inference.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=150.0"]
+)
+py_test(
+    name = "examples/gpus/mixed_precision_training_float16_inference",
+    main = "examples/gpus/mixed_precision_training_float16_inference.py",
+    tags = ["team:rllib", "exclusive", "examples", "gpu"],
+    size = "medium",
+    srcs = ["examples/gpus/mixed_precision_training_float16_inference.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+py_test(
     name = "examples/gpus/fractional_0.5_gpus_per_learner",
     main = "examples/gpus/fractional_gpus_per_learner.py",
     tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],

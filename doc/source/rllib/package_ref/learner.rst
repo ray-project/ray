@@ -91,7 +91,7 @@ Computing Losses
     :nosignatures:
     :toctree: doc/
 
-    Learner.compute_loss
+    Learner.compute_losses
     Learner.compute_loss_for_module
     Learner._is_module_compatible_with_learner
     Learner._get_tensor_variable
