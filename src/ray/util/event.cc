@@ -129,6 +129,8 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   j["source_type"] = ExportEvent_SourceType_Name(export_event.source_type());
   std::string event_data_as_string;
   google::protobuf::util::JsonPrintOptions options;
+  // Required so enum with value 0 is not omitted
+  options.always_print_primitive_fields = true;
   options.preserve_proto_field_names = true;
   if (export_event.has_task_event_data()) {
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
@@ -184,7 +186,9 @@ EventManager &EventManager::Instance() {
   return instance_;
 }
 
-bool EventManager::IsEmpty() { return reporter_map_.empty(); }
+bool EventManager::IsEmpty() {
+  return reporter_map_.empty() && export_log_reporter_map_.empty();
+}
 
 void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
   for (const auto &element : reporter_map_) {
