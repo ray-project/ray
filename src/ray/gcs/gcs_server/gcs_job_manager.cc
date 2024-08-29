@@ -30,9 +30,15 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
 }
 
 void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const {
-  // TODO: Add FF
   /// Write job_data as a export driver job event if
-  /// enable_export_api_write() is enabled.
+  /// enable_export_api_write() is enabled and if this job is 
+  /// not in the _ray_internal_ namespace.
+  // TODO: Add FF
+  if (job_data.config().ray_namespace().find(kRayInternalNamespacePrefix) == 0){
+    // Namespace of this job starts with _ray_internal_ so
+    // don't write export event.
+    return;
+  }
   std::shared_ptr<rpc::ExportDriverJobEventData> export_driver_job_data_ptr =
       std::make_shared<rpc::ExportDriverJobEventData>();
   export_driver_job_data_ptr->set_job_id(job_data.job_id());
