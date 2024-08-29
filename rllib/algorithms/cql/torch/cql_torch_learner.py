@@ -53,12 +53,8 @@ class CQLTorchLearner(SACTorchLearner):
 
         # Sample actions for the current state. Note that we need to apply the
         # reparameterization trick here to avoid the expectation over actions.
-        actions_curr = (
-            action_dist_curr.rsample()
-            if not config._deterministic_loss
-            # If deterministic, we use the mean.s
-            else action_dist_curr.to_deterministic().sample()
-        )
+        actions_curr = action_dist_curr.rsample()
+
         # Compute the log probabilities for the current state (for the alpha loss)
         logps_curr = action_dist_curr.logp(actions_curr)
 

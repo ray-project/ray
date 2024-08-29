@@ -161,11 +161,7 @@ class CQLTorchRLModule(SACTorchRLModule):
             action_dist = self.get_train_action_dist_cls().from_logits(action_logits)
             # Sample the actions. Note, we want to make a backward pass through
             # these actions.
-            output[Columns.ACTIONS] = (
-                action_dist.rsample()
-                if not self.config.model_config_dict["_deterministic_loss"]
-                else action_dist.to_deterministic().sample()
-            )
+            output[Columns.ACTIONS] = action_dist.rsample()
             # Compute the action log-probabilities.
             output[Columns.ACTION_LOGP] = action_dist.logp(
                 output[Columns.ACTIONS]

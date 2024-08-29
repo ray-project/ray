@@ -260,7 +260,6 @@ class CQLConfig(SACConfig):
     def _model_config_auto_includes(self):
         return super()._model_config_auto_includes | {
             "num_actions": self.num_actions,
-            "_deterministic_loss": self._deterministic_loss,
         }
 
 
