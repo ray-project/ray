@@ -1,4 +1,5 @@
 import ray
+from ray.util.queue import Queue
 
 ray.init()
 
@@ -31,3 +32,18 @@ unwrapped_str + 100  # Fail
 
 # Check ObjectRef[T] as args
 f.remote(ref_to_str)  # Fail
+
+# Does not type check due to incorrect input type
+float_list = [1.0, 2.0, 3.0]
+int_queue = Queue[int]()
+float_item: int
+for i in float_list:
+    int_queue.put(i)
+
+# Does not type check due to incorrect output type
+float_queue = Queue[float]()
+int_item: int
+
+for i in float_list:
+    float_queue.put(i)
+    int_item = float_queue.get()
