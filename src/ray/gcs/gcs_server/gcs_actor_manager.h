@@ -321,6 +321,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
                              rpc::KillActorViaGcsReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleReportActorOutOfScope(rpc::ReportActorOutOfScopeRequest request,
+                                   rpc::ReportActorOutOfScopeReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
   /// Register actor asynchronously.
   ///
   /// \param request Contains the meta info to create the actor.
@@ -472,10 +476,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     absl::flat_hash_set<ActorID> children_actor_ids;
   };
 
-  /// Poll an actor's owner so that we will receive a notification when the
-  /// actor has gone out of scope, or the owner has died. This should not be
-  /// called for detached actors.
-  void PollOwnerForActorOutOfScope(const std::shared_ptr<GcsActor> &actor);
+  /// Register actor's owner so that when owner dies, we can destroy the actor.
+  /// This should not be called for detached actor.
+  void RegisterActorOwner(const std::shared_ptr<GcsActor> &actor);
 
   /// Destroy an actor that has gone out of scope. This cleans up all local
   /// state associated with the actor and marks the actor as dead. For owned
@@ -487,9 +490,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param[in] actor_id The actor id to destroy.
   /// \param[in] death_cause The reason why actor is destroyed.
   /// \param[in] force_kill Whether destory the actor forcelly.
+  /// \param[in] done_callback Called when destroy finishes.
   void DestroyActor(const ActorID &actor_id,
                     const rpc::ActorDeathCause &death_cause,
-                    bool force_kill = true);
+                    bool force_kill = true,
+                    std::function<void()> done_callback = nullptr);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>

@@ -342,6 +342,22 @@ Status ActorInfoAccessor::AsyncCreateActor(
   return Status::OK();
 }
 
+Status ActorInfoAccessor::AsyncReportActorOutOfScope(const ActorID &actor_id,
+                                                     const StatusCallback &callback,
+                                                     int64_t timeout_ms) {
+  rpc::ReportActorOutOfScopeRequest request;
+  request.set_actor_id(actor_id.Binary());
+  client_impl_->GetGcsRpcClient().ReportActorOutOfScope(
+      request,
+      [callback](const Status &status, rpc::ReportActorOutOfScopeReply &&reply) {
+        if (callback) {
+          callback(status);
+        }
+      },
+      timeout_ms);
+  return Status::OK();
+}
+
 Status ActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id,
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,

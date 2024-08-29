@@ -114,14 +114,8 @@ class ActorManager {
                          const rpc::Address &caller_address,
                          bool owned);
 
-  /// Wait for actor out of scope.
-  ///
-  /// \param actor_id The actor id that owns the callback.
-  /// \param actor_out_of_scope_callback The callback function that will be called when
-  /// an actor_id goes out of scope.
-  void WaitForActorOutOfScope(
-      const ActorID &actor_id,
-      std::function<void(const ActorID &)> actor_out_of_scope_callback);
+  /// Wait for actor go out of scope and report to GCS.
+  void WaitAndReportActorOutOfScope(const ActorID &actor_id);
 
   /// Get a list of actor_ids from existing actor handles.
   /// This is used for debugging purpose.

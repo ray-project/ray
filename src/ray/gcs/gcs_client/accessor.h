@@ -119,6 +119,10 @@ class ActorInfoAccessor {
       const std::string &ray_namespace,
       std::vector<std::pair<std::string, std::string>> &actors);
 
+  virtual Status AsyncReportActorOutOfScope(const ActorID &actor_id,
+                                            const StatusCallback &callback,
+                                            int64_t timeout_ms = -1);
+
   /// Register actor to GCS asynchronously.
   ///
   /// \param task_spec The specification for the actor creation task.

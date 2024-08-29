@@ -2348,8 +2348,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    actor_creation_options.execute_out_of_order,
                                    root_detached_actor_id);
   // Add the actor handle before we submit the actor creation task, since the
-  // actor handle must be in scope by the time the GCS sends the
-  // WaitForActorOutOfScopeRequest.
+  // actor handle must be in scope by the time WaitAndReportActorOutOfScope is called.
   RAY_CHECK(actor_manager_->AddNewActorHandle(
       std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached))
       << "Actor " << actor_id << " already exists";
@@ -2377,14 +2376,18 @@ Status CoreWorker::CreateActor(const RayFunction &function,
 
     if (actor_name.empty()) {
       io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
+          [this, is_detached, task_spec = std::move(task_spec)]() {
             RAY_UNUSED(actor_creator_->AsyncRegisterActor(
-                task_spec, [this, task_spec](Status status) {
+                task_spec, [this, is_detached, task_spec](Status status) {
                   if (!status.ok()) {
                     RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
                         << "Failed to register actor. Error message: "
                         << status.ToString();
                   } else {
+                    if (!is_detached) {
+                      actor_manager_->WaitAndReportActorOutOfScope(
+                          task_spec.ActorCreationId());
+                    }
                     RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
                   }
                 }));
@@ -2399,7 +2402,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
         return status;
       }
       io_service_.post(
-          [this, task_spec = std::move(task_spec)]() {
+          [this, is_detached, task_spec = std::move(task_spec)]() {
+            if (!is_detached) {
+              actor_manager_->WaitAndReportActorOutOfScope(task_spec.ActorCreationId());
+            }
             RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
           },
           "CoreWorker.SubmitTask");
@@ -3647,40 +3653,6 @@ void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
       reply->add_node_ids(node_id.Binary());
     }
     reply->set_object_size(locality_data.value().object_size);
-  }
-}
-
-void CoreWorker::HandleWaitForActorOutOfScope(
-    rpc::WaitForActorOutOfScopeRequest request,
-    rpc::WaitForActorOutOfScopeReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  // Currently WaitForActorOutOfScope is only used when GCS actor service is enabled.
-  if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
-                           send_reply_callback)) {
-    return;
-  }
-
-  // Send a response to trigger cleaning up the actor state once the handle is
-  // no longer in scope.
-  auto respond = [send_reply_callback](const ActorID &actor_id) {
-    RAY_LOG(DEBUG).WithField(actor_id) << "Replying to HandleWaitForActorOutOfScope";
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-  };
-
-  const auto actor_id = ActorID::FromBinary(request.actor_id());
-  if (actor_creator_->IsActorInRegistering(actor_id)) {
-    actor_creator_->AsyncWaitForActorRegisterFinish(
-        actor_id, [this, actor_id, respond = std::move(respond)](auto status) {
-          if (!status.ok()) {
-            respond(actor_id);
-          } else {
-            RAY_LOG(DEBUG).WithField(actor_id) << "Received HandleWaitForActorOutOfScope";
-            actor_manager_->WaitForActorOutOfScope(actor_id, std::move(respond));
-          }
-        });
-  } else {
-    RAY_LOG(DEBUG).WithField(actor_id) << "Received HandleWaitForActorOutOfScope";
-    actor_manager_->WaitForActorOutOfScope(actor_id, std::move(respond));
   }
 }
 
