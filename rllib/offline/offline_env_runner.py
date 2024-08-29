@@ -35,7 +35,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # Set the filesystem.
         self.filesystem = self.config.output_filesystem
         self.filesystem_kwargs = self.config.output_filesystem_kwargs
-        self.file_system_object = None
+        self.filesystem_object = None
 
         # Set the output base path.
         self.output_path = self.config.output
