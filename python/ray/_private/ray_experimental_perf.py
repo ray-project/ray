@@ -160,6 +160,8 @@ def main(results=None):
             _exec_async,
         )
 
+    # Single-actor DAG calls
+
     a = DAGActor.remote()
     with InputNode() as inp:
         dag = a.echo.bind(inp)
@@ -172,7 +174,13 @@ def main(results=None):
         "[unstable] compiled single-actor DAG calls", lambda: _exec(compiled_dag)
     )
     compiled_dag.teardown()
+    del a
 
+    # Single-actor asyncio DAG calls
+
+    a = DAGActor.remote()
+    with InputNode() as inp:
+        dag = a.echo.bind(inp)
     compiled_dag = dag.experimental_compile(enable_asyncio=True)
     results += loop.run_until_complete(
         exec_async(
@@ -183,8 +191,10 @@ def main(results=None):
     # these DAGs create a background thread that can segfault if the CoreWorker
     # is torn down first.
     compiled_dag.teardown()
-
     del a
+
+    # Scatter-gather DAG calls
+
     n_cpu = multiprocessing.cpu_count() // 2
     actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
@@ -200,6 +210,11 @@ def main(results=None):
     )
     compiled_dag.teardown()
 
+    # Scatter-gather asyncio DAG calls
+
+    actors = [DAGActor.remote() for _ in range(n_cpu)]
+    with InputNode() as inp:
+        dag = MultiOutputNode([a.echo.bind(inp) for a in actors])
     compiled_dag = dag.experimental_compile(enable_asyncio=True)
     results += loop.run_until_complete(
         exec_async(
@@ -210,6 +225,8 @@ def main(results=None):
     # these DAGs create a background thread that can segfault if the CoreWorker
     # is torn down first.
     compiled_dag.teardown()
+
+    # Chain DAG calls
 
     actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
@@ -227,6 +244,13 @@ def main(results=None):
     )
     compiled_dag.teardown()
 
+    # Chain asyncio DAG calls
+
+    actors = [DAGActor.remote() for _ in range(n_cpu)]
+    with InputNode() as inp:
+        dag = inp
+        for a in actors:
+            dag = a.echo.bind(dag)
     compiled_dag = dag.experimental_compile(enable_asyncio=True)
     results += loop.run_until_complete(
         exec_async(f"[unstable] compiled chain asyncio DAG calls, n={n_cpu} actors")
