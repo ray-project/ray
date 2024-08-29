@@ -1111,6 +1111,7 @@ class CompiledDAG:
             ):
                 task_node = task.dag_node
                 upstream_node = task_node.class_method_call
+                assert upstream_node
                 upstream_task = self.idx_to_task[self.dag_node_to_idx[upstream_node]]
                 for i in range(len(upstream_task.output_channels)):
                     if upstream_task.output_idxs[i] == task_node.output_idx:
