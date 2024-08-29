@@ -176,9 +176,9 @@ class ClassMethodNode(DAGNode):
         ] = other_args_to_resolve.get(PARENT_CLASS_NODE_KEY)
         # Used to track lineage of ClassMethodCall to preserve deterministic
         # submission and execution order.
-        self._prev_class_method_call: Optional[ClassMethodNode] = (
-            other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
-        )
+        self._prev_class_method_call: Optional[
+            ClassMethodNode
+        ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
         # The index/order when bind() is called on this class method
         self._bind_index: Optional[int] = other_args_to_resolve.get(
             BIND_INDEX_KEY, None
