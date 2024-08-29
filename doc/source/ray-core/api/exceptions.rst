@@ -34,7 +34,7 @@ Exceptions
     ray.exceptions.ObjectReconstructionFailedLineageEvictedError
     ray.exceptions.RayChannelError
     ray.exceptions.RayChannelTimeoutError
-    ray.exceptions.RayADagAtMaxCapacity
+    ray.exceptions.RayAdagCapacityExceeded
     ray.exceptions.RuntimeEnvSetupError
     ray.exceptions.CrossLanguageError
     ray.exceptions.RaySystemError

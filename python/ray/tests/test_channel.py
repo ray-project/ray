@@ -1,4 +1,5 @@
 # coding: utf-8
+import pickle
 import logging
 import os
 import sys
@@ -1276,6 +1277,15 @@ def test_buffered_channel(shutdown_only):
     # This read times out because there's no new write, and the call blocks.
     with pytest.raises(ray.exceptions.RayChannelTimeoutError):
         chan.read(timeout=1)
+
+    print("Test ser/de works")
+    deserialized = pickle.loads(pickle.dumps(chan))
+    assert len(chan._buffers) == len(deserialized._buffers)
+    for i in range(len(chan._buffers)):
+        assert (
+            deserialized._buffers[i]._writer._actor_id
+            == chan._buffers[i]._writer._actor_id
+        )
 
 
 if __name__ == "__main__":

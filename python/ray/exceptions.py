@@ -846,7 +846,7 @@ class RayChannelTimeoutError(RayChannelError, TimeoutError):
 
 
 @PublicAPI(stability="alpha")
-class RayAdagAtMaxCapacity(RaySystemError):
+class RayAdagCapacityExceeded(RaySystemError):
     """Raised when the accelerated DAG channel's buffer is at max capacity"""
 
     pass
@@ -879,4 +879,5 @@ RAY_EXCEPTION_TYPES = [
     ActorUnavailableError,
     RayChannelError,
     RayChannelTimeoutError,
+    RayAdagCapacityExceeded,
 ]

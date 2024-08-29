@@ -511,7 +511,7 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         asyncio_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
-        max_in_flight_requests: Optional[int] = None,
+        max_inflight_executions: Optional[int] = None,
     ):
         """
         Args:
@@ -540,10 +540,10 @@ class CompiledDAG:
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
-            max_in_flight_requests: The maximum number of in-flight requests that
-                are allowed to be buffered. Before submitting more requests,
-                the caller is responsible for calling ray.get to clear finished
-                in-flight requests.
+            max_inflight_executions: The maximum number of in-flight executions that
+                are allowed to be sent to this DAG. Before submitting more requests,
+                the caller is responsible for calling ray.get to get the result,
+                otherwise, RayAdagCapacityExceeded is raised.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -559,9 +559,9 @@ class CompiledDAG:
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
             self._max_buffered_results = ctx.max_buffered_results
-        self._max_in_flight_requests = max_in_flight_requests
-        if self._max_in_flight_requests is None:
-            self._max_in_flight_requests = ctx.max_in_flight_requests
+        self._max_inflight_executions = max_inflight_executions
+        if self._max_inflight_executions is None:
+            self._max_inflight_executions = ctx.max_inflight_executions
         self._dag_id = uuid.uuid4().hex
         self._execution_timeout: Optional[float] = execution_timeout
         if self._execution_timeout is None:
@@ -572,10 +572,10 @@ class CompiledDAG:
 
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
             self._buffer_size_bytes,
-            # We conservatively set num_shm_buffers to _max_in_flight_requests.
+            # We conservatively set num_shm_buffers to _max_inflight_executions.
             # It means that the DAG can be underutilized, but it guarantees there's
             # no false positive timeouts.
-            num_shm_buffers=self._max_in_flight_requests,
+            num_shm_buffers=self._max_inflight_executions,
         )
         if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
             raise ValueError(
@@ -684,8 +684,8 @@ class CompiledDAG:
         self._dag_creator_actor = _get_or_create_local_actor_handle()
 
     def increment_max_finished_execution_index(self) -> None:
-        """Increment the max execution index. It is used to figure out the max
-        number of in-flight requests to the DAG.
+        """Increment the max finished execution index. It is used to
+        figure out the max number of in-flight requests to the DAG
         """
         self._max_finished_execution_index += 1
 
@@ -1587,14 +1587,14 @@ class CompiledDAG:
         num_in_flight_requests = (
             self._execution_index - self._max_finished_execution_index
         )
-        if num_in_flight_requests > self._max_in_flight_requests:
-            raise ray.exceptions.RayAdagAtMaxCapacity(
+        if num_in_flight_requests > self._max_inflight_executions:
+            raise ray.exceptions.RayAdagCapacityExceeded(
                 f"There are {num_in_flight_requests} in-flight requests which "
-                "is more than the max buffer size of the dag: "
-                f"{self._max_in_flight_requests}. Retrieve the output using "
+                "is more than specified _max_inflight_executions of the dag: "
+                f"{self._max_inflight_executions}. Retrieve the output using "
                 "ray.get before submitting more requests or increase "
-                "`max_in_flight_requests`. "
-                "`adag.experimental_compile(_max_in_flight_requests=...)`"
+                "`max_inflight_executions`. "
+                "`adag.experimental_compile(_max_inflight_executions=...)`"
             )
 
     def _execute_until(
@@ -1781,7 +1781,7 @@ def build_compiled_dag_from_ray_dag(
     enable_asyncio: bool = False,
     asyncio_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
-    max_in_flight_requests: Optional[int] = None,
+    max_inflight_executions: Optional[int] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         execution_timeout,
@@ -1789,7 +1789,7 @@ def build_compiled_dag_from_ray_dag(
         enable_asyncio,
         asyncio_max_queue_size,
         max_buffered_results,
-        max_in_flight_requests,
+        max_inflight_executions,
     )
 
     def _build_compiled_dag(node):

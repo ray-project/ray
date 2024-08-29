@@ -485,15 +485,20 @@ class Channel(ChannelInterface):
 
 @DeveloperAPI
 class BufferedSharedMemoryChannel(ChannelInterface):
-    """A Channel that allows to buffer inputs.
+    """A channel that can be read and written by Ray processes.
 
-    If the buffer is full for writes or empty for reads and the operation
-    blocks longer than configured timeouts, RayChannelTimeoutError will be
-    raised.
+    It creates `num_shm_buffers` number of buffers and allows buffered read and
+    write APIs. I.e., read and write APIs are non-blocking as long as it can write to
+    next buffer or read from a next buffer. See `read` and `write` APIs for more details.
 
-    As long as the buffer is not full, read/write APIs are non-blocking.
-    The caller of the API should guarantee to consume buffers before they are
-    exhausted.
+    Args:
+        writer: The actor that may write to the channel. None signifies the driver.
+        reader_and_node_list: A list of tuples, where each tuple contains a reader
+            actor handle and the node ID where the actor is located.
+        num_shm_buffers: Number of shared memory buffers to read/write.
+        typ: Type information about the values passed through the channel.
+            Either an integer representing the max buffer size in bytes
+            allowed, or a SharedMemoryType.
     """
 
     def __init__(
@@ -504,58 +509,63 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         typ: Optional[Union[int, SharedMemoryType]] = None,
     ):
         self._num_shm_buffers = num_shm_buffers
-        self._channels = [
-            Channel(writer, reader_and_node_list, typ) for _ in range(num_shm_buffers)
+        self._buffers = [
+            # We use Channel directly as a buffer implementation as
+            # channel only allows to have 1 shared memory buffer.
+            Channel(writer, reader_and_node_list, typ)
+            for _ in range(num_shm_buffers)
         ]
-        # The next index to write from self._channels.
+        # The next index to write from self._buffers.
         self._next_write_index = 0
-        # The next index to read from self._channels.
+        # The next index to read from self._buffers.
         self._next_read_index = 0
 
     def ensure_registered_as_writer(self):
         """
         Check whether the process is a valid writer. This method must be idempotent.
         """
-        for chan in self._channels:
-            chan.ensure_registered_as_writer()
+        for buffer in self._buffers:
+            buffer.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self):
         """
         Check whether the process is a valid reader. This method must be idempotent.
         """
-        for chan in self._channels:
-            chan.ensure_registered_as_reader()
+        for buffer in self._buffers:
+            buffer.ensure_registered_as_reader()
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """Write a value to a channel.
 
         If the next buffer is available, it returns immediately. If the next
-        buffer is still in use, it blocks until a buffer is available to write.
-        If a buffer is not available within timeout, it raises RayChannelTimeoutError.
+        buffer is not read by downstream consumers, it blocks until a buffer is
+        available to write. If a buffer is not available within timeout, it raises
+        RayChannelTimeoutError.
         """
         # A single channel is not supposed to read and write at the same time.
         assert self._next_read_index == 0
-        self._channels[self._next_write_index].write(value, timeout)
+        self._buffers[self._next_write_index].write(value, timeout)
         self._next_write_index += 1
         self._next_write_index %= self._num_shm_buffers
 
     def read(self, timeout: Optional[float] = None) -> Any:
-        """Read a value to a channel.
+        """Read a value from a channel.
 
         If the next buffer is available, it returns immediately. If the next
-        buffer is still in use, it blocks until a buffer is available to read.
-        If a buffer is not available within timeout, it raises RayChannelTimeoutError.
+        buffer is not written by an upstream producer, it blocks until a buffer is
+        available to read. If a buffer is not available within timeout, it raises
+        RayChannelTimeoutError.
         """
         # A single channel is not supposed to read and write at the same time.
         assert self._next_write_index == 0
-        output = self._channels[self._next_read_index].read(timeout)
+        output = self._buffers[self._next_read_index].read(timeout)
         self._next_read_index += 1
         self._next_read_index %= self._num_shm_buffers
         return output
 
     def close(self) -> None:
-        for chan in self._channels:
-            chan.close()
+        for buffer in self._buffers:
+            buffer.close()
 
     @property
     def next_write_index(self):
