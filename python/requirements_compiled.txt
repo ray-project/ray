@@ -960,7 +960,7 @@ jupyter-ydoc==0.2.5
     # via
     #   jupyter-server-ydoc
     #   jupyterlab
-jupyterlab==3.6.1
+jupyterlab==3.6.8
     # via
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
