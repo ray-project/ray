@@ -5,9 +5,8 @@ import logging
 import os
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from typing import AsyncGenerator, Dict, Iterable, List, Optional
+from typing import AsyncGenerator, Dict, List, Tuple
 
 import aiohttp.web
 import grpc
@@ -18,13 +17,8 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import NodeID
 from ray._private import ray_constants
-from ray._private.collections_utils import split
 from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
-from ray._private.ray_constants import (
-    DEBUG_AUTOSCALING_ERROR,
-    DEBUG_AUTOSCALING_STATUS,
-    env_integer,
-)
+from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
 from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
@@ -50,18 +44,22 @@ logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
-# NOTE: Executor in this head is intentionally constrained to just 1 thread by
-#       default to limit its concurrency, therefore reducing potential for
-#       GIL contention
-RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS = env_integer(
-    "RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS", 1
-)
-
-
 def _gcs_node_info_to_dict(message: gcs_pb2.GcsNodeInfo) -> dict:
     return dashboard_utils.message_to_dict(
         message, {"nodeId"}, always_print_fields_with_no_presence=True
     )
+
+
+def _map_batch_node_info_to_dict(
+    messages: Dict[NodeID, gcs_pb2.GcsNodeInfo]
+) -> List[dict]:
+    return [_gcs_node_info_to_dict(message) for message in messages.values()]
+
+
+def _list_gcs_node_info_to_dict(
+    messages: List[Tuple[bytes, gcs_pb2.GcsNodeInfo]]
+) -> List[dict]:
+    return [_gcs_node_info_to_dict(node_info) for _, node_info in messages]
 
 
 def node_stats_to_dict(message):
@@ -213,38 +211,27 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # it happens after the subscription. That is, an update between
         # get-all-node-info and the subscription is not missed.
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        all_node_info = await self._get_all_node_info_client(timeout=None)
+        all_node_info = await self.get_all_node_info(timeout=None)
 
-        def _convert_to_dict(messages: Iterable[gcs_pb2.GcsNodeInfo]) -> List[dict]:
-            return [_gcs_node_info_to_dict(m) for m in messages]
-
-        all_node_infos = await get_or_create_event_loop().run_in_executor(
-            self._executor,
-            _convert_to_dict,
-            all_node_info.values(),
+        all_node_dicts = await get_or_create_event_loop().run_in_executor(
+            self._dashboard_head._thread_pool_executor,
+            _map_batch_node_info_to_dict,
+            all_node_info,
         )
-
-        for node in all_node_infos:
+        for node in all_node_dicts:
             yield node
 
         while True:
             try:
-                node_id_updated_info_tuples = await subscriber.poll(
+                published = await subscriber.poll(
                     batch_size=node_consts.RAY_DASHBOARD_NODE_SUBSCRIBER_POLL_SIZE
                 )
-
-                if node_id_updated_info_tuples:
-                    _, updated_infos_proto = zip(*node_id_updated_info_tuples)
-                else:
-                    updated_infos_proto = []
-
-                updated_infos = await get_or_create_event_loop().run_in_executor(
-                    self._executor,
-                    _convert_to_dict,
-                    updated_infos_proto,
+                updated_dicts = await get_or_create_event_loop().run_in_executor(
+                    self._dashboard_head._thread_pool_executor,
+                    _list_gcs_node_info_to_dict,
+                    published,
                 )
-
-                for node in updated_infos:
+                for node in updated_dicts:
                     yield node
             except Exception:
                 logger.exception("Failed handling updated nodes.")

@@ -181,16 +181,16 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         Processes actor info. First gets all actors from GCS, then subscribes to
         actor updates. For each actor update, updates DataSource.node_actors and
         DataSource.actors.
-        """
 
-        # To prevent Time-of-check to time-of-use issue [1], the get-all-actor-info
-        # happens after the subscription. That is, an update between get-all-actor-info
-        # and the subscription is not missed.
-        #
+        To prevent Time-of-check to time-of-use issue [1], the get-all-actor-info
+        happens after the subscription. That is, an update between get-all-actor-info
+        and the subscription is not missed.
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
+        """
+        # Receive actors from channel.
         gcs_addr = self._dashboard_head.gcs_address
-        actor_channel_subscriber = GcsAioActorSubscriber(address=gcs_addr)
-        await actor_channel_subscriber.subscribe()
+        subscriber = GcsAioActorSubscriber(address=gcs_addr)
+        await subscriber.subscribe()
 
         # Get all actor info.
         while True:
@@ -222,7 +222,40 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                     actor_consts.RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS
                 )
 
-        # Pull incremental updates from the GCS channel
+        state_keys = (
+            "state",
+            "address",
+            "numRestarts",
+            "timestamp",
+            "pid",
+            "exitDetail",
+            "startTime",
+            "endTime",
+            "reprName",
+        )
+
+        def process_actor_data_from_pubsub(actor_id, actor_table_data):
+            actor_table_data = actor_table_data_to_dict(actor_table_data)
+            # If actor is not new registered but updated, we only update
+            # states related fields.
+            if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
+                actors = DataSource.actors[actor_id]
+                for k in state_keys:
+                    if k in actor_table_data:
+                        actors[k] = actor_table_data[k]
+                actor_table_data = actors
+            actor_id = actor_table_data["actorId"]
+            node_id = actor_table_data["address"]["rayletId"]
+            if actor_table_data["state"] == "DEAD":
+                self.dead_actors_queue.append(actor_id)
+            # Update actors.
+            DataSource.actors[actor_id] = actor_table_data
+            # Update node actors (only when node_id is not Nil).
+            if node_id != actor_consts.NIL_NODE_ID:
+                node_actors = DataSource.node_actors.get(node_id, {})
+                node_actors[actor_id] = actor_table_data
+                DataSource.node_actors[node_id] = node_actors
+
         while True:
             try:
                 updated_actor_table_entries = await self._poll_updated_actor_table_data(
