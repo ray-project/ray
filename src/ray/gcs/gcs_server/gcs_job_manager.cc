@@ -29,6 +29,41 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
+void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const {
+  // TODO: Add FF
+  /// Write job_data as a export driver job event if
+  /// enable_export_api_write() is enabled.
+  std::shared_ptr<rpc::ExportDriverJobEventData> export_driver_job_data_ptr =
+      std::make_shared<rpc::ExportDriverJobEventData>();
+  export_driver_job_data_ptr->set_job_id(job_data.job_id());
+  export_driver_job_data_ptr->set_is_dead(job_data.is_dead());
+  export_driver_job_data_ptr->set_driver_pid(job_data.driver_pid());
+  export_driver_job_data_ptr->set_start_time(job_data.start_time());
+  export_driver_job_data_ptr->set_end_time(job_data.end_time());
+  export_driver_job_data_ptr->set_entrypoint(job_data.entrypoint());
+  export_driver_job_data_ptr->set_driver_ip_address(job_data.driver_address().ip_address());
+  export_driver_job_data_ptr->mutable_config()->mutable_metadata()->insert(job_data.config().metadata().begin(),
+                                                  job_data.config().metadata().end());
+
+  auto export_runtime_env_info = export_driver_job_data_ptr->mutable_config()->mutable_runtime_env_info();
+  export_runtime_env_info->set_serialized_runtime_env(
+      job_data.config().runtime_env_info().serialized_runtime_env());
+  auto export_runtime_env_uris = export_runtime_env_info->mutable_uris();
+  export_runtime_env_uris->set_working_dir_uri(
+      job_data.config().runtime_env_info().uris().working_dir_uri());
+  export_runtime_env_uris->mutable_py_modules_uris()->CopyFrom(
+      job_data.config().runtime_env_info().uris().py_modules_uris());
+  auto export_runtime_env_config = export_runtime_env_info->mutable_runtime_env_config();
+  export_runtime_env_config->set_setup_timeout_seconds(
+      job_data.config().runtime_env_info().runtime_env_config().setup_timeout_seconds());
+  export_runtime_env_config->set_eager_install(
+      job_data.config().runtime_env_info().runtime_env_config().eager_install());
+  export_runtime_env_config->mutable_log_files()->CopyFrom(
+      job_data.config().runtime_env_info().runtime_env_config().log_files());
+
+  RayExportEvent(export_driver_job_data_ptr).SendEvent();
+}
+
 void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
                                  rpc::AddJobReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
@@ -59,6 +94,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
           std::make_shared<rpc::JobConfig>(mutable_job_table_data.config());
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    WriteDriverJobExportEvent(mutable_job_table_data);
   };
 
   Status status =
@@ -86,6 +122,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
     function_manager_.RemoveJobReference(job_id);
+    WriteDriverJobExportEvent(job_table_data);
     done_callback(status);
   };
 

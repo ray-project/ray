@@ -22,6 +22,7 @@
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/util/event.h"
 
 namespace ray {
 namespace gcs {
@@ -84,6 +85,8 @@ class GcsJobManager : public rpc::JobInfoHandler {
   ///
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
+
+  void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
 
  private:
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
