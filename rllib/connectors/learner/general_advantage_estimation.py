@@ -1,15 +1,17 @@
 from typing import Any, List, Dict
 
+import numpy as np
+
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
-from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.zero_padding import (
-    split_and_zero_pad,
+    split_and_zero_pad_n_episodes,
     unpad_data_if_necessary,
 )
 from ray.rllib.utils.typing import EpisodeType
@@ -66,7 +68,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
     def __call__(
         self,
         *,
-        rl_module: RLModule,
+        rl_module: MultiRLModule,
         episodes: List[EpisodeType],
         batch: Dict[str, Any],
         **kwargs,
@@ -92,11 +94,11 @@ class GeneralAdvantageEstimation(ConnectorV2):
             if module_vf_preds is None:
                 continue
 
+            module = rl_module[module_id]
+
             # Collect (single-agent) episode lengths.
             episode_lens = [
-                len(e)
-                for e in sa_episodes_list
-                if e.module_id is None or e.module_id == module_id
+                len(e) for e in sa_episodes_list if e.module_id in [None, module_id]
             ]
 
             # Remove all zero-padding again, if applicable, for the upcoming
@@ -120,6 +122,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
                 gamma=self.gamma,
                 lambda_=self.lambda_,
             )
+            assert module_value_targets.shape[0] == sum(episode_lens)
 
             module_advantages = module_value_targets - module_vf_preds
             # Drop vf-preds, not needed in loss. Note that in the PPORLModule, vf-preds
@@ -131,14 +134,22 @@ class GeneralAdvantageEstimation(ConnectorV2):
             )
 
             # Zero-pad the new computations, if necessary.
-            if rl_module[module_id].is_stateful():
-                module_advantages = split_and_zero_pad(
-                    module_advantages,
-                    T=rl_module[module_id].config.model_config_dict["max_seq_len"],
+            if module.is_stateful():
+                module_advantages = np.stack(
+                    split_and_zero_pad_n_episodes(
+                        module_advantages,
+                        episode_lens=episode_lens,
+                        max_seq_len=module.config.model_config_dict["max_seq_len"],
+                    ),
+                    axis=0,
                 )
-                module_value_targets = split_and_zero_pad(
-                    module_value_targets,
-                    T=rl_module[module_id].config.model_config_dict["max_seq_len"],
+                module_value_targets = np.stack(
+                    split_and_zero_pad_n_episodes(
+                        module_value_targets,
+                        episode_lens=episode_lens,
+                        max_seq_len=module.config.model_config_dict["max_seq_len"],
+                    ),
+                    axis=0,
                 )
             batch[module_id][Postprocessing.ADVANTAGES] = module_advantages
             batch[module_id][Postprocessing.VALUE_TARGETS] = module_value_targets

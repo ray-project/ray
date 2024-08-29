@@ -1,5 +1,5 @@
 from collections import deque
-from typing import List, Tuple
+from typing import List, Tuple, Union
 
 import numpy as np
 import tree  # pip install dm_tree
@@ -47,7 +47,55 @@ def create_mask_and_seq_lens(episode_len: int, T: int) -> Tuple[List, List]:
 
 
 @DeveloperAPI
-def split_and_zero_pad(item_list, T: int):
+def split_and_zero_pad(
+    item_list: List[Union[BatchedNdArray, np._typing.NDArray, float]],
+    max_seq_len: int,
+) -> List[np._typing.NDArray]:
+    """Splits the contents of `item_list` into a new list of ndarrays and returns it.
+
+    In the returned list, each item is one ndarray of len (axis=0) `max_seq_len`.
+    The last item in the returned list may be (right) zero-padded, if necessary, to
+    reach `max_seq_len`.
+
+    If `item_list` contains one or more `BatchedNdArray` (instead of individual
+    items), these will be split accordingly along their axis=0 to yield the returned
+    structure described above.
+
+    .. testcode::
+
+        from ray.rllib.utils.postprocessing.zero_padding import (
+            BatchedNdArray,
+            split_and_zero_pad,
+        )
+        from ray.rllib.utils.test_utils import check
+
+        # Simple case: `item_list` contains individual floats.
+        check(
+            split_and_zero_pad([0, 1, 2, 3, 4, 5, 6, 7], 5),
+            [[0, 1, 2, 3, 4], [5, 6, 7, 0, 0]],
+        )
+
+        # `item_list` contains BatchedNdArray (ndarrays that explicitly declare they
+        # have a batch axis=0).
+        check(
+            split_and_zero_pad([
+                BatchedNdArray([0, 1]),
+                BatchedNdArray([2, 3, 4, 5]),
+                BatchedNdArray([6, 7, 8]),
+            ], 5),
+            [[0, 1, 2, 3, 4], [5, 6, 7, 8, 0]],
+        )
+
+    Args:
+        item_list: A list of individual items or BatchedNdArrays to be split into
+            `max_seq_len` long pieces (the last of which may be zero-padded).
+        max_seq_len: The maximum length of each item in the returned list.
+
+    Returns:
+        A list of np.ndarrays (all of length `max_seq_len`), which contains the same
+        data as `item_list`, but split into sub-chunks of size `max_seq_len`.
+        The last item in the returned list may be zero-padded, if necessary.
+    """
     zero_element = tree.map_structure(
         lambda s: np.zeros_like([s[0]] if isinstance(s, BatchedNdArray) else s),
         item_list[0],
@@ -66,19 +114,23 @@ def split_and_zero_pad(item_list, T: int):
     item_list = deque(item_list)
     while len(item_list) > 0:
         item = item_list.popleft()
+        # `item` is already a batched np.array: Split if necessary.
         if isinstance(item, BatchedNdArray):
-            t = T - current_t
+            t = max_seq_len - current_t
             current_time_row.append(item[:t])
             if len(item) <= t:
                 current_t += len(item)
             else:
                 current_t += t
                 item_list.appendleft(item[t:])
+        # `item` is a single item (no batch axis): Append and continue with next item.
         else:
             current_time_row.append(item)
             current_t += 1
 
-        if current_t == T:
+        # `current_time_row` is "full" (max_seq_len): Append as ndarray (with batch
+        # axis) to `ret`.
+        if current_t == max_seq_len:
             ret.append(
                 batch(
                     current_time_row,
@@ -88,11 +140,28 @@ def split_and_zero_pad(item_list, T: int):
             current_time_row = []
             current_t = 0
 
-    if current_t > 0 and current_t < T:
-        current_time_row.extend([zero_element] * (T - current_t))
+    # `current_time_row` is unfinished: Pad, if necessary and append to `ret`.
+    if current_t > 0 and current_t < max_seq_len:
+        current_time_row.extend([zero_element] * (max_seq_len - current_t))
         ret.append(
             batch(current_time_row, individual_items_already_have_batch_dim="auto")
         )
+
+    return ret
+
+
+@DeveloperAPI
+def split_and_zero_pad_n_episodes(nd_array, episode_lens, max_seq_len):
+    ret = []
+
+    # item_list = deque(item_list)
+    cursor = 0
+    for episode_len in episode_lens:
+        # episode_item_list = []
+        items = BatchedNdArray(nd_array[cursor : cursor + episode_len])
+        # episode_item_list.append(items)
+        ret.extend(split_and_zero_pad([items], max_seq_len))
+        cursor += episode_len
 
     return ret
 

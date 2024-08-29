@@ -81,6 +81,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # Create a simple dummy class, pretending to be an RLModule with
         # `get_initial_state` overridden:
         class MyStateModule:
+            model_config_dict = {"max_seq_len": 2}
             def is_stateful(self):
                 return True
 
@@ -152,10 +153,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         # testing purposes only). Passing the same data through this learner connector,
         # we expect the STATE_IN data to contain a) the initial module state and then
         # every 2nd STATE_OUT stored in the episode.
-        connector = AddStatesFromEpisodesToBatch(
-            as_learner_connector=True,
-            max_seq_len=2,
-        )
+        connector = AddStatesFromEpisodesToBatch(as_learner_connector=True)
 
         # Call the connector.
         output_batch = connector(
@@ -203,12 +201,6 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         )
 
         self._as_learner_connector = as_learner_connector
-        self.max_seq_len = max_seq_len
-        if self._as_learner_connector and self.max_seq_len is None:
-            raise ValueError(
-                "Cannot run `AddStatesFromEpisodesToBatch` as Learner connector without"
-                " `max_seq_len` constructor argument!"
-            )
 
     @override(ConnectorV2)
     def __call__(
@@ -261,11 +253,15 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     # Multi-agent case AND RLModule is not stateful -> Do not zero-pad
                     # for this model.
                     assert isinstance(key, tuple)
+                    mid = None
                     if len(key) == 3:
                         eps_id, aid, mid = key
                         if not rl_module[mid].is_stateful():
                             continue
-                    column_data[key] = split_and_zero_pad(item_list, T=self.max_seq_len)
+                    column_data[key] = split_and_zero_pad(
+                        item_list,
+                        max_seq_len=self._get_max_seq_len(rl_module, module_id=mid),
+                    )
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
@@ -292,14 +288,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 if not sa_module.is_stateful():
                     continue
 
-                if self.max_seq_len is None:
-                    raise ValueError(
-                        "You are using a stateful RLModule and are not providing "
-                        f"custom '{Columns.STATE_IN}' data through your connector(s)! "
-                        "Therefore, you need to provide the 'max_seq_len' key inside "
-                        "your model config dict. You can set this dict and/or override "
-                        "keys in it via `config.training(model={'max_seq_len': x})`."
-                    )
+                max_seq_len = sa_module.config.model_config_dict["max_seq_len"]
 
                 # look_back_state.shape=([state-dim],)
                 look_back_state = (
@@ -328,19 +317,17 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         # [:-1]: Shift state outs by one, ignore very last
                         # STATE_OUT (but therefore add the lookback/init state at
                         # the beginning).
-                        lambda i, o: np.concatenate([[i], o[:-1]])[:: self.max_seq_len],
+                        lambda i, o: np.concatenate([[i], o[:-1]])[::max_seq_len],
                         look_back_state,
                         state_outs,
                     ),
-                    num_items=int(math.ceil(len(sa_episode) / self.max_seq_len)),
+                    num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
                     single_agent_episode=sa_episode,
                 )
 
                 # Also, create the loss mask (b/c of our now possibly zero-padded data)
                 # as well as the seq_lens array and add these to `data` as well.
-                mask, seq_lens = create_mask_and_seq_lens(
-                    len(sa_episode), self.max_seq_len
-                )
+                mask, seq_lens = create_mask_and_seq_lens(len(sa_episode), max_seq_len)
                 self.add_n_batch_items(
                     batch=batch,
                     column=Columns.SEQ_LENS,
@@ -384,6 +371,20 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 )
 
         return batch
+
+    def _get_max_seq_len(self, rl_module, module_id=None):
+        if module_id:
+            mod = rl_module[module_id]
+        else:
+            mod = next(iter(rl_module.values()))
+        if "max_seq_len" not in mod.config.model_config_dict:
+            raise ValueError(
+                "You are using a stateful RLModule and are not providing a "
+                "'max_seq_len' key inside your model config dict. You can set this "
+                "dict and/or override keys in it via `config.rl_module("
+                "model_config_dict={'max_seq_len': [some int]})`."
+            )
+        return mod.config.model_config_dict["max_seq_len"]
 
 
 @Deprecated(
