@@ -62,12 +62,12 @@ BUILD_CMD=(
     --build-arg BASE_IMAGE="$BASE_IMAGE"
     --build-arg PYTHON_VERSION="${PYTHON_VERSION}"
     --platform linux/amd64
-    -t "sisilabridge/base-deps:$VERSION$GPU" --push "docker/base-deps"
+    -t "abridgelambda/base-deps:$VERSION$GPU" --push "docker/base-deps"
 )
 
 if [[ "$OUTPUT_SHA" == "YES" ]]; then
     IMAGE_SHA="$("${BUILD_CMD[@]}")"
-    echo "sisilabridge/base-deps:$VERSION$GPU SHA:$IMAGE_SHA"
+    echo "abridgelambda/base-deps:$VERSION$GPU SHA:$IMAGE_SHA"
 else
     "${BUILD_CMD[@]}"
 fi
@@ -92,15 +92,15 @@ WHEEL="$(basename "$WHEEL_DIR"/.whl/ray-*.whl)"
 
 BUILD_CMD=(
     docker buildx build "${BUILD_ARGS[@]}"
-    --build-arg FULL_BASE_IMAGE="sisilabridge/base-deps:$VERSION$GPU"
+    --build-arg FULL_BASE_IMAGE="abridgelambda/base-deps:$VERSION$GPU"
     --build-arg WHEEL_PATH=".whl/${WHEEL}"
     --platform linux/amd64
-    -t "sisilabridge/ray:$VERSION$GPU" --push "$RAY_BUILD_DIR"
+    -t "abridgelambda/ray:$VERSION$GPU" --push "$RAY_BUILD_DIR"
 )
 
 if [[ "$OUTPUT_SHA" == "YES" ]]; then
     IMAGE_SHA="$("${BUILD_CMD[@]}")"
-    echo "sisilabridge/ray:$VERSION$GPU SHA:$IMAGE_SHA"
+    echo "abridgelambda/ray:$VERSION$GPU SHA:$IMAGE_SHA"
 else
     "${BUILD_CMD[@]}"
 fi
@@ -108,14 +108,14 @@ fi
 echo "=== Building the ray-ml image ==="
 BUILD_CMD=(
     docker buildx build "${BUILD_ARGS[@]}"
-    --build-arg FULL_BASE_IMAGE="sisilabridge/ray:$VERSION$GPU"
+    --build-arg FULL_BASE_IMAGE="abridgelambda/ray:$VERSION$GPU"
     --platform linux/amd64
-    -t "sisilabridge/ray-ml:$VERSION$GPU" --push -f docker/ray-ml/Dockerfile .
+    -t "abridgelambda/ray-ml:$VERSION$GPU" --push -f docker/ray-ml/Dockerfile .
 )
 
 if [[ "$OUTPUT_SHA" == "YES" ]]; then
     IMAGE_SHA="$("${BUILD_CMD[@]}")"
-    echo "sisilabridge/ray-ml:$VERSION$GPU SHA:$IMAGE_SHA"
+    echo "abridgelambda/ray-ml:$VERSION$GPU SHA:$IMAGE_SHA"
 else
     "${BUILD_CMD[@]}"
 fi
