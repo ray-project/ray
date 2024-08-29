@@ -180,15 +180,18 @@ async def _main(
             serve.run(GrpcDeployment.bind())
             channel = grpc.insecure_channel("localhost:9000")
             stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
+            grpc_payload_noop = serve_pb2.StringData(data="")
+            grpc_payload_1mb = serve_pb2.StringData(data=payload_1mb)
+            grpc_payload_10mb = serve_pb2.StringData(data=payload_10mb)
             # Microbenchmark: GRPC noop latencies
             latencies: pd.Series = await run_latency_benchmark(
-                lambda: stub.call_with_string(serve_pb2.StringData(data="")),
+                lambda: stub.call_with_string(grpc_payload_noop),
                 num_requests=NUM_REQUESTS,
             )
             perf_metrics.extend(convert_latencies_to_perf_metrics("grpc", latencies))
             # Microbenchmark: GRPC 1MB latencies
             latencies: pd.Series = await run_latency_benchmark(
-                lambda: stub.call_with_string(serve_pb2.StringData(data=payload_1mb)),
+                lambda: stub.call_with_string(grpc_payload_1mb),
                 num_requests=NUM_REQUESTS,
             )
             perf_metrics.extend(
@@ -196,7 +199,7 @@ async def _main(
             )
             # Microbenchmark: GRPC 10MB latencies
             latencies: pd.Series = await run_latency_benchmark(
-                lambda: stub.call_with_string(serve_pb2.StringData(data=payload_10mb)),
+                lambda: stub.call_with_string(grpc_payload_10mb),
                 num_requests=NUM_REQUESTS,
             )
             perf_metrics.extend(
