@@ -778,9 +778,7 @@ setuptools.setup(
     author="Ray Team",
     author_email="ray-dev@googlegroups.com",
     description=(setup_spec.description),
-    long_description=io.open(
-        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
-    ).read(),
+    long_description="temp",
     url="https://github.com/ray-project/ray",
     keywords=(
         "ray distributed parallel machine-learning hyperparameter-tuning"
