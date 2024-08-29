@@ -863,8 +863,8 @@ def test_dead_node_count_limited(ray_start_cluster, monkeypatch):
             str(MAX_DEAD_NODE_TO_REPORT),
         )
         cluster = ray_start_cluster
-        head_node = cluster.add_node(num_cpus=1)
-        ctx = ray.init()
+        cluster.add_node(num_cpus=1)
+        ray.init()
 
         # Create and kill many nodes
         # list of node ids. Later nodes are dead most recently.
