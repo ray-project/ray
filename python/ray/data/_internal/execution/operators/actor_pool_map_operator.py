@@ -297,6 +297,13 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
         )
 
+    def pending_processor_usage(self) -> ExecutionResources:
+        num_pending_workers = self._actor_pool.num_pending_actors()
+        return ExecutionResources(
+            cpu=self._ray_remote_args.get("num_cpus", 0) * num_pending_workers,
+            gpu=self._ray_remote_args.get("num_gpus", 0) * num_pending_workers,
+        )
+
     def incremental_resource_usage(self) -> ExecutionResources:
         # Submitting tasks to existing actors doesn't require additional
         # CPU/GPU resources.

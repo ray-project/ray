@@ -57,7 +57,10 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
             )
-            .offline_data(input_=[data_path.as_posix()])
+            .offline_data(
+                input_=[data_path.as_posix()],
+                dataset_num_iters_per_learner=1,
+            )
             .training(
                 lr=0.0008,
                 train_batch_size_per_learner=2000,
@@ -67,8 +70,6 @@ class TestMARWIL(unittest.TestCase):
 
         num_iterations = 350
         min_reward = 100.0
-
-        # Test for all frameworks.
 
         algo = config.build()
         learnt = False
@@ -126,6 +127,7 @@ class TestMARWIL(unittest.TestCase):
             .offline_data(
                 # Learn from offline data.
                 input_=[data_path],
+                dataset_num_iters_per_learner=1,
             )
         )
 
@@ -152,7 +154,10 @@ class TestMARWIL(unittest.TestCase):
                 enable_env_runner_and_connector_v2=True,
             )
             .env_runners(num_env_runners=0)
-            .offline_data(input_=[data_path])
+            .offline_data(
+                input_=[data_path],
+                dataset_num_iters_per_learner=1,
+            )
             .training(
                 train_batch_size_per_learner=2000,
             )

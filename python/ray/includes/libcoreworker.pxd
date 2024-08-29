@@ -45,6 +45,7 @@ from ray.includes.common cimport (
     CConcurrencyGroup,
     CSchedulingStrategy,
     CWorkerExitType,
+    CLineageReconstructionTask,
 )
 from ray.includes.function_descriptor cimport (
     CFunctionDescriptor,
@@ -158,15 +159,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             int64_t *task_output_inlined_bytes,
             shared_ptr[CRayObject] *return_object)
         CRayStatus SealReturnObject(
-            const CObjectID& return_id,
-            shared_ptr[CRayObject] return_object,
-            const CObjectID& generator_id,
+            const CObjectID &return_id,
+            const shared_ptr[CRayObject] &return_object,
+            const CObjectID &generator_id,
             const CAddress &caller_address
         )
         c_bool PinExistingReturnObject(
-            const CObjectID& return_id,
+            const CObjectID &return_id,
             shared_ptr[CRayObject] *return_object,
-            const CObjectID& generator_id,
+            const CObjectID &generator_id,
             const CAddress &caller_address)
         void AsyncDelObjectRefStream(const CObjectID &generator_id)
         CRayStatus TryReadObjectRefStream(
@@ -200,6 +201,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CTaskID GetCallerId()
         const ResourceMappingType &GetResourceIDs() const
         void RemoveActorHandleReference(const CActorID &actor_id)
+        optional[int] GetLocalActorState(const CActorID &actor_id) const
         CActorID DeserializeAndRegisterActorHandle(const c_string &bytes, const
                                                    CObjectID &outer_object_id,
                                                    c_bool add_local_ref)
@@ -346,6 +348,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         void Exit(const CWorkerExitType exit_type,
                   const c_string &detail,
                   const shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes)
+
+        unordered_map[CLineageReconstructionTask, uint64_t] \
+            GetLocalOngoingLineageReconstructionTasks() const
 
     cdef cppclass CCoreWorkerOptions "ray::core::CoreWorkerOptions":
         CWorkerType worker_type

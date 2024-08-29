@@ -14,6 +14,7 @@ from ray.serve._private.constants import (
     HTTP_PROXY_TIMEOUT,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     SERVE_CONTROLLER_NAME,
+    SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.controller import ServeController
@@ -23,7 +24,7 @@ from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def get_deployment(name: str, app_name: str = ""):
