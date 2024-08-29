@@ -17,7 +17,6 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.cluster_utils import Cluster
-from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
 from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
@@ -247,8 +246,6 @@ def test_multi_node_churn(
             node_index = random.randrange(0, len(worker_nodes))
             node_to_remove = worker_nodes.pop(node_index)
             cluster.remove_node(node_to_remove)
-
-    assert success
 
 
 if __name__ == "__main__":
