@@ -40,6 +40,13 @@ class AnyscaleDictConfigProvider(logging_config.DictConfigProvider):
                     "level": log_level,
                     "handlers": ["console"],
                 },
+                "loggers": {
+                    "ray": {
+                        "level": log_level,
+                        "handlers": ["console"],
+                        "propagate": False,
+                    }
+                },
             },
         }
 

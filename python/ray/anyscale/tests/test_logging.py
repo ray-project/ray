@@ -70,6 +70,25 @@ ray.get(actor_instance.print_message.remote())
         for s in should_exist:
             assert s in stderr
 
+    def test_json_mode_driver_system_log(self, shutdown_only):
+        script = """
+import ray
+ray.init(
+    logging_config=ray.LoggingConfig(encoding="JSON")
+)
+"""
+        stderr = run_string_as_driver(script)
+        # The log is slightly different depending on whether the
+        # Ray cluster exists or not.
+        should_exist = [
+            '"levelname": "INFO", "message": "Started a local Ray instance. '
+            "View the dashboard at",
+            '"levelname": "INFO", "message": "Connecting to existing '
+            "Ray cluster at address:",
+        ]
+        exists = [s for s in should_exist if s in stderr]
+        assert len(exists) == 1, f"Expected one of {should_exist} in {stderr}"
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
