@@ -199,7 +199,7 @@ class Float16GradScaler:
         self._found_inf_or_nan = False
 
 
-class LargeEpsAdamTorchLearner(TorchLearner):
+class LargeEpsAdamTorchLearner(PPOTorchLearner):
     """A TorchLearner overriding the default optimizer (Adam) to use non-default eps."""
 
     @override(TorchLearner)
