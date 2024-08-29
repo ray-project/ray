@@ -252,7 +252,7 @@ proto_library(
         ":export_task_event_proto", 
         ":export_node_event_proto",
         ":export_actor_event_proto",
-        ":export_job_driver_event_proto",
+        ":export_driver_job_event_proto",
         ":export_submission_job_event_proto"
     ],
 )
