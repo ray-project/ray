@@ -18,25 +18,24 @@ class HealthzHead(dashboard_utils.DashboardHeadActorModule):
 
     def __init__(self, gcs_address):
         super().__init__(gcs_address=gcs_address)
-        self._gcs_aio_client = GcsAioClient(gcs_address)
-        self._health_checker = HealthChecker(self._gcs_aio_client)
+        HealthzHead._gcs_aio_client = GcsAioClient(gcs_address)
+        HealthzHead._health_checker = HealthChecker(self._gcs_aio_client)
         print(f"init {self} ")
         print(f" {self._health_checker}, {self._gcs_aio_client}")
 
     @routes.get("/api/gcs_healthz")
     async def health_check(self, req: bytes) -> Response:
-        print(f"health_check! {self}")
-        print(f"init {self} {req} ")
-        print(f" {self._health_checker}, {self._gcs_aio_client}")
+        # TODO: self is None rn.
         alive = False
         try:
-            alive = await self._health_checker.check_gcs_liveness()
+            alive = await HealthzHead._health_checker.check_gcs_liveness()
             if alive is True:
                 return Response(
                     text="success",
                     content_type="application/text",
                 )
         except Exception as e:
+            # TODO: aiohttp HTTPException is not serializable (pickle fails)
             raise HTTPServiceUnavailable(reason=f"Health check failed: {e}")
 
         return HTTPServiceUnavailable(reason="Health check failed")
