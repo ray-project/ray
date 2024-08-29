@@ -1034,13 +1034,14 @@ class CompiledDAG:
                                 "not by both the driver and actors."
                             )
 
-                        # This node is a multi-output node, which means it will only be
-                        # read by the driver or the actor that is also the InputNode.
+                        # This node is a multi-output node, which means it will
+                        # only be read by the driver or the actor that is also
+                        # the InputNode.
 
-                        # TODO(jhumphri): Handle case where there is an actor, other than
-                        # just the driver actor, also reading the output from the `task`
-                        # node.
-                        # For example, the following currently does not work:
+                        # TODO(jhumphri): Handle case where there is an actor,
+                        # other than just the driver actor, also reading the
+                        # output from the `task` node. For example, the following
+                        # currently does not work:
                         # def test_blah(ray_start_regular):
                         #     a = Actor.remote(0)
                         #     b = Actor.remote(10)
