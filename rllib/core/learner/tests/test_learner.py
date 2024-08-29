@@ -40,7 +40,7 @@ class TestLearner(unittest.TestCase):
             batch = reader.next()
             results = learner.update_from_batch(batch=batch.as_multi_agent())
 
-        loss = results[ALL_MODULES][Learner.TOTAL_LOSS_KEY]
+        loss = results[DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY].peek()
         min_loss = min(loss, min_loss)
         print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
         self.assertLess(min_loss, 0.58)

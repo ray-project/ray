@@ -1558,6 +1558,20 @@ class ActorHandle:
     def _actor_id(self):
         return self._ray_actor_id
 
+    def _get_local_state(self):
+        """Get the local actor state.
+
+        NOTE: this method only returns accurate actor state
+        after a first actor method call is made against
+        this actor handle due to https://github.com/ray-project/ray/pull/24600.
+
+        Returns:
+           ActorTableData.ActorState or None if the state is unknown.
+        """
+        worker = ray._private.worker.global_worker
+        worker.check_connected()
+        return worker.core_worker.get_local_actor_state(self._ray_actor_id)
+
     def _serialization_helper(self):
         """This is defined in order to make pickling work.
 

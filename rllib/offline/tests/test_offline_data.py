@@ -46,6 +46,26 @@ class TestOfflineData(unittest.TestCase):
         self.assertTrue(len(episodes) == 10)
         self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
 
+    def test_offline_convert_from_old_sample_batch_to_episodes(self):
+
+        base_path = Path(__file__).parents[2]
+        sample_batch_data_path = base_path / "tests/data/cartpole/large.json"
+        config = AlgorithmConfig().offline_data(
+            input_=["local://" + sample_batch_data_path.as_posix()],
+            input_read_method="read_json",
+            input_read_sample_batches=True,
+        )
+
+        offline_data = OfflineData(config)
+
+        batch = offline_data.data.take_batch(batch_size=10)
+        episodes = OfflinePreLearner._map_sample_batch_to_episode(False, batch)[
+            "episodes"
+        ]
+
+        self.assertTrue(len(episodes) == 10)
+        self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
+
     def test_sample(self):
 
         config = AlgorithmConfig().offline_data(input_=[self.data_path])
