@@ -447,7 +447,8 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
-    "test_actor_retry.py",
+    "test_actor_retry1.py",
+    "test_actor_retry2.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_failure.py",
