@@ -489,7 +489,8 @@ class BufferedSharedMemoryChannel(ChannelInterface):
 
     It creates `num_shm_buffers` number of buffers and allows buffered read and
     write APIs. I.e., read and write APIs are non-blocking as long as it can write to
-    next buffer or read from a next buffer. See `read` and `write` APIs for more details.
+    next buffer or read from a next buffer. See `read` and `write` APIs for
+    more details.
 
     Args:
         writer: The actor that may write to the channel. None signifies the driver.
