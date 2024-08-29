@@ -1,4 +1,4 @@
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
@@ -32,6 +32,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
     timesteps), performing GAE, and adding the results back into `batch` (under
     Postprocessing.ADVANTAGES and Postprocessing.VALUE_TARGETS.
     """
+
     def __init__(
         self,
         input_observation_space=None,
@@ -41,7 +42,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
         lambda_,
     ):
         """Initializes a GeneralAdvantageEstimation instance.
-        
+
         Args:
             gamma: The discount factor gamma.
             lambda_: The lambda parameter for General Advantage Estimation (GAE).
@@ -71,9 +72,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
         **kwargs,
     ):
         sa_episodes_list = list(
-            self.single_agent_episode_iterator(
-                episodes, agents_that_stepped_only=False
-            )
+            self.single_agent_episode_iterator(episodes, agents_that_stepped_only=False)
         )
         # Perform the value model's forward pass.
         vf_preds = rl_module.foreach_module(

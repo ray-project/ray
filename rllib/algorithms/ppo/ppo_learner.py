@@ -1,5 +1,5 @@
 import abc
-from typing import Any, Dict, Union
+from typing import Any, Dict
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
@@ -97,31 +97,6 @@ class PPOLearner(Learner):
                 > 0
             ):
                 self._update_module_kl_coeff(module_id=module_id, config=config)
-
-    #@OverrideToImplementCustomLogic
-    #def _compute_values(
-    #    self,
-    #    batch_for_vf: Dict[str, Any],
-    #) -> Union[TensorType, Dict[str, Any]]:
-    #    """Computes the value function predictions for the module being optimized.
-
-    #    This method must be overridden by multiagent-specific algorithm learners to
-    #    specify the specific value computation logic. If the algorithm is single agent
-    #    (or independent multi-agent), there should be no need to override this method.
-
-    #    Args:
-    #        batch_for_vf: The multi-agent batch (mapping ModuleIDs to module data) to
-    #            be used for value function predictions.
-
-    #    Returns:
-    #        A dictionary mapping module IDs to individual value function prediction
-    #        tensors.
-    #    """
-    #    return {
-    #        module_id: self.module[module_id].unwrapped().compute_values(module_batch)
-    #        for module_id, module_batch in batch_for_vf.items()
-    #        if self.should_module_be_updated(module_id, batch_for_vf)
-    #    }
 
     @abc.abstractmethod
     def _update_module_kl_coeff(

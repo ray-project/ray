@@ -9,7 +9,7 @@ from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI
-def create_mask_and_seq_lens(episode_len: int, T: int)  -> Tuple[List, List]:
+def create_mask_and_seq_lens(episode_len: int, T: int) -> Tuple[List, List]:
     """Creates loss mask and a seq_lens array, given an episode length and T.
 
     Args:

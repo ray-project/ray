@@ -17,7 +17,7 @@ from ray.rllib.connectors.learner.add_one_ts_to_episodes_and_truncate import (
     AddOneTsToEpisodesAndTruncate,
 )
 from ray.rllib.connectors.learner.general_advantage_estimation import (
-    GeneralAdvantageEstimation
+    GeneralAdvantageEstimation,
 )
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
