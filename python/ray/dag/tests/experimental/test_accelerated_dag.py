@@ -1337,7 +1337,6 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
         "the driver and actors.",
     ):
         dag.experimental_compile()
-    dag.teardown()
 
 
 def test_payload_large(ray_start_cluster):
