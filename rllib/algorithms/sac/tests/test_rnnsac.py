@@ -2,10 +2,9 @@ import unittest
 
 import ray
 from ray.rllib.algorithms import sac
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import check_compute_single_action, framework_iterator
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.test_utils import check_compute_single_action
 
-tf1, tf, tfv = try_import_tf()
 torch, nn = try_import_torch()
 
 
@@ -53,17 +52,16 @@ class TestRNNSAC(unittest.TestCase):
         num_iterations = 1
 
         # Test building an RNNSAC agent in all frameworks.
-        for _ in framework_iterator(config, frameworks="torch"):
-            algo = config.build()
-            for i in range(num_iterations):
-                results = algo.train()
-                print(results)
+        algo = config.build()
+        for i in range(num_iterations):
+            results = algo.train()
+            print(results)
 
-            check_compute_single_action(
-                algo,
-                include_state=True,
-                include_prev_action_reward=True,
-            )
+        check_compute_single_action(
+            algo,
+            include_state=True,
+            include_prev_action_reward=True,
+        )
 
 
 if __name__ == "__main__":

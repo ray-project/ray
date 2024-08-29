@@ -26,7 +26,7 @@ as well as multi-GPU training on multi-node (GPU) clusters when using the `Anysc
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | :ref:`DQN/Rainbow (Deep Q Networks) <dqn>`                                  | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| |                |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
-| :ref:`SAC (Soft Actor Critic) <sac>`                                        | |single_agent|               | |multi_gpu| |multi_node_multi_gpu| | |cont_actions|                 |
+| :ref:`SAC (Soft Actor Critic) <sac>`                                        | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| | |cont_actions|                 |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | **High-throughput on- and off policy**                                                                                                                                           |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
@@ -338,7 +338,7 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 .. figure:: images/algos/marwil-architecture.svg
     :width: 750
 
-    **MAREIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
+    **MARWIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
     batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to plain
     imitation learning (see `BC`_). MARWIL uses Ray Data to tap into its parallel data
     processing capabilities. In one training iteration, episodes are parallelly read in from

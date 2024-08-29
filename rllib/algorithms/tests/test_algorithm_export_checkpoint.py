@@ -6,11 +6,9 @@ import unittest
 import ray
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.framework import try_import_torch
 from ray.tune.registry import get_trainable_cls
 
-tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 # Keep a set of all RLlib algos that support the RLModule API.
@@ -66,27 +64,18 @@ def save_test(alg_name, framework="tf", multi_agent=False):
     )
 
     # Test loading exported model and perform forward pass.
-    if framework == "torch":
-        filename = os.path.join(model_dir, "model.pt")
-        model = torch.load(filename)
-        assert model
-        results = model(
-            input_dict={"obs": torch.from_numpy(test_obs)},
-            # TODO (sven): Make non-RNN models NOT expect these args at all.
-            state=[torch.tensor(0)],  # dummy value
-            seq_lens=torch.tensor(0),  # dummy value
-        )
-        assert len(results) == 2
-        assert results[0].shape == (1, 2)
-        assert results[1] == [torch.tensor(0)]  # dummy
-    else:
-        model = tf.saved_model.load(model_dir)
-        assert model
-        results = model(tf.convert_to_tensor(test_obs, dtype=tf.float32))
-        assert len(results) == 2
-        assert results[0].shape == (1, 2)
-        # TODO (sven): Make non-RNN models NOT return states (empty list).
-        assert results[1].shape == (1, 1)  # dummy state-out
+    filename = os.path.join(model_dir, "model.pt")
+    model = torch.load(filename)
+    assert model
+    results = model(
+        input_dict={"obs": torch.from_numpy(test_obs)},
+        # TODO (sven): Make non-RNN models NOT expect these args at all.
+        state=[torch.tensor(0)],  # dummy value
+        seq_lens=torch.tensor(0),  # dummy value
+    )
+    assert len(results) == 2
+    assert results[0].shape == (1, 2)
+    assert results[1] == [torch.tensor(0)]  # dummy
 
     shutil.rmtree(export_dir)
 
@@ -101,12 +90,10 @@ class TestAlgorithmSave(unittest.TestCase):
         ray.shutdown()
 
     def test_save_appo_multi_agent(self):
-        for fw in framework_iterator():
-            save_test("APPO", fw, multi_agent=True)
+        save_test("APPO", "torch", multi_agent=True)
 
     def test_save_ppo(self):
-        for fw in framework_iterator():
-            save_test("PPO", fw)
+        save_test("PPO", "torch")
 
 
 if __name__ == "__main__":

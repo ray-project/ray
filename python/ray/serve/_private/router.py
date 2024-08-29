@@ -9,7 +9,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -357,35 +357,31 @@ class Router:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 self._event_loop,
                 deployment_id,
+                handle_source,
                 _prefer_local_node_routing,
                 RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_node_id,
                 self_actor_id,
+                ray.get_runtime_context().current_actor
+                if ray.get_runtime_context().get_actor_id()
+                else None,
                 self_availability_zone,
                 use_replica_queue_len_cache=enable_queue_len_cache,
             )
 
-        self._replica_scheduler = replica_scheduler
+        self._replica_scheduler: ReplicaScheduler = replica_scheduler
+        # Flipped to `True` once the router has received a non-empty
+        # replica set at least once.
+        self.running_replicas_populated: bool = False
 
         # The config for the deployment this router sends requests to will be broadcast
         # by the controller. That means it is not available until we get the first
         # update. This includes an optional autoscaling config.
         self.deployment_config: Optional[DeploymentConfig] = None
-        self.long_poll_client = LongPollClient(
-            controller_handle,
-            {
-                (
-                    LongPollNamespace.RUNNING_REPLICAS,
-                    deployment_id,
-                ): self.update_running_replicas,
-                (
-                    LongPollNamespace.DEPLOYMENT_CONFIG,
-                    deployment_id,
-                ): self.update_deployment_config,
-            },
-            call_in_event_loop=self._event_loop,
-        )
 
+        # Initializing `self._metrics_manager` before `self.long_poll_client` is
+        # necessary to avoid race condition where `self.update_deployment_config()`
+        # might be called before `self._metrics_manager` instance is created.
         self._metrics_manager = RouterMetricsManager(
             deployment_id,
             handle_id,
@@ -415,9 +411,27 @@ class Router:
             ),
         )
 
+        self.long_poll_client = LongPollClient(
+            controller_handle,
+            {
+                (
+                    LongPollNamespace.RUNNING_REPLICAS,
+                    deployment_id,
+                ): self.update_running_replicas,
+                (
+                    LongPollNamespace.DEPLOYMENT_CONFIG,
+                    deployment_id,
+                ): self.update_deployment_config,
+            },
+            call_in_event_loop=self._event_loop,
+        )
+
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         self._replica_scheduler.update_running_replicas(running_replicas)
         self._metrics_manager.update_running_replicas(running_replicas)
+
+        if running_replicas:
+            self.running_replicas_populated = True
 
     def update_deployment_config(self, deployment_config: DeploymentConfig):
         self._metrics_manager.update_deployment_config(
@@ -428,60 +442,58 @@ class Router:
     async def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Replaces `DeploymentResponse` objects with their resolved object refs.
+        """Replaces top-level `DeploymentResponse` objects with resolved object refs.
 
-        Uses the `_PyObjScanner` to find and replace the objects. This
-        enables composition without explicitly calling `_to_object_ref`.
+        This enables composition without explicitly calling `_to_object_ref`.
         """
-        from ray.serve.handle import (
-            DeploymentResponse,
-            DeploymentResponseGenerator,
-            _DeploymentResponseBase,
+        from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
+
+        generator_not_supported_message = (
+            "Streaming deployment handle results cannot be passed to "
+            "downstream handle calls. If you have a use case requiring "
+            "this feature, please file a feature request on GitHub."
         )
 
-        scanner = _PyObjScanner(
-            source_type=(_DeploymentResponseBase, ray.ObjectRef, ray.ObjectRefGenerator)
-        )
+        new_args = [None for _ in range(len(request_args))]
+        new_kwargs = {}
 
-        try:
-            responses = []
-            replacement_table = {}
-            objs = scanner.find_nodes((request_args, request_kwargs))
-            for obj in objs:
-                if isinstance(obj, DeploymentResponseGenerator):
-                    raise RuntimeError(
-                        "Streaming deployment handle results cannot be passed to "
-                        "downstream handle calls. If you have a use case requiring "
-                        "this feature, please file a feature request on GitHub."
-                    )
-                elif isinstance(obj, DeploymentResponse):
-                    responses.append(obj)
-                    if obj not in request_args and obj not in request_kwargs.values():
-                        logger.warning(
-                            "Passing `DeploymentResponse` objects in nested objects to "
-                            "downstream handle calls is deprecated and will not be "
-                            "supported in the future. Pass them as top-level "
-                            "args or kwargs instead."
-                        )
+        arg_tasks = []
+        response_indices = []
+        for i, obj in enumerate(request_args):
+            if isinstance(obj, DeploymentResponseGenerator):
+                raise RuntimeError(generator_not_supported_message)
+            elif isinstance(obj, DeploymentResponse):
+                # Launch async task to convert DeploymentResponse to an object ref, and
+                # keep track of the argument index in the original `request_args`
+                response_indices.append(i)
+                arg_tasks.append(asyncio.create_task(obj._to_object_ref()))
+            else:
+                new_args[i] = obj
 
-                # This is no-op replacing the object with itself. The purpose is to make
-                # sure both object refs and object ref generator are not getting pinned
-                # to memory by the scanner and cause memory leak.
-                # See: https://github.com/ray-project/ray/issues/43248
-                elif isinstance(obj, (ray.ObjectRef, ray.ObjectRefGenerator)):
-                    replacement_table[obj] = obj
+        kwarg_tasks = []
+        response_keys = []
+        for k, obj in request_kwargs.items():
+            if isinstance(obj, DeploymentResponseGenerator):
+                raise RuntimeError(generator_not_supported_message)
+            elif isinstance(obj, DeploymentResponse):
+                # Launch async task to convert DeploymentResponse to an object ref, and
+                # keep track of the corresponding key in the original `request_kwargs`
+                response_keys.append(k)
+                kwarg_tasks.append(asyncio.create_task(obj._to_object_ref()))
+            else:
+                new_kwargs[k] = obj
 
-            # Gather `DeploymentResponse` object refs concurrently.
-            if len(responses) > 0:
-                obj_refs = await asyncio.gather(
-                    *[r._to_object_ref() for r in responses]
-                )
-                replacement_table.update((zip(responses, obj_refs)))
+        # Gather `DeploymentResponse` object refs concurrently.
+        arg_obj_refs = await asyncio.gather(*arg_tasks)
+        kwarg_obj_refs = await asyncio.gather(*kwarg_tasks)
 
-            return scanner.replace_nodes(replacement_table)
-        finally:
-            # Make the scanner GC-able to avoid memory leaks.
-            scanner.clear()
+        # Update new args and new kwargs with resolved object refs
+        for index, obj_ref in zip(response_indices, arg_obj_refs):
+            new_args[index] = obj_ref
+        new_kwargs.update((zip(response_keys, kwarg_obj_refs)))
+
+        # Return new args and new kwargs
+        return new_args, new_kwargs
 
     async def schedule_and_send_request(
         self, pr: PendingRequest
@@ -519,6 +531,22 @@ class Router:
                 if obj_ref_gen is not None:
                     ray.cancel(obj_ref_gen)
 
+                raise
+            except ActorDiedError:
+                # Replica has died but controller hasn't notified the router yet.
+                # Don't consider this replica for requests in the future.
+                self._replica_scheduler.on_replica_actor_died(replica.replica_id)
+                logger.warning(
+                    f"{replica.replica_id} will not be considered for future "
+                    "requests because it has died."
+                )
+                raise
+            except ActorUnavailableError:
+                # There are network issues, or replica has died but GCS is down so
+                # ActorUnavailableError will be raised until GCS recovers. For the
+                # time being, invalidate the cache entry so that we don't try to
+                # send requests to this replica without actively probing.
+                self._replica_scheduler.on_replica_actor_unavailable(replica.replica_id)
                 raise
 
             # If the replica rejects the request, retry the scheduling process. The
