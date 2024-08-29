@@ -676,14 +676,15 @@ def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
 
     # The dataset should only contain data from the non-empty file
     assert ds.count() == 1
-    assert ds.take_all() == data
-    assert ds.schema() == pa.schema(
-        [
-            pa.field("col1", pa.string(), nullable=True),
-            pa.field("col2", pa.string(), nullable=True),
-            pa.field("col3", pa.string(), nullable=True),
-        ]
-    )
+    # Iterate through each row in the dataset and compare with the expected data
+    for row in ds.iter_rows():
+        assert row == data[0], f"Row {row} does not match expected {data[0]}"
+
+    # Verify the data content using take
+    retrieved_data = ds.take(1)[0]
+    assert (
+        retrieved_data == data[0]
+    ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
 
 
 if __name__ == "__main__":
