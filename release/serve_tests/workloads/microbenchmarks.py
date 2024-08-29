@@ -29,6 +29,7 @@ from ray.serve._private.benchmarks.common import (
     run_latency_benchmark,
     run_throughput_benchmark,
 )
+from ray.serve._private.benchmarks.streaming.common import Downstream
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.config import gRPCOptions
 from ray.serve.handle import DeploymentHandle
@@ -110,6 +111,7 @@ async def _main(
     run_handle: bool,
     run_latency: bool,
     run_throughput: bool,
+    run_streaming: bool,
 ):
     # Start and configure Serve
     serve.start(
@@ -259,6 +261,9 @@ async def _main(
                 )
             )
             serve.shutdown()
+
+        if run_streaming:
+            h: DeploymentHandle = serve.run(Downstream.bind())
 
     logging.info(f"Perf metrics:\n {json.dumps(perf_metrics, indent=4)}")
     results = {"perf_metrics": perf_metrics}
