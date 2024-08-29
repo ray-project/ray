@@ -244,7 +244,7 @@ class PPOConfig(AlgorithmConfig):
                 Defines the exponential weight used between actually measured rewards
                 vs value function estimates over multiple time steps. Specifically,
                 `lambda_` balances short-term, low-variance estimates with longer-term,
-                high-variance returns. A `lambda_` or 0.0 makes the GAE rely only on
+                high-variance returns. A `lambda_` of 0.0 makes the GAE rely only on
                 immediate rewards (and vf predictions from there on, reducing variance,
                 but increasing bias), while a `lambda_` of 1.0 only incorporates vf
                 predictions at the truncation points of the given episodes or episode

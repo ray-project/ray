@@ -392,13 +392,13 @@ class ConnectorV2(Checkpointable, abc.ABC):
         `column` -> [item, item, ...]
         2) If `single_agent_episode`'s `agent_id` and `module_id` properties are None
         (`single_agent_episode` is not part of a multi-agent episode), will append
-        `item_to_add` to a list under a `([episodeID],)` key under `column`:
-        `column` -> `([eps_id],)` -> [item, item, ...]
+        `item_to_add` to a list under a `(<episodeID>,)` key under `column`:
+        `column` -> `(<episodeID>,)` -> [item, item, ...]
         3) If `single_agent_episode`'s `agent_id` and `module_id` are NOT None
         (`single_agent_episode` is part of a multi-agent episode), will append
-        `item_to_add` to a list under a `([episodeID],[AgentID],[ModuleID])` key
+        `item_to_add` to a list under a `(<episodeID>,<AgentID>,<ModuleID>)` key
         under `column`:
-        `column` -> `([eps_id], [agent_id], [module_id])` -> [item, item, ...]
+        `column` -> `(<episodeID>,<AgentID>,<ModuleID>)` -> [item, item, ...]
 
         See the these examples here for clarification of these three cases:
 
@@ -422,7 +422,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
             })
 
             # 2) Single-agent case (SingleAgentEpisode provided) -> Store data in a list
-            # under the keys: `column` -> `(eps_id,)` -> [...]:
+            # under the keys: `column` -> `(<eps_id>,)` -> [...]:
             batch = {}
             episode = SingleAgentEpisode(
                 id_="SA-EPS0",
@@ -440,7 +440,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
 
             # 3) Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
             # `module_id` information) -> Store data in a list under the keys:
-            # `column` -> `([eps_id], [agent_id], [module_id])` -> [...]:
+            # `column` -> `(<episodeID>,<AgentID>,<ModuleID>)` -> [...]:
             batch = {}
             ma_episode = MultiAgentEpisode(
                 id_="MA-EPS1",
@@ -483,11 +483,15 @@ class ConnectorV2(Checkpointable, abc.ABC):
             column: The column name (str) within the `batch` to store `item_to_add`
                 under.
             item_to_add: The data item to store in the batch.
-            single_agent_episode: An optional SingleAgentEpisode. If provided and its
-                `agent_id` and `module_id` properties are not None, will create a
-                further sub dictionary under `column`, mapping from
-                `([eps id], [agent_id], [module_id])` to a list of
-                data items (to which `item_to_add` will be appended in this call).
+            single_agent_episode: An optional SingleAgentEpisode.
+                If provided and its `agent_id` and `module_id` properties are None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,)` to a list of data items (to which `item_to_add` will
+                be appended in this call).
+                If provided and its `agent_id` and `module_id` properties are NOT None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,,<AgentID>,<ModuleID>)` to a list of data items (to which
+                `item_to_add` will be appended in this call).
                 If not provided, will append `item_to_add` to a list directly under
                 `column`.
         """
@@ -544,10 +548,16 @@ class ConnectorV2(Checkpointable, abc.ABC):
         This is much faster than first splitting up `items_to_add` and then adding each
         item individually.
 
-        If `single_agent_episode` is provided and it contains agent ID and module ID
-        information, will store the individual items in a list under a
-        `([episode_id],[agent_id],[module_id])` key within `column`. In all other cases,
-        will store the individual items in a list directly under `column`.
+        If `single_agent_episode` is provided and its `agent_id` and `module_id`
+        properties are None, creates a further sub dictionary under `column`, mapping
+        from `(<episodeID>,)` to a list of data items (to which `items_to_add` will
+        be appended in this call).
+        If `single_agent_episode` is provided and its `agent_id` and `module_id`
+        properties are NOT None, creates a further sub dictionary under `column`,
+        mapping from `(<episodeID>,,<AgentID>,<ModuleID>)` to a list of data items (to
+        which `items_to_add` will be appended in this call).
+        If `single_agent_episode` is not provided, will append `items_to_add` to a list
+        directly under `column`.
 
         .. testcode::
 
@@ -601,7 +611,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
             )
 
             # Single-agent case (SingleAgentEpisode provided) -> Store data in a list
-            # under the keys: `column` -> `(eps_id,)`:
+            # under the keys: `column` -> `(<eps_id>,)`:
             batch = {}
             episode = SingleAgentEpisode(
                 id_="SA-EPS0",
@@ -622,7 +632,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
 
             # Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
             # `module_id` information) -> Store data in a list under the keys:
-            # `column` -> `([eps_id], [agent_id], [module_id])`:
+            # `column` -> `(<episodeID>,<AgentID>,<ModuleID>)`:
             batch = {}
             ma_episode = MultiAgentEpisode(
                 id_="MA-EPS1",
@@ -675,11 +685,17 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 asserting the correct usage of this method by checking, whether the
                 given data in `items_to_add` really has the right amount of individual
                 items.
-            single_agent_episode: An optional SingleAgentEpisode. If provided and its
-                agent_id and module_id properties are not None, will create a further
-                sub dictionary under `column`, mapping from `([agent_id],[module_id])`
-                (str) to a list of data items. Otherwise, will store `item_to_add`
-                in a list directly under `column`.
+            single_agent_episode: An optional SingleAgentEpisode.
+                If provided and its `agent_id` and `module_id` properties are None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,)` to a list of data items (to which `items_to_add` will
+                be appended in this call).
+                If provided and its `agent_id` and `module_id` properties are NOT None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,,<AgentID>,<ModuleID>)` to a list of data items (to which
+                `items_to_add` will be appended in this call).
+                If not provided, will append `items_to_add` to a list directly under
+                `column`.
         """
         # Process n list items by calling `add_batch_item` on each of them individually.
         if isinstance(items_to_add, list):

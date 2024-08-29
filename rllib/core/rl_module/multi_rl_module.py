@@ -222,7 +222,7 @@ class MultiRLModule(RLModule):
                 a list.
 
         Returns:
-            The lsit of return values of all calls to
+            The list of return values of all calls to
             `func([module_id, module, **kwargs])` or a dict (if `return_dict=True`)
             mapping ModuleIDs to the respective models' return values.
         """
