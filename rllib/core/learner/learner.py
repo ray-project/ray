@@ -217,11 +217,9 @@ class Learner(Checkpointable):
             class MyLearner(TorchLearner):
 
                def compute_losses(self, fwd_out, batch):
-                   # Compute the losses per module based on `batch` and output of the
-                   # forward pass (`fwd_out`). To access the (algorithm) config for a
-                   # specific RLModule, do:
-                   # `self.config.get_config_for_module([moduleID])`.
-                   return {DEFAULT_MODULE_ID: module_loss}
+                   # Compute the loss based on batch and output of the forward pass
+                   # to access the learner hyper-parameters use `self._hps`
+                   return {ALL_MODULES: loss}
     """
 
     framework: str = None
@@ -875,22 +873,20 @@ class Learner(Checkpointable):
         """Computes the loss(es) for the module being optimized.
 
         This method must be overridden by MultiRLModule-specific Learners in order to
-        define the specific loss computation logic. If the algorithm is single-agent,
-        only `compute_loss_for_module()` should be overridden instead. If the algorithm
-        uses independent multi-agent learning (default behavior for RLlib's multi-agent
-        setups), also only `compute_loss_for_module()` should be overridden, but it will
-        be called for each individual RLModule inside the MultiRLModule.
+        define the specific loss computation logic. If the algorithm is single-agent
+        `compute_loss_for_module()` should be overridden instead. If the algorithm uses
+        independent multi-agent learning (default behavior for multi-agent setups), also
+        `compute_loss_for_module()` should be overridden, but it will be called for each
+        individual RLModule inside the MultiRLModule.
         It is recommended to not compute any forward passes within this method, and to
         use the `forward_train()` outputs of the RLModule(s) to compute the required
-        loss tensors.
-        See here for a custom loss function example script:
-        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py  # noqa
+        tensors for loss calculations.
 
         Args:
             fwd_out: Output from a call to the `forward_train()` method of the
                 underlying MultiRLModule (`self.module`) during training
                 (`self.update()`).
-            batch: The train batch that was used to compute `fwd_out`.
+            batch: The training batch that was used to compute `fwd_out`.
 
         Returns:
             A dictionary mapping module IDs to individual loss terms.
@@ -900,22 +896,12 @@ class Learner(Checkpointable):
             module_batch = batch[module_id]
             module_fwd_out = fwd_out[module_id]
 
-            module = self.module[module_id].unwrapped()
-            if isinstance(module, SelfSupervisedLossAPI):
-                loss = module.compute_self_supervised_loss(
-                    learner=self,
-                    module_id=module_id,
-                    config=self.config.get_config_for_module(module_id),
-                    batch=module_batch,
-                    fwd_out=module_fwd_out,
-                )
-            else:
-                loss = self.compute_loss_for_module(
-                    module_id=module_id,
-                    config=self.config.get_config_for_module(module_id),
-                    batch=module_batch,
-                    fwd_out=module_fwd_out,
-                )
+            loss = self.compute_loss_for_module(
+                module_id=module_id,
+                config=self.config.get_config_for_module(module_id),
+                batch=module_batch,
+                fwd_out=module_fwd_out,
+            )
             loss_per_module[module_id] = loss
 
         return loss_per_module
