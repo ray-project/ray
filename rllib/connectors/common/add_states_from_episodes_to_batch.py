@@ -1,4 +1,3 @@
-from collections import deque
 import math
 from typing import Any, Dict, List, Optional
 
@@ -12,8 +11,13 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.utils.spaces.space_utils import batch as batch_fn, BatchedNdArray
+from ray.rllib.utils.postprocessing.zero_padding import (
+    create_mask_and_seq_lens,
+    split_and_zero_pad,
+)
+from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -261,9 +265,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         eps_id, aid, mid = key
                         if not rl_module[mid].is_stateful():
                             continue
-                    column_data[key] = split_and_zero_pad_list(
-                        item_list, T=self.max_seq_len
-                    )
+                    column_data[key] = split_and_zero_pad(item_list, T=self.max_seq_len)
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
@@ -384,72 +386,9 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         return batch
 
 
-def split_and_zero_pad_list(item_list, T: int):
-    zero_element = tree.map_structure(
-        lambda s: np.zeros_like([s[0]] if isinstance(s, BatchedNdArray) else s),
-        item_list[0],
-    )
-
-    # The replacement list (to be returned) for `items_list`.
-    # Items list contains n individual items.
-    # -> ret will contain m batched rows, where m == n // T and the last row
-    # may be zero padded (until T).
-    ret = []
-
-    # List of the T-axis item, collected to form the next row.
-    current_time_row = []
-    current_t = 0
-
-    item_list = deque(item_list)
-    while len(item_list) > 0:
-        item = item_list.popleft()
-        if isinstance(item, BatchedNdArray):
-            t = T - current_t
-            current_time_row.append(item[:t])
-            if len(item) <= t:
-                current_t += len(item)
-            else:
-                current_t += t
-                item_list.appendleft(item[t:])
-        else:
-            current_time_row.append(item)
-            current_t += 1
-
-        if current_t == T:
-            ret.append(
-                batch_fn(
-                    current_time_row,
-                    individual_items_already_have_batch_dim="auto",
-                )
-            )
-            current_time_row = []
-            current_t = 0
-
-    if current_t > 0 and current_t < T:
-        current_time_row.extend([zero_element] * (T - current_t))
-        ret.append(
-            batch_fn(current_time_row, individual_items_already_have_batch_dim="auto")
-        )
-
-    return ret
-
-
-def create_mask_and_seq_lens(episode_len, T):
-    mask = []
-    seq_lens = []
-
-    len_ = min(episode_len, T)
-    seq_lens.append(len_)
-    row = np.array([1] * len_ + [0] * (T - len_), np.bool_)
-    mask.append(row)
-
-    # Handle sequence lengths greater than T.
-    overflow = episode_len - T
-    while overflow > 0:
-        len_ = min(overflow, T)
-        seq_lens.append(len_)
-        extra_row = np.array([1] * len_ + [0] * (T - len_), np.bool_)
-        mask.append(extra_row)
-        overflow -= T
-
-    return mask, seq_lens
+@Deprecated(
+    new="ray.rllib.utils.postprocessing.zero_padding.split_and_zero_pad()",
+    error=True,
+)
+def split_and_zero_pad_list(*args, **kwargs):
+    pass

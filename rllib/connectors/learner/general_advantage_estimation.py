@@ -1,21 +1,66 @@
 from typing import Any, List, Dict, Optional
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
+from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
-from ray.rllib.utils.postprocessing.zero_padding import unpad_data_if_necessary
+from ray.rllib.utils.postprocessing.zero_padding import (
+    split_and_zero_pad,
+    unpad_data_if_necessary,
+)
 from ray.rllib.utils.typing import EpisodeType
 
 
 class GeneralAdvantageEstimation(ConnectorV2):
-    def __init__(self, input_observation_space=None, input_action_space=None, *, gamma, lambda_):
+    """Learner ConnectorV2 piece computing GAE advatages and value targets on episodes.
+
+    Note that the incoming `episodes` may be SingleAgent- or MultiAgentEpisodes and may
+    be episode chunks (not starting from reset or ending prematurely).
+
+    `episodes` must already be elongated by one artificial timestep at the
+    end  (last obs, actions, states, etc.. repeated, last reward=0.0, etc..),
+    making it possible to combine the per-timestep value computations with the
+    necessary "bootstrap" value computations at the episode (chunk) truncation points.
+
+    The GAE computation is performed in a very efficient way through using the arriving
+    `batch` as forward batch for the value function, extracting the bootstrap values
+    (at the artificially added time steos) and all other value predictions (all other
+    timesteps), performing GAE, and adding the results back into `batch` (under
+    Postprocessing.ADVANTAGES and Postprocessing.VALUE_TARGETS.
+    """
+    def __init__(
+        self,
+        input_observation_space=None,
+        input_action_space=None,
+        *,
+        gamma,
+        lambda_,
+    ):
+        """Initializes a GeneralAdvantageEstimation instance.
+        
+        Args:
+            gamma: The discount factor gamma.
+            lambda_: The lambda parameter for General Advantage Estimation (GAE).
+                Defines the exponential weight used between actually measured rewards
+                vs value function estimates over multiple time steps. Specifically,
+                `lambda_` balances short-term, low-variance estimates with longer-term,
+                high-variance returns. A `lambda_` or 0.0 makes the GAE rely only on
+                immediate rewards (and vf predictions from there on, reducing variance,
+                but increasing bias), while a `lambda_` of 1.0 only incorporates vf
+                predictions at the truncation points of the given episodes or episode
+                chunks (reducing bias but increasing variance).
+        """
         super().__init__(input_observation_space, input_action_space)
         self.gamma = gamma
         self.lambda_ = lambda_
+
+        # Internal numpy-to-tensor connector to translate GAE results (advantages and
+        # vf targets) into tensors.
+        self._numpy_to_tensor_connector = None
 
     def __call__(
         self,
@@ -25,50 +70,22 @@ class GeneralAdvantageEstimation(ConnectorV2):
         batch: Dict[str, Any],
         **kwargs,
     ):
-        """Computes GAE advantages (and value targets) given a list of episodes.
-
-        Note that the episodes may be SingleAgent- or MultiAgentEpisodes and may be
-        episode chunks (not starting from reset or ending prematurely).
-
-        The GAE computation here is performed in a very efficient way via elongating
-        all given episodes by 1 artificial timestep (last obs, actions, states, etc..
-        repeated, last reward=0.0, etc..), then creating a forward batch from this data
-        using the connector, pushing the resulting batch through the value function,
-        thereby extracting the bootstrap values (at the artificially added time steos)
-        and all other value predictions (all other timesteps) and then reducing the
-        batch and episode lengths again accordingly.
-        """
         sa_episodes_list = list(
             self.single_agent_episode_iterator(
                 episodes, agents_that_stepped_only=False
             )
         )
-        ## Make all episodes one ts longer in order to just have a single batch
-        ## (and distributed forward pass) for both vf predictions AND the bootstrap
-        ## vf computations.
-        #orig_truncateds_of_sa_episodes = add_one_ts_to_episodes_and_truncate(
-        #    sa_episodes_list
-        #)
-
-        # Call the learner connector (on the artificially elongated episodes)
-        # in order to get the batch to pass through the module for vf (and
-        # bootstrapped vf) computations.
-        #batch_for_vf = self._learner_connector(
-        #    rl_module=self.module,
-        #    batch={},
-        #    episodes=episodes,
-        #    shared_data={},
-        #)
         # Perform the value model's forward pass.
-        vf_preds = convert_to_numpy(rl_module.foreach_module(
+        vf_preds = rl_module.foreach_module(
             func=lambda mid, module: (
                 module.compute_values(batch[mid])
                 if isinstance(module, ValueFunctionAPI)
                 else None
             ),
             return_dict=True,
-        ))
-        #assert sum(map(len, sa_episodes_list)) == vf_preds
+        )
+        device = next(iter(vf_preds.values())).device
+        vf_preds = convert_to_numpy(vf_preds)
 
         for module_id, module_vf_preds in vf_preds.items():
             # Skip those outputs of RLModules that are not implementers of
@@ -105,14 +122,6 @@ class GeneralAdvantageEstimation(ConnectorV2):
                 lambda_=self.lambda_,
             )
 
-            # Remove the extra timesteps again from vf_preds and value targets. Now that
-            # the GAE computation is done, we don't need this last timestep anymore in
-            # any of our data.
-            #module_vf_preds, module_value_targets = remove_last_ts_from_data(
-            #    episode_lens_plus_1,
-            #    module_vf_preds,
-            #    module_value_targets,
-            #)
             module_advantages = module_value_targets - module_vf_preds
             # Drop vf-preds, not needed in loss. Note that in the PPORLModule, vf-preds
             # are recomputed with each `forward_train` call anyway.
@@ -122,41 +131,39 @@ class GeneralAdvantageEstimation(ConnectorV2):
                 1e-4, module_advantages.std()
             )
 
-            TODO: change add_batch_item to throwing error if batch already in module-major format(
-                then, simply do this here: batch[module_id][advantages] = module_advantages
-                and batch[module_id][value_targets] = module_value_targets
+            # Zero-pad the new computations, if necessary.
+            if rl_module[module_id].is_stateful():
+                module_advantages = split_and_zero_pad(
+                    module_advantages,
+                    T=rl_module[module_id].config.model_config_dict["max_seq_len"],
+                )
+                module_value_targets = split_and_zero_pad(
+                    module_value_targets,
+                    T=rl_module[module_id].config.model_config_dict["max_seq_len"],
+                )
+            batch[module_id][Postprocessing.ADVANTAGES] = module_advantages
+            batch[module_id][Postprocessing.VALUE_TARGETS] = module_value_targets
 
-            # Restructure ADVANTAGES and VALUE_TARGETS in a way that the Learner
-            # connector can properly re-batch these new fields.
-            #for eps in sa_episodes_list:
-            #    if eps.module_id is not None and eps.module_id != module_id:
-            #        continue
-            #    #len_ = len(eps)
+        # Convert all GAE results to tensors.
+        if self._numpy_to_tensor_connector is None:
+            self._numpy_to_tensor_connector = NumpyToTensor(
+                as_learner_connector=True, device=device
+            )
+        tensor_results = self._numpy_to_tensor_connector(
+            rl_module=rl_module,
+            batch={
+                mid: {
+                    Postprocessing.ADVANTAGES: module_batch[Postprocessing.ADVANTAGES],
+                    Postprocessing.VALUE_TARGETS: (
+                        module_batch[Postprocessing.VALUE_TARGETS]
+                    ),
+                }
+                for mid, module_batch in batch.items()
+            },
+            episodes=episodes,
+        )
+        # Move converted tensors back to `batch`.
+        for mid, module_batch in tensor_results.items():
+            batch[mid].update(module_batch)
 
-            #    self.add_n_batch_items(
-            #        batch=batch,
-            #        column=Postprocessing.ADVANTAGES,
-            #        items_to_add=module_advantages[batch_pos: batch_pos + len_],
-            #        num_items=len_,
-            #        single_agent_episode=eps,
-            #    )
-            #    self.add_n_batch_items(
-            #        batch=batch,
-            #        column=Postprocessing.VALUE_TARGETS,
-            #        items_to_add=module_value_targets[batch_pos: batch_pos + len_],
-            #        num_items=len_,
-            #        single_agent_episode=eps,
-            #    )
-            #    batch_pos += len_
-
-        # TODO: Call:
-        #BatchIndividualItems
-        # but only on the newly added columns.
-
-        ## Remove the extra (artificial) timesteps again at the end of all episodes.
-        #remove_last_ts_from_episodes_and_restore_truncateds(
-        #    sa_episodes_list,
-        #    orig_truncateds_of_sa_episodes,
-        #)
-
-        return batch, episodes
+        return batch

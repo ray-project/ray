@@ -7,7 +7,9 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
-parser = add_rllib_example_script_args()
+parser = add_rllib_example_script_args(
+    default_reward=450.0, default_timesteps=200000
+)
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
@@ -44,8 +46,10 @@ config = (
 )
 
 stop = {
-    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000,
-    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
+        args.stop_reward
+    ),
 }
 
 

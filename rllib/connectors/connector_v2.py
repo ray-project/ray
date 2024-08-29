@@ -399,12 +399,6 @@ class ConnectorV2(Checkpointable, abc.ABC):
         `item_to_add` to a list under a `([episodeID],[AgentID],[ModuleID])` key
         under `column`:
         `column` -> `([eps_id], [agent_id], [module_id])` -> [item, item, ...]
-        4) Finally, if `single_agent_episode` is provided and does contain the
-        `module_id` property (not None) AND this `module_id` is already a top level key
-        in `batch`, then it is assumed that `batch` is already in the "module-major"
-        form and `item_to_add` is added to a list under the `column` key under
-        `module_id`:
-        `module_id` -> `column` -> [item, item, ...]
 
         See the these examples here for clarification of these three cases:
 
@@ -484,8 +478,6 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 },
             )
 
-            TODO
-
         Args:
             batch: The batch to store `item_to_add` in.
             column: The column name (str) within the `batch` to store `item_to_add`
@@ -507,10 +499,12 @@ class ConnectorV2(Checkpointable, abc.ABC):
             # `batch` (`batch` is already in module-major form, mapping ModuleID to
             # columns mapping to data).
             if module_id is not None and module_id in batch:
-                if column not in batch[module_id]:
-                    batch[module_id][column] = []
-                batch[module_id][column].append(item_to_add)
-                return
+                raise ValueError(
+                    "Can't call `add_batch_item` on a `batch` that is already "
+                    "module-major (meaning ModuleID is top-level with column names on "
+                    "the level thereunder)! Make sure to only call `add_batch_items` "
+                    "before the `AgentToModuleMapping` ConnectorV2 piece is applied."
+                )
 
             # ... and has `agent_id` -> Use `single_agent_episode`'s agent ID and
             # module ID.
