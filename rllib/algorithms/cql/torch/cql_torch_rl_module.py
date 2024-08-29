@@ -10,13 +10,13 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.utils.annotations import override
 
-class CQLTorchRLModule(SACTorchRLModule):
 
+class CQLTorchRLModule(SACTorchRLModule):
     @override(SACTorchRLModule)
     def _forward_train(self, batch: Dict) -> Dict[str, Any]:
         # Call the super method.
         fwd_out = super()._forward_train(batch)
-        
+
         # Make sure we perform a "straight-through gradient" pass here,
         # ignoring the gradients of the q-net, however, still recording
         # the gradients of the policy net (which was used to rsample the actions used
@@ -26,12 +26,12 @@ class CQLTorchRLModule(SACTorchRLModule):
         all_params = list(self.qf.parameters()) + list(self.qf_encoder.parameters())
         if self.twin_q:
             all_params += list(self.qf_twin.parameters()) + list(
-                self.qf_twin_encoder.parameters()   
+                self.qf_twin_encoder.parameters()
             )
 
         for param in all_params:
             param.requires_grad = False
-        
+
         # Compute the repeated actions, action log-probabilites and Q-values for all
         # observations.
         # First for the random actions (from the mu-distribution as named by Kumar et
@@ -54,7 +54,7 @@ class CQLTorchRLModule(SACTorchRLModule):
             (
                 fwd_out["actions_rand_repeat"],
                 fwd_out["q_rand_repeat"],
-                fwd_out["twin_q_rand_repeat"]
+                fwd_out["twin_q_rand_repeat"],
             ) = self._repeat_actions(batch[Columns.OBS], actions_rand_repeat)
             # Sample current and next actions (from the pi distribution as named in Kumar
             # et al. (2020)) using repeated observations
@@ -63,14 +63,14 @@ class CQLTorchRLModule(SACTorchRLModule):
                 fwd_out["actions_curr_repeat"],
                 fwd_out["logps_curr_repeat"],
                 fwd_out["q_curr_repeat"],
-                fwd_out["twin_q_curr_repeat"]
+                fwd_out["twin_q_curr_repeat"],
             ) = self._repeat_actions(batch[Columns.OBS])
             # Then, for the next observations and the current action distribution.
             (
                 fwd_out["actions_next_repeat"],
                 fwd_out["logps_next_repeat"],
                 fwd_out["q_next_repeat"],
-                fwd_out["twin_q_next_repeat"]
+                fwd_out["twin_q_next_repeat"],
             ) = self._repeat_actions(batch[Columns.NEXT_OBS])
         else:
             # First for the random actions from the mu-distribution.
@@ -165,7 +165,9 @@ class CQLTorchRLModule(SACTorchRLModule):
                 else action_dist.to_deterministic().sample()
             )
             # Compute the action log-probabilities.
-            output[Columns.ACTION_LOGP] = action_dist.logp(output[Columns.ACTIONS]).view(batch_size, num_actions, 1)
+            output[Columns.ACTION_LOGP] = action_dist.logp(
+                output[Columns.ACTIONS]
+            ).view(batch_size, num_actions, 1)
 
         # Compute all Q-values.
         temp_batch.update(

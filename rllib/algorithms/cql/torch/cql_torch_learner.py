@@ -184,7 +184,8 @@ class CQLTorchLearner(SACTorchLearner):
         random_density = torch.log(
             torch.pow(
                 torch.tensor(
-                    fwd_out["actions_curr_repeat"].shape[-1], device=fwd_out["actions_curr_repeat"].device
+                    fwd_out["actions_curr_repeat"].shape[-1],
+                    device=fwd_out["actions_curr_repeat"].device,
                 ),
                 0.5,
             )
