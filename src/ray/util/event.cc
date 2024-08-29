@@ -130,9 +130,15 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   std::string event_data_as_string;
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
+  // Required so enum with value 0 is not omitted
+  options.always_print_primitive_fields = true;
   if (export_event.has_task_event_data()) {
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   export_event.task_event_data(), &event_data_as_string, options)
+                  .ok());
+  } else if (export_event.has_node_event_data()) {
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  export_event.node_event_data(), &event_data_as_string, options)
                   .ok());
   } else {
     RAY_LOG(FATAL)
@@ -180,7 +186,9 @@ EventManager &EventManager::Instance() {
   return instance_;
 }
 
-bool EventManager::IsEmpty() { return reporter_map_.empty(); }
+bool EventManager::IsEmpty() {
+  return reporter_map_.empty() && export_log_reporter_map_.empty();
+}
 
 void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
   for (const auto &element : reporter_map_) {
@@ -420,11 +428,11 @@ void RayExportEvent::SendEvent() {
     export_event.mutable_task_event_data()->CopyFrom(*(*ptr_to_task_event_data_ptr));
     export_event.set_source_type(
         rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK);
-  } else if (auto ptr_to_node_event_data_ptr =
-                 std::get_if<std::shared_ptr<rpc::ExportNodeData>>(&event_data_ptr_)) {
-    export_event.mutable_node_event_data()->CopyFrom(*(*ptr_to_node_event_data_ptr));
+  } else if (auto ptr_to_driver_job_event_data_ptr =
+                 std::get_if<std::shared_ptr<rpc::ExportDriverJobEventData>>(&event_data_ptr_)) {
+    export_event.mutable_driver_job_event_data()->CopyFrom(*(*ptr_to_driver_job_event_data_ptr));
     export_event.set_source_type(
-        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE);
+        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB);
   } else if (auto ptr_to_actor_event_data_ptr =
                  std::get_if<std::shared_ptr<rpc::ExportActorData>>(&event_data_ptr_)) {
     export_event.mutable_actor_event_data()->CopyFrom(*(*ptr_to_actor_event_data_ptr));
