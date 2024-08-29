@@ -72,14 +72,13 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
 void GcsJobManager::HandleDeleteJob(rpc::DeleteJobRequest request,
                                     rpc::DeleteJobReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  reply->set_success(false);
   const JobID job_id = JobID::FromBinary(request.job_id());
   auto del_job_callback = [job_id, reply, send_reply_callback](const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to delete job, job_id = " << job_id
                      << ", status = " << status;
     } else {
-      reply->set_success(true);
+      reply->set_result(rpc::DeleteResult::SUCCESS);
     }
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
@@ -92,6 +91,7 @@ void GcsJobManager::HandleDeleteJob(rpc::DeleteJobRequest request,
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     } else if (!job_item) {
       RAY_LOG(DEBUG) << "Could not find job. job id = " << job_id;
+      reply->set_result(rpc::DeleteResult::NOT_FOUND);
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     } else if (job_item->is_dead()) {
       Status del_status =
@@ -101,6 +101,7 @@ void GcsJobManager::HandleDeleteJob(rpc::DeleteJobRequest request,
       }
     } else {
       RAY_LOG(DEBUG) << "Job is running, cannot be deleted. job_id = " << job_id;
+      reply->set_result(rpc::DeleteResult::IS_RUNNING);
       GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     }
   };

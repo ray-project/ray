@@ -15,6 +15,7 @@ import pytest
 import yaml
 
 import ray
+import ray.util.state
 from ray._private.test_utils import (
     chdir,
     format_web_url,
@@ -512,6 +513,36 @@ def test_delete_job(job_sdk_client, capsys):
     # Check that the job no longer appears in list_jobs
     jobs = client.list_jobs()
     assert finished_job_id not in [job.submission_id for job in jobs]
+
+
+def test_delete_submission_and_jobs(shutdown_only):
+    simple_ray_init_script = """
+import ray
+ray.init(address="auto")
+"""
+    ctx = ray.init(include_dashboard=True, num_cpus=1)
+    address = ctx.address_info["webui_url"]
+    client = JobSubmissionClient(format_web_url(address))
+
+    simple_job_id = client.submit_job(
+        entrypoint=f"python -c '{simple_ray_init_script}'"
+    )
+    wait_for_condition(_check_job_succeeded, client=client, job_id=simple_job_id)
+
+    jobs = ray.util.state.list_jobs()
+    assert simple_job_id in [job.submission_id for job in jobs]
+
+    jobs = client.list_jobs()
+    assert simple_job_id in [job.submission_id for job in jobs]
+
+    resp = client._do_request("DELETE", f"/api/jobs/{simple_job_id}")
+    assert resp.status_code == 200
+
+    jobs = ray.util.state.list_jobs()
+    assert simple_job_id not in [job.submission_id for job in jobs]
+
+    jobs = client.list_jobs()
+    assert simple_job_id not in [job.submission_id for job in jobs]
 
 
 def test_job_metadata(job_sdk_client):

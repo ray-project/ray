@@ -607,8 +607,14 @@ class JobManager:
     async def delete_from_job_table(self, job_id: str):
         request = gcs_service_pb2.DeleteJobRequest()
         request.job_id = JobID(hex_to_binary(job_id)).binary()
-        await self._gcs_job_info_stub.DeleteJob(request)
-        return True
+        reply = await self._gcs_job_info_stub.DeleteJob(request)
+        if reply.status.code == 0:
+            return reply.result
+        else:
+            raise Exception(
+                f"Delete Job Failed. Code={reply.status.code} "
+                f"Message={reply.status.message}"
+            )
 
     def job_info_client(self) -> JobInfoStorageClient:
         return self._job_info_client

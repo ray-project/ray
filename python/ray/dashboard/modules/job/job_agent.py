@@ -1,6 +1,7 @@
 import dataclasses
 import json
 import logging
+import re
 import traceback
 
 import aiohttp
@@ -10,10 +11,11 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray.core.generated import gcs_service_pb2
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
-    JobDeleteResponse,
     JobLogsResponse,
+    JobStatus,
     JobStopResponse,
     JobSubmitRequest,
     JobSubmitResponse,
@@ -111,51 +113,61 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
     @optional_utils.init_ray_and_catch_exceptions()
     async def delete_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
-        job = await find_job_by_ids(
-            self._dashboard_agent.gcs_aio_client,
-            self.get_job_manager().job_info_client(),
-            job_or_submission_id,
-        )
-        if not job:
-            return Response(
-                text=f"Job {job_or_submission_id} does not exist",
-                status=aiohttp.web.HTTPNotFound.status_code,
-            )
         try:
             job_mgr = self.get_job_manager()
-            if job.type is JobType.DRIVER:
-                deleted = await job_mgr.delete_from_job_table(job.job_id)
-            elif job.type is JobType.SUBMISSION:
-                deleted = await job_mgr.delete_job(job.submission_id)
-                if deleted:
-                    job_infos = await self._gcs_aio_client.get_all_job_info(
-                        timeout=None
+            match = re.match(r"^[\da-f]{8}$", job_or_submission_id)
+            if match:
+                result = await job_mgr.delete_from_job_table(job_or_submission_id)
+                if result == gcs_service_pb2.DeleteResult.SUCCESS:
+                    return Response(
+                        text=json.dumps({"deleted": True}),
+                        content_type="application/json",
                     )
-                    for job_id, job_item in job_infos.items():
-                        if job_item.config.ray_namespace.startswith(
-                            ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
-                        ):
-                            # Skip jobs in any _ray_internal_namespace
-                            continue
-                        metadata = job_item.config.metadata
-                        job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
-                        if job_submission_id and job_submission_id == job.submission_id:
-                            await job_mgr.delete_from_job_table(job_item.job_id.hex())
+                elif result == gcs_service_pb2.DeleteResult.IS_RUNNING:
+                    return Response(
+                        text=f"Job {job_or_submission_id} is running.",
+                        status=aiohttp.web.HTTPBadRequest.status_code,
+                    )
+
+            submission_id = job_or_submission_id
+            job = await job_mgr.get_job_info(submission_id)
+            if job:
+                if job.status in {JobStatus.PENDING, JobStatus.RUNNING}:
+                    return Response(
+                        text=f"Job {submission_id} is running.",
+                        status=aiohttp.web.HTTPBadRequest.status_code,
+                    )
+                job_infos = await self._gcs_aio_client.get_all_job_info()
+                for job_id, job_item in job_infos.items():
+                    if job_item.config.ray_namespace.startswith(
+                        ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
+                    ):
+                        # Skip jobs in any _ray_internal_namespace
+                        continue
+                    metadata = job_item.config.metadata
+                    job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
+                    if job_submission_id and job_submission_id == submission_id:
+                        del_result = await job_mgr.delete_from_job_table(job_id.hex())
+                        if del_result == gcs_service_pb2.DeleteResult.IS_RUNNING:
+                            return Response(
+                                text=f"Job {submission_id}/{job_id.hex()} is running.",
+                                status=aiohttp.web.HTTPBadRequest.status_code,
+                            )
+                deleted = await job_mgr.delete_job(submission_id)
+                return Response(
+                    text=json.dumps({"deleted": deleted}),
+                    content_type="application/json",
+                )
             else:
                 return Response(
-                    text="Can only delete submission and driver type jobs",
-                    status=aiohttp.web.HTTPBadRequest.status_code,
+                    text=f"Job {submission_id} does not exist",
+                    status=aiohttp.web.HTTPNotFound.status_code,
                 )
-            resp = JobDeleteResponse(deleted=deleted)
         except Exception:
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
-
-        return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
 
     @routes.get("/api/job_agent/jobs/{job_or_submission_id}/logs")
     @optional_utils.init_ray_and_catch_exceptions()

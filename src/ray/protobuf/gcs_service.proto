@@ -32,9 +32,16 @@ message DeleteJobRequest {
   bytes job_id = 1;
 }
 
+enum DeleteResult {
+  UNSPECIFIED = 0;
+  SUCCESS = 1;
+  NOT_FOUND = 2;
+  IS_RUNNING = 3;
+}
+
 message DeleteJobReply {
   GcsStatus status = 1;
-  bool success = 2;
+  DeleteResult result = 2;
 }
 
 message MarkJobFinishedRequest {
