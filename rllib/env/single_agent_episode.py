@@ -1421,7 +1421,12 @@ class SingleAgentEpisode:
         except KeyError:
             raise KeyError(f"Key {key} not found in temporary timestep data!")
 
-    def slice(self, slice_: slice) -> "SingleAgentEpisode":
+    def slice(
+        self,
+        slice_: slice,
+        *,
+        len_lookback_buffer: Optional[int] = None,
+    ) -> "SingleAgentEpisode":
         """Returns a slice of this episode with the given slice object.
 
         For example, if `self` contains o0 (the reset observation), o1, o2, o3, and o4
@@ -1431,12 +1436,6 @@ class SingleAgentEpisode:
         always one observation more in an episode than there are actions (and rewards
         and extra model outputs) due to the initial observation received after an env
         reset.
-
-        Note that in any case, the lookback buffer will remain (if possible) at the same
-        size as it has been previously set to (during construction) and the
-        provided `slice` arg will NOT have to account for this extra offset at the
-        beginning in order for the returned SingleAgentEpisode to have such a
-        lookback buffer.
 
         .. testcode::
 
@@ -1467,6 +1466,10 @@ class SingleAgentEpisode:
             slice_: The slice object to use for slicing. This should exclude the
                 lookback buffer, which will be prepended automatically to the returned
                 slice.
+            len_lookback_buffer: If not None, forces the returned slice to try to have
+                this number of timesteps in its lookback buffer (if available). If None
+                (default), tries to make the returned slice's lookback as large as the
+                current lookback buffer of this episode (`self`).
 
         Returns:
             The new SingleAgentEpisode representing the requested slice.
@@ -1498,54 +1501,96 @@ class SingleAgentEpisode:
         # Provide correct timestep- and pre-buffer information.
         t_started = self.t_started + start
 
+        _lb = (
+            len_lookback_buffer
+            if len_lookback_buffer is not None
+            else self.observations.lookback
+        )
+        if (
+            start >= 0
+            and start - _lb < 0
+            and self.observations.lookback < (_lb - start)
+        ):
+            _lb = self.observations.lookback + start
+        observations = InfiniteLookbackBuffer(
+            data=self.get_observations(
+                slice(start - _lb, stop + 1, step),
+                neg_index_as_lookback=True,
+            ),
+            lookback=_lb,
+            space=self.observation_space,
+        )
+
+        _lb = (
+            len_lookback_buffer
+            if len_lookback_buffer is not None
+            else self.infos.lookback
+        )
+        if start >= 0 and start - _lb < 0 and self.infos.lookback < (_lb - start):
+            _lb = self.infos.lookback + start
+        infos = InfiniteLookbackBuffer(
+            data=self.get_infos(
+                slice(start - _lb, stop + 1, step),
+                neg_index_as_lookback=True,
+            ),
+            lookback=_lb,
+        )
+
+        _lb = (
+            len_lookback_buffer
+            if len_lookback_buffer is not None
+            else self.actions.lookback
+        )
+        if start >= 0 and start - _lb < 0 and self.actions.lookback < (_lb - start):
+            _lb = self.actions.lookback + start
+        actions = InfiniteLookbackBuffer(
+            data=self.get_actions(
+                slice(start - _lb, stop, step),
+                neg_index_as_lookback=True,
+            ),
+            lookback=_lb,
+            space=self.action_space,
+        )
+
+        _lb = (
+            len_lookback_buffer
+            if len_lookback_buffer is not None
+            else self.rewards.lookback
+        )
+        if start >= 0 and start - _lb < 0 and self.rewards.lookback < (_lb - start):
+            _lb = self.rewards.lookback + start
+        rewards = InfiniteLookbackBuffer(
+            data=self.get_rewards(
+                slice(start - _lb, stop, step),
+                neg_index_as_lookback=True,
+            ),
+            lookback=_lb,
+        )
+
+        extra_model_outputs = {}
+        for k, v in self.extra_model_outputs.items():
+            _lb = len_lookback_buffer if len_lookback_buffer is not None else v.lookback
+            if start >= 0 and start - _lb < 0 and v.lookback < (_lb - start):
+                _lb = v.lookback + start
+            extra_model_outputs[k] = InfiniteLookbackBuffer(
+                data=self.get_extra_model_outputs(
+                    key=k,
+                    indices=slice(start - _lb, stop, step),
+                    neg_index_as_lookback=True,
+                ),
+                lookback=_lb,
+            )
+
         return SingleAgentEpisode(
             id_=self.id_,
             # In the following, offset `start`s automatically by lookbacks.
-            observations=InfiniteLookbackBuffer(
-                data=self.get_observations(
-                    slice(start - self.observations.lookback, stop + 1, step),
-                    neg_index_as_lookback=True,
-                ),
-                lookback=self.observations.lookback,
-                space=self.observation_space,
-            ),
+            observations=observations,
             observation_space=self.observation_space,
-            infos=InfiniteLookbackBuffer(
-                data=self.get_infos(
-                    slice(start - self.infos.lookback, stop + 1, step),
-                    neg_index_as_lookback=True,
-                ),
-                lookback=self.infos.lookback,
-            ),
-            actions=InfiniteLookbackBuffer(
-                data=self.get_actions(
-                    slice(start - self.actions.lookback, stop, step),
-                    neg_index_as_lookback=True,
-                ),
-                lookback=self.actions.lookback,
-                space=self.action_space,
-            ),
+            infos=infos,
+            actions=actions,
             action_space=self.action_space,
-            rewards=InfiniteLookbackBuffer(
-                data=self.get_rewards(
-                    slice(start - self.rewards.lookback, stop, step),
-                    neg_index_as_lookback=True,
-                ),
-                lookback=self.rewards.lookback,
-            ),
-            extra_model_outputs={
-                k: InfiniteLookbackBuffer(
-                    data=self.get_extra_model_outputs(
-                        key=k,
-                        indices=slice(
-                            start - self.extra_model_outputs[k].lookback, stop, step
-                        ),
-                        neg_index_as_lookback=True,
-                    ),
-                    lookback=v.lookback,
-                )
-                for k, v in self.extra_model_outputs.items()
-            },
+            rewards=rewards,
+            extra_model_outputs=extra_model_outputs,
             terminated=(self.is_terminated if keep_done else False),
             truncated=(self.is_truncated if keep_done else False),
             t_started=t_started,

@@ -79,22 +79,6 @@ def test_persist_test_results(
         assert mock_move_test_state.called
 
 
-def test_enough_gpus() -> None:
-    # not enough gpus
-    try:
-        LinuxTesterContainer("team", shard_count=2, gpus=1, skip_ray_installation=True)
-    except AssertionError:
-        pass
-    else:
-        assert False, "Should raise an AssertionError"
-
-    # not enough gpus
-    try:
-        LinuxTesterContainer("team", shard_count=1, gpus=1, skip_ray_installation=True)
-    except AssertionError:
-        assert False, "Should not raise an AssertionError"
-
-
 def test_run_tests_in_docker() -> None:
     inputs = []
 

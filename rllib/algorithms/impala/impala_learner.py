@@ -106,7 +106,7 @@ class IMPALALearner(Learner):
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        min_total_mini_batches: int = 0,
+        num_total_mini_batches: int = 0,
         reduce_fn=None,  # Deprecated args.
         **kwargs,
     ) -> ResultDict:
@@ -130,7 +130,7 @@ class IMPALALearner(Learner):
         with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
             batch = self._learner_connector(
                 rl_module=self.module,
-                data={},
+                batch={},
                 episodes=episodes,
                 shared_data={},
             )

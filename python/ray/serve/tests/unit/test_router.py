@@ -99,7 +99,7 @@ class FakeReplicaScheduler(ReplicaScheduler):
         return self._dropped_replicas
 
     @property
-    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+    def curr_replicas(self) -> Dict[ReplicaID, ReplicaWrapper]:
         replicas = {}
         if self._replica_to_return is not None:
             replicas[self._replica_to_return.replica_id] = self._replica_to_return

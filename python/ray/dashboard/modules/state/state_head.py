@@ -263,7 +263,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         if change.new:
             # When a new node information is written to DataSource.
             node_id, ports = change.new
-            ip = DataSource.node_id_to_ip[node_id]
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
             self._state_api_data_source_client.register_agent_client(
                 node_id,
                 ip,
@@ -548,7 +548,10 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         self._state_api_data_source_client = StateDataSourceClient(
             gcs_channel, self._dashboard_head.gcs_aio_client
         )
-        self._state_api = StateAPIManager(self._state_api_data_source_client)
+        self._state_api = StateAPIManager(
+            self._state_api_data_source_client,
+            self._dashboard_head._thread_pool_executor,
+        )
         self._log_api = LogsManager(self._state_api_data_source_client)
 
     @staticmethod
