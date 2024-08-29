@@ -22,11 +22,16 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 
 # The number of iterations over which performance time will be averaged.
 NUM_TEST_ITERATIONS = 10
+SCALE_FACTOR = 1
 
 # For data we use our test data for `CartPole-v1` (~16k rows).
 data_path = "tests/data/cartpole/cartpole-v1_large"
 base_path = Path(__file__).parents[0].joinpath("rllib")
 data_path = "local://" + base_path.joinpath(data_path).as_posix()
+# Multiply this list by a scale factor to scale the data amount.
+data_paths = [
+    p.as_posix() for p in Path(data_path.split(":")[1]).iterdir()
+] * SCALE_FACTOR
 
 # Setup the algorithm config. We need this config as c'tor arguments
 # for the `OfflinePreLearner` (the preprocessor for batches in `map_batches`).
@@ -49,7 +54,7 @@ config = (
     # Note, the `input_` argument is the major argument for the
     # new offline API.
     .offline_data(
-        input_=[data_path],
+        input_=data_paths,
         dataset_num_iters_per_learner=1,
         map_batches_kwargs={},
         iter_batches_kwargs={},
@@ -68,7 +73,7 @@ config = (
 # `override_num_blocks=2` by default, so we use it here, too.
 # To modify arguments to `read_parquet` in `RLlib` use
 # `BCConfig.offline_data.read_input_method_kwargs`.
-data = ray.data.read_parquet(data_path, override_num_blocks=2)
+data = ray.data.read_parquet(data_paths, override_num_blocks=2)
 
 i = 0
 start = time.perf_counter()
