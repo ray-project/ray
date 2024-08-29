@@ -67,7 +67,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if change.old:
             node_id, port = change.old
             ip = DataSource.nodes[node_id]["nodeManagerAddress"]
-            self._stubs.pop(ip)
+            self._stubs.pop(ip, None)
         if change.new:
             node_id, ports = change.new
             ip = DataSource.nodes[node_id]["nodeManagerAddress"]
