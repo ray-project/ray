@@ -39,36 +39,6 @@ GcsNodeManager::GcsNodeManager(
       raylet_client_pool_(std::move(raylet_client_pool)),
       cluster_id_(cluster_id) {}
 
-void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
-  /// Write node_info as a export node event if
-  /// enable_export_api_write() is enabled.
-  if (!RayConfig::instance().enable_export_api_write()) {
-    return;
-  }
-  std::shared_ptr<rpc::ExportNodeData> export_node_data_ptr =
-      std::make_shared<rpc::ExportNodeData>();
-  export_node_data_ptr->set_node_id(node_info.node_id());
-  export_node_data_ptr->set_node_manager_address(node_info.node_manager_address());
-  export_node_data_ptr->mutable_resources_total()->insert(
-      node_info.resources_total().begin(), node_info.resources_total().end());
-  export_node_data_ptr->set_node_name(node_info.node_name());
-  export_node_data_ptr->set_start_time_ms(node_info.start_time_ms());
-  export_node_data_ptr->set_end_time_ms(node_info.end_time_ms());
-  export_node_data_ptr->set_is_head_node(node_info.is_head_node());
-  export_node_data_ptr->mutable_labels()->insert(node_info.labels().begin(),
-                                                 node_info.labels().end());
-  export_node_data_ptr->set_state(ConvertGCSNodeStateToExport(node_info.state()));
-  if (!node_info.death_info().reason_message().empty() ||
-      node_info.death_info().reason() !=
-          rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNSPECIFIED) {
-    export_node_data_ptr->mutable_death_info()->set_reason_message(
-        node_info.death_info().reason_message());
-    export_node_data_ptr->mutable_death_info()->set_reason(
-        ConvertNodeDeathReasonToExport(node_info.death_info().reason()));
-  }
-  RayExportEvent(export_node_data_ptr).SendEvent();
-}
-
 // Note: ServerCall will populate the cluster_id.
 void GcsNodeManager::HandleGetClusterId(rpc::GetClusterIdRequest request,
                                         rpc::GetClusterIdReply *reply,
@@ -96,7 +66,6 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     WriteNodeExportEvent(request.node_info());
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-    WriteNodeExportEvent(request.node_info());
   };
   if (request.node_info().is_head_node()) {
     // mark all old head nodes as dead if exists:
@@ -165,7 +134,6 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
 
   auto on_put_done = [=](const Status &status) {
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
-    WriteNodeExportEvent(*node);
   };
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -422,14 +390,13 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
     node_info_delta->set_end_time_ms(node->end_time_ms());
     node_info_delta->mutable_death_info()->CopyFrom(node->death_info());
 
-    auto on_done = [this, node_id, node_table_updated_callback, node_info_delta, node](
+    auto on_done = [this, node_id, node_table_updated_callback, node_info_delta](
                        const Status &status) {
       WriteNodeExportEvent(*node);
       if (node_table_updated_callback != nullptr) {
         node_table_updated_callback(Status::OK());
       }
       RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
-      WriteNodeExportEvent(*node);
     };
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
   } else if (node_table_updated_callback != nullptr) {
