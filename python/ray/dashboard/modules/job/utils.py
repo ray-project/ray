@@ -28,7 +28,6 @@ except Exception:
     Request = None
     Response = None
 
-
 logger = logging.getLogger(__name__)
 
 MAX_CHUNK_LINE_LENGTH = 10
@@ -291,3 +290,9 @@ async def find_jobs_by_job_ids(
             for job_info, submission_id in zip(job_infos, job_submission_ids)
         },
     }
+
+
+def close_logger_file_descriptor(logger_instance):
+    for handler in logger_instance.handlers:
+        handler.close()
+        logger_instance.removeHandler(handler)
