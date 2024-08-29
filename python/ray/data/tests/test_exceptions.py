@@ -98,12 +98,12 @@ def test_full_traceback_logged_with_ray_debugger(
     ), caplog.records
 
 
-def test_raise_original_exception_env_var(
+def test_raise_original_map_exception_env_var(
     caplog, propagate_logs, restore_data_context, ray_start_regular_shared, monkeypatch
 ):
-    monkeypatch.setenv("RAY_DATA_RAISE_ORIGINAL_EXCEPTION", "1")
+    monkeypatch.setenv("RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION", "1")
     ctx = ray.data.DataContext.get_current()
-    ctx.raise_original_exception = (
+    ctx.raise_original_map_exception = (
         True  # Ensure that the context picks up the environment variable
     )
 
