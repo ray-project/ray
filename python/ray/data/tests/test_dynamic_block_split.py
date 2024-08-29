@@ -215,7 +215,7 @@ def test_dataset(
     )
 
     # Too-large blocks will get split to respect target max block size.
-    map_ds = ds.map_batches(identity_func, compute=compute)
+    map_ds = ds.map_batches(identity_func, compute=compute, batch_size=None)
     map_ds = map_ds.materialize()
     num_blocks_expected = num_tasks * num_blocks_per_task
     assert map_ds._plan.initial_num_blocks() == num_blocks_expected
