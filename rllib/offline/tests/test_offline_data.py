@@ -38,23 +38,47 @@ class TestOfflineData(unittest.TestCase):
     def test_sample_single_learner(self):
         """Tests using sampling using a single learner."""
 
-        # Create a simple config.
-        config = (
-            BCConfig()
-            .environment("CartPole-v1")
-            .api_stack(
-                enable_env_runner_and_connector_v2=True,
-                enable_rl_module_and_learner=True,
-            )
-            .offline_data(
-                input_=[self.data_path],
-                dataset_num_iters_per_learner=1,
-            )
-            .learners(
-                num_learners=0,
-            )
-            .training(
-                train_batch_size_per_learner=256,
+        config = AlgorithmConfig().offline_data(
+            input_=[self.data_path],
+        )
+
+        offline_data = OfflineData(config)
+
+        batch = offline_data.data.take_batch(batch_size=10)
+        episodes = OfflinePreLearner._map_to_episodes(False, batch)["episodes"]
+
+        self.assertTrue(len(episodes) == 10)
+        self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
+
+    def test_offline_convert_from_old_sample_batch_to_episodes(self):
+
+        base_path = Path(__file__).parents[2]
+        sample_batch_data_path = base_path / "tests/data/cartpole/large.json"
+        config = AlgorithmConfig().offline_data(
+            input_=["local://" + sample_batch_data_path.as_posix()],
+            input_read_method="read_json",
+            input_read_sample_batches=True,
+        )
+
+        offline_data = OfflineData(config)
+
+        batch = offline_data.data.take_batch(batch_size=10)
+        episodes = OfflinePreLearner._map_sample_batch_to_episode(False, batch)[
+            "episodes"
+        ]
+
+        self.assertTrue(len(episodes) == 10)
+        self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
+
+    def test_sample(self):
+
+        config = AlgorithmConfig().offline_data(input_=[self.data_path])
+
+        offline_data = OfflineData(config)
+
+        batch_iterator = offline_data.data.map_batches(
+            functools.partial(
+                OfflinePreLearner._map_to_episodes, offline_data.is_multi_agent
             )
         )
 
