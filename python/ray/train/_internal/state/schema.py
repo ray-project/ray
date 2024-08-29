@@ -5,7 +5,7 @@ from ray._private.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.annotations import DeveloperAPI
 
-MAX_ERROR_STACK_TRACE_LENGTH = 3000
+MAX_ERROR_STACK_TRACE_LENGTH = 50000
 
 
 @DeveloperAPI
