@@ -292,6 +292,7 @@ py_test_module_list(
     "test_distributed_sort.py",
     "test_environ.py",
     "test_get_or_create_actor.py",
+    "test_ids.py",
     "test_list_actors.py",
     "test_list_actors_2.py",
     "test_list_actors_3.py",
@@ -446,7 +447,8 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
-    "test_actor_retry.py",
+    "test_actor_retry1.py",
+    "test_actor_retry2.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_failure.py",
