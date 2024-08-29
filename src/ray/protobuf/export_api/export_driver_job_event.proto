@@ -20,10 +20,10 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/export_api/export_runtime_env.proto";
 
-// ExportJobDriverEventData defines the event_data stored by the export API
-// for EXPORT_JOB_DRIVER type events. This schema is public and any changes must
+// ExportDriverJobEventData defines the event_data stored by the export API
+// for EXPORT_DRIVER_JOB type events. This schema is public and any changes must
 // be backward compatible.
-message ExportJobDriverEventData {
+message ExportDriverJobEventData {
   message JobConfig {
     // Runtime environment to run the code
     ExportRuntimeEnvInfo runtime_env_info = 1;
