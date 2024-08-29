@@ -1,11 +1,11 @@
 from pathlib import Path
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
-    TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -75,7 +75,7 @@ config = (
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 120.0,
-    TRAINING_ITERATION_TIMER: 350.0,
+    TRAINING_ITERATION: 350,
 }
 
 if __name__ == "__main__":
