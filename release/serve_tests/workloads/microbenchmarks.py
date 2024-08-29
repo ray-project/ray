@@ -127,28 +127,18 @@ async def _main(
     # HTTP
     if run_http:
         if run_latency:
-            serve.run(Noop.bind())
-            # Microbenchmark: HTTP noop latencies
-            latencies = await run_latency_benchmark(
-                lambda: requests.get("http://localhost:8000"), num_requests=NUM_REQUESTS
-            )
-            perf_metrics.extend(convert_latencies_to_perf_metrics("http", latencies))
-            # HTTP latencies: 1MB payload
-            latencies = await run_latency_benchmark(
-                lambda: requests.post("http://localhost:8000", data=payload_1mb),
-                num_requests=NUM_REQUESTS,
-            )
-            perf_metrics.extend(
-                convert_latencies_to_perf_metrics("http_1mb", latencies)
-            )
-            # HTTP latencies: 10MB payload
-            latencies = await run_latency_benchmark(
-                lambda: requests.post("http://localhost:8000", data=payload_10mb),
-                num_requests=NUM_REQUESTS,
-            )
-            perf_metrics.extend(
-                convert_latencies_to_perf_metrics("http_10mb", latencies)
-            )
+            for payload, name in [
+                (None, "http"),
+                (payload_1mb, "http_1mb"),
+                (payload_10mb, "http_10mb"),
+            ]:
+                serve.run(Noop.bind())
+                latencies = await run_latency_benchmark(
+                    lambda: requests.get("http://localhost:8000", data=payload),
+                    num_requests=NUM_REQUESTS,
+                )
+                perf_metrics.extend(convert_latencies_to_perf_metrics(name, latencies))
+                serve.shutdown()
 
         if run_throughput:
             # Microbenchmark: HTTP throughput
@@ -160,6 +150,8 @@ async def _main(
                 trial_runtime=TRIAL_RUNTIME_S,
             )
             perf_metrics.extend(convert_throughput_to_perf_metrics("http", mean, std))
+            serve.shutdown()
+
             # Microbenchmark: HTTP throughput at max_ongoing_requests=100
             serve.run(Noop.options(max_ongoing_requests=100).bind())
             mean, std = await run_throughput_benchmark(
@@ -173,42 +165,33 @@ async def _main(
                     "http_100_max_ongoing_requests", mean, std
                 )
             )
+            serve.shutdown()
 
     # GRPC
     if run_grpc:
         if run_latency:
-            serve.run(GrpcDeployment.bind())
             channel = grpc.insecure_channel("localhost:9000")
             stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
             grpc_payload_noop = serve_pb2.StringData(data="")
             grpc_payload_1mb = serve_pb2.StringData(data=payload_1mb)
             grpc_payload_10mb = serve_pb2.StringData(data=payload_10mb)
-            # Microbenchmark: GRPC noop latencies
-            latencies: pd.Series = await run_latency_benchmark(
-                lambda: stub.call_with_string(grpc_payload_noop),
-                num_requests=NUM_REQUESTS,
-            )
-            perf_metrics.extend(convert_latencies_to_perf_metrics("grpc", latencies))
-            # Microbenchmark: GRPC 1MB latencies
-            latencies: pd.Series = await run_latency_benchmark(
-                lambda: stub.call_with_string(grpc_payload_1mb),
-                num_requests=NUM_REQUESTS,
-            )
-            perf_metrics.extend(
-                convert_latencies_to_perf_metrics("grpc_1mb", latencies)
-            )
-            # Microbenchmark: GRPC 10MB latencies
-            latencies: pd.Series = await run_latency_benchmark(
-                lambda: stub.call_with_string(grpc_payload_10mb),
-                num_requests=NUM_REQUESTS,
-            )
-            perf_metrics.extend(
-                convert_latencies_to_perf_metrics("grpc_10mb", latencies)
-            )
+
+            for payload, name in [
+                (grpc_payload_noop, "grpc"),
+                (grpc_payload_1mb, "grpc_1mb"),
+                (grpc_payload_10mb, "grpc_10mb"),
+            ]:
+                serve.run(GrpcDeployment.bind())
+                latencies: pd.Series = await run_latency_benchmark(
+                    lambda: stub.call_with_string(payload),
+                    num_requests=NUM_REQUESTS,
+                )
+                perf_metrics.extend(convert_latencies_to_perf_metrics(name, latencies))
+                serve.shutdown()
 
         if run_throughput:
-            serve.run(GrpcDeployment.bind())
             # Microbenchmark: GRPC throughput
+            serve.run(GrpcDeployment.bind())
             mean, std = await run_throughput_benchmark(
                 fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
                 multiplier=BATCH_SIZE,
@@ -216,11 +199,10 @@ async def _main(
                 trial_runtime=TRIAL_RUNTIME_S,
             )
             perf_metrics.extend(convert_throughput_to_perf_metrics("grpc", mean, std))
+            serve.shutdown()
 
             # Microbenchmark: GRPC throughput at max_ongoing_requests = 100
             serve.run(GrpcDeployment.options(max_ongoing_requests=100).bind())
-            channel = grpc.insecure_channel("localhost:9000")
-            stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
             mean, std = await run_throughput_benchmark(
                 fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
                 multiplier=BATCH_SIZE,
@@ -232,28 +214,22 @@ async def _main(
                     "grpc_100_max_ongoing_requests", mean, std
                 )
             )
+            serve.shutdown()
 
     # Handle
     if run_handle:
         if run_latency:
-            h: DeploymentHandle = serve.run(Benchmarker.bind(Noop.bind()))
-            # Microbenchmark: Handle noop latencies
-            latencies = await h.run_latency_benchmark.remote(num_requests=NUM_REQUESTS)
-            perf_metrics.extend(convert_latencies_to_perf_metrics("handle", latencies))
-            # Handle latencies: 1MB payload
-            latencies = await h.run_latency_benchmark.remote(
-                num_requests=NUM_REQUESTS, payload=payload_1mb
-            )
-            perf_metrics.extend(
-                convert_latencies_to_perf_metrics("handle_1mb", latencies)
-            )
-            # Handle latencies: 10MB payload
-            latencies = await h.run_latency_benchmark.remote(
-                num_requests=NUM_REQUESTS, payload=payload_10mb
-            )
-            perf_metrics.extend(
-                convert_latencies_to_perf_metrics("handle_10mb", latencies)
-            )
+            for payload, name in [
+                (None, "handle"),
+                (payload_1mb, "handle_1mb"),
+                (payload_10mb, "handle_10mb"),
+            ]:
+                h: DeploymentHandle = serve.run(Benchmarker.bind(Noop.bind()))
+                latencies = await h.run_latency_benchmark.remote(
+                    num_requests=NUM_REQUESTS, payload=payload
+                )
+                perf_metrics.extend(convert_latencies_to_perf_metrics(name, latencies))
+                serve.shutdown()
 
         if run_throughput:
             # Microbenchmark: Handle throughput
@@ -264,6 +240,7 @@ async def _main(
                 trial_runtime=TRIAL_RUNTIME_S,
             )
             perf_metrics.extend(convert_throughput_to_perf_metrics("handle", mean, std))
+            serve.shutdown()
 
             # Microbenchmark: Handle throughput at max_ongoing_requests=100
             h: DeploymentHandle = serve.run(
@@ -281,6 +258,7 @@ async def _main(
                     "handle_100_max_ongoing_requests", mean, std
                 )
             )
+            serve.shutdown()
 
     logging.info(f"Perf metrics:\n {json.dumps(perf_metrics, indent=4)}")
     results = {"perf_metrics": perf_metrics}
