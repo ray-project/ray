@@ -251,8 +251,8 @@ class DataContext:
         log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
             Core code stack frames when logging to stdout. The full stack trace is
             always written to the Ray Data log file.
-        raise_original_map_exception: Whether to raise the original exception encountered
-            in map UDF instead of wrapping it in a `UserCodeException`.
+        raise_original_map_exception: Whether to raise the original exception
+            encountered in map UDF instead of wrapping it in a `UserCodeException`.
         print_on_execution_start: If ``True``, print execution information when
             execution starts.
         s3_try_create_dir: If ``True``, try to create directories on S3 when a write
