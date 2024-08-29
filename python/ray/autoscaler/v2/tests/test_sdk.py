@@ -855,6 +855,52 @@ def test_is_autoscaler_v2_enabled(shutdown_only, monkeypatch, env_val, enabled):
         wait_for_condition(verify)
 
 
+def test_dead_node_count_limited(ray_start_cluster, monkeypatch):
+    with monkeypatch.context() as m:
+        MAX_DEAD_NODE_TO_REPORT = 2
+        m.setenv(
+            "RAY_autoscaler_maximum_gcs_dead_node_to_report",
+            str(MAX_DEAD_NODE_TO_REPORT),
+        )
+        cluster = ray_start_cluster
+        head_node = cluster.add_node(num_cpus=1)
+        ctx = ray.init()
+
+        # Create and kill many nodes
+        # list of node ids. Later nodes are dead most recently.
+        dead_node_ids = []
+        for _ in range(MAX_DEAD_NODE_TO_REPORT + 5):
+            node = cluster.add_node(num_cpus=1)
+            dead_node_ids.append(node._node_id)
+            cluster.remove_node(node)
+
+        stub = _autoscaler_state_service_stub()
+
+        def verify():
+            state = get_cluster_resource_state(stub)
+
+            # + 1 for a head node.
+            assert len(state.node_states) == MAX_DEAD_NODE_TO_REPORT + 1
+
+            # Verify dead nodes reported are the most recently dead nodes.
+            dead_node_ids_from_autoscaler = []
+            for node in state.node_states:
+                if node.status == NodeStatus.DEAD:
+                    dead_node_ids_from_autoscaler.append(
+                        ray.NodeID.from_binary(node.node_id).hex()
+                    )
+
+            most_recently_dead_nodes = dead_node_ids[-MAX_DEAD_NODE_TO_REPORT:]
+            assert len(most_recently_dead_nodes) == len(dead_node_ids_from_autoscaler)
+            for expected, actual in zip(
+                most_recently_dead_nodes, dead_node_ids_from_autoscaler
+            ):  # noqa
+                assert expected == actual
+            return True
+
+        wait_for_condition(verify)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

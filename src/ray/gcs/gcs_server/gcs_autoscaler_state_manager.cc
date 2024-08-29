@@ -344,7 +344,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
   // reported by dead node should be small.
   // TODO(rickyx): We will need to GC the head nodes in the future.
   // https://github.com/ray-project/ray/issues/35874
-  const auto &dead_nodes = gcs_node_manager_.GetAllDeadNodes();
+  const auto &dead_nodes = gcs_node_manager_.GetMostRecentlyDeadNodes(RayConfig::instance().autoscaler_maximum_gcs_dead_node_to_report());
   std::for_each(dead_nodes.begin(), dead_nodes.end(), [&](const auto &gcs_node_info) {
     populate_node_state(*gcs_node_info.second);
   });

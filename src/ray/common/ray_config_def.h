@@ -891,3 +891,7 @@ RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
 
 // Write export API events to file if enabled
 RAY_CONFIG(bool, enable_export_api_write, false)
+
+// Only applicable when enable_autoscaler_v2 is enabled.
+// The maximum number of dead nodes to report from the autoscaler.
+RAY_CONFIG(uint32_t, autoscaler_maximum_gcs_dead_node_to_report, 100)

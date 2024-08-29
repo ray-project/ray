@@ -139,6 +139,27 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     return dead_nodes_;
   }
 
+  /// Get most recently dead `limit` number of nodes.
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> GetMostRecentlyDeadNodes(size_t limit)
+      const {
+    absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> result;
+    // Iterate sorted_dead_node_list_ backward will give you the most recently dead nodes.
+    size_t num_items = 0;
+    for (auto it = sorted_dead_node_list_.rbegin(); it != sorted_dead_node_list_.rend(); ++it) {
+      const auto &dead_node_id = it->first;
+      auto dead_node_it = dead_nodes_.find(dead_node_id);
+      RAY_CHECK(dead_node_it != dead_nodes_.end());
+      result.emplace(dead_node_it->first, dead_node_it->second);
+      num_items += 1;
+      if (num_items >= limit) {
+        break;
+      }
+    }
+
+    return result;
+  }
+
+
   /// Add listener to monitor the remove action of nodes.
   ///
   /// \param listener The handler which process the remove of nodes.
