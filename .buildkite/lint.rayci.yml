@@ -36,6 +36,7 @@ steps:
       - api_policy_check serve
       - api_policy_check data
       - api_policy_check train
+      - api_policy_check tune
       - api_policy_check rllib
 
   - label: ":lint-roller: lint: linkcheck"

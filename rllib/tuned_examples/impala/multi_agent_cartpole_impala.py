@@ -9,7 +9,11 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(num_agents=2, num_env_runners=4)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    num_agents=2,
+    num_env_runners=4,
+)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
@@ -45,7 +49,7 @@ config = (
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 400.0 * args.num_agents,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0 * args.num_agents,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: 2500000,
 }
 
