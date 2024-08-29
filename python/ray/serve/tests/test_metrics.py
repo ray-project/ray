@@ -325,7 +325,6 @@ def test_proxy_metrics_not_found(serve_start_shutdown):
 
     # Ping gPRC proxy
     channel = grpc.insecure_channel("localhost:9000")
-    wait_for_condition(ping_grpc_list_applications, channel=channel, app_names=[])
     ping_grpc_call_method(channel=channel, app_name="foo", test_not_found=True)
 
     # Ensure all expected metrics are present.

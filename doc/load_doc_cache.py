@@ -7,29 +7,40 @@ import click
 from botocore import UNSIGNED
 from botocore.client import Config
 import time
+import requests
 
 S3_BUCKET = "ray-ci-results"
 DOC_BUILD_DIR_S3 = "doc_build"
 LAST_BUILD_CUTOFF = 3  # how many days ago to consider a build outdated
 PENDING_FILES_PATH = "pending_files.txt"
 ENVIRONMENT_PICKLE = "_build/doctrees/environment.pickle"
+DOC_BUILD_S3_URL = "https://ray-ci-results.s3.us-west-2.amazonaws.com/doc_build"
 
 
 def find_latest_master_commit():
     """Find latest commit that was pushed to origin/master that is also on local env."""
-    latest_commit = (
+    latest_commits = (
         subprocess.check_output(
             [
                 "git",
-                "merge-base",
-                "HEAD",
-                "origin/master",
+                "log",
+                "-n",
+                "100",
+                "--format=%H",
             ]
         )
         .strip()
         .decode("utf-8")
+        .split("\n")
     )
-    return latest_commit
+    for commit in latest_commits:
+        result = requests.head(f"{DOC_BUILD_S3_URL}/{commit}.tgz")
+        if result.status_code == 200:
+            return commit
+    raise Exception(
+        "No cache found for latest master commit."
+        "Please merge with upstream master or use 'make develop'."
+    )
 
 
 def fetch_cache_from_s3(commit, target_file_path):
@@ -44,7 +55,7 @@ def fetch_cache_from_s3(commit, target_file_path):
     s3 = boto3.client("s3", config=Config(signature_version=UNSIGNED))
     s3_file_path = f"{DOC_BUILD_DIR_S3}/{commit}.tgz"
     try:
-        print(f"Downloading {commit}.tgz from S3...")
+        print(f"Fetching doc cache from commit {commit}...")
         s3.download_file(S3_BUCKET, s3_file_path, target_file_path)
         print(f"Successfully downloaded {s3_file_path} to {target_file_path}")
     except botocore.exceptions.ClientError as e:

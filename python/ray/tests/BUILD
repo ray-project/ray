@@ -161,6 +161,7 @@ py_test_module_list(
     "test_task_events.py",
     "test_task_events_2.py",
     "test_task_events_3.py",
+    "test_system_metrics.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
@@ -291,6 +292,7 @@ py_test_module_list(
     "test_distributed_sort.py",
     "test_environ.py",
     "test_get_or_create_actor.py",
+    "test_ids.py",
     "test_list_actors.py",
     "test_list_actors_2.py",
     "test_list_actors_3.py",
@@ -445,7 +447,8 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
-    "test_actor_retry.py",
+    "test_actor_retry1.py",
+    "test_actor_retry2.py",
     "test_actor_failures.py",
     "test_actor_resources.py",
     "test_failure.py",
@@ -663,7 +666,7 @@ py_test(
     size = "medium",
     srcs = ["test_typing.py", "typing_files/check_typing_bad.py",
             "typing_files/check_typing_good.py"],
-    # Note(can): known issue of mypy and latest torch on windows 
+    # Note(can): known issue of mypy and latest torch on windows
     # (https://github.com/python/mypy/issues/17189)
     tags = ["exclusive", "small_size_python_tests", "no_windows", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
