@@ -1029,9 +1029,9 @@ class CompiledDAG:
                     if read_by_multi_output_node:
                         if len(readers) != 1:
                             raise ValueError(
-                                "DAG outputs currently can only be read by the driver or "
-                                "the same actor that is also the InputNode, not by both "
-                                "the driver and actors."
+                                "DAG outputs currently can only be read by the"
+                                "driver or the same actor that is also the InputNode,"
+                                "not by both the driver and actors."
                             )
 
                         # This node is a multi-output node, which means it will only be

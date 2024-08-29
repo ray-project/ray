@@ -417,11 +417,13 @@ class SynchronousWriter(WriterInterface):
         if len(self._output_channels) > 1:
             if not isinstance(val, tuple):
                 raise ValueError(
-                    f"Expected a tuple of {len(self._output_channels)} outputs, but got {type(val)}"
+                    f"Expected a tuple of {len(self._output_channels)} outputs,"
+                    "but got {type(val)}"
                 )
             if len(val) != len(self._output_channels):
                 raise ValueError(
-                    f"Expected {len(self._output_channels)} outputs, but got {len(val)} outputs"
+                    f"Expected {len(self._output_channels)} outputs, but got"
+                    "{len(val)} outputs"
                 )
 
         for i, channel in enumerate(self._output_channels):
@@ -461,12 +463,16 @@ class AwaitableBackgroundWriter(WriterInterface):
 
     def _run(self, res):
         if len(self._output_channels) > 1:
-            assert isinstance(
-                res, tuple
-            ), f"Expected a tuple for {len(self._output_channels)} outputs, but got {type(res)}"
-            assert len(res) == len(
-                self._output_channels
-            ), f"Expected {len(self._output_channels)} outputs, but got {len(res)} outputs"
+            if not isinstance(res, tuple):
+                raise ValueError(
+                    f"Expected a tuple of {len(self._output_channels)} outputs,"
+                    "but got {type(val)}"
+                )
+            if len(res) != len(self._output_channels):
+                raise ValueError(
+                    f"Expected {len(self._output_channels)} outputs, but got"
+                    "{len(val)} outputs"
+                )
 
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
