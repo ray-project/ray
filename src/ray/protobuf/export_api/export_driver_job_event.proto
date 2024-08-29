@@ -47,4 +47,4 @@ message ExportDriverJobEventData {
   string entrypoint = 7;
   // Address of the driver that started this job.
   string driver_ip_address = 8;
-}   
+}
