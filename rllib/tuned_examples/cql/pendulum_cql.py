@@ -11,6 +11,7 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
+from ray import tune
 
 parser = add_rllib_example_script_args()
 # Use `parser` to add your own custom command line options to this script
@@ -41,9 +42,15 @@ config = (
         bc_iters=100,
         train_batch_size_per_learner=2000,
         twin_q=True,
-        actor_lr=2e-4 * (args.num_gpus or 1) ** 0.5,
-        critic_lr=8e-4 * (args.num_gpus or 1) ** 0.5,
-        alpha_lr=9e-4 * (args.num_gpus or 1) ** 0.5,
+        actor_lr=tune.uniform(
+            2e-5 * (args.num_gpus or 1) ** 0.5, 9e-4 * (args.num_gpus or 1) ** 0.5
+        ),  # 2e-4 * (args.num_gpus or 1) ** 0.5
+        critic_lr=tune.uniform(
+            2e-5 * (args.num_gpus or 1) ** 0.5, 9e-4 * (args.num_gpus or 1) ** 0.5
+        ),  # 8e-4 * (args.num_gpus or 1) ** 0.5,
+        alpha_lr=tune.uniform(
+            2e-5 * (args.num_gpus or 1) ** 0.5, 9e-4 * (args.num_gpus or 1) ** 0.5
+        ),  # 9e-4 * (args.num_gpus or 1) ** 0.5,
         lr=None,
     )
     .reporting(
@@ -52,14 +59,17 @@ config = (
     )
     .evaluation(
         evaluation_interval=1,
-        evaluation_num_env_runners=2,
+        evaluation_num_env_runners=0,
         evaluation_duration=10,
         evaluation_config={
             "explore": False,
         },
     )
 )
-
+args.num_samples = 10
+args.verbose = 2
+# algo = config.build()
+# algo.train()
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -700.0,

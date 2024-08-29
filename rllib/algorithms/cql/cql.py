@@ -2,6 +2,12 @@ import logging
 from typing import Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
+from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
+from ray.rllib.algorithms.sac.sac import (
+    SAC,
+    SACConfig,
+)
 from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
     AddObservationsFromEpisodesToBatch,
 )
@@ -9,12 +15,7 @@ from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_b
     AddNextObservationsFromEpisodesToTrainBatch,
 )
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.algorithms.cql.cql_tf_policy import CQLTFPolicy
-from ray.rllib.algorithms.cql.cql_torch_policy import CQLTorchPolicy
-from ray.rllib.algorithms.sac.sac import (
-    SAC,
-    SACConfig,
-)
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -48,7 +49,7 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
     TIMERS,
 )
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import ResultDict, RLModuleSpecType
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -239,6 +240,28 @@ class CQLConfig(SACConfig):
                 "per learner, `dataset_num_iters_per_learner` has to be defined. "
                 "Set this hyperparameter in the `AlgorithmConfig.offline_data`."
             )
+
+    @override(SACConfig)
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
+        from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
+
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.cql.torch.cql_torch_rl_module import (
+                CQLTorchRLModule,
+            )
+
+            return RLModuleSpec(module_class=CQLTorchRLModule, catalog_class=SACCatalog)
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. " "Use `torch`."
+            )
+
+    @property
+    def _model_config_auto_includes(self):
+        return super()._model_config_auto_includes | {
+            "num_actions": self.num_actions,
+            "_deterministic_loss": self._deterministic_loss,
+        }
 
 
 class CQL(SAC):

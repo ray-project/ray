@@ -1,4 +1,3 @@
-import tree
 from typing import Dict
 
 from ray.air.constants import TRAINING_ITERATION
@@ -74,10 +73,6 @@ class CQLTorchLearner(SACTorchLearner):
             * (logps_curr.detach() + self.target_entropy[module_id])
         )
 
-        # Get the current batch size. Note, this size might vary in case the
-        # last batch contains less than `train_batch_size_per_learner` examples.
-        batch_size = batch[Columns.OBS].shape[0]
-
         # Get the current alpha.
         alpha = torch.exp(self.curr_log_alpha[module_id])
         # Start training with behavior cloning and turn to the classic Soft-Actor Critic
@@ -105,34 +100,12 @@ class CQLTorchLearner(SACTorchLearner):
 
         # The critic loss is composed of the standard SAC Critic L2 loss and the
         # CQL entropy loss.
-        # action_dist_next = action_dist_class.from_logits(
-        #     fwd_out["action_dist_inputs_next"]
-        # )
-        # # Sample the actions for the next state.
-        # actions_next = (
-        #     # Note, we do not need to backpropagate through the
-        #     # next actions.
-        #     action_dist_next.sample()
-        #     if not config._deterministic_loss
-        #     else action_dist_next.to_deterministic().sample()
-        # )
 
         # Get the Q-values for the actually selected actions in the offline data.
         # In the critic loss we use these as predictions.
         q_selected = fwd_out[QF_PREDS]
         if config.twin_q:
             q_twin_selected = fwd_out[QF_TWIN_PREDS]
-
-        # Compute Q-values from the target Q network for the next state with the
-        # sampled actions for the next state.
-        # q_batch_next = {
-        #     Columns.OBS: batch[Columns.NEXT_OBS],
-        #     Columns.ACTIONS: actions_next,
-        # }
-        # Note, if `twin_q` is `True`, `SACTorchRLModule.forward_target` calculates
-        # the Q-values for both, `qf_target` and `qf_twin_target` and
-        # returns the minimum.
-        # q_target_next = self.module[module_id].forward_target(q_batch_next)
 
         # Now mask all Q-values with terminating next states in the targets.
         q_next_masked = (1.0 - batch[Columns.TERMINATEDS].float()) * fwd_out[
@@ -252,9 +225,9 @@ class CQLTorchLearner(SACTorchLearner):
                 "target_entropy": self.target_entropy[module_id],
                 "actions_curr_policy": torch.mean(actions_curr),
                 LOGPS_KEY: torch.mean(logps_curr),
-                QF_MEAN_KEY: torch.mean(q_curr_repeat),
-                QF_MAX_KEY: torch.max(q_curr_repeat),
-                QF_MIN_KEY: torch.min(q_curr_repeat),
+                QF_MEAN_KEY: torch.mean(fwd_out["q_curr_repeat"]),
+                QF_MAX_KEY: torch.max(fwd_out["q_curr_repeat"]),
+                QF_MIN_KEY: torch.min(fwd_out["q_curr_repeat"]),
                 TD_ERROR_MEAN_KEY: torch.mean(td_error),
             },
             key=module_id,
@@ -306,65 +279,3 @@ class CQLTorchLearner(SACTorchLearner):
                 )
 
         return grads
-
-    def _repeat_tensor(self, tensor, repeat):
-        """Generates a repeated version of a tensor.
-
-        The repetition is done similar `np.repeat` and repeats each value
-        instead of the complete vector.
-
-        Args:
-            tensor: The tensor to be repeated.
-            repeat: How often each value in the tensor should be repeated.
-
-        Returns:
-            A tensor holding `repeat`  repeated values of the input `tensor`
-        """
-        # Insert the new dimension at axis 1 into the tensor.
-        t_repeat = tensor.unsqueeze(1)
-        # Repeat the tensor along the new dimension.
-        t_repeat = torch.repeat_interleave(t_repeat, repeat, dim=1)
-        # Stack the repeated values into the batch dimension.
-        t_repeat = t_repeat.view(-1, *tensor.shape[1:])
-        # Return the repeated tensor.
-        return t_repeat
-
-    def _repeat_actions(self, action_dist_class, obs, num_actions, module_id):
-        """Generated actions for repeated observations.
-
-        The `num_actions` define a multiplier used for generating `num_actions`
-        as many actions as the batch size. Observations are repeated and then a
-        model forward pass is made.
-
-        Args:
-            action_dist_class: The action distribution class to be sued for sampling
-                actions.
-            obs: A batched observation tensor.
-            num_actions: The multiplier for actions, i.e. how much more actions
-                than the batch size should be generated.
-            module_id: The module ID to be used when calling the forward pass.
-
-        Returns:
-            A tuple containing the sampled actions, their log-probabilities and the
-            repeated observations.
-        """
-        # Receive the batch size.
-        batch_size = obs.shape[0]
-        # Repeat the observations `num_actions` times.
-        obs_repeat = tree.map_structure(
-            lambda t: self._repeat_tensor(t, num_actions), obs
-        )
-        # Generate a batch for the forward pass.
-        temp_batch = {Columns.OBS: obs_repeat}
-        # Run the forward pass in inference mode.
-        fwd_out = self.module[module_id].forward_inference(temp_batch)
-        # Generate the squashed Gaussian from the model's logits.
-        action_dist = action_dist_class.from_logits(fwd_out[Columns.ACTION_DIST_INPUTS])
-        # Sample the actions. Note, we want to make a backward pass through
-        # these actions.
-        actions = action_dist.rsample()
-        # Compute the action log-probabilities.
-        action_logps = action_dist.logp(actions).view(batch_size, num_actions, 1)
-
-        # Return
-        return actions, action_logps, obs_repeat
