@@ -1019,44 +1019,44 @@ class CompiledDAG:
                 output_to_reader_and_node_list: Dict[
                     CompiledTask, List[Tuple["ray.actor.ActorHandle", str]]
                 ] = {task: [] for task in output_to_readers}
-                dag_nodes: List = []
-                for readers in output_to_readers.values():
-                    dag_nodes.extend(reader.dag_node for reader in readers)
-                read_by_multi_output_node = False
-                for dag_node in dag_nodes:
-                    if isinstance(dag_node, MultiOutputNode):
-                        read_by_multi_output_node = True
-                        break
-                if read_by_multi_output_node:
-                    if len(readers) != 1:
-                        raise ValueError(
-                            "DAG outputs currently can only be read by the driver or "
-                            "the same actor that is also the InputNode, not by both "
-                            "the driver and actors."
-                        )
-                    # This node is a multi-output node, which means it will only be
-                    # read by the driver or the actor that is also the InputNode.
+                for output, readers in output_to_readers.items():
+                    dag_nodes = [reader.dag_node for reader in readers]
+                    read_by_multi_output_node = False
+                    for dag_node in dag_nodes:
+                        if isinstance(dag_node, MultiOutputNode):
+                            read_by_multi_output_node = True
+                            break
+                    if read_by_multi_output_node:
+                        if len(readers) != 1:
+                            raise ValueError(
+                                "DAG outputs currently can only be read by the driver or "
+                                "the same actor that is also the InputNode, not by both "
+                                "the driver and actors."
+                            )
 
-                    # TODO(jhumphri): Handle case where there is an actor, other than
-                    # just the driver actor, also reading the output from the `task`
-                    # node.
-                    # For example, the following currently does not work:
-                    # def test_blah(ray_start_regular):
-                    #     a = Actor.remote(0)
-                    #     b = Actor.remote(10)
-                    #     with InputNode() as inp:
-                    #         x = a.inc.bind(inp)
-                    #         y = b.inc.bind(x)
-                    #         dag = MultiOutputNode([x, y])
+                        # This node is a multi-output node, which means it will only be
+                        # read by the driver or the actor that is also the InputNode.
 
-                    #     compiled_dag = dag.experimental_compile()
-                    #     output_channel = compiled_dag.execute(1)
-                    #     result = output_channel.read()
-                    #     print(result)
+                        # TODO(jhumphri): Handle case where there is an actor, other than
+                        # just the driver actor, also reading the output from the `task`
+                        # node.
+                        # For example, the following currently does not work:
+                        # def test_blah(ray_start_regular):
+                        #     a = Actor.remote(0)
+                        #     b = Actor.remote(10)
+                        #     with InputNode() as inp:
+                        #         x = a.inc.bind(inp)
+                        #         y = b.inc.bind(x)
+                        #         dag = MultiOutputNode([x, y])
 
-                    #     compiled_dag.teardown()
-                    assert self._creator_or_proxy_actor is not None
-                    for output, readers in output_to_readers.items():
+                        #     compiled_dag = dag.experimental_compile()
+                        #     output_channel = compiled_dag.execute(1)
+                        #     result = output_channel.read()
+                        #     print(result)
+
+                        #     compiled_dag.teardown()
+
+                        assert self._creator_or_proxy_actor is not None
                         reader_and_node_list: List[
                             Tuple["ray.actor.ActorHandle", str]
                         ] = []
@@ -1068,8 +1068,7 @@ class CompiledDAG:
                                 )
                             )
                         output_to_reader_and_node_list[output] = reader_and_node_list
-                else:
-                    for output, readers in output_to_readers.items():
+                    else:
                         reader_and_node_list: List[
                             Tuple["ray.actor.ActorHandle", str]
                         ] = []
