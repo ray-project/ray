@@ -3425,12 +3425,15 @@ class AlgorithmConfig(_Config):
         Args:
             _torch_grad_scaler_class: Class to use for torch loss scaling (and gradient
                 unscaling). The class must implement the following methods to be
-                compatible with a `TorchLearner`. These methods/APIs match exactly the
-                those of torch's own `torch.amp.GradScaler`:
-                `scale([loss])` to scale the loss.
-                `get_scale()` to get the current scale value.
-                `step([optimizer])` to unscale the grads and step the given optimizer.
-                `update()` to update the scaler after an optimizer step.
+                compatible with a `TorchLearner`. These methods/APIs match exactly those
+                of torch's own `torch.amp.GradScaler` (see here for more details
+                https://pytorch.org/docs/stable/amp.html#gradient-scaling):
+                `scale([loss])` to scale the loss by some factor.
+                `get_scale()` to get the current scale factor value.
+                `step([optimizer])` to unscale the grads (divide by the scale factor)
+                and step the given optimizer.
+                `update()` to update the scaler after an optimizer step (for example to
+                adjust the scale factor).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy handles more than one loss or optimizer.
                 Set this to True, if you would like to return more than
