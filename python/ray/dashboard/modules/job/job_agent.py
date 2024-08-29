@@ -1,7 +1,6 @@
 import dataclasses
 import json
 import logging
-import re
 import traceback
 
 import aiohttp
@@ -11,11 +10,9 @@ import ray
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.core.generated import gcs_service_pb2
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
     JobLogsResponse,
-    JobStatus,
     JobStopResponse,
     JobSubmitRequest,
     JobSubmitResponse,
@@ -115,27 +112,20 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
         job_or_submission_id = req.match_info["job_or_submission_id"]
         try:
             job_mgr = self.get_job_manager()
-            match = re.match(r"^[\da-f]{8}$", job_or_submission_id)
-            if match:
-                result = await job_mgr.delete_from_job_table(job_or_submission_id)
-                if result == gcs_service_pb2.DeleteResult.SUCCESS:
-                    return Response(
-                        text=json.dumps({"deleted": True}),
-                        content_type="application/json",
-                    )
-                elif result == gcs_service_pb2.DeleteResult.IS_RUNNING:
-                    return Response(
-                        text=f"Job {job_or_submission_id} is running.",
-                        status=aiohttp.web.HTTPBadRequest.status_code,
-                    )
+            deleted = await job_mgr.delete_from_job_table(job_or_submission_id)
+            if deleted:
+                return Response(
+                    text=json.dumps({"deleted": deleted}),
+                    content_type="application/json",
+                )
 
             submission_id = job_or_submission_id
             job = await job_mgr.get_job_info(submission_id)
             if job:
-                if job.status in {JobStatus.PENDING, JobStatus.RUNNING}:
-                    return Response(
-                        text=f"Job {submission_id} is running.",
-                        status=aiohttp.web.HTTPBadRequest.status_code,
+                if job.status is None or not job.status.is_terminal():
+                    raise RuntimeError(
+                        f"Attempted to delete job '{submission_id}', "
+                        f"but it is in a non-terminal state {job.status}."
                     )
                 job_infos = await self._gcs_aio_client.get_all_job_info()
                 for job_id, job_item in job_infos.items():
@@ -147,12 +137,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                     metadata = job_item.config.metadata
                     job_submission_id = metadata.get(JOB_ID_METADATA_KEY)
                     if job_submission_id and job_submission_id == submission_id:
-                        del_result = await job_mgr.delete_from_job_table(job_id.hex())
-                        if del_result == gcs_service_pb2.DeleteResult.IS_RUNNING:
-                            return Response(
-                                text=f"Job {submission_id}/{job_id.hex()} is running.",
-                                status=aiohttp.web.HTTPBadRequest.status_code,
-                            )
+                        await job_mgr.delete_from_job_table(job_id.hex())
                 deleted = await job_mgr.delete_job(submission_id)
                 return Response(
                     text=json.dumps({"deleted": deleted}),

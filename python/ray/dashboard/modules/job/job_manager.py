@@ -3,6 +3,7 @@ import copy
 import logging
 import os
 import random
+import re
 import string
 import time
 import traceback
@@ -601,11 +602,23 @@ class JobManager:
         return True
 
     async def delete_from_job_table(self, job_id: str):
+        match = re.match(r"^[\da-f]{8}$", job_id)
+        if not match:
+            return False
+
         request = gcs_service_pb2.DeleteJobRequest()
         request.job_id = JobID(hex_to_binary(job_id)).binary()
         reply = await self._gcs_job_info_stub.DeleteJob(request)
         if reply.status.code == 0:
-            return reply.result
+            if reply.result == gcs_service_pb2.DeleteResult.SUCCESS:
+                return True
+            elif reply.result == gcs_service_pb2.DeleteResult.IS_RUNNING:
+                raise RuntimeError(
+                    f"Attempted to delete job '{job_id}', "
+                    f"but it is in a non-terminal state RUNNING."
+                )
+            else:
+                return False
         else:
             raise Exception(
                 f"Delete Job Failed. Code={reply.status.code} "
