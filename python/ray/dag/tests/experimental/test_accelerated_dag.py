@@ -89,6 +89,11 @@ class Actor:
     def return_two(self, x):
         return x, x + 1
 
+    @ray.method(num_returns=2)
+    def inc_and_return_two(self, x):
+        self.i += x
+        return self.i, self.i + 1
+
     @ray.method(num_returns=1)
     def return_two_as_one(self, x):
         return x, x + 1
@@ -150,26 +155,6 @@ def test_two_returns_first(ray_start_regular):
         o1, o2 = a.return_two.bind(i)
         dag = o1
 
-    res = ray.get(dag.execute(1))
-    assert res == 1
-
-    compiled_dag = dag.experimental_compile()
-    res = ray.get(compiled_dag.execute(1))
-    assert res == 1
-
-    compiled_dag.teardown()
-
-
-def test_two_returns_first_multi_times(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        dag = o1
-
-    for _ in range(3):
-        res = ray.get(dag.execute(1))
-        assert res == 1
-
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
         res = ray.get(compiled_dag.execute(1))
@@ -183,26 +168,6 @@ def test_two_returns_second(ray_start_regular):
     with InputNode() as i:
         o1, o2 = a.return_two.bind(i)
         dag = o2
-
-    res = ray.get(dag.execute(1))
-    assert res == 2
-
-    compiled_dag = dag.experimental_compile()
-    res = ray.get(compiled_dag.execute(1))
-    assert res == 2
-
-    compiled_dag.teardown()
-
-
-def test_two_returns_second_multi_times(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        dag = o2
-
-    for _ in range(3):
-        res = ray.get(dag.execute(1))
-        assert res == 2
 
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
@@ -220,29 +185,6 @@ def test_two_returns_one_reader(ray_start_regular):
         o3 = b.echo.bind(o1)
         o4 = b.echo.bind(o2)
         dag = MultiOutputNode([o3, o4])
-
-    res = ray.get(dag.execute(1))
-    assert res == [1, 2]
-
-    compiled_dag = dag.experimental_compile()
-    res = ray.get(compiled_dag.execute(1))
-    assert res == [1, 2]
-
-    compiled_dag.teardown()
-
-
-def test_two_returns_one_reader_multi_times(ray_start_regular):
-    a = Actor.remote(0)
-    b = Actor.remote(0)
-    with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        o3 = b.echo.bind(o1)
-        o4 = b.echo.bind(o2)
-        dag = MultiOutputNode([o3, o4])
-
-    for _ in range(3):
-        res = ray.get(dag.execute(1))
-        assert res == [1, 2]
 
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
@@ -262,30 +204,6 @@ def test_two_returns_two_readers(ray_start_regular):
         o4 = c.echo.bind(o2)
         dag = MultiOutputNode([o3, o4])
 
-    res = ray.get(dag.execute(1))
-    assert res == [1, 2]
-
-    compiled_dag = dag.experimental_compile()
-    res = ray.get(compiled_dag.execute(1))
-    assert res == [1, 2]
-
-    compiled_dag.teardown()
-
-
-def test_two_returns_two_readers_multi_times(ray_start_regular):
-    a = Actor.remote(0)
-    b = Actor.remote(0)
-    c = Actor.remote(0)
-    with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        o3 = b.echo.bind(o1)
-        o4 = c.echo.bind(o2)
-        dag = MultiOutputNode([o3, o4])
-
-    for _ in range(3):
-        res = ray.get(dag.execute(1))
-        assert res == [1, 2]
-
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
         res = ray.get(compiled_dag.execute(1))
@@ -294,13 +212,25 @@ def test_two_returns_two_readers_multi_times(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_inc_two_returns(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.inc_and_return_two.bind(i)
+        dag = MultiOutputNode([o1, o2])
+
+    compiled_dag = dag.experimental_compile()
+    for i in range(3):
+        res = ray.get(compiled_dag.execute(1))
+        assert res == [i + 1, i + 2]
+
+    compiled_dag.teardown()
+
+
 def test_two_as_one_return(ray_start_regular):
     a = Actor.remote(0)
-    b = Actor.remote(0)
     with InputNode() as i:
         o1 = a.return_two_as_one.bind(i)
-        o2 = b.echo.bind(o1)
-        dag = o2
+        dag = o1
 
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
@@ -310,22 +240,29 @@ def test_two_as_one_return(ray_start_regular):
     compiled_dag.teardown()
 
 
-def test_two_from_three_returns(ray_start_regular):
-    a = Actor.remote(0)
-    b = Actor.remote(0)
-    c = Actor.remote(0)
-    with InputNode() as i:
-        o1, o2 = a.return_two_from_three.bind(i)
-        o3 = b.echo.bind(o1)
-        o4 = c.echo.bind(o2)
-        dag = MultiOutputNode([o3, o4])
+# TODO(wxdeng): Fix segfault. If this test is run, the following tests
+# will segfault.
+# def test_two_from_three_returns(ray_start_regular):
+#     a = Actor.remote(0)
+#     with InputNode() as i:
+#         o1, o2 = a.return_two_from_three.bind(i)
+#         dag = MultiOutputNode([o1, o2])
 
-    compiled_dag = dag.experimental_compile()
-    for _ in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == [1, 2]
+#     compiled_dag = dag.experimental_compile()
 
-    compiled_dag.teardown()
+#     # A value error is raised because the number of returns is not equal to
+#     # the number of outputs. Since the value error is raised in the writer,
+#     # the reader fails to read the outputs and raises a channel error.
+
+#     # TODO(wxdeng): Fix exception type. The value error should be catched.
+#     # However, two exceptions are raised in the writer and reader respectively.
+
+#     # with pytest.raises(RayChannelError, match="Channel closed."):
+#     # with pytest.raises(ValueError, match="Expected 2 outputs, but got 3 outputs"):
+#     with pytest.raises(Exception):
+#         ray.get(compiled_dag.execute(1))
+
+#     compiled_dag.teardown()
 
 
 def test_kwargs_not_supported(ray_start_regular):

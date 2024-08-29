@@ -415,12 +415,15 @@ class SynchronousWriter(WriterInterface):
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
         if len(self._output_channels) > 1:
-            assert isinstance(
-                val, tuple
-            ), f"Expect a tuple for {len(self._output_channels)} outputs, got {type(val)}"
-            assert len(val) == len(
-                self._output_channels
-            ), f"Expect {len(self._output_channels)} outputs, got {len(val)} outputs"
+            if not isinstance(val, tuple):
+                raise ValueError(
+                    f"Expected a tuple of {len(self._output_channels)} outputs, but got {type(val)}"
+                )
+            if len(val) != len(self._output_channels):
+                raise ValueError(
+                    f"Expected {len(self._output_channels)} outputs, but got {len(val)} outputs"
+                )
+
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
             if idx is not None:
@@ -457,6 +460,14 @@ class AwaitableBackgroundWriter(WriterInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self, res):
+        if len(self._output_channels) > 1:
+            assert isinstance(
+                res, tuple
+            ), f"Expected a tuple for {len(self._output_channels)} outputs, but got {type(res)}"
+            assert len(res) == len(
+                self._output_channels
+            ), f"Expected {len(self._output_channels)} outputs, but got {len(res)} outputs"
+
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
             if idx is not None:
