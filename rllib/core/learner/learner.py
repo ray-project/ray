@@ -214,8 +214,8 @@ class Learner(Checkpointable):
 
             class MyLearner(TorchLearner):
 
-               def compute_loss(self, fwd_out, batch):
-                   # compute the loss based on batch and output of the forward pass
+               def compute_losses(self, fwd_out, batch):
+                   # Compute the loss based on batch and output of the forward pass
                    # to access the learner hyper-parameters use `self._hps`
                    return {ALL_MODULES: loss}
     """
@@ -597,9 +597,22 @@ class Learner(Checkpointable):
             The optimizer object, configured under the given `module_id` and
             `optimizer_name`.
         """
+        # `optimizer_name` could possibly be the full optimizer name (including the
+        # module_id under which it is registered).
+        if optimizer_name in self._named_optimizers:
+            return self._named_optimizers[optimizer_name]
+
+        # Normally, `optimizer_name` is just the optimizer's name, not including the
+        # `module_id`.
         full_registration_name = module_id + "_" + optimizer_name
-        assert full_registration_name in self._named_optimizers
-        return self._named_optimizers[full_registration_name]
+        if full_registration_name in self._named_optimizers:
+            return self._named_optimizers[full_registration_name]
+
+        # No optimizer found.
+        raise KeyError(
+            f"Optimizer not found! module_id={module_id} "
+            f"optimizer_name={optimizer_name}"
+        )
 
     def get_optimizers_for_module(
         self, module_id: ModuleID = ALL_MODULES
@@ -830,33 +843,30 @@ class Learner(Checkpointable):
         return should_module_be_updated_fn(module_id, multi_agent_batch)
 
     @OverrideToImplementCustomLogic
-    def compute_loss(
+    def compute_losses(
         self, *, fwd_out: Dict[str, Any], batch: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Computes the loss for the module being optimized.
+        """Computes the loss(es) for the module being optimized.
 
-        This method must be overridden by multiagent-specific algorithm learners to
-        specify the specific loss computation logic. If the algorithm is single agent
-        `compute_loss_for_module()` should be overridden instead.
-        `fwd_out` is the output of the `forward_train()` method of the underlying
-        MultiRLModule. `batch` is the data that was used to compute `fwd_out`.
-        The returned dictionary must contain a key called
-        ALL_MODULES, which will be used to compute gradients. It is recommended
-        to not compute any forward passes within this method, and to use the
-        `forward_train()` outputs of the RLModule(s) to compute the required tensors for
-        loss calculations.
+        This method must be overridden by MultiRLModule-specific Learners in order to
+        define the specific loss computation logic. If the algorithm is single-agent
+        `compute_loss_for_module()` should be overridden instead. If the algorithm uses
+        independent multi-agent learning (default behavior for multi-agent setups), also
+        `compute_loss_for_module()` should be overridden, but it will be called for each
+        individual RLModule inside the MultiRLModule.
+        It is recommended to not compute any forward passes within this method, and to
+        use the `forward_train()` outputs of the RLModule(s) to compute the required
+        tensors for loss calculations.
 
         Args:
-            fwd_out: Output from a call to the `forward_train()` method of self.module
-                during training (`self.update()`).
+            fwd_out: Output from a call to the `forward_train()` method of the
+                underlying MultiRLModule (`self.module`) during training
+                (`self.update()`).
             batch: The training batch that was used to compute `fwd_out`.
 
         Returns:
-            A dictionary mapping module IDs to individual loss terms. The dictionary
-            must contain one protected key ALL_MODULES which will be used for computing
-            gradients through.
+            A dictionary mapping module IDs to individual loss terms.
         """
-        loss_total = None
         loss_per_module = {}
         for module_id in fwd_out:
             module_batch = batch[module_id]
@@ -869,13 +879,6 @@ class Learner(Checkpointable):
                 fwd_out=module_fwd_out,
             )
             loss_per_module[module_id] = loss
-
-            if loss_total is None:
-                loss_total = loss
-            else:
-                loss_total += loss
-
-        loss_per_module[ALL_MODULES] = loss_total
 
         return loss_per_module
 
@@ -893,7 +896,7 @@ class Learner(Checkpointable):
 
         Think of this as computing loss for a single agent. For multi-agent use-cases
         that require more complicated computation for loss, consider overriding the
-        `compute_loss` method instead.
+        `compute_losses` method instead.
 
         Args:
             module_id: The id of the module.
@@ -1621,3 +1624,13 @@ class Learner(Checkpointable):
     @Deprecated(new="Learner._set_optimizer_state()", error=True)
     def set_optimizer_state(self, *args, **kwargs):
         pass
+
+    @Deprecated(new="Learner.compute_losses(...)", error=False)
+    def compute_loss(self, *args, **kwargs):
+        losses_per_module = self.compute_losses(*args, **kwargs)
+        # To continue supporting the old `compute_loss` behavior (instead of
+        # the new `compute_losses`, add the ALL_MODULES key here holding the sum
+        # of all individual loss terms.
+        if ALL_MODULES not in losses_per_module:
+            losses_per_module[ALL_MODULES] = sum(losses_per_module.values())
+        return losses_per_module

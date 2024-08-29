@@ -47,10 +47,11 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # for which we add an additional (artificial) timestep to each episode to
         # simplify the actual computation.
         if Columns.LOSS_MASK in batch:
-            num_valid = torch.sum(batch[Columns.LOSS_MASK])
+            mask = batch[Columns.LOSS_MASK]
+            num_valid = torch.sum(mask)
 
             def possibly_masked_mean(data_):
-                return torch.sum(data_[batch[Columns.LOSS_MASK]]) / num_valid
+                return torch.sum(data_[mask]) / num_valid
 
         else:
             possibly_masked_mean = torch.mean
@@ -98,9 +99,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
         # Ignore the value function.
         else:
-            value_fn_out = torch.tensor(0.0).to(surrogate_loss.device)
-            mean_vf_unclipped_loss = torch.tensor(0.0).to(surrogate_loss.device)
-            vf_loss_clipped = mean_vf_loss = torch.tensor(0.0).to(surrogate_loss.device)
+            z = torch.tensor(0.0, device=surrogate_loss.device)
+            value_fn_out = mean_vf_unclipped_loss = vf_loss_clipped = mean_vf_loss = z
 
         total_loss = possibly_masked_mean(
             -surrogate_loss
