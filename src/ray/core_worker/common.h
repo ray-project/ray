@@ -279,3 +279,27 @@ class ObjectLocation {
 
 }  // namespace core
 }  // namespace ray
+
+namespace std {
+template <>
+struct hash<ray::rpc::LineageReconstructionTask> {
+  size_t operator()(const ray::rpc::LineageReconstructionTask &task) const {
+    size_t hash = std::hash<std::string>()(task.name());
+    for (const auto &resource : task.resources()) {
+      hash ^= std::hash<std::string>()(resource.first);
+      hash ^= std::hash<double>()(resource.second);
+    }
+    hash ^= std::hash<ray::rpc::TaskStatus>()(task.status());
+    return hash;
+  }
+};
+}  // namespace std
+
+namespace ray {
+namespace rpc {
+inline bool operator==(const ray::rpc::LineageReconstructionTask &lhs,
+                       const ray::rpc::LineageReconstructionTask &rhs) {
+  return google::protobuf::util::MessageDifferencer::Equivalent(lhs, rhs);
+}
+}  // namespace rpc
+}  // namespace ray

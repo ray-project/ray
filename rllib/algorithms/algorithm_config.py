@@ -312,6 +312,8 @@ class AlgorithmConfig(_Config):
             "aot_eager" if sys.platform == "darwin" else "onnxrt"
         )
         self.torch_compile_worker_dynamo_mode = None
+        # Default kwargs for `torch.nn.parallel.DistributedDataParallel`.
+        self.torch_ddp_kwargs = {}
 
         # `self.api_stack()`
         self.enable_rl_module_and_learner = False
@@ -326,6 +328,7 @@ class AlgorithmConfig(_Config):
         self.normalize_actions = True
         self.clip_actions = False
         self._is_atari = None
+        self.disable_env_checking = False
         # Deprecated settings:
         self.env_task_fn = None
         self.render_env = False
@@ -537,6 +540,7 @@ class AlgorithmConfig(_Config):
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
 
         # `self.experimental()`
+        self._torch_grad_scaler_class = None
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
@@ -567,7 +571,6 @@ class AlgorithmConfig(_Config):
         self.custom_async_evaluation_function = DEPRECATED_VALUE
         self._enable_rl_module_api = DEPRECATED_VALUE
         self.auto_wrap_old_gym_envs = DEPRECATED_VALUE
-        self.disable_env_checking = DEPRECATED_VALUE
         self.always_attach_evaluation_results = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
@@ -1378,6 +1381,7 @@ class AlgorithmConfig(_Config):
         torch_compile_worker: Optional[bool] = NotProvided,
         torch_compile_worker_dynamo_backend: Optional[str] = NotProvided,
         torch_compile_worker_dynamo_mode: Optional[str] = NotProvided,
+        torch_ddp_kwargs: Optional[Dict[str, Any]] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1417,6 +1421,12 @@ class AlgorithmConfig(_Config):
                 the workers.
             torch_compile_worker_dynamo_mode: The torch dynamo mode to use on the
                 workers.
+            torch_ddp_kwargs: The kwargs to pass into
+                `torch.nn.parallel.DistributedDataParallel` when using `num_learners
+                > 1`. This is specifically helpful when searching for unused parameters
+                that are not used in the backward pass. This can give hints for errors
+                in custom models where some parameters do not get touched in the
+                backward pass although they should.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1458,6 +1468,8 @@ class AlgorithmConfig(_Config):
             )
         if torch_compile_worker_dynamo_mode is not NotProvided:
             self.torch_compile_worker_dynamo_mode = torch_compile_worker_dynamo_mode
+        if torch_ddp_kwargs is not NotProvided:
+            self.torch_ddp_kwargs = torch_ddp_kwargs
 
         return self
 
@@ -1518,11 +1530,11 @@ class AlgorithmConfig(_Config):
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
         clip_actions: Optional[bool] = NotProvided,
+        disable_env_checking: Optional[bool] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
         action_mask_key: Optional[str] = NotProvided,
         # Deprecated args.
         auto_wrap_old_gym_envs=DEPRECATED_VALUE,
-        disable_env_checking=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1562,6 +1574,11 @@ class AlgorithmConfig(_Config):
             clip_actions: If True, the RLlib default ModuleToEnv connector will clip
                 actions according to the env's bounds (before sending them into the
                 `env.step()` call).
+            disable_env_checking: Disable RLlib's env checks after a gymnasium.Env
+                instance has been constructed in an EnvRunner. Note that the checks
+                include an `env.reset()` and `env.step()` (with a random action), which
+                might tinker with your env's logic and behavior and thus negatively
+                influence sample collection- and/or learning behavior.
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
                 this.
@@ -1577,12 +1594,6 @@ class AlgorithmConfig(_Config):
                 old="AlgorithmConfig.environment(auto_wrap_old_gym_envs=..)",
                 error=True,
             )
-        if disable_env_checking != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.environment(disable_env_checking=..)",
-                error=True,
-            )
-
         if env is not NotProvided:
             self.env = env
         if env_config is not NotProvided:
@@ -1601,6 +1612,8 @@ class AlgorithmConfig(_Config):
             self.normalize_actions = normalize_actions
         if clip_actions is not NotProvided:
             self.clip_actions = clip_actions
+        if disable_env_checking is not NotProvided:
+            self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
             self._is_atari = is_atari
         if action_mask_key is not NotProvided:
@@ -3146,6 +3159,13 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if _enable_rl_module_api != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
+                new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
+                error=True,
+            )
+
         if model_config_dict is not NotProvided:
             self._model_config_dict = model_config_dict
         if rl_module_spec is not NotProvided:
@@ -3161,17 +3181,12 @@ class AlgorithmConfig(_Config):
                 algorithm_config_overrides_per_module
             )
 
-        if _enable_rl_module_api != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
-                new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
-                error=False,
-            )
         return self
 
     def experimental(
         self,
         *,
+        _torch_grad_scaler_class: Optional[Type] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
@@ -3182,6 +3197,17 @@ class AlgorithmConfig(_Config):
         """Sets the config's experimental settings.
 
         Args:
+            _torch_grad_scaler_class: Class to use for torch loss scaling (and gradient
+                unscaling). The class must implement the following methods to be
+                compatible with a `TorchLearner`. These methods/APIs match exactly those
+                of torch's own `torch.amp.GradScaler` (see here for more details
+                https://pytorch.org/docs/stable/amp.html#gradient-scaling):
+                `scale([loss])` to scale the loss by some factor.
+                `get_scale()` to get the current scale factor value.
+                `step([optimizer])` to unscale the grads (divide by the scale factor)
+                and step the given optimizer.
+                `update()` to update the scaler after an optimizer step (for example to
+                adjust the scale factor).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy will handle more than one loss/optimizer.
                 Set this to True, if you would like to return more than
@@ -3223,6 +3249,8 @@ class AlgorithmConfig(_Config):
             self._disable_initialize_loss_from_dummy_batch = (
                 _disable_initialize_loss_from_dummy_batch
             )
+        if _torch_grad_scaler_class is not NotProvided:
+            self._torch_grad_scaler_class = _torch_grad_scaler_class
 
         return self
 
