@@ -328,6 +328,22 @@ python_grpc_compile(
     deps = [":export_actor_event_proto"],
 )
 
+proto_library(
+    name = "export_driver_job_event_proto",
+    srcs = ["export_api/export_driver_job_event.proto"],
+    deps = [":common_proto", ":export_runtime_env_proto"],
+)
+
+cc_proto_library(
+    name = "export_driver_job_event_cc_proto",
+    deps = [":export_driver_job_event_proto"],
+)
+
+python_grpc_compile(
+    name = "export_driver_job_event_py_proto",
+    deps = [":export_driver_job_event_proto"],
+)
+
 # Job agent.
 proto_library(
     name = "job_agent_proto",
