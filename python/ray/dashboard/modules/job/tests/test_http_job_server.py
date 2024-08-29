@@ -520,7 +520,7 @@ def test_delete_submission_and_jobs(shutdown_only):
 import ray
 ray.init(address="auto")
 """
-    ctx = ray.init(include_dashboard=True, num_cpus=1)
+    ctx = ray.init(include_dashboard=True, num_cpus=1, ignore_reinit_error=True)
     address = ctx.address_info["webui_url"]
     client = JobSubmissionClient(format_web_url(address))
 
