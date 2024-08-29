@@ -386,10 +386,27 @@ class ConnectorV2(Checkpointable, abc.ABC):
     ) -> None:
         """Adds a data item under `column` to the given `batch`.
 
-        If `single_agent_episode` is provided and contains `agent_id` and `module_id`
-        information, will store `item_to_add` in a list under a
-        `([eps id], [AgentID],[ModuleID])` key within `column`. In all other
-        cases, will store the item in a list directly under `column`.
+        The `item_to_add` is stored in the `batch` in the following manner:
+        1) If `single_agent_episode` is not provided (None), will store the item in a
+        list directly under `column`:
+        `column` -> [item, item, ...]
+        2) If `single_agent_episode`'s `agent_id` and `module_id` properties are None
+        (`single_agent_episode` is not part of a multi-agent episode), will append
+        `item_to_add` to a list under a `([episodeID],)` key under `column`:
+        `column` -> `([eps_id],)` -> [item, item, ...]
+        3) If `single_agent_episode`'s `agent_id` and `module_id` are NOT None
+        (`single_agent_episode` is part of a multi-agent episode), will append
+        `item_to_add` to a list under a `([episodeID],[AgentID],[ModuleID])` key
+        under `column`:
+        `column` -> `([eps_id], [agent_id], [module_id])` -> [item, item, ...]
+        4) Finally, if `single_agent_episode` is provided and does contain the
+        `module_id` property (not None) AND this `module_id` is already a top level key
+        in `batch`, then it is assumed that `batch` is already in the "module-major"
+        form and `item_to_add` is added to a list under the `column` key under
+        `module_id`:
+        `module_id` -> `column` -> [item, item, ...]
+
+        See the these examples here for clarification of these three cases:
 
         .. testcode::
 
@@ -398,8 +415,8 @@ class ConnectorV2(Checkpointable, abc.ABC):
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
             from ray.rllib.utils.test_utils import check
 
-            # Simple case (no episodes provided) -> Store data in a list directly under
-            # `column`:
+            # 1) Simple case (no episodes provided) -> Store data in a list directly
+            # under `column`:
             batch = {}
             ConnectorV2.add_batch_item(batch, "test_col", item_to_add=5)
             ConnectorV2.add_batch_item(batch, "test_col", item_to_add=6)
@@ -410,8 +427,8 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 "test_col_2": [-10],
             })
 
-            # Single-agent case (SingleAgentEpisode provided) -> Store data in a list
-            # under the keys: `column` -> `(eps_id,)`:
+            # 2) Single-agent case (SingleAgentEpisode provided) -> Store data in a list
+            # under the keys: `column` -> `(eps_id,)` -> [...]:
             batch = {}
             episode = SingleAgentEpisode(
                 id_="SA-EPS0",
@@ -427,9 +444,9 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 "test_col_2": {("SA-EPS0",): [-10]},
             })
 
-            # Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
+            # 3) Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
             # `module_id` information) -> Store data in a list under the keys:
-            # `column` -> `([eps_id], [agent_id], [module_id])`:
+            # `column` -> `([eps_id], [agent_id], [module_id])` -> [...]:
             batch = {}
             ma_episode = MultiAgentEpisode(
                 id_="MA-EPS1",
@@ -467,6 +484,8 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 },
             )
 
+            TODO
+
         Args:
             batch: The batch to store `item_to_add` in.
             column: The column name (str) within the `batch` to store `item_to_add`
@@ -483,8 +502,19 @@ class ConnectorV2(Checkpointable, abc.ABC):
         sub_key = None
         # SAEpisode is provided ...
         if single_agent_episode is not None:
-            # ... and has `agent_id` -> Use agent ID and module ID from it.
-            if single_agent_episode.agent_id is not None:
+            module_id = single_agent_episode.module_id
+            # ... and has `module_id` AND that `module_id` is already a top-level key in
+            # `batch` (`batch` is already in module-major form, mapping ModuleID to
+            # columns mapping to data).
+            if module_id is not None and module_id in batch:
+                if column not in batch[module_id]:
+                    batch[module_id][column] = []
+                batch[module_id][column].append(item_to_add)
+                return
+
+            # ... and has `agent_id` -> Use `single_agent_episode`'s agent ID and
+            # module ID.
+            elif single_agent_episode.agent_id is not None:
                 sub_key = (
                     single_agent_episode.multi_agent_episode_id,
                     single_agent_episode.agent_id,
@@ -513,14 +543,17 @@ class ConnectorV2(Checkpointable, abc.ABC):
     ) -> None:
         """Adds a list of items (or batched item) under `column` to the given `batch`.
 
-        If items_to_add is not a list, but an already batched struct (of np.ndarray
-        leafs), will unbatch first into a list of individual batch items and add
-        each individually.
+        If `items_to_add` is not a list, but an already batched struct (of np.ndarray
+        leafs), the `items_to_add` will be appended to possibly existing data under the
+        same `column` as-is. A subsequent `BatchIndividualItems` ConnectorV2 piece will
+        recognize this and batch the data properly into a single (batched) item.
+        This is much faster than first splitting up `items_to_add` and then adding each
+        item individually.
 
         If `single_agent_episode` is provided and it contains agent ID and module ID
         information, will store the individual items in a list under a
-        `([agent_id],[module_id])` key within `column`. In all other cases, will store
-        the individual items in a list directly under `column`.
+        `([episode_id],[agent_id],[module_id])` key within `column`. In all other cases,
+        will store the individual items in a list directly under `column`.
 
         .. testcode::
 
@@ -638,9 +671,12 @@ class ConnectorV2(Checkpointable, abc.ABC):
             column: The column name (str) within the `batch` to store `item_to_add`
                 under.
             items_to_add: The list of data items to store in the batch OR an already
-                batched (possibly nested) struct, which will first be split up into
-                a list of individual items, then these individual items will be added
-                to the given `column` in the batch.
+                batched (possibly nested) struct. In the latter case, the `items_to_add`
+                will be appended to possibly existing data under the same `column`
+                as-is. A subsequent `BatchIndividualItems` ConnectorV2 piece will
+                recognize this and batch the data properly into a single (batched) item.
+                This is much faster than first splitting up `items_to_add` and then
+                adding each item individually.
             num_items: The number of items in `items_to_add`. This arg is mostly for
                 asserting the correct usage of this method by checking, whether the
                 given data in `items_to_add` really has the right amount of individual
