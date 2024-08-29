@@ -531,13 +531,13 @@ def test_dataset_repr(ray_start_regular_shared):
     assert repr(ds) == (
         "MapBatches(<lambda>)\n" "+- Dataset(num_rows=9, schema={id: int64})"
     )
-    ds1, ds2 = ds.split(2)
+    ds1, ds2 = ds.split(2, equal=True)
     assert (
-        repr(ds1) == f"MaterializedDataset(num_blocks=5, num_rows={ds1.count()}, "
+        repr(ds1) == f"MaterializedDataset(num_blocks=1, num_rows={ds1.count()}, "
         "schema={id: int64})"
     )
     assert (
-        repr(ds2) == f"MaterializedDataset(num_blocks=5, num_rows={ds2.count()}, "
+        repr(ds2) == f"MaterializedDataset(num_blocks=1, num_rows={ds2.count()}, "
         "schema={id: int64})"
     )
 
