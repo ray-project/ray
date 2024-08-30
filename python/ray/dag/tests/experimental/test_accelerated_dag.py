@@ -756,8 +756,9 @@ class TestDAGExceptionCompileMultipleTimes:
         compiled_dag.teardown()
         with pytest.raises(
             ValueError,
-            match="The DAG has already been compiled! "
-            "Please reuse the existing compiled DAG.",
+            match="It is not allowed to call `experimental_compile` on the same DAG "
+            "object multiple times no matter whether `teardown` is called or not. "
+            "Please reuse the existing compiled DAG or create a new one.",
         ):
             compiled_dag = dag.experimental_compile()
 
@@ -768,8 +769,9 @@ class TestDAGExceptionCompileMultipleTimes:
         compiled_dag = dag.experimental_compile()
         with pytest.raises(
             ValueError,
-            match="The DAG has already been compiled! "
-            "Please reuse the existing compiled DAG.",
+            match="It is not allowed to call `experimental_compile` on the same DAG "
+            "object multiple times no matter whether `teardown` is called or not. "
+            "Please reuse the existing compiled DAG or create a new one.",
         ):
             compiled_dag = dag.experimental_compile()
         compiled_dag.teardown()
@@ -782,8 +784,9 @@ class TestDAGExceptionCompileMultipleTimes:
         compiled_dag.teardown()
         with pytest.raises(
             ValueError,
-            match="The DAG has already been compiled! "
-            "Please reuse the existing compiled DAG.",
+            match="It is not allowed to call `experimental_compile` on the same DAG "
+            "object multiple times no matter whether `teardown` is called or not. "
+            "Please reuse the existing compiled DAG or create a new one.",
         ):
             compiled_dag = dag.experimental_compile()
 
@@ -796,8 +799,9 @@ class TestDAGExceptionCompileMultipleTimes:
         compiled_dag = dag.experimental_compile()
         with pytest.raises(
             ValueError,
-            match="The DAG has already been compiled! "
-            "Please reuse the existing compiled DAG.",
+            match="It is not allowed to call `experimental_compile` on the same DAG "
+            "object multiple times no matter whether `teardown` is called or not. "
+            "Please reuse the existing compiled DAG or create a new one.",
         ):
             compiled_dag = dag.experimental_compile()
         compiled_dag.teardown()
@@ -813,8 +817,8 @@ class TestDAGExceptionCompileMultipleTimes:
         compiled_dag.teardown()
         with pytest.raises(
             ValueError,
-            match="The DAG was compiled more than once, "
-            "so some output nodes became leaf nodes.",
+            match="The DAG was compiled more than once. The following two "
+            "nodes call `experimental_compile`: ",
         ):
             compiled_dag = branch2.experimental_compile()
 
