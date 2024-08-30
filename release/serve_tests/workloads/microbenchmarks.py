@@ -45,7 +45,7 @@ NUM_REQUESTS = 500
 
 # For throughput benchmarks
 BATCH_SIZE = 100
-NUM_TRIALS = 1
+NUM_TRIALS = 50
 TRIAL_RUNTIME_S = 5
 
 
