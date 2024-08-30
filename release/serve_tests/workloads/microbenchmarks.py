@@ -45,7 +45,7 @@ NUM_REQUESTS = 500
 
 # For throughput benchmarks
 BATCH_SIZE = 100
-NUM_TRIALS = 50
+NUM_TRIALS = 1
 TRIAL_RUNTIME_S = 5
 
 
@@ -160,15 +160,15 @@ async def _main(
 
     # GRPC
     if run_grpc:
+        serve_grpc_options = gRPCOptions(
+            port=9000,
+            grpc_servicer_functions=[
+                "ray.serve.generated.serve_pb2_grpc.add_RayServeBenchmarkServiceServicer_to_server",  # noqa
+            ],
+        )
         if run_latency:
             channel = grpc.insecure_channel("localhost:9000")
             stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
-            serve_grpc_options = gRPCOptions(
-                port=9000,
-                grpc_servicer_functions=[
-                    "ray.serve.generated.serve_pb2_grpc.add_RayServeBenchmarkServiceServicer_to_server",  # noqa
-                ],
-            )
             grpc_payload_noop = serve_pb2.StringData(data="")
             grpc_payload_1mb = serve_pb2.StringData(data=payload_1mb)
             grpc_payload_10mb = serve_pb2.StringData(data=payload_10mb)
