@@ -42,7 +42,7 @@ def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
         assert compression == "GZIP", compression
 
     # Test that you can read the written files.
-    assert pq.read_table(tmp_path).to_pylist() == [{"id": 0}]
+    assert pq.read_table(tmp_path).to_pydict() == {"id": [0]}
 
 
 def test_include_paths(ray_start_regular_shared, tmp_path):
