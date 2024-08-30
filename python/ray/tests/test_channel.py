@@ -1278,7 +1278,7 @@ def test_buffered_channel(shutdown_only):
     with pytest.raises(ray.exceptions.RayChannelTimeoutError):
         chan.read(timeout=1)
 
-    print("Test ser/de works")
+    print("Test serialization/deserialization works")
     deserialized = pickle.loads(pickle.dumps(chan))
     assert len(chan._buffers) == len(deserialized._buffers)
     for i in range(len(chan._buffers)):

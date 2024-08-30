@@ -1322,23 +1322,6 @@ def test_channel_write_after_close(ray_start_regular):
         dag.execute(1)
 
 
-def test_driver_and_actor_as_readers(ray_start_cluster):
-    a = Actor.remote(0)
-    b = Actor.remote(10)
-    with InputNode() as inp:
-        x = a.inc.bind(inp)
-        y = b.inc.bind(x)
-        dag = MultiOutputNode([x, y])
-
-    with pytest.raises(
-        ValueError,
-        match="DAG outputs currently can only be read by the driver or "
-        "the same actor that is also the InputNode, not by both "
-        "the driver and actors.",
-    ):
-        dag.experimental_compile()
-
-
 def test_payload_large(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor).
@@ -1390,6 +1373,23 @@ def test_payload_large(ray_start_cluster):
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
+
+
+def test_driver_and_actor_as_readers(ray_start_cluster):
+    a = Actor.remote(0)
+    b = Actor.remote(10)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(x)
+        dag = MultiOutputNode([x, y])
+
+    with pytest.raises(
+        ValueError,
+        match="DAG outputs currently can only be read by the driver or "
+        "the same actor that is also the InputNode, not by both "
+        "the driver and actors.",
+    ):
+        dag.experimental_compile()
 
 
 @pytest.fixture
@@ -1493,7 +1493,7 @@ def test_buffered_inputs(shutdown_only, temporary_reduce_timeout):
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
-    dag.teardown()
+    async_dag.teardown()
 
 
 class TestActorInputOutput:
