@@ -3502,6 +3502,13 @@ py_test(
 )
 
 py_test(
+    name = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint",
+    main = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py",
+    tags = ["team:rllib", "examples"],
+    size = "large",
+    srcs = ["examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py"],
+)
+py_test(
     name = "examples/rl_modules/pretraining_single_agent_training_multi_agent",
     main = "examples/rl_modules/pretraining_single_agent_training_multi_agent.py",
     tags = ["team:rllib", "examples"],
@@ -3510,6 +3517,7 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters-pretraining=5", "--stop-iters=20", "--stop-reward=150.0"],
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/autoregressive_action_dist_tf",
     main = "examples/autoregressive_action_dist.py",
@@ -3519,6 +3527,7 @@ py_test(
     args = ["--as-test", "--framework=tf", "--stop-reward=150", "--num-cpus=4"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/autoregressive_action_dist_torch",
     main = "examples/autoregressive_action_dist.py",
@@ -3528,6 +3537,7 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=150", "--num-cpus=4"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/cartpole_lstm_impala_tf2",
     main = "examples/cartpole_lstm.py",
@@ -3537,6 +3547,7 @@ py_test(
     args = ["--run=IMPALA", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/cartpole_lstm_impala_torch",
     main = "examples/cartpole_lstm.py",
@@ -3546,6 +3557,7 @@ py_test(
     args = ["--run=IMPALA", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/cartpole_lstm_ppo_tf2",
     main = "examples/cartpole_lstm.py",
@@ -3555,6 +3567,7 @@ py_test(
     args = ["--run=PPO", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/cartpole_lstm_ppo_torch",
     main = "examples/cartpole_lstm.py",
@@ -3564,6 +3577,7 @@ py_test(
     args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/cartpole_lstm_ppo_torch_with_prev_a_and_r",
     main = "examples/cartpole_lstm.py",
@@ -3613,6 +3627,7 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=6.0"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/metrics/custom_metrics_and_callbacks",
     main = "examples/metrics/custom_metrics_and_callbacks.py",
@@ -3622,6 +3637,7 @@ py_test(
     args = ["--stop-iters=2"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/custom_model_loss_and_metrics_ppo_tf",
     main = "examples/custom_model_loss_and_metrics.py",
@@ -3633,6 +3649,7 @@ py_test(
     args = ["--run=PPO", "--stop-iters=1", "--framework=tf","--input-files=tests/data/cartpole"]
 )
 
+#@OldAPIStack
 py_test(
     name = "examples/custom_model_loss_and_metrics_ppo_torch",
     main = "examples/custom_model_loss_and_metrics.py",
@@ -3642,28 +3659,6 @@ py_test(
     data = ["tests/data/cartpole/small.json"],
     srcs = ["examples/custom_model_loss_and_metrics.py"],
     args = ["--run=PPO", "--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
-)
-
-py_test(
-    name = "examples/custom_model_loss_and_metrics_pg_tf",
-    main = "examples/custom_model_loss_and_metrics.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--stop-iters=1", "--framework=tf", "--input-files=tests/data/cartpole"]
-)
-
-py_test(
-    name = "examples/custom_model_loss_and_metrics_pg_torch",
-    main = "examples/custom_model_loss_and_metrics.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
 )
 
 py_test(
