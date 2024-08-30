@@ -28,6 +28,7 @@ from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.util.metrics import Counter, Gauge, Histogram
 from ray._raylet import GcsClient
+from ray.dashboard.datacenter import DataSource
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -746,6 +747,12 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     cluster = ray_start_cluster
     nodes = [cluster.add_node() for _ in range(NUM_NODES)]
     cluster.wait_for_nodes()
+    for node in nodes:
+        DataSource.nodes[node.node_id] = {
+            "state": "ALIVE",
+            "nodeManagerAddress": node._node_ip_address,
+            "metricsExportPort": node._metrics_export_port,
+        }
     addr = ray.init(address=cluster.address)
     writer = PrometheusServiceDiscoveryWriter(
         GcsClient(addr["gcs_address"]),
@@ -773,7 +780,13 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
 
     # Let's update nodes.
     for _ in range(3):
-        nodes.append(cluster.add_node())
+        node = cluster.add_node()
+        nodes.append(node)
+        DataSource.nodes[node.node_id] = {
+            "state": "ALIVE",
+            "nodeManagerAddress": node._node_ip_address,
+            "metricsExportPort": node._metrics_export_port,
+        }
 
     # Make sure service discovery file content is correctly updated.
     loaded_json_data = json.loads(writer.get_file_discovery_content())[0]
