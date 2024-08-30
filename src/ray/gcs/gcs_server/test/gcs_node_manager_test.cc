@@ -27,6 +27,7 @@
 // clang-format on
 
 namespace ray {
+
 class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
@@ -35,51 +36,23 @@ class GcsNodeManagerTest : public ::testing::Test {
         [this](const rpc::Address &) { return raylet_client_; });
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-  }
 
- protected:
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
-  std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
-  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
-};
+    std::promise<bool> promise;
+    thread_io_service_ = std::make_unique<std::thread>([this, &promise] {
+      std::unique_ptr<boost::asio::io_service::work> work(
+          new boost::asio::io_service::work(io_service_));
+      promise.set_value(true);
+      io_service_.run();
+    });
+    promise.get_future().get();
 
-std::string GenerateLogDir() {
-  std::string log_dir_generate = std::string(5, ' ');
-  FillRandom(&log_dir_generate);
-  std::string log_dir = "event" + StringToHex(log_dir_generate);
-  return log_dir;
-}
-
-class GcsNodeManagerExportAPITest : public ::testing::Test {
- public:
-  GcsNodeManagerExportAPITest() {
-    raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
-        [this](const rpc::Address &) { return raylet_client_; });
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
-        std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-
-    RayConfig::instance().initialize(
-        R"(
-{
-  "enable_export_api_write": true
-}
-  )");
-    log_dir_ = GenerateLogDir();
-    const std::vector<ray::SourceTypeVariant> source_types = {
-        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
-    RayEventInit_(source_types,
-                  absl::flat_hash_map<std::string, std::string>(),
-                  log_dir_,
-                  "warning",
-                  false);
+    log_dir_ = "event_123";
   }
 
-  virtual ~GcsNodeManagerExportAPITest() {
+  virtual ~GcsNodeManagerTest() {
     io_service_.stop();
-    EventManager::Instance().ClearReporters();
+    thread_io_service_->join();
     std::filesystem::remove_all(log_dir_.c_str());
   }
 
@@ -89,93 +62,100 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   instrumented_io_context io_service_;
+  std::unique_ptr<std::thread> thread_io_service_;
   std::string log_dir_;
 };
 
-// TEST_F(GcsNodeManagerTest, TestManagement) {
-//   gcs::GcsNodeManager node_manager(
-//       gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
-//   // Test Add/Get/Remove functionality.
-//   auto node = Mocker::GenNodeInfo();
-//   auto node_id = NodeID::FromBinary(node->node_id());
+TEST_F(GcsNodeManagerTest, TestManagement) {
+  gcs::GcsNodeManager node_manager(
+      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+  // Test Add/Get/Remove functionality.
+  auto node = Mocker::GenNodeInfo();
+  auto node_id = NodeID::FromBinary(node->node_id());
 
-//   node_manager.AddNode(node);
-//   ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
+  node_manager.AddNode(node);
+  ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
 
-//   rpc::NodeDeathInfo death_info;
-//   node_manager.RemoveNode(node_id, death_info);
-//   ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
-// }
+  rpc::NodeDeathInfo death_info;
+  node_manager.RemoveNode(node_id, death_info);
+  ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
+}
 
-// TEST_F(GcsNodeManagerTest, TestListener) {
-//   gcs::GcsNodeManager node_manager(
-//       gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
-//   // Test AddNodeAddedListener.
-//   int node_count = 1000;
-//   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
-//   node_manager.AddNodeAddedListener(
-//       [&added_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
-//         added_nodes.emplace_back(std::move(node));
-//       });
-//   for (int i = 0; i < node_count; ++i) {
-//     auto node = Mocker::GenNodeInfo();
-//     node_manager.AddNode(node);
-//   }
-//   ASSERT_EQ(node_count, added_nodes.size());
+TEST_F(GcsNodeManagerTest, TestListener) {
+  gcs::GcsNodeManager node_manager(
+      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+  // Test AddNodeAddedListener.
+  int node_count = 1000;
+  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
+  node_manager.AddNodeAddedListener(
+      [&added_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
+        added_nodes.emplace_back(std::move(node));
+      });
+  for (int i = 0; i < node_count; ++i) {
+    auto node = Mocker::GenNodeInfo();
+    node_manager.AddNode(node);
+  }
+  ASSERT_EQ(node_count, added_nodes.size());
 
-//   // Test GetAllAliveNodes.
-//   auto &alive_nodes = node_manager.GetAllAliveNodes();
-//   ASSERT_EQ(added_nodes.size(), alive_nodes.size());
-//   for (const auto &node : added_nodes) {
-//     ASSERT_EQ(1, alive_nodes.count(NodeID::FromBinary(node->node_id())));
-//   }
+  // Test GetAllAliveNodes.
+  auto &alive_nodes = node_manager.GetAllAliveNodes();
+  ASSERT_EQ(added_nodes.size(), alive_nodes.size());
+  for (const auto &node : added_nodes) {
+    ASSERT_EQ(1, alive_nodes.count(NodeID::FromBinary(node->node_id())));
+  }
 
-//   // Test AddNodeRemovedListener.
-//   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> removed_nodes;
-//   node_manager.AddNodeRemovedListener(
-//       [&removed_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
-//         removed_nodes.emplace_back(std::move(node));
-//       });
-//   rpc::NodeDeathInfo death_info;
-//   for (int i = 0; i < node_count; ++i) {
-//     node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()), death_info);
-//   }
-//   ASSERT_EQ(node_count, removed_nodes.size());
-//   ASSERT_TRUE(node_manager.GetAllAliveNodes().empty());
-//   for (int i = 0; i < node_count; ++i) {
-//     ASSERT_EQ(added_nodes[i], removed_nodes[i]);
-//   }
-// }
+  // Test AddNodeRemovedListener.
+  std::vector<std::shared_ptr<rpc::GcsNodeInfo>> removed_nodes;
+  node_manager.AddNodeRemovedListener(
+      [&removed_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
+        removed_nodes.emplace_back(std::move(node));
+      });
+  rpc::NodeDeathInfo death_info;
+  for (int i = 0; i < node_count; ++i) {
+    node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()), death_info);
+  }
+  ASSERT_EQ(node_count, removed_nodes.size());
+  ASSERT_TRUE(node_manager.GetAllAliveNodes().empty());
+  for (int i = 0; i < node_count; ++i) {
+    ASSERT_EQ(added_nodes[i], removed_nodes[i]);
+  }
+}
 
-TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
+TEST_F(GcsNodeManagerTest, TestExportEvent) {
   // Test export event is written when a node is added with HandleRegisterNode
+  // and removed with HandleUnregisterNode
+  RayConfig::instance().initialize(
+      R"(
+{
+  "enable_export_api_write": true
+}
+  )");
+  const std::vector<ray::SourceTypeVariant> source_types = {
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
+  RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
+
   gcs::GcsNodeManager node_manager(
       gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();
+  auto node_id = NodeID::FromBinary(node->node_id());
 
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
   rpc::RegisterNodeReply register_reply;
-  auto send_reply_callback =
-      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
-
-  node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
-  io_service_.poll();
+  std::promise<bool> promise;
+  node_manager.HandleRegisterNode(
+      register_request,
+      &register_reply,
+      [&promise](Status, std::function<void()>, std::function<void()>) {
+        promise.set_value(true);
+      });
+  promise.get_future().get();
 
   std::vector<std::string> vc;
   Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["state"], "ALIVE");
-}
-
-TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
-  // Test export event is written when a node is removed with HandleUnregisterNode
-  gcs::GcsNodeManager node_manager(
-      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
-  auto node = Mocker::GenNodeInfo();
-  auto node_id = NodeID::FromBinary(node->node_id());
-  node_manager.AddNode(node);
 
   rpc::UnregisterNodeRequest unregister_request;
   unregister_request.set_node_id(node_id.Binary());
@@ -183,17 +163,19 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
       rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
   unregister_request.mutable_node_death_info()->set_reason_message("mock reason message");
   rpc::UnregisterNodeReply unregister_reply;
-  auto send_reply_callback =
-      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
-
+  std::promise<bool> unregister_promise;
   node_manager.HandleUnregisterNode(
-      unregister_request, &unregister_reply, send_reply_callback);
-  io_service_.poll();
+      unregister_request,
+      &unregister_reply,
+      [&unregister_promise](Status, std::function<void()>, std::function<void()>) {
+        unregister_promise.set_value(true);
+      });
+  unregister_promise.get_future().get();
 
-  std::vector<std::string> vc;
+  vc.clear();
   Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
-  ASSERT_EQ((int)vc.size(), 1);
-  json event_data = json::parse(vc[0])["event_data"].get<json>();
+  ASSERT_EQ((int)vc.size(), 2);
+  event_data = json::parse(vc[1])["event_data"].get<json>();
   ASSERT_EQ(event_data["state"], "DEAD");
   // Verify death cause for last node DEAD event
   ASSERT_EQ(event_data["death_info"]["reason"], "UNEXPECTED_TERMINATION");

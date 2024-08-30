@@ -93,8 +93,8 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                   << ", node name = " << request.node_info().node_name();
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, request.node_info(), nullptr));
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     WriteNodeExportEvent(request.node_info());
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   if (request.node_info().is_head_node()) {
     // mark all old head nodes as dead if exists:
@@ -164,9 +164,9 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   auto on_put_done = [=](const Status &status) {
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
     WriteNodeExportEvent(*node);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
@@ -437,11 +437,11 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
 
     auto on_done = [this, node_id, node_table_updated_callback, node_info_delta, node](
                        const Status &status) {
+      WriteNodeExportEvent(*node);
       if (node_table_updated_callback != nullptr) {
         node_table_updated_callback(Status::OK());
       }
       RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
-      WriteNodeExportEvent(*node);
     };
     RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_done));
   } else if (node_table_updated_callback != nullptr) {

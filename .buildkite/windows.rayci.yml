@@ -42,8 +42,7 @@ steps:
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
         --test-env=USERPROFILE
-        --parallelism-per-worker 2 || true
-      - sleep 100000
+        --parallelism-per-worker 2
     depends_on: windowsbuild
 
   - label: ":ray: core: :windows: python tests"
