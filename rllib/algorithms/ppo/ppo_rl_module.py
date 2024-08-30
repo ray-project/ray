@@ -6,7 +6,8 @@ import abc
 from typing import List
 
 from ray.rllib.core.models.configs import RecurrentEncoderConfig
-from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, ValueFunctionAPI
+from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import (
     override,
@@ -15,9 +16,8 @@ from ray.rllib.utils.annotations import (
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
-class PPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
-    @override(RLModule)
+@ExperimentalAPI
+class PPORLModule(RLModule, ValueFunctionAPI, abc.ABC):
     def setup(self):
         # __sphinx_doc_begin__
         # If we have a stateful model, states for the critic need to be collected
