@@ -89,22 +89,9 @@ class CQLConfig(SACConfig):
         # Note, the new stack defines learning rates for each component.
         # The base learning rate `lr` has to be set to `None`, if using
         # the new stack.
-        self.actor_lr = 1e-4
+        self.actor_lr = 1e-4,
         self.critic_lr = 1e-3
         self.alpha_lr = 1e-3
-
-        self.replay_buffer_config = {
-            "_enable_replay_buffer_api": True,
-            "type": "MultiAgentPrioritizedReplayBuffer",
-            "capacity": int(1e6),
-            # If True prioritized replay buffer will be used.
-            "prioritized_replay": False,
-            "prioritized_replay_alpha": 0.6,
-            "prioritized_replay_beta": 0.4,
-            "prioritized_replay_eps": 1e-6,
-            # Whether to compute priorities already on the remote worker side.
-            "worker_side_prioritization": False,
-        }
 
         # Changes to Algorithm's/SACConfig's default:
 
