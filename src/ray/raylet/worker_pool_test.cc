@@ -60,7 +60,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     const auto &callback = callbacks_.front();
     rpc::ExitReply exit_reply;
     exit_reply.set_success(true);
-    callback(Status::OK(), exit_reply);
+    callback(Status::OK(), std::move(exit_reply));
     callbacks_.pop_front();
     return true;
   }
@@ -72,7 +72,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     const auto &callback = callbacks_.front();
     rpc::ExitReply exit_reply;
     exit_reply.set_success(false);
-    callback(Status::OK(), exit_reply);
+    callback(Status::OK(), std::move(exit_reply));
     callbacks_.pop_front();
     return true;
   }
@@ -94,7 +94,6 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   void GetOrCreateRuntimeEnv(const JobID &job_id,
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
-                             const std::string &serialized_allocated_resource_instances,
                              GetOrCreateRuntimeEnvCallback callback) override {
     if (serialized_runtime_env == BAD_RUNTIME_ENV) {
       callback(false, "", BAD_RUNTIME_ENV_ERROR_MSG);

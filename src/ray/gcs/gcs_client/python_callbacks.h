@@ -41,15 +41,28 @@ class PythonGilHolder {
 // into a stateful C++ std::function. Instead we have to define Cython `cdef` functions
 // who are translated to C++ functions, and use their function pointers.
 //
-// Because we can only work with stateless Cython functions, we need to keep the Future
-// as a void* in this functor. This functor does not manage its lifetime: it assumes the
-// void* is always valid. We Py_INCREF the Future in `incremented_fut` before passing it
-// to PyCallback, and Py_DECREF it in `assign_and_decrement_fut` after the completion.
-//
 // Different APIs have different type signatures, but the code of completing the future
 // is the same. So we ask 2 Cython function pointers: `Converter` and `Assigner`.
 // `Converter` is unique for each API, converting C++ types to Python types.
 // `Assigner` is shared by all APIs, completing the Python future.
+//
+// Because we can only work with stateless Cython functions, we need to keep the Future
+// as a ptr in this functor. This functor does not manage its lifetime: it assumes the
+// ptr is always valid. We Py_INCREF the Future in `incremented_fut` before passing it
+// to PyCallback, and Py_DECREF it in `assign_and_decrement_fut` after the completion.
+//
+// On the other hand, this functor manages the lifetime of the return value of the
+// `Converter`. It returns a PyObject* as a new reference, we use it in `Assigner` and
+// DECREF it at the end of the callback. Recall the rules of Cython conventions [1]:
+//
+// 1. The function returning `object` returns it with a new reference.
+// 2. The function taking `object` as an argument does NOT increment or decrement its
+//      reference count.
+// 3. The function keeping an `object` as a local variable MUST decrement its reference
+//      count when it's out of scope. (This is our case)
+//
+// [1]
+// https://github.com/cython/cython/blob/9af421163cb8081414be347038dee7a82b29e8dd/Cython/Includes/cpython/__init__.pxd#L36
 //
 // On C++ async API calling:
 // 1. Create a Future.
@@ -61,7 +74,7 @@ class PythonGilHolder {
 // 2. The functor calls the Cython function `Converter` with C++ types. It returns
 //  `Tuple[result, exception]`.
 // 3. The functor calls the Cython function `Assigner` with the tuple and the
-//  Future (as void*). It assign the result or the exception to the Python future.
+//  Future (as ptr). It assign the result or the exception to the Python future.
 template <typename... Args>
 class PyCallback {
  public:
@@ -70,18 +83,26 @@ class PyCallback {
   // The return PyObject* is passed to the Assigner.
   using Converter = PyObject *(*)(Args...);
   // It must not raise exceptions.
-  using Assigner = void (*)(PyObject *, void *);
+  using Assigner = void (*)(PyObject *, PyObject *);
 
-  PyCallback(Converter converter, Assigner assigner, void *context)
+  PyCallback(Converter converter, Assigner assigner, PyObject *context)
       : converter(converter), assigner(assigner), context(context) {}
 
   void operator()(Args &&...args) {
-    PythonGilHolder gil;
     PyObject *result = converter(std::forward<Args>(args)...);
-    CheckNoException();
+    {
+      PythonGilHolder gil;
+      CheckNoException();
+    }
 
     assigner(result, context);
-    CheckNoException();
+    {
+      PythonGilHolder gil;
+      CheckNoException();
+
+      Py_DECREF(result);
+      CheckNoException();
+    }
   }
 
   void CheckNoException() {
@@ -95,14 +116,14 @@ class PyCallback {
  private:
   Converter converter = nullptr;
   Assigner assigner = nullptr;
-  void *context = nullptr;
+  PyObject *context = nullptr;
 };
 
 template <typename T>
 using MultiItemPyCallback = PyCallback<Status, std::vector<T> &&>;
 
 template <typename Data>
-using OptionalItemPyCallback = PyCallback<Status, const std::optional<Data> &>;
+using OptionalItemPyCallback = PyCallback<Status, std::optional<Data> &&>;
 
 using StatusPyCallback = PyCallback<Status>;
 

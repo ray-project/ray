@@ -31,6 +31,10 @@ from custom_directives import (  # noqa
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
+assert not os.path.exists("../../python/ray/_raylet.so"), (
+    "_raylet.so should not be imported for the purpose for doc build, "
+    "please rename the file to _raylet.so.bak and try again."
+)
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
@@ -294,6 +298,7 @@ html_theme_options = {
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "version-switcher",
         "navbar-icon-links",
         "navbar-anyscale",
     ],
@@ -313,6 +318,10 @@ html_theme_options = {
     "navigation_depth": 4,
     "pygment_light_style": "stata-dark",
     "pygment_dark_style": "stata-dark",
+    "switcher": {
+        "json_url": "https://docs.ray.io/en/master/_static/versions.json",
+        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
+    },
 }
 
 html_context = {
@@ -323,7 +332,11 @@ html_context = {
 }
 
 html_sidebars = {
-    "**": ["main-sidebar"],
+    "**": [
+        "main-sidebar-readthedocs"
+        if os.getenv("READTHEDOCS") == "True"
+        else "main-sidebar"
+    ],
     "ray-overview/examples": [],
 }
 
@@ -397,6 +410,11 @@ def filter_out_undoc_class_members(member_name, class_name, module_name):
         return ""
 
 
+def has_public_constructor(class_name, module_name):
+    cls = getattr(import_module(module_name), class_name)
+    return _is_public_api(cls)
+
+
 def get_api_groups(method_names, class_name, module_name):
     api_groups = set()
     cls = getattr(import_module(module_name), class_name)
@@ -434,6 +452,7 @@ def _is_api_group(obj, group):
 FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
 FILTERS["get_api_groups"] = get_api_groups
 FILTERS["select_api_group"] = select_api_group
+FILTERS["has_public_constructor"] = has_public_constructor
 
 
 def add_custom_assets(
@@ -553,6 +572,7 @@ autodoc_mock_imports = [
     "aiohttp",
     "aiosignal",
     "composer",
+    "cupy",
     "dask",
     "datasets",
     "fastapi",

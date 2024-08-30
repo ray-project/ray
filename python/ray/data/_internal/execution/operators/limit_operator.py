@@ -116,6 +116,14 @@ class LimitOperator(OneToOneOperator):
             return self._cur_output_bundles
         return self._estimated_num_output_bundles
 
+    def num_output_rows_total(self) -> Optional[int]:
+        # The total number of rows is simply the limit or the number
+        # of input rows, whichever is smaller
+        input_num_rows = self.input_dependencies[0].num_output_rows_total()
+        if input_num_rows is None:
+            return None
+        return min(self._limit, input_num_rows)
+
     def throttling_disabled(self) -> bool:
         return True
 

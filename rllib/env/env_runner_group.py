@@ -36,7 +36,6 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -272,7 +271,7 @@ class EnvRunnerGroup:
             and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):
-            spaces = self._get_spaces_from_remote_worker()
+            spaces = self.get_spaces()
         else:
             spaces = None
 
@@ -288,68 +287,24 @@ class EnvRunnerGroup:
                 spaces=spaces,
             )
 
-    def _get_spaces_from_remote_worker(self):
-        """Infer observation and action spaces from a remote worker.
+    def get_spaces(self):
+        """Infer observation and action spaces from one (local or remote) EnvRunner.
 
         Returns:
-            A dict mapping from policy ids to spaces.
+            A dict mapping from ModuleID to a 2-tuple containing obs- and action-space.
         """
         # Get ID of the first remote worker.
-        worker_id = self._worker_manager.actor_ids()[0]
+        remote_worker_ids = (
+            [self._worker_manager.actor_ids()[0]]
+            if self._worker_manager.actor_ids()
+            else []
+        )
 
-        # Try to figure out spaces from the first remote worker.
-        # Traditional RolloutWorker.
-        if issubclass(self.env_runner_cls, RolloutWorker):
-            remote_spaces = self.foreach_worker(
-                lambda worker: worker.foreach_policy(
-                    lambda p, pid: (pid, p.observation_space, p.action_space)
-                ),
-                remote_worker_ids=[worker_id],
-                local_env_runner=False,
-            )
-        # Generic EnvRunner.
-        else:
-            remote_spaces = self.foreach_worker(
-                lambda worker: worker.multi_rl_module.foreach_module(
-                    lambda mid, m: (
-                        mid,
-                        m.config.observation_space,
-                        m.config.action_space,
-                    ),
-                )
-                if hasattr(worker, "multi_rl_module")
-                else [
-                    (
-                        DEFAULT_POLICY_ID,
-                        worker.module.config.observation_space,
-                        worker.module.config.action_space,
-                    ),
-                ]
-            )
-
-        if not remote_spaces:
-            raise ValueError(
-                "Could not get observation and action spaces from remote "
-                "worker. Maybe specify them manually in the config?"
-            )
-        spaces = {
-            e[0]: (getattr(e[1], "original_space", e[1]), e[2])
-            for e in remote_spaces[0]
-        }
-
-        if issubclass(self.env_runner_cls, RolloutWorker):
-            # Try to add the actual env's obs/action spaces.
-            env_spaces = self.foreach_worker(
-                lambda worker: worker.foreach_env(
-                    lambda env: (env.observation_space, env.action_space)
-                ),
-                remote_worker_ids=[worker_id],
-                local_env_runner=False,
-            )
-            if env_spaces:
-                # env_spaces group spaces by environment then worker.
-                # So need to unpack thing twice.
-                spaces["__env__"] = env_spaces[0][0]
+        spaces = self.foreach_worker(
+            lambda env_runner: env_runner.get_spaces(),
+            remote_worker_ids=remote_worker_ids,
+            local_env_runner=not remote_worker_ids,
+        )[0]
 
         logger.info(
             "Inferred observation/action spaces from remote "
@@ -838,11 +793,11 @@ class EnvRunnerGroup:
 
     @DeveloperAPI
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
-        """Hard overrides the remote workers in this set with the given one.
+        """Hard overrides the remote EnvRunners in this set with the provided ones.
 
         Args:
-            new_remote_workers: A list of new EnvRunners
-                (as `ActorHandles`) to use as remote workers.
+            new_remote_workers: A list of new EnvRunners (as `ActorHandles`) to use as
+                new remote workers.
         """
         self._worker_manager.clear()
         self._worker_manager.add_actors(new_remote_workers)
@@ -884,7 +839,8 @@ class EnvRunnerGroup:
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
+        # Deprecated args.
         local_worker=DEPRECATED_VALUE,
     ) -> List[T]:
         """Calls the given function with each EnvRunner as its argument.
@@ -907,8 +863,9 @@ class EnvRunnerGroup:
                 call (within the given `timeout_seconds`).
                 Note that workers are NOT set unhealthy, if they simply time out
                 (only if they return a RayActorError).
-                Also not that this setting is ignored if `healthy_only=True` (b/c this
-                setting only affects workers that are currently tagged as unhealthy).
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
              The list of return values of all calls to `func([worker])`.
@@ -958,6 +915,9 @@ class EnvRunnerGroup:
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+        # Deprecated args.
         local_worker=DEPRECATED_VALUE,
     ) -> List[T]:
         """Calls the given function with each EnvRunner and its ID as its arguments.
@@ -969,6 +929,17 @@ class EnvRunnerGroup:
             healthy_only: Apply `func` on known-to-be healthy workers only.
             remote_worker_ids: Apply `func` on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
+            return_obj_refs: whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of this WorkerSet.
+            mark_healthy: Whether to mark all those workers healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that workers are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
              The list of return values of all calls to `func([worker, id])`.
@@ -993,6 +964,8 @@ class EnvRunnerGroup:
             healthy_only=healthy_only,
             remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
         _handle_remote_call_result_errors(
@@ -1054,10 +1027,9 @@ class EnvRunnerGroup:
                 call (within the given `timeout_seconds`).
                 Note that workers are NOT set unhealthy, if they simply time out
                 (only if they return a RayActorError).
-                Also not that this setting is ignored if `healthy_only=True` was set
-                in the preceding `self.foreach_worker_asyn()` call, b/c the
-                `mark_healthy` setting only affects workers that are currently tagged as
-                unhealthy.
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
             A list of results successfully returned from outstanding remote calls,
@@ -1181,6 +1153,7 @@ class EnvRunnerGroup:
         """
         return self._worker_manager.probe_unhealthy_actors(
             timeout_seconds=self._remote_config.env_runner_health_probe_timeout_s,
+            mark_healthy=True,
         )
 
     def _make_worker(

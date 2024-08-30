@@ -120,7 +120,7 @@ class KillActorViaGcsFromGrpc:
         timeout: Optional[float] = None,
     ):
         request = gcs_service_pb2.KillActorViaGcsRequest()
-        request.actor_id = bytes.fromhex(actor_id.hex())
+        request.actor_id = actor_id.binary()
         request.force_kill = force_kill
         request.no_restart = no_restart
         await self._gcs_actor_info_stub.KillActorViaGcs(request, timeout=timeout)

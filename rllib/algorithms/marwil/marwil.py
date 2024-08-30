@@ -6,6 +6,12 @@ from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
 from ray.rllib.algorithms.marwil.marwil_offline_prelearner import (
     MARWILOfflinePreLearner,
 )
+from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
+    AddObservationsFromEpisodesToBatch,
+)
+from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
+    AddNextObservationsFromEpisodesToTrainBatch,
+)
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
@@ -192,7 +198,7 @@ class MARWILConfig(AlgorithmConfig):
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use 'torch' instead."
             )
 
     @override(AlgorithmConfig)
@@ -205,7 +211,8 @@ class MARWILConfig(AlgorithmConfig):
             return MARWILTorchLearner
         else:
             raise ValueError(
-                f"The framework {self.framework_str} is not supported. " "Use 'torch'."
+                f"The framework {self.framework_str} is not supported. "
+                "Use 'torch' instead."
             )
 
     @override(AlgorithmConfig)
@@ -264,6 +271,28 @@ class MARWILConfig(AlgorithmConfig):
         return super().build(env, logger_creator)
 
     @override(AlgorithmConfig)
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
+        pipeline = super().build_learner_connector(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            device=device,
+        )
+
+        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # after the corresponding "add-OBS-..." default piece).
+        pipeline.insert_after(
+            AddObservationsFromEpisodesToBatch,
+            AddNextObservationsFromEpisodesToTrainBatch(),
+        )
+
+        return pipeline
+
+    @override(AlgorithmConfig)
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
@@ -281,8 +310,17 @@ class MARWILConfig(AlgorithmConfig):
         # Assert that for a local learner the number of iterations is 1. Note,
         # this is needed because we have no iterators, but instead a single
         # batch returned directly from the `OfflineData.sample` method.
-        if self.num_learners == 0 and not self.dataset_num_iters_per_learner:
-            self.dataset_num_iters_per_learner = 1
+        if (
+            self.num_learners == 0
+            and not self.dataset_num_iters_per_learner
+            and self.enable_rl_module_and_learner
+        ):
+            raise ValueError(
+                "When using a local Learner (`config.num_learners=0`), the number of "
+                "iterations per learner (`dataset_num_iters_per_learner`) has to be "
+                "defined! Set this hyperparameter through `config.offline_data("
+                "dataset_num_iters_per_learner=...)`."
+            )
 
     @property
     def _model_auto_keys(self):
@@ -320,19 +358,19 @@ class MARWIL(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_stack()
+            return self._training_step_new_api_stack()
         elif self.config.enable_rl_module_and_learner:
             raise ValueError(
                 "`enable_rl_module_and_learner=True`. Hybrid stack is not "
-                "is not supported for MARWIL. Either use the old stack with "
+                "supported for MARWIL. Either use the old stack with "
                 "`ModelV2` or the new stack with `RLModule`. You can enable "
                 "the new stack by setting both, `enable_rl_module_and_learner` "
                 "and `enable_env_runner_and_connector_v2` to `True`."
             )
         else:
-            return self._training_step_old_stack()
+            return self._training_step_old_api_stack()
 
-    def _training_step_new_stack(self) -> ResultDict:
+    def _training_step_new_api_stack(self) -> ResultDict:
         """Implements training logic for the new stack
 
         Note, this includes so far training with the `OfflineData`
@@ -350,7 +388,7 @@ class MARWIL(Algorithm):
             batch = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
-                return_iterator=True if self.config.num_learners > 1 else False,
+                return_iterator=self.config.num_learners > 1,
             )
 
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -399,7 +437,7 @@ class MARWIL(Algorithm):
 
         return self.metrics.reduce()
 
-    def _training_step_old_stack(self) -> ResultDict:
+    def _training_step_old_api_stack(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         with self._timers[SAMPLE_TIMER]:
             train_batch = synchronous_parallel_sample(worker_set=self.env_runner_group)

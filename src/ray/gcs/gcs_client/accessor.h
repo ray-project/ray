@@ -445,7 +445,7 @@ class NodeInfoAccessor {
       const OptionalItemCallback<std::string> &callback);
 
   /// Add a node to accessor cache.
-  virtual void HandleNotification(const rpc::GcsNodeInfo &node_info);
+  virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
@@ -459,7 +459,7 @@ class NodeInfoAccessor {
   GcsClient *client_impl_;
 
   using NodeChangeCallback =
-      std::function<void(const NodeID &id, const rpc::GcsNodeInfo &node_info)>;
+      std::function<void(const NodeID &id, rpc::GcsNodeInfo &&node_info)>;
 
   rpc::GcsNodeInfo local_node_info_;
   NodeID local_node_id_;

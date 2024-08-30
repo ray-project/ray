@@ -58,7 +58,12 @@ class APPOLearner(IMPALALearner):
         config_overrides: Optional[Dict] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
     ) -> MultiRLModuleSpec:
-        marl_spec = super().add_module(module_id=module_id)
+        marl_spec = super().add_module(
+            module_id=module_id,
+            module_spec=module_spec,
+            config_overrides=config_overrides,
+            new_should_module_be_updated=new_should_module_be_updated,
+        )
         # Create target networks for added Module, if applicable.
         if isinstance(self.module[module_id].unwrapped(), TargetNetworkAPI):
             self.module[module_id].unwrapped().make_target_networks()

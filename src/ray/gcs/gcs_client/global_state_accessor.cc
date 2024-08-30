@@ -442,7 +442,10 @@ ray::Status GlobalStateAccessor::GetNode(const std::string &node_id,
       }
 
       if (relevant_client_index < 0) {
-        status = Status::NotFound("GCS cannot find the node with node ID " + node_id);
+        status = Status::NotFound(
+            "GCS cannot find the node with node ID " + node_id +
+            ". The node registration may not be complete yet before the timeout." +
+            " Try increase the RAY_raylet_start_wait_time_s config.");
       } else {
         *node_info = nodes[relevant_client_index].SerializeAsString();
         return Status::OK();

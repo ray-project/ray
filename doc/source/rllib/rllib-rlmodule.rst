@@ -2,8 +2,6 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. include:: /_includes/rllib/new_api_stack_component.rst
-
 .. |tensorflow| image:: images/tensorflow.png
     :class: inline-figure
     :width: 16
@@ -50,8 +48,8 @@ RL Modules (Alpha)
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
-         - 
-         - 
+         -
+         -
 
 
 
@@ -314,7 +312,7 @@ For multi-agent modules, RLlib implements :py:class:`~ray.rllib.core.rl_module.m
 
 The :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` offers an API for constructing custom models tailored to specific needs. The key method for this customization is :py:meth:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`.build.
 
-The following example creates a custom multi-agent RL module with underlying modules. The modules share an encoder, which gets applied to the global part of the observations space. The local part passes through a separate encoder, specific to each policy. 
+The following example creates a custom multi-agent RL module with underlying modules. The modules share an encoder, which gets applied to the global part of the observations space. The local part passes through a separate encoder, specific to each policy.
 
 
 .. literalinclude:: doc_code/rlmodule_guide.py
