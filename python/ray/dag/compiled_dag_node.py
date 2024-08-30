@@ -46,8 +46,6 @@ from ray.dag.dag_node_operation import (
     _generate_actor_to_execution_schedule,
 )
 
-from ray.dag.constants import RAY_ADAG_ENABLE_PROFILING
-
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -126,7 +124,7 @@ def do_exec_tasks(
 
 
 @DeveloperAPI
-def do_exec_tasks_with_profiling(
+def do_profile_tasks(
     self,
     tasks: List["ExecutableTask"],
     schedule: List[_DAGNodeOperation],
@@ -168,7 +166,6 @@ def do_exec_tasks_with_profiling(
                         end_t=end_t,
                     )
                 )
-                print("ADD _ExecutableTaskRecord")
 
                 if done:
                     break
@@ -1220,8 +1217,10 @@ class CompiledDAG:
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build an execution schedule for each actor
+        from ray.dag.constants import RAY_ADAG_ENABLE_PROFILING
+
         if RAY_ADAG_ENABLE_PROFILING:
-            exec_task_func = do_exec_tasks_with_profiling
+            exec_task_func = do_profile_tasks
         else:
             exec_task_func = do_exec_tasks
 
