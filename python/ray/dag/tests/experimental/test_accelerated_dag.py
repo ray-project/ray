@@ -93,8 +93,7 @@ class Actor:
         return x
 
     def get_events(self):
-        print(self._adag_events)
-        return getattr(self, "_adag_events", [])
+        return getattr(self, "__ray_adag_events", [])
 
 
 @ray.remote

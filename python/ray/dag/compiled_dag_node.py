@@ -119,12 +119,6 @@ def do_exec_tasks(
                     self, operation.type
                 )
 
-                if done:
-                    break
-    except Exception:
-        logging.exception("Compiled DAG task exited with exception")
-        raise
-
 
 @DeveloperAPI
 def do_exec_tasks_with_profiling(
