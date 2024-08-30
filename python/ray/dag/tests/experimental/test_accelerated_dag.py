@@ -1331,60 +1331,6 @@ def test_channel_write_after_close(ray_start_regular):
         dag.execute(1)
 
 
-@pytest.mark.parametrize("temporary_change_timeout", [30], indirect=True)
-def test_payload_large(ray_start_cluster, temporary_change_timeout):
-    cluster = ray_start_cluster
-    # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor).
-    first_node_handle = cluster.add_node(num_cpus=1)
-    # This node is for the reader.
-    second_node_handle = cluster.add_node(num_cpus=1)
-    ray.init(address=cluster.address)
-    cluster.wait_for_nodes()
-
-    nodes = [first_node_handle.node_id, second_node_handle.node_id]
-    # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
-    # then back to a list to remove duplicates. Then we check that the length of `nodes`
-    # is 2.
-    nodes = list(set(nodes))
-    assert len(nodes) == 2
-
-    def create_actor(node):
-        return Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
-        ).remote(0)
-
-    def get_node_id(self):
-        return ray.get_runtime_context().get_node_id()
-
-    driver_node = get_node_id(None)
-    nodes.remove(driver_node)
-
-    a = create_actor(nodes[0])
-    a_node = ray.get(a.__ray_call__.remote(get_node_id))
-    assert a_node == nodes[0]
-    # Check that the driver and actor are on different nodes.
-    assert driver_node != a_node
-
-    with InputNode() as i:
-        dag = a.echo.bind(i)
-
-    compiled_dag = dag.experimental_compile()
-
-    # Ray sets the gRPC payload max size to 512 MiB. We choose a size in this test that
-    # is a bit larger.
-    size = 1024 * 1024 * 600
-    val = b"x" * size
-
-    for i in range(3):
-        ref = compiled_dag.execute(val)
-        result = ray.get(ref)
-        assert result == val
-
-    # Note: must teardown before starting a new Ray session, otherwise you'll get
-    # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
-
-
 def test_driver_and_actor_as_readers(ray_start_cluster):
     a = Actor.remote(0)
     b = Actor.remote(10)
@@ -1683,6 +1629,60 @@ class TestActorInputOutput:
         replica = Replica.remote()
         ref = replica.call.remote(5)
         assert torch.equal(ray.get(ref), torch.tensor([5, 5, 5, 5, 5]))
+
+
+@pytest.mark.parametrize("temporary_change_timeout", [30], indirect=True)
+def test_payload_large(ray_start_cluster, temporary_change_timeout):
+    cluster = ray_start_cluster
+    # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor).
+    first_node_handle = cluster.add_node(num_cpus=1)
+    # This node is for the reader.
+    second_node_handle = cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    cluster.wait_for_nodes()
+
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that there are two nodes. Thus, we convert `nodes` to a set and
+    # then back to a list to remove duplicates. Then we check that the length of `nodes`
+    # is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote(0)
+
+    def get_node_id(self):
+        return ray.get_runtime_context().get_node_id()
+
+    driver_node = get_node_id(None)
+    nodes.remove(driver_node)
+
+    a = create_actor(nodes[0])
+    a_node = ray.get(a.__ray_call__.remote(get_node_id))
+    assert a_node == nodes[0]
+    # Check that the driver and actor are on different nodes.
+    assert driver_node != a_node
+
+    with InputNode() as i:
+        dag = a.echo.bind(i)
+
+    compiled_dag = dag.experimental_compile()
+
+    # Ray sets the gRPC payload max size to 512 MiB. We choose a size in this test that
+    # is a bit larger.
+    size = 1024 * 1024 * 600
+    val = b"x" * size
+
+    for i in range(3):
+        ref = compiled_dag.execute(val)
+        result = ray.get(ref)
+        assert result == val
+
+    # Note: must teardown before starting a new Ray session, otherwise you'll get
+    # a segfault from the dangling monitor thread upon the new Ray init.
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":
