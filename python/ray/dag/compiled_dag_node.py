@@ -630,7 +630,8 @@ class CompiledDAG:
         # The maximum index of finished executions.
         # All results with higher indexes have not been generated yet.
         self._max_execution_index: int = -1
-        self._result_buffer: Dict[int, Dict[ChannelInterface, Any]] = {}
+        # execution_index -> {channel -> result}
+        self._result_buffer: Dict[int, Dict[ChannelInterface, Any]] = defaultdict(dict)
 
         def _get_or_create_local_actor_handle():
             """
@@ -1556,10 +1557,11 @@ class CompiledDAG:
         """Repeatedly execute this DAG until the given execution index,
         and buffer all results up to that index. If the DAG has already
         been executed up to the given index, just return the result
-        corresponding to the given index.
+        corresponding to the given index and channel.
 
         Args:
             execution_index: The execution index to execute until.
+            channel: The output channel to get the result from.
             timeout: The maximum time in seconds to wait for the result.
                 None means using default timeout (DAGContext.retrieval_timeout),
                 0 means immediate timeout (immediate success or timeout without
@@ -1577,28 +1579,26 @@ class CompiledDAG:
             if timeout is None:
                 timeout = ctx.retrieval_timeout
 
-            while self._max_execution_index < execution_index:
-                if len(self._result_buffer) >= self._max_buffered_results:
-                    raise ValueError(
-                        "Too many buffered results: the allowed max count for "
-                        f"buffered results is {self._max_buffered_results}; call "
-                        "ray.get() on previous CompiledDAGRefs to free them up "
-                        "from buffer."
-                    )
-                self._max_execution_index += 1
-                start_time = time.monotonic()
+        while self._max_execution_index < execution_index:
+            if len(self._result_buffer) >= self._max_buffered_results:
+                raise ValueError(
+                    "Too many buffered results: the allowed max count for "
+                    f"buffered results is {self._max_buffered_results}; call "
+                    "ray.get() on previous CompiledDAGRefs to free them up "
+                    "from buffer."
+                )
+            self._max_execution_index += 1
+            start_time = time.monotonic()
 
-                # Fetch results from each output channel up to execution_index and store
-                # them separately to enable individual retrieval
-                for chan, fetcher in self._dag_output_fetchers.items():
-                    if self._max_execution_index not in self._result_buffer:
-                        self._result_buffer[self._max_execution_index] = {}
-                    self._result_buffer[self._max_execution_index][chan] = fetcher.read(
-                        timeout
-                    )
-                    if timeout != -1:
-                        timeout -= time.monotonic() - start_time
-                        timeout = max(timeout, 0)
+            # Fetch results from each output channel up to execution_index and store
+            # them separately to enable individual retrieval
+            for chan, fetcher in self._dag_output_fetchers.items():
+                self._result_buffer[self._max_execution_index][chan] = fetcher.read(
+                    timeout
+                )
+                if timeout != -1:
+                    timeout -= time.monotonic() - start_time
+                    timeout = max(timeout, 0)
 
         # CompiledDAGRef guarantees that the same execution index will not
         # be requested multiple times
