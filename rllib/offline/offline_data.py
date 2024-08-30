@@ -4,6 +4,7 @@ import ray
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
@@ -24,7 +25,7 @@ class OfflineData:
         self.path = (
             config.input_ if isinstance(config.input_, list) else Path(config.input_)
         )
-        # Use `read_json` as default data read method.
+        # Use `read_parquet` as default data read method.
         self.data_read_method = config.input_read_method
         # Override default arguments for the data read method.
         self.data_read_method_kwargs = (
@@ -72,12 +73,13 @@ class OfflineData:
             # TODO (simon, sven): The iterator depends on the `num_samples`, i.e.abs
             # sampling later with a different batch size would need a
             # reinstantiation of the iterator.
+
             self.batch_iterator = self.data.map_batches(
                 self.prelearner_class,
                 fn_constructor_kwargs={
                     "config": self.config,
                     "learner": self.learner_handles[0],
-                    "spaces": self.spaces["__env__"],
+                    "spaces": self.spaces[INPUT_ENV_SPACES],
                 },
                 batch_size=num_samples,
                 **self.map_batches_kwargs,

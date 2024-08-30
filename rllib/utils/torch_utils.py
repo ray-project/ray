@@ -274,8 +274,8 @@ def convert_to_torch_tensor(
         else:
             tensor = torch.from_numpy(np.asarray(item))
 
-        # Floatify all float64 tensors.
-        if tensor.is_floating_point():
+        # Floatify all float64 tensors (but leave float16 as-is).
+        if tensor.is_floating_point() and str(tensor.dtype) != "torch.float16":
             tensor = tensor.float()
 
         # Pin the tensor's memory (for faster transfer to GPU later).
