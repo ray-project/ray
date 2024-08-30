@@ -1082,11 +1082,7 @@ class AlgorithmConfig(_Config):
             # Append all other columns handling.
             pipeline.append(AddColumnsFromEpisodesToTrainBatch())
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
-            pipeline.append(
-                AddStatesFromEpisodesToBatch(
-                    as_learner_connector=True, max_seq_len=self.model.get("max_seq_len")
-                )
-            )
+            pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
             if self.is_multi_agent():
                 pipeline.append(

@@ -240,7 +240,15 @@ class PPOConfig(AlgorithmConfig):
                 baseline; required for using GAE).
             use_gae: If true, use the Generalized Advantage Estimator (GAE)
                 with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
-            lambda_: The GAE (lambda) parameter.
+            lambda_: The lambda parameter for General Advantage Estimation (GAE).
+                Defines the exponential weight used between actually measured rewards
+                vs value function estimates over multiple time steps. Specifically,
+                `lambda_` balances short-term, low-variance estimates with longer-term,
+                high-variance returns. A `lambda_` of 0.0 makes the GAE rely only on
+                immediate rewards (and vf predictions from there on, reducing variance,
+                but increasing bias), while a `lambda_` of 1.0 only incorporates vf
+                predictions at the truncation points of the given episodes or episode
+                chunks (reducing bias but increasing variance).
             use_kl_loss: Whether to use the KL-term in the loss function.
             kl_coeff: Initial coefficient for KL divergence.
             kl_target: Target value for KL divergence.
