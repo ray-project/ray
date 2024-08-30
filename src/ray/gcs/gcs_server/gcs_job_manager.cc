@@ -31,10 +31,12 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
 
 void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const {
   /// Write job_data as a export driver job event if
-  /// enable_export_api_write() is enabled and if this job is 
+  /// enable_export_api_write() is enabled and if this job is
   /// not in the _ray_internal_ namespace.
-  // TODO: Add FF
-  if (job_data.config().ray_namespace().find(kRayInternalNamespacePrefix) == 0){
+  if (!RayConfig::instance().enable_export_api_write()) {
+    return;
+  }
+  if (job_data.config().ray_namespace().find(kRayInternalNamespacePrefix) == 0) {
     // Namespace of this job starts with _ray_internal_ so
     // don't write export event.
     return;
@@ -47,11 +49,13 @@ void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const 
   export_driver_job_data_ptr->set_start_time(job_data.start_time());
   export_driver_job_data_ptr->set_end_time(job_data.end_time());
   export_driver_job_data_ptr->set_entrypoint(job_data.entrypoint());
-  export_driver_job_data_ptr->set_driver_ip_address(job_data.driver_address().ip_address());
-  export_driver_job_data_ptr->mutable_config()->mutable_metadata()->insert(job_data.config().metadata().begin(),
-                                                  job_data.config().metadata().end());
+  export_driver_job_data_ptr->set_driver_ip_address(
+      job_data.driver_address().ip_address());
+  export_driver_job_data_ptr->mutable_config()->mutable_metadata()->insert(
+      job_data.config().metadata().begin(), job_data.config().metadata().end());
 
-  auto export_runtime_env_info = export_driver_job_data_ptr->mutable_config()->mutable_runtime_env_info();
+  auto export_runtime_env_info =
+      export_driver_job_data_ptr->mutable_config()->mutable_runtime_env_info();
   export_runtime_env_info->set_serialized_runtime_env(
       job_data.config().runtime_env_info().serialized_runtime_env());
   auto export_runtime_env_uris = export_runtime_env_info->mutable_uris();
@@ -99,8 +103,8 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
       cached_job_configs_[job_id] =
           std::make_shared<rpc::JobConfig>(mutable_job_table_data.config());
     }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
     WriteDriverJobExportEvent(mutable_job_table_data);
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status =
