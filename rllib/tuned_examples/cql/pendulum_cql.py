@@ -11,7 +11,6 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
 )
-from ray import tune
 
 parser = add_rllib_example_script_args()
 # Use `parser` to add your own custom command line options to this script
@@ -39,20 +38,14 @@ config = (
         dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
     )
     .training(
-        bc_iters=tune.choice([70, 200]),
-        tau=tune.uniform(5e-3, 1e-2),
-        min_q_weight=tune.choice([5.0, 10.0]),
-        train_batch_size_per_learner=tune.choice([256, 2048]),
+        bc_iters=200,
+        tau=9.5e-3,
+        min_q_weight=5.0,
+        train_batch_size_per_learner=2048,
         twin_q=True,
-        actor_lr=tune.uniform(
-            2e-5 * (args.num_gpus or 1) ** 0.5, 3e-3 * (args.num_gpus or 1) ** 0.5
-        ),  # 1e-4 * (args.num_gpus or 1) ** 0.5
-        critic_lr=tune.uniform(
-            2e-5 * (args.num_gpus or 1) ** 0.5, 3e-3 * (args.num_gpus or 1) ** 0.5
-        ),  # 3e-4 * (args.num_gpus or 1) ** 0.5,
-        alpha_lr=tune.uniform(
-            2e-5 * (args.num_gpus or 1) ** 0.5, 3e-3 * (args.num_gpus or 1) ** 0.5
-        ),  # 3e-4 * (args.num_gpus or 1) ** 0.5,
+        actor_lr=1.7e-3 * (args.num_gpus or 1) ** 0.5,
+        critic_lr=2.5e-3 * (args.num_gpus or 1) ** 0.5,
+        alpha_lr=1e-3 * (args.num_gpus or 1) ** 0.5,
         lr=None,
     )
     .reporting(
@@ -68,11 +61,6 @@ config = (
         },
     )
 )
-args.num_samples = 10
-args.max_concurrent_trials = (10,)
-args.verbose = 2
-# algo = config.build()
-# algo.train()
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -700.0,
