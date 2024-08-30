@@ -84,13 +84,14 @@ class CQLConfig(SACConfig):
         self.lagrangian = False
         self.lagrangian_thresh = 5.0
         self.min_q_weight = 5.0
+        self.deterministic_backup = True
         self.lr = 3e-4
         # Note, the new stack defines learning rates for each component.
         # The base learning rate `lr` has to be set to `None`, if using
         # the new stack.
-        self.actor_lr = 2e-4,
-        self.critic_lr = 8e-4
-        self.alpha_lr = 9e-4
+        self.actor_lr = 1e-4,
+        self.critic_lr = 1e-3
+        self.alpha_lr = 1e-3
 
         # Changes to Algorithm's/SACConfig's default:
 
@@ -112,6 +113,7 @@ class CQLConfig(SACConfig):
         lagrangian: Optional[bool] = NotProvided,
         lagrangian_thresh: Optional[float] = NotProvided,
         min_q_weight: Optional[float] = NotProvided,
+        deterministic_backup: Optional[bool] = NotProvided,
         **kwargs,
     ) -> "CQLConfig":
         """Sets the training-related configuration.
@@ -123,6 +125,8 @@ class CQLConfig(SACConfig):
             lagrangian: Whether to use the Lagrangian for Alpha Prime (in CQL loss).
             lagrangian_thresh: Lagrangian threshold.
             min_q_weight: in Q weight multiplier.
+            deterministic_backup: If the target in the Bellman update should have an
+                entropy backup. Defaults to `True`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -142,6 +146,8 @@ class CQLConfig(SACConfig):
             self.lagrangian_thresh = lagrangian_thresh
         if min_q_weight is not NotProvided:
             self.min_q_weight = min_q_weight
+        if deterministic_backup is not NotProvided:
+            self.deterministic_backup = deterministic_backup
 
         return self
 

@@ -91,14 +91,21 @@ class CQLTorchLearner(SACTorchLearner):
         if config.twin_q:
             q_twin_selected = fwd_out[QF_TWIN_PREDS]
 
+        if not config.deterministic_backup:
+            q_next = (
+                fwd_out["q_target_next"]
+                - alpha.detach() * fwd_out["logp_next_resampled"]
+            )
+        else:
+            q_next = fwd_out["q_target_next"]
+
         # Now mask all Q-values with terminating next states in the targets.
-        q_next_masked = (1.0 - batch[Columns.TERMINATEDS].float()) * fwd_out[
-            "q_target_next"
-        ]
+        q_next_masked = (1.0 - batch[Columns.TERMINATEDS].float()) * q_next
 
         # Compute the right hand side of the Bellman equation. Detach this node
         # from the computation graph as we do not want to backpropagate through
-        # the target netowrk when optimizing the Q loss.
+        # the target network when optimizing the Q loss.
+        # TODO (simon, sven): Kumar et al. (2020) use here also a reward scaler.
         q_selected_target = (
             # TODO (simon): Add an `n_step` option to the `AddNextObsToBatch` connector.
             batch[Columns.REWARDS]
@@ -140,11 +147,11 @@ class CQLTorchLearner(SACTorchLearner):
         # instead of (1/2).
         random_density = torch.log(
             torch.pow(
+                0.5,
                 torch.tensor(
                     fwd_out["actions_curr_repeat"].shape[-1],
                     device=fwd_out["actions_curr_repeat"].device,
                 ),
-                0.5,
             )
         )
         # Merge all Q-values and subtract the log-probabilities (note, we use the
@@ -152,8 +159,8 @@ class CQLTorchLearner(SACTorchLearner):
         q_repeat = torch.cat(
             [
                 fwd_out["q_rand_repeat"] - random_density,
-                fwd_out["q_next_repeat"] - fwd_out["logps_next_repeat"],
-                fwd_out["q_curr_repeat"] - fwd_out["logps_curr_repeat"],
+                fwd_out["q_next_repeat"] - fwd_out["logps_next_repeat"].detach(),
+                fwd_out["q_curr_repeat"] - fwd_out["logps_curr_repeat"].detach(),
             ],
             dim=1,
         )
@@ -171,8 +178,10 @@ class CQLTorchLearner(SACTorchLearner):
             q_twin_repeat = torch.cat(
                 [
                     fwd_out["q_twin_rand_repeat"] - random_density,
-                    fwd_out["q_twin_next_repeat"] - fwd_out["logps_next_repeat"],
-                    fwd_out["q_twin_curr_repeat"] - fwd_out["logps_curr_repeat"],
+                    fwd_out["q_twin_next_repeat"]
+                    - fwd_out["logps_next_repeat"].detach(),
+                    fwd_out["q_twin_curr_repeat"]
+                    - fwd_out["logps_curr_repeat"].detach(),
                 ],
                 dim=1,
             )
@@ -247,7 +256,7 @@ class CQLTorchLearner(SACTorchLearner):
 
                 # Compute the gradients for the component and module.
                 self.metrics.peek((module_id, optim_name + "_loss")).backward(
-                    retain_graph=True
+                    retain_graph=False if optim_name in ["policy", "alpha"] else True
                 )
                 # Store the gradients for the component and module.
                 # TODO (simon): Check another time the graph for overlapping
