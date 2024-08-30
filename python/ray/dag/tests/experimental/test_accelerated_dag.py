@@ -1429,7 +1429,7 @@ def test_payload_large(ray_start_cluster):
 
 def test_event_profiling(monkeypatch):
     monkeypatch.setenv("RAY_ADAG_ENABLE_PROFILING", "1")
-    ray.init()
+    ray.init(include_dashboard=False)
 
     a = Actor.options(name="a").remote(0)
     b = Actor.options(name="b").remote(0)

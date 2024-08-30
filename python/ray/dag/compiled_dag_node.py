@@ -118,6 +118,11 @@ def do_exec_tasks(
                 done = tasks[operation.exec_task_idx].exec_operation(
                     self, operation.type
                 )
+                if done:
+                    break
+    except Exception:
+        logging.exception("Compiled DAG task exited with exception")
+        raise
 
 
 @DeveloperAPI
@@ -163,6 +168,7 @@ def do_exec_tasks_with_profiling(
                         end_t=end_t,
                     )
                 )
+                print("ADD _ExecutableTaskRecord")
 
                 if done:
                     break
