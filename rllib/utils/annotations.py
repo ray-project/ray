@@ -1,5 +1,3 @@
-import inspect
-
 from ray.rllib.utils.deprecation import Deprecated
 from ray.util.annotations import _mark_annotated
 
