@@ -516,14 +516,12 @@ def test_delete_job(job_sdk_client, capsys):
     assert finished_job_id not in [job.submission_id for job in jobs]
 
 
-def test_delete_submission_and_jobs(shutdown_only):
+def test_delete_submission_and_jobs(job_sdk_client):
     simple_ray_init_script = """
 import ray
 ray.init(address="auto")
 """
-    ctx = ray.init(include_dashboard=True, num_cpus=1, ignore_reinit_error=True)
-    address = ctx.address_info["webui_url"]
-    client = JobSubmissionClient(format_web_url(address))
+    client = job_sdk_client
 
     simple_job_id = client.submit_job(
         entrypoint=f"python -c '{simple_ray_init_script}'"
