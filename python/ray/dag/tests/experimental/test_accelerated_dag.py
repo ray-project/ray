@@ -39,6 +39,15 @@ pytestmark = [
 ]
 
 
+@pytest.fixture
+def temporary_change_timeout(request):
+    ctx = DAGContext.get_current()
+    original = ctx.execution_timeout
+    ctx.execution_timeout = request.param
+    yield ctx.execution_timeout
+    ctx.execution_timeout = original
+
+
 @ray.remote
 class Actor:
     def __init__(self, init_value, fail_after=None, sys_exit=False):
@@ -1322,7 +1331,8 @@ def test_channel_write_after_close(ray_start_regular):
         dag.execute(1)
 
 
-def test_payload_large(ray_start_cluster):
+@pytest.mark.parametrize("temporary_change_timeout", [30], indirect=True)
+def test_payload_large(ray_start_cluster, temporary_change_timeout):
     cluster = ray_start_cluster
     # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor).
     first_node_handle = cluster.add_node(num_cpus=1)
@@ -1392,27 +1402,18 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
         dag.experimental_compile()
 
 
-@pytest.fixture
-def temporary_reduce_timeout(request):
-    ctx = DAGContext.get_current()
-    original = ctx.execution_timeout
-    ctx.execution_timeout = request.param
-    yield ctx.execution_timeout
-    ctx.execution_timeout = original
-
-
-@pytest.mark.parametrize("temporary_reduce_timeout", [1], indirect=True)
-def test_buffered_inputs(shutdown_only, temporary_reduce_timeout):
+@pytest.mark.parametrize("temporary_change_timeout", [1], indirect=True)
+def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     ray.init()
 
     MAX_INFLIGHT_EXECUTIONS = 10
     DAG_EXECUTION_TIME = 0.2
 
     # Timeout should be larger than a single execution time.
-    assert temporary_reduce_timeout > DAG_EXECUTION_TIME
+    assert temporary_change_timeout > DAG_EXECUTION_TIME
     # Entire execution time (iteration * execution) should be higher than
     # the timeout for testing.
-    assert DAG_EXECUTION_TIME * MAX_INFLIGHT_EXECUTIONS > temporary_reduce_timeout
+    assert DAG_EXECUTION_TIME * MAX_INFLIGHT_EXECUTIONS > temporary_change_timeout
 
     @ray.remote
     class Actor1:
