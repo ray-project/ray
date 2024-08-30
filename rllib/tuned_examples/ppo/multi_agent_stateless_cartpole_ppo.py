@@ -37,10 +37,8 @@ config = (
     )
     .training(
         lr=0.0003 * ((args.num_gpus or 1) ** 0.5),
-        gamma=0.99,
         num_sgd_iter=6,
         vf_loss_coeff=0.05,
-        use_kl_loss=True,
     )
     .rl_module(
         model_config_dict={
