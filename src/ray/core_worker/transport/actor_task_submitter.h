@@ -79,6 +79,7 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
                      std::function<void(const ActorID &, int64_t)> warn_excess_queueing,
                      instrumented_io_context &io_service)
       : core_worker_client_pool_(core_worker_client_pool),
+        actor_creator_(actor_creator),
         resolver_(store, task_finisher, actor_creator),
         task_finisher_(task_finisher),
         warn_excess_queueing_(warn_excess_queueing),
@@ -115,6 +116,9 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   ///
   /// \return Status::Invalid if the task is not yet supported.
   Status SubmitTask(TaskSpecification task_spec);
+
+  /// Submit an actor creation task to an actor via GCS.
+  Status SubmitActorCreationTask(TaskSpecification task_spec);
 
   /// Create connection to actor and send all pending tasks.
   ///
@@ -178,6 +182,10 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \param[in] actor_id The actor ID.
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
+
+  /// Get the local actor state. nullopt if the state is unknown.
+  std::optional<rpc::ActorTableData::ActorState> GetLocalActorState(
+      const ActorID &actor_id) const;
 
   /// Cancel an actor task of a given task spec.
   ///
@@ -383,6 +391,8 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
 
   /// Pool for producing new core worker clients.
   rpc::CoreWorkerClientPool &core_worker_client_pool_;
+
+  ActorCreatorInterface &actor_creator_;
 
   /// Mutex to protect the various maps below.
   mutable absl::Mutex mu_;

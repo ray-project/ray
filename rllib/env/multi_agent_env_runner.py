@@ -14,6 +14,7 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -296,7 +297,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
-                    data=to_env,
+                    batch=to_env,
                     episodes=[self._episode],
                     explore=explore,
                     shared_data=self._shared_data,
@@ -493,7 +494,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
-                    data=to_env,
+                    batch=to_env,
                     episodes=[_episode],
                     explore=explore,
                     shared_data=_shared_data,
@@ -601,7 +602,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     @override(EnvRunner)
     def get_spaces(self):
         return {
-            "__env__": (self.env.observation_space, self.env.action_space),
+            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
             # Use the already agent-to-module translated spaces from our connector
             # pipeline.
             **{
@@ -836,17 +837,19 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         # Perform actual gym.make call.
         self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
-        try:
-            check_multiagent_environments(self.env.unwrapped)
-        except Exception as e:
-            logger.exception(e.args[0])
         self.num_envs = 1
-
-        # Create the MultiAgentEnv (is-a gymnasium env).
-        assert isinstance(self.env.unwrapped, MultiAgentEnv), (
-            "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
-            "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
-        )
+        # If required, check the created MultiAgentEnv.
+        if not self.config.disable_env_checking:
+            try:
+                check_multiagent_environments(self.env.unwrapped)
+            except Exception as e:
+                logger.exception(e.args[0])
+        # If not required, still check the type (must be MultiAgentEnv).
+        else:
+            assert isinstance(self.env.unwrapped, MultiAgentEnv), (
+                "ERROR: When using the `MultiAgentEnvRunner` the environment needs "
+                "to inherit from `ray.rllib.env.multi_agent_env.MultiAgentEnv`."
+            )
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True

@@ -31,11 +31,9 @@ config = (
         }
     )
     .training(
-        gamma=0.99,
         lr=0.0003,
         num_sgd_iter=6,
         vf_loss_coeff=0.01,
-        use_kl_loss=True,
     )
     .evaluation(
         evaluation_num_env_runners=1,
@@ -45,8 +43,13 @@ config = (
     )
     .offline_data(
         output="local:///tmp/cartpole/",
-        output_write_episodes=True,
+        output_write_episodes=False,
         output_max_rows_per_file=1000,
+        # LZ4-compress columns 'obs', 'new_obs', and 'actions' to
+        # save disk space and increase performance. Note, this means
+        # that you have to use `input_compress_columns` in the same
+        # way when using the data for training in `RLlib`.
+        output_compress_columns=["obs", "new_obs", "actions"],
     )
 )
 

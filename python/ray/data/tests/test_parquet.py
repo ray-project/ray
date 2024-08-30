@@ -1192,6 +1192,18 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
         assert len(table) == num_rows_per_file
 
 
+@pytest.mark.parametrize("shuffle", [True, False, "file"])
+def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
+
+    with pytest.raises(ValueError):
+        ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
+
+
+@pytest.mark.parametrize("shuffle", [None, "files"])
+def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffle):
+    ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
+
+
 if __name__ == "__main__":
     import sys
 
