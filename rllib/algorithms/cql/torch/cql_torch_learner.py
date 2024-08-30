@@ -51,13 +51,6 @@ class CQLTorchLearner(SACTorchLearner):
             fwd_out[Columns.ACTION_DIST_INPUTS]
         )
 
-        # Sample actions for the current state. Note that we need to apply the
-        # reparameterization trick here to avoid the expectation over actions.
-        actions_curr = action_dist_curr.rsample()
-
-        # Compute the log probabilities for the current state (for the alpha loss)
-        logps_curr = action_dist_curr.logp(actions_curr)
-
         # Optimize also the hyperparameter `alpha` by using the current policy
         # evaluated at the current state (from offline data). Note, in contrast
         # to the original SAC loss, here the `alpha` and actor losses are
@@ -66,7 +59,7 @@ class CQLTorchLearner(SACTorchLearner):
         # to optimize and monotonic function. Original equation uses alpha.
         alpha_loss = -torch.mean(
             self.curr_log_alpha[module_id]
-            * (logps_curr.detach() + self.target_entropy[module_id])
+            * (fwd_out["logp_resampled"].detach() + self.target_entropy[module_id])
         )
 
         # Get the current alpha.
@@ -77,22 +70,17 @@ class CQLTorchLearner(SACTorchLearner):
             self.metrics.peek((ALL_MODULES, TRAINING_ITERATION), default=0)
             >= config.bc_iters
         ):
-            # Calculate current Q-values.
-            batch_curr = {
-                Columns.OBS: batch[Columns.OBS],
-                # Use the actions sampled from the current policy.
-                Columns.ACTIONS: actions_curr,
-            }
-            # Note, if `twin_q` is `True`, `compute_q_values` computes the minimum
-            # of the `qf` and `qf_twin` and returns this minimum.
-            q_curr = self.module[module_id].compute_q_values(batch_curr)
-            actor_loss = torch.mean(alpha.detach() * logps_curr - q_curr)
+            actor_loss = torch.mean(
+                alpha.detach() * fwd_out["logp_resampled"] - fwd_out["q_curr"]
+            )
         else:
             # Use log-probabilities of the current action distribution to clone
             # the behavior policy (selected actions in data) in the first `bc_iters`
             # training iterations.
             bc_logps_curr = action_dist_curr.logp(batch[Columns.ACTIONS])
-            actor_loss = torch.mean(alpha.detach() * logps_curr - bc_logps_curr)
+            actor_loss = torch.mean(
+                alpha.detach() * fwd_out["logp_resampled"] - bc_logps_curr
+            )
 
         # The critic loss is composed of the standard SAC Critic L2 loss and the
         # CQL entropy loss.
@@ -219,8 +207,9 @@ class CQLTorchLearner(SACTorchLearner):
                 "alpha_value": alpha,
                 "log_alpha_value": torch.log(alpha),
                 "target_entropy": self.target_entropy[module_id],
-                "actions_curr_policy": torch.mean(actions_curr),
-                LOGPS_KEY: torch.mean(logps_curr),
+                LOGPS_KEY: torch.mean(
+                    fwd_out["logp_resampled"]
+                ),  # torch.mean(logps_curr),
                 QF_MEAN_KEY: torch.mean(fwd_out["q_curr_repeat"]),
                 QF_MAX_KEY: torch.max(fwd_out["q_curr_repeat"]),
                 QF_MIN_KEY: torch.min(fwd_out["q_curr_repeat"]),
