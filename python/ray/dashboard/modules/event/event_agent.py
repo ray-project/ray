@@ -45,7 +45,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 dashboard_rpc_address = await self._gcs_aio_client.internal_kv_get(
                     dashboard_consts.DASHBOARD_RPC_ADDRESS.encode(),
                     namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                    timeout=1,
+                    timeout=None,
                 )
                 dashboard_rpc_address = dashboard_rpc_address.decode()
                 if dashboard_rpc_address:

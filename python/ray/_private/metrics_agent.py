@@ -598,19 +598,21 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
     It supports file-based service discovery. Checkout
     https://prometheus.io/docs/guides/file-sd/ for more details.
 
+    Every 5s (default_service_discovery_flush_period), it writes a file to temp dir as
+    Prometheus service discovery file. It contains each node, Autoscaler and Dashboard
+    metrics export addresses. We repeatedly write because new nodes may be added, also
+    dashboard and autoscaler may restart.
+
+    IDEA(ryw): this can be replaced by a DataSource.nodes egde triggered update.
+
     Args:
         gcs_address: Gcs address for this cluster.
         temp_dir: Temporary directory used by
             Ray to store logs and metadata.
     """
 
-    def __init__(self, gcs_address, temp_dir):
-        gcs_client_options = ray._raylet.GcsClientOptions.create(
-            gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
-        )
-        self.gcs_address = gcs_address
-
-        ray._private.state.state._initialize_global_state(gcs_client_options)
+    def __init__(self, gcs_client: GcsClient, temp_dir: str):
+        self.gcs_client = gcs_client
         self.temp_dir = temp_dir
         self.default_service_discovery_flush_period = 5
         super().__init__()
@@ -623,11 +625,14 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
             for node in nodes
             if node["alive"] is True
         ]
-        gcs_client = GcsClient(address=self.gcs_address)
-        autoscaler_addr = gcs_client.internal_kv_get(b"AutoscalerMetricsAddress", None)
+        autoscaler_addr = self.gcs_client.internal_kv_get(
+            b"AutoscalerMetricsAddress", None
+        )
         if autoscaler_addr:
             metrics_export_addresses.append(autoscaler_addr.decode("utf-8"))
-        dashboard_addr = gcs_client.internal_kv_get(b"DashboardMetricsAddress", None)
+        dashboard_addr = self.gcs_client.internal_kv_get(
+            b"DashboardMetricsAddress", None
+        )
         if dashboard_addr:
             metrics_export_addresses.append(dashboard_addr.decode("utf-8"))
         return json.dumps(
