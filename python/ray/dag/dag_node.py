@@ -199,6 +199,12 @@ class DAGNode(DAGNodeBase):
         if _max_buffered_results is None:
             _max_buffered_results = ctx.max_buffered_results
 
+        # Validate whether this DAG node has already been compiled.
+        if self.is_output_node:
+            raise ValueError(
+                "The DAG has already been compiled! "
+                "Please reuse the existing compiled DAG."
+            )
         # Whether this node is an output node in the DAG. We cannot determine
         # this in the constructor because the output node is determined when
         # `experimental_compile` is called.
@@ -380,9 +386,20 @@ class DAGNode(DAGNodeBase):
         """
         visited = set()
         queue = [self]
+        num_output_nodes = 0
+
         while queue:
             node = queue.pop(0)
             if node not in visited:
+                if node.is_output_node:
+                    num_output_nodes += 1
+                    # Validate whether there are multiple nodes that call
+                    # `experimental_compile`.
+                    if num_output_nodes > 1:
+                        raise ValueError(
+                            "The DAG was compiled more than once, so some output "
+                            "nodes became leaf nodes."
+                        )
                 fn(node)
                 visited.add(node)
                 """
