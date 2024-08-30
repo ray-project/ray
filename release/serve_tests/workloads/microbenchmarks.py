@@ -28,8 +28,8 @@ from ray.serve._private.benchmarks.common import (
     Noop,
     run_latency_benchmark,
     run_throughput_benchmark,
+    Streamer,
 )
-from ray.serve._private.benchmarks.streaming.common import Downstream
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.config import gRPCOptions
 from ray.serve.handle import DeploymentHandle
@@ -169,6 +169,26 @@ async def _main(
             )
             serve.shutdown()
 
+        if run_streaming:
+            serve.run(Streamer.options(max_ongoing_requests=100).bind())
+            mean, std = await run_throughput_benchmark(
+                fn=partial(
+                    do_single_http_batch,
+                    batch_size=BATCH_SIZE,
+                    tokens_per_request=1000,
+                    stream=True,
+                ),
+                multiplier=BATCH_SIZE,
+                num_trials=NUM_TRIALS,
+                trial_runtime=TRIAL_RUNTIME_S,
+            )
+            perf_metrics.extend(
+                convert_throughput_to_perf_metrics(
+                    "http_100_max_ongoing_requests", mean, std
+                )
+            )
+            serve.shutdown()
+
     # GRPC
     if run_grpc:
         if run_latency:
@@ -263,7 +283,22 @@ async def _main(
             serve.shutdown()
 
         if run_streaming:
-            h: DeploymentHandle = serve.run(Downstream.bind())
+            h: DeploymentHandle = serve.run(
+                Benchmarker.options(max_ongoing_requests=100).bind(
+                    Streamer.options(max_ongoing_requests=100).bind(),
+                    stream=True,
+                )
+            )
+            mean, std = await h.run_throughput_benchmark.remote(
+                batch_size=BATCH_SIZE,
+                num_trials=1,
+                trial_runtime=TRIAL_RUNTIME_S,
+                tokens_per_request=1000,
+            )
+            perf_metrics.extend(
+                convert_throughput_to_perf_metrics("handle_streaming", mean, std)
+            )
+            serve.shutdown()
 
     logging.info(f"Perf metrics:\n {json.dumps(perf_metrics, indent=4)}")
     results = {"perf_metrics": perf_metrics}
@@ -278,6 +313,7 @@ async def _main(
 @click.option("--run-handle", is_flag=True)
 @click.option("--run-latency", is_flag=True)
 @click.option("--run-throughput", is_flag=True)
+@click.option("--run-streaming", is_flag=True)
 def main(
     output_path: Optional[str],
     run_all: bool,
@@ -286,9 +322,17 @@ def main(
     run_handle: bool,
     run_latency: bool,
     run_throughput: bool,
+    run_streaming: bool,
 ):
     # If none of the flags are set, default to run all
-    if not (run_http or run_grpc or run_handle or run_latency or run_throughput):
+    if not (
+        run_http
+        or run_grpc
+        or run_handle
+        or run_latency
+        or run_throughput
+        or run_streaming
+    ):
         run_all = True
 
     if run_all:
@@ -297,9 +341,18 @@ def main(
         run_handle = True
         run_latency = True
         run_throughput = True
+        run_streaming = True
 
     asyncio.run(
-        _main(output_path, run_http, run_grpc, run_handle, run_latency, run_throughput)
+        _main(
+            output_path,
+            run_http,
+            run_grpc,
+            run_handle,
+            run_latency,
+            run_throughput,
+            run_streaming,
+        )
     )
 
 

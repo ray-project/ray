@@ -5,13 +5,14 @@ import random
 import string
 import time
 from functools import partial
-from typing import Any, Callable, Coroutine, Tuple
+from typing import Any, Callable, Coroutine, Optional, Tuple
 
 import aiohttp
 import aiohttp.client_exceptions
 import grpc
 import numpy as np
 import pandas as pd
+from starlette.responses import StreamingResponse
 from tqdm import tqdm
 
 from ray import serve
@@ -66,13 +67,24 @@ async def run_throughput_benchmark(
 
 
 async def do_single_http_batch(
-    *, batch_size: int = 100, url: str = "http://localhost:8000"
+    *,
+    batch_size: int = 100,
+    url: str = "http://localhost:8000",
+    tokens_per_request: Optional[int] = None,
+    stream: bool = False,
 ):
     async with aiohttp.ClientSession(raise_for_status=True) as session:
 
         async def do_query():
             try:
-                await session.get(url)
+                if stream:
+                    async with session.get(
+                        url, json={"tokens_per_request": tokens_per_request}
+                    ) as r:
+                        async for chunk, _ in r.content.iter_chunks():
+                            pass
+                else:
+                    await session.get(url)
             except aiohttp.client_exceptions.ClientConnectionError:
                 pass
 
@@ -124,10 +136,29 @@ class Noop:
 
 
 @serve.deployment
-class Benchmarker:
-    def __init__(self, handle: DeploymentHandle):
+class Streamer:
+    def __init__(self):
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
-        self._handle = handle
+
+    async def stream(self, tokens_per_request):
+        for _ in range(tokens_per_request):
+            yield b"hi"
+
+    async def __call__(self, request):
+        tokens_per_request = (await request.json())["tokens_per_request"]
+        return StreamingResponse(self.stream(tokens_per_request))
+
+
+@serve.deployment
+class Benchmarker:
+    def __init__(
+        self,
+        handle: DeploymentHandle,
+        stream: bool,
+    ):
+        logging.getLogger("ray.serve").setLevel(logging.WARNING)
+        self._handle = handle.options(stream=stream)
+        self._stream = stream
 
     async def do_single_request(self, payload: Any = None):
         if payload is None:
@@ -135,8 +166,19 @@ class Benchmarker:
         else:
             return await self._handle.remote(payload)
 
-    async def _do_single_batch(self, batch_size: int):
-        await asyncio.gather(*[self._handle.remote() for _ in range(batch_size)])
+    async def _do_single_stream(self, tokens_per_request: int):
+        async for r in self._handle.stream.remote(tokens_per_request):
+            pass
+
+    async def _do_single_batch(
+        self, batch_size: int, tokens_per_request: Optional[int] = None
+    ):
+        if self._stream:
+            await asyncio.gather(
+                *[self._do_single_stream(tokens_per_request) for _ in range(batch_size)]
+            )
+        else:
+            await asyncio.gather(*[self._handle.remote() for _ in range(batch_size)])
 
     async def run_latency_benchmark(
         self, *, num_requests: int, payload: Any = None
@@ -152,10 +194,21 @@ class Benchmarker:
         batch_size: int,
         num_trials: int,
         trial_runtime: float,
+        tokens_per_request: Optional[float] = None,
     ) -> Tuple[float, float]:
+        if self._stream:
+            assert tokens_per_request
+            multiplier = tokens_per_request * batch_size
+        else:
+            multiplier = batch_size
+
         return await run_throughput_benchmark(
-            fn=partial(self._do_single_batch, batch_size=batch_size),
-            multiplier=batch_size,
+            fn=partial(
+                self._do_single_batch,
+                batch_size=batch_size,
+                tokens_per_request=tokens_per_request,
+            ),
+            multiplier=multiplier,
             num_trials=num_trials,
             trial_runtime=trial_runtime,
         )
