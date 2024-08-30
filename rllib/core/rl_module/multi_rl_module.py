@@ -207,21 +207,32 @@ class MultiRLModule(RLModule):
         del self.config.modules[module_id]
 
     def foreach_module(
-        self, func: Callable[[ModuleID, RLModule, Optional[Any]], T], **kwargs
-    ) -> List[T]:
+        self,
+        func: Callable[[ModuleID, RLModule, Optional[Any]], T],
+        *,
+        return_dict: bool = False,
+        **kwargs,
+    ) -> Union[List[T], Dict[ModuleID, T]]:
         """Calls the given function with each (module_id, module).
 
         Args:
             func: The function to call with each (module_id, module) tuple.
+            return_dict: Whether to return a dict mapping ModuleID to the individual
+                module's return values of calling `func`. If False (default), return
+                a list.
 
         Returns:
-            The lsit of return values of all calls to
-            `func([module_id, module, **kwargs])`.
+            The list of return values of all calls to
+            `func([module_id, module, **kwargs])` or a dict (if `return_dict=True`)
+            mapping ModuleIDs to the respective models' return values.
         """
-        return [
-            func(module_id, module.unwrapped(), **kwargs)
+        ret_dict = {
+            module_id: func(module_id, module.unwrapped(), **kwargs)
             for module_id, module in self._rl_modules.items()
-        ]
+        }
+        if return_dict:
+            return ret_dict
+        return list(ret_dict.values())
 
     def __contains__(self, item) -> bool:
         """Returns whether the given `item` (ModuleID) is present in self."""
