@@ -115,31 +115,61 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                start_t = time.time()
+                done = tasks[operation.exec_task_idx].exec_operation(
+                    self, operation.type
+                )
+
+                if done:
+                    break
+    except Exception:
+        logging.exception("Compiled DAG task exited with exception")
+        raise
+
+
+@DeveloperAPI
+def do_exec_tasks_with_profiling(
+    self,
+    tasks: List["ExecutableTask"],
+    schedule: List[_DAGNodeOperation],
+) -> None:
+    """A generic actor method similar to `do_exec_tasks`, but with profiling enabled.
+
+    Args:
+        tasks: the executable tasks corresponding to the actor methods.
+        schedule: A list of _DAGNodeOperation that should be executed in order.
+    """
+    try:
+        for task in tasks:
+            task.prepare()
+
+        if not hasattr(self, "__ray_adag_events"):
+            self.__ray_adag_events = []
+
+        done = False
+        while True:
+            if done:
+                break
+            for operation in schedule:
+                start_t = time.perf_counter()
                 task = tasks[operation.exec_task_idx]
                 done = tasks[operation.exec_task_idx].exec_operation(
                     self, operation.type
                 )
-                end_t = time.time()
+                end_t = time.perf_counter()
 
-                if RAY_ADAG_ENABLE_PROFILING:
-                    if not hasattr(self, "_adag_events"):
-                        self._adag_events = []
-
-                    self._adag_events.append(
-                        _ExecutableTaskRecord(
-                            actor_classname=self.__class__.__name__,
-                            actor_name=ray.get_runtime_context().get_actor_name(),
-                            actor_id=ray.get_runtime_context().get_actor_id(),
-                            method_name=task.method_name,
-                            bind_index=task.bind_index,
-                            operation=operation.type.value,
-                            start_t=start_t,
-                            end_t=end_t,
-                        )
+                self.__ray_adag_events.append(
+                    _ExecutableTaskRecord(
+                        actor_classname=self.__class__.__name__,
+                        actor_name=ray.get_runtime_context().get_actor_name(),
+                        actor_id=ray.get_runtime_context().get_actor_id(),
+                        method_name=task.method_name,
+                        bind_index=task.bind_index,
+                        operation=operation.type.value,
+                        start_t=start_t,
+                        end_t=end_t,
                     )
+                )
 
-                
                 if done:
                     break
     except Exception:
@@ -1190,12 +1220,17 @@ class CompiledDAG:
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build an execution schedule for each actor
+        if RAY_ADAG_ENABLE_PROFILING:
+            exec_task_func = do_exec_tasks_with_profiling
+        else:
+            exec_task_func = do_exec_tasks
+
         self.actor_to_execution_schedule = self._build_execution_schedule()
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
                 concurrency_group="_ray_system"
             ).remote(
-                do_exec_tasks,
+                exec_task_func,
                 executable_tasks,
                 self.actor_to_execution_schedule[actor_handle],
             )
