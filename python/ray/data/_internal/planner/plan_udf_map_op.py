@@ -203,8 +203,8 @@ def _handle_debugger_exception(e: Exception):
     """If the Ray Debugger is enabled, keep the full stack trace unmodified
     so that the debugger can stop at the initial unhandled exception.
     Otherwise, clear the stack trace to omit noisy internal code path."""
-
-    if _is_ray_debugger_enabled():
+    ctx = ray.data.DataContext.get_current()
+    if _is_ray_debugger_enabled() or ctx.raise_original_map_exception:
         raise e
     else:
         raise UserCodeException() from e

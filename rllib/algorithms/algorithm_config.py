@@ -437,6 +437,7 @@ class AlgorithmConfig(_Config):
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
         self.input_read_episodes = False
+        self.input_read_sample_batches = False
         self.input_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
         self.input_spaces_jsonable = True
         self.map_batches_kwargs = {}
@@ -2404,6 +2405,7 @@ class AlgorithmConfig(_Config):
         input_read_method_kwargs: Optional[Dict] = NotProvided,
         input_read_schema: Optional[Dict[str, str]] = NotProvided,
         input_read_episodes: Optional[bool] = NotProvided,
+        input_read_sample_batches: Optional[bool] = NotProvided,
         input_compress_columns: Optional[List[str]] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
@@ -2465,8 +2467,19 @@ class AlgorithmConfig(_Config):
                 inside of RLlib's schema. The other format is a columnar format and is
                 agnostic to the RL framework used. Use the latter format, if you are
                 unsure when to use the data or in which RL framework. The default is
-                to read column data, i.e. `False`. See also `output_write_episodes`
-                to define the output data format when recording.
+                to read column data, i.e. `False`. `input_read_episodes` and
+                `inpuit_read_sample_batches` cannot be `True` at the same time. See
+                also `output_write_episodes` to define the output data format when
+                recording.
+            input_read_sample_batches: Whether offline data is stored in RLlib's old
+                stack `SampleBatch` type. This is usually the case for older data
+                recorded with RLlib in JSON line format. Reading in `SampleBatch`
+                data needs extra transforms and might not concatenate episode chunks
+                contained in different `SampleBatch`es in the data. If possible avoid
+                to read `SampleBatch`es and convert them in a controlled form into
+                RLlib`s `EpisodeType`s (i.e. `SingleAgentEpisode` or
+                `MultiAgentEpisode`). The default is `False`. `input_read_episodes`
+                and `inpuit_read_sample_batches` cannot be `True` at the same time.
             input_compress_columns: What input columns are compressed with LZ4 in the
                 input data. If data is stored in `RLlib`'s `SingleAgentEpisode` (
                 `MultiAgentEpisode` not supported, yet). Note,
@@ -2566,6 +2579,8 @@ class AlgorithmConfig(_Config):
             self.input_read_schema = input_read_schema
         if input_read_episodes is not NotProvided:
             self.input_read_episodes = input_read_episodes
+        if input_read_sample_batches is not NotProvided:
+            self.input_read_sample_batches = input_read_sample_batches
         if input_compress_columns is not NotProvided:
             self.input_compress_columns = input_compress_columns
         if map_batches_kwargs is not NotProvided:
@@ -3199,12 +3214,15 @@ class AlgorithmConfig(_Config):
         Args:
             _torch_grad_scaler_class: Class to use for torch loss scaling (and gradient
                 unscaling). The class must implement the following methods to be
-                compatible with a `TorchLearner`. These methods/APIs match exactly the
-                those of torch's own `torch.amp.GradScaler`:
-                `scale([loss])` to scale the loss.
-                `get_scale()` to get the current scale value.
-                `step([optimizer])` to unscale the grads and step the given optimizer.
-                `update()` to update the scaler after an optimizer step.
+                compatible with a `TorchLearner`. These methods/APIs match exactly those
+                of torch's own `torch.amp.GradScaler` (see here for more details
+                https://pytorch.org/docs/stable/amp.html#gradient-scaling):
+                `scale([loss])` to scale the loss by some factor.
+                `get_scale()` to get the current scale factor value.
+                `step([optimizer])` to unscale the grads (divide by the scale factor)
+                and step the given optimizer.
+                `update()` to update the scaler after an optimizer step (for example to
+                adjust the scale factor).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy will handle more than one loss/optimizer.
                 Set this to True, if you would like to return more than
