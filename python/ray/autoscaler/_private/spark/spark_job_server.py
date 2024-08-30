@@ -16,6 +16,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
     def setup(self) -> None:
         super().setup()
         self._handler_lock = threading.RLock()
+        self._created_node_id_set = set()
 
     def _set_headers(self):
         self.send_response(200)
@@ -40,6 +41,8 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
             object_store_memory_per_node = data["object_store_memory_per_node"]
             worker_node_options = data["worker_node_options"]
             collect_log_to_path = data["collect_log_to_path"]
+            node_id = data["node_id"]
+            self._created_node_id_set.add(node_id)
 
             def start_ray_worker_thread_fn():
                 try:
@@ -60,6 +63,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         collect_log_to_path=collect_log_to_path,
                         autoscale_mode=True,
                         spark_job_server_port=self.server.server_address[1],
+                        node_id=node_id,
                     )
                 except Exception:
                     if spark_job_group_id in self.server.task_status_dict:
@@ -78,6 +82,21 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
 
             self.server.task_status_dict[spark_job_group_id] = "pending"
             return {}
+
+        elif path_parts[0] == "check_node_id_availability":
+            node_id = data["node_id"]
+            with self._handler_lock:
+                if node_id in self._created_node_id_set:
+                    # If the node with the node id has been created,
+                    # it shouldn't be created twice so fail fast here.
+                    # The case happens when a Ray node is down unexpected
+                    # caused by spark worker node down and spark tries to
+                    # reschedule the spark task, so it triggers node
+                    # creation with duplicated node id.
+                    return {"available": False}
+                else:
+                    self._created_node_id_set.add(node_id)
+                    return {"available": True}
 
         elif path_parts[0] == "terminate_node":
             assert len(path_parts) == 1, f"Illegal request path: {path}"

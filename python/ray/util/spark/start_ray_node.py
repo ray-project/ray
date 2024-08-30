@@ -163,6 +163,13 @@ if __name__ == "__main__":
 
     threading.Thread(target=check_parent_alive, daemon=True).start()
 
+    def kill_spark_task():
+        orig_parent_pid = int(os.environ[RAY_ON_SPARK_START_RAY_PARENT_PID])
+        time.sleep(180)
+        os.kill(orig_parent_pid, signal.SIGTERM)
+
+    threading.Thread(target=kill_spark_task, daemon=True).start()
+
     try:
 
         def sighup_handler(*args):

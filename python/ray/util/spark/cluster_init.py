@@ -1587,6 +1587,7 @@ def _start_ray_worker_nodes(
     collect_log_to_path,
     autoscale_mode,
     spark_job_server_port,
+    node_id,
 ):
     # NB:
     # In order to start ray worker nodes on spark cluster worker machines,
@@ -1677,6 +1678,28 @@ def _start_ray_worker_nodes(
 
         try:
             if autoscale_mode:
+                # Check node id availability
+                response = requests.post(
+                    url=(
+                        f"http://{ray_head_ip}:{spark_job_server_port}"
+                        "/check_node_id_availability"
+                    ),
+                    json={
+                        "node_id": node_id,
+                    },
+                )
+                if not response.json()["available"]:
+                    # The case happens when a Ray node is down unexpected
+                    # caused by spark worker node down and spark tries to
+                    # reschedule the spark task, so it triggers node
+                    # creation with duplicated node id.
+                    # in this case, finish the spark task immediately
+                    # so spark won't try to reschedule this task
+                    # and Ray autoscaler will trigger a new node creation
+                    # with new node id, and a new spark job will be created
+                    # for holding it.
+                    return
+
                 # Notify job server the task has been launched.
                 requests.post(
                     url=(
