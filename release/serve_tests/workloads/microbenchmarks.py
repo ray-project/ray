@@ -111,15 +111,6 @@ async def _main(
     run_latency: bool,
     run_throughput: bool,
 ):
-    # Start and configure Serve
-    serve.start(
-        grpc_options=gRPCOptions(
-            port=9000,
-            grpc_servicer_functions=[
-                "ray.serve.generated.serve_pb2_grpc.add_RayServeBenchmarkServiceServicer_to_server",  # noqa
-            ],
-        )
-    )
     perf_metrics = []
     payload_1mb = generate_payload(1000000)
     payload_10mb = generate_payload(10000000)
@@ -172,6 +163,12 @@ async def _main(
         if run_latency:
             channel = grpc.insecure_channel("localhost:9000")
             stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
+            serve_grpc_options = gRPCOptions(
+                port=9000,
+                grpc_servicer_functions=[
+                    "ray.serve.generated.serve_pb2_grpc.add_RayServeBenchmarkServiceServicer_to_server",  # noqa
+                ],
+            )
             grpc_payload_noop = serve_pb2.StringData(data="")
             grpc_payload_1mb = serve_pb2.StringData(data=payload_1mb)
             grpc_payload_10mb = serve_pb2.StringData(data=payload_10mb)
@@ -181,6 +178,7 @@ async def _main(
                 (grpc_payload_1mb, "grpc_1mb"),
                 (grpc_payload_10mb, "grpc_10mb"),
             ]:
+                serve.start(grpc_options=serve_grpc_options)
                 serve.run(GrpcDeployment.bind())
                 latencies: pd.Series = await run_latency_benchmark(
                     lambda: stub.call_with_string(payload),
@@ -191,6 +189,7 @@ async def _main(
 
         if run_throughput:
             # Microbenchmark: GRPC throughput
+            serve.start(grpc_options=serve_grpc_options)
             serve.run(GrpcDeployment.bind())
             mean, std = await run_throughput_benchmark(
                 fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
@@ -202,6 +201,7 @@ async def _main(
             serve.shutdown()
 
             # Microbenchmark: GRPC throughput at max_ongoing_requests = 100
+            serve.start(grpc_options=serve_grpc_options)
             serve.run(GrpcDeployment.options(max_ongoing_requests=100).bind())
             mean, std = await run_throughput_benchmark(
                 fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
