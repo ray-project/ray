@@ -62,13 +62,11 @@ config = (
         bc_iters=200,
         tau=9.5e-3,
         min_q_weight=5.0,
-        train_batch_size_per_learner=1024,
+        train_batch_size_per_learner=2048,
         twin_q=True,
         actor_lr=1.7e-3 * (args.num_gpus or 1) ** 0.5,
         critic_lr=2.5e-3 * (args.num_gpus or 1) ** 0.5,
         alpha_lr=1e-3 * (args.num_gpus or 1) ** 0.5,
-        # Set this to `None` for all `SAC`-like algorithms. These
-        # algorithms use learning rates for each optimizer.
         lr=None,
     )
     .reporting(
@@ -76,9 +74,9 @@ config = (
         metrics_num_episodes_for_smoothing=5,
     )
     .evaluation(
-        evaluation_interval=3,
-        evaluation_num_env_runners=1,
-        evaluation_duration=5,
+        evaluation_interval=1,
+        evaluation_num_env_runners=0,
+        evaluation_duration=10,
         evaluation_config={
             "explore": False,
         },
