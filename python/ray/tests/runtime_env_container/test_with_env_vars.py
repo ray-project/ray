@@ -25,8 +25,16 @@ else:
 
 
 @ray.remote(runtime_env=runtime_env)
-def f():
-    return os.environ.get("TEST_DEF")
+def f(env_var_name: str):
+    return os.environ.get(env_var_name)
 
 
-assert ray.get(f.remote()) == "hi world"
+os.environ["TEST_SCRIPT_ENV_VAR"] = "hi from driver"
+
+# Set in runtime environment `env_vars`, should be picked up
+assert ray.get(f.remote("TEST_DEF")) == "hi world"
+# Environment variables that start with prefix "RAY_" should be
+# inherited from host environment
+assert ray.get(f.remote("RAY_TEST_ABC")) == "1"
+# Environment variable from driver should not be inherited
+assert not ray.get(f.remote("TEST_SCRIPT_ENV_VAR"))
