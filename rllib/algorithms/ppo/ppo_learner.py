@@ -20,7 +20,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
 )
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ModuleID, TensorType
 
@@ -110,14 +109,7 @@ class PPOLearner(Learner):
                 > 0
                 and (module_id, LEARNER_RESULTS_KL_KEY) in self.metrics
             ):
-                kl_loss = convert_to_numpy(
-                    self.metrics.peek((module_id, LEARNER_RESULTS_KL_KEY))
-                )
-                self._update_module_kl_coeff(
-                    module_id=module_id,
-                    config=config,
-                    kl_loss=kl_loss,
-                )
+                self._update_module_kl_coeff(module_id=module_id, config=config)
 
     @abc.abstractmethod
     def _update_module_kl_coeff(
