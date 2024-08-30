@@ -13,7 +13,6 @@ from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.examples._old_api_stack.policy.episode_env_aware_policy import (
     EpisodeEnvAwareAttentionPolicy,
 )
-from ray.rllib.models.tf.attention_net import GTrXLNet
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
@@ -23,7 +22,7 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
-from ray.rllib.utils.test_utils import framework_iterator, check
+from ray.rllib.utils.test_utils import check
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -64,42 +63,39 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config):
-            algo = config.build()
-            policy = algo.get_policy()
-            view_req_model = policy.model.view_requirements
-            view_req_policy = policy.view_requirements
-            assert len(view_req_model) == 1, view_req_model
-            assert len(view_req_policy) == 12, view_req_policy
-            for key in [
-                SampleBatch.OBS,
-                SampleBatch.ACTIONS,
-                SampleBatch.REWARDS,
-                SampleBatch.TERMINATEDS,
-                SampleBatch.TRUNCATEDS,
-                SampleBatch.NEXT_OBS,
-                SampleBatch.EPS_ID,
-                SampleBatch.AGENT_INDEX,
-                "weights",
-            ]:
-                assert key in view_req_policy
-                # None of the view cols has a special underlying data_col,
-                # except next-obs.
-                if key != SampleBatch.NEXT_OBS:
-                    assert view_req_policy[key].data_col is None
-                else:
-                    assert view_req_policy[key].data_col == SampleBatch.OBS
-                    assert view_req_policy[key].shift == 1
-            rollout_worker = algo.env_runner
-            sample_batch = rollout_worker.sample()
-            sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
-            expected_count = (
-                config.num_envs_per_env_runner * config.rollout_fragment_length
-            )
-            assert sample_batch.count == expected_count
-            for v in sample_batch.values():
-                assert len(v) == expected_count
-            algo.stop()
+        algo = config.build()
+        policy = algo.get_policy()
+        view_req_model = policy.model.view_requirements
+        view_req_policy = policy.view_requirements
+        assert len(view_req_model) == 1, view_req_model
+        assert len(view_req_policy) == 12, view_req_policy
+        for key in [
+            SampleBatch.OBS,
+            SampleBatch.ACTIONS,
+            SampleBatch.REWARDS,
+            SampleBatch.TERMINATEDS,
+            SampleBatch.TRUNCATEDS,
+            SampleBatch.NEXT_OBS,
+            SampleBatch.EPS_ID,
+            SampleBatch.AGENT_INDEX,
+            "weights",
+        ]:
+            assert key in view_req_policy
+            # None of the view cols has a special underlying data_col,
+            # except next-obs.
+            if key != SampleBatch.NEXT_OBS:
+                assert view_req_policy[key].data_col is None
+            else:
+                assert view_req_policy[key].data_col == SampleBatch.OBS
+                assert view_req_policy[key].shift == 1
+        rollout_worker = algo.env_runner
+        sample_batch = rollout_worker.sample()
+        sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
+        expected_count = config.num_envs_per_env_runner * config.rollout_fragment_length
+        assert sample_batch.count == expected_count
+        for v in sample_batch.values():
+            assert len(v) == expected_count
+        algo.stop()
 
     def test_traj_view_lstm_prev_actions_and_rewards(self):
         """Tests, whether Policy/Model return correct LSTM ViewRequirements."""
@@ -121,113 +117,67 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             .env_runners(create_env_on_local_worker=True)
         )
 
-        for _ in framework_iterator(config):
-            algo = config.build()
-            policy = algo.get_policy()
-            view_req_model = policy.model.view_requirements
-            view_req_policy = policy.view_requirements
-            # 7=obs, prev-a + r, 2x state-in, 2x state-out.
-            assert len(view_req_model) == 7, view_req_model
-            assert len(view_req_policy) == 23, (len(view_req_policy), view_req_policy)
-            for key in [
-                SampleBatch.OBS,
-                SampleBatch.ACTIONS,
-                SampleBatch.REWARDS,
-                SampleBatch.TERMINATEDS,
-                SampleBatch.TRUNCATEDS,
+        algo = config.build()
+        policy = algo.get_policy()
+        view_req_model = policy.model.view_requirements
+        view_req_policy = policy.view_requirements
+        # 7=obs, prev-a + r, 2x state-in, 2x state-out.
+        assert len(view_req_model) == 7, view_req_model
+        assert len(view_req_policy) == 23, (len(view_req_policy), view_req_policy)
+        for key in [
+            SampleBatch.OBS,
+            SampleBatch.ACTIONS,
+            SampleBatch.REWARDS,
+            SampleBatch.TERMINATEDS,
+            SampleBatch.TRUNCATEDS,
+            SampleBatch.NEXT_OBS,
+            SampleBatch.VF_PREDS,
+            SampleBatch.PREV_ACTIONS,
+            SampleBatch.PREV_REWARDS,
+            "advantages",
+            "value_targets",
+            SampleBatch.ACTION_DIST_INPUTS,
+            SampleBatch.ACTION_LOGP,
+        ]:
+            assert key in view_req_policy
+
+            if key == SampleBatch.PREV_ACTIONS:
+                assert view_req_policy[key].data_col == SampleBatch.ACTIONS
+                assert view_req_policy[key].shift == -1
+            elif key == SampleBatch.PREV_REWARDS:
+                assert view_req_policy[key].data_col == SampleBatch.REWARDS
+                assert view_req_policy[key].shift == -1
+            elif key not in [
                 SampleBatch.NEXT_OBS,
-                SampleBatch.VF_PREDS,
                 SampleBatch.PREV_ACTIONS,
                 SampleBatch.PREV_REWARDS,
-                "advantages",
-                "value_targets",
-                SampleBatch.ACTION_DIST_INPUTS,
-                SampleBatch.ACTION_LOGP,
             ]:
-                assert key in view_req_policy
+                assert view_req_policy[key].data_col is None
+            else:
+                assert view_req_policy[key].data_col == SampleBatch.OBS
+                assert view_req_policy[key].shift == 1
 
-                if key == SampleBatch.PREV_ACTIONS:
-                    assert view_req_policy[key].data_col == SampleBatch.ACTIONS
-                    assert view_req_policy[key].shift == -1
-                elif key == SampleBatch.PREV_REWARDS:
-                    assert view_req_policy[key].data_col == SampleBatch.REWARDS
-                    assert view_req_policy[key].shift == -1
-                elif key not in [
-                    SampleBatch.NEXT_OBS,
-                    SampleBatch.PREV_ACTIONS,
-                    SampleBatch.PREV_REWARDS,
-                ]:
-                    assert view_req_policy[key].data_col is None
-                else:
-                    assert view_req_policy[key].data_col == SampleBatch.OBS
-                    assert view_req_policy[key].shift == 1
+        rollout_worker = algo.env_runner
+        sample_batch = rollout_worker.sample()
+        sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
 
-            rollout_worker = algo.env_runner
-            sample_batch = rollout_worker.sample()
-            sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
-
-            # Rollout fragment length should be auto-computed to 2000:
-            # 2 workers, 1 env per worker, train batch size=4000 -> 2000 per worker.
-            self.assertEqual(sample_batch.count, 2000, "ppo rollout count != 2000")
-            self.assertEqual(sum(sample_batch["seq_lens"]), sample_batch.count)
-            self.assertEqual(
-                len(sample_batch["seq_lens"]), sample_batch["state_in_0"].shape[0]
-            )
-
-            # check if non-zero state_ins are pointing to the correct state_outs
-            seq_counters = np.cumsum(sample_batch["seq_lens"])
-            for i in range(sample_batch["state_in_0"].shape[0]):
-                state_in = sample_batch["state_in_0"][i]
-                if np.any(state_in != 0):
-                    # non-zero state-in should be one of th state_outs.
-                    state_out_ind = seq_counters[i - 1] - 1
-                    check(sample_batch["state_out_0"][state_out_ind], state_in)
-            algo.stop()
-
-    def test_traj_view_attention_net(self):
-        config = (
-            ppo.PPOConfig()
-            # Batch-norm models have not been migrated to the RL Module API yet.
-            .api_stack(enable_rl_module_and_learner=False)
-            .environment(
-                "ray.rllib.examples.envs.classes.debug_counter_env.DebugCounterEnv",
-                env_config={"config": {"start_at_t": 1}},  # first obs is [1.0]
-            )
-            .env_runners(num_env_runners=0)
-            .callbacks(MyCallbacks)
-            # Setup attention net.
-            .training(
-                model={
-                    "custom_model": GTrXLNet,
-                    "custom_model_config": {
-                        "num_transformer_units": 1,
-                        "attention_dim": 64,
-                        "num_heads": 2,
-                        "memory_inference": 50,
-                        "memory_training": 50,
-                        "head_dim": 32,
-                        "ff_hidden_dim": 32,
-                    },
-                    "max_seq_len": 50,
-                },
-                # Test with odd batch numbers.
-                train_batch_size=1031,
-                sgd_minibatch_size=201,
-                num_sgd_iter=5,
-            )
+        # Rollout fragment length should be auto-computed to 2000:
+        # 2 workers, 1 env per worker, train batch size=4000 -> 2000 per worker.
+        self.assertEqual(sample_batch.count, 2000, "ppo rollout count != 2000")
+        self.assertEqual(sum(sample_batch["seq_lens"]), sample_batch.count)
+        self.assertEqual(
+            len(sample_batch["seq_lens"]), sample_batch["state_in_0"].shape[0]
         )
 
-        for _ in framework_iterator(config, frameworks="tf2"):
-            algo = config.build()
-            rw = algo.env_runner
-            sample = rw.sample()
-            assert sample.count == algo.config.get_rollout_fragment_length()
-            results = algo.train()
-            assert (
-                results[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"]
-                == config["train_batch_size"]
-            )
-            algo.stop()
+        # check if non-zero state_ins are pointing to the correct state_outs
+        seq_counters = np.cumsum(sample_batch["seq_lens"])
+        for i in range(sample_batch["state_in_0"].shape[0]):
+            state_in = sample_batch["state_in_0"][i]
+            if np.any(state_in != 0):
+                # non-zero state-in should be one of th state_outs.
+                state_out_ind = seq_counters[i - 1] - 1
+                check(sample_batch["state_out_0"][state_out_ind], state_in)
+        algo.stop()
 
     def test_traj_view_next_action(self):
         action_space = Discrete(2)

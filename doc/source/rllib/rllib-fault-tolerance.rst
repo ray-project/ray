@@ -23,7 +23,7 @@ RLlib supports self-recovering and elastic :py:class:`~ray.rllib.env.env_runner_
 This provides fault tolerance at worker level.
 
 This means that if you have n :py:class:`~ray.rllib.env.env_runner.EnvRunner` workers sitting on different machines and a
-machine is pre-empted, RLlib can continue training and evaluation with minimal interruption. 
+machine is pre-empted, RLlib can continue training and evaluation with minimal interruption.
 
 The two properties that RLlib supports here are self-recovery and elasticity:
 
@@ -58,7 +58,7 @@ errors to higher level components. You can do that easily by turning on config
     training progresses with elastic worker set while the environments are being reconstructed.
     More specifically, use configs ``num_envs_per_env_runner=1``, ``restart_failed_sub_environments=False``,
     and ``recreate_failed_env_runners=True``.
-    
+
 
 Fault Tolerance and Recovery Provided by Ray Tune
 -------------------------------------------------
@@ -72,7 +72,7 @@ If a trial fails, Ray Tune will automatically restart it from the latest
 :ref:`checkpointed <tune-fault-tol>` state.
 
 
-Other Miscellaneous Considerations 
+Other Miscellaneous Considerations
 ----------------------------------
 
 By default, RLlib runs health checks during initial worker construction.

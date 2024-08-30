@@ -4,6 +4,12 @@ from typing import Any, Dict, Optional, Tuple, Type, Union
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
+from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
+    AddObservationsFromEpisodesToBatch,
+)
+from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
+    AddNextObservationsFromEpisodesToTrainBatch,
+)
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
@@ -14,7 +20,7 @@ from ray.rllib.utils.deprecation import (
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.typing import RLModuleSpecType, ResultDict
+from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType, ResultDict
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -82,6 +88,11 @@ class SACConfig(AlgorithmConfig):
             "critic_learning_rate": 3e-4,
             "entropy_learning_rate": 3e-4,
         }
+        self.actor_lr = 3e-5
+        self.critic_lr = 3e-4
+        self.alpha_lr = 3e-4
+        # Set `lr` parameter to `None` and ensure it is not used.
+        self.lr = 3e-4
         self.grad_clip = None
         self.target_network_update_freq = 0
 
@@ -100,7 +111,8 @@ class SACConfig(AlgorithmConfig):
         }
 
         # .training()
-        self.train_batch_size = 256
+        self.train_batch_size_per_learner = 256
+        self.train_batch_size = 256  # @OldAPIstack
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
         # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
@@ -135,6 +147,9 @@ class SACConfig(AlgorithmConfig):
         clip_actions: Optional[bool] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         optimization_config: Optional[Dict[str, Any]] = NotProvided,
+        actor_lr: Optional[LearningRateOrSchedule] = NotProvided,
+        critic_lr: Optional[LearningRateOrSchedule] = NotProvided,
+        alpha_lr: Optional[LearningRateOrSchedule] = NotProvided,
         target_network_update_freq: Optional[int] = NotProvided,
         _deterministic_loss: Optional[bool] = NotProvided,
         _use_beta_distribution: Optional[bool] = NotProvided,
@@ -239,6 +254,56 @@ class SACConfig(AlgorithmConfig):
             optimization_config: Config dict for optimization. Set the supported keys
                 `actor_learning_rate`, `critic_learning_rate`, and
                 `entropy_learning_rate` in here.
+            actor_lr: The learning rate (float) or learning rate schedule for the
+                policy in the format of
+                [[timestep, lr-value], [timestep, lr-value], ...] In case of a
+                schedule, intermediary timesteps will be assigned to linearly
+                interpolated learning rate values. A schedule config's first entry
+                must start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Note: It is common practice (two-timescale approach) to use a smaller
+                learning rate for the policy than for the critic to ensure that the
+                critic gives adequate values for improving the policy.
+                Note: If you require a) more than one optimizer (per RLModule),
+                b) optimizer types that are not Adam, c) a learning rate schedule that
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
+                The default value is 3e-5, one decimal less than the respective
+                learning rate of the critic (see `critic_lr`).
+            critic_lr: The learning rate (float) or learning rate schedule for the
+                critic in the format of
+                [[timestep, lr-value], [timestep, lr-value], ...] In case of a
+                schedule, intermediary timesteps will be assigned to linearly
+                interpolated learning rate values. A schedule config's first entry
+                must start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Note: It is common practice (two-timescale approach) to use a smaller
+                learning rate for the policy than for the critic to ensure that the
+                critic gives adequate values for improving the policy.
+                Note: If you require a) more than one optimizer (per RLModule),
+                b) optimizer types that are not Adam, c) a learning rate schedule that
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
+                The default value is 3e-4, one decimal higher than the respective
+                learning rate of the actor (policy) (see `actor_lr`).
+            alpha_lr: The learning rate (float) or learning rate schedule for the
+                hyperparameter alpha in the format of
+                [[timestep, lr-value], [timestep, lr-value], ...] In case of a
+                schedule, intermediary timesteps will be assigned to linearly
+                interpolated learning rate values. A schedule config's first entry
+                must start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Note: If you require a) more than one optimizer (per RLModule),
+                b) optimizer types that are not Adam, c) a learning rate schedule that
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
+                The default value is 3e-4, identical to the critic learning rate (`lr`).
             target_network_update_freq: Update the target network every
                 `target_network_update_freq` steps.
             _deterministic_loss: Whether the loss should be calculated deterministically
@@ -289,6 +354,12 @@ class SACConfig(AlgorithmConfig):
             self.grad_clip = grad_clip
         if optimization_config is not NotProvided:
             self.optimization = optimization_config
+        if actor_lr is not NotProvided:
+            self.actor_lr = actor_lr
+        if critic_lr is not NotProvided:
+            self.critic_lr = critic_lr
+        if alpha_lr is not NotProvided:
+            self.alpha_lr = alpha_lr
         if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
         if _deterministic_loss is not NotProvided:
@@ -349,17 +420,41 @@ class SACConfig(AlgorithmConfig):
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
         # TODO (sven, simon): Implement the multi-agent case for replay buffers.
-        if self.enable_env_runner_and_connector_v2 and self.replay_buffer_config[
-            "type"
-        ] not in [
-            "EpisodeReplayBuffer",
-            "PrioritizedEpisodeReplayBuffer",
-            "MultiAgentEpisodeReplayBuffer",
-            "MultiAgentPrioritizedEpisodeReplayBuffer",
-        ]:
+        if (
+            self.enable_env_runner_and_connector_v2
+            and self.replay_buffer_config["type"]
+            not in [
+                "EpisodeReplayBuffer",
+                "PrioritizedEpisodeReplayBuffer",
+                "MultiAgentEpisodeReplayBuffer",
+                "MultiAgentPrioritizedEpisodeReplayBuffer",
+            ]
+            and not (
+                # TODO (simon): Set up an indicator `is_offline_new_stack` that
+                # includes all these variable checks.
+                self.input_
+                and (
+                    isinstance(self.input_, str)
+                    or (
+                        isinstance(self.input_, list)
+                        and isinstance(self.input_[0], str)
+                    )
+                )
+                and self.input_ != "sampler"
+                and self.enable_rl_module_and_learner
+            )
+        ):
             raise ValueError(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
+            )
+
+        if self.enable_rl_module_and_learner and self.lr is not None:
+            raise ValueError(
+                "Basic learning rate parameter `lr` is not `None`. For SAC "
+                "use the specific learning rate parameters `actor_lr`, `critic_lr` "
+                "and `alpha_lr`, for the actor, critic, and the hyperparameter "
+                "`alpha`, respectively."
             )
 
     @override(AlgorithmConfig)
@@ -398,6 +493,28 @@ class SACConfig(AlgorithmConfig):
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
             )
+
+    @override(AlgorithmConfig)
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
+        pipeline = super().build_learner_connector(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            device=device,
+        )
+
+        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # after the corresponding "add-OBS-..." default piece).
+        pipeline.insert_after(
+            AddObservationsFromEpisodesToBatch,
+            AddNextObservationsFromEpisodesToTrainBatch(),
+        )
+
+        return pipeline
 
     @property
     def _model_config_auto_includes(self):

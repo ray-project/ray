@@ -18,6 +18,7 @@ import ray
 from ray._private.test_utils import (
     chdir,
     format_web_url,
+    ray_constants,
     wait_for_condition,
     wait_until_server_available,
 )
@@ -729,7 +730,7 @@ ray.init(address="auto")
 
 
 @pytest.mark.asyncio
-async def test_job_head_choose_job_agent():
+async def test_job_head_pick_random_job_agent(monkeypatch):
     with set_env_var("CANDIDATE_AGENT_NUMBER", "2"):
         import importlib
 
@@ -742,7 +743,7 @@ async def test_job_head_choose_job_agent():
                 self._agents = dict()
 
         DataSource.agents = {}
-        DataSource.node_id_to_ip = {}
+        DataSource.nodes = {}
         job_head = MockJobHead()
 
         def add_agent(agent):
@@ -750,16 +751,18 @@ async def test_job_head_choose_job_agent():
             node_ip = agent[1]["ipAddress"]
             http_port = agent[1]["httpPort"]
             grpc_port = agent[1]["grpcPort"]
-            DataSource.node_id_to_ip[node_id] = node_ip
+            DataSource.nodes[node_id] = {"nodeManagerAddress": node_ip}
             DataSource.agents[node_id] = (http_port, grpc_port)
 
         def del_agent(agent):
             node_id = agent[0]
-            DataSource.node_id_to_ip.pop(node_id)
+            DataSource.nodes.pop(node_id)
             DataSource.agents.pop(node_id)
 
+        head_node_id = "node1"
+
         agent_1 = (
-            "node1",
+            head_node_id,
             dict(
                 ipAddress="1.1.1.1",
                 httpPort=1,
@@ -786,27 +789,64 @@ async def test_job_head_choose_job_agent():
             ),
         )
 
+        # Disable Head-node routing for the Ray job critical ops (enabling
+        # random agent sampling)
+        monkeypatch.setattr(
+            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False
+        )
+
+        # Check only 1 agent present, only agent being returned
         add_agent(agent_1)
-        job_agent_client = await job_head.choose_agent()
+        job_agent_client = await job_head.get_target_agent()
         assert job_agent_client._agent_address == "http://1.1.1.1:1"
 
+        # Remove only agent, no agents present, should time out
         del_agent(agent_1)
         with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(job_head.choose_agent(), timeout=3)
+            await asyncio.wait_for(job_head.get_target_agent(), timeout=3)
 
+        # Enable Head-node routing for the Ray job critical ops (disabling
+        # random agent sampling)
+        monkeypatch.setattr(
+            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", True
+        )
+
+        # Add 3 agents
         add_agent(agent_1)
         add_agent(agent_2)
         add_agent(agent_3)
 
+        # Mock GCS client
+        class _MockedGCSClient:
+            async def internal_kv_get(self, key: bytes, **kwargs):
+                if key == ray_constants.KV_HEAD_NODE_ID_KEY:
+                    return head_node_id.encode()
+
+                return None
+
+        job_head._gcs_aio_client = _MockedGCSClient()
+
+        # Make sure returned agent is a head-node
+        # NOTE: We run 3 tims to make sure we're not hitting branch probabilistically
+        for _ in range(3):
+            job_agent_client = await job_head.get_target_agent()
+            assert job_agent_client._agent_address == "http://1.1.1.1:1"
+
+        # Disable Head-node routing for the Ray job critical ops (enabling
+        # random agent sampling)
+        monkeypatch.setattr(
+            f"{JobHead.__module__}.RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", False
+        )
+
         # Theoretically, the probability of failure is 1/3^100
         addresses_1 = set()
         for address in range(100):
-            job_agent_client = await job_head.choose_agent()
+            job_agent_client = await job_head.get_target_agent()
             addresses_1.add(job_agent_client._agent_address)
         assert len(addresses_1) == 2
         addresses_2 = set()
         for address in range(100):
-            job_agent_client = await job_head.choose_agent()
+            job_agent_client = await job_head.get_target_agent()
             addresses_2.add(job_agent_client._agent_address)
         assert len(addresses_2) == 2 and addresses_1 == addresses_2
 
@@ -818,13 +858,13 @@ async def test_job_head_choose_job_agent():
         # Theoretically, the probability of failure is 1/2^100
         addresses_3 = set()
         for address in range(100):
-            job_agent_client = await job_head.choose_agent()
+            job_agent_client = await job_head.get_target_agent()
             addresses_3.add(job_agent_client._agent_address)
         assert len(addresses_3) == 2
         assert addresses_2 - addresses_3 == {f"http://{agent[1]['httpAddress']}"}
         addresses_4 = set()
         for address in range(100):
-            job_agent_client = await job_head.choose_agent()
+            job_agent_client = await job_head.get_target_agent()
             addresses_4.add(job_agent_client._agent_address)
         assert addresses_4 == addresses_3
 
@@ -834,7 +874,7 @@ async def test_job_head_choose_job_agent():
         del_agent(agent)
         address = None
         for _ in range(3):
-            job_agent_client = await job_head.choose_agent()
+            job_agent_client = await job_head.get_target_agent()
             assert address is None or address == job_agent_client._agent_address
             address = job_agent_client._agent_address
 
