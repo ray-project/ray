@@ -66,11 +66,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     async def _update_stubs(self, change):
         if change.old:
             node_id, port = change.old
-            ip = DataSource.node_id_to_ip[node_id]
-            self._stubs.pop(ip)
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
+            self._stubs.pop(ip, None)
         if change.new:
             node_id, ports = change.new
-            ip = DataSource.node_id_to_ip[node_id]
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
             options = GLOBAL_GRPC_OPTIONS
             channel = init_grpc_channel(
                 f"{ip}:{ports[1]}", options=options, asynchronous=True
@@ -248,7 +248,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         attempt_number = req.query.get("attempt_number")
         node_id = req.query.get("node_id")
 
-        ip = DataSource.node_id_to_ip[node_id]
+        ip = DataSource.nodes[node_id]["nodeManagerAddress"]
 
         reporter_stub = self._stubs[ip]
 
@@ -340,7 +340,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         attempt_number = req.query.get("attempt_number")
         node_id = req.query.get("node_id")
 
-        ip = DataSource.node_id_to_ip[node_id]
+        ip = DataSource.nodes[node_id]["nodeManagerAddress"]
 
         duration_s = int(req.query.get("duration", 5))
         if duration_s > 60:
@@ -514,7 +514,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             task_id = req.query.get("task_id")
             attempt_number = req.query.get("attempt_number")
             node_id = req.query.get("node_id")
-            ip = DataSource.node_id_to_ip[node_id]
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
             try:
                 (pid, _) = await self.get_worker_details_for_running_task(
                     task_id, attempt_number
@@ -609,7 +609,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             gcs_channel, self._dashboard_head.gcs_aio_client
         )
         # Set up the state API in order to fetch task information.
-        self._state_api = StateAPIManager(self._state_api_data_source_client)
+        # TODO(ryw): unify the StateAPIManager in reporter_head and state_head.
+        self._state_api = StateAPIManager(
+            self._state_api_data_source_client,
+            self._dashboard_head._thread_pool_executor,
+        )
 
         # Need daemon True to avoid dashboard hangs at exit.
         self.service_discovery.daemon = True
@@ -635,7 +639,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
                 # NOTE: Every iteration is executed inside the thread-pool executor
                 #       (TPE) to avoid blocking the Dashboard's event-loop
-                parsed_data = await loop.run_in_executor(None, json.loads, data)
+                parsed_data = await loop.run_in_executor(
+                    self._dashboard_head._thread_pool_executor, json.loads, data
+                )
 
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = parsed_data
