@@ -437,6 +437,7 @@ class AlgorithmConfig(_Config):
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
         self.input_read_episodes = False
+        self.input_read_sample_batches = False
         self.input_filesystem = None
         self.input_filesystem_kwargs = {}
         self.input_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
@@ -2406,6 +2407,7 @@ class AlgorithmConfig(_Config):
         input_read_method_kwargs: Optional[Dict] = NotProvided,
         input_read_schema: Optional[Dict[str, str]] = NotProvided,
         input_read_episodes: Optional[bool] = NotProvided,
+        input_read_sample_batches: Optional[bool] = NotProvided,
         input_filesystem: Optional[str] = NotProvided,
         input_filesystem_kwargs: Optional[Dict] = NotProvided,
         input_compress_columns: Optional[List[str]] = NotProvided,
@@ -2469,8 +2471,19 @@ class AlgorithmConfig(_Config):
                 inside of RLlib's schema. The other format is a columnar format and is
                 agnostic to the RL framework used. Use the latter format, if you are
                 unsure when to use the data or in which RL framework. The default is
-                to read column data, i.e. `False`. See also `output_write_episodes`
-                to define the output data format when recording.
+                to read column data, i.e. `False`. `input_read_episodes` and
+                `inpuit_read_sample_batches` cannot be `True` at the same time. See
+                also `output_write_episodes` to define the output data format when
+                recording.
+            input_read_sample_batches: Whether offline data is stored in RLlib's old
+                stack `SampleBatch` type. This is usually the case for older data
+                recorded with RLlib in JSON line format. Reading in `SampleBatch`
+                data needs extra transforms and might not concatenate episode chunks
+                contained in different `SampleBatch`es in the data. If possible avoid
+                to read `SampleBatch`es and convert them in a controlled form into
+                RLlib`s `EpisodeType`s (i.e. `SingleAgentEpisode` or
+                `MultiAgentEpisode`). The default is `False`. `input_read_episodes`
+                and `inpuit_read_sample_batches` cannot be `True` at the same time.
             input_filesystem: A cloud filesystem to handle access to cloud storage when
                 reading experiences. Should be either `gcs` for Google Cloud Storage,
                 `s3` for AWS S3 buckets, or `abs` for Azure Blob Storage.
@@ -2577,6 +2590,8 @@ class AlgorithmConfig(_Config):
             self.input_read_schema = input_read_schema
         if input_read_episodes is not NotProvided:
             self.input_read_episodes = input_read_episodes
+        if input_read_sample_batches is not NotProvided:
+            self.input_read_sample_batches = input_read_sample_batches
         if input_filesystem is not NotProvided:
             self.input_filesystem = input_filesystem
         if input_filesystem_kwargs is not NotProvided:
