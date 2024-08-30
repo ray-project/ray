@@ -18,17 +18,21 @@ from ray.rllib.utils.typing import EpisodeType
 
 
 class GeneralAdvantageEstimation(ConnectorV2):
-    """Learner ConnectorV2 piece computing GAE advatages and value targets on episodes.
+    """Learner ConnectorV2 piece computing GAE advantages and value targets on episodes.
 
-    Note that the incoming `episodes` may be SingleAgent- or MultiAgentEpisodes and may
-    be episode chunks (not starting from reset or ending prematurely).
-
-    `episodes` must already be elongated by one artificial timestep at the
-    end  (last obs, actions, states, etc.. repeated, last reward=0.0, etc..),
+    This ConnectorV2:
+    - Operates on a list of Episode objects (single- or multi-agent).
+    - Should be used only in the Learner pipeline and as one of the last pieces (due
+    to the fact that it requires the batch for the value functions to be already
+    complete).
+    - Requires the incoming episodes to already be elongated by one artificial timestep
+    at the end  (last obs, actions, states, etc.. repeated, last reward=0.0, etc..),
     making it possible to combine the per-timestep value computations with the
     necessary "bootstrap" value computations at the episode (chunk) truncation points.
+    The extra timestep should be added using the `ray.rllib.connectors.learner.
+    add_one_ts_to_episodes_and_truncate.AddOneTsToEpisodesAndTruncate` connector piece.
 
-    The GAE computation is performed in a very efficient way through using the arriving
+    The GAE computation is performed in an efficient way through using the arriving
     `batch` as forward batch for the value function, extracting the bootstrap values
     (at the artificially added time steos) and all other value predictions (all other
     timesteps), performing GAE, and adding the results back into `batch` (under
@@ -73,10 +77,14 @@ class GeneralAdvantageEstimation(ConnectorV2):
         batch: Dict[str, Any],
         **kwargs,
     ):
+        # Device to place all GAE result tensors (advantages and value targets) on.
+        device = None
+
+        # Extract all single-agent episodes.
         sa_episodes_list = list(
             self.single_agent_episode_iterator(episodes, agents_that_stepped_only=False)
         )
-        # Perform the value model's forward pass.
+        # Perform the value nets' forward passes.
         vf_preds = rl_module.foreach_module(
             func=lambda mid, module: (
                 module.compute_values(batch[mid])
@@ -85,9 +93,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
             ),
             return_dict=True,
         )
-        device = next(iter(vf_preds.values())).device
-        vf_preds = convert_to_numpy(vf_preds)
-
+        # Loop through all modules and perform each one's GAE computation.
         for module_id, module_vf_preds in vf_preds.items():
             # Skip those outputs of RLModules that are not implementers of
             # `ValueFunctionAPI`.
@@ -95,8 +101,11 @@ class GeneralAdvantageEstimation(ConnectorV2):
                 continue
 
             module = rl_module[module_id]
+            device = module_vf_preds.device
+            # Convert to numpy for the upcoming GAE computations.
+            module_vf_preds = convert_to_numpy(module_vf_preds)
 
-            # Collect (single-agent) episode lengths.
+            # Collect (single-agent) episode lengths for this particular module.
             episode_lens = [
                 len(e) for e in sa_episodes_list if e.module_id in [None, module_id]
             ]
