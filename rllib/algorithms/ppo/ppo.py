@@ -142,7 +142,7 @@ class PPOConfig(AlgorithmConfig):
         # Simple logic for now: If None, use `train_batch_size`.
         self.mini_batch_size_per_learner = None
         self.num_sgd_iter = 30
-        self.shuffle_sequences = True
+        self.shuffle_single_agent_batch = True
         self.vf_loss_coeff = 1.0
         self.entropy_coeff = 0.0
         self.entropy_coeff_schedule = None
@@ -220,7 +220,7 @@ class PPOConfig(AlgorithmConfig):
         mini_batch_size_per_learner: Optional[int] = NotProvided,
         sgd_minibatch_size: Optional[int] = NotProvided,
         num_sgd_iter: Optional[int] = NotProvided,
-        shuffle_sequences: Optional[bool] = NotProvided,
+        shuffle_single_agent_batch: Optional[bool] = NotProvided,
         vf_loss_coeff: Optional[float] = NotProvided,
         entropy_coeff: Optional[float] = NotProvided,
         entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
@@ -260,8 +260,13 @@ class PPOConfig(AlgorithmConfig):
                 new API stack (use `mini_batch_size_per_learner` instead).
             num_sgd_iter: Number of SGD iterations in each outer loop (i.e., number of
                 epochs to execute per train batch).
-            shuffle_sequences: Whether to shuffle sequences in the batch when training
-                (recommended).
+            shuffle_single_agent_batch: Whether to shuffle each single-agent batch once
+                before a new epoch (which consists of n x minibatches, where n is
+                `batch_size_per_learner` // `mini_batch_size_per_learner`). This should
+                be set to True in single-agent and independent multi-agent cases as it
+                ensures proper mixing of the samples before each batch epoch. Otherwise,
+                the sequence of minibatches iterated through is the same in each
+                iteration, possibly impacting learning.
             vf_loss_coeff: Coefficient of the value function loss. IMPORTANT: you must
                 tune this if you set vf_share_layers=True inside your model's config.
             entropy_coeff: The entropy coefficient (float) or entropy coefficient
@@ -302,8 +307,8 @@ class PPOConfig(AlgorithmConfig):
             self.sgd_minibatch_size = sgd_minibatch_size
         if num_sgd_iter is not NotProvided:
             self.num_sgd_iter = num_sgd_iter
-        if shuffle_sequences is not NotProvided:
-            self.shuffle_sequences = shuffle_sequences
+        if shuffle_single_agent_batch is not NotProvided:
+            self.shuffle_single_agent_batch = shuffle_single_agent_batch
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:

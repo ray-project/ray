@@ -1300,6 +1300,7 @@ class Learner(Checkpointable):
                     MiniBatchCyclicIterator,
                     uses_new_env_runners=True,
                     num_total_mini_batches=num_total_mini_batches,
+                    shuffle=self.config.shuffle_single_agent_batch,
                 )
             else:
                 batch_iter = MiniBatchCyclicIterator
@@ -1310,6 +1311,7 @@ class Learner(Checkpointable):
             # this behavior here by setting the minibatch size to be the size
             # of the batch (e.g. 1 minibatch of size batch.count)
             minibatch_size = batch.count
+            # Note that there is no need to shuffle here, b/c we don't have minibatches.
             batch_iter = MiniBatchCyclicIterator
         else:
             # `minibatch_size` and `num_iters` are not set by the user.

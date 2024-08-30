@@ -50,6 +50,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         num_iters: int = 1,
         uses_new_env_runners: bool = False,
         num_total_mini_batches: int = 0,
+        shuffle: bool = False,
     ) -> None:
         super().__init__(batch, minibatch_size, num_iters)
         self._batch = batch
@@ -65,6 +66,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
 
         self._mini_batch_count = 0
         self._num_total_mini_batches = num_total_mini_batches
+
+        self._shuffle = shuffle
 
     def __iter__(self):
         while (
@@ -82,6 +85,12 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         ):
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
+
+                # Shuffle the individual single-agent batch, if required.
+                # This should happen once per minibatch iteration in order to make
+                # each iteration go through a different set of minibatches.
+                if self._shuffle:
+                    module_batch.shuffle()
 
                 if len(module_batch) == 0:
                     raise ValueError(

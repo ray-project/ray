@@ -26,19 +26,18 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .environment("multi_agent_pendulum", env_config={"num_agents": args.num_agents})
+    .env_runners(num_env_runners=4)
+    .training(
+        lr=0.0003,
+        lambda_=0.1,
+        vf_clip_param=10.0,
+        num_sgd_iter=6,
+    )
     .rl_module(
         model_config_dict={
             "fcnet_activation": "relu",
             "uses_new_env_runners": True,
         },
-    )
-    .training(
-        train_batch_size=512,
-        lambda_=0.1,
-        gamma=0.95,
-        lr=0.0003,
-        sgd_minibatch_size=64,
-        vf_clip_param=10.0,
     )
     .multi_agent(
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",
@@ -49,7 +48,7 @@ config = (
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     # Divide by num_agents to get actual return per agent.
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -400.0 * (args.num_agents or 1),
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -300.0 * (args.num_agents or 1),
 }
 
 

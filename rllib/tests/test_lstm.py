@@ -261,7 +261,6 @@ class TestRNNSequencing(unittest.TestCase):
                     "max_seq_len": 4,
                     "vf_share_layers": True,
                 },
-                shuffle_sequences=False,  # for deterministic testing
             )
         )
         ppo = config.build()
