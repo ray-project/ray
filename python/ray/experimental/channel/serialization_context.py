@@ -34,6 +34,9 @@ class _SerializationContext:
         self.intra_process_channel_buffers[channel_id] = value
         self.channel_id_to_num_readers[channel_id] = num_readers
 
+    def has_data(self, channel_id: str) -> bool:
+        return channel_id in self.intra_process_channel_buffers
+
     def get_data(self, channel_id: str) -> Any:
         assert (
             channel_id in self.intra_process_channel_buffers
