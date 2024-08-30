@@ -47,4 +47,4 @@ moviepy
 
 # Requirements for offline data recording and reading
 msgpack
-msgpack_numpy
+msgpack-numpy
