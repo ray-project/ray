@@ -79,9 +79,13 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         from ray.rllib.utils.test_utils import check
 
         # Create a simple dummy class, pretending to be an RLModule with
-        # `get_initial_state` overridden:
+        # `get_initial_state`, `is_stateful` and its `config` property defined:
         class MyStateModule:
-            model_config_dict = {"max_seq_len": 2}
+            # dummy config class
+            class Cfg(dict):
+                model_config_dict = {"max_seq_len": 2}
+            config = Cfg()
+
             def is_stateful(self):
                 return True
 

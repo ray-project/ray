@@ -178,6 +178,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
                     ),
                 }
                 for mid, module_batch in batch.items()
+                if vf_preds[mid] is not None
             },
             episodes=episodes,
         )
