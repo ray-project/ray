@@ -1230,11 +1230,6 @@ class CompiledDAG:
                     elif isinstance(arg, DAGNode):  # Other DAGNodes
                         has_at_least_one_channel_input = True
                         arg_to_consumers[arg].add(task)
-                        arg_idx = self.dag_node_to_idx[arg]
-                        upstream_task = self.idx_to_task[arg_idx]
-                        assert len(upstream_task.output_channels) == 1
-                        arg_channel = upstream_task.output_channels[0]
-                        assert arg_channel is not None
                 # TODO: Support no-input DAGs (use an empty object to signal).
                 if not has_at_least_one_channel_input:
                     raise ValueError(
@@ -1255,7 +1250,10 @@ class CompiledDAG:
                     arg, InputAttributeNode
                 ):
                     arg_idx = self.dag_node_to_idx[arg]
-                    arg_channel = self.idx_to_task[arg_idx].output_channel
+                    upstream_task = self.idx_to_task[arg_idx]
+                    assert len(upstream_task.output_channels) == 1
+                    arg_channel = upstream_task.output_channels[0]
+                    assert arg_channel is not None
                     if len(consumers) > 1:
                         channel_dict[arg_channel] = CachedChannel(
                             len(consumers),
@@ -1287,7 +1285,9 @@ class CompiledDAG:
                         resolved_args.append(input_adapter)
                     elif isinstance(arg, DAGNode):  # Other DAGNodes
                         arg_idx = self.dag_node_to_idx[arg]
-                        arg_channel = self.idx_to_task[arg_idx].output_channel
+                        upstream_task = self.idx_to_task[arg_idx]
+                        assert len(upstream_task.output_channels) == 1
+                        arg_channel = upstream_task.output_channels[0]
                         assert arg_channel is not None
                         arg_channel = channel_dict[arg_channel]
                         resolved_args.append(arg_channel)
