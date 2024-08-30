@@ -382,6 +382,82 @@ def test_actor_method_bind_same_constant(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_actor_method_bind_same_input(ray_start_regular):
+    actor = Actor.remote(0)
+    with InputNode() as inp:
+        # Test binding input node to the same method
+        # of same actor multiple times: execution
+        # should not hang.
+        output1 = actor.inc.bind(inp)
+        output2 = actor.inc.bind(inp)
+        dag = MultiOutputNode([output1, output2])
+    compiled_dag = dag.experimental_compile()
+    expected = [[0, 0], [1, 2], [4, 6]]
+    for i in range(3):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        assert result == expected[i]
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_same_input_attr(ray_start_regular):
+    actor = Actor.remote(0)
+    with InputNode() as inp:
+        # Test binding input attribute node to the same method
+        # of same actor multiple times: execution should not
+        # hang.
+        output1 = actor.inc.bind(inp[0])
+        output2 = actor.inc.bind(inp[0])
+        dag = MultiOutputNode([output1, output2])
+    compiled_dag = dag.experimental_compile()
+    expected = [[0, 0], [1, 2], [4, 6]]
+    for i in range(3):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        assert result == expected[i]
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_same_arg(ray_start_regular):
+    a1 = Actor.remote(0)
+    a2 = Actor.remote(0)
+    with InputNode() as inp:
+        # Test binding arg to the same method
+        # of same actor multiple times: execution
+        # should not hang.
+        output1 = a1.echo.bind(inp)
+        output2 = a2.inc.bind(output1)
+        output3 = a2.inc.bind(output1)
+        dag = MultiOutputNode([output2, output3])
+    compiled_dag = dag.experimental_compile()
+    expected = [[0, 0], [1, 2], [4, 6]]
+    for i in range(3):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        assert result == expected[i]
+    compiled_dag.teardown()
+
+
+def test_mixed_bind_same_input(ray_start_regular):
+    a1 = Actor.remote(0)
+    a2 = Actor.remote(0)
+    with InputNode() as inp:
+        # Test binding input node to the same method
+        # of different actors multiple times: execution
+        # should not hang.
+        output1 = a1.inc.bind(inp)
+        output2 = a1.inc.bind(inp)
+        output3 = a2.inc.bind(inp)
+        dag = MultiOutputNode([output1, output2, output3])
+    compiled_dag = dag.experimental_compile()
+    expected = [[0, 0, 0], [1, 2, 1], [4, 6, 3]]
+    for i in range(3):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        assert result == expected[i]
+    compiled_dag.teardown()
+
+
 def test_regular_args(ray_start_regular):
     # Test passing regular args to .bind in addition to DAGNode args.
     a = Actor.remote(0)
@@ -419,14 +495,15 @@ def test_multi_args_basic(ray_start_regular):
 def test_multi_args_single_actor(ray_start_regular):
     c = Collector.remote()
     with InputNode() as i:
-        dag = c.collect_two.bind(i[1], i[0])
+        dag = c.collect_three.bind(i[0], i[1], i[0])
 
     compiled_dag = dag.experimental_compile()
 
+    expected = [[0, 1, 0], [0, 1, 0, 1, 2, 1], [0, 1, 0, 1, 2, 1, 2, 3, 2]]
     for i in range(3):
-        ref = compiled_dag.execute(2, 3)
+        ref = compiled_dag.execute(i, i + 1)
         result = ray.get(ref)
-        assert result == [3, 2] * (i + 1)
+        assert result == expected[i]
 
     with pytest.raises(
         ValueError,
@@ -1539,6 +1616,24 @@ def test_payload_large(ray_start_cluster):
     compiled_dag.teardown()
 
 
+@ray.remote
+class TestWorker:
+    def add_one(self, value):
+        return value + 1
+
+    def add(self, val1, val2):
+        return val1 + val2
+
+    def generate_torch_tensor(self, size) -> torch.Tensor:
+        return torch.zeros(size)
+
+    def add_value_to_tensor(self, value: int, tensor: torch.Tensor) -> torch.Tensor:
+        """
+        Add `value` to all elements of the tensor.
+        """
+        return tensor + value
+
+
 class TestActorInputOutput:
     """
     Accelerated DAGs support the following two cases for the input/output of the graph:
@@ -1551,23 +1646,6 @@ class TestActorInputOutput:
     which is an actor, needs to be the input and output of the graph.
     """
 
-    @ray.remote
-    class Worker:
-        def add_one(self, value):
-            return value + 1
-
-        def add(self, val1, val2):
-            return val1 + val2
-
-        def generate_torch_tensor(self, size) -> torch.Tensor:
-            return torch.zeros(size)
-
-        def add_value_to_tensor(self, value: int, tensor: torch.Tensor) -> torch.Tensor:
-            """
-            Add `value` to all elements of the tensor.
-            """
-            return tensor + value
-
     def test_shared_memory_channel_only(ray_start_cluster):
         """
         Replica -> Worker -> Replica
@@ -1578,7 +1656,7 @@ class TestActorInputOutput:
         @ray.remote
         class Replica:
             def __init__(self):
-                self.w = TestActorInputOutput.Worker.remote()
+                self.w = TestWorker.remote()
                 with InputNode() as inp:
                     dag = self.w.add_one.bind(inp)
                 self.compiled_dag = dag.experimental_compile()
@@ -1602,7 +1680,7 @@ class TestActorInputOutput:
         @ray.remote
         class Replica:
             def __init__(self):
-                self.w = TestActorInputOutput.Worker.remote()
+                self.w = TestWorker.remote()
                 with InputNode() as inp:
                     dag = self.w.add_one.bind(inp)
                     dag = self.w.add_one.bind(dag)
@@ -1627,8 +1705,8 @@ class TestActorInputOutput:
         @ray.remote
         class Replica:
             def __init__(self):
-                w1 = TestActorInputOutput.Worker.remote()
-                w2 = TestActorInputOutput.Worker.remote()
+                w1 = TestWorker.remote()
+                w2 = TestWorker.remote()
                 with InputNode() as inp:
                     dag = MultiOutputNode([w1.add_one.bind(inp), w2.add_one.bind(inp)])
                 self.compiled_dag = dag.experimental_compile()
@@ -1654,8 +1732,8 @@ class TestActorInputOutput:
         @ray.remote
         class Replica:
             def __init__(self):
-                w1 = TestActorInputOutput.Worker.remote()
-                w2 = TestActorInputOutput.Worker.remote()
+                w1 = TestWorker.remote()
+                w2 = TestWorker.remote()
                 with InputNode() as inp:
                     branch1 = w1.add_one.bind(inp)
                     branch2 = w2.add_one.bind(inp)
@@ -1682,8 +1760,8 @@ class TestActorInputOutput:
         @ray.remote
         class Replica:
             def __init__(self):
-                w1 = TestActorInputOutput.Worker.remote()
-                w2 = TestActorInputOutput.Worker.remote()
+                w1 = TestWorker.remote()
+                w2 = TestWorker.remote()
                 with InputNode() as inp:
                     dag = w1.add_one.bind(inp)
                     dag = MultiOutputNode([w1.add_one.bind(dag), w2.add_one.bind(dag)])
@@ -1707,8 +1785,8 @@ class TestActorInputOutput:
         @ray.remote
         class Replica:
             def __init__(self):
-                self._base = TestActorInputOutput.Worker.remote()
-                self._refiner = TestActorInputOutput.Worker.remote()
+                self._base = TestWorker.remote()
+                self._refiner = TestWorker.remote()
 
                 with ray.dag.InputNode() as inp:
                     dag = self._refiner.add_value_to_tensor.bind(

@@ -87,7 +87,7 @@ Step 2: Configure Access
 
 Ensure that your local machine can access the Ray Client port on the head node.
 
-The easiest way to accomplish this is to use SSH port forwarding or `K8s port-forwarding <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_. 
+The easiest way to accomplish this is to use SSH port forwarding or `K8s port-forwarding <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_.
 This allows you to connect to the Ray Client server on the head node via ``localhost``.
 
 First, open up an SSH connection with your Ray cluster and forward the
@@ -300,6 +300,6 @@ Ray workers are started in the ``/tmp/ray/session_latest/runtime_resources/_ray_
 Troubleshooting
 ---------------
 
-Error: Attempted to reconnect a session that has already been cleaned up 
+Error: Attempted to reconnect a session that has already been cleaned up
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 This error happens when Ray Client reconnects to a head node that does not recognize the client. This can happen if the head node restarts unexpectedly and loses state. On Kubernetes, this can happen if the head pod restarts after being evicted or crashing.

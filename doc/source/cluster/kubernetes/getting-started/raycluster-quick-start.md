@@ -85,7 +85,7 @@ Note that in production scenarios, you will want to use larger Ray pods. In fact
 
 ## Step 4: Run an application on a RayCluster
 
-Now, let's interact with the RayCluster we've deployed. 
+Now, let's interact with the RayCluster we've deployed.
 
 ### Method 1: Execute a Ray job in the head Pod
 
@@ -102,7 +102,7 @@ kubectl exec -it $HEAD_POD -- python -c "import ray; ray.init(); print(ray.clust
 
 # 2023-04-07 10:57:46,472 INFO worker.py:1243 -- Using address 127.0.0.1:6379 set in the environment variable RAY_ADDRESS
 # 2023-04-07 10:57:46,472 INFO worker.py:1364 -- Connecting to existing Ray cluster at address: 10.244.0.6:6379...
-# 2023-04-07 10:57:46,482 INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at http://10.244.0.6:8265 
+# 2023-04-07 10:57:46,482 INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at http://10.244.0.6:8265
 # {'object_store_memory': 802572287.0, 'memory': 3000000000.0, 'node:10.244.0.6': 1.0, 'CPU': 2.0, 'node:10.244.0.7': 1.0}
 ```
 
