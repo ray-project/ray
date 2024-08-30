@@ -27,6 +27,7 @@ from ray._private.test_utils import (
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 from ray.dashboard.consts import DASHBOARD_METRIC_PORT
 from ray.util.metrics import Counter, Gauge, Histogram
+from ray._raylet import GcsClient
 
 os.environ["RAY_event_stats"] = "1"
 
@@ -747,7 +748,7 @@ def test_prometheus_file_based_service_discovery(ray_start_cluster):
     cluster.wait_for_nodes()
     addr = ray.init(address=cluster.address)
     writer = PrometheusServiceDiscoveryWriter(
-        addr["gcs_address"],
+        GcsClient(addr["gcs_address"]),
         "/tmp/ray",
     )
 

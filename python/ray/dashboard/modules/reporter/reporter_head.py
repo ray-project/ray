@@ -58,7 +58,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self._gcs_address = dashboard_head.gcs_address
         temp_dir = dashboard_head.temp_dir
         self.service_discovery = PrometheusServiceDiscoveryWriter(
-            self._gcs_address, temp_dir
+            dashboard_head.gcs_client, temp_dir
         )
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._state_api = None
