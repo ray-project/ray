@@ -1268,7 +1268,7 @@ class Learner(Checkpointable):
                     },
                     env_steps=sum(len(e) for e in episodes),
                 )
-        # Have to convert to MultiAgentBatch.
+        # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
         elif isinstance(batch, SampleBatch):
             assert len(self.module) == 1
             batch = MultiAgentBatch(
