@@ -1079,13 +1079,13 @@ class CompiledDAG:
                         reader_and_node_list: List[
                             Tuple["ray.actor.ActorHandle", str]
                         ] = []
-                        # Use reader_handles_set to deduplicate readers on the same actor,
-                        # because with CachedChannel each actor will only read from the
-                        # upstream channel once.
+                        # Use reader_handles_set to deduplicate readers on the
+                        # same actor, because with CachedChannel each actor will
+                        # only read from the upstream channel once.
                         reader_handles_set = set()
                         for reader in readers:
                             reader_handle = reader.dag_node._get_actor_handle()
-                            if reader_handle not in reader_handles_set: 
+                            if reader_handle not in reader_handles_set:
                                 reader_and_node_list.append(
                                     (reader_handle, self._get_node_id(reader_handle))
                                 )
