@@ -2958,7 +2958,7 @@ Status CoreWorker::ExecuteTask(
   }
   {
     absl::MutexLock lock(&mutex_);
-    RAY_CHECK(current_tasks_.emplace(task_spec.TaskId(), task_spec));
+    RAY_CHECK(current_tasks_.emplace(task_spec.TaskId(), task_spec).second);
     if (resource_ids) {
       resource_ids_ = resource_ids;
     }
