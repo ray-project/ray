@@ -85,10 +85,14 @@ class GeneralAdvantageEstimation(ConnectorV2):
             self.single_agent_episode_iterator(episodes, agents_that_stepped_only=False)
         )
         # Perform the value nets' forward passes.
+        # TODO (sven): We need to check here in the pipeline already, whether a module
+        #  should even be updated or not (which we usually do after(!) the Learner
+        #  pipeline). This is an open TODO to move this filter into a connector as well.
+        #  For now, we'll just check, whether `mid` is in batch and skip if it isn't.
         vf_preds = rl_module.foreach_module(
             func=lambda mid, module: (
                 module.compute_values(batch[mid])
-                if isinstance(module, ValueFunctionAPI)
+                if mid in batch and isinstance(module, ValueFunctionAPI)
                 else None
             ),
             return_dict=True,
