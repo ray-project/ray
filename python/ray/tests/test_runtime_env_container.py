@@ -118,7 +118,7 @@ def test_job(podman_docker_cluster):
     run_in_container([cmd], container_id)
 
 
-@pytest.mark.skip
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works on Linux.")
 @pytest.mark.parametrize("use_image_uri_api", [True, False])
 def test_serve_telemetry(podman_docker_cluster, use_image_uri_api):
     """Test Serve deployment telemetry."""
