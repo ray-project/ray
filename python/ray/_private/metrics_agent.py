@@ -34,7 +34,7 @@ from opencensus.tags import tag_value as tag_value_module
 
 import ray
 from ray._raylet import GcsClient
-
+from ray.dashboard.datacenter import DataSource
 from ray.core.generated.metrics_pb2 import Metric
 from ray._private.ray_constants import env_bool
 
@@ -619,11 +619,11 @@ class PrometheusServiceDiscoveryWriter(threading.Thread):
 
     def get_file_discovery_content(self):
         """Return the content for Prometheus service discovery."""
-        nodes = ray.nodes()
+        nodes = DataSource.nodes
         metrics_export_addresses = [
-            "{}:{}".format(node["NodeManagerAddress"], node["MetricsExportPort"])
-            for node in nodes
-            if node["alive"] is True
+            "{}:{}".format(node["nodeManagerAddress"], node["metricsExportPort"])
+            for node in nodes.values()
+            if node["state"] == "ALIVE"
         ]
         autoscaler_addr = self.gcs_client.internal_kv_get(
             b"AutoscalerMetricsAddress", None
