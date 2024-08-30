@@ -122,9 +122,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
         # Translate states and seq_lens into old API stack formats.
         batch = batch.copy()
         state_in = batch.pop(Columns.STATE_IN, [])
-        state_in = [
-            s for i, s in sorted(state_in.items())
-        ]
+        state_in = [s for i, s in sorted(state_in.items())]
         seq_lens = batch.pop(Columns.SEQ_LENS, None)
         if state_in and seq_lens is None:
             seq_lens = torch.tensor(
@@ -134,7 +132,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
         # A recurrent ModelV2 adds and removes the time-rank itself (whereas in the new
         # API stack, the connector pipelines are responsible for doing this) -> We have
         # to remove, then re-add the time rank here to make ModelV2 work with the new
-        # model-to-env pipelines. 
+        # model-to-env pipelines.
         if state_in:
             batch = tree.map_structure(
                 lambda s: torch.reshape(s, [-1] + list(s.shape[2:])), batch
@@ -181,9 +179,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
     def get_initial_state(self):
         """Converts the initial state list of ModelV2 into a dict (new API stack)."""
         init_state_list = self._model_v2.get_initial_state()
-        return {
-            i: s for i, s in enumerate(init_state_list)
-        }
+        return {i: s for i, s in enumerate(init_state_list)}
 
     def _translate_dist_class(self, old_dist_class):
         map_ = {
