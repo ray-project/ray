@@ -21,6 +21,7 @@ if __name__ == "__main__":
             model={
                 "fcnet_hiddens": [32],
                 "fcnet_activation": "linear",
+                "use_lstm": True,
                 "vf_share_layers": True,
             },
         )

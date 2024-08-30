@@ -1,6 +1,7 @@
 import pathlib
 from typing import Any, Dict
 
+import tree
 from ray.rllib.core import Columns, DEFAULT_POLICY_ID
 from ray.rllib.core.rl_module.apis import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
@@ -20,6 +21,9 @@ from ray.rllib.models.torch.torch_action_dist import (
 )
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_torch
+
+torch, _ = try_import_torch()
 
 
 class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
@@ -115,7 +119,31 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
         del policy
 
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        nn_output, state_out = self._model_v2(batch)
+        # Translate states and seq_lens into old API stack formats.
+        batch = batch.copy()
+        state_in = batch.pop(Columns.STATE_IN, [])
+        state_in = [
+            s for i, s in sorted(state_in.items())
+        ]
+        seq_lens = batch.pop(Columns.SEQ_LENS, None)
+        if state_in and seq_lens is None:
+            seq_lens = torch.tensor(
+                [1.0] * state_in[0].shape[0], device=state_in[0].device
+            )
+        # Perform the actual ModelV2 forward pass.
+        # A recurrent ModelV2 adds and removes the time-rank itself (whereas in the new
+        # API stack, the connector pipelines are responsible for doing this) -> We have
+        # to remove, then re-add the time rank here to make ModelV2 work with the new
+        # model-to-env pipelines. 
+        if state_in:
+            batch = tree.map_structure(
+                lambda s: torch.reshape(s, [-1] + list(s.shape[2:])), batch
+            )
+        nn_output, state_out = self._model_v2(batch, state_in, seq_lens)
+        if state_in:
+            nn_output = tree.map_structure(
+                lambda s: torch.unsqueeze(s, axis=1), nn_output
+            )
         # Interpret the NN output as action logits.
         output = {Columns.ACTION_DIST_INPUTS: nn_output}
         # Add the `state_out` to the `output`, new API stack style.
@@ -138,7 +166,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
         return out
 
     def compute_values(self, batch: Dict[str, Any]):
-        self._model_v2(batch)
+        self._forward_inference(batch)
         return self._model_v2.value_function()
 
     def get_inference_action_dist_cls(self):
@@ -149,6 +177,13 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
 
     def get_train_action_dist_cls(self):
         return self._action_dist_class
+
+    def get_initial_state(self):
+        """Converts the initial state list of ModelV2 into a dict (new API stack)."""
+        init_state_list = self._model_v2.get_initial_state()
+        return {
+            i: s for i, s in enumerate(init_state_list)
+        }
 
     def _translate_dist_class(self, old_dist_class):
         map_ = {
