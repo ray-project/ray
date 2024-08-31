@@ -190,6 +190,7 @@ async def _main(
                 (grpc_payload_1mb, "grpc_1mb"),
                 (grpc_payload_10mb, "grpc_10mb"),
             ]:
+                serve.start(grpc_options=serve_grpc_options)
                 serve.run(GrpcDeployment.bind())
                 latencies: pd.Series = await run_latency_benchmark(
                     lambda: stub.call_with_string(payload),
@@ -200,6 +201,7 @@ async def _main(
 
         if run_throughput:
             # Microbenchmark: GRPC throughput
+            serve.start(grpc_options=serve_grpc_options)
             serve.run(GrpcDeployment.bind())
             mean, std = await run_throughput_benchmark(
                 fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
