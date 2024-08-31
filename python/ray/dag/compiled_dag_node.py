@@ -1089,8 +1089,8 @@ class CompiledDAG:
                                 reader_and_node_list.append(
                                     (reader_handle, self._get_node_id(reader_handle))
                                 )
+                            reader_handles_set.add(reader_handle)
                         output_to_reader_and_node_list[output] = reader_and_node_list
-                        reader_handles_set.add(reader_handle)
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 for (
                     output,
@@ -1230,6 +1230,11 @@ class CompiledDAG:
                     elif isinstance(arg, DAGNode):  # Other DAGNodes
                         has_at_least_one_channel_input = True
                         arg_to_consumers[arg].add(task)
+                        arg_idx = self.dag_node_to_idx[arg]
+                        upstream_task = self.idx_to_task[arg_idx]
+                        assert len(upstream_task.output_channels) == 1
+                        arg_channel = upstream_task.output_channels[0]
+                        assert arg_channel is not None
                 # TODO: Support no-input DAGs (use an empty object to signal).
                 if not has_at_least_one_channel_input:
                     raise ValueError(
@@ -1273,7 +1278,7 @@ class CompiledDAG:
             # Step 3: create executable tasks for the actor
             executable_tasks = []
             for task in tasks:
-                resolved_args = []
+                resolved_args: List[Any] = []
                 for arg in task.args:
                     if isinstance(arg, InputNode):
                         input_channel = channel_dict[self.dag_input_channel]
