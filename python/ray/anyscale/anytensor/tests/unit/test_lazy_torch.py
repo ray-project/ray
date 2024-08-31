@@ -1,5 +1,7 @@
 import sys
 
+import pytest
+
 from ray.anyscale.anytensor._private.util import (
     bytes_to_gigabytes,
     get_current_torch_device,
@@ -19,3 +21,7 @@ def test_torch_imported_lazily():
     import torch
 
     assert device == torch.device("cpu")
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))

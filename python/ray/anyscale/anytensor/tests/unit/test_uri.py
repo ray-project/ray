@@ -1,4 +1,5 @@
 import os
+import sys
 from unittest.mock import patch
 
 import pytest
@@ -248,3 +249,7 @@ def test_get_local_cache_dir(
             local_cache_dir=local_cache_dir,
         )
         assert client._local_cache_dir == expected_cache_dir
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
