@@ -128,7 +128,7 @@ async def do_single_grpc_batch(
     payload = serve_pb2.StringData(data="")
 
     async def do_query():
-        start = time.perf_counter()
+        return await stub.grpc_call(payload)
 
         await stub.grpc_call(payload)
 
