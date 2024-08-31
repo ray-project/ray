@@ -80,7 +80,8 @@ def _modify_context_impl(
 
     # The RAY_JOB_ID environment variable is needed for the default worker.
     # It won't be set at the time setup() is called, but it will be set
-    # when worker command is executed
+    # when worker command is executed, so we use RAY_JOB_ID=$RAY_JOB_ID
+    # for the container start command
     container_command.append("--env")
     container_command.append("RAY_JOB_ID=$RAY_JOB_ID")
 
