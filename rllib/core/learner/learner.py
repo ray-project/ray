@@ -1106,6 +1106,9 @@ class Learner(Checkpointable):
             )
         # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
+        # TODO (simon): Check, if this should stay here, when running multiple
+        # gradient steps inside the iterator loop above (could be a complete epoch)
+        # the target networks might need to be updated earlier.
         self.after_gradient_based_update(timesteps=timesteps or {})
 
         # Reduce results across all minibatch update steps.
@@ -1268,7 +1271,7 @@ class Learner(Checkpointable):
                     },
                     env_steps=sum(len(e) for e in episodes),
                 )
-        # Have to convert to MultiAgentBatch.
+        # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
         elif isinstance(batch, SampleBatch):
             assert len(self.module) == 1
             batch = MultiAgentBatch(
