@@ -2635,12 +2635,12 @@ class AlgorithmConfig(_Config):
                 data needs extra transforms and might not concatenate episode chunks
                 contained in different `SampleBatch`es in the data. If possible avoid
                 to read `SampleBatch`es and convert them in a controlled form into
-                RLlib's `EpisodeType` (i.e. `SingleAgentEpisode` or
-                `MultiAgentEpisode`). The default is False. `input_read_episodes`
-                and `input_read_sample_batches` cannot be True at the same time.
+                RLlib`s `EpisodeType`s (i.e. `SingleAgentEpisode` or
+                `MultiAgentEpisode`). The default is `False`. `input_read_episodes`
+                and `inpuit_read_sample_batches` cannot be `True` at the same time.
             input_filesystem: A cloud filesystem to handle access to cloud storage when
-                reading experiences. Should be either "gcs" for Google Cloud Storage,
-                "s3" for AWS S3 buckets, or "abs" for Azure Blob Storage.
+                reading experiences. Should be either `gcs` for Google Cloud Storage,
+                `s3` for AWS S3 buckets, or `abs` for Azure Blob Storage.
             input_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
                 given by `input_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
