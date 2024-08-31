@@ -79,6 +79,8 @@ bool ClusterResourceManager::UpdateNode(
   auto resources_total = MapFromProtobuf(resource_view_sync_message.resources_total());
   auto resources_available =
       MapFromProtobuf(resource_view_sync_message.resources_available());
+  auto available_resources_instance_set =
+      MapFromProtobuf(resource_view_sync_message.available_resources_instance_set());
   NodeResources node_resources =
       ResourceMapToNodeResources(resources_total, resources_available);
   NodeResources local_view;
@@ -86,6 +88,14 @@ bool ClusterResourceManager::UpdateNode(
 
   local_view.total = node_resources.total;
   local_view.available = node_resources.available;
+  for (const auto &[resource_name, available_list] : available_resources_instance_set) {
+    std::vector<FixedPoint> instances;
+    for (const auto &value : available_list.values()) {
+      instances.push_back(FixedPoint(value));
+    }
+    local_view.available_resources_instance_set.Set(scheduling::ResourceID(resource_name),
+                                                    instances);
+  }
   local_view.object_pulls_queued = resource_view_sync_message.object_pulls_queued();
 
   // Update the idle duration for the node in terms of resources usage.

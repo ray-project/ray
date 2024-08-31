@@ -265,4 +265,17 @@ NodeResourceSet NodeResourceInstanceSet::ToNodeResourceSet() const {
   return node_resource_set;
 }
 
+absl::flat_hash_map<std::string, std::vector<double>>
+NodeResourceInstanceSet::GetResourceMap() const {
+  absl::flat_hash_map<std::string, std::vector<double>> result;
+  for (const auto &[id, instances] : resources_) {
+    for (const auto &value : instances) {
+      result[id.Binary()].push_back(value.Double());
+    }
+  }
+  return result;
+}
+
+bool NodeResourceInstanceSet::IsEmpty() const { return resources_.empty(); }
+
 }  // namespace ray

@@ -252,6 +252,7 @@ void LocalResourceManager::ReleaseWorkerResources(
 NodeResources LocalResourceManager::ToNodeResources() const {
   NodeResources node_resources;
   node_resources.available = local_resources_.available.ToNodeResourceSet();
+  node_resources.available_resources_instance_set = local_resources_.available;
   node_resources.total = local_resources_.total.ToNodeResourceSet();
   node_resources.labels = local_resources_.labels;
   node_resources.is_draining = IsLocalNodeDraining();
@@ -303,6 +304,16 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   auto total = resources.total.GetResourceMap();
   resource_view_sync_message.mutable_resources_total()->insert(total.begin(),
                                                                total.end());
+
+  for (const auto &[resource_name, available_list] :
+       resources.available_resources_instance_set.GetResourceMap()) {
+    ray::rpc::syncer::DoubleList double_list;
+    for (const auto &value : available_list) {
+      double_list.add_values(std::max(value, 0.0));
+    }
+    (*resource_view_sync_message
+          .mutable_available_resources_instance_set())[resource_name] = double_list;
+  }
 
   for (const auto &[resource_name, available] : resources.available.GetResourceMap()) {
     // Resource availability can be negative locally but treat it as 0
