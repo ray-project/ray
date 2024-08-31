@@ -214,19 +214,6 @@ class Channel(ChannelInterface):
             self_actor = _get_self_actor()
             assert writer == self_actor
 
-            # For now, all readers must be on the same node. Note that the writer can
-            # still be on a different node than the readers though.
-            #
-            # Note that we only check this when the writer is creating the channel.
-            # Ideally, when each reader constructs its own instance of the channel, it
-            # would check this as well. However, this could result in deadlock as two
-            # readers attempt to execute a remote function on each other to get each
-            # other's node ID. We cannot use a separate concurrency group to execute the
-            # function because reader actors may not have been declared with an
-            # additional concurrency group beyond default.
-            #
-            # TODO(jhumphri): Allow different readers for the same channel to be on
-            # different nodes.
             prev_reader_node = None
             prev_reader = None
             for reader, node in reader_and_node_list:

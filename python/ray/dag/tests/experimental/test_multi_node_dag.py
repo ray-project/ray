@@ -5,6 +5,7 @@ import sys
 import time
 import pytest
 from ray.dag import InputNode, MultiOutputNode
+import ray.remote_function
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.tests.conftest import *  # noqa
 
@@ -204,6 +205,37 @@ def test_pp(ray_start_cluster):
     time.sleep(2)
 
     compiled_dag.teardown()
+
+
+def test_multi_reader_on_multi_node(ray_start_cluster):
+    cluster = ray_start_cluster
+    head = cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+    worker_1 = cluster.add_node(num_cpus=1)
+    worker_2 = cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+        def f(self, i):
+            return i
+    
+    # 3 actors spread to nodes.
+    actors = [Actor.remote() for _ in range(3)]
+    node_ids = set(ray.get([actor.get_node_id.remote() for actor in actors]))
+    # Make sure actors are spread to 3 nodes.
+    assert len(node_ids) == 3
+
+    with InputNode() as inp:
+        outputs = []
+        for actor in actors:
+            outputs.append(actor.f.bind(inp))
+        adag = MultiOutputNode(outputs)
+
+    adag.experimental_compile()
+    print(ray.get(adag.execute(1)))
 
 
 if __name__ == "__main__":
