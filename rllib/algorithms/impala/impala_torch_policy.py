@@ -172,7 +172,6 @@ class VTraceOptimizer:
     def __init__(self):
         pass
 
-    @override(TorchPolicyV2)
     def optimizer(
         self,
     ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
