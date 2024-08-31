@@ -1550,7 +1550,7 @@ class TestActorInputOutput:
     which is an actor, needs to be the input and output of the graph.
     """
 
-    def test_shared_memory_channel_only(ray_start_cluster):
+    def test_shared_memory_channel_only(shsutdown_only):
         """
         Replica -> Worker -> Replica
 
@@ -1572,7 +1572,7 @@ class TestActorInputOutput:
         ref = replica.no_op.remote(1)
         assert ray.get(ref) == 2
 
-    def test_intra_process_channel(ray_start_cluster):
+    def test_intra_process_channel(shsutdown_only):
         """
         Replica -> Worker -> Worker -> Replica
 
@@ -1597,7 +1597,7 @@ class TestActorInputOutput:
         ref = replica.call.remote(1)
         assert ray.get(ref) == 3
 
-    def test_multiple_readers_multiple_writers(ray_start_cluster):
+    def test_multiple_readers_multiple_writers(shsutdown_only):
         """
         Replica -> Worker1 -> Replica
                 |          |
@@ -1623,7 +1623,7 @@ class TestActorInputOutput:
         ref = replica.call.remote(1)
         assert ray.get(ref) == [2, 2]
 
-    def test_multiple_readers_single_writer(ray_start_cluster):
+    def test_multiple_readers_single_writer(shsutdown_only):
         """
         Replica -> Worker1 -> Worker1 -> Replica
                 |          |
@@ -1651,7 +1651,7 @@ class TestActorInputOutput:
         ref = replica.call.remote(1)
         assert ray.get(ref) == 4
 
-    def test_single_reader_multiple_writers(ray_start_cluster):
+    def test_single_reader_multiple_writers(shsutdown_only):
         """
         Replica -> Worker1 -> Worker1 -> Replica
                             |          |
@@ -1678,7 +1678,7 @@ class TestActorInputOutput:
         ref = replica.call.remote(1)
         assert ray.get(ref) == [3, 3]
 
-    def test_torch_tensor_type(ray_start_cluster):
+    def test_torch_tensor_type(shsutdown_only):
         """
         This test simulates the pattern of deploying a stable diffusion model with
         Ray Serve. The base model takes a prompt and generates an image, which is a
