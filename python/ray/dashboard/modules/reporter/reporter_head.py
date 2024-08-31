@@ -67,7 +67,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         if change.old:
             node_id, port = change.old
             ip = DataSource.nodes[node_id]["nodeManagerAddress"]
-            self._stubs.pop(ip)
+            self._stubs.pop(ip, None)
         if change.new:
             node_id, ports = change.new
             ip = DataSource.nodes[node_id]["nodeManagerAddress"]
@@ -609,7 +609,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             gcs_channel, self._dashboard_head.gcs_aio_client
         )
         # Set up the state API in order to fetch task information.
-        self._state_api = StateAPIManager(self._state_api_data_source_client)
+        # TODO(ryw): unify the StateAPIManager in reporter_head and state_head.
+        self._state_api = StateAPIManager(
+            self._state_api_data_source_client,
+            self._dashboard_head._thread_pool_executor,
+        )
 
         # Need daemon True to avoid dashboard hangs at exit.
         self.service_discovery.daemon = True
@@ -635,7 +639,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
                 # NOTE: Every iteration is executed inside the thread-pool executor
                 #       (TPE) to avoid blocking the Dashboard's event-loop
-                parsed_data = await loop.run_in_executor(None, json.loads, data)
+                parsed_data = await loop.run_in_executor(
+                    self._dashboard_head._thread_pool_executor, json.loads, data
+                )
 
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = parsed_data

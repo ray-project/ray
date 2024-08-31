@@ -140,6 +140,8 @@ def synchronous_parallel_sample(
                 agent_or_env_steps += sum(
                     int(stat_dict[NUM_ENV_STEPS_SAMPLED]) for stat_dict in stats_dicts
                 )
+            sample_batches_or_episodes.extend(sampled_data)
+            all_stats_dicts.extend(stats_dicts)
         else:
             for batch_or_episode in sampled_data:
                 if max_agent_steps:
@@ -154,9 +156,16 @@ def synchronous_parallel_sample(
                         if _uses_new_env_runners
                         else batch_or_episode.env_steps()
                     )
-        sample_batches_or_episodes.extend(sampled_data)
-        if _return_metrics:
-            all_stats_dicts.extend(stats_dicts)
+                sample_batches_or_episodes.append(batch_or_episode)
+                # Break out (and ignore the remaining samples) if max timesteps (batch
+                # size) reached. We want to avoid collecting batches that are too large
+                # only because of a failed/restarted worker causing a second iteration
+                # of the main loop.
+                if (
+                    max_agent_or_env_steps is not None
+                    and agent_or_env_steps >= max_agent_or_env_steps
+                ):
+                    break
 
     if concat is True:
         # If we have episodes flatten the episode list.

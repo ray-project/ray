@@ -4,6 +4,7 @@ import ray
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
@@ -24,12 +25,47 @@ class OfflineData:
         self.path = (
             config.input_ if isinstance(config.input_, list) else Path(config.input_)
         )
-        # Use `read_json` as default data read method.
+        # Use `read_parquet` as default data read method.
         self.data_read_method = config.input_read_method
         # Override default arguments for the data read method.
         self.data_read_method_kwargs = (
             self.default_read_method_kwargs | config.input_read_method_kwargs
         )
+
+        # Set the filesystem.
+        self.filesystem = self.config.output_filesystem
+        self.filesystem_kwargs = self.config.output_filesystem_kwargs
+        self.filesystem_object = None
+
+        # If a specific filesystem is given, set it up. Note, this could
+        # be `gcsfs` for GCS, `pyarrow` for S3 or `adlfs` for Azure Blob Storage.
+        # this filesystem is specifically needed, if a session has to be created
+        # with the cloud provider.
+
+        if self.filesystem == "gcs":
+            import gcsfs
+
+            self.filesystem_object = gcsfs.GCSFileSystem(**self.filesystem_kwargs)
+        elif self.filesystem == "s3":
+            from pyarrow import fs
+
+            self.filesystem_object = fs.S3FileSystem(**self.filesystem_kwargs)
+        elif self.filesystem == "abs":
+            import adlfs
+
+            self.filesystem_object = adlfs.AzureBlobFileSystem(**self.filesystem_kwargs)
+        elif self.filesystem is not None:
+            raise ValueError(
+                f"Unknown filesystem: {self.filesystem}. Filesystems can be "
+                "'gcs' for GCS, 's3' for S3, or 'abs'"
+            )
+        # Add the filesystem object to the write method kwargs.
+        self.data_read_method_kwargs.update(
+            {
+                "filesystem": self.filesystem_object,
+            }
+        )
+
         try:
             # Load the dataset.
             self.data = getattr(ray.data, self.data_read_method)(
@@ -72,12 +108,13 @@ class OfflineData:
             # TODO (simon, sven): The iterator depends on the `num_samples`, i.e.abs
             # sampling later with a different batch size would need a
             # reinstantiation of the iterator.
+
             self.batch_iterator = self.data.map_batches(
                 self.prelearner_class,
                 fn_constructor_kwargs={
                     "config": self.config,
                     "learner": self.learner_handles[0],
-                    "spaces": self.spaces["__env__"],
+                    "spaces": self.spaces[INPUT_ENV_SPACES],
                 },
                 batch_size=num_samples,
                 **self.map_batches_kwargs,

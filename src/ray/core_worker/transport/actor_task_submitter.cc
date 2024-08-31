@@ -97,7 +97,10 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
               RAY_LOG(INFO).WithField(actor_id)
                   << "Failed to create actor with status: " << status.ToString();
             }
-            RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(
+            // Actor creation task retry happens in GCS
+            // and transient rpc errors are retried in gcs client
+            // so we don't need to retry here.
+            RAY_UNUSED(task_finisher_.FailPendingTask(
                 task_id,
                 rpc::ErrorType::ACTOR_CREATION_FAILED,
                 &status,
@@ -676,6 +679,18 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
       queue.actor_submit_queue->MarkSeqnoCompleted(actor_counter, task_spec);
     }
     queue.cur_pending_calls--;
+  }
+}
+
+std::optional<rpc::ActorTableData::ActorState> ActorTaskSubmitter::GetLocalActorState(
+    const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+
+  auto iter = client_queues_.find(actor_id);
+  if (iter == client_queues_.end()) {
+    return std::nullopt;
+  } else {
+    return iter->second.state;
   }
 }
 
