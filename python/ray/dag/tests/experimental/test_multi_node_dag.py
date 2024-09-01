@@ -6,10 +6,20 @@ import time
 import pytest
 from ray.dag import InputNode, MultiOutputNode
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.dag import DAGContext
 from ray.tests.conftest import *  # noqa
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
+
+
+@pytest.fixture
+def temporary_change_timeout(request):
+    ctx = DAGContext.get_current()
+    original = ctx.execution_timeout
+    ctx.execution_timeout = request.param
+    yield ctx.execution_timeout
+    ctx.execution_timeout = original
 
 
 @ray.remote

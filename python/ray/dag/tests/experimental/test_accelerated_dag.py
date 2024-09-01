@@ -14,7 +14,6 @@ import torch
 import pytest
 
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 import ray
 import ray._private
 import ray.cluster_utils
@@ -1549,6 +1548,7 @@ Ray Serve to deploy the ADAG as a backend. In this case, the Ray Serve replica,
 which is an actor, needs to be the input and output of the graph.
 """
 
+
 def test_shared_memory_channel_only(shutdown_only):
     """
     Replica -> Worker -> Replica
@@ -1570,6 +1570,7 @@ def test_shared_memory_channel_only(shutdown_only):
     replica = Replica.remote()
     ref = replica.no_op.remote(1)
     assert ray.get(ref) == 2
+
 
 def test_intra_process_channel(shutdown_only):
     """
@@ -1596,6 +1597,7 @@ def test_intra_process_channel(shutdown_only):
     ref = replica.call.remote(1)
     assert ray.get(ref) == 3
 
+
 def test_multiple_readers_multiple_writers(shutdown_only):
     """
     Replica -> Worker1 -> Replica
@@ -1621,6 +1623,7 @@ def test_multiple_readers_multiple_writers(shutdown_only):
     replica = Replica.remote()
     ref = replica.call.remote(1)
     assert ray.get(ref) == [2, 2]
+
 
 def test_multiple_readers_single_writer(shutdown_only):
     """
@@ -1650,6 +1653,7 @@ def test_multiple_readers_single_writer(shutdown_only):
     ref = replica.call.remote(1)
     assert ray.get(ref) == 4
 
+
 def test_single_reader_multiple_writers(shutdown_only):
     """
     Replica -> Worker1 -> Worker1 -> Replica
@@ -1676,6 +1680,7 @@ def test_single_reader_multiple_writers(shutdown_only):
     replica = Replica.remote()
     ref = replica.call.remote(1)
     assert ray.get(ref) == [3, 3]
+
 
 def test_torch_tensor_type(shutdown_only):
     """
