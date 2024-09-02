@@ -13,15 +13,6 @@ if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
 
 
-@pytest.fixture
-def temporary_change_timeout(request):
-    ctx = DAGContext.get_current()
-    original = ctx.execution_timeout
-    ctx.execution_timeout = request.param
-    yield ctx.execution_timeout
-    ctx.execution_timeout = original
-
-
 @ray.remote
 class Actor:
     def __init__(self, init_value, fail_after=None, sys_exit=False):
@@ -52,6 +43,7 @@ class Actor:
         return self.i
 
     def echo(self, x):
+        print("ECHO!")
         self.count += 1
         self._fail_if_needed()
         return x
@@ -216,8 +208,7 @@ def test_pp(ray_start_cluster):
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("temporary_change_timeout", [30], indirect=True)
-def test_payload_large(ray_start_cluster, temporary_change_timeout):
+def test_payload_large(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor).
     first_node_handle = cluster.add_node(num_cpus=1)
@@ -261,6 +252,7 @@ def test_payload_large(ray_start_cluster, temporary_change_timeout):
     val = b"x" * size
 
     for i in range(3):
+        print(f"{i} iteration")
         ref = compiled_dag.execute(val)
         result = ray.get(ref)
         assert result == val
