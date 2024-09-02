@@ -314,6 +314,8 @@ class AlgorithmConfig(_Config):
         self.torch_compile_worker_dynamo_mode = None
         # Default kwargs for `torch.nn.parallel.DistributedDataParallel`.
         self.torch_ddp_kwargs = {}
+        # Default setting for skipping `nan` gradient updates.
+        self.torch_skip_nan_gradients = False
 
         # `self.api_stack()`
         self.enable_rl_module_and_learner = False
@@ -1381,6 +1383,7 @@ class AlgorithmConfig(_Config):
         torch_compile_worker_dynamo_backend: Optional[str] = NotProvided,
         torch_compile_worker_dynamo_mode: Optional[str] = NotProvided,
         torch_ddp_kwargs: Optional[Dict[str, Any]] = NotProvided,
+        torch_skip_nan_gradients: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1426,6 +1429,19 @@ class AlgorithmConfig(_Config):
                 that are not used in the backward pass. This can give hints for errors
                 in custom models where some parameters do not get touched in the
                 backward pass although they should.
+            torch_skip_nan_gradients: If updates with `nan` gradients should be entirely
+                skipped. This skips updates in the optimizer entirely if they contain
+                any `nan` gradient. This can help to avoid biasing moving-average based
+                optimizers - like Adam. This can help in training phases where policy
+                updates can be highly unstable such as during the early stages of
+                training or with highly exploratory policies. In such phases many
+                gradients might turn `nan` and setting them to zero could corrupt the
+                optimizer's internal state. The default is `False` and turns `nan`
+                gradients to zero. If many `nan` gradients are encountered consider (a)
+                monitoring gradients by setting `log_gradients` in `AlgorithmConfig` to
+                `True`, (b) use proper weight initialization (e.g. Xavier, Kaiming) via
+                the `model_config_dict` in `AlgorithmConfig.rl_module` and/or (c)
+                gradient clipping via `grad_clip` in `AlgorithmConfig.training`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1469,6 +1485,8 @@ class AlgorithmConfig(_Config):
             self.torch_compile_worker_dynamo_mode = torch_compile_worker_dynamo_mode
         if torch_ddp_kwargs is not NotProvided:
             self.torch_ddp_kwargs = torch_ddp_kwargs
+        if torch_skip_nan_gradients is not NotProvided:
+            self.torch_skip_nan_gradients = torch_skip_nan_gradients
 
         return self
 
