@@ -101,12 +101,6 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             minibatch = {}
             for module_id, module_batch in self._batch.policy_batches.items():
 
-                # Shuffle the individual single-agent batch, if required.
-                # This should happen once per minibatch iteration in order to make
-                # each iteration go through a different set of minibatches.
-                if self._shuffle_batch_per_epoch:
-                    module_batch.shuffle()
-
                 if len(module_batch) == 0:
                     raise ValueError(
                         f"The batch for module_id {module_id} is empty! "
@@ -164,6 +158,11 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     n_steps -= len_sample
                     s = 0
                     self._num_covered_epochs[module_id] += 1
+                    # Shuffle the individual single-agent batch, if required.
+                    # This should happen once per minibatch iteration in order to make
+                    # each iteration go through a different set of minibatches.
+                    if self._shuffle_batch_per_epoch:
+                        module_batch.shuffle()
 
                 e = s + n_steps  # end
                 if e > s:
