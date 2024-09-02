@@ -83,7 +83,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        batch: Optional[Dict[str, Any]],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
