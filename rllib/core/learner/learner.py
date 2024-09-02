@@ -540,7 +540,7 @@ class Learner(Checkpointable):
         """
         postprocessed_grads = {}
 
-        if config.grad_clip is None:
+        if config.grad_clip is None or not config.log_gradients:
             postprocessed_grads.update(module_gradients_dict)
             return postprocessed_grads
 
@@ -549,19 +549,31 @@ class Learner(Checkpointable):
                 param_dict=module_gradients_dict,
                 optimizer=optimizer,
             )
-            # Perform gradient clipping, if configured.
-            global_norm = self._get_clip_function()(
-                grad_dict_to_clip,
-                grad_clip=config.grad_clip,
-                grad_clip_by=config.grad_clip_by,
-            )
-            if config.grad_clip_by == "global_norm":
+            if config.grad_clip:
+                # Perform gradient clipping, if configured.
+                global_norm = self._get_clip_function()(
+                    grad_dict_to_clip,
+                    grad_clip=config.grad_clip,
+                    grad_clip_by=config.grad_clip_by,
+                )
+                if config.grad_clip_by == "global_norm":
+                    self.metrics.log_value(
+                        key=(module_id, f"gradients_{optimizer_name}_global_norm"),
+                        value=global_norm,
+                        window=1,
+                    )
+                postprocessed_grads.update(grad_dict_to_clip)
+            # In the other case check, if we want to log gradients only.
+            elif config.log_gradients:
+                # Compute the global norm of gradients and log it.
+                global_norm = self._get_global_norm_function()(
+                    grad_dict_to_clip,
+                )
                 self.metrics.log_value(
                     key=(module_id, f"gradients_{optimizer_name}_global_norm"),
                     value=global_norm,
                     window=1,
                 )
-            postprocessed_grads.update(grad_dict_to_clip)
 
         return postprocessed_grads
 
@@ -1564,6 +1576,11 @@ class Learner(Checkpointable):
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
+
+    @staticmethod
+    @abc.abstractmethod
+    def _get_global_norm_function() -> Callable:
+        """Returns the global norm function to use, given the framework."""
 
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         """Logs this iteration's steps trained, based on given `batch`."""
