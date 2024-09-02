@@ -170,10 +170,10 @@ class CompiledTask:
 
     def __str__(self) -> str:
         return f"""
-Node: {self.dag_node}
-Arguments: {self.args}
-Output: {self.output_channel}
-"""
+            Node: {self.dag_node}
+            Arguments: {self.args}
+            Output: {self.output_channel}
+            """
 
 
 @DeveloperAPI
@@ -632,6 +632,10 @@ class CompiledDAG:
         self._max_execution_index: int = -1
         # execution_index -> [channel_index -> result]
         self._result_buffer: List[List[Any]] = []
+        # For backward compatibility, execute and execute_async return a list of
+        # CompiledDAGRef and CompiledDAGFuture respectively only when the output
+        # node has multiple_return_refs set to True.
+        self._multiple_return_refs = False
 
         def _get_or_create_local_actor_handle():
             """
@@ -674,6 +678,10 @@ class CompiledDAG:
     def has_single_output(self):
         return self._has_single_output
 
+    @property
+    def multiple_return_refs(self):
+        return self._multiple_return_refs
+
     def get_id(self) -> str:
         """
         Get the unique ID of the compiled DAG.
@@ -688,6 +696,9 @@ class CompiledDAG:
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx
         self.counter += 1
+
+        if isinstance(node, ray.dag.MultiOutputNode):
+            self._multiple_return_refs = node.multiple_return_refs
 
     def _preprocess(self) -> None:
         """Before compiling, preprocess the DAG to build an index from task to
@@ -1546,9 +1557,9 @@ class CompiledDAG:
     def _execute_until(
         self,
         execution_index: int,
-        channel_index: int,
+        channel_index: Optional[int] = None,
         timeout: Optional[float] = None,
-    ) -> Any:
+    ) -> List[Any]:
         """Repeatedly execute this DAG until the given execution index,
         and buffer all results up to that index. If the DAG has already
         been executed up to the given index, just return the result
@@ -1558,14 +1569,16 @@ class CompiledDAG:
             execution_index: The execution index to execute until.
             channel_index: The index of the output channel to get the result from.
                 Channel indexing is consistent with the order of
-                self.dag_output_channels.
+                self.dag_output_channels. None means wrapping results from all output
+                channels into a single list.
             timeout: The maximum time in seconds to wait for the result.
                 None means using default timeout (DAGContext.retrieval_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
 
         Returns:
-            The execution result corresponding to the given execution index.
+            The execution result corresponding to the given execution index and
+            channel index.
 
         TODO(rui): catch the case that user holds onto the CompiledDAGRefs
         """
@@ -1596,8 +1609,12 @@ class CompiledDAG:
 
         # CompiledDAGRef guarantees that the same execution index and
         # channel index combination will not be requested multiple times
-        result = self._result_buffer[execution_index][channel_index]
-        self._result_buffer[execution_index][channel_index] = None
+        if channel_index is None:
+            result = self._result_buffer[execution_index]
+            self._result_buffer[execution_index] = None
+        else:
+            result = [self._result_buffer[execution_index][channel_index]]
+            self._result_buffer[execution_index][channel_index] = None
         return result
 
     def execute(
@@ -1638,13 +1655,19 @@ class CompiledDAG:
 
         self._dag_submitter.write(inp, self._execution_timeout)
 
-        refs = []
-        for channel_index in range(len(self.dag_output_channels)):
-            refs.append(CompiledDAGRef(self, channel_index, self._execution_index))
+        # MultiOutputNode is used to wrap outputs and client specified that a list of
+        # CompiledDAGRef, with each item corresponding to an output fetched from each
+        # output channel, should be returned.
+        if not self._has_single_output and self._multiple_return_refs:
+            ref = [
+                CompiledDAGRef(self, self._execution_index, channel_index)
+                for channel_index in range(len(self.dag_output_channels))
+            ]
+        else:
+            ref = CompiledDAGRef(self, self._execution_index)
 
         self._execution_index += 1
-
-        return refs[0] if self._has_single_output else refs
+        return ref
 
     def _check_inputs(self, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> None:
         """
@@ -1666,8 +1689,28 @@ class CompiledDAG:
                 )
 
     def _cache_execution_results(
-        self, execution_index: int, channel_index: int, result: Any
-    ):
+        self,
+        execution_index: int,
+        result: Any,
+        channel_index: Optional[int] = None,
+    ) -> List[Any]:
+        """Cache intermediate execution results in self._result_buffer. Mark the result
+        corresponding to the given execution index and channel index as None upon return
+        to avoid caller from fetching the result more than once.
+
+        Args:
+            execution_index: The execution index corresponding to the result.
+            result: The result to be cached. This is obtained from awaiting a future
+                from CompiledDAGFuture.
+            channel_index: The index of the output channel corresponding to the result.
+                Channel indexing is consistent with the order of
+                self.dag_output_channels. None means that the result wraps outputs from
+                all output channels.
+
+        Returns:
+            The execution result corresponding to the given execution index and channel
+            index.
+        """
         # Allocate placeholders for execution steps in between
         # the last and current execution
         for _ in range(len(self._result_buffer), execution_index + 1):
@@ -1675,8 +1718,13 @@ class CompiledDAG:
         # Only cache the result if it has not been cached
         if self._result_buffer[execution_index] is None:
             self._result_buffer[execution_index] = result
-        return_val = self._result_buffer[execution_index][channel_index]
-        self._result_buffer[execution_index][channel_index] = None
+
+        if channel_index is None:
+            return_val = self._result_buffer[execution_index]
+            self._result_buffer[execution_index] = None
+        else:
+            return_val = [self._result_buffer[execution_index][channel_index]]
+            self._result_buffer[execution_index][channel_index] = None
         return return_val
 
     async def execute_async(
@@ -1717,12 +1765,19 @@ class CompiledDAG:
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
 
-        futs = [
-            CompiledDAGFuture(self, self._execution_index, channel_index, fut)
-            for channel_index in range(len(self.dag_output_channels))
-        ]
+        # MultiOutputNode is used to wrap outputs and client specified that a list of
+        # CompiledDAGFuture, with each item corresponding to an output fetched from
+        # each output channel, should be returned.
+        if not self._has_single_output and self._multiple_return_refs:
+            fut = [
+                CompiledDAGFuture(self, self._execution_index, fut, channel_index)
+                for channel_index in range(len(self.dag_output_channels))
+            ]
+        else:
+            fut = CompiledDAGFuture(self, self._execution_index, fut)
+
         self._execution_index += 1
-        return futs[0] if self._has_single_output else futs
+        return fut
 
     def teardown(self):
         """Teardown and cancel all actor tasks for this DAG. After this

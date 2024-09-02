@@ -45,8 +45,8 @@ class CompiledDAGRef:
     def __init__(
         self,
         dag: "ray.experimental.CompiledDAG",
-        channel_index: int,
         execution_index: int,
+        channel_index: Optional[int] = None,
     ):
         """
         Args:
@@ -54,10 +54,15 @@ class CompiledDAGRef:
             execution_index: The index of the execution for the DAG.
                 A DAG can be executed multiple times, and execution index
                 indicates which execution this CompiledDAGRef corresponds to.
+            channel_index: The index of the DAG's output channel to fetch
+                the result from. A DAG can have multiple output channels, and
+                channel index indicates which channel this CompiledDAGRef
+                corresponds to. If channel index is not provided, this CompiledDAGRef
+                wraps the results from all output channels.
         """
         self._dag = dag
-        self.channel_index = channel_index
         self._execution_index = execution_index
+        self.channel_index = channel_index
         # Whether ray.get() was called on this CompiledDAGRef.
         self._ray_get_called = False
         self._dag_output_channels = dag.dag_output_channels
@@ -92,7 +97,10 @@ class CompiledDAGRef:
         return_vals = self._dag._execute_until(
             self._execution_index, self.channel_index, timeout
         )
-        return _process_return_vals([return_vals], True)
+        return _process_return_vals(
+            return_vals,
+            self._dag.has_single_output or not self._dag.multiple_return_refs,
+        )
 
 
 @PublicAPI(stability="alpha")
@@ -115,13 +123,13 @@ class CompiledDAGFuture:
         self,
         dag: "ray.experimental.CompiledDAG",
         execution_index: int,
-        channel_index: int,
         fut: "asyncio.Future",
+        channel_index: Optional[int] = None,
     ):
         self._dag = dag
         self._execution_index = execution_index
-        self._channel_index = channel_index
         self._fut = fut
+        self._channel_index = channel_index
 
     def __str__(self):
         return (
@@ -139,20 +147,23 @@ class CompiledDAGFuture:
         raise ValueError("CompiledDAGFuture cannot be pickled.")
 
     def __await__(self):
-        result = None
+        return_vals = None
         if self._fut is not None:
             fut = self._fut
             self._fut = None
 
-            return_vals = yield from fut.__await__()
-            result = self._dag._cache_execution_results(
-                self._execution_index, self._channel_index, return_vals
+            result = yield from fut.__await__()
+            return_vals = self._dag._cache_execution_results(
+                self._execution_index, result, self._channel_index
             )
 
-        if result is None:
+        if return_vals is None:
             raise ValueError(
                 "CompiledDAGFuture can only be awaited upon once, and it has "
                 "already been awaited upon."
             )
 
-        return _process_return_vals([result], True)
+        return _process_return_vals(
+            return_vals,
+            self._dag.has_single_output or not self._dag.multiple_return_refs,
+        )
