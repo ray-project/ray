@@ -153,7 +153,7 @@ def clip_gradients(
         # We do want the coefficient to be in between 0.0 and 1.0, therefore
         # if the global_norm is smaller than the clip value, we use the clip value
         # as normalization constant.
-        device = gradients_dict.values()[0].device
+        device = list(gradients_dict.values())[0].device
         clip_coef = grad_clip / torch.maximum(
             torch.tensor(grad_clip).to(device), total_norm + 1e-6
         )
@@ -182,7 +182,7 @@ def compute_global_norm(gradients_dict: "ParamDict") -> TensorType:
     # If we have no grads, return zero.
     if len(gradients_dict) == 0:
         return torch.tensor(0.0)
-    device = gradients_dict.values()[0].device
+    device = list(gradients_dict.values())[0].device
 
     # Compute the global norm.
     total_norm = torch.norm(
