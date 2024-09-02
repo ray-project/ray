@@ -521,7 +521,7 @@ class ReproSession:
     def print_buildkite_command(self, skipped: bool = False):
         print("-" * 80)
         print(
-            "These are the commands you need to execute to fully reproduce " "the run"
+            "These are the commands you need to execute to fully reproduce the run"
         )
         print("-" * 80)
         print(self.env["BUILDKITE_COMMAND"])
@@ -597,7 +597,7 @@ def main(
     handler = logging.StreamHandler()
     handler.setFormatter(
         logging.Formatter(
-            "[%(levelname)s %(asctime)s] " "%(filename)s: %(lineno)d  " "%(message)s"
+            "[%(levelname)s %(asctime)s] %(filename)s: %(lineno)d  %(message)s"
         )
     )
     logger.addHandler(handler)

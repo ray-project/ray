@@ -148,7 +148,7 @@ def test_multiple_returns_not_supported(ray_start_regular):
 
     with pytest.raises(
         ValueError,
-        match="Compiled DAGs only supports actor methods with " "num_returns=1",
+        match="Compiled DAGs only supports actor methods with num_returns=1",
     ):
         dag.experimental_compile()
 

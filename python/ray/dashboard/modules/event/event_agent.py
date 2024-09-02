@@ -78,7 +78,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 self.total_request_sent += 1
                 break
             except Exception:
-                logger.exception("Report event failed, reconnect to the " "dashboard.")
+                logger.exception("Report event failed, reconnect to the dashboard.")
                 self._stub = await self._connect_to_dashboard()
         else:
             data_str = str(data)

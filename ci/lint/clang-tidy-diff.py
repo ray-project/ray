@@ -156,7 +156,7 @@ def main():
     )
     parser.add_argument(
         "-checks",
-        help="checks filter, when not specified, use clang-tidy " "default",
+        help="checks filter, when not specified, use clang-tidy default",
         default="",
     )
     parser.add_argument(
@@ -175,14 +175,14 @@ def main():
         dest="extra_arg",
         action="append",
         default=[],
-        help="Additional argument to append to the compiler " "command line.",
+        help="Additional argument to append to the compiler command line.",
     )
     parser.add_argument(
         "-extra-arg-before",
         dest="extra_arg_before",
         action="append",
         default=[],
-        help="Additional argument to prepend to the compiler " "command line.",
+        help="Additional argument to prepend to the compiler command line.",
     )
     parser.add_argument(
         "-quiet",

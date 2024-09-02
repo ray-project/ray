@@ -886,7 +886,7 @@ class TestAsyncAPI:
                 job_manager, tmp_dir, start_signal_actor=start_signal_actor
             )
             assert not os.path.exists(pid_file), (
-                "driver subprocess should NOT be running while job is " "still PENDING."
+                "driver subprocess should NOT be running while job is still PENDING."
             )
 
             assert job_manager.stop_job(job_id) is True
@@ -911,7 +911,7 @@ class TestAsyncAPI:
             )
 
             assert not os.path.exists(pid_file), (
-                "driver subprocess should NOT be running while job is " "still PENDING."
+                "driver subprocess should NOT be running while job is still PENDING."
             )
 
             actor = job_manager._get_actor_for_job(job_id)

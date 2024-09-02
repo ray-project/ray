@@ -192,7 +192,7 @@ class TestSpecs(unittest.TestCase):
                 tensor_type = tensor_types[tensor_fw]
 
                 print(
-                    "\nTesting.." "\nspec_fw: ",
+                    "\nTesting..\nspec_fw: ",
                     spec_fw,
                     "\ntensor_fw: ",
                     tensor_fw,

@@ -173,7 +173,7 @@ DATA_GRAFANA_PANELS = [
         id=19,
         title="Input Blocks Processed by Tasks",
         description=(
-            "Number of input blocks that operator's tasks " "have finished processing."
+            "Number of input blocks that operator's tasks have finished processing."
         ),
         unit="blocks",
         targets=[
