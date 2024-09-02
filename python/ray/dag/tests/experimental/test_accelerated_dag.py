@@ -114,14 +114,6 @@ class Actor:
     def return_two_from_three(self, x):
         return x, x + 1, x + 2
 
-    @ray.method(num_returns=2)
-    def return_two_but_raise_exception(self, x):
-        raise RuntimeError
-        return 1, 2
-
-    def get_events(self):
-        return getattr(self, "__ray_adag_events", [])
-
 
 @ray.remote
 class Collector:
@@ -200,8 +192,7 @@ def test_two_returns_second(ray_start_regular):
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("single_fetch", [True, False])
-def test_two_returns_one_reader(ray_start_regular, single_fetch):
+def test_two_returns_one_reader(ray_start_regular):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
@@ -212,20 +203,13 @@ def test_two_returns_one_reader(ray_start_regular, single_fetch):
 
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
-        refs = compiled_dag.execute(1)
-        if single_fetch:
-            for i, ref in enumerate(refs):
-                res = ray.get(ref)
-                assert res == i + 1
-        else:
-            res = ray.get(refs)
-            assert res == [1, 2]
+        res = ray.get(compiled_dag.execute(1))
+        assert res == [1, 2]
 
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("single_fetch", [True, False])
-def test_two_returns_two_readers(ray_start_regular, single_fetch):
+def test_two_returns_two_readers(ray_start_regular):
     a = Actor.remote(0)
     b = Actor.remote(0)
     c = Actor.remote(0)
@@ -237,20 +221,13 @@ def test_two_returns_two_readers(ray_start_regular, single_fetch):
 
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
-        refs = compiled_dag.execute(1)
-        if single_fetch:
-            for i, ref in enumerate(refs):
-                res = ray.get(ref)
-                assert res == i + 1
-        else:
-            res = ray.get(refs)
-            assert res == [1, 2]
+        res = ray.get(compiled_dag.execute(1))
+        assert res == [1, 2]
 
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("single_fetch", [True, False])
-def test_inc_two_returns(ray_start_regular, single_fetch):
+def test_inc_two_returns(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:
         o1, o2 = a.inc_and_return_two.bind(i)
@@ -258,14 +235,8 @@ def test_inc_two_returns(ray_start_regular, single_fetch):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        refs = compiled_dag.execute(1)
-        if single_fetch:
-            for j, ref in enumerate(refs):
-                res = ray.get(ref)
-                assert res == i + j + 1
-        else:
-            res = ray.get(refs)
-            assert res == [i + 1, i + 2]
+        res = ray.get(compiled_dag.execute(1))
+        assert res == [i + 1, i + 2]
 
     compiled_dag.teardown()
 
@@ -280,29 +251,6 @@ def test_two_as_one_return(ray_start_regular):
     for _ in range(3):
         res = ray.get(compiled_dag.execute(1))
         assert res == (1, 2)
-
-    compiled_dag.teardown()
-
-
-def test_multi_output_get_exception(ray_start_regular):
-    a = Actor.remote(0)
-    b = Actor.remote(0)
-    with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        o3 = b.echo.bind(o1)
-        o4 = b.echo.bind(o2)
-        dag = MultiOutputNode([o3, o4])
-
-    compiled_dag = dag.experimental_compile()
-    refs = compiled_dag.execute(1)
-    refs.append(None)
-
-    with pytest.raises(
-        ValueError,
-        match="Invalid type of object refs. 'object_refs' must be a list of "
-        "CompiledDAGRefs if there is any CompiledDAGRef within it.",
-    ):
-        ray.get(refs)
 
     compiled_dag.teardown()
 
