@@ -563,7 +563,7 @@ class CompiledDAG:
             )
 
         self._enable_asyncio: bool = enable_asyncio
-        self._fut_queues: Optional[List[asyncio.queues.queue]] = None
+        self._fut_queue = asyncio.Queue()
         self._asyncio_max_queue_size: Optional[int] = asyncio_max_queue_size
         # TODO(rui): consider unify it with asyncio_max_queue_size
         self._max_buffered_results: Optional[int] = max_buffered_results
@@ -598,9 +598,6 @@ class CompiledDAG:
         self.dag_output_channels: Optional[List[ChannelInterface]] = None
         self._dag_submitter: Optional[WriterInterface] = None
         self._dag_output_fetcher: Optional[ReaderInterface] = None
-        self._dag_output_fetchers: Optional[
-            Dict[ChannelInterface, ReaderInterface]
-        ] = None
 
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
@@ -932,11 +929,7 @@ class CompiledDAG:
             self._preprocess()
 
         if self._dag_submitter is not None:
-            if self._enable_asyncio:
-                for fetcher in self._dag_output_fetchers:
-                    assert fetcher is not None
-            else:
-                assert self._dag_output_fetcher is not None
+            assert self._dag_output_fetcher is not None
             return
 
         frontier = [self.input_task_idx]
@@ -1165,20 +1158,16 @@ class CompiledDAG:
             self._dag_submitter = AwaitableBackgroundWriter(
                 self.dag_input_channel, self._asyncio_max_queue_size
             )
-            self._fut_queues = []
-            self._dag_output_fetchers = []
-            for _, chan in enumerate(self.dag_output_channels):
-                self._fut_queues.append(asyncio.Queue())
-                self._dag_output_fetchers.append(
-                    AwaitableBackgroundReader([chan], self._fut_queues[-1])
-                )
-                self._dag_output_fetchers[-1].start()
+            self._dag_output_fetcher = AwaitableBackgroundReader(
+                self.dag_output_channels,
+                self._fut_queue,
+            )
         else:
             self._dag_submitter = SynchronousWriter(self.dag_input_channel)
             self._dag_output_fetcher = SynchronousReader(self.dag_output_channels)
-            self._dag_output_fetcher.start()
 
         self._dag_submitter.start()
+        self._dag_output_fetcher.start()
 
     def _generate_dag_operation_graph_node(
         self,
@@ -1517,11 +1506,7 @@ class CompiledDAG:
                 logger.info("Tearing down compiled DAG")
 
                 outer._dag_submitter.close()
-                if outer._enable_asyncio:
-                    for fetcher in outer._dag_output_fetchers:
-                        fetcher.close()
-                else:
-                    outer._dag_output_fetcher.close()
+                outer._dag_output_fetcher.close()
 
                 for actor in outer.actor_refs:
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
@@ -1680,6 +1665,20 @@ class CompiledDAG:
                     f"must be called with kwarg `{kwarg}`"
                 )
 
+    def _cache_execution_results(
+        self, execution_index: int, channel_index: int, result: Any
+    ):
+        # Allocate placeholders for execution steps in between
+        # the last and current execution
+        for _ in range(len(self._result_buffer), execution_index + 1):
+            self._result_buffer.append(None)
+        # Only cache the result if it has not been cached
+        if self._result_buffer[execution_index] is None:
+            self._result_buffer[execution_index] = result
+        return_val = self._result_buffer[execution_index][channel_index]
+        self._result_buffer[execution_index][channel_index] = None
+        return return_val
+
     async def execute_async(
         self,
         *args,
@@ -1714,15 +1713,14 @@ class CompiledDAG:
                 inp = RayDAGArgs(args=args, kwargs=kwargs)
 
             await self._dag_submitter.write(inp)
-            # Allocate a future for each channel that the caller
-            # can use to get the result.
-            channel_futs = []
-            for channel_index in range(len(self.dag_output_channels)):
-                fut = asyncio.Future()
-                await self._fut_queues[channel_index].put(fut)
-                channel_futs.append(fut)
+            # Allocate a future that the caller can use to get the result.
+            fut = asyncio.Future()
+            await self._fut_queue.put(fut)
 
-        futs = [CompiledDAGFuture(self, self._execution_index, f) for f in channel_futs]
+        futs = [
+            CompiledDAGFuture(self, self._execution_index, channel_index, fut)
+            for channel_index in range(len(self.dag_output_channels))
+        ]
         self._execution_index += 1
         return futs[0] if len(futs) == 1 else futs
 

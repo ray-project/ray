@@ -115,10 +115,12 @@ class CompiledDAGFuture:
         self,
         dag: "ray.experimental.CompiledDAG",
         execution_index: int,
+        channel_index: int,
         fut: "asyncio.Future",
     ):
         self._dag = dag
         self._execution_index = execution_index
+        self._channel_index = channel_index
         self._fut = fut
 
     def __str__(self):
@@ -137,18 +139,20 @@ class CompiledDAGFuture:
         raise ValueError("CompiledDAGFuture cannot be pickled.")
 
     def __await__(self):
-        if self._fut is None:
+        result = None
+        if self._fut is not None:
+            fut = self._fut
+            self._fut = None
+
+            return_vals = yield from fut.__await__()
+            result = self._dag._cache_execution_results(
+                self._execution_index, self._channel_index, return_vals
+            )
+
+        if result is None:
             raise ValueError(
                 "CompiledDAGFuture can only be awaited upon once, and it has "
                 "already been awaited upon."
             )
 
-        # NOTE(swang): If the object is zero-copy deserialized, then it will
-        # stay in scope as long as this future is in scope. Therefore, we
-        # delete self._fut here before we return the result to the user.
-        fut = self._fut
-        self._fut = None
-
-        return_vals = yield from fut.__await__()
-
-        return _process_return_vals(return_vals, True)
+        return _process_return_vals([result], True)
