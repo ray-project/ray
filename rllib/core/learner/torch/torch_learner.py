@@ -176,7 +176,11 @@ class TorchLearner(Learner):
     def apply_gradients(self, gradients_dict: ParamDict) -> None:
         # Set the gradient of the parameters.
         for pid, grad in gradients_dict.items():
-            self._params[pid].grad = grad
+            if torch.isnan(grad).any():
+                logger.warning(
+                    f"Gradients {pid} contains `nan` values. Setting gradients to zero."
+                )
+            self._params[pid].grad = torch.nan_to_num(grad)
 
         # For each optimizer call its step function.
         for module_id, optimizer_names in self._module_optimizers.items():
