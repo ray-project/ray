@@ -540,7 +540,7 @@ class Learner(Checkpointable):
         """
         postprocessed_grads = {}
 
-        if config.grad_clip is None or not config.log_gradients:
+        if config.grad_clip is None and not config.log_gradients:
             postprocessed_grads.update(module_gradients_dict)
             return postprocessed_grads
 

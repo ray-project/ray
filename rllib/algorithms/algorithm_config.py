@@ -2865,6 +2865,7 @@ class AlgorithmConfig(_Config):
         min_time_s_per_iteration: Optional[float] = NotProvided,
         min_train_timesteps_per_iteration: Optional[int] = NotProvided,
         min_sample_timesteps_per_iteration: Optional[int] = NotProvided,
+        log_gradients: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's reporting settings.
 
@@ -2905,6 +2906,9 @@ class AlgorithmConfig(_Config):
                 sampling timestep count has not been reached, will perform n more
                 `training_step()` calls until the minimum timesteps have been
                 executed. Set to 0 or None for no minimum timesteps.
+            log_gradients: Log gradients to results. If this is `True` the global norm
+                of the gradients dictionariy for each optimizer is logged to results.
+                The default is `True`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2923,6 +2927,8 @@ class AlgorithmConfig(_Config):
             self.min_train_timesteps_per_iteration = min_train_timesteps_per_iteration
         if min_sample_timesteps_per_iteration is not NotProvided:
             self.min_sample_timesteps_per_iteration = min_sample_timesteps_per_iteration
+        if log_gradients is not NotProvided:
+            self.log_gradients = log_gradients
 
         return self
 
@@ -2962,7 +2968,6 @@ class AlgorithmConfig(_Config):
         logger_config: Optional[dict] = NotProvided,
         log_level: Optional[str] = NotProvided,
         log_sys_usage: Optional[bool] = NotProvided,
-        log_gradients: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
         _run_training_always_in_thread: Optional[bool] = NotProvided,
@@ -2981,9 +2986,6 @@ class AlgorithmConfig(_Config):
                 (this is also printed out once at startup at the INFO level).
             log_sys_usage: Log system resource metrics to results. This requires
                 `psutil` to be installed for sys stats, and `gputil` for GPU metrics.
-            log_gradients: Log gradients to results. If this is `True` the global norm
-                of the gradients dictionariy for each optimizer is logged to results.
-                The default is `True`.
             fake_sampler: Use fake (infinite speed) sampler. For testing only.
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials will have
@@ -3009,8 +3011,6 @@ class AlgorithmConfig(_Config):
             self.log_level = log_level
         if log_sys_usage is not NotProvided:
             self.log_sys_usage = log_sys_usage
-        if log_gradients is not NotProvided:
-            self.log_gradients = NotProvided
         if fake_sampler is not NotProvided:
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
