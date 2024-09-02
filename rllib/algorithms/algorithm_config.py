@@ -382,6 +382,13 @@ class AlgorithmConfig(_Config):
         # Simple logic for now: If None, use `train_batch_size`.
         self.train_batch_size_per_learner = None
         self.train_batch_size = 32  # @OldAPIStack
+
+        # These setting have been adopted from the original PPO batch settings:
+        # num_sgd_iter, minibatch_size, and shuffle_sequences.
+        self.num_epochs = 1
+        self.shuffle_batch_per_epoch = False
+        self.minibatch_size = None
+
         # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
         #  the main AlgorithmConfig. We should not require the user to provide those
         #  settings in both, the AlgorithmConfig (as property) AND the model config
@@ -2047,6 +2054,9 @@ class AlgorithmConfig(_Config):
         grad_clip_by: Optional[str] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
         train_batch_size_per_learner: Optional[int] = NotProvided,
+        num_epochs: Optional[int] = NotProvided,
+        shuffle_batch_per_epoch: Optional[bool] = NotProvided,
+        minibatch_size: Optional[int] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
@@ -2105,6 +2115,15 @@ class AlgorithmConfig(_Config):
                 stack, this setting should no longer be used. Instead, use
                 `train_batch_size_per_learner` (in combination with
                 `num_learners`).
+            num_epochs: The number of complete passes over the entire train batch (per
+                Learner). Each pass might be further split into n minibatches (if
+                `minibatch_size` provided).
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling will only take
+                place along the batch axis to not disturb any intact (episode)
+                trajectories.
+            minibatch_size: The size of minibatches to use to further split the train
+                batch into.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
@@ -2168,6 +2187,13 @@ class AlgorithmConfig(_Config):
             self.train_batch_size_per_learner = train_batch_size_per_learner
         if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
+        if num_epochs is not NotProvided:
+            self.num_epochs = num_epochs
+        if shuffle_batch_per_epoch is not NotProvided:
+            self.shuffle_batch_per_epoch = shuffle_batch_per_epoch
+        if minibatch_size is not NotProvided:
+            self.minibatch_size = minibatch_size
+
         if model is not NotProvided:
             self.model.update(model)
             if (

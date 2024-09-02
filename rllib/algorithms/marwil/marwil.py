@@ -398,7 +398,7 @@ class MARWIL(Algorithm):
             learner_results = self.learner_group.update_from_batch(
                 batch,
                 minibatch_size=self.config.train_batch_size_per_learner,
-                num_iters=self.config.dataset_num_iters_per_learner,
+                num_epochs=self.config.dataset_num_iters_per_learner,
             )
 
             # Log training results.

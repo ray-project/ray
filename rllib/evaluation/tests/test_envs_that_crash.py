@@ -109,7 +109,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                 recreate_failed_env_runners=True,
                 delay_between_env_runner_restarts_s=0,
             )
-            .training(train_batch_size=60, sgd_minibatch_size=60)
+            .training(train_batch_size=60, minibatch_size=60)
             .environment(
                 env=CartPoleCrashing,
                 env_config={

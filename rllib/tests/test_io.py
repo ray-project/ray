@@ -195,7 +195,7 @@ class AgentIOTest(unittest.TestCase):
         config = (
             PPOConfig()
             .environment("CartPole-v1")
-            .training(train_batch_size=98, sgd_minibatch_size=49)
+            .training(train_batch_size=98, minibatch_size=49)
             .evaluation(off_policy_estimation_methods={})
         )
 

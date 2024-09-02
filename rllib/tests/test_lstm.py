@@ -183,8 +183,8 @@ class TestRNNSequencing(unittest.TestCase):
             .env_runners(num_env_runners=0, rollout_fragment_length=10)
             .training(
                 train_batch_size=10,
-                sgd_minibatch_size=10,
-                num_sgd_iter=1,
+                minibatch_size=10,
+                num_epochs=1,
                 model={
                     "custom_model": "rnn",
                     "max_seq_len": 4,
@@ -254,8 +254,8 @@ class TestRNNSequencing(unittest.TestCase):
             .env_runners(num_env_runners=0, rollout_fragment_length=20)
             .training(
                 train_batch_size=20,
-                sgd_minibatch_size=10,
-                num_sgd_iter=1,
+                minibatch_size=10,
+                num_epochs=1,
                 model={
                     "custom_model": "rnn",
                     "max_seq_len": 4,

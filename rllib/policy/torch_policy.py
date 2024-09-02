@@ -549,7 +549,7 @@ class TorchPolicy(Policy):
         # Get the correct slice of the already loaded batch to use,
         # based on offset and batch size.
         device_batch_size = self.config.get(
-            "sgd_minibatch_size", self.config["train_batch_size"]
+            "minibatch_size", self.config["train_batch_size"]
         ) // len(self.devices)
 
         # Set Model to train mode.

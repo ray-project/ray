@@ -221,13 +221,9 @@ class LearnerGroup(Checkpointable):
         timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         return_state: bool = False,
-        # TODO (sven): Deprecate the following args. They should be extracted from the
-        #  self.config of those specific algorithms that actually require these
-        #  settings.
+        num_epochs: int = 1,
+        shuffle_batch_per_epoch: bool = False,
         minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        # Already deprecated args.
-        reduce_fn=DEPRECATED_VALUE,
         # User kwargs.
         **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
@@ -261,24 +257,13 @@ class LearnerGroup(Checkpointable):
             results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
-        if reduce_fn != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="LearnerGroup.update_from_batch(reduce_fn=..)",
-                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
-                " API in your custom Learner methods for logging and time-reducing any "
-                "custom metrics. The central `MetricsLogger` instance is available "
-                "under `self.metrics` within your custom Learner.",
-                error=True,
-            )
         return self._update(
             batch=batch,
             timesteps=timesteps,
             async_update=async_update,
             return_state=return_state,
             minibatch_size=minibatch_size,
-            num_iters=num_iters,
+            num_epochs=num_epochs,
             **kwargs,
         )
 
@@ -289,13 +274,9 @@ class LearnerGroup(Checkpointable):
         timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         return_state: bool = False,
-        # TODO (sven): Deprecate the following args. They should be extracted from the
-        #  self.config of those specific algorithms that actually require these
-        #  settings.
+        num_epochs: int = 1,
+        shuffle_batch_per_epoch: bool = False,
         minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        # Already deprecated args.
-        reduce_fn=DEPRECATED_VALUE,
         # User kwargs.
         **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
@@ -329,25 +310,13 @@ class LearnerGroup(Checkpointable):
             results are reduced, a list of dictionaries of the reduced results from each
             call to async_update that is ready.
         """
-        if reduce_fn != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="LearnerGroup.update_from_episodes(reduce_fn=..)",
-                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
-                " API in your custom Learner methods for logging and time-reducing any "
-                "custom metrics. The central `MetricsLogger` instance is available "
-                "under `self.metrics` within your custom Learner.",
-                error=True,
-            )
-
         return self._update(
             episodes=episodes,
             timesteps=timesteps,
             async_update=async_update,
             return_state=return_state,
             minibatch_size=minibatch_size,
-            num_iters=num_iters,
+            num_epochs=num_epochs,
             **kwargs,
         )
 
@@ -359,10 +328,16 @@ class LearnerGroup(Checkpointable):
         timesteps: Optional[Dict[str, Any]] = None,
         async_update: bool = False,
         return_state: bool = False,
+        num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
+        shuffle_batch_per_epoch: bool = False,
+        # Deprecated args.
+        num_iters=DEPRECATED_VALUE,
         **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
+
+        if num_iters != DEPRECATED_VALUE:
+            deprecation_warning(old="num_iters", new="num_epochs", error=True)
 
         # Define function to be called on all Learner actors (or the local learner).
         def _learner_update(
@@ -372,7 +347,7 @@ class LearnerGroup(Checkpointable):
             _episodes_shard=None,
             _timesteps=None,
             _return_state=False,
-            _num_total_mini_batches=0,
+            _num_total_minibatches=0,
             **_kwargs,
         ):
             # If the batch shard is an `DataIterator` we have an offline
@@ -383,7 +358,7 @@ class LearnerGroup(Checkpointable):
                     iterator=_batch_shard,
                     timesteps=_timesteps,
                     minibatch_size=minibatch_size,
-                    num_iters=num_iters,
+                    num_epochs=num_epochs,
                     **_kwargs,
                 )
             elif _batch_shard is not None:
@@ -391,7 +366,7 @@ class LearnerGroup(Checkpointable):
                     batch=_batch_shard,
                     timesteps=_timesteps,
                     minibatch_size=minibatch_size,
-                    num_iters=num_iters,
+                    num_epochs=num_epochs,
                     **_kwargs,
                 )
             else:
@@ -399,8 +374,8 @@ class LearnerGroup(Checkpointable):
                     episodes=_episodes_shard,
                     timesteps=_timesteps,
                     minibatch_size=minibatch_size,
-                    num_iters=num_iters,
-                    num_total_mini_batches=_num_total_mini_batches,
+                    num_epochs=num_epochs,
+                    num_total_minibatches=_num_total_minibatches,
                     **_kwargs,
                 )
             if _return_state:
@@ -485,13 +460,13 @@ class LearnerGroup(Checkpointable):
                 from ray.data.iterator import DataIterator
 
                 if isinstance(episodes[0], DataIterator):
-                    num_total_mini_batches = 0
+                    num_total_minibatches = 0
                     partials = [
                         partial(
                             _learner_update,
                             _episodes_shard=episodes_shard,
                             _timesteps=timesteps,
-                            _num_total_mini_batches=num_total_mini_batches,
+                            _num_total_minibatches=num_total_minibatches,
                         )
                         for episodes_shard in episodes
                     ]
@@ -506,20 +481,20 @@ class LearnerGroup(Checkpointable):
                     # In the multi-agent case AND `minibatch_size` AND num_workers
                     # > 1, we compute a max iteration counter such that the different
                     # Learners will not go through a different number of iterations.
-                    num_total_mini_batches = 0
+                    num_total_minibatches = 0
                     if minibatch_size and len(self._workers) > 1:
-                        num_total_mini_batches = self._compute_num_total_mini_batches(
+                        num_total_minibatches = self._compute_num_total_minibatches(
                             episodes,
                             len(self._workers),
                             minibatch_size,
-                            num_iters,
+                            num_epochs,
                         )
                     partials = [
                         partial(
                             _learner_update,
                             _episodes_shard=eps_shard,
                             _timesteps=timesteps,
-                            _num_total_mini_batches=num_total_mini_batches,
+                            _num_total_minibatches=num_total_minibatches,
                         )
                         for eps_shard in eps_shards
                     ]
@@ -934,11 +909,11 @@ class LearnerGroup(Checkpointable):
             self.shutdown()
 
     @staticmethod
-    def _compute_num_total_mini_batches(
+    def _compute_num_total_minibatches(
         episodes,
         num_shards,
-        mini_batch_size,
-        num_iters,
+        minibatch_size,
+        num_epochs,
     ):
         # Count total number of timesteps per module ID.
         if isinstance(episodes[0], MultiAgentEpisode):
@@ -950,7 +925,7 @@ class LearnerGroup(Checkpointable):
         else:
             max_ts = sum(map(len, episodes))
 
-        return int((num_iters * max_ts) / (num_shards * mini_batch_size))
+        return int((num_epochs * max_ts) / (num_shards * minibatch_size))
 
     @Deprecated(new="LearnerGroup.update_from_batch(async=False)", error=False)
     def update(self, *args, **kwargs):

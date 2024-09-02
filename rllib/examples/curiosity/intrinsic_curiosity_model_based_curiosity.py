@@ -270,7 +270,7 @@ if __name__ == "__main__":
     # Set PPO-specific hyper-parameters.
     if args.algo == "PPO":
         base_config.training(
-            num_sgd_iter=6,
+            num_epochs=6,
             # Plug in the correct Learner class.
             learner_class=PPOTorchLearnerWithCuriosity,
             train_batch_size_per_learner=2000,

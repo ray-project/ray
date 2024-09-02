@@ -31,7 +31,7 @@ config = (
         lr=0.0003,
         lambda_=0.1,
         vf_clip_param=10.0,
-        num_sgd_iter=6,
+        num_epochs=6,
     )
     .rl_module(
         model_config_dict={

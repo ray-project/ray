@@ -73,7 +73,7 @@ class TestPPO(unittest.TestCase):
             )
             .env_runners(num_env_runners=0)
             .training(
-                num_sgd_iter=2,
+                num_epochs=2,
                 # Setup lr schedule for testing lr-scheduling correctness.
                 lr=[[0, 0.00001], [512, 0.0]],  # 512=4x128
                 # Setup `entropy_coeff` schedule for testing whether it's scheduled

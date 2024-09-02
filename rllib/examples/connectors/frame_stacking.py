@@ -212,8 +212,8 @@ if __name__ == "__main__":
     # PPO specific settings.
     if args.algo == "PPO":
         base_config.training(
-            num_sgd_iter=10,
-            mini_batch_size_per_learner=64,
+            num_epochs=10,
+            minibatch_size=64,
             lambda_=0.95,
             kl_coeff=0.5,
             clip_param=0.1,

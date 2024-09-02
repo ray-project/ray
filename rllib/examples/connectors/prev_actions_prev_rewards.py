@@ -141,7 +141,7 @@ if __name__ == "__main__":
         .environment("env")
         .env_runners(env_to_module_connector=_env_to_module)
         .training(
-            num_sgd_iter=6,
+            num_epochs=6,
             lr=0.0003,
             train_batch_size=4000,
             vf_loss_coeff=0.01,

@@ -130,6 +130,7 @@ class PPOConfig(AlgorithmConfig):
         self.lr = 5e-5
         self.rollout_fragment_length = "auto"
         self.train_batch_size = 4000
+        self.shuffle_batch_per_epoch = True
 
         # PPO specific settings:
         self.use_critic = True
@@ -138,11 +139,8 @@ class PPOConfig(AlgorithmConfig):
         self.use_kl_loss = True
         self.kl_coeff = 0.2
         self.kl_target = 0.01
-        self.sgd_minibatch_size = 128
-        # Simple logic for now: If None, use `train_batch_size`.
-        self.mini_batch_size_per_learner = None
-        self.num_sgd_iter = 30
-        self.shuffle_single_agent_batch = True
+        self.minibatch_size = 128
+        self.num_epochs = 30
         self.vf_loss_coeff = 1.0
         self.entropy_coeff = 0.0
         self.entropy_coeff_schedule = None
@@ -157,6 +155,7 @@ class PPOConfig(AlgorithmConfig):
         # fmt: on
 
         # Deprecated keys.
+        self.sgd_minibatch_size = DEPRECATED_VALUE
         self.vf_share_layers = DEPRECATED_VALUE
 
         self.exploration_config = {
@@ -217,10 +216,6 @@ class PPOConfig(AlgorithmConfig):
         use_kl_loss: Optional[bool] = NotProvided,
         kl_coeff: Optional[float] = NotProvided,
         kl_target: Optional[float] = NotProvided,
-        mini_batch_size_per_learner: Optional[int] = NotProvided,
-        sgd_minibatch_size: Optional[int] = NotProvided,
-        num_sgd_iter: Optional[int] = NotProvided,
-        shuffle_single_agent_batch: Optional[bool] = NotProvided,
         vf_loss_coeff: Optional[float] = NotProvided,
         entropy_coeff: Optional[float] = NotProvided,
         entropy_coeff_schedule: Optional[List[List[Union[int, float]]]] = NotProvided,
@@ -244,29 +239,6 @@ class PPOConfig(AlgorithmConfig):
             use_kl_loss: Whether to use the KL-term in the loss function.
             kl_coeff: Initial coefficient for KL divergence.
             kl_target: Target value for KL divergence.
-            mini_batch_size_per_learner: Only use if new API stack is enabled.
-                The mini batch size per Learner worker. This is the
-                batch size that each Learner worker's training batch (whose size is
-                `s`elf.train_batch_size_per_learner`) will be split into. For example,
-                if the train batch size per Learner worker is 4000 and the mini batch
-                size per Learner worker is 400, the train batch will be split into 10
-                equal sized chunks (or "mini batches"). Each such mini batch will be
-                used for one SGD update. Overall, the train batch on each Learner
-                worker will be traversed `self.num_sgd_iter` times. In the above
-                example, if `self.num_sgd_iter` is 5, we will altogether perform 50
-                (10x5) SGD updates per Learner update step.
-            sgd_minibatch_size: Total SGD batch size across all devices for SGD.
-                This defines the minibatch size within each epoch. Deprecated on the
-                new API stack (use `mini_batch_size_per_learner` instead).
-            num_sgd_iter: Number of SGD iterations in each outer loop (i.e., number of
-                epochs to execute per train batch).
-            shuffle_single_agent_batch: Whether to shuffle each single-agent batch once
-                before a new epoch (which consists of n x minibatches, where n is
-                `batch_size_per_learner` // `mini_batch_size_per_learner`). This should
-                be set to True in single-agent and independent multi-agent cases as it
-                ensures proper mixing of the samples before each batch epoch. Otherwise,
-                the sequence of minibatches iterated through is the same in each
-                iteration, possibly impacting learning.
             vf_loss_coeff: Coefficient of the value function loss. IMPORTANT: you must
                 tune this if you set vf_share_layers=True inside your model's config.
             entropy_coeff: The entropy coefficient (float) or entropy coefficient
@@ -301,14 +273,6 @@ class PPOConfig(AlgorithmConfig):
             self.kl_coeff = kl_coeff
         if kl_target is not NotProvided:
             self.kl_target = kl_target
-        if mini_batch_size_per_learner is not NotProvided:
-            self.mini_batch_size_per_learner = mini_batch_size_per_learner
-        if sgd_minibatch_size is not NotProvided:
-            self.sgd_minibatch_size = sgd_minibatch_size
-        if num_sgd_iter is not NotProvided:
-            self.num_sgd_iter = num_sgd_iter
-        if shuffle_single_agent_batch is not NotProvided:
-            self.shuffle_single_agent_batch = shuffle_single_agent_batch
         if vf_loss_coeff is not NotProvided:
             self.vf_loss_coeff = vf_loss_coeff
         if entropy_coeff is not NotProvided:
@@ -342,28 +306,28 @@ class PPOConfig(AlgorithmConfig):
         self.validate_train_batch_size_vs_rollout_fragment_length()
 
         # SGD minibatch size must be smaller than train_batch_size (b/c
-        # we subsample a batch of `sgd_minibatch_size` from the train-batch for
-        # each `num_sgd_iter`).
+        # we subsample a batch of `minibatch_size` from the train-batch for
+        # each `num_epochs`).
         if (
             not self.enable_rl_module_and_learner
-            and self.sgd_minibatch_size > self.train_batch_size
+            and self.minibatch_size > self.train_batch_size
         ):
             raise ValueError(
-                f"`sgd_minibatch_size` ({self.sgd_minibatch_size}) must be <= "
+                f"`minibatch_size` ({self.minibatch_size}) must be <= "
                 f"`train_batch_size` ({self.train_batch_size}). In PPO, the train batch"
-                f" will be split into {self.sgd_minibatch_size} chunks, each of which "
-                f"is iterated over (used for updating the policy) {self.num_sgd_iter} "
+                f" will be split into {self.minibatch_size} chunks, each of which "
+                f"is iterated over (used for updating the policy) {self.num_epochs} "
                 "times."
             )
         elif self.enable_rl_module_and_learner:
-            mbs = self.mini_batch_size_per_learner or self.sgd_minibatch_size
+            mbs = self.minibatch_size
             tbs = self.train_batch_size_per_learner or self.train_batch_size
             if isinstance(mbs, int) and isinstance(tbs, int) and mbs > tbs:
                 raise ValueError(
-                    f"`mini_batch_size_per_learner` ({mbs}) must be <= "
+                    f"`minibatch_size` ({mbs}) must be <= "
                     f"`train_batch_size_per_learner` ({tbs}). In PPO, the train batch"
                     f" will be split into {mbs} chunks, each of which is iterated over "
-                    f"(used for updating the policy) {self.num_sgd_iter} times."
+                    f"(used for updating the policy) {self.num_epochs} times."
                 )
 
         # Episodes may only be truncated (and passed into PPO's
@@ -495,11 +459,8 @@ class PPO(Algorithm):
                         self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
                     ),
                 },
-                minibatch_size=(
-                    self.config.mini_batch_size_per_learner
-                    or self.config.sgd_minibatch_size
-                ),
-                num_iters=self.config.num_sgd_iter,
+                minibatch_size=self.config.minibatch_size,
+                num_epochs=self.config.num_epochs,
             )
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
             self.metrics.log_dict(
@@ -565,14 +526,10 @@ class PPO(Algorithm):
 
         # Perform a train step on the collected batch.
         if self.config.enable_rl_module_and_learner:
-            mini_batch_size_per_learner = (
-                self.config.mini_batch_size_per_learner
-                or self.config.sgd_minibatch_size
-            )
             train_results = self.learner_group.update_from_batch(
                 batch=train_batch,
-                minibatch_size=mini_batch_size_per_learner,
-                num_iters=self.config.num_sgd_iter,
+                minibatch_size=self.config.minibatch_size,
+                num_epochs=self.config.num_epochs,
             )
 
         elif self.config.simple_optimizer:
