@@ -939,6 +939,82 @@ def test_dag_errors(ray_start_regular):
     compiled_dag.teardown()
 
 
+class TestDAGExceptionCompileMultipleTimes:
+    def test_compile_twice_with_teardown(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as i:
+            dag = a.echo.bind(i)
+        compiled_dag = dag.experimental_compile()
+        compiled_dag.teardown()
+        with pytest.raises(
+            ValueError,
+            match="It is not allowed to call `experimental_compile` on the same DAG "
+            "object multiple times no matter whether `teardown` is called or not. "
+            "Please reuse the existing compiled DAG or create a new one.",
+        ):
+            compiled_dag = dag.experimental_compile()
+
+    def test_compile_twice_without_teardown(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as i:
+            dag = a.echo.bind(i)
+        compiled_dag = dag.experimental_compile()
+        with pytest.raises(
+            ValueError,
+            match="It is not allowed to call `experimental_compile` on the same DAG "
+            "object multiple times no matter whether `teardown` is called or not. "
+            "Please reuse the existing compiled DAG or create a new one.",
+        ):
+            compiled_dag = dag.experimental_compile()
+        compiled_dag.teardown()
+
+    def test_compile_twice_with_multioutputnode(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as i:
+            dag = MultiOutputNode([a.echo.bind(i)])
+        compiled_dag = dag.experimental_compile()
+        compiled_dag.teardown()
+        with pytest.raises(
+            ValueError,
+            match="It is not allowed to call `experimental_compile` on the same DAG "
+            "object multiple times no matter whether `teardown` is called or not. "
+            "Please reuse the existing compiled DAG or create a new one.",
+        ):
+            compiled_dag = dag.experimental_compile()
+
+    def test_compile_twice_with_multioutputnode_without_teardown(
+        self, ray_start_regular
+    ):
+        a = Actor.remote(0)
+        with InputNode() as i:
+            dag = MultiOutputNode([a.echo.bind(i)])
+        compiled_dag = dag.experimental_compile()
+        with pytest.raises(
+            ValueError,
+            match="It is not allowed to call `experimental_compile` on the same DAG "
+            "object multiple times no matter whether `teardown` is called or not. "
+            "Please reuse the existing compiled DAG or create a new one.",
+        ):
+            compiled_dag = dag.experimental_compile()
+        compiled_dag.teardown()
+
+    def test_compile_twice_with_different_nodes(self, ray_start_regular):
+        a = Actor.remote(0)
+        b = Actor.remote(0)
+        with InputNode() as i:
+            branch1 = a.echo.bind(i)
+            branch2 = b.echo.bind(i)
+            dag = MultiOutputNode([branch1])
+        compiled_dag = dag.experimental_compile()
+        compiled_dag.teardown()
+        with pytest.raises(
+            ValueError,
+            match="The DAG was compiled more than once. The following two "
+            "nodes call `experimental_compile`: ",
+        ):
+            compiled_dag = branch2.experimental_compile()
+
+
 def test_exceed_max_buffered_results(ray_start_regular):
     a = Actor.remote(0)
     with InputNode() as i:

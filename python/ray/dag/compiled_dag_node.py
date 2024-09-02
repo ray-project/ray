@@ -745,7 +745,10 @@ class CompiledDAG:
                 task.dag_node, InputAttributeNode
             ):
                 continue
-            if len(task.downstream_task_idxs) == 0 and task.dag_node.is_output_node:
+            if (
+                len(task.downstream_task_idxs) == 0
+                and task.dag_node.is_adag_output_node
+            ):
                 assert self.output_task_idx is None, "More than one output node found"
                 self.output_task_idx = idx
 
