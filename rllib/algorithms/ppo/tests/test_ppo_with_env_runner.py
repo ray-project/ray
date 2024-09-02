@@ -93,7 +93,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        # TODO (Kourosh) Bring back "FrozenLake-v1"
+        # TODO (sven) Bring back "FrozenLake-v1"
         for env in [
             # "CliffWalking-v0",
             "CartPole-v1",

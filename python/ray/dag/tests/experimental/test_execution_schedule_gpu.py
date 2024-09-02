@@ -319,8 +319,8 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
     a_expected_schedule = [
         (0, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.READ),
         (1, _DAGNodeOperationType.COMPUTE),
         (1, _DAGNodeOperationType.WRITE),
     ]
@@ -335,8 +335,8 @@ def test_three_actors_with_nccl_2(ray_start_regular, monkeypatch):
     c_expected_schedule = [
         (0, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.WRITE),
         (1, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.WRITE),
         (1, _DAGNodeOperationType.COMPUTE),
         (1, _DAGNodeOperationType.WRITE),
     ]

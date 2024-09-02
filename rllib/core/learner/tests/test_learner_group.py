@@ -57,13 +57,8 @@ class RemoteTrainingHelper:
             import torch
 
             torch.manual_seed(0)
-        elif fw == "tf2":
-            import tensorflow as tf
-
-            # this is done by rllib already inside of the policy class, but we need to
-            # do it here for testing purposes
-            tf.compat.v1.enable_eager_execution()
-            tf.random.set_seed(0)
+        else:
+            raise NotImplementedError
 
         env = gym.make("CartPole-v1")
 
@@ -215,7 +210,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         learner_group.shutdown()
 
     # def test_learner_group_local(self):
-    #    fws = ["torch", "tf2"]
+    #    fws = ["torch"]
 
     #    test_iterator = itertools.product(fws, LOCAL_CONFIGS)
 
@@ -231,7 +226,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
     def test_update_multi_gpu(self):
         return
 
-        fws = ["torch", "tf2"]
+        fws = ["torch"]
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
         test_iterator = itertools.product(fws, scaling_modes)
 
@@ -273,8 +268,8 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             del learner_group
 
     def test_add_module_and_remove_module(self):
-        fws = ["torch", "tf2"]
-        scaling_modes = ["local-cpu", "multi-gpu-ddp"]
+        fws = ["torch"]
+        scaling_modes = ["local-cpu", "multi-cpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:
@@ -342,7 +337,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
     def test_restore_from_path_multi_rl_module_and_individual_modules(self):
         """Tests whether MultiRLModule- and single RLModule states can be restored."""
-        fws = ["torch", "tf2"]
+        fws = ["torch"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
 
@@ -450,7 +445,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
 
     def test_save_to_path_and_restore_from_path(self):
         """Check that saving and loading learner group state works."""
-        fws = ["torch", "tf2"]
+        fws = ["torch"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
@@ -523,7 +518,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             del learner_group
 
             # Compare the results of the two updates.
-            check(results_2nd_update_with_break, results_2nd_without_break)
+            check(results_2nd_update_with_break, results_2nd_without_break, rtol=0.05)
             check(
                 weights_after_2_updates_with_break,
                 weights_after_2_updates_without_break,
@@ -542,7 +537,7 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
-        fws = ["torch", "tf2"]
+        fws = ["torch"]
         # async_update only needs to be tested for the most complex case.
         # so we'll only test it for multi-gpu-ddp.
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]

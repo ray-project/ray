@@ -7,7 +7,6 @@ import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
-from ray.rllib.utils.test_utils import framework_iterator
 
 
 class EpisodeAndSampleCallbacks(DefaultCallbacks):
@@ -82,16 +81,15 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(EpisodeAndSampleCallbacks)
             .training(train_batch_size=50, sgd_minibatch_size=50, num_sgd_iter=1)
         )
-        for _ in framework_iterator(config, frameworks=("tf", "torch")):
-            algo = config.build()
-            algo.train()
-            algo.train()
-            callback_obj = algo.env_runner.callbacks
-            self.assertGreater(callback_obj.counts["sample"], 0)
-            self.assertGreater(callback_obj.counts["start"], 0)
-            self.assertGreater(callback_obj.counts["end"], 0)
-            self.assertGreater(callback_obj.counts["step"], 0)
-            algo.stop()
+        algo = config.build()
+        algo.train()
+        algo.train()
+        callback_obj = algo.env_runner.callbacks
+        self.assertGreater(callback_obj.counts["sample"], 0)
+        self.assertGreater(callback_obj.counts["start"], 0)
+        self.assertGreater(callback_obj.counts["end"], 0)
+        self.assertGreater(callback_obj.counts["step"], 0)
+        algo.stop()
 
     def test_on_sub_environment_created(self):
 
@@ -108,24 +106,23 @@ class TestCallbacks(unittest.TestCase):
         ):
             config.callbacks(callbacks)
 
-            for _ in framework_iterator(config, frameworks=("tf", "torch")):
-                algo = config.build()
-                # Fake the counter on the local worker (doesn't have an env) and
-                # set it to -1 so the below `foreach_worker()` won't fail.
-                algo.env_runner.sum_sub_env_vector_indices = -1
+            algo = config.build()
+            # Fake the counter on the local worker (doesn't have an env) and
+            # set it to -1 so the below `foreach_worker()` won't fail.
+            algo.env_runner.sum_sub_env_vector_indices = -1
 
-                # Get sub-env vector index sums from the 2 remote workers:
-                sum_sub_env_vector_indices = algo.env_runner_group.foreach_worker(
-                    lambda w: w.sum_sub_env_vector_indices
-                )
-                # Local worker has no environments -> Expect the -1 special
-                # value returned by the above lambda.
-                self.assertTrue(sum_sub_env_vector_indices[0] == -1)
-                # Both remote workers (index 1 and 2) have a vector index counter
-                # of 6 (sum of vector indices: 0 + 1 + 2 + 3).
-                self.assertTrue(sum_sub_env_vector_indices[1] == 6)
-                self.assertTrue(sum_sub_env_vector_indices[2] == 6)
-                algo.stop()
+            # Get sub-env vector index sums from the 2 remote workers:
+            sum_sub_env_vector_indices = algo.env_runner_group.foreach_worker(
+                lambda w: w.sum_sub_env_vector_indices
+            )
+            # Local worker has no environments -> Expect the -1 special
+            # value returned by the above lambda.
+            self.assertTrue(sum_sub_env_vector_indices[0] == -1)
+            # Both remote workers (index 1 and 2) have a vector index counter
+            # of 6 (sum of vector indices: 0 + 1 + 2 + 3).
+            self.assertTrue(sum_sub_env_vector_indices[1] == 6)
+            self.assertTrue(sum_sub_env_vector_indices[2] == 6)
+            algo.stop()
 
     def test_on_sub_environment_created_with_remote_envs(self):
         config = (
@@ -148,24 +145,23 @@ class TestCallbacks(unittest.TestCase):
         ):
             config.callbacks(callbacks)
 
-            for _ in framework_iterator(config, frameworks=("tf", "torch")):
-                algo = config.build()
-                # Fake the counter on the local worker (doesn't have an env) and
-                # set it to -1 so the below `foreach_worker()` won't fail.
-                algo.env_runner.sum_sub_env_vector_indices = -1
+            algo = config.build()
+            # Fake the counter on the local worker (doesn't have an env) and
+            # set it to -1 so the below `foreach_worker()` won't fail.
+            algo.env_runner.sum_sub_env_vector_indices = -1
 
-                # Get sub-env vector index sums from the 2 remote workers:
-                sum_sub_env_vector_indices = algo.env_runner_group.foreach_worker(
-                    lambda w: w.sum_sub_env_vector_indices
-                )
-                # Local worker has no environments -> Expect the -1 special
-                # value returned by the above lambda.
-                self.assertTrue(sum_sub_env_vector_indices[0] == -1)
-                # Both remote workers (index 1 and 2) have a vector index counter
-                # of 6 (sum of vector indices: 0 + 1 + 2 + 3).
-                self.assertTrue(sum_sub_env_vector_indices[1] == 6)
-                self.assertTrue(sum_sub_env_vector_indices[2] == 6)
-                algo.stop()
+            # Get sub-env vector index sums from the 2 remote workers:
+            sum_sub_env_vector_indices = algo.env_runner_group.foreach_worker(
+                lambda w: w.sum_sub_env_vector_indices
+            )
+            # Local worker has no environments -> Expect the -1 special
+            # value returned by the above lambda.
+            self.assertTrue(sum_sub_env_vector_indices[0] == -1)
+            # Both remote workers (index 1 and 2) have a vector index counter
+            # of 6 (sum of vector indices: 0 + 1 + 2 + 3).
+            self.assertTrue(sum_sub_env_vector_indices[1] == 6)
+            self.assertTrue(sum_sub_env_vector_indices[2] == 6)
+            algo.stop()
 
     def test_on_episode_created(self):
         # 1000 steps sampled (2.5 episodes on each sub-environment) before training
