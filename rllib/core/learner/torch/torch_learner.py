@@ -179,9 +179,7 @@ class TorchLearner(Learner):
             # If updates should not be skipped turn `nan` gradients to zero.
             if torch.isnan(grad).any():
                 # Warn the user about `nan` gradients.1
-                logger.warning(
-                    f"Gradients {pid} contain `nan` values."
-                )
+                logger.warning(f"Gradients {pid} contain `nan` values.")
                 # If updates should be skipped, do not step the optimizer and return.
                 if self.config.torch_skip_nan_gradients:
                     logger.warning(
