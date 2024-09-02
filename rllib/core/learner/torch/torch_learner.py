@@ -105,6 +105,10 @@ class TorchLearner(Learner):
             self._grad_scalers = defaultdict(
                 lambda: self.config._torch_grad_scaler_class()
             )
+        self._lr_schedulers = {}
+        self._lr_scheduler_classes = None
+        if self.config._torch_lr_scheduler_classes:
+            self._lr_scheduler_classes = self.config._torch_lr_scheduler_classes
 
     @OverrideToImplementCustomLogic
     @override(Learner)
@@ -182,6 +186,25 @@ class TorchLearner(Learner):
         for module_id, optimizer_names in self._module_optimizers.items():
             for optimizer_name in optimizer_names:
                 optim = self.get_optimizer(module_id, optimizer_name)
+                # If we have learning rate schedulers for a module add them, if
+                # necessary.
+                if self._lr_scheduler_classes is not None:
+                    if module_id not in self._lr_schedulers:
+                        # Set for each module and optimizer a scheduler.
+                        self._lr_schedulers[module_id] = {optimizer_name: []}
+                        # If the classes are in a dictionary each module might have
+                        # a different set of schedulers.
+                        if isinstance(self._lr_scheduler_classes, dict):
+                            scheduler_classes = self._lr_scheduler_classes[module_id]
+                        # Else, each module has the same learning rate schedulers.
+                        else:
+                            scheduler_classes = self._lr_scheduler_classes
+                        # Initialize and add the schedulers.
+                        for scheduler_class in scheduler_classes:
+                            self._lr_schedulers[module_id][optimizer_name].append(
+                                scheduler_class(optim)
+                            )
+
                 # Step through the scaler (unscales gradients, if applicable).
                 if self._grad_scalers is not None:
                     scaler = self._grad_scalers[module_id]
@@ -200,6 +223,11 @@ class TorchLearner(Learner):
                     for param in group["params"]
                 ):
                     optim.step()
+
+                    # If the module uses learning rate schedulers, step them here.
+                    if module_id in self._lr_schedulers:
+                        for scheduler in self._lr_schedulers[module_id][optimizer_name]:
+                            scheduler.step()
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
