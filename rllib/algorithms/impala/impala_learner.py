@@ -11,6 +11,8 @@ import ray
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.connectors.common import AddStatesFromEpisodesToBatch
+from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -65,6 +67,10 @@ class IMPALALearner(Learner):
         # slots to mask out).
         if self.config.add_default_connectors_to_learner_pipeline:
             self._learner_connector.prepend(AddOneTsToEpisodesAndTruncate())
+            self._learner_connector.insert_after(
+                AddStatesFromEpisodesToBatch,
+                AddVTraceSeqLensNoRNN,
+            )
 
         # Create and start the GPU-loader thread. It picks up train-ready batches from
         # the "GPU-loader queue" and loads them to the GPU, then places the GPU batches
@@ -287,3 +293,23 @@ class _LearnerThread(threading.Thread):
             self._out_queue.put(copy.deepcopy(results))
 
             self.metrics.log_value(QUEUE_SIZE_RESULTS_QUEUE, self._out_queue.qsize())
+
+
+class AddVTraceSeqLensNoRNN(ConnectorV2):
+    def __init__(
+        self,
+        input_observation_space=None,
+        input_action_space=None,
+        *,
+        rollout_fragment_length: int,
+        **kwargs,
+    ):
+        super().__init__(input_observation_space, input_action_space, **kwargs)
+        self._rollout_fragment_length = rollout_fragment_length
+
+    @override(ConnectorV2)
+    def __call__(self, *, rl_module, batch, episodes):
+        if Columns.SEQ_LENS not in batch:
+            pass
+            TODO  # Continue implementing here
+        return batch

@@ -98,6 +98,7 @@ class APPOConfig(IMPALAConfig):
         self.use_kl_loss = False
         self.kl_coeff = 1.0
         self.kl_target = 0.01
+        #self.shuffle_batch_per_epoch = True
 
         # Override some of IMPALAConfig's default values with APPO-specific values.
         self.num_env_runners = 2

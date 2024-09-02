@@ -483,7 +483,10 @@ class SampleBatch(dict):
             permutation = np.random.permutation(len(self[SampleBatch.SEQ_LENS]))
 
         self_as_dict = dict(self)
+        infos = self_as_dict.pop(Columns.INFOS, None)
         shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
+        if infos is not None:
+            self_as_dict[Columns.INFOS] = [infos[i] for i in permutation]
 
         self.update(shuffled)
 

@@ -167,6 +167,7 @@ class IMPALAConfig(AlgorithmConfig):
         self._lr_vf = 0.0005  # @OldAPIstack
 
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
+        self.num_learners = 1
         self.rollout_fragment_length = 50
         self.train_batch_size = 500  # @OldAPIstack
         self.train_batch_size_per_learner = 500
