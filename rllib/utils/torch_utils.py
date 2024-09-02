@@ -167,6 +167,7 @@ def clip_gradients(
         return total_norm
 
 
+@PublicAPI
 def compute_global_norm(gradients_dict: "ParamDict") -> TensorType:
     """Computes the global norm for a gradients dict.
 
