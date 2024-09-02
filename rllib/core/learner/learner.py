@@ -556,7 +556,14 @@ class Learner(Checkpointable):
                     grad_clip=config.grad_clip,
                     grad_clip_by=config.grad_clip_by,
                 )
-                if config.grad_clip_by == "global_norm":
+                if config.grad_clip_by == "global_norm" or config.log_gradients:
+                    # If we want to log gradients, but do not use the global norm
+                    # for clipping compute it here.
+                    if config.log_gradients and config.grad_clip_by != "global_norm":
+                        # Compute the global norm of gradients.
+                        global_norm = self._get_global_norm_function()(
+                            grad_dict_to_clip,
+                        )
                     self.metrics.log_value(
                         key=(module_id, f"gradients_{optimizer_name}_global_norm"),
                         value=global_norm,
