@@ -563,7 +563,7 @@ class CompiledDAG:
             )
 
         self._enable_asyncio: bool = enable_asyncio
-        self._fut_queues: Dict[ChannelInterface, asyncio.queues.queue] = {}
+        self._fut_queues: Optional[List[asyncio.queues.queue]] = None
         self._asyncio_max_queue_size: Optional[int] = asyncio_max_queue_size
         # TODO(rui): consider unify it with asyncio_max_queue_size
         self._max_buffered_results: Optional[int] = max_buffered_results
@@ -571,7 +571,7 @@ class CompiledDAG:
             self._max_buffered_results = ctx.max_buffered_results
         # Used to ensure that the future returned to the
         # caller corresponds to the correct DAG output. I.e.
-        # order of futures added to fut_queue should match the
+        # order of futures added to fut_queues should match the
         # order of inputs written to the DAG.
         self._dag_submission_lock = asyncio.Lock()
 
@@ -597,7 +597,10 @@ class CompiledDAG:
         self.dag_input_channel: Optional[ChannelInterface] = None
         self.dag_output_channels: Optional[List[ChannelInterface]] = None
         self._dag_submitter: Optional[WriterInterface] = None
-        self._dag_output_fetchers: Dict[ChannelInterface, ReaderInterface] = {}
+        self._dag_output_fetcher: Optional[ReaderInterface] = None
+        self._dag_output_fetchers: Optional[
+            Dict[ChannelInterface, ReaderInterface]
+        ] = None
 
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
@@ -630,8 +633,8 @@ class CompiledDAG:
         # The maximum index of finished executions.
         # All results with higher indexes have not been generated yet.
         self._max_execution_index: int = -1
-        # execution_index -> {channel -> result}
-        self._result_buffer: Dict[int, Dict[ChannelInterface, Any]] = defaultdict(dict)
+        # execution_index -> [channel_index -> result]
+        self._result_buffer: List[List[Any]] = []
 
         def _get_or_create_local_actor_handle():
             """
@@ -914,7 +917,7 @@ class CompiledDAG:
 
         This function is idempotent and will cache the previously allocated
         channels. After calling this function, _dag_submitter and
-        _dag_output_fetchers will be set and can be used to invoke and fetch
+        _dag_output_fetcher will be set and can be used to invoke and fetch
         outputs for the DAG.
         """
         from ray.dag import (
@@ -929,8 +932,11 @@ class CompiledDAG:
             self._preprocess()
 
         if self._dag_submitter is not None:
-            for fetcher in self._dag_output_fetchers.values():
-                assert fetcher is not None
+            if self._enable_asyncio:
+                for fetcher in self._dag_output_fetchers:
+                    assert fetcher is not None
+            else:
+                assert self._dag_output_fetcher is not None
             return
 
         frontier = [self.input_task_idx]
@@ -1159,19 +1165,20 @@ class CompiledDAG:
             self._dag_submitter = AwaitableBackgroundWriter(
                 self.dag_input_channel, self._asyncio_max_queue_size
             )
-            for chan in self.dag_output_channels:
-                self._fut_queues[chan] = asyncio.Queue()
-                self._dag_output_fetchers[chan] = AwaitableBackgroundReader(
-                    [chan], self._fut_queues[chan]
+            self._fut_queues = []
+            self._dag_output_fetchers = []
+            for _, chan in enumerate(self.dag_output_channels):
+                self._fut_queues.append(asyncio.Queue())
+                self._dag_output_fetchers.append(
+                    AwaitableBackgroundReader([chan], self._fut_queues[-1])
                 )
+                self._dag_output_fetchers[-1].start()
         else:
             self._dag_submitter = SynchronousWriter(self.dag_input_channel)
-            for chan in self.dag_output_channels:
-                self._dag_output_fetchers[chan] = SynchronousReader([chan])
+            self._dag_output_fetcher = SynchronousReader(self.dag_output_channels)
+            self._dag_output_fetcher.start()
 
         self._dag_submitter.start()
-        for chan in self.dag_output_channels:
-            self._dag_output_fetchers[chan].start()
 
     def _generate_dag_operation_graph_node(
         self,
@@ -1510,8 +1517,11 @@ class CompiledDAG:
                 logger.info("Tearing down compiled DAG")
 
                 outer._dag_submitter.close()
-                for fetcher in outer._dag_output_fetchers.values():
-                    fetcher.close()
+                if outer._enable_asyncio:
+                    for fetcher in outer._dag_output_fetchers:
+                        fetcher.close()
+                else:
+                    outer._dag_output_fetcher.close()
 
                 for actor in outer.actor_refs:
                     logger.info(f"Cancelling compiled worker on actor: {actor}")
@@ -1551,7 +1561,7 @@ class CompiledDAG:
     def _execute_until(
         self,
         execution_index: int,
-        channel: ChannelInterface,
+        channel_index: int,
         timeout: Optional[float] = None,
     ) -> Any:
         """Repeatedly execute this DAG until the given execution index,
@@ -1561,7 +1571,9 @@ class CompiledDAG:
 
         Args:
             execution_index: The execution index to execute until.
-            channel: The output channel to get the result from.
+            channel_index: The index of the output channel to get the result from.
+                Channel indexing is consistent with the order of
+                self.dag_output_channels.
             timeout: The maximum time in seconds to wait for the result.
                 None means using default timeout (DAGContext.retrieval_timeout),
                 0 means immediate timeout (immediate success or timeout without
@@ -1592,19 +1604,15 @@ class CompiledDAG:
 
             # Fetch results from each output channel up to execution_index and store
             # them separately to enable individual retrieval
-            for chan, fetcher in self._dag_output_fetchers.items():
-                self._result_buffer[self._max_execution_index][chan] = fetcher.read(
-                    timeout
-                )
-                if timeout != -1:
-                    timeout -= time.monotonic() - start_time
-                    timeout = max(timeout, 0)
+            self._result_buffer.append(self._dag_output_fetcher.read(timeout))
+            if timeout != -1:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
 
-        # CompiledDAGRef guarantees that the same execution index will not
-        # be requested multiple times
-        result = self._result_buffer[execution_index].pop(channel)
-        if len(self._result_buffer[execution_index]) == 0:
-            self._result_buffer.pop(execution_index)
+        # CompiledDAGRef guarantees that the same execution index and
+        # channel index combination will not be requested multiple times
+        result = self._result_buffer[execution_index][channel_index]
+        self._result_buffer[execution_index][channel_index] = None
         return result
 
     def execute(
@@ -1646,8 +1654,8 @@ class CompiledDAG:
         self._dag_submitter.write(inp, self._execution_timeout)
 
         refs = []
-        for chan in self.dag_output_channels:
-            refs.append(CompiledDAGRef(self, chan, self._execution_index))
+        for channel_index in range(len(self.dag_output_channels)):
+            refs.append(CompiledDAGRef(self, channel_index, self._execution_index))
 
         self._execution_index += 1
 
@@ -1708,16 +1716,13 @@ class CompiledDAG:
             await self._dag_submitter.write(inp)
             # Allocate a future for each channel that the caller
             # can use to get the result.
-            channel_futs = {}
-            for chan in self._dag_output_fetchers:
+            channel_futs = []
+            for channel_index in range(len(self.dag_output_channels)):
                 fut = asyncio.Future()
-                await self._fut_queues[chan].put(fut)
-                channel_futs[chan] = fut
+                await self._fut_queues[channel_index].put(fut)
+                channel_futs.append(fut)
 
-        futs = [
-            CompiledDAGFuture(self, self._execution_index, f)
-            for f in channel_futs.values()
-        ]
+        futs = [CompiledDAGFuture(self, self._execution_index, f) for f in channel_futs]
         self._execution_index += 1
         return futs[0] if len(futs) == 1 else futs
 
