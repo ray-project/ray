@@ -571,7 +571,7 @@ class CompiledDAG:
             self._max_buffered_results = ctx.max_buffered_results
         # Used to ensure that the future returned to the
         # caller corresponds to the correct DAG output. I.e.
-        # order of futures added to fut_queues should match the
+        # order of futures added to fut_queue should match the
         # order of inputs written to the DAG.
         self._dag_submission_lock = asyncio.Lock()
 
@@ -1644,7 +1644,7 @@ class CompiledDAG:
 
         self._execution_index += 1
 
-        return refs[0] if len(refs) == 1 else refs
+        return refs[0] if self._has_single_output else refs
 
     def _check_inputs(self, args: Tuple[Any, ...], kwargs: Dict[str, Any]) -> None:
         """
@@ -1722,7 +1722,7 @@ class CompiledDAG:
             for channel_index in range(len(self.dag_output_channels))
         ]
         self._execution_index += 1
-        return futs[0] if len(futs) == 1 else futs
+        return futs[0] if self._has_single_output else futs
 
     def teardown(self):
         """Teardown and cancel all actor tasks for this DAG. After this
