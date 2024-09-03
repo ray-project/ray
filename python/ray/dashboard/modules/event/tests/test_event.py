@@ -27,7 +27,10 @@ from ray._private.test_utils import (
 from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import event_pb2
-from ray.core.generated.export_api import export_event_pb2, export_submission_job_event_pb2
+from ray.core.generated.export_api import (
+    export_event_pb2,
+    export_submission_job_event_pb2,
+)
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.tests.conftest import *  # noqa
@@ -552,9 +555,12 @@ def test_export_event_logger(tmp_path):
     logger = get_export_event_logger(
         export_event_pb2.ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, str(tmp_path)
     )
-    event_data = export_submission_job_event_pb2.ExportSubmissionJobEventData(
+    ExportSubmissionJobEventData = (
+        export_submission_job_event_pb2.ExportSubmissionJobEventData
+    )
+    event_data = ExportSubmissionJobEventData(
         submission_job_id="submission_job_id0",
-        status=export_submission_job_event_pb2.ExportSubmissionJobEventData.JobStatus.RUNNING,
+        status=ExportSubmissionJobEventData.JobStatus.RUNNING,
         entrypoint="ls",
         metadata={},
     )

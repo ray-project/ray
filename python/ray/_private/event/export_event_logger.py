@@ -9,7 +9,9 @@ from typing import Union
 from datetime import datetime
 
 from ray.core.generated.export_api.export_event_pb2 import ExportEvent
-from ray.core.generated.export_api.export_submission_job_event_pb2 import ExportSubmissionJobEventData
+from ray.core.generated.export_api.export_submission_job_event_pb2 import (
+    ExportSubmissionJobEventData,
+)
 from ray._private.protobuf_compat import message_to_dict
 
 global_logger = logging.getLogger(__name__)
@@ -51,12 +53,9 @@ class ExportEventLoggerAdapter:
         event = ExportEvent()
         event.event_id = get_event_id()
         event.timestamp = int(datetime.now().timestamp())
-        if (
-            type(event_data)
-            is export_api_protos.export_task_event_pb2.ExportTaskEventData
-        ):
-            event.task_event_data.CopyFrom(event_data)
-            event.source_type = ExportEvent.SourceType.EXPORT_TASK
+        if type(event_data) is ExportSubmissionJobEventData:
+            event.submission_job_event_data.CopyFrom(event_data)
+            event.source_type = ExportEvent.SourceType.EXPORT_SUBMISSION_JOB
         else:
             raise TypeError(f"Invalid event_data type: {type(event_data)}")
         if event.source_type != self.source:
