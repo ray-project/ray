@@ -1,8 +1,4 @@
-import os
 import time
-import subprocess
-import tempfile
-from collections import deque
 from contextlib import contextmanager
 from typing import Any, Dict, Optional, Tuple, List
 
@@ -22,7 +18,6 @@ from ray_release.exception import (
 from ray_release.logger import logger
 from ray_release.signal_handling import register_handler, unregister_handler
 from ray_release.util import (
-    ERROR_LOG_PATTERNS,
     exponential_backoff_retry,
     anyscale_job_url,
     format_link,
@@ -278,10 +273,7 @@ class AnyscaleJobManager:
         """
         Obtain the last few logs
         """
-        return anyscale.job.get_logs(
-            id=self.cluster_manager.cluster_id,
-            max_lines=LAST_LOGS_LENGTH,
-        )
+        return anyscale.job.get_logs(id=self.job_id, max_lines=LAST_LOGS_LENGTH)
 
     def get_last_logs(self):
         if not self.job_id:
@@ -297,7 +289,7 @@ class AnyscaleJobManager:
             return None
 
         ret = exponential_backoff_retry(
-            self._get_ray_logs(),
+            self._get_ray_logs,
             retry_exceptions=Exception,
             initial_retry_delay_s=30,
             max_retries=3,
