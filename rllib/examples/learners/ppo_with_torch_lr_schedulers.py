@@ -126,7 +126,8 @@ if __name__ == "__main__":
                     factor=args.lr_const_factor,
                     total_iters=args.lr_const_iters,
                 ),
-                # Decays the learning rate after each gradients step by `args.lr_exp_decay`.
+                # Decays the learning rate after each gradients step by
+                # `args.lr_exp_decay`.
                 functools.partial(
                     torch.optim.lr_scheduler.ExponentialLR, gamma=args.lr_exp_decay
                 ),
