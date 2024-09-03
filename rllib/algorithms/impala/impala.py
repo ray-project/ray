@@ -171,7 +171,6 @@ class IMPALAConfig(AlgorithmConfig):
         self.rollout_fragment_length = 50
         self.train_batch_size = 500  # @OldAPIstack
         self.train_batch_size_per_learner = 500
-        #self._minibatch_size = "auto"
         self.num_env_runners = 2
         self.num_gpus = 1  # @OldAPIstack
         self.lr = 0.0005
@@ -436,21 +435,21 @@ class IMPALAConfig(AlgorithmConfig):
                 "config.training(_tf_policy_handles_more_than_one_loss=True)."
             )
         # Learner API specific checks.
-        #if (
-        #    self.enable_rl_module_and_learner
-        #    and self._minibatch_size != "auto"
-        #    and not (
-        #        (self.minibatch_size % self.rollout_fragment_length == 0)
-        #        and self.minibatch_size <= self.total_train_batch_size
-        #    )
-        #):
-        #    raise ValueError(
-        #        f"`minibatch_size` ({self._minibatch_size}) must either be 'auto' "
-        #        "or a multiple of `rollout_fragment_length` "
-        #        f"({self.rollout_fragment_length}) while at the same time smaller "
-        #        "than or equal to `total_train_batch_size` "
-        #        f"({self.total_train_batch_size})!"
-        #    )
+        if (
+            self.enable_rl_module_and_learner
+            and self.minibatch_size is not None
+            and not (
+                (self.minibatch_size % self.rollout_fragment_length == 0)
+                and self.minibatch_size <= self.total_train_batch_size
+            )
+        ):
+            raise ValueError(
+                f"`minibatch_size` ({self._minibatch_size}) must either be None "
+                "or a multiple of `rollout_fragment_length` "
+                f"({self.rollout_fragment_length}) while at the same time smaller "
+                "than or equal to `total_train_batch_size` "
+                f"({self.total_train_batch_size})!"
+            )
 
     @property
     def replay_ratio(self) -> float:
@@ -459,20 +458,6 @@ class IMPALAConfig(AlgorithmConfig):
         Formula: ratio = 1 / proportion
         """
         return (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
-
-    #@property
-    #def minibatch_size(self):
-    #    # If 'auto', use the train_batch_size (meaning each SGD iter is a single pass
-    #    # through the entire train batch). Otherwise, use user provided setting.
-    #    return (
-    #        (
-    #            self.train_batch_size_per_learner
-    #            if self.enable_env_runner_and_connector_v2
-    #            else self.train_batch_size
-    #        )
-    #        if self._minibatch_size == "auto"
-    #        else self._minibatch_size
-    #    )
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self):

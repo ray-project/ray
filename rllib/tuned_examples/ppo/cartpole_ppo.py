@@ -1,9 +1,7 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
-parser = add_rllib_example_script_args(
-    default_reward=450.0, default_timesteps=300000
-)
+parser = add_rllib_example_script_args(default_reward=450.0, default_timesteps=300000)
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
@@ -14,7 +12,7 @@ config = (
     .environment("CartPole-v1")
     .training(
         lr=0.0003,
-        num_sgd_iter=6,
+        num_epochs=6,
         vf_loss_coeff=0.01,
     )
     .rl_module(
@@ -23,13 +21,6 @@ config = (
             "fcnet_activation": "linear",
             "vf_share_layers": True,
         }
-    )
-    .training(
-        gamma=0.99,
-        lr=0.0003,
-        num_epochs=6,
-        vf_loss_coeff=0.01,
-        use_kl_loss=True,
     )
 )
 

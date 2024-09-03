@@ -222,7 +222,7 @@ class LearnerGroup(Checkpointable):
         async_update: bool = False,
         return_state: bool = False,
         num_epochs: int = 1,
-        shuffle_batch_per_epoch: bool = False,
+        shuffle_batch_per_epoch: bool = True,
         minibatch_size: Optional[int] = None,
         # User kwargs.
         **kwargs,
@@ -243,9 +243,18 @@ class LearnerGroup(Checkpointable):
                 Learner workers' states should be identical, so we use the first
                 Learner's state here. Useful for avoiding an extra `get_weights()` call,
                 e.g. for synchronizing EnvRunner weights.
-            minibatch_size: The minibatch size to use for the update.
-            num_iters: The number of complete passes over all the sub-batches in the
-                input multi-agent batch.
+            num_epochs: The number of complete passes over the entire train batch. Each
+                pass might be further split into n minibatches (if `minibatch_size`
+                provided).
+            minibatch_size: The size of minibatches to use to further split the train
+                `batch` into sub-batches. The `batch` is then iterated over n times
+                where n is `len(batch) // minibatch_size`.
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling will only take
+                place along the batch axis to not disturb any intact (episode)
+                trajectories. Also, shuffling is always skipped if `minibatch_size` is
+                None, meaning the entire train batch is processed each epoch, making it
+                unnecessary to shuffle.
 
         Returns:
             If `async_update` is False, a dictionary with the reduced results of the
@@ -262,8 +271,9 @@ class LearnerGroup(Checkpointable):
             timesteps=timesteps,
             async_update=async_update,
             return_state=return_state,
-            minibatch_size=minibatch_size,
             num_epochs=num_epochs,
+            minibatch_size=minibatch_size,
+            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
             **kwargs,
         )
 
@@ -275,8 +285,8 @@ class LearnerGroup(Checkpointable):
         async_update: bool = False,
         return_state: bool = False,
         num_epochs: int = 1,
-        shuffle_batch_per_epoch: bool = False,
         minibatch_size: Optional[int] = None,
+        shuffle_batch_per_epoch: bool = True,
         # User kwargs.
         **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
@@ -296,9 +306,21 @@ class LearnerGroup(Checkpointable):
                 Learner workers' states should be identical, so we use the first
                 Learner's state here. Useful for avoiding an extra `get_weights()` call,
                 e.g. for synchronizing EnvRunner weights.
-            minibatch_size: The minibatch size to use for the update.
-            num_iters: The number of complete passes over all the sub-batches in the
-                input multi-agent batch.
+            num_epochs: The number of complete passes over the entire train batch. Each
+                pass might be further split into n minibatches (if `minibatch_size`
+                provided). The train batch is generated from the given `episodes`
+                through the Learner connector pipeline.
+            minibatch_size: The size of minibatches to use to further split the train
+                `batch` into sub-batches. The `batch` is then iterated over n times
+                where n is `len(batch) // minibatch_size`. The train batch is generated
+                from the given `episodes` through the Learner connector pipeline.
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling will only take
+                place along the batch axis to not disturb any intact (episode)
+                trajectories. Also, shuffling is always skipped if `minibatch_size` is
+                None, meaning the entire train batch is processed each epoch, making it
+                unnecessary to shuffle. The train batch is generated from the given
+                `episodes` through the Learner connector pipeline.
 
         Returns:
             If async_update is False, a dictionary with the reduced results of the
@@ -315,8 +337,9 @@ class LearnerGroup(Checkpointable):
             timesteps=timesteps,
             async_update=async_update,
             return_state=return_state,
-            minibatch_size=minibatch_size,
             num_epochs=num_epochs,
+            minibatch_size=minibatch_size,
+            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
             **kwargs,
         )
 
@@ -330,7 +353,7 @@ class LearnerGroup(Checkpointable):
         return_state: bool = False,
         num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
-        shuffle_batch_per_epoch: bool = False,
+        shuffle_batch_per_epoch: bool = True,
         # Deprecated args.
         num_iters=DEPRECATED_VALUE,
         **kwargs,
@@ -365,16 +388,18 @@ class LearnerGroup(Checkpointable):
                 result = _learner.update_from_batch(
                     batch=_batch_shard,
                     timesteps=_timesteps,
-                    minibatch_size=minibatch_size,
                     num_epochs=num_epochs,
+                    minibatch_size=minibatch_size,
+                    shuffle_batch_per_epoch=shuffle_batch_per_epoch,
                     **_kwargs,
                 )
             else:
                 result = _learner.update_from_episodes(
                     episodes=_episodes_shard,
                     timesteps=_timesteps,
-                    minibatch_size=minibatch_size,
                     num_epochs=num_epochs,
+                    minibatch_size=minibatch_size,
+                    shuffle_batch_per_epoch=shuffle_batch_per_epoch,
                     num_total_minibatches=_num_total_minibatches,
                     **_kwargs,
                 )

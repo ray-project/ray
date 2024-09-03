@@ -51,6 +51,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
     input batch is smaller than minibatch_size, then the iterator will cycle through
     the batch until it has covered `num_epochs` epochs.
     """
+
     def __init__(
         self,
         batch: MultiAgentBatch,

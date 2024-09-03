@@ -927,6 +927,7 @@ class Learner(Checkpointable):
         timesteps: Optional[Dict[str, Any]] = None,
         num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
+        shuffle_batch_per_epoch: bool = True,
         # Deprecated args.
         num_iters=DEPRECATED_VALUE,
     ) -> ResultDict:
@@ -946,7 +947,14 @@ class Learner(Checkpointable):
                 provided). The train batch is generated from the given `episodes`
                 through the Learner connector pipeline.
             minibatch_size: The size of minibatches to use to further split the train
-                batch into.
+                `batch` into sub-batches. The `batch` is then iterated over n times
+                where n is `len(batch) // minibatch_size`.
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling will only take
+                place along the batch axis to not disturb any intact (episode)
+                trajectories. Also, shuffling is always skipped if `minibatch_size` is
+                None, meaning the entire train batch is processed each epoch, making it
+                unnecessary to shuffle.
 
         Returns:
             A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
@@ -966,6 +974,7 @@ class Learner(Checkpointable):
             timesteps=timesteps,
             num_epochs=num_epochs,
             minibatch_size=minibatch_size,
+            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
         )
 
     def update_from_episodes(
@@ -977,6 +986,7 @@ class Learner(Checkpointable):
         num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
         num_total_minibatches: int = 0,
+        shuffle_batch_per_epoch: bool = True,
         # Deprecated args.
         num_iters=DEPRECATED_VALUE,
     ) -> ResultDict:
@@ -996,8 +1006,16 @@ class Learner(Checkpointable):
                 provided). The train batch is generated from the given `episodes`
                 through the Learner connector pipeline.
             minibatch_size: The size of minibatches to use to further split the train
-                batch into. The train batch is generated from the given `episodes`
-                through the Learner connector pipeline.
+                `batch` into sub-batches. The `batch` is then iterated over n times
+                where n is `len(batch) // minibatch_size`. The train batch is generated
+                from the given `episodes` through the Learner connector pipeline.
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling will only take
+                place along the batch axis to not disturb any intact (episode)
+                trajectories. Also, shuffling is always skipped if `minibatch_size` is
+                None, meaning the entire train batch is processed each epoch, making it
+                unnecessary to shuffle. The train batch is generated from the given
+                `episodes` through the Learner connector pipeline.
             num_total_minibatches: The total number of minibatches to loop through
                 (over all `num_epochs` epochs). It's only required to set this to != 0
                 in multi-agent + multi-GPU situations, in which the MultiAgentEpisodes
@@ -1024,6 +1042,7 @@ class Learner(Checkpointable):
             timesteps=timesteps,
             minibatch_size=minibatch_size,
             num_epochs=num_epochs,
+            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
             num_total_minibatches=num_total_minibatches,
         )
 
@@ -1037,7 +1056,7 @@ class Learner(Checkpointable):
         **kwargs,
     ):
         self._check_is_built()
-        #minibatch_size = minibatch_size or 32
+        # minibatch_size = minibatch_size or 32
 
         # Call `before_gradient_based_update` to allow for non-gradient based
         # preparations-, logging-, and update logic to happen.
@@ -1294,7 +1313,9 @@ class Learner(Checkpointable):
 
         if minibatch_size:
             if self._learner_connector is not None:
-                batch_iter = partial(MiniBatchCyclicIterator, _uses_new_env_runners=True)
+                batch_iter = partial(
+                    MiniBatchCyclicIterator, _uses_new_env_runners=True
+                )
             else:
                 batch_iter = MiniBatchCyclicIterator
         elif num_epochs > 1:

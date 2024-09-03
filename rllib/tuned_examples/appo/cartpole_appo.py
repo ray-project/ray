@@ -35,7 +35,7 @@ config = (
     .rl_module(
         model_config_dict={
             "fcnet_hiddens": [32],
-            #"vf_share_layers": True,
+            # "vf_share_layers": True,
             "uses_new_env_runners": True,
         },
     )
