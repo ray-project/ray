@@ -8,18 +8,15 @@ import threading
 from typing import Union
 from datetime import datetime
 
-import ray.core.generated.export_api as export_api_protos
 from ray.core.generated.export_api.export_event_pb2 import ExportEvent
+from ray.core.generated.export_api.export_submission_job_event_pb2 import ExportSubmissionJobEventData
 from ray._private.protobuf_compat import message_to_dict
 
 global_logger = logging.getLogger(__name__)
 
-# TODO: update to only contain types that write python events
-ExportEventDataType = Union[
-    export_api_protos.export_task_event_pb2.ExportTaskEventData,
-    export_api_protos.export_node_data_pb2.ExportNodeData,
-    export_api_protos.export_actor_data_pb2.ExportActorData,
-]
+# This contains the union of export event data types which emit events
+# using the python ExportEventLoggerAdapter
+ExportEventDataType = Union[ExportSubmissionJobEventData]
 
 
 def get_event_id():

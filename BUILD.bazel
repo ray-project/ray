@@ -2507,6 +2507,7 @@ filegroup(
         "//src/ray/protobuf:export_task_event_py_proto",
         "//src/ray/protobuf:export_node_event_py_proto",
         "//src/ray/protobuf:export_actor_event_py_proto",
+        "//src/ray/protobuf:export_submission_job_event_py_proto",
     ],
 )
 

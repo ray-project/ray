@@ -7,8 +7,10 @@ from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
 from ray._private import ray_constants
+from ray._private.event.export_event_logger import ExportEventLoggerAdapter
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import parse_uri
+from ray.core.generated.export_api.export_submission_job_event_pb2 import ExportSubmissionJobEventData
 from ray.util.annotations import PublicAPI
 
 # NOTE(edoakes): these constants should be considered a public API because
@@ -189,8 +191,9 @@ class JobInfoStorageClient:
     JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
-    def __init__(self, gcs_aio_client: GcsAioClient):
+    def __init__(self, gcs_aio_client: GcsAioClient, export_submission_job_event_logger: Optional[ExportEventLoggerAdapter] = None):
         self._gcs_aio_client = gcs_aio_client
+        self._export_submission_job_event_logger = export_event_logger
 
     async def put_info(
         self, job_id: str, job_info: JobInfo, overwrite: bool = True
@@ -211,7 +214,28 @@ class JobInfoStorageClient:
             overwrite,
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
+        self._write_submission_job_export_event(job_id, job_info)
         return added_num == 1
+    
+    def _write_submission_job_export_event(self, job_id: str, job_info: JobInfo) -> None:
+        submision_event_data = ExportSubmissionJobEventData(
+            submission_job_id=job_id,
+            status=ExportSubmissionJobEventData.JobStatus.Name(job_info.status),
+            entrypoint=job_info.entrypoint,
+            message=job_info.message,
+            error_type=job_info.error_type,
+            start_time=job_info.start_time,
+            end_time=job_info.end_time,
+            runtime_env_json=json.dumps(job_info.runtime_env),
+            driver_agent_http_address=job_info.driver_agent_http_address,
+            driver_node_id=job_info.driver_node_id,
+            driver_exit_code=job_info.driver_exit_code,
+        )
+        submission_event_data.metadata.CopyFrom(job_info.metadata)
+
+        if self._export_submission_job_event_logger:
+            self._export_submission_job_event_logger.send_event(submission_event_data)
+
 
     async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
         serialized_info = await self._gcs_aio_client.internal_kv_get(

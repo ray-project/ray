@@ -27,7 +27,7 @@ from ray._private.test_utils import (
 from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import event_pb2
-from ray.core.generated.export_api import export_event_pb2, export_task_event_pb2
+from ray.core.generated.export_api import export_event_pb2, export_submission_job_event_pb2
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.tests.conftest import *  # noqa
@@ -550,18 +550,19 @@ def test_cluster_events_retention(monkeypatch, shutdown_only):
 
 def test_export_event_logger(tmp_path):
     logger = get_export_event_logger(
-        export_event_pb2.ExportEvent.SourceType.EXPORT_TASK, str(tmp_path)
+        export_event_pb2.ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, str(tmp_path)
     )
-    event_data = export_task_event_pb2.ExportTaskEventData(
-        task_id=b"task_id0",
-        attempt_number=1,
-        job_id=b"job_id0",
+    event_data = export_submission_job_event_pb2.ExportSubmissionJobEventData(
+        submission_job_id="submission_job_id0",
+        status=export_submission_job_event_pb2.ExportSubmissionJobEventData.JobStatus.RUNNING,
+        entrypoint="ls",
+        metadata={},
     )
     logger.send_event(event_data)
 
     event_dir = tmp_path / "events"
     assert event_dir.exists()
-    event_file = event_dir / "event_EXPORT_TASK.log"
+    event_file = event_dir / "event_EXPORT_SUBMISSION_JOB.log"
     assert event_file.exists()
 
     with event_file.open() as f:
@@ -570,7 +571,7 @@ def test_export_event_logger(tmp_path):
 
         line = lines[0]
         data = json.loads(line)
-        assert data["source_type"] == "EXPORT_TASK"
+        assert data["source_type"] == "EXPORT_SUBMISSION_JOB"
         assert data["event_data"] == message_to_dict(
             event_data,
             always_print_fields_with_no_presence=True,
