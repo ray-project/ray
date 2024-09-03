@@ -1,3 +1,4 @@
+from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.common import (  # noqa: F401
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
@@ -16,6 +17,7 @@ from ray.experimental.channel.torch_tensor_nccl_channel import TorchTensorNcclCh
 __all__ = [
     "AwaitableBackgroundReader",
     "AwaitableBackgroundWriter",
+    "CachedChannel",
     "Channel",
     "ReaderInterface",
     "SynchronousReader",

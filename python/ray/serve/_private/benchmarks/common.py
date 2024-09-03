@@ -96,9 +96,10 @@ async def do_single_grpc_batch(
 ):
     channel = grpc.aio.insecure_channel(target)
     stub = serve_pb2_grpc.RayServeBenchmarkServiceStub(channel)
+    payload = serve_pb2.StringData(data="")
 
     async def do_query():
-        return await stub.grpc_call(serve_pb2.StringData(data=""))
+        return await stub.grpc_call(payload)
 
     await asyncio.gather(*[do_query() for _ in range(batch_size)])
 

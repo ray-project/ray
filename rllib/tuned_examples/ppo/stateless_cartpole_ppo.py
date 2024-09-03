@@ -18,28 +18,21 @@ args = parser.parse_args()
 
 config = (
     PPOConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment(StatelessCartPole)
     .env_runners(
         env_to_module_connector=lambda env: MeanStdFilter(),
     )
     .training(
         lr=0.0003 * ((args.num_gpus or 1) ** 0.5),
-        gamma=0.99,
         num_sgd_iter=6,
         vf_loss_coeff=0.05,
-        use_kl_loss=True,
     )
     .rl_module(
         model_config_dict={
             "vf_share_layers": True,
             "use_lstm": True,
             "uses_new_env_runners": True,
-            "max_seq_len": 50,
+            "max_seq_len": 20,
         },
     )
 )
