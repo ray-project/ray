@@ -549,7 +549,9 @@ def test_cluster_events_retention(monkeypatch, shutdown_only):
 
 
 def test_export_event_logger(tmp_path):
-    logger = get_export_event_logger(export_event_pb2.ExportEvent.SourceType.EXPORT_TASK, str(tmp_path))
+    logger = get_export_event_logger(
+        export_event_pb2.ExportEvent.SourceType.EXPORT_TASK, str(tmp_path)
+    )
     event_data = export_task_event_pb2.ExportTaskEventData(
         task_id=b"task_id0",
         attempt_number=1,
@@ -570,11 +572,12 @@ def test_export_event_logger(tmp_path):
         data = json.loads(line)
         assert data["source_type"] == "EXPORT_TASK"
         assert data["event_data"] == message_to_dict(
-                event_data,
-                always_print_fields_with_no_presence=True,
-                preserving_proto_field_name=True,
-                use_integers_for_enums=False,
-            )
+            event_data,
+            always_print_fields_with_no_presence=True,
+            preserving_proto_field_name=True,
+            use_integers_for_enums=False,
+        )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

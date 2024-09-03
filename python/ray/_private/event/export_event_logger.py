@@ -3,14 +3,10 @@ import pathlib
 import json
 import random
 import string
-import socket
-import os
 import threading
 
-from typing import Dict, Optional, Union
+from typing import Union
 from datetime import datetime
-
-from google.protobuf.json_format import Parse
 
 import ray.core.generated.export_api as export_api_protos
 from ray.core.generated.export_api.export_event_pb2 import ExportEvent
@@ -25,23 +21,27 @@ ExportEventDataType = Union[
     export_api_protos.export_actor_data_pb2.ExportActorData,
 ]
 
+
 def get_event_id():
     return "".join([random.choice(string.hexdigits) for _ in range(18)])
 
+
 class ExportEventLoggerAdapter:
     def __init__(self, source: ExportEvent.SourceType, logger: logging.Logger):
-        """Adapter for the Python logger that's used to emit export events.
-        """
+        """Adapter for the Python logger that's used to emit export events."""
         self.logger = logger
         self.source = source
-    
+
     def send_event(self, event_data: ExportEventDataType):
         # NOTE: Python logger is thread-safe,
         # so we don't need to protect it using locks.
         try:
             event = self._create_export_event(event_data)
         except TypeError:
-            # TODO: log that invalid event_data type passed
+            global_logger.exception(
+                "Failed to create ExportEvent from event_data so no "
+                "event will be written to file."
+            )
             return
 
         event_as_str = self._export_event_to_string(event)
@@ -49,44 +49,57 @@ class ExportEventLoggerAdapter:
         self.logger.info(event_as_str)
         # Force flush so that we won't lose events
         self.logger.handlers[0].flush()
-    
+
     def _create_export_event(self, event_data: ExportEventDataType) -> ExportEvent:
         event = ExportEvent()
         event.event_id = get_event_id()
         event.timestamp = int(datetime.now().timestamp())
-        if type(event_data) is export_api_protos.export_task_event_pb2.ExportTaskEventData:
+        if (
+            type(event_data)
+            is export_api_protos.export_task_event_pb2.ExportTaskEventData
+        ):
             event.task_event_data.CopyFrom(event_data)
             event.source_type = ExportEvent.SourceType.EXPORT_TASK
         else:
-            raise TypeError("Invalid event_data type")
+            raise TypeError(f"Invalid event_data type: {type(event_data)}")
         if event.source_type != self.source:
-            # TODO: log that source type mismatch
+            global_logger.error(
+                f"event_data has source type {event.source_type}, however "
+                f"the event was sent to a logger with source {self.source}. "
+                f"The event will still be written to the file of {self.source} "
+                "but this indicates a bug in the code."
+            )
             pass
         return event
-    
+
     def _export_event_to_string(self, event: ExportEvent) -> str:
         event_data_json = {}
         proto_to_dict_options = {
-            "always_print_fields_with_no_presence":True,
-            "preserving_proto_field_name":True,
-            "use_integers_for_enums":False
+            "always_print_fields_with_no_presence": True,
+            "preserving_proto_field_name": True,
+            "use_integers_for_enums": False,
         }
-        event_data_field_set = event.WhichOneof('event_data')
+        event_data_field_set = event.WhichOneof("event_data")
         if event_data_field_set:
             event_data_json = message_to_dict(
                 getattr(event, event_data_field_set),
                 **proto_to_dict_options,
             )
         else:
-            # TODO: log that no event data passed
+            global_logger.error(
+                f"event_data missing from export event with id {event.event_id} "
+                f"and type {event.source_type}. An empty event will be written, "
+                "but this indicates a bug in the code. "
+            )
             pass
         event_json = {
-            "event_id": event.event_id, 
-            "timestamp": event.timestamp, 
+            "event_id": event.event_id,
+            "timestamp": event.timestamp,
             "source_type": ExportEvent.SourceType.Name(event.source_type),
-            "event_data": event_data_json
+            "event_data": event_data_json,
         }
         return json.dumps(event_json)
+
 
 def _build_export_event_file_logger(source: ExportEvent.SourceType, sink_dir: str):
     logger = logging.getLogger("_ray_export_event_logger")
@@ -96,13 +109,13 @@ def _build_export_event_file_logger(source: ExportEvent.SourceType, sink_dir: st
     dir_path.mkdir(exist_ok=True)
     filepath.touch(exist_ok=True)
     # Configure the logger.
-    # TODO: make this RotatingFileHandler
-    handler = logging.FileHandler(filepath)
-    # formatter = logging.Formatter("%(message)s")
-    # handler.setFormatter(formatter)
+    handler = logging.handlers.RotatingFileHandler(
+        filepath, maxBytes=(100 * 1e6), backupCount=20  # 100 MB max file size
+    )
     logger.addHandler(handler)
     logger.propagate = False
     return logger
+
 
 # This lock must be used when accessing or updating global event logger dict.
 _export_event_logger_lock = threading.Lock()
