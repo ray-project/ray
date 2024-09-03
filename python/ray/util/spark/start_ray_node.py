@@ -168,7 +168,7 @@ if __name__ == "__main__":
         time.sleep(180)
         os.kill(orig_parent_pid, signal.SIGTERM)
 
-    if "--head" in arg_list:
+    if "--head" not in arg_list:
         threading.Thread(target=kill_spark_task, daemon=True).start()
 
     try:
