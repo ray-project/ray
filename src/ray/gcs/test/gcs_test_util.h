@@ -428,7 +428,6 @@ struct Mocker {
     }
     return constraint;
   }
-
   // Read all lines of a file into vector vc
   static void ReadContentFromFile(std::vector<std::string> &vc, std::string log_file) {
     std::string line;
