@@ -175,19 +175,24 @@ async def _main(
                     inter_token_delay_ms=10,
                 )
             )
-            mean, std = await run_throughput_benchmark(
+            mean, std, latencies = await run_throughput_benchmark(
                 fn=partial(
                     do_single_http_batch,
                     batch_size=STREAMING_HTTP_BATCH_SIZE,
                     stream=True,
+                    record_latencies=True,
                 ),
                 multiplier=STREAMING_HTTP_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
                 num_trials=STREAMING_NUM_TRIALS,
                 # Complete only one batch of requests
                 trial_runtime=10,
+                record_latencies=True,
             )
             perf_metrics.extend(
                 convert_throughput_to_perf_metrics("http_streaming", mean, std)
+            )
+            perf_metrics.extend(
+                convert_latencies_to_perf_metrics("http_streaming", latencies)
             )
             serve.shutdown()
 
@@ -200,20 +205,27 @@ async def _main(
                     )
                 )
             )
-            mean, std = await run_throughput_benchmark(
+            mean, std, latencies = await run_throughput_benchmark(
                 fn=partial(
                     do_single_http_batch,
                     batch_size=STREAMING_BATCH_SIZE,
                     stream=True,
+                    record_latencies=True,
                 ),
                 multiplier=STREAMING_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
                 num_trials=STREAMING_NUM_TRIALS,
                 # Complete only one batch of requests
                 trial_runtime=10,
+                record_latencies=True,
             )
             perf_metrics.extend(
                 convert_throughput_to_perf_metrics(
                     "http_intermediate_streaming", mean, std
+                )
+            )
+            perf_metrics.extend(
+                convert_latencies_to_perf_metrics(
+                    "http_intermediate_streaming", latencies
                 )
             )
             serve.shutdown()

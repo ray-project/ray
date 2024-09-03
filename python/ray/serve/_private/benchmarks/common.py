@@ -44,7 +44,11 @@ async def run_latency_benchmark(
 
 
 async def run_throughput_benchmark(
-    fn: Callable, multiplier: int = 1, num_trials: int = 10, trial_runtime: float = 1
+    fn: Callable,
+    multiplier: int = 1,
+    num_trials: int = 10,
+    trial_runtime: float = 1,
+    record_latencies: bool = False,
 ) -> Tuple[float, float]:
     """Returns (mean, stddev)."""
     # Warmup
@@ -54,16 +58,23 @@ async def run_throughput_benchmark(
 
     # Benchmark
     stats = []
+    latencies = []
     for _ in tqdm(range(num_trials)):
         start = time.perf_counter()
         count = 0
         while time.perf_counter() - start < trial_runtime:
-            await fn()
+            res = await fn()
+            if record_latencies:
+                latencies.extend(res)
+
             count += 1
         end = time.perf_counter()
         stats.append(multiplier * count / (end - start))
 
-    return round(np.mean(stats), 2), round(np.std(stats), 2)
+    if record_latencies:
+        return round(np.mean(stats), 2), round(np.std(stats), 2), pd.Series(latencies)
+    else:
+        return round(np.mean(stats), 2), round(np.std(stats), 2)
 
 
 async def do_single_http_batch(
@@ -71,6 +82,7 @@ async def do_single_http_batch(
     batch_size: int = 100,
     url: str = "http://localhost:8000",
     stream: bool = False,
+    record_latencies: bool = False,
 ):
     # By default, aiohttp limits the number of client connections to 100.
     # We need to use TCPConnector to configure the limit if batch size
@@ -80,7 +92,10 @@ async def do_single_http_batch(
         connector=connector, raise_for_status=True
     ) as session:
 
+        latencies = []
+
         async def do_query():
+            start = time.perf_counter()
             try:
                 if stream:
                     async with session.get(url) as r:
@@ -91,7 +106,13 @@ async def do_single_http_batch(
             except aiohttp.client_exceptions.ClientConnectionError:
                 pass
 
+            end = time.perf_counter()
+            if record_latencies:
+                latencies.append(end - start)
+
         await asyncio.gather(*[do_query() for _ in range(batch_size)])
+        if record_latencies:
+            return latencies
 
 
 async def do_single_grpc_batch(
