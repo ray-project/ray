@@ -11,12 +11,10 @@ from typing import Any, Dict, Iterator, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.event.event_logger import get_event_logger
-from ray._private.event.export_event_logger import get_export_event_logger
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.utils import run_background_task
 from ray.actor import ActorHandle
 from ray.core.generated.event_pb2 import Event
-from ray.core.generated.export_api.export_event_pb2 import ExportEvent
 from ray.dashboard.consts import (
     DEFAULT_JOB_START_TIMEOUT_SECONDS,
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
@@ -72,16 +70,7 @@ class JobManager:
 
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
-        try:
-            # TODO: Add FF
-            export_submission_job_event_logger = get_export_event_logger(
-                ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, logs_dir
-            )
-        except Exception:
-            export_submission_job_event_logger = None
-        self._job_info_client = JobInfoStorageClient(
-            gcs_aio_client, export_submission_job_event_logger
-        )
+        self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._gcs_address = gcs_aio_client.address
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
