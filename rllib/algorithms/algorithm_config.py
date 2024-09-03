@@ -3422,7 +3422,7 @@ class AlgorithmConfig(_Config):
         *,
         _torch_grad_scaler_class: Optional[Type] = NotProvided,
         _torch_lr_scheduler_classes: Optional[
-            Union[List[Type], Dict[ModuleID, List[Type]]]
+            Union[List[Type], Dict[ModuleID, Type]]
         ] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
@@ -3450,10 +3450,9 @@ class AlgorithmConfig(_Config):
                 https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)
                 classes or a dictionary mapping module IDs to such a list of respective
                 scheduler classes. Multiple scheduler classes can be applied in sequence
-                and are stepped in the same sequence as defined here. Note, most
-                learning rate schedulers need arguments to be configured, that is, you
-                might have to partially initialize the schedulers in the list(s) using
-                `functools.partial`.
+                and will be stepped in the same sequence as defined here. Note, most
+                learning rate schedulers need arguments to be configured, i.e. you need
+                to partially initialize the schedulers in the list(s).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy handles more than one loss or optimizer.
                 Set this to True, if you would like to return more than
