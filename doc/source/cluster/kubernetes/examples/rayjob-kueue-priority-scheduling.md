@@ -103,7 +103,7 @@ The YAML manifest configures:
 * **LocalQueue**
   * The LocalQueue `user-queue` is a namespaced object in the `default` namespace which belongs to a ClusterQueue. A typical practice is to assign a namespace to a tenant, team or user, of an organization. Users submit jobs to a LocalQueue, instead of to a ClusterQueue directly.
 * **WorkloadPriorityClass**
-  * The WorkloadPriorityClass `prod-priority` has a higher value than the WorkloadPriorityClass `dev-priority`. This means that RayJob custom resources with the `prod-priority` priority class take precedence over RayJob custom resources with the `dev-priority` priority class.  
+  * The WorkloadPriorityClass `prod-priority` has a higher value than the WorkloadPriorityClass `dev-priority`. This means that RayJob custom resources with the `prod-priority` priority class take precedence over RayJob custom resources with the `dev-priority` priority class.
 
 Create the Kueue resources:
 ```bash

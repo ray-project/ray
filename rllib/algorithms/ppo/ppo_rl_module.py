@@ -8,6 +8,7 @@ from typing import Type
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.configs import RecurrentEncoderConfig
 from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import ExperimentalAPI, override
@@ -16,7 +17,7 @@ from ray.rllib.utils.annotations import ExperimentalAPI, override
 
 
 @ExperimentalAPI
-class PPORLModule(RLModule, abc.ABC):
+class PPORLModule(RLModule, ValueFunctionAPI, abc.ABC):
     def setup(self):
         # __sphinx_doc_begin__
         catalog = self.config.get_catalog()
