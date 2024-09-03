@@ -118,7 +118,7 @@ if __name__ == "__main__":
             evaluation_config=PPOConfig.overrides(exploration=False),
         )
         .experimental(
-            # Add tow learning rate schedulers to be applied in sequence.
+            # Add two learning rate schedulers to be applied in sequence.
             _torch_lr_scheduler_classes=[
                 # Multiplies the learning rate by a factor of 0.1 for 10 iterations.
                 functools.partial(
