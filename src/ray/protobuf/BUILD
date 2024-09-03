@@ -245,10 +245,13 @@ python_grpc_compile(
     deps = [":event_proto"],
 )
 
+# Note: Any dependencies added to this rule should also be included
+# in the :export_api_py_proto filegroup so the python files are
+# correctly generated.
 proto_library(
     name = "export_event_proto",
     srcs = ["export_api/export_event.proto"],
-    deps = [":export_task_event_proto"],
+    deps = [":export_task_event_proto", ":export_node_event_proto", ":export_actor_event_proto"],
 )
 
 cc_proto_library(
@@ -264,7 +267,7 @@ python_grpc_compile(
 proto_library(
     name = "export_task_event_proto",
     srcs = ["export_api/export_task_event.proto"],
-    deps = [":common_proto", ":export_runtime_env_proto", ":export_node_event_proto", ":export_actor_event_proto"],
+    deps = [":common_proto", ":export_runtime_env_proto"],
 )
 
 cc_proto_library(

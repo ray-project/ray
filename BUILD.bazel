@@ -2500,6 +2500,16 @@ filegroup(
     ],
 )
 
+filegroup(
+    name = "export_api_py_proto",
+    srcs = [
+        "//src/ray/protobuf:export_event_py_proto",
+        "//src/ray/protobuf:export_task_event_py_proto",
+        "//src/ray/protobuf:export_node_event_py_proto",
+        "//src/ray/protobuf:export_actor_event_py_proto",
+    ],
+)
+
 # This is a dummy test dependency that causes the python tests to be
 # re-run if any of these files changes.
 py_library(
@@ -2527,6 +2537,12 @@ copy_to_workspace(
     name = "cp_serve_py_proto",
     srcs = [":serve_py_proto"],
     dstdir = "python/ray/serve/generated",
+)
+
+copy_to_workspace(
+    name = "cp_export_api_py_proto",
+    srcs = [":export_api_py_proto"],
+    dstdir = "python/ray/core/generated/export_api",
 )
 
 copy_to_workspace(
@@ -2561,6 +2577,7 @@ genrule(
     srcs = [
         ":cp_all_py_proto",
         ":cp_serve_py_proto",
+        ":cp_export_api_py_proto",
     ],
     outs = ["install_py_proto.out"],
     cmd = """
@@ -2569,6 +2586,7 @@ genrule(
         # shellcheck disable=SC2006
         files=(
             `ls python/ray/core/generated/*_pb2*.py` \
+            `ls python/ray/core/generated/export_api/*_pb2*.py` \
             `ls python/ray/serve/generated/*_pb2*.py` \
             )
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"

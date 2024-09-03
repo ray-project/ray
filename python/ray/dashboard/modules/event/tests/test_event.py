@@ -17,6 +17,8 @@ import requests
 
 import ray
 from ray._private.event.event_logger import filter_event_by_level, get_event_logger
+from ray._private.event.export_event_logger import get_export_event_logger
+from ray._private.protobuf_compat import message_to_dict
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
@@ -25,6 +27,7 @@ from ray._private.test_utils import (
 from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
 from ray.core.generated import event_pb2
+from ray.core.generated.export_api import export_event_pb2, export_task_event_pb2
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.tests.conftest import *  # noqa
@@ -544,6 +547,34 @@ def test_cluster_events_retention(monkeypatch, shutdown_only):
         wait_for_condition(verify)
         pprint(list_cluster_events())
 
+
+def test_export_event_logger(tmp_path):
+    logger = get_export_event_logger(export_event_pb2.ExportEvent.SourceType.EXPORT_TASK, str(tmp_path))
+    event_data = export_task_event_pb2.ExportTaskEventData(
+        task_id=b"task_id0",
+        attempt_number=1,
+        job_id=b"job_id0",
+    )
+    logger.send_event(event_data)
+
+    event_dir = tmp_path / "events"
+    assert event_dir.exists()
+    event_file = event_dir / "event_EXPORT_TASK.log"
+    assert event_file.exists()
+
+    with event_file.open() as f:
+        lines = f.readlines()
+        assert len(lines) == 1
+
+        line = lines[0]
+        data = json.loads(line)
+        assert data["source_type"] == "EXPORT_TASK"
+        assert data["event_data"] == message_to_dict(
+                event_data,
+                always_print_fields_with_no_presence=True,
+                preserving_proto_field_name=True,
+                use_integers_for_enums=False,
+            )
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
