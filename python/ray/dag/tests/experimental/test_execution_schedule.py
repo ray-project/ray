@@ -27,6 +27,10 @@ def mock_actor_handle_init(self, actor_id: str):
     self._ray_actor_id = actor_id
 
 
+def mock_class_method_call_init(self):
+    self._is_class_method_output = False
+
+
 def mock_init(self):
     pass
 
@@ -317,7 +321,7 @@ class TestBuildDAGNodeOperationGraph:
         This test case aims to verify whether the function correctly adds edges
         between READ/COMPUTE and COMPUTE/WRITE operations on the same actor.
         """
-        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_class_method_call_init)
         monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
 
         idx_to_task = {
@@ -347,7 +351,7 @@ class TestBuildDAGNodeOperationGraph:
         This test case aims to verify whether the function correctly adds an edge
         from the writer's WRITE operation to the reader's READ operation.
         """
-        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_class_method_call_init)
         monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
 
         fake_actor_1, dag_idx_1 = "fake_actor_1", 1
@@ -391,7 +395,7 @@ class TestBuildDAGNodeOperationGraph:
         from the COMPUTE operation with `bind_index` i to the COMPUTE operation with
         `bind_index` i+1 if they belong to the same actor.
         """
-        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_class_method_call_init)
         monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
 
         fake_actor = "fake_actor"
@@ -436,7 +440,7 @@ class TestBuildDAGNodeOperationGraph:
         test case covers all three rules for adding edges between
         operation nodes in the operation graph.
         """
-        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_class_method_call_init)
         monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
 
         fake_actor_1, dag_idx_1, dag_idx_3 = "fake_actor_1", 1, 3

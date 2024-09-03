@@ -314,6 +314,8 @@ class AlgorithmConfig(_Config):
         self.torch_compile_worker_dynamo_mode = None
         # Default kwargs for `torch.nn.parallel.DistributedDataParallel`.
         self.torch_ddp_kwargs = {}
+        # Default setting for skipping `nan` gradient updates.
+        self.torch_skip_nan_gradients = False
 
         # `self.api_stack()`
         self.enable_rl_module_and_learner = False
@@ -545,6 +547,7 @@ class AlgorithmConfig(_Config):
 
         # `self.experimental()`
         self._torch_grad_scaler_class = None
+        self._torch_lr_scheduler_classes = None
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
@@ -1382,6 +1385,7 @@ class AlgorithmConfig(_Config):
         torch_compile_worker_dynamo_backend: Optional[str] = NotProvided,
         torch_compile_worker_dynamo_mode: Optional[str] = NotProvided,
         torch_ddp_kwargs: Optional[Dict[str, Any]] = NotProvided,
+        torch_skip_nan_gradients: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1427,6 +1431,19 @@ class AlgorithmConfig(_Config):
                 that are not used in the backward pass. This can give hints for errors
                 in custom models where some parameters do not get touched in the
                 backward pass although they should.
+            torch_skip_nan_gradients: If updates with `nan` gradients should be entirely
+                skipped. This skips updates in the optimizer entirely if they contain
+                any `nan` gradient. This can help to avoid biasing moving-average based
+                optimizers - like Adam. This can help in training phases where policy
+                updates can be highly unstable such as during the early stages of
+                training or with highly exploratory policies. In such phases many
+                gradients might turn `nan` and setting them to zero could corrupt the
+                optimizer's internal state. The default is `False` and turns `nan`
+                gradients to zero. If many `nan` gradients are encountered consider (a)
+                monitoring gradients by setting `log_gradients` in `AlgorithmConfig` to
+                `True`, (b) use proper weight initialization (e.g. Xavier, Kaiming) via
+                the `model_config_dict` in `AlgorithmConfig.rl_module` and/or (c)
+                gradient clipping via `grad_clip` in `AlgorithmConfig.training`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1470,6 +1487,8 @@ class AlgorithmConfig(_Config):
             self.torch_compile_worker_dynamo_mode = torch_compile_worker_dynamo_mode
         if torch_ddp_kwargs is not NotProvided:
             self.torch_ddp_kwargs = torch_ddp_kwargs
+        if torch_skip_nan_gradients is not NotProvided:
+            self.torch_skip_nan_gradients = torch_skip_nan_gradients
 
         return self
 
@@ -3220,6 +3239,9 @@ class AlgorithmConfig(_Config):
         self,
         *,
         _torch_grad_scaler_class: Optional[Type] = NotProvided,
+        _torch_lr_scheduler_classes: Optional[
+            Union[List[Type], Dict[ModuleID, Type]]
+        ] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
@@ -3241,6 +3263,14 @@ class AlgorithmConfig(_Config):
                 and step the given optimizer.
                 `update()` to update the scaler after an optimizer step (for example to
                 adjust the scale factor).
+            _torch_lr_scheduler_classes: A list of `torch.lr_scheduler.LRScheduler`
+                (see here for more details
+                https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)
+                classes or a dictionary mapping module IDs to such a list of respective
+                scheduler classes. Multiple scheduler classes can be applied in sequence
+                and will be stepped in the same sequence as defined here. Note, most
+                learning rate schedulers need arguments to be configured, i.e. you need
+                to partially initialize the schedulers in the list(s).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy will handle more than one loss/optimizer.
                 Set this to True, if you would like to return more than
@@ -3284,6 +3314,8 @@ class AlgorithmConfig(_Config):
             )
         if _torch_grad_scaler_class is not NotProvided:
             self._torch_grad_scaler_class = _torch_grad_scaler_class
+        if _torch_lr_scheduler_classes is not NotProvided:
+            self._torch_lr_scheduler_classes = _torch_lr_scheduler_classes
 
         return self
 
