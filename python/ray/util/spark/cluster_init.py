@@ -1699,7 +1699,10 @@ def _start_ray_worker_nodes(
                     # and Ray autoscaler will trigger a new node creation
                     # with new node id, and a new spark job will be created
                     # for holding it.
-                    return
+                    raise RuntimeError(
+                        "Starting Ray worker node twice with the same node id "
+                        "is not allowed."
+                    )
 
                 # Notify job server the task has been launched.
                 requests.post(
