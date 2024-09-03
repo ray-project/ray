@@ -348,7 +348,6 @@ python_grpc_compile(
 proto_library(
     name = "export_submission_job_event_proto",
     srcs = ["export_api/export_submission_job_event.proto"],
-    deps = [":common_proto", ":export_runtime_env_proto"],
 )
 
 cc_proto_library(
