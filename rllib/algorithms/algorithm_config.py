@@ -490,6 +490,7 @@ class AlgorithmConfig(_Config):
         self.min_time_s_per_iteration = None
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
+        self.log_gradients = True
 
         # `self.checkpointing()`
         self.export_native_model_files = False
@@ -500,7 +501,6 @@ class AlgorithmConfig(_Config):
         self.logger_config = None
         self.log_level = "WARN"
         self.log_sys_usage = True
-        self.log_gradients = True
         self.fake_sampler = False
         self.seed = None
         # TODO (sven): Remove these settings again in the future. We only need them
