@@ -107,7 +107,6 @@ if __name__ == "__main__":
     num_iterations = 5
     min_reward = -300
 
-    # Test for torch framework (tf not implemented yet).
     cql_algorithm = cql.CQL(config=config)
     learnt = False
     for i in range(num_iterations):
@@ -145,7 +144,7 @@ if __name__ == "__main__":
     # using the data from our buffer.
     # Get a sample (MultiAgentBatch).
 
-    batch = synchronous_parallel_sample(worker_set=cql_algorithm.workers)
+    batch = synchronous_parallel_sample(worker_set=cql_algorithm.env_runner_group)
     batch = convert_ma_batch_to_sample_batch(batch)
     obs = torch.from_numpy(batch["obs"])
     # Pass the observations through our model to get the

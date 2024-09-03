@@ -163,6 +163,17 @@ Ray Train Output
 
     ~train.Result
 
+Ray Train Errors
+----------------
+
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
+
+    ~train.error.SessionMisuseError
+    ~train.base_trainer.TrainingFailedError
+
 
 Ray Train Developer APIs
 ------------------------
@@ -178,7 +189,6 @@ Trainer Base Classes
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
-    ~train.base_trainer.TrainingFailedError
 
 
 Train Backend Base Classes

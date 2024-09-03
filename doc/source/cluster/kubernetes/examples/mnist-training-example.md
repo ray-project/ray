@@ -83,9 +83,9 @@ kubectl logs -f rayjob-pytorch-mnist-nxmj2
 # 2024-06-16 22:23:01,844 SUCC cli.py:61 -- Job 'rayjob-pytorch-mnist-l6ccc' submitted successfully
 # 2024-06-16 22:23:01,844 SUCC cli.py:62 -- -------------------------------------------------------
 # ...
-# (RayTrainWorker pid=1138, ip=10.244.0.18) 
+# (RayTrainWorker pid=1138, ip=10.244.0.18)
 #   0%|          | 0/26421880 [00:00<?, ?it/s]
-# (RayTrainWorker pid=1138, ip=10.244.0.18) 
+# (RayTrainWorker pid=1138, ip=10.244.0.18)
 #   0%|          | 32768/26421880 [00:00<01:27, 301113.97it/s]
 # ...
 # Training finished iteration 10 at 2024-06-16 22:33:05. Total running time: 7min 9s

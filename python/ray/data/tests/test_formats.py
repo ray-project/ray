@@ -1,4 +1,5 @@
 import os
+import sys
 from typing import Any, Iterable, List
 
 import pandas as pd
@@ -132,11 +133,9 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds._set_uuid("data")
     ds.write_parquet(out_path)
 
-    ds_df1 = pd.read_parquet(os.path.join(out_path, "data_000000_000000.parquet"))
-    ds_df2 = pd.read_parquet(os.path.join(out_path, "data_000001_000000.parquet"))
-    ds_df = pd.concat([ds_df1, ds_df2])
-    df = pd.concat([df1, df2])
-    assert ds_df.equals(df)
+    actual_data = set(pd.read_parquet(out_path).itertuples(index=False))
+    expected_data = set(pd.concat([df1, df2]).itertuples(index=False))
+    assert actual_data == expected_data, (actual_data, expected_data)
 
 
 def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
@@ -178,6 +177,10 @@ def test_write_datasink(ray_start_regular_shared):
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Skip due to incompatibility tensorflow with Python 3.12+",
+)
 def test_from_tf(ray_start_regular_shared):
     import tensorflow as tf
     import tensorflow_datasets as tfds

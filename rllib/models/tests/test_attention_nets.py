@@ -13,7 +13,6 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
-from ray.rllib.utils.test_utils import framework_iterator
 
 
 class TestAttentionNets(unittest.TestCase):
@@ -75,12 +74,11 @@ class TestAttentionNets(unittest.TestCase):
             "rollout_fragment_length": 100,
             "num_env_runners": 1,
         }
-        for _ in framework_iterator(config):
-            tune.Tuner(
-                "PPO",
-                param_space=config,
-                run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
-            ).fit()
+        tune.Tuner(
+            "PPO",
+            param_space=config,
+            run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
+        ).fit()
 
     def test_ppo_attention_net_learning(self):
         ModelCatalog.register_custom_model("attention_net", GTrXLNet)

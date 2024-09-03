@@ -14,6 +14,9 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
     a single return value instead of a list.
     """
     # Check for exceptions.
+    if isinstance(return_vals, Exception):
+        raise return_vals
+
     for val in return_vals:
         if isinstance(val, RayTaskError):
             raise val.as_instanceof_cause()
@@ -92,7 +95,7 @@ class CompiledDAGRef:
 
 
 @PublicAPI(stability="alpha")
-class CompiledDAGFuture(CompiledDAGRef):
+class CompiledDAGFuture:
     """
     A reference to a compiled DAG execution result, when executed with asyncio.
     This differs from CompiledDAGRef in that `await` must be called on the

@@ -233,7 +233,7 @@ class _StatsActor:
         # Object store memory-related metrics
         self.execution_metrics_obj_store_memory = (
             self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group="obj_store_memory",
+                metrics_group="object_store_memory",
                 tag_keys=op_tags_keys,
             )
         )

@@ -27,8 +27,10 @@ def stop_gcs_server():
     ][0].process
     pid = process.pid
     os.kill(pid, signal.SIGSTOP)
-    yield
-    os.kill(pid, signal.SIGCONT)
+    try:
+        yield
+    finally:
+        os.kill(pid, signal.SIGCONT)
 
 
 def test_kv_basic(ray_start_regular, monkeypatch):

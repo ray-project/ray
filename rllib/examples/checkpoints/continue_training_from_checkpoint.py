@@ -241,7 +241,7 @@ if __name__ == "__main__":
     test_results = test_algo.train()
     assert (
         test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward_crash
-    )
+    ), test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     # Stop the test algorithm again.
     test_algo.stop()
 

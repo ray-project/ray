@@ -12,6 +12,7 @@ from ray.dag import InputNode, MultiOutputNode
 from ray._private.utils import (
     get_or_create_event_loop,
 )
+from ray._private.test_utils import get_actor_node_id
 
 logger = logging.getLogger(__name__)
 
@@ -73,14 +74,17 @@ def main(results=None):
                 for chan in chans:
                     chan.read()
 
-    chans = [ray_channel.Channel(None, [create_driver_actor()], 1000)]
+    driver_actor = create_driver_actor()
+    driver_node = get_actor_node_id(driver_actor)
+    chans = [ray_channel.Channel(None, [(driver_actor, driver_node)], 1000)]
     results += timeit(
         "[unstable] local put:local get, single channel calls",
         lambda: put_channel_small(chans, do_get=True),
     )
 
     reader = ChannelReader.remote()
-    chans = [ray_channel.Channel(None, [reader], 1000)]
+    reader_node = get_actor_node_id(reader)
+    chans = [ray_channel.Channel(None, [(reader, reader_node)], 1000)]
     ray.get(reader.ready.remote())
     reader.read.remote(chans)
     results += timeit(
@@ -92,20 +96,27 @@ def main(results=None):
     n_cpu = multiprocessing.cpu_count() // 2
     print(f"Testing multiple readers/channels, n={n_cpu}")
 
-    readers = [ChannelReader.remote() for _ in range(n_cpu)]
-    chans = [ray_channel.Channel(None, readers, 1000)]
-    ray.get([reader.ready.remote() for reader in readers])
-    for reader in readers:
+    reader_and_node_list = []
+    for _ in range(n_cpu):
+        reader = ChannelReader.remote()
+        reader_node = get_actor_node_id(reader)
+        reader_and_node_list.append((reader, reader_node))
+    chans = [ray_channel.Channel(None, reader_and_node_list, 1000)]
+    ray.get([reader.ready.remote() for reader, _ in reader_and_node_list])
+    for reader, _ in reader_and_node_list:
         reader.read.remote(chans)
     results += timeit(
         "[unstable] local put:n remote get, single channel calls",
         lambda: put_channel_small(chans),
     )
-    for reader in readers:
+    for reader, _ in reader_and_node_list:
         ray.kill(reader)
 
     reader = ChannelReader.remote()
-    chans = [ray_channel.Channel(None, [reader], 1000) for _ in range(n_cpu)]
+    reader_node = get_actor_node_id(reader)
+    chans = [
+        ray_channel.Channel(None, [(reader, reader_node)], 1000) for _ in range(n_cpu)
+    ]
     ray.get(reader.ready.remote())
     reader.read.remote(chans)
     results += timeit(
@@ -114,16 +125,23 @@ def main(results=None):
     )
     ray.kill(reader)
 
-    readers = [ChannelReader.remote() for _ in range(n_cpu)]
-    chans = [ray_channel.Channel(None, [readers[i]], 1000) for i in range(n_cpu)]
-    ray.get([reader.ready.remote() for reader in readers])
-    for chan, reader in zip(chans, readers):
+    reader_and_node_list = []
+    for _ in range(n_cpu):
+        reader = ChannelReader.remote()
+        reader_node = get_actor_node_id(reader)
+        reader_and_node_list.append((reader, reader_node))
+    chans = [
+        ray_channel.Channel(None, [reader_and_node_list[i]], 1000) for i in range(n_cpu)
+    ]
+    ray.get([reader.ready.remote() for reader, _ in reader_and_node_list])
+    for chan, reader_node_tuple in zip(chans, reader_and_node_list):
+        reader = reader_node_tuple[0]
         reader.read.remote([chan])
     results += timeit(
         "[unstable] local put:n remote get, n channels calls",
         lambda: put_channel_small(chans),
     )
-    for reader in readers:
+    for reader, _ in reader_and_node_list:
         ray.kill(reader)
 
     # Tests for compiled DAGs.
@@ -142,6 +160,8 @@ def main(results=None):
             _exec_async,
         )
 
+    # Single-actor DAG calls
+
     a = DAGActor.remote()
     with InputNode() as inp:
         dag = a.echo.bind(inp)
@@ -154,7 +174,13 @@ def main(results=None):
         "[unstable] compiled single-actor DAG calls", lambda: _exec(compiled_dag)
     )
     compiled_dag.teardown()
+    del a
 
+    # Single-actor asyncio DAG calls
+
+    a = DAGActor.remote()
+    with InputNode() as inp:
+        dag = a.echo.bind(inp)
     compiled_dag = dag.experimental_compile(enable_asyncio=True)
     results += loop.run_until_complete(
         exec_async(
@@ -165,8 +191,10 @@ def main(results=None):
     # these DAGs create a background thread that can segfault if the CoreWorker
     # is torn down first.
     compiled_dag.teardown()
-
     del a
+
+    # Scatter-gather DAG calls
+
     n_cpu = multiprocessing.cpu_count() // 2
     actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
@@ -182,6 +210,11 @@ def main(results=None):
     )
     compiled_dag.teardown()
 
+    # Scatter-gather asyncio DAG calls
+
+    actors = [DAGActor.remote() for _ in range(n_cpu)]
+    with InputNode() as inp:
+        dag = MultiOutputNode([a.echo.bind(inp) for a in actors])
     compiled_dag = dag.experimental_compile(enable_asyncio=True)
     results += loop.run_until_complete(
         exec_async(
@@ -192,6 +225,8 @@ def main(results=None):
     # these DAGs create a background thread that can segfault if the CoreWorker
     # is torn down first.
     compiled_dag.teardown()
+
+    # Chain DAG calls
 
     actors = [DAGActor.remote() for _ in range(n_cpu)]
     with InputNode() as inp:
@@ -209,6 +244,13 @@ def main(results=None):
     )
     compiled_dag.teardown()
 
+    # Chain asyncio DAG calls
+
+    actors = [DAGActor.remote() for _ in range(n_cpu)]
+    with InputNode() as inp:
+        dag = inp
+        for a in actors:
+            dag = a.echo.bind(dag)
     compiled_dag = dag.experimental_compile(enable_asyncio=True)
     results += loop.run_until_complete(
         exec_async(f"[unstable] compiled chain asyncio DAG calls, n={n_cpu} actors")

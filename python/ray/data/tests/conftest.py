@@ -466,24 +466,19 @@ class CoreExecutionMetrics:
     def get_actor_count(self):
         return self.actor_count
 
-    def _assert_count_equals(self, actual_count, expected_count, ignore_extra_tasks):
+    def _assert_count_equals(self, actual_count, expected_count):
         diff = {}
         # Check that all tasks in expected tasks match those in actual task
         # count.
         for name, count in expected_count.items():
             if not equals_or_true(actual_count[name], count):
                 diff[name] = (actual_count[name], count)
-        # Check that the actual task count does not have any additional tasks.
-        if not ignore_extra_tasks:
-            for name, count in actual_count.items():
-                if name not in expected_count and count != 0:
-                    diff[name] = (count, 0)
 
         assert len(diff) == 0, "\nTask diff:\n" + "\n".join(
             f" - {key}: expected {val[1]}, got {val[0]}" for key, val in diff.items()
         )
 
-    def assert_task_metrics(self, expected_metrics, ignore_extra_tasks):
+    def assert_task_metrics(self, expected_metrics):
         """
         Assert equality to the given { <task name>: <task count> }.
         A lambda that takes in the count and returns a bool to assert can also
@@ -491,20 +486,13 @@ class CoreExecutionMetrics:
 
         An empty dict means that we expected no tasks to run. Pass None to skip
         the check.
-
-        Default values in get_default_task_count() are also asserted.
         """
         if expected_metrics.get_task_count() is None:
             return
 
-        expected_task_count = CoreExecutionMetrics.get_default_task_count()
-        for name, count in expected_metrics.get_task_count().items():
-            expected_task_count[name] = count
-
+        expected_task_count = expected_metrics.get_task_count()
         actual_task_count = self.get_task_count()
-        self._assert_count_equals(
-            actual_task_count, expected_task_count, ignore_extra_tasks
-        )
+        self._assert_count_equals(actual_task_count, expected_task_count)
 
     def assert_object_store_metrics(self, expected_metrics):
         """
@@ -536,46 +524,15 @@ class CoreExecutionMetrics:
         if expected_metrics.get_actor_count() is None:
             return
 
-        expected_actor_count = CoreExecutionMetrics.get_default_actor_count()
-        for key, val in expected_metrics.get_actor_count().items():
-            expected_actor_count[key] = val
-
+        expected_actor_count = expected_metrics.get_actor_count()
         actual_actor_count = self.get_actor_count()
         self._assert_count_equals(actual_actor_count, expected_actor_count)
-
-    @staticmethod
-    def get_default_task_count():
-        return {
-            "AutoscalingRequester.request_resources": lambda count: count < 100,
-            "AutoscalingRequester:AutoscalingRequester.__init__": lambda count: count
-            <= 1,
-            "_StatsActor.clear_metrics": lambda count: count < 100,
-            "_StatsActor.clear_execution_metrics": lambda count: count < 100,
-            "_StatsActor.clear_iteration_metrics": lambda count: count < 100,
-            "_StatsActor.update_metrics": lambda count: count < 100,
-            "_StatsActor.update_execution_metrics": lambda count: count < 100,
-            "_StatsActor.update_iteration_metrics": lambda count: count < 100,
-            "_StatsActor.get": lambda count: True,
-            "_StatsActor.record_start": lambda count: True,
-            "_StatsActor.record_task": lambda count: True,
-            "_StatsActor.get_dataset_id": lambda count: True,
-            "_StatsActor.update_dataset": lambda count: True,
-            "_StatsActor.register_dataset": lambda count: True,
-            "datasets_stats_actor:_StatsActor.__init__": lambda count: count <= 1,
-        }
 
     @staticmethod
     def get_default_object_store_stats():
         return {
             "spilled_bytes_total": 0,
             "restored_bytes_total": 0,
-        }
-
-    @staticmethod
-    def get_default_actor_count():
-        return {
-            "_StatsActor": lambda count: count <= 1,
-            "AutoscalingRequester": lambda count: count <= 1,
         }
 
 
@@ -687,7 +644,6 @@ def get_initial_core_execution_metrics_snapshot():
             task_count={"warmup": lambda count: True}, object_store_stats={}
         ),
         last_snapshot=None,
-        ignore_extra_tasks=True,
     )
     return last_snapshot
 
@@ -695,7 +651,6 @@ def get_initial_core_execution_metrics_snapshot():
 def assert_core_execution_metrics_equals(
     expected_metrics: CoreExecutionMetrics,
     last_snapshot=None,
-    ignore_extra_tasks=False,
 ):
     # Wait for one task per CPU to finish to prevent a race condition where not
     # all of the task metrics have been collected yet.
@@ -705,7 +660,7 @@ def assert_core_execution_metrics_equals(
         wait_for_condition(lambda: task_metrics_flushed(refs))
 
     metrics = PhysicalCoreExecutionMetrics(last_snapshot)
-    metrics.assert_task_metrics(expected_metrics, ignore_extra_tasks)
+    metrics.assert_task_metrics(expected_metrics)
     metrics.assert_object_store_metrics(expected_metrics)
     metrics.assert_actor_metrics(expected_metrics)
 

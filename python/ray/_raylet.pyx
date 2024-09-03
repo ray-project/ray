@@ -106,6 +106,7 @@ from ray.includes.common cimport (
     CJobConfig,
     CConcurrencyGroup,
     CGrpcStatusCode,
+    CLineageReconstructionTask,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -196,7 +197,7 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo
+from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo, ActorTableData
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
@@ -219,6 +220,7 @@ include "includes/ray_config.pxi"
 include "includes/function_descriptor.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
+include "includes/gcs_client.pxi"
 include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
@@ -554,50 +556,6 @@ class ObjectRefGenerator:
 
 # For backward compatibility.
 StreamingObjectRefGenerator = ObjectRefGenerator
-
-cdef int check_status(const CRayStatus& status) nogil except -1:
-    if status.ok():
-        return 0
-
-    with gil:
-        message = status.message().decode()
-
-    if status.IsObjectStoreFull():
-        raise ObjectStoreFullError(message)
-    elif status.IsInvalidArgument():
-        raise ValueError(message)
-    elif status.IsOutOfDisk():
-        raise OutOfDiskError(message)
-    elif status.IsObjectRefEndOfStream():
-        raise ObjectRefStreamEndOfStreamError(message)
-    elif status.IsInterrupted():
-        raise KeyboardInterrupt()
-    elif status.IsTimedOut():
-        raise GetTimeoutError(message)
-    elif status.IsNotFound():
-        raise ValueError(message)
-    elif status.IsObjectNotFound():
-        raise ValueError(message)
-    elif status.IsObjectUnknownOwner():
-        raise ValueError(message)
-    elif status.IsIOError():
-        raise IOError(message)
-    elif status.IsRpcError():
-        raise RpcError(message, rpc_code=status.rpc_code())
-    elif status.IsIntentionalSystemExit():
-        with gil:
-            raise_sys_exit_with_custom_error_message(message)
-    elif status.IsUnexpectedSystemExit():
-        with gil:
-            raise_sys_exit_with_custom_error_message(
-                message, exit_code=1)
-    elif status.IsChannelError():
-        raise RayChannelError(message)
-    elif status.IsChannelTimeoutError():
-        raise RayChannelTimeoutError(message)
-    else:
-        raise RaySystemError(message)
-
 
 cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj):
     """Return True if the given object is a plasma object."""
@@ -2711,7 +2669,51 @@ def _auto_reconnect(f):
 
 
 cdef class GcsClient:
-    """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
+    """
+    Client to the GCS server. Only contains synchronous methods.
+
+    This class is in transition to use the new C++ GcsClient binding. The old
+    PythonGcsClient binding is not deleted until we are confident that the new
+    binding is stable.
+
+    Defaults to the new binding. If you want to use the old binding, please
+    set the environment variable `RAY_USE_OLD_GCS_CLIENT=1`.
+    """
+
+    cdef object inner  # OldGcsClient or NewGcsClient
+    cdef c_bool use_old_client
+
+    def __cinit__(self, address,
+                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
+                  ),
+                  cluster_id: str = None):
+        self.use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
+        if self.use_old_client:
+            self.inner = OldGcsClient(address, nums_reconnect_retry, cluster_id)
+        else:
+            # For timeout (DEADLINE_EXCEEDED): Both OldGcsClient and NewGcsClient
+            # tries once with timeout_ms.
+            #
+            # For other RpcError (UNAVAILABLE, UNKNOWN): OldGcsClient tries this for
+            # (nums_reconnect_retry + 1) times, each time for timeous_ms (+1s sleep
+            # between each retry). NewGcsClient tries indefinitely until it thinks GCS
+            # is down and kills itself.
+            timeout_ms = RayConfig.instance().py_gcs_connect_timeout_s() * 1000
+            self.inner = NewGcsClient.standalone(address, cluster_id, timeout_ms)
+        logger.debug(f"Created GcsClient. inner {self.inner}")
+
+    def __getattr__(self, name):
+        if self.use_old_client:
+            return getattr(self.inner, name)
+        # For new client, we collect the frequency of each method call.
+        # For old client, that is done in @_auto_reconnect.
+        if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+            with ray._private.utils._CALLED_FREQ_LOCK:
+                ray._private.utils._CALLED_FREQ[name] += 1
+        return getattr(self.inner, name)
+
+cdef class OldGcsClient:
+    """Old Cython wrapper class of C++ `ray::gcs::PythonGcsClient`."""
     cdef:
         shared_ptr[CPythonGcsClient] inner
         object address
@@ -2719,8 +2721,7 @@ cdef class GcsClient:
         ClusterID cluster_id
 
     def __cinit__(self, address,
-                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
-                  ),
+                  nums_reconnect_retry,
                   cluster_id: str = None):
         cdef GcsClientOptions gcs_options
         if cluster_id:
@@ -3256,9 +3257,7 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
             check_status(self.inner.get().PollActor(
                 &key_id, timeout_ms, &actor_data))
 
-        from ray.core.generated import gcs_pb2
-
-        info = gcs_pb2.ActorTableData.FromString(
+        info = ActorTableData.FromString(
             actor_data.SerializeAsString())
 
         return [(key_id, info)]
@@ -3860,6 +3859,25 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
 
+    def get_local_ongoing_lineage_reconstruction_tasks(self):
+        cdef:
+            unordered_map[CLineageReconstructionTask, uint64_t] tasks
+            unordered_map[CLineageReconstructionTask, uint64_t].iterator it
+
+        with nogil:
+            tasks = (CCoreWorkerProcess.GetCoreWorker().
+                     GetLocalOngoingLineageReconstructionTasks())
+
+        result = []
+        it = tasks.begin()
+        while it != tasks.end():
+            task = common_pb2.LineageReconstructionTask()
+            task.ParseFromString(dereference(it).first.SerializeAsString())
+            result.append((task, dereference(it).second))
+            postincrement(it)
+
+        return result
+
     def get_local_object_locations(self, object_refs):
         cdef:
             c_vector[optional[CObjectLocation]] results
@@ -4375,6 +4393,16 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
+    def get_local_actor_state(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+            optional[int] state = nullopt
+        state = CCoreWorkerProcess.GetCoreWorker().GetLocalActorState(c_actor_id)
+        if state.has_value():
+            return state.value()
+        else:
+            return None
+
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
                            c_bool weak_ref):
         worker = ray._private.worker.global_worker
@@ -4588,9 +4616,9 @@ cdef class CoreWorker:
             return True
         else:
             with nogil:
-                success = (CCoreWorkerProcess.GetCoreWorker()
-                           .PinExistingReturnObject(
-                                   return_id, return_ptr, generator_id))
+                success = (
+                    CCoreWorkerProcess.GetCoreWorker().PinExistingReturnObject(
+                        return_id, return_ptr, generator_id, caller_address))
             return success
 
     cdef store_task_outputs(self,

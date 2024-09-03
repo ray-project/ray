@@ -54,12 +54,11 @@ void GcsSubscriberClient::PubsubLongPolling(
   req.set_max_processed_sequence_id(request.max_processed_sequence_id());
   req.set_publisher_id(request.publisher_id());
   rpc_client_->GcsSubscriberPoll(
-      req,
-      [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {
+      req, [callback](const Status &status, rpc::GcsSubscriberPollReply &&poll_reply) {
         rpc::PubsubLongPollingReply reply;
-        *reply.mutable_pub_messages() = poll_reply.pub_messages();
-        *reply.mutable_publisher_id() = poll_reply.publisher_id();
-        callback(status, reply);
+        reply.mutable_pub_messages()->Swap(poll_reply.mutable_pub_messages());
+        *reply.mutable_publisher_id() = std::move(*poll_reply.mutable_publisher_id());
+        callback(status, std::move(reply));
       });
 }
 
@@ -72,9 +71,9 @@ void GcsSubscriberClient::PubsubCommandBatch(
   rpc_client_->GcsSubscriberCommandBatch(
       req,
       [callback](const Status &status,
-                 const rpc::GcsSubscriberCommandBatchReply &batch_reply) {
+                 rpc::GcsSubscriberCommandBatchReply &&batch_reply) {
         rpc::PubsubCommandBatchReply reply;
-        callback(status, reply);
+        callback(status, std::move(reply));
       });
 }
 
@@ -665,7 +664,7 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
     }
     return Status::OK();
   }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return GrpcStatusToRayStatus(status);
 }
 
 Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
@@ -746,6 +745,41 @@ Status PythonCheckGcsHealth(const std::string &gcs_address,
   }
   is_healthy = true;
   return Status::OK();
+}
+
+/// Creates a singleton thread that runs an io_service.
+/// All ConnectToGcsStandalone calls will share this io_service.
+class SingletonIoContext {
+ public:
+  static SingletonIoContext &Instance() {
+    static SingletonIoContext instance;
+    return instance;
+  }
+
+  instrumented_io_context &GetIoService() { return io_service_; }
+
+ private:
+  SingletonIoContext() : work_(io_service_) {
+    io_thread_ = std::thread([this] {
+      SetThreadName("singleton_io_context.gcs_client");
+      io_service_.run();
+    });
+  }
+  ~SingletonIoContext() {
+    io_service_.stop();
+    if (io_thread_.joinable()) {
+      io_thread_.join();
+    }
+  }
+
+  instrumented_io_context io_service_;
+  boost::asio::io_service::work work_;  // to keep io_service_ running
+  std::thread io_thread_;
+};
+
+Status ConnectOnSingletonIoContext(GcsClient &gcs_client, int64_t timeout_ms) {
+  instrumented_io_context &io_service = SingletonIoContext::Instance().GetIoService();
+  return gcs_client.Connect(io_service, timeout_ms);
 }
 
 }  // namespace gcs
