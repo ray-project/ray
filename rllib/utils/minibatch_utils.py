@@ -57,8 +57,8 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         batch: MultiAgentBatch,
         *,
         num_epochs: int = 1,
-        shuffle_batch_per_epoch: bool = True,
         minibatch_size: int,
+        shuffle_batch_per_epoch: bool = True,
         num_total_minibatches: int = 0,
         _uses_new_env_runners: bool = False,
     ) -> None:

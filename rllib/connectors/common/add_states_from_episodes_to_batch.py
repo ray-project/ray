@@ -266,6 +266,15 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         item_list,
                         max_seq_len=self._get_max_seq_len(rl_module, module_id=mid),
                     )
+                    # TODO (sven): Remove this hint/hack once we are not relying on
+                    #  SampleBatch anymore (which has to set its property
+                    #  zero_padded=True when shuffling).
+                    shared_data[
+                        (
+                            "_zero_padded_for_mid="
+                            f"{mid if mid is not None else DEFAULT_MODULE_ID}"
+                        )
+                    ] = True
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,

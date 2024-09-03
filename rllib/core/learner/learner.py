@@ -985,8 +985,8 @@ class Learner(Checkpointable):
         timesteps: Optional[Dict[str, Any]] = None,
         num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
-        num_total_minibatches: int = 0,
         shuffle_batch_per_epoch: bool = False,
+        num_total_minibatches: int = 0,
         # Deprecated args.
         num_iters=DEPRECATED_VALUE,
     ) -> ResultDict:
@@ -1040,8 +1040,8 @@ class Learner(Checkpointable):
         return self._update_from_batch_or_episodes(
             episodes=episodes,
             timesteps=timesteps,
-            minibatch_size=minibatch_size,
             num_epochs=num_epochs,
+            minibatch_size=minibatch_size,
             shuffle_batch_per_epoch=shuffle_batch_per_epoch,
             num_total_minibatches=num_total_minibatches,
         )
@@ -1243,8 +1243,8 @@ class Learner(Checkpointable):
         timesteps: Optional[Dict[str, Any]] = None,
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
-        minibatch_size: Optional[int] = None,
         num_epochs: int = 1,
+        minibatch_size: Optional[int] = None,
         shuffle_batch_per_epoch: bool = False,
         num_total_minibatches: int = 0,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
@@ -1280,7 +1280,11 @@ class Learner(Checkpointable):
                 # TODO (sven): Try to not require MultiAgentBatch anymore.
                 batch = MultiAgentBatch(
                     {
-                        module_id: SampleBatch(module_data)
+                        module_id: (
+                            SampleBatch(module_data, _zero_padded=True)
+                            if shared_data.get(f"_zero_padded_for_mid={module_id}")
+                            else SampleBatch(module_data)
+                        )
                         for module_id, module_data in batch.items()
                     },
                     env_steps=sum(len(e) for e in episodes),
@@ -1340,8 +1344,8 @@ class Learner(Checkpointable):
 
         for tensor_minibatch in batch_iter(
             batch,
-            minibatch_size=minibatch_size,
             num_epochs=num_epochs,
+            minibatch_size=minibatch_size,
             shuffle_batch_per_epoch=shuffle_batch_per_epoch and (num_epochs > 1),
             num_total_minibatches=num_total_minibatches,
         ):
