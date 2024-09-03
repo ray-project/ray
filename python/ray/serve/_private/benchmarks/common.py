@@ -105,7 +105,7 @@ async def do_single_http_batch(
                 pass
 
             end = time.perf_counter()
-            return end - start
+            return 1000 * (end - start)
 
         latencies = await asyncio.gather(*[do_query() for _ in range(batch_size)])
         if record_latencies:
@@ -205,12 +205,12 @@ class Benchmarker:
             return await self._handle.remote(payload)
 
     async def _do_single_stream(self):
-        """Consumes a single streaming request. Returns e2e latency."""
+        """Consumes a single streaming request. Returns e2e latency in ms."""
         start = time.perf_counter()
         async for r in self._handle.stream.remote():
             pass
         end = time.perf_counter()
-        return end - start
+        return 1000 * (end - start)
 
     async def _do_single_batch(self, batch_size: int, record_latencies: bool):
         if self._stream:
