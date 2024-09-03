@@ -52,6 +52,7 @@ TRIAL_RUNTIME_S = 5
 
 # For streaming benchmarks
 STREAMING_BATCH_SIZE = 150
+STREAMING_HTTP_BATCH_SIZE = 500
 STREAMING_TOKENS_PER_REQUEST = 1000
 STREAMING_NUM_TRIALS = 10
 
@@ -177,10 +178,10 @@ async def _main(
             mean, std = await run_throughput_benchmark(
                 fn=partial(
                     do_single_http_batch,
-                    batch_size=STREAMING_BATCH_SIZE,
+                    batch_size=STREAMING_HTTP_BATCH_SIZE,
                     stream=True,
                 ),
-                multiplier=STREAMING_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
+                multiplier=STREAMING_HTTP_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
                 num_trials=STREAMING_NUM_TRIALS,
                 # Complete only one batch of requests
                 trial_runtime=10,
@@ -321,16 +322,20 @@ async def _main(
 
         if run_streaming:
             h: DeploymentHandle = serve.run(
-                Benchmarker.options(max_ongoing_requests=100).bind(
-                    Streamer.options(max_ongoing_requests=100).bind(),
+                Benchmarker.bind(
+                    Streamer.options(max_ongoing_requests=1000).bind(
+                        tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
+                        inter_token_delay_ms=10,
+                    ),
                     stream=True,
                 )
             )
             mean, std = await h.run_throughput_benchmark.remote(
-                batch_size=BATCH_SIZE,
-                num_trials=1,
-                trial_runtime=TRIAL_RUNTIME_S,
-                tokens_per_request=1000,
+                batch_size=STREAMING_BATCH_SIZE,
+                num_trials=STREAMING_NUM_TRIALS,
+                # Complete only one batch of requests
+                trial_runtime=10,
+                tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
             )
             perf_metrics.extend(
                 convert_throughput_to_perf_metrics("handle_streaming", mean, std)
