@@ -220,6 +220,19 @@ class TorchLearner(Learner):
                     for param in group["params"]
                 ):
                     optim.step()
+                # If gradients are not all finite warn the user that the update will be
+                # skipped.
+                elif not all(
+                    torch.isfinite(param.grad).all()
+                    for group in optim.param_groups
+                    for param in group["params"]
+                ):
+                    logger.warning(
+                        "Skipping this update. If updates with `nan/inf` gradients "
+                        "should not be skipped entirely and instead `nan/inf` "
+                        "gradients set to `zero` set `torch_skip_nan_gradients` to "
+                        "`False`."
+                    )
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
