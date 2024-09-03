@@ -164,7 +164,8 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
         dag.experimental_compile()
 
 
-def test_pp(ray_start_cluster):
+@pytest.mark.parametrize("multiple_return_refs", [True, False])
+def test_pp(ray_start_cluster, multiple_return_refs):
     cluster = ray_start_cluster
     # This node is for the driver.
     cluster.add_node(num_cpus=0)
@@ -194,12 +195,18 @@ def test_pp(ray_start_cluster):
         outputs = [inp for _ in range(TP)]
         outputs = [pp1_workers[i].execute_model.bind(outputs[i]) for i in range(TP)]
         outputs = [pp2_workers[i].execute_model.bind(outputs[i]) for i in range(TP)]
-        dag = MultiOutputNode(outputs)
+        if multiple_return_refs:
+            dag = MultiOutputNode(outputs, multiple_return_refs=multiple_return_refs)
+        else:
+            dag = MultiOutputNode(outputs)
 
     compiled_dag = dag.experimental_compile()
     refs = compiled_dag.execute(1)
-    for i in range(TP):
-        assert ray.get(refs[i]) == 1
+    if multiple_return_refs:
+        for i in range(TP):
+            assert ray.get(refs[i]) == 1
+    else:
+        assert ray.get(refs) == [1] * TP
 
     # So that raylets' error messages are printed to the driver
     time.sleep(2)
